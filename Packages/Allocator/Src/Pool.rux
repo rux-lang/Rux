@@ -19,32 +19,32 @@ import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layo
 import Memory::{ AlignUp, Copy };
 
 /// How many size classes a pool serves.
-/// @see https://rux-lang.dev/docs/api/allocator/pool-class-count
+/// @see https://rux-lang.dev/docs/api/allocator/pool#pool-class-count
 pub const PoolClassCount: uint = 5;
 
 /// The smallest size class, and so the block a one-byte request occupies.
 /// Large enough to hold the link a free block stores in its own storage, which is what lets a free list cost nothing
 /// beyond the blocks already on it.
-/// @see https://rux-lang.dev/docs/api/allocator/pool-smallest-class
+/// @see https://rux-lang.dev/docs/api/allocator/pool#pool-smallest-class
 pub const PoolSmallestClass: uint = 16;
 
 /// The largest size class. A request past this goes to the backing allocator instead.
-/// @see https://rux-lang.dev/docs/api/allocator/pool-largest-class
+/// @see https://rux-lang.dev/docs/api/allocator/pool#pool-largest-class
 pub const PoolLargestClass: uint = 256;
 
 /// The alignment every chunk is taken at, and so the strictest alignment a pooled block can satisfy.
 /// Every class is a multiple of this, so every block carved from a chunk is aligned to it as well.
-/// @see https://rux-lang.dev/docs/api/allocator/pool-alignment
+/// @see https://rux-lang.dev/docs/api/allocator/pool#pool-alignment
 pub const PoolAlignment: uint = 16;
 
 /// How many blocks a chunk holds when the caller does not say.
-/// @see https://rux-lang.dev/docs/api/allocator/default-pool-blocks-per-chunk
+/// @see https://rux-lang.dev/docs/api/allocator/pool#default-pool-blocks-per-chunk
 pub const DefaultPoolBlocksPerChunk: uint = 32;
 
 /// One chunk of pool storage, carved into blocks of a single class.
 /// Never constructed by a caller. The blocks follow the header, and the header records what the chunk was taken with
 /// so that releasing or re-carving it needs nothing else.
-/// @see https://rux-lang.dev/docs/api/allocator/pool-chunk
+/// @see https://rux-lang.dev/docs/api/allocator/pool#pool-chunk
 pub struct PoolChunk {
     /// The chunk taken before this one, or null for the first.
     previous: *var PoolChunk;
@@ -88,7 +88,7 @@ extend Pool {
     /// @param backing where the pool's chunks come from
     /// @param blocksPerChunk how many blocks a chunk carves into; zero asks for the default
     /// @returns the pool, holding no chunk yet
-    /// @see https://rux-lang.dev/docs/api/allocator/pool/new
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#new
     pub func Pool(backing: Allocator, blocksPerChunk: uint) -> Pool {
         let blocks = blocksPerChunk == 0 ? DefaultPoolBlocksPerChunk : blocksPerChunk;
         return Pool {
@@ -106,7 +106,7 @@ extend Pool {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// The handle borrows the pool and must not outlive it, nor survive the pool being moved.
     /// @returns a copyable adapter pointing at this pool
-    /// @see https://rux-lang.dev/docs/api/allocator/pool/handle
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#handle
     pub func Handle(self: *var Pool) -> PoolHandle {
         return PoolHandle { pool: self };
     }
@@ -119,7 +119,7 @@ extend Pool {
     /// touched, and are still the caller's to release.
     /// Runs in time proportional to the number of blocks. Cannot fail.
     /// Nothing may be read from or written to any pooled allocation afterwards.
-    /// @see https://rux-lang.dev/docs/api/allocator/pool/reset
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#reset
     pub func Reset(self: &var Pool) {
         var index: uint = 0;
         while index < PoolClassCount {
@@ -146,7 +146,7 @@ extend Pool {
     /// `self` is borrowed. Blocks that went to the backing allocator are not counted, because the pool does not
     /// track them.
     /// @returns how many blocks are currently handed out
-    /// @see https://rux-lang.dev/docs/api/allocator/pool/live-blocks
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#live-blocks
     pub func LiveBlocks(self: &Pool) -> uint {
         return self.live;
     }
@@ -154,7 +154,7 @@ extend Pool {
     /// How many chunks the pool has taken from its backing allocator.
     /// `self` is borrowed. Zero before the first request.
     /// @returns how many chunks the pool holds
-    /// @see https://rux-lang.dev/docs/api/allocator/pool/chunk-count
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#chunk-count
     pub func ChunkCount(self: &Pool) -> uint {
         return self.chunkCount;
     }
@@ -163,7 +163,7 @@ extend Pool {
     /// `self` is borrowed. Classes run from `PoolSmallestClass` to `PoolLargestClass`, doubling.
     /// @param index which size class
     /// @returns the block size that class serves
-    /// @see https://rux-lang.dev/docs/api/allocator/pool/class-size
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#class-size
     pub func ClassSize(self: &Pool, index: uint) -> uint {
         if index >= PoolClassCount { return 0; }
         return PoolSmallestClass << index;
@@ -215,7 +215,7 @@ extend Pool {
     /// Gives every chunk back to the backing allocator.
     /// Runs when the pool's life ends. Every pooled pointer the pool handed out becomes invalid. Blocks that went to
     /// the backing allocator directly are not released here and are still the caller's.
-    /// @see https://rux-lang.dev/docs/api/allocator/pool/destructor
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#destructor
     func ~Pool(self: &var Pool) {
         var chunk = self.chunks;
         while chunk != null {
@@ -237,7 +237,7 @@ extend Pool {
 
 /// A copyable interface adapter pointing at a pool.
 /// A handle is cheap to copy and may be stored wherever an allocator is wanted, but it does not own the pool.
-/// @see https://rux-lang.dev/docs/api/allocator/pool-handle
+/// @see https://rux-lang.dev/docs/api/allocator/pool#pool-handle
 pub struct PoolHandle {
     /// The pool this borrows. Never null for a handle `Pool::Handle` produced.
     pool: *var Pool;
@@ -253,7 +253,7 @@ extend PoolHandle : Allocator {
     /// The block lives until it is released, the pool is reset, or the pool is destroyed.
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
-    /// @see https://rux-lang.dev/docs/api/allocator/pool-handle/allocate
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#pool-handle-allocate
     pub func Allocate(self: &PoolHandle, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
@@ -280,7 +280,7 @@ extend PoolHandle : Allocator {
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
-    /// @see https://rux-lang.dev/docs/api/allocator/pool-handle/deallocate
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#pool-handle-deallocate
     pub func Deallocate(self: &PoolHandle, block: *var opaque, layout: Layout) -> ! AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
         if block == null { fail AllocError::InvalidBlock; }
@@ -304,7 +304,7 @@ extend PoolHandle : Allocator {
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
     /// @returns the address the block is at afterwards, or why it was not resized
-    /// @see https://rux-lang.dev/docs/api/allocator/pool-handle/reallocate
+    /// @see https://rux-lang.dev/docs/api/allocator/pool#pool-handle-reallocate
     pub func Reallocate(self: &PoolHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
@@ -339,7 +339,7 @@ extend PoolHandle : Allocator {
 /// Cannot fail. Runs in time proportional to the number of classes and allocates nothing.
 /// @param layout the request to classify
 /// @returns the index of the class that serves it, or the class count when none does
-/// @see https://rux-lang.dev/docs/api/allocator/class-index-for
+/// @see https://rux-lang.dev/docs/api/allocator/pool#class-index-for
 pub func ClassIndexFor(layout: Layout) -> uint {
     if layout.alignment > PoolAlignment { return PoolClassCount; }
     if layout.size > PoolLargestClass { return PoolClassCount; }

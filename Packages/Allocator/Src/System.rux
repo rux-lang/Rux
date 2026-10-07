@@ -18,7 +18,7 @@ import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageRead, Pag
 /// What a system allocation records about itself, immediately before the address the caller sees.
 /// Never constructed by a caller. The magic is checked on release, which is what turns a mismatched or foreign
 /// pointer into a reported `InvalidBlock` rather than a corrupted heap.
-/// @see https://rux-lang.dev/docs/api/allocator/system-block-header
+/// @see https://rux-lang.dev/docs/api/allocator/system-allocator#system-block-header
 pub struct SystemBlockHeader {
     /// A fixed pattern, checked on release.
     magic: uint64;
@@ -33,7 +33,7 @@ pub struct SystemBlockHeader {
 /// The pattern a valid system block header carries.
 /// Chosen to be unlikely in ordinary data, so a pointer that was never one of these is very unlikely to look like
 /// one. This is a check against a mistake, not against an adversary.
-/// @see https://rux-lang.dev/docs/api/allocator/system-block-magic
+/// @see https://rux-lang.dev/docs/api/allocator/system-allocator#system-block-magic
 pub const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
 
 /// An allocator that asks the operating system for pages.
@@ -52,7 +52,7 @@ extend SystemAllocator {
     /// The result is structural and copyable. Borrow it as `&var Allocator` when a temporary interface view is
     /// sufficient; no adapter or owning conversion is required.
     /// @returns the allocator, which holds no state of its own
-    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/new
+    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#new
     pub func SystemAllocator() -> SystemAllocator {
         return SystemAllocator { reserved: 0 };
     }
@@ -68,7 +68,7 @@ extend SystemAllocator : Allocator {
     /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
-    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/allocate
+    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#allocate
     pub func Allocate(self: &SystemAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
@@ -109,7 +109,7 @@ extend SystemAllocator : Allocator {
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
-    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/deallocate
+    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#deallocate
     pub func Deallocate(self: &SystemAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
         if block == null || IsEmptyBlock(block) { fail AllocError::InvalidBlock; }
@@ -132,7 +132,7 @@ extend SystemAllocator : Allocator {
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
     /// @returns the address the block is at afterwards, or why it was not resized
-    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/reallocate
+    /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#reallocate
     pub func Reallocate(self: &SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }

@@ -40,7 +40,7 @@ extend Box<T> {
     /// @param allocator where the storage comes from
     /// @param value the value to move into it
     /// @returns the box, or why the allocator refused
-    /// @see https://rux-lang.dev/docs/api/allocator/box/create
+    /// @see https://rux-lang.dev/docs/api/allocator/box#create
     pub func Create(allocator: Allocator, value: T) -> Box<T> ! AllocError {
         let layout = Layout::ForValue<T>();
         let block = allocator.Allocate(layout)?;
@@ -55,7 +55,7 @@ extend Box<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// The pointer dies with the box. Holding it past a move of the box is holding a pointer into released storage.
     /// @returns the address of the held value, or null when the box is empty
-    /// @see https://rux-lang.dev/docs/api/allocator/box/get
+    /// @see https://rux-lang.dev/docs/api/allocator/box#get
     pub func Get(self: &Box<T>) -> *var T {
         return self.pointer;
     }
@@ -65,7 +65,7 @@ extend Box<T> {
     /// nothing and releases nothing.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns whether the box holds nothing
-    /// @see https://rux-lang.dev/docs/api/allocator/box/is-empty
+    /// @see https://rux-lang.dev/docs/api/allocator/box#is-empty
     pub func IsEmpty(self: &Box<T>) -> bool {
         return self.pointer == null;
     }
@@ -78,7 +78,7 @@ extend Box<T> {
     /// Runs in whatever time the allocator takes.
     /// @param destination receives the held value
     /// @returns whether there was a value to take
-    /// @see https://rux-lang.dev/docs/api/allocator/box/try-take
+    /// @see https://rux-lang.dev/docs/api/allocator/box#try-take
     pub func TryTake(self: &var Box<T>, destination: *var T) -> bool {
         if self.pointer == null || destination == null { return false; }
         let held = self.pointer;
@@ -94,7 +94,7 @@ extend Box<T> {
     /// Destroys the value and releases its storage, if the box still holds any.
     /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved
     /// away is not destroyed where it used to live, so the storage is released exactly once.
-    /// @see https://rux-lang.dev/docs/api/allocator/box/destructor
+    /// @see https://rux-lang.dev/docs/api/allocator/box#destructor
     func ~Box(self: &var Box<T>) {
         if self.pointer != null {
             let held = self.pointer;
