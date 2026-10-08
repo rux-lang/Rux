@@ -196,6 +196,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 #### CLI / Package Manager
 
+- **`rux info --json` manifest schema version** — package inspection now identifies the Version 1 manifest schema with `manifestVersion`, allowing machine-readable consumers to distinguish the manifest contract from the package's own version.
 - **`rux doc`** — generates deterministic, self-contained HTML API documentation after the normal compiler frontend and semantic analysis succeed. Outer `///` comments support a safe Markdown subset, target and define selection match `rux check`, public API is the default, `--document-private-items` includes private declarations, and managed-directory markers prevent `--output` from replacing unrelated files.
 - **`rux doc --format json`** — writes one versioned JSON API snapshot per package instead of an HTML site: manifest metadata, module file headers, and every documented item in source order with its signature, fields, cases, and the members of its `extend` blocks classified as constructors, associated functions, methods, operators, destructors, constants, or interface requirements. Documentation stays normalized Markdown split by tag, and constant values keep their source spelling. `--format html` remains the default.
 - **Versioned CLI contract** — `rux help --json` and `rux help <command> --json` publish schema version 1 for documentation tooling, with the program version, global options, command usage, arguments, options, examples, and stable documentation URLs.
