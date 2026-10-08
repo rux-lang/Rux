@@ -471,6 +471,9 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         std::print("  \"name\": \"{}\",\n", EscapeJson(manifest->package.name.Text()));
         std::print("  \"version\": \"{}\",\n", EscapeJson(manifest->package.version.Text()));
         std::print("  \"type\": \"{}\",\n", EscapeJson(ToString(manifest->package.type)));
+        if (manifest->header.minRux) {
+            std::print("  \"minRux\": \"{}\",\n", EscapeJson(manifest->header.minRux->Text()));
+        }
         if (!manifest->package.keywords.empty()) {
             std::print("  \"keywords\": [");
             for (std::size_t i = 0; i < manifest->package.keywords.size(); ++i) {
@@ -499,6 +502,9 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         }
         if (!manifest->package.homepage.empty()) {
             std::print("  \"homepage\": \"{}\",\n", EscapeJson(manifest->package.homepage));
+        }
+        if (!manifest->package.readmeFile.empty()) {
+            std::print("  \"readmeFile\": \"{}\",\n", EscapeJson(manifest->package.readmeFile));
         }
         std::print("  \"dependencies\": [\n");
         for (size_t i = 0; i < manifest->dependencies.size(); ++i) {
