@@ -132,6 +132,25 @@ TEST_CASE("omitted initialization stays tracked when no default constructor exis
     CHECK_EQ(initializationDiagnostics[0].message, "variable 'pending' is used before it is initialized");
 }
 
+TEST_CASE("fixed-array fields in uninitialized structs remain compiler-tracked") {
+    // Regression coverage for issue #162: an uninitialized struct containing a fixed-size
+    // array must not turn a field read into an unchecked runtime memory access. The
+    // language contract requires the read to be rejected during semantic analysis.
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Box {
+            data: uint32[4];
+        }
+
+        func Main() {
+            var box: Box;
+            let value = box.data[0];
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "variable 'box' is used before it is initialized");
+}
+
 TEST_CASE("call diagnostics identify the argument and named parameter that disagree") {
     const auto diagnostics = AnalyzeSource(R"(
         func Add(left: int, right: int) {}
