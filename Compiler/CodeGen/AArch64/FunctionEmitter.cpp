@@ -463,8 +463,8 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             // Equality on a named value too wide for one register — an enum whose payload does not pack beside its
             // tag is the shape the frontend emits — compares the leading doubleword of each operand's slot, which
             // is the discriminant word. This matches what the x86-64 backend generates for the same LIR; wide
-            // integers and software floats never reach here because EmitWideArithmetic already claimed them, and a
-            // tuple stays refused below rather than quietly comparing only its first element.
+            // integers, wide bools and software floats never reach here because EmitWideArithmetic already claimed
+            // them, and a tuple stays refused below rather than quietly comparing only its first element.
             const A64Reg lhs = hooks.ReadRawOperand(instruction.srcs[0], 8, A64::Xn(kTemp));
             const A64Reg rhs = hooks.ReadRawOperand(instruction.srcs[1], 8, A64::Xn(kTemp2));
             Must(encoder.Cmp(lhs, rhs), LirOpcodeName(instruction.op));

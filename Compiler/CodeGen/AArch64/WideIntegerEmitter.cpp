@@ -109,14 +109,18 @@ void AArch64FunctionEmitter::MultiplyWide(const std::int32_t left, const std::in
 }
 
 bool AArch64FunctionEmitter::EmitWideConstant(const LirInstr &instruction) {
-    if (!IsWideInteger(instruction.type)) {
+    if (!IsWideScalar(instruction.type)) {
         return false;
     }
     const int size = RuntimeSize(instruction.type);
     const std::string &literal = instruction.strArg.empty() ? "0" : instruction.strArg;
     const auto parts = SplitIntegerLiteral(literal);
     WideInteger value = WideInteger::Zero(static_cast<std::uint32_t>(size * 8));
-    if (parts) {
+    // A wide bool's literal is `true` or `false` rather than digits, and its truth is the low word alone.
+    if (instruction.type.IsBool()) {
+        value = WideInteger::FromUnsigned(ConstantBits(instruction), static_cast<std::uint32_t>(size * 8));
+    }
+    else if (parts) {
         if (const auto magnitude =
                 WideInteger::Parse(parts->digits, parts->base, static_cast<std::uint32_t>(size * 8))) {
             value = parts->negative ? magnitude->Negated() : *magnitude;
@@ -135,10 +139,10 @@ bool AArch64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
         return true;
     }
     const TypeRef operandType = instruction.srcs.empty() ? instruction.type : TypeOfReg(instruction.srcs[0]);
-    if (instruction.dst == LirNoReg || (!IsWideInteger(operandType) && !IsWideInteger(instruction.type))) {
+    if (instruction.dst == LirNoReg || (!IsWideScalar(operandType) && !IsWideScalar(instruction.type))) {
         return false;
     }
-    const TypeRef wideType = IsWideInteger(operandType) ? operandType : instruction.type;
+    const TypeRef wideType = IsWideScalar(operandType) ? operandType : instruction.type;
     const int size = RuntimeSize(wideType);
     const int words = size / 8;
     const std::int32_t destination = instruction.dst == LirNoReg ? 0 : Disp(instruction.dst);
@@ -318,7 +322,14 @@ bool AArch64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     case LirOpcode::BitNot:
         for (int word = 0; word < words; ++word) {
             LoadWideWord(A64::Xn(kValue), instruction.srcs[0], word);
-            Must(encoder.Mvn(A64::Xn(kValue), A64::Xn(kValue)), "a wide-integer complement");
+            // A wide bool's truth is the low bit of its low word, so that bit alone flips and the zeros above it are
+            // copied; inverting every word would leave a value that is neither true nor false.
+            if (!wideType.IsBool()) {
+                Must(encoder.Mvn(A64::Xn(kValue), A64::Xn(kValue)), "a wide-integer complement");
+            }
+            else if (word == 0) {
+                Must(encoder.EorImm(A64::Xn(kValue), A64::Xn(kValue), 1), "a wide-bool complement");
+            }
             StoreWideWord(A64::Xn(kValue), instruction.dst, word);
         }
         return true;
@@ -437,19 +448,43 @@ bool AArch64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     if (instruction.op == LirOpcode::Cast) {
         const TypeRef &destinationType = instruction.type;
         if (destinationType.IsBool()) {
-            Must(encoder.LoadImm64(A64::Xn(kValue), 0), "a wide-integer truth conversion");
-            for (int word = 0; word < words; ++word) {
-                LoadWideWord(A64::Xn(kRight), instruction.srcs[0], word);
-                Must(encoder.Orr(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kRight)), "a wide-integer truth conversion");
+            // Only the source's own words are read: when a narrow bool widens, the wide type is the destination's,
+            // and its word count would run past the end of the source's slot.
+            A64Reg truth = A64::Xn(kValue);
+            if (IsWideScalar(operandType)) {
+                Must(encoder.LoadImm64(A64::Xn(kValue), 0), "a wide-integer truth conversion");
+                for (int word = 0; word < RuntimeSize(operandType) / 8; ++word) {
+                    LoadWideWord(A64::Xn(kRight), instruction.srcs[0], word);
+                    Must(encoder.Orr(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kRight)),
+                         "a wide-integer truth conversion");
+                }
+                Must(encoder.Cmp(A64::Xn(kValue), A64::Xzr), "a wide-integer truth conversion");
+                Must(encoder.Cset(A64::Xn(kValue), A64Condition::Ne), "a wide-integer truth conversion");
             }
-            Must(encoder.Cmp(A64::Xn(kValue), A64::Xzr), "a wide-integer truth conversion");
-            Must(encoder.Cset(A64::Xn(kValue), A64Condition::Ne), "a wide-integer truth conversion");
-            hooks.StoreToSlot(A64::Xn(kValue), instruction.dst, destinationType);
+            else {
+                // A narrow bool read at its own width is already zero or one; anything else is tested against zero.
+                truth = hooks.ReadOperand(instruction.srcs[0], operandType, A64::Xn(kValue));
+                if (!operandType.IsBool()) {
+                    Must(encoder.Cmp(truth, A64::Xzr), "a truth conversion");
+                    Must(encoder.Cset(A64::Xn(kValue), A64Condition::Ne), "a truth conversion");
+                    truth = A64::Xn(kValue);
+                }
+            }
+            if (!IsWideScalar(destinationType)) {
+                hooks.StoreToSlot(truth, instruction.dst, destinationType);
+                return true;
+            }
+            // A wide bool holds its truth in the low word and zeros above it, whatever the slot held before.
+            StoreWideWord(truth, instruction.dst, 0);
+            Must(encoder.LoadImm64(A64::Xn(kValue), 0), "a wide-bool zero extension");
+            for (int word = 1; word < RuntimeSize(destinationType) / 8; ++word) {
+                StoreWideWord(A64::Xn(kValue), instruction.dst, word);
+            }
             return true;
         }
-        if (IsWideInteger(destinationType)) {
+        if (IsWideScalar(destinationType)) {
             const int destinationSize = RuntimeSize(destinationType);
-            if (!IsWideInteger(operandType)) {
+            if (!IsWideScalar(operandType)) {
                 const A64Reg value = hooks.ReadOperand(instruction.srcs[0], operandType, A64::Xn(kValue));
                 hooks.StoreScalar(value, A64::Fp, destination, 8);
                 if (operandType.IsSigned()) {
