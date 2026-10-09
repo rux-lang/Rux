@@ -209,9 +209,7 @@ const std::string &HirToLirContext::SymbolFor(const std::string &name) const {
     }
 }
 
-/// Preserve the declaration boundary on every target. Apple and FreeBSD AArch64 apply C's default argument promotions
-/// before their platform call layouts; keeping the promotion in LIR makes the value's ABI type explicit and lets code
-/// generation move it like any other converted value.
+/// Preserve the declaration boundary on every target, and pass the anonymous arguments as C passes them.
 void HirToLirContext::SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr) {
     const auto found = cVariadicFixedParamCounts.find(name);
     if (found == cVariadicFixedParamCounts.end()) {
@@ -219,15 +217,35 @@ void HirToLirContext::SetCVariadicCallMetadata(LirInstr &call, const std::string
     }
     call.isCVariadic = true;
     call.cVariadicFixedParamCount = found->second;
+    PassCVariadicArguments(call, found->second, expr);
+}
 
-    const bool promotesAArch64 = targetContext.arch == Target::Arch::AArch64 &&
-                                 (targetContext.os == Target::OS::MacOS || targetContext.os == Target::OS::FreeBSD);
-    if (!promotesAArch64) {
-        return;
-    }
-    for (std::size_t i = found->second; i < call.srcs.size() && i < expr.args.size(); ++i) {
-        if (const auto promoted = CVariadicPromotion(expr.args[i]->type)) {
-            call.srcs[i] = EmitCast(call.srcs[i], expr.args[i]->type, *promoted);
+/// C applies its default argument promotions to every anonymous argument, on every target: the callee reads a value
+/// narrower than `int` with `va_arg(list, int)` and a float with `va_arg(list, double)`, so an argument left at its own
+/// width was read with bits nothing wrote, or as the wrong format. Keeping the promotion in LIR makes the value's ABI
+/// type explicit and lets code generation place it like any other converted value; Apple's stack tail and the
+/// Windows AArch64 general-purpose copy then see the double they expect.
+///
+/// Win64 x64 adds one rule of its own. A variadic callee spills rcx, rdx, r8 and r9 to its home area and reads every
+/// anonymous argument from there, so a double the caller placed only in an xmm register was never seen. The ABI asks
+/// for the value in both registers; the integer one is the copy a variadic callee reads, so the double travels as its
+/// bits, which also lands it in the right stack slot past the fourth argument.
+void HirToLirContext::PassCVariadicArguments(LirInstr &call, const std::size_t fixedCount, const HirCallExpr &expr) {
+    const CallingConvention convention = call.callConv == CallingConvention::Default
+                                           ? PlatformDefaultConvention(targetContext.os, targetContext.arch)
+                                           : ResolveCConvention(call.callConv, targetContext.os, targetContext.arch);
+    const bool win64 = targetContext.arch == Target::Arch::X86_64 && convention == CallingConvention::Win64;
+    for (std::size_t i = fixedCount; i < call.srcs.size() && i < expr.args.size(); ++i) {
+        TypeRef type = expr.args[i]->type;
+        if (const auto promoted = CVariadicPromotion(type)) {
+            call.srcs[i] = EmitCast(call.srcs[i], type, *promoted);
+            type = *promoted;
+        }
+        if (win64 && type.kind == TypeRef::Kind::Float64) {
+            const TypeRef bitsType = TypeRef::MakeUInt64();
+            const LirReg slot = EmitAlloca(bitsType);
+            EmitStore(call.srcs[i], slot, type);
+            call.srcs[i] = EmitLoad(slot, bitsType);
         }
     }
 }

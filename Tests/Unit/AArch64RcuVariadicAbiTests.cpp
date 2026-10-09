@@ -317,7 +317,9 @@ TEST_CASE("Windows AArch64 sprintf-style variadic calls use consecutive general-
 
     // The two fixed pointers and all three anonymous arguments occupy one
     // eight-byte slot each. Both floating-point values cross into X registers
-    // by bit pattern; no V argument register receives either one.
+    // by bit pattern; no V argument register receives either one. The float32
+    // crosses as the double C's default argument promotions make it, since
+    // `va_arg(list, double)` reads all eight bytes of its slot.
     const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
     CHECK(std::ranges::any_of(
         beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(0); }));
@@ -329,8 +331,10 @@ TEST_CASE("Windows AArch64 sprintf-style variadic calls use consecutive general-
     CHECK(std::ranges::any_of(
         beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(3); }));
     CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
-        return FloatBitsArgumentFilled(word, 32) == std::optional<unsigned>(4);
+        return FloatBitsArgumentFilled(word, 64) == std::optional<unsigned>(4);
     }));
+    CHECK_FALSE(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return FloatBitsArgumentFilled(word, 32).has_value(); }));
     for (const auto word : caller) {
         for (const unsigned bits : {32U, 64U}) {
             const auto vector = VectorArgumentFilled(word, bits);

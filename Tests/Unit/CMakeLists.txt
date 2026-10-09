@@ -133,6 +133,7 @@ set(RUX_TEST_SOURCES
     SoftFloatMultiplyLoweringTests.cpp
     SoftFloatLoweringTestSupport.cpp
     WideBoolLoweringTests.cpp
+    VariadicWideningLoweringTests.cpp
     OptimizerTests.cpp
     LirOptimizationTests.cpp
     LirReachabilityTests.cpp

@@ -1,0 +1,142 @@
+// Variadic widening: every value passed to a variadic parameter arrives at the width the callee reads.
+// A Rux variadic parameter collects its arguments into a slice of its element type, and analysis accepts each one
+// as it accepts an ordinary argument: an integer narrower than the element of its signedness, any bool width, float32
+// for float64, a narrower scalar-valued character. Each callee below reads the part of an element that only a real
+// conversion writes: the sign- or zero-extended high words, the whole width of a bool, the exact float64.
+// A C-variadic argument has no parameter to convert to. C reads it after the default argument promotions, an integer
+// narrower than `int` as `int` and a float as a double, so the caller has to pass it that way. `sprintf` reads each
+// one back as C sees it, and the text it writes is compared with what C would have written.
+
+import Core::Assert;
+import Core::{ #Error, #target, Architecture, OperatingSystem };
+
+// `sprintf` rather than `snprintf`: the runtime this binds on Windows has the formatted family only under the legacy
+// `msvcrt.dll`, which does not export `snprintf` under that name. Every buffer below is far larger than its text.
+when #target.os {
+    .FreeBSD => const CRuntime = "libc.so.7";
+    .Linux => const CRuntime = "libc.so.6";
+    .macOS => const CRuntime = "libSystem.B.dylib";
+    .Windows => const CRuntime = "msvcrt.dll";
+    else => #Error("Unsupported operating system")
+}
+
+#Link(CRuntime)
+extern {
+    func sprintf(buffer: *char8, format: *char8, ...) -> int32;
+    func strcmp(left: *char8, right: *char8) -> int32;
+}
+
+func HighWords(values: int128...) -> int128 {
+    var total = 0i128;
+    for value in values {
+        total += value >> 64;
+    }
+    return total;
+}
+
+func UpperBits(values: uint256...) -> uint256 {
+    var total = 0u256;
+    for value in values {
+        total += value >> 32;
+    }
+    return total;
+}
+
+func SetCount(values: bool128...) -> int128 {
+    var total = 0i128;
+    for value in values {
+        total += value as int128;
+    }
+    return total;
+}
+
+func Pick(index: uint, values: float64...) -> float64 {
+    return values[index];
+}
+
+func CodeTotal(values: char128...) -> uint128 {
+    var total = 0u128;
+    for value in values {
+        total += value as uint128;
+    }
+    return total;
+}
+
+/// Whether `sprintf` wrote exactly `expected` into `buffer`.
+func Wrote(buffer: *char8, expected: char8[..]) -> bool {
+    return strcmp(buffer, expected.data) == 0i32;
+}
+
+func Main() -> int {
+    // Integers: each element is sign-extended to the element, so every high word of a negative value is all ones.
+    let word: int64 = -1i64;
+    let half: int32 = -2i32;
+    let byte: int8 = -3i8;
+    let short: int16 = 4i16;
+    Assert(HighWords(word, half, byte, short) == -3i128, "a negative int element reaches an int128 sign-extended");
+    Assert(HighWords(word, -5i128) == -2i128, "a narrower element sits beside one already of the element type");
+    Assert(HighWords() == 0i128, "an empty list is still a list");
+
+    let wide: uint64 = 18446744073709551615u64;
+    let small: uint8 = 255u8;
+    let count: uint32 = 4294967295u32;
+    Assert(UpperBits(wide, small, count) == 4294967295u256, "an unsigned element reaches a uint256 zero-extended");
+
+    // Bools: every width is accepted for every other, and only whether it is set crosses.
+    let narrow: bool8 = true;
+    let middle: bool64 = true;
+    let broad: bool256 = true;
+    let clear: bool16 = false;
+    Assert(SetCount(narrow, middle, broad, clear) == 3i128, "each bool reaches a bool128 as exactly zero or one");
+
+    // Floats: float32 widens exactly, so the double read back is the float32's own value.
+    let tenth: float32 = 0.1f32;
+    let exact: float32 = 1.5f32;
+    Assert(Pick(0u, tenth, exact, 2.25) == tenth as float64, "a float32 element is the same value as a float64");
+    Assert(Pick(1u, tenth, exact, 2.25) == 1.5, "and so is the next one");
+    Assert(Pick(2u, tenth, exact, 2.25) == 2.25, "beside an element already of the element type");
+
+    // Characters: a scalar value widens to any wider scalar-valued character.
+    let letter: char32 = 'A';
+    let other: char64 = 'C';
+    let last: char128 = 'Z';
+    Assert(CodeTotal(letter, other, last) == 222u128, "each character reaches a char128 as its code point");
+
+    // C-variadic integers narrower than `int` are passed as `int`, a bool as zero or one, a code unit as its number.
+    var buffer: char8[128];
+    let negative: int8 = -5i8;
+    let below: int16 = -300i16;
+    let high: uint8 = 200u8;
+    let large: uint16 = 60000u16;
+    let set: bool8 = true;
+    let unset: bool16 = false;
+    let unit: char8 = 'A';
+    let pair: char16 = 'B';
+    sprintf(buffer[..].data, "%d %d %d %d %d %d %d %d".data, negative, below, high, large, set, unset, unit, pair);
+    Assert(Wrote(buffer[..].data, "-5 -300 200 60000 1 0 65 66"), "narrow integers reach C promoted to int");
+
+    // A float is passed as a double, in register and stack positions alike, and a double as itself.
+    let quarter: float32 = 0.25f32;
+    let twice: float64 = 2.5;
+    let negativeHalf: float32 = -0.5f32;
+    sprintf(buffer[..].data, "%.3f %.3f %.3f %.3f %.3f".data, quarter, twice, negativeHalf, 7.125, exact);
+    Assert(Wrote(buffer[..].data, "0.250 2.500 -0.500 7.125 1.500"), "floats reach C promoted to double");
+
+    // Promoted and unpromoted values interleave, so each keeps its own slot.
+    // `%lld` is left out: the legacy Windows runtime spells a 64-bit conversion its own way.
+    let total: int32 = -123456789i32;
+    let scalar: char32 = 'z';
+    sprintf(buffer[..].data, "%d %.2f %d %u %d".data, negative, quarter, total, scalar, set);
+    Assert(Wrote(buffer[..].data, "-5 0.25 -123456789 122 1"), "promoted values sit beside unpromoted ones");
+
+    // A function value of a C-variadic type passes its tail the same way as the extern it was taken from. Apple
+    // and Windows AArch64 are left out: each places an anonymous argument somewhere a declared one would not go, the
+    // stack or the general-purpose registers, and only a direct call tells code generation where the declared ones end.
+    when !(#target.arch == Architecture::AArch64 &&
+           (#target.os == OperatingSystem::macOS || #target.os == OperatingSystem::Windows)) {
+        let format: func(*char8, *char8, ...) -> int32 = sprintf;
+        format(buffer[..].data, "%d %.2f %d".data, negative, quarter, set);
+        Assert(Wrote(buffer[..].data, "-5 0.25 1"), "a call through a function value promotes its tail too");
+    }
+    return 0;
+}

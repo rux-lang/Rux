@@ -184,8 +184,10 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
     slice->location = call.location;
     slice->elementType = elementType;
     slice->type = TypeRef::MakeSlice(elementType);
+    // Each element is checked against the element type the way a fixed argument is checked against its parameter, so
+    // it reaches the slice converted the same way: an int64 element of an int128 slice is the int128 it stands for.
     for (std::size_t i = fixedCount; i < call.args.size(); ++i) {
-        slice->elements.push_back(LowerExprAs(*call.args[i], elementType));
+        slice->elements.push_back(LowerArgumentAs(*call.args[i], elementType));
     }
     arguments.push_back(std::move(slice));
     return arguments;

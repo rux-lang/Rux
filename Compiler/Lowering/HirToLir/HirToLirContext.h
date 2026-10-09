@@ -101,6 +101,8 @@ private:
     [[nodiscard]] const std::string &SymbolFor(const std::string &name) const;
     [[nodiscard]] static std::optional<TypeRef> CVariadicPromotion(const TypeRef &type);
     void SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr);
+    /// Converts the arguments of `call` past the first `fixedCount` to what a C-variadic callee reads.
+    void PassCVariadicArguments(LirInstr &call, std::size_t fixedCount, const HirCallExpr &expr);
 
     [[nodiscard]] LirReg NewReg();
     /// A register the calling convention fills with a value of `type` before the body runs.

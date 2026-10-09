@@ -817,6 +817,11 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
     else {
         // Function pointer / indirect call: evaluate callee first.
         ci.op = LirOpcode::CallIndirect;
+        // A function value of a C-variadic type takes its anonymous arguments as C passes them, like a named extern.
+        if (const TypeRef &calleeType = e.callee->type;
+            calleeType.kind == TypeRef::Kind::Func && calleeType.isVariadic && !calleeType.inner.empty()) {
+            PassCVariadicArguments(ci, calleeType.inner.size() - 1, e);
+        }
         LirReg fp = LowerExpr(*e.callee);
         ci.srcs.insert(ci.srcs.begin(), fp);
     }

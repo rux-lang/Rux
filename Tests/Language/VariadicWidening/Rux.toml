@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "VariadicWidening"
+Version = "0.1.0"
+Type = "Executable"
+Description = "A value passed to a Rux variadic parameter reaches the callee as the element type, and a C-variadic argument as C's default argument promotions make it."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"
