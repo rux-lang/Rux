@@ -1,8 +1,8 @@
 
-// The wide widths have no arithmetic yet, so what can be tested is what the package promises: that the text of a
-// bit pattern is the shortest that reads back as the same bits, that a decimal reads to the nearest value with ties
-// to even, and that both agree with the reference the compiler computed independently. The vectors in Vectors.rux
-// carry that reference; the cases here are the ones a reader can check by eye.
+// What the package promises: that the text of a bit pattern is the shortest that reads back as the same bits, that
+// a decimal reads to the nearest value with ties to even, and that both agree with the reference the compiler
+// computed independently. The vectors in Vectors.rux carry that reference; the cases here are the ones a reader can
+// check by eye, and Primitives.rux carries the same checks across to the primitives themselves.
 
 import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
@@ -238,5 +238,7 @@ func Main() -> int {
         else => false
     };
     Assert(named, "with overflow named as such rather than as the allocation failure it used to be confused with");
+
+    CheckPrimitives(room);
     return 0;
 }

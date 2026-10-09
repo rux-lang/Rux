@@ -1,6 +1,8 @@
 // The four wide widths as values: the bits, the questions a caller asks of them, and their text.
 // Each carries its bits in the narrowest integer that holds them, and answers `IsNan`, `IsInfinite`, `IsFinite`
-// and `IsNegative` from the fields directly.
+// and `IsNegative` from the fields directly. `FromValue` and `Value` move the bits to and from the primitive of
+// the same width through a raw pointer, the same boundary `BitsOfFloat64` crosses, since a cast would convert the
+// number rather than keep its representation.
 // None of them implements `Display` or `Debug`, and that absence is the design. Their text is found by exact
 // big-integer arithmetic that allocates — the narrow widths convert in a fixed workspace, but these are too wide
 // for one — and the protocols offer nowhere to pass an allocator. The four used to implement them anyway by
@@ -18,6 +20,11 @@ pub struct Float80 {
     bits: uint128;
 }
 
+// The eighty bits of a `float80` that are its value, below the forty-eight of padding its storage carries.
+func ValueMask80() -> uint128 {
+    return 0xFFFFFFFFFFFFFFFFFFFFu128;
+}
+
 extend Float80 {
     /// The value these bits encode.
     /// @param bits the value's bit pattern
@@ -25,6 +32,29 @@ extend Float80 {
     /// @see https://rux-lang.dev/docs/api/format/float80#from-bits
     pub func FromBits(bits: uint128) -> Float80 {
         return Float80 { bits: bits };
+    }
+
+    /// The value a `float80` holds, carried as its eighty bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does, and keeps the low eighty bits:
+    /// the storage is sixteen bytes, and the six above the value are padding whose contents nothing promises.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float80#from-value
+    pub func FromValue(value: float80) -> Float80 {
+        let address = (@value) as *uint128;
+        return Float80 { bits: *address & ValueMask80() };
+    }
+
+    /// The `float80` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the low eighty bits into the primitive's storage through a raw pointer, with the padding above them
+    /// zero.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float80#value
+    pub func Value(self: &Float80) -> float80 {
+        var value: float80 = 0.0f80;
+        let address = (@value) as *var uint128;
+        *address = self.bits & ValueMask80();
+        return value;
     }
 
     /// The bits.
@@ -111,6 +141,28 @@ extend Float128 {
         return Float128 { bits: bits };
     }
 
+    /// The value a `float128` holds, carried as its bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does: a cast would ask for the
+    /// number, and what is wanted is its representation.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float128#from-value
+    pub func FromValue(value: float128) -> Float128 {
+        let address = (@value) as *uint128;
+        return Float128 { bits: *address };
+    }
+
+    /// The `float128` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the bits into the primitive's storage through a raw pointer.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float128#value
+    pub func Value(self: &Float128) -> float128 {
+        var value: float128 = 0.0f128;
+        let address = (@value) as *var uint128;
+        *address = self.bits;
+        return value;
+    }
+
     /// The bits.
     /// @returns the value's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float128#bits
@@ -195,6 +247,28 @@ extend Float256 {
         return Float256 { bits: bits };
     }
 
+    /// The value a `float256` holds, carried as its bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does: a cast would ask for the
+    /// number, and what is wanted is its representation.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float256#from-value
+    pub func FromValue(value: float256) -> Float256 {
+        let address = (@value) as *uint256;
+        return Float256 { bits: *address };
+    }
+
+    /// The `float256` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the bits into the primitive's storage through a raw pointer.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float256#value
+    pub func Value(self: &Float256) -> float256 {
+        var value: float256 = 0.0f256;
+        let address = (@value) as *var uint256;
+        *address = self.bits;
+        return value;
+    }
+
     /// The bits.
     /// @returns the value's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float256#bits
@@ -277,6 +351,28 @@ extend Float512 {
     /// @see https://rux-lang.dev/docs/api/format/float512#from-bits
     pub func FromBits(bits: uint512) -> Float512 {
         return Float512 { bits: bits };
+    }
+
+    /// The value a `float512` holds, carried as its bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does: a cast would ask for the
+    /// number, and what is wanted is its representation.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float512#from-value
+    pub func FromValue(value: float512) -> Float512 {
+        let address = (@value) as *uint512;
+        return Float512 { bits: *address };
+    }
+
+    /// The `float512` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the bits into the primitive's storage through a raw pointer.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float512#value
+    pub func Value(self: &Float512) -> float512 {
+        var value: float512 = 0.0f512;
+        let address = (@value) as *var uint512;
+        *address = self.bits;
+        return value;
     }
 
     /// The bits.

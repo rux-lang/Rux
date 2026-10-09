@@ -1,0 +1,313 @@
+
+// The bridge between the wide primitives and the values here: `FromValue` takes a primitive's bits, `Value` puts
+// them back, and nothing in between changes them. The limits come from Core's intrinsic constants and the
+// arithmetic runs at run time, each operation behind a function so it is not folded away. Both are checked against
+// the reference vectors where the vectors have them, and otherwise against the bits the layout says they are.
+
+import Text::{ FormatSpec, TextWriter };
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Panic, Succeeded, float128, float256, float512, float80 };
+import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, InfinityBits, PackWide,
+                 ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80 };
+
+func Add80(left: float80, right: float80) -> float80 {
+    return left + right;
+}
+
+func Subtract80(left: float80, right: float80) -> float80 {
+    return left - right;
+}
+
+func Divide80(left: float80, right: float80) -> float80 {
+    return left / right;
+}
+
+func Add128(left: float128, right: float128) -> float128 {
+    return left + right;
+}
+
+func Subtract128(left: float128, right: float128) -> float128 {
+    return left - right;
+}
+
+func Divide128(left: float128, right: float128) -> float128 {
+    return left / right;
+}
+
+func Add256(left: float256, right: float256) -> float256 {
+    return left + right;
+}
+
+func Subtract256(left: float256, right: float256) -> float256 {
+    return left - right;
+}
+
+func Divide256(left: float256, right: float256) -> float256 {
+    return left / right;
+}
+
+func Add512(left: float512, right: float512) -> float512 {
+    return left + right;
+}
+
+func Subtract512(left: float512, right: float512) -> float512 {
+    return left - right;
+}
+
+func Divide512(left: float512, right: float512) -> float512 {
+    return left / right;
+}
+
+// The text of each primitive, through the value's `FormatWith`: the only rendering there is.
+func Text80(value: float80, storage: var char8[..]) -> char8[..] {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var cursor = ByteCursor(storage);
+    let writer: &var TextWriter = cursor;
+    let wide = Float80::FromValue(value);
+    Assert(Succeeded(wide.FormatWith(allocator, writer, FormatSpec::Plain())), "a float80 renders");
+    return cursor.Written();
+}
+
+func Text128(value: float128, storage: var char8[..]) -> char8[..] {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var cursor = ByteCursor(storage);
+    let writer: &var TextWriter = cursor;
+    let wide = Float128::FromValue(value);
+    Assert(Succeeded(wide.FormatWith(allocator, writer, FormatSpec::Plain())), "a float128 renders");
+    return cursor.Written();
+}
+
+func Text256(value: float256, storage: var char8[..]) -> char8[..] {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var cursor = ByteCursor(storage);
+    let writer: &var TextWriter = cursor;
+    let wide = Float256::FromValue(value);
+    Assert(Succeeded(wide.FormatWith(allocator, writer, FormatSpec::Plain())), "a float256 renders");
+    return cursor.Written();
+}
+
+func Text512(value: float512, storage: var char8[..]) -> char8[..] {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var cursor = ByteCursor(storage);
+    let writer: &var TextWriter = cursor;
+    let wide = Float512::FromValue(value);
+    Assert(Succeeded(wide.FormatWith(allocator, writer, FormatSpec::Plain())), "a float512 renders");
+    return cursor.Written();
+}
+
+// The primitive a text reads to, through the typed parse and `Value`.
+func Read80(text: char8[..]) -> float80 {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let wide = ParseFloat80(allocator, text) catch { else => Panic("a float80 text reads") };
+    return wide.Value();
+}
+
+func Read128(text: char8[..]) -> float128 {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let wide = ParseFloat128(allocator, text) catch { else => Panic("a float128 text reads") };
+    return wide.Value();
+}
+
+func Read256(text: char8[..]) -> float256 {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let wide = ParseFloat256(allocator, text) catch { else => Panic("a float256 text reads") };
+    return wide.Value();
+}
+
+func Read512(text: char8[..]) -> float512 {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let wide = ParseFloat512(allocator, text) catch { else => Panic("a float512 text reads") };
+    return wide.Value();
+}
+
+// Two to the minus (precision - 1): the gap above one, as `layout` spells it.
+func EpsilonBits(layout: &FloatLayout) -> uint512 {
+    let shift = layout.precision - 1u;
+    return PackWide(false, 1u512 << shift, 0 - 2 * (shift as int), layout);
+}
+
+// The vectors' indices for the values every width has one of.
+const OneIndex: uint = 5;
+const MinusOneIndex: uint = 6;
+const ThousandsIndex: uint = 11;
+const TenthIndex: uint = 12;
+const ThirdIndex: uint = 24;
+const MaxIndex: uint = 31;
+const LowestIndex: uint = 32;
+const MinPositiveIndex: uint = 33;
+
+// A third, folded by the compiler's software float rather than computed at run time.
+const FoldedThird512: float512 = 1.0f512 / 3.0f512;
+
+func CheckFloat80(room: var char8[..]) {
+    let layout = FloatLayout::Extended80();
+
+    // The limits Core declares, against the vectors the compiler wrote independently.
+    Assert(Float80::FromValue(float80::Max).Bits() == FormatBits80(MaxIndex), "float80 Max has the largest bits");
+    Assert(Same(Text80(float80::Max, room), FormatText80(MaxIndex)), "and renders as the largest float80");
+    Assert(Read80(FormatText80(MaxIndex)) == float80::Max, "and reads back to Max");
+    Assert(Same(Text80(float80::Lowest, room), FormatText80(LowestIndex)), "float80 Lowest renders as its negation");
+    Assert(Read80(FormatText80(LowestIndex)) == float80::Lowest, "and reads back");
+    Assert(Float80::FromValue(float80::MinPositive).Bits() == FormatBits80(MinPositiveIndex),
+           "float80 MinPositive has the smallest normal bits");
+    Assert(Same(Text80(float80::MinPositive, room), FormatText80(MinPositiveIndex)), "and renders as them");
+    Assert(Read80(FormatText80(MinPositiveIndex)) == float80::MinPositive, "and reads back");
+    let epsilon = Float80::FromValue(float80::Epsilon);
+    Assert(epsilon.Bits() as uint512 == EpsilonBits(layout), "float80 Epsilon is two to the minus sixty-three");
+    Assert(Read80(Text80(float80::Epsilon, room)) == float80::Epsilon, "and its text reads back");
+    Assert(Subtract80(Add80(1.0f80, float80::Epsilon), 1.0f80) == float80::Epsilon, "and is the gap above one");
+    Assert(Same(Text80(float80::Infinity, room), "Inf"), "float80 Infinity renders");
+    Assert(Float80::FromValue(float80::NaN).IsNan(), "and NaN is not a number");
+
+    // Arithmetic at run time, rounded once, lands on the vectors' nearest values.
+    Assert(Float80::FromValue(Divide80(1.0f80, 10.0f80)).Bits() == FormatBits80(TenthIndex), "1 / 10 in float80");
+    Assert(Same(Text80(Divide80(1.0f80, 10.0f80), room), "0.1"), "renders as a tenth");
+    Assert(Float80::FromValue(Divide80(1.0f80, 3.0f80)).Bits() == FormatBits80(ThirdIndex), "and 1 / 3");
+    Assert(Same(Text80(Divide80(Read80("12345678"), Read80("10000")), room), FormatText80(ThousandsIndex)),
+           "and a quotient of two parsed values");
+    Assert(Same(Text80(Subtract80(0.0f80, 1.0f80), room), FormatText80(MinusOneIndex)), "and a difference");
+
+    // The padding above the eighty bits is neither read nor written.
+    let padded = Float80::FromBits(FormatBits80(OneIndex) | (0xFFFFu128 << 112));
+    Assert(padded.Value() == 1.0f80, "the padding is not part of the value");
+    Assert(Float80::FromValue(padded.Value()).Bits() == FormatBits80(OneIndex), "and does not come back");
+
+    // Every vector that is a number crosses into the primitive and back unchanged.
+    var index: uint = 0;
+    while index < FormatCount80() {
+        let wide = Float80::FromBits(FormatBits80(index));
+        if !wide.IsNan() {
+            Assert(Float80::FromValue(wide.Value()).Bits() == wide.Bits(), FormatText80(index));
+        }
+        index = index + 1u;
+    }
+}
+
+func CheckFloat128(room: var char8[..]) {
+    let layout = FloatLayout::Binary128();
+    Assert(Float128::FromValue(float128::Max).Bits() == FormatBits128(MaxIndex), "float128 Max has the largest bits");
+    Assert(Same(Text128(float128::Max, room), FormatText128(MaxIndex)), "and renders as the largest float128");
+    Assert(Read128(FormatText128(MaxIndex)) == float128::Max, "and reads back to Max");
+    Assert(Same(Text128(float128::Lowest, room), FormatText128(LowestIndex)), "float128 Lowest renders");
+    Assert(Read128(FormatText128(LowestIndex)) == float128::Lowest, "and reads back");
+    Assert(Float128::FromValue(float128::MinPositive).Bits() == FormatBits128(MinPositiveIndex),
+           "float128 MinPositive has the smallest normal bits");
+    Assert(Same(Text128(float128::MinPositive, room), FormatText128(MinPositiveIndex)), "and renders as them");
+    Assert(Read128(FormatText128(MinPositiveIndex)) == float128::MinPositive, "and reads back");
+    let epsilon = Float128::FromValue(float128::Epsilon);
+    Assert(epsilon.Bits() as uint512 == EpsilonBits(layout), "float128 Epsilon is two to the minus 112");
+    Assert(Read128(Text128(float128::Epsilon, room)) == float128::Epsilon, "and its text reads back");
+    Assert(Subtract128(Add128(1.0f128, float128::Epsilon), 1.0f128) == float128::Epsilon, "and is the gap above one");
+    Assert(Same(Text128(float128::Infinity, room), "Inf"), "float128 Infinity renders");
+    Assert(Float128::FromValue(float128::NaN).IsNan(), "and NaN is not a number");
+
+    Assert(Float128::FromValue(Divide128(1.0f128, 10.0f128)).Bits() == FormatBits128(TenthIndex),
+           "1 / 10 in float128");
+    Assert(Same(Text128(Divide128(1.0f128, 10.0f128), room), "0.1"), "renders as a tenth");
+    Assert(Float128::FromValue(Divide128(1.0f128, 3.0f128)).Bits() == FormatBits128(ThirdIndex), "and 1 / 3");
+    Assert(Same(Text128(Divide128(Read128("12345678"), Read128("10000")), room), FormatText128(ThousandsIndex)),
+           "and a quotient of two parsed values");
+    Assert(Same(Text128(Subtract128(0.0f128, 1.0f128), room), FormatText128(MinusOneIndex)), "and a difference");
+
+    var index: uint = 0;
+    while index < FormatCount128() {
+        let wide = Float128::FromBits(FormatBits128(index));
+        if !wide.IsNan() {
+            Assert(Float128::FromValue(wide.Value()).Bits() == wide.Bits(), FormatText128(index));
+        }
+        index = index + 1u;
+    }
+}
+
+func CheckFloat256(room: var char8[..]) {
+    let layout = FloatLayout::Binary256();
+    Assert(Float256::FromValue(float256::Max).Bits() == FormatBits256(MaxIndex), "float256 Max has the largest bits");
+    Assert(Same(Text256(float256::Max, room), FormatText256(MaxIndex)), "and renders as the largest float256");
+    Assert(Read256(FormatText256(MaxIndex)) == float256::Max, "and reads back to Max");
+    Assert(Same(Text256(float256::Lowest, room), FormatText256(LowestIndex)), "float256 Lowest renders");
+    Assert(Read256(FormatText256(LowestIndex)) == float256::Lowest, "and reads back");
+    Assert(Float256::FromValue(float256::MinPositive).Bits() == FormatBits256(MinPositiveIndex),
+           "float256 MinPositive has the smallest normal bits");
+    Assert(Same(Text256(float256::MinPositive, room), FormatText256(MinPositiveIndex)), "and renders as them");
+    Assert(Read256(FormatText256(MinPositiveIndex)) == float256::MinPositive, "and reads back");
+    let epsilon = Float256::FromValue(float256::Epsilon);
+    Assert(epsilon.Bits() as uint512 == EpsilonBits(layout), "float256 Epsilon is two to the minus 236");
+    Assert(Read256(Text256(float256::Epsilon, room)) == float256::Epsilon, "and its text reads back");
+    Assert(Subtract256(Add256(1.0f256, float256::Epsilon), 1.0f256) == float256::Epsilon, "and is the gap above one");
+    Assert(Same(Text256(float256::Infinity, room), "Inf"), "float256 Infinity renders");
+    Assert(Float256::FromValue(float256::NaN).IsNan(), "and NaN is not a number");
+
+    Assert(Float256::FromValue(Divide256(1.0f256, 10.0f256)).Bits() == FormatBits256(TenthIndex),
+           "1 / 10 in float256");
+    Assert(Same(Text256(Divide256(1.0f256, 10.0f256), room), "0.1"), "renders as a tenth");
+    Assert(Float256::FromValue(Divide256(1.0f256, 3.0f256)).Bits() == FormatBits256(ThirdIndex), "and 1 / 3");
+    Assert(Same(Text256(Divide256(Read256("12345678"), Read256("10000")), room), FormatText256(ThousandsIndex)),
+           "and a quotient of two parsed values");
+    Assert(Same(Text256(Subtract256(0.0f256, 1.0f256), room), FormatText256(MinusOneIndex)), "and a difference");
+
+    var index: uint = 0;
+    while index < FormatCount256() {
+        let wide = Float256::FromBits(FormatBits256(index));
+        if !wide.IsNan() {
+            Assert(Float256::FromValue(wide.Value()).Bits() == wide.Bits(), FormatText256(index));
+        }
+        index = index + 1u;
+    }
+}
+
+func CheckFloat512(room: var char8[..]) {
+    // The vectors stop short of the float512 limits, so the bits are the layout's: the largest finite value is the
+    // pattern just below infinity, and the smallest normal one is a bare exponent field of one. Their text is not
+    // checked: a decimal exponent past a million takes the exact conversion far too long for a test.
+    let layout = FloatLayout::Binary512();
+    let maxBits = InfinityBits(false, layout) - 1u512;
+    Assert(Float512::FromValue(float512::Max).Bits() == maxBits, "float512 Max has the largest bits");
+    Assert(Float512::FromBits(maxBits).Value() == float512::Max, "and those bits are Max");
+    Assert(Float512::FromValue(float512::Lowest).Bits() == (maxBits | (1u512 << 511)),
+           "float512 Lowest is its negation");
+    Assert(Float512::FromValue(float512::MinPositive).Bits() == (1u512 << layout.SignificandFieldBits()),
+           "float512 MinPositive has the smallest normal bits");
+    Assert(Float512::FromValue(float512::Epsilon).Bits() == EpsilonBits(layout),
+           "float512 Epsilon is two to the minus 488");
+    Assert(Read512(Text512(float512::Epsilon, room)) == float512::Epsilon, "and its text reads back");
+    Assert(Subtract512(Add512(1.0f512, float512::Epsilon), 1.0f512) == float512::Epsilon, "and is the gap above one");
+    Assert(Same(Text512(float512::Infinity, room), "Inf"), "float512 Infinity renders");
+    Assert(Float512::FromValue(float512::NaN).IsNan(), "and NaN is not a number");
+
+    Assert(Float512::FromValue(Divide512(1.0f512, 10.0f512)).Bits() == FormatBits512(TenthIndex),
+           "1 / 10 in float512");
+    Assert(Same(Text512(Divide512(1.0f512, 10.0f512), room), "0.1"), "renders as a tenth");
+    // The float512 third vector is seventy-seven threes, short of the hundred and fifty digits a float512 third
+    // needs, so the run-time third is checked against the folded one and its own text instead.
+    let third = Divide512(1.0f512, 3.0f512);
+    Assert(Float512::FromValue(third).Bits() == Float512::FromValue(FoldedThird512).Bits(), "and 1 / 3");
+    Assert(StartsWith(Text512(third, room), FormatText512(ThirdIndex)), "which begins with the vector's threes");
+    Assert(Read512(Text512(third, room)) == third, "and whose text reads back");
+    Assert(Same(Text512(Divide512(Read512("12345678"), Read512("10000")), room), FormatText512(ThousandsIndex)),
+           "and a quotient of two parsed values");
+    Assert(Same(Text512(Subtract512(0.0f512, 1.0f512), room), FormatText512(MinusOneIndex)), "and a difference");
+
+    var index: uint = 0;
+    while index < FormatCount512() {
+        let wide = Float512::FromBits(FormatBits512(index));
+        if !wide.IsNan() {
+            Assert(Float512::FromValue(wide.Value()).Bits() == wide.Bits(), FormatText512(index));
+        }
+        index = index + 1u;
+    }
+}
+
+func CheckPrimitives(room: var char8[..]) {
+    CheckFloat80(room);
+    CheckFloat128(room);
+    CheckFloat256(room);
+    CheckFloat512(room);
+}
