@@ -13,6 +13,7 @@
 #include "Target/Platform.h"
 
 #include <atomic>
+#include <chrono>
 #include <doctest.h>
 #include <filesystem>
 #include <format>
@@ -352,10 +353,20 @@ void RunWideScalarPackage(const LirPackage &package) {
 
 #if RUX_OS_WINDOWS && RUX_ARCH_X86_64
     static std::atomic_uint64_t sequence = 0;
-    const std::filesystem::path output =
-        std::filesystem::temp_directory_path() / ("rux-wide-scalar-x86-64-" + std::to_string(++sequence) + ".exe");
+    // CTest groups can execute in separate processes, whose counters all begin at one. Reserve a directory
+    // atomically so simultaneous test runs can never replace or delete one another's executable.
+    std::filesystem::path directory;
     std::error_code error;
-    std::filesystem::remove(output, error);
+    bool reserved = false;
+    for (unsigned attempt = 0; attempt < 100 && !reserved; ++attempt) {
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        directory = std::filesystem::temp_directory_path() /
+                    ("rux-wide-scalar-x86-64-" + std::to_string(stamp) + "-" + std::to_string(++sequence));
+        reserved = std::filesystem::create_directory(directory, error);
+        REQUIRE_FALSE(error);
+    }
+    REQUIRE(reserved);
+    const std::filesystem::path output = directory / "test.exe";
     Linker linker(std::move(objects), "WideBool", {}, ArtifactKind::Executable, Target::OS::Windows,
                   Target::Arch::X86_64);
     const bool linked = linker.Link(output);
@@ -363,6 +374,7 @@ void RunWideScalarPackage(const LirPackage &package) {
     REQUIRE_MESSAGE(linked, linkMessage);
     const auto result = System::RunCaptured(output);
     std::filesystem::remove(output, error);
+    std::filesystem::remove(directory, error);
     REQUIRE(result.has_value());
     // Each set bit is one failed check, numbered in the order the package records them.
     CHECK_EQ(result->exitCode, 0);
