@@ -110,6 +110,13 @@ ResolvedCallableBinding AstToHirContext::ResolvedCall(const CallExpr &call) cons
     return RequireSemanticFact(model.TryGetCallableBinding(call)).Instantiate(currentSubstitutions);
 }
 
+/// An argument as the parameter it binds takes it. A parameter is not a place the caller stores to, so nothing later
+/// converts a scalar that analysis accepted at another width: the callee would read a bool8 as a bool64, or an int64
+/// as the low words of an int128, from storage only as wide as the argument.
+HirExprPtr AstToHirContext::LowerArgumentAs(const Expr &argument, const TypeRef &parameterType) {
+    return ConvertScalar(LowerExprAs(argument, parameterType), parameterType);
+}
+
 HirExprPtr AstToHirContext::LowerDefaultArgument(const Expr &expression, const TypeRef &targetType,
                                                  const SourceLocation &callSiteLocation) {
     if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression);
@@ -117,9 +124,9 @@ HirExprPtr AstToHirContext::LowerDefaultArgument(const Expr &expression, const T
         IntrinsicExpr callSiteIntrinsic;
         callSiteIntrinsic.location = callSiteLocation;
         callSiteIntrinsic.kind = intrinsic->kind;
-        return LowerExprAs(callSiteIntrinsic, targetType);
+        return LowerArgumentAs(callSiteIntrinsic, targetType);
     }
-    return LowerExprAs(expression, targetType);
+    return LowerArgumentAs(expression, targetType);
 }
 
 std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,
@@ -143,7 +150,7 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
     for (std::size_t i = 0; i < std::min(call.args.size(), fixedCount); ++i) {
         const std::size_t typeIndex = typeOffset + i;
         arguments.push_back(typeIndex + 1 < functionType.inner.size()
-                                ? LowerExprAs(*call.args[i], functionType.inner[typeIndex])
+                                ? LowerArgumentAs(*call.args[i], functionType.inner[typeIndex])
                                 : LowerExpr(*call.args[i]));
     }
     for (std::size_t i = arguments.size(); i < fixedCount; ++i) {
@@ -230,7 +237,7 @@ HirExprPtr AstToHirContext::LowerBoundDirectCall(const CallExpr &call, const Res
         callee->type = functionType;
         lowered->callee = std::move(callee);
         for (std::size_t i = 0; i < call.args.size(); ++i) {
-            lowered->args.push_back(i < external->params.size() ? LowerExprAs(*call.args[i], functionType.inner[i])
+            lowered->args.push_back(i < external->params.size() ? LowerArgumentAs(*call.args[i], functionType.inner[i])
                                                                 : LowerExpr(*call.args[i]));
         }
         return lowered;
@@ -371,7 +378,7 @@ HirExprPtr AstToHirContext::LowerBoundIndirectCall(const CallExpr &call, const R
     const std::size_t fixedCount = binding.variadicBoundary.value_or(call.args.size());
     for (std::size_t i = 0; i < call.args.size(); ++i) {
         lowered->args.push_back(i < fixedCount && i + 1 < lowered->callee->type.inner.size()
-                                    ? LowerExprAs(*call.args[i], lowered->callee->type.inner[i])
+                                    ? LowerArgumentAs(*call.args[i], lowered->callee->type.inner[i])
                                     : LowerExpr(*call.args[i]));
     }
     return lowered;
@@ -394,7 +401,7 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
     std::vector<HirPartialDropAction> completed;
     for (std::size_t i = 0; i < call.args.size(); ++i) {
         AppendFailureCleanup(lowered->failureCleanups, completed);
-        lowered->payloads.push_back(LowerExprAs(*call.args[i], constructor.inner[i]));
+        lowered->payloads.push_back(LowerArgumentAs(*call.args[i], constructor.inner[i]));
         if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, constructor.inner[i], i, {},
                                           call.args[i]->location, CaseTypeForm::Variant)) {
             completed.push_back(std::move(*cleanup));
@@ -457,7 +464,7 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
             lowered->args.push_back(LowerExprAs(*call.args[0], stringType));
         }
         else if (!disabled && call.args.size() == 2) {
-            lowered->args.push_back(LowerExprAs(*call.args[0], TypeRef::MakeBool()));
+            lowered->args.push_back(LowerArgumentAs(*call.args[0], TypeRef::MakeBool()));
             lowered->args.push_back(LowerExprAs(*call.args[1], stringType));
         }
         return lowered;

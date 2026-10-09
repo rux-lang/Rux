@@ -565,21 +565,16 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         lowered->location = expression.location;
         lowered->type = targetType;
         lowered->condition = LowerExpr(*ternary->condition);
-        const auto lowerArm = [&](const Expr &arm) -> HirExprPtr {
-            HirExprPtr value = LowerExprAs(arm, targetType);
-            if (value->type != targetType && value->type.IsNumeric() && targetType.IsNumeric()) {
-                auto cast = std::make_unique<HirCastExpr>();
-                cast->location = arm.location;
-                cast->type = targetType;
-                cast->targetType = targetType;
-                cast->operand = std::move(value);
-                return cast;
-            }
-            return value;
-        };
-        lowered->thenExpr = lowerArm(*ternary->thenExpr);
-        lowered->elseExpr = lowerArm(*ternary->elseExpr);
+        lowered->thenExpr = ConvertScalar(LowerExprAs(*ternary->thenExpr, targetType), targetType);
+        lowered->elseExpr = ConvertScalar(LowerExprAs(*ternary->elseExpr, targetType), targetType);
         return lowered;
+    }
+
+    // Every bool width holds the same two values, so a bool literal is written at the width it is wanted at rather
+    // than at `bool`'s and converted afterwards.
+    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+        literal && literal->token.kind == TokenKind::BoolLiteral && targetType.IsBool()) {
+        return CompilerLiteral(expression.location, targetType, literal->token.text);
     }
 
     if (IsNullLiteral(expression) && targetType.kind == TypeRef::Kind::Pointer) {
@@ -784,6 +779,22 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         lowered->type = targetType;
     }
     return lowered;
+}
+
+HirExprPtr AstToHirContext::ConvertScalar(HirExprPtr value, const TypeRef &targetType) {
+    // Analysis accepts a scalar where another is expected only when it is assignable there: a bool of any width, an
+    // integer to a wider one of its signedness, float32 to float64. A store makes that conversion at the place it
+    // writes, but an argument or an arm has no place of its own, and HIR-to-LIR reads it at the type it carries.
+    const auto isScalar = [](const TypeRef &type) { return type.IsNumeric() || type.IsBool() || type.IsChar(); };
+    if (!value || value->type == targetType || !isScalar(value->type) || !isScalar(targetType)) {
+        return value;
+    }
+    auto cast = std::make_unique<HirCastExpr>();
+    cast->location = value->location;
+    cast->type = targetType;
+    cast->targetType = targetType;
+    cast->operand = std::move(value);
+    return cast;
 }
 
 std::unique_ptr<HirArrayExpr> AstToHirContext::LowerArrayRepeatAs(const ArrayRepeatExpr &expression,
@@ -1019,16 +1030,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             // literal at that width; a diverging arm yields nothing.
             const bool scalar = lowered->type.IsNumeric() || lowered->type.IsBool() || lowered->type.IsChar();
             if ((IsNativeType(lowered->type) || scalar) && !dynamic_cast<const DivergeExpr *>(arm.body.get())) {
-                loweredArm.body = LowerExprAs(*arm.body, lowered->type);
-                if (scalar && loweredArm.body->type != lowered->type && loweredArm.body->type.IsNumeric() &&
-                    lowered->type.IsNumeric()) {
-                    auto cast = std::make_unique<HirCastExpr>();
-                    cast->location = arm.body->location;
-                    cast->type = lowered->type;
-                    cast->targetType = lowered->type;
-                    cast->operand = std::move(loweredArm.body);
-                    loweredArm.body = std::move(cast);
-                }
+                loweredArm.body = ConvertScalar(LowerExprAs(*arm.body, lowered->type), lowered->type);
             }
             else {
                 loweredArm.body = LowerExpr(*arm.body);

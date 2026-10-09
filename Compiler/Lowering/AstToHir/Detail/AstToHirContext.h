@@ -232,6 +232,8 @@ protected:
                                                ValueConsumptionKind kind = ValueConsumptionKind::MatchSubject);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
+    /// `value` at `targetType`, when both are scalars and analysis accepted one where the other was expected.
+    [[nodiscard]] static HirExprPtr ConvertScalar(HirExprPtr value, const TypeRef &targetType);
     [[nodiscard]] std::unique_ptr<HirArrayExpr>
     LowerArrayRepeatAs(const ArrayRepeatExpr &expression, const TypeRef &elementType, const TypeRef &arrayType);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
@@ -248,6 +250,7 @@ private:
     void LowerTopLevelDecl(const Decl &decl, HirModule &module);
     [[nodiscard]] bool IsDiagnosticIntrinsicCall(const Expr &expression) const;
     [[nodiscard]] ResolvedCallableBinding ResolvedCall(const CallExpr &call) const;
+    [[nodiscard]] HirExprPtr LowerArgumentAs(const Expr &argument, const TypeRef &parameterType);
     [[nodiscard]] HirExprPtr LowerDefaultArgument(const Expr &expression, const TypeRef &targetType,
                                                   const SourceLocation &callSiteLocation);
     [[nodiscard]] std::vector<HirExprPtr> LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,

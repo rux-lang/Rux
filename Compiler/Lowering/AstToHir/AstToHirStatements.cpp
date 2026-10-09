@@ -469,10 +469,11 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         lowered->location = literal->location;
         lowered->type = LiteralType(literal->value);
         // A literal is compared at the width of what it matches, which inside a tuple or a structure is the element's
-        // own type rather than the literal's default.
+        // own type rather than the literal's default. That holds for a bool too: every width has the same two values.
         const bool sameFamily = (lowered->type.IsInteger() && subjectType.IsInteger()) ||
                                 (lowered->type.IsFloat() && subjectType.IsFloat()) ||
-                                (lowered->type.IsChar() && subjectType.IsChar());
+                                (lowered->type.IsChar() && subjectType.IsChar()) ||
+                                (lowered->type.IsBool() && subjectType.IsBool());
         if (sameFamily) {
             lowered->type = subjectType;
         }
