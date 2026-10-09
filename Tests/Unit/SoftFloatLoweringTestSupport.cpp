@@ -144,7 +144,7 @@ void Machine::Define(Frame &frame, const LirReg reg, Value value) const {
     if (reg >= frame.registers.size()) {
         frame.registers.resize(reg + 1);
     }
-    frame.registers[reg] = std::move(value);
+    frame.registers[reg] = value;
 }
 
 WideInteger Machine::Literal(const std::string_view text, const Shape &shape) const {
@@ -456,8 +456,8 @@ std::optional<Value> Machine::Invoke(const LirFunc &func, const std::vector<Valu
             }
             incoming.emplace_back(phi.dst, Value{Read(frame, edge->first).bits, ShapeFor(phi.type)});
         }
-        for (auto &[reg, value] : incoming) {
-            Define(frame, reg, std::move(value));
+        for (const auto &[reg, value] : incoming) {
+            Define(frame, reg, value);
         }
         for (; index < body.instrs.size(); ++index) {
             Step();
