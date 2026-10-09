@@ -2,6 +2,7 @@
 // values a condition can name, and the constants it can compare against.
 
 #include "Lexer/Lexer.h"
+#include "Numeric/FloatParsing.h"
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Conditional/ConditionalEvaluatorInternal.h"
@@ -244,27 +245,11 @@ std::optional<Value> ParseIntLiteral(std::string_view text) {
     return Value{value};
 }
 
-std::optional<double> ParseFloatValue(std::string_view text) {
-    std::string value;
-    value.reserve(text.size());
-    for (const char c : text) {
-        if (c != '_') {
-            value.push_back(c);
-        }
-    }
-    try {
-        std::size_t consumed = 0;
-        const double result = std::stod(value, &consumed);
-        const std::string_view suffix{value.data() + consumed, value.size() - consumed};
-        const NumericLiteralSuffixInfo *suffixInfo = FindNumericLiteralSuffix(suffix);
-        if (!suffix.empty() && (!suffixInfo || !suffixInfo->isFloat)) {
-            return std::nullopt;
-        }
-        return result;
-    }
-    catch (...) {
-        return std::nullopt;
-    }
+std::optional<CompileTimeFloat> ParseFloatValue(const std::string_view text) {
+    const auto *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(text));
+    const auto *format = FindFloatFormat(suffix && suffix->isFloat ? suffix->bits : 64);
+    const auto value = ParseFloatEncoding(text, *format);
+    return value ? std::optional{CompileTimeFloat{*value}} : std::nullopt;
 }
 
 } // namespace
@@ -366,7 +351,13 @@ CompileTimeEvaluation ConditionalEvaluator::Impl::Evaluate(const Expr &expr) {
 CompileTimeEvaluation ConditionalEvaluator::Impl::EvaluateConstant(const std::string_view name) {
     BeginEvaluation();
     const auto found = constExprs.find(std::string(name));
-    return {found == constExprs.end() ? std::nullopt : Eval(*found->second), TakeDiagnostics()};
+    if (found == constExprs.end()) {
+        return {std::nullopt, TakeDiagnostics()};
+    }
+    IdentExpr reference;
+    reference.name = name;
+    reference.location = found->second->location;
+    return {EvalConstantReference(reference), TakeDiagnostics()};
 }
 
 CompileTimeConditionEvaluation ConditionalEvaluator::Impl::EvaluateCondition(const Expr *condition,
@@ -421,6 +412,9 @@ void ConditionalEvaluator::Impl::RegisterConstantImpl(const ConstDecl &decl) {
     }
     // `byte` is `uint8` by another name, and has its width.
     const std::string_view name = CanonicalPrimitiveName(named->name);
+    if (const auto type = PrimitiveTypeFromName(name); type && type->IsFloat()) {
+        constFloatWidths.emplace(decl.name, FindPrimitive(type->kind)->bits);
+    }
     if (name == "int8")
         constSignedIntegerWidths.emplace(decl.name, 8);
     else if (name == "int16")
@@ -828,32 +822,42 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             return std::nullopt;
         }
         const auto width = PrimitiveBits(type->kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
-        // A character holds a code point however wide its storage is, so a cast into char128 and wider folds to the
-        // same machine word a cast into char64 does. An integer that wide has no machine-word value to fold to.
-        if (!width || (*width > 64 && !type->IsChar())) {
+        if (!width) {
             return std::nullopt;
         }
-        std::uint64_t bits;
+        WideInteger bits;
+        bool sourceSigned = false;
         if (const auto *signedValue = std::get_if<std::int64_t>(&*value)) {
-            if (*width > 64 && *signedValue < 0) {
-                return std::nullopt;
-            }
-            bits = static_cast<std::uint64_t>(*signedValue);
+            bits = WideInteger::FromUnsigned(static_cast<std::uint64_t>(*signedValue), 64);
+            sourceSigned = true;
         }
         else if (const auto *unsignedValue = std::get_if<std::uint64_t>(&*value)) {
-            bits = *unsignedValue;
+            bits = WideInteger::FromUnsigned(*unsignedValue, 64);
+        }
+        else if (const auto *wide = std::get_if<CompileTimeWideInteger>(&*value)) {
+            bits = wide->bits;
+            sourceSigned = wide->isSigned;
         }
         else {
             return std::nullopt;
         }
-        if (*width < 64) {
-            const std::uint64_t mask = (std::uint64_t{1} << *width) - 1;
-            bits &= mask;
-            if (type->IsSigned() && (bits & (std::uint64_t{1} << (*width - 1)))) {
-                bits |= ~mask;
+        if (type->IsChar()) {
+            const auto scalar = bits.ToUnsigned();
+            if ((sourceSigned && bits.IsNegative()) || !scalar || !IsValidCharacterValue(type->kind, *scalar)) {
+                return std::nullopt;
             }
         }
-        return type->IsSigned() ? Value{static_cast<std::int64_t>(bits)} : Value{bits};
+        bits = bits.ConvertedWrapping(*width, sourceSigned);
+        if (*width > 64 && !type->IsChar()) {
+            return Value{CompileTimeWideInteger{bits, type->IsSigned()}};
+        }
+        // Character literals are code points represented as unsigned machine words even at wider storage widths.
+        // Keep casts in that representation so the condition compares characters by their value.
+        if (type->IsChar() && !bits.ToUnsigned()) {
+            return std::nullopt;
+        }
+        const std::uint64_t word = bits.Extended(64, type->IsSigned()).Word64(0);
+        return type->IsSigned() ? Value{static_cast<std::int64_t>(word)} : Value{word};
     }
     if (const auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
         switch (e->token.kind) {
@@ -1163,6 +1167,11 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             }
             if (const auto *f = std::get_if<double>(&*operand)) {
                 return Value{-*f};
+            }
+            if (const auto *f = std::get_if<CompileTimeFloat>(&*operand)) {
+                const auto &format = f->value.Format();
+                const auto sign = WideInteger::FromUnsigned(1, format.valueBits).ShiftedLeft(format.valueBits - 1);
+                return Value{CompileTimeFloat{FloatEncoding::FromBits(format, f->value.Bits().BitwiseXor(sign))}};
             }
             EmitError(e->location, "compile-time unary operator '-' requires a signed numeric operand");
             reportedError = true;

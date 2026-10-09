@@ -490,9 +490,28 @@ TEST_CASE("character constants compare decoded scalars during conditional evalua
     CHECK(std::get<bool>(*result.value));
 }
 
+TEST_CASE("conditional casts preserve every integer width and wide character code points") {
+    auto parsed = ParseSource(R"(
+        when (1u64 as uint128) << 100u == 1267650600228229401496703205376u128 &&
+             (-1i64 as int256) == -1i256 &&
+             (340282366920938463463374607431768211455u128 as uint64) == 18446744073709551615u64 &&
+             (65u512 as char128) == c128'A' && (0x1F600u128 as char512) == c512'😀' {
+            func Chosen() {}
+        }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[0].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
 TEST_CASE("wide character literals and casts into them fold during conditional evaluation") {
-    // A character holds a code point however wide its storage is, so a cast into char128 and wider folds where a
-    // cast into an integer that wide does not.
+    // A character holds a code point however wide its storage is, so a wide character cast agrees with a literal.
     auto parsed = ParseSource(R"(
         when c128'A' == c128'\u{41}' && c256'😀' > c256'λ' && c512'\u{10FFFF}' >= c512'😀' &&
              (65 as char128) == c128'A' && (0x1F600u32 as char512) == c512'😀' {
@@ -510,9 +529,20 @@ TEST_CASE("wide character literals and casts into them fold during conditional e
     CHECK(std::get<bool>(*result.value));
 }
 
+TEST_CASE("conditional character casts validate the original value before truncating") {
+    for (const std::string expression :
+         {"0x100u32 as char8", "0xD800u128 as char128", "-1i8 as char512", "18446744073709551681u128 as char8"}) {
+        auto parsed = ParseSource("const Invalid = " + expression + ";");
+        const std::vector<Module *> modules = {&parsed.module};
+        ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+        evaluator.SetSourceContext(parsed.module.name, "test", "");
+        CAPTURE(expression);
+        CHECK_FALSE(evaluator.EvaluateConstant("Invalid").value.has_value());
+    }
+}
+
 TEST_CASE("compile-time conditions answer the special values of every float width") {
-    // The evaluator answers from declarations alone. float128's finite limits do not fit the host double that
-    // conditions compare in, so those are not answered.
+    // The evaluator answers intrinsic values from their exact declared formats.
     auto parsed = ParseSource(R"(
         extend float32 { pub intrinsic const Infinity: float32; }
         extend float128 {
@@ -533,11 +563,77 @@ TEST_CASE("compile-time conditions answer the special values of every float widt
         CAPTURE(name);
         const auto value = evaluator.EvaluateConstant(name);
         REQUIRE(value.value.has_value());
-        CHECK(std::isinf(std::get<double>(*value.value)));
-        CHECK_GT(std::get<double>(*value.value), 0.0);
+        const auto &number = std::get<CompileTimeFloat>(*value.value).value;
+        CHECK(number.Classify() == FloatClass::Infinity);
+        CHECK_FALSE(number.IsNegative());
     }
     const auto invalid = evaluator.EvaluateConstant("Invalid");
     REQUIRE(invalid.value.has_value());
-    CHECK(std::isnan(std::get<double>(*invalid.value)));
-    CHECK_FALSE(evaluator.EvaluateConstant("Limit").value.has_value());
+    CHECK(std::get<CompileTimeFloat>(*invalid.value).value.Classify() == FloatClass::QuietNaN);
+    const auto limit = evaluator.EvaluateConstant("Limit");
+    REQUIRE(limit.value.has_value());
+    CHECK(std::get<CompileTimeFloat>(*limit.value).value.Classify() == FloatClass::Normal);
+}
+
+TEST_CASE("compile-time float limits keep their declared precision and exponent range") {
+    for (const std::string width : {"80", "128", "256", "512"}) {
+        const std::string type = "float" + width;
+        const std::string suffix = "f" + width;
+        auto parsed = ParseSource(
+            "extend " + type + " { pub intrinsic const Max: " + type + "; pub intrinsic const Lowest: " + type +
+            "; pub intrinsic const MinPositive: " + type + "; pub intrinsic const Epsilon: " + type +
+            "; pub intrinsic const Infinity: " + type + "; pub intrinsic const NaN: " + type + "; } when " + type +
+            "::Max < " + type + "::Infinity && " + type + "::Max > 1.0" + suffix + " && " + type + "::Lowest == -" +
+            type + "::Max && " + type + "::MinPositive > 0.0" + suffix + " && " + type + "::Epsilon + 1.0" + suffix +
+            " > 1.0" + suffix + " && " + type + "::NaN != " + type + "::NaN { func Chosen() {} }");
+        const std::vector<Module *> modules = {&parsed.module};
+        ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+        evaluator.SetSourceContext(parsed.module.name, "test", "");
+        evaluator.SetImports(parsed.module);
+        auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items.back().get());
+        REQUIRE(declaration != nullptr);
+        const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+        CAPTURE(width);
+        REQUIRE(result.diagnostics.empty());
+        REQUIRE(result.value.has_value());
+        CHECK(std::get<bool>(*result.value));
+    }
+}
+
+TEST_CASE("compile-time float literals and arithmetic do not round through double") {
+    auto parsed = ParseSource(R"(
+        when 1.0e400f128 > 1.0e300f64 && 1.0e-400f128 > 0.0f128 &&
+             9007199254740993.0f128 > 9007199254740992.0f128 &&
+             1.5f128 * 2.0f128 == 3.0f128 && 3.0f128 / 2.0f128 == 1.5f128 &&
+             5.0f128 % 2.0f128 == 1.0f128 && 1.0f128 - 2.0f128 == -1.0f128 {
+            func Chosen() {}
+        }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[0].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
+TEST_CASE("conditional float constants preserve their legal declared widening") {
+    auto parsed = ParseSource(R"(
+        const Wide: float64 = 16777216.0f32;
+        const Half: float16 = 0.1f16;
+        when Wide + 1.0f32 > Wide && Half == 0.1f16 { func Chosen() {} }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    const auto wide = evaluator.EvaluateConstant("Wide");
+    REQUIRE(wide.value.has_value());
+    CHECK(std::get<CompileTimeFloat>(*wide.value).value.Format().valueBits == 64);
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items.back().get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
 }

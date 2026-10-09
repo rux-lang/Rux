@@ -1,3 +1,4 @@
+#include "Numeric/FloatParsing.h"
 #include "Semantic/Conditional/ConditionalEvaluatorInternal.h"
 #include "Types/PrimitiveCatalog.h"
 
@@ -242,14 +243,28 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
     if (!constant.intrinsicName.empty()) {
         const auto *named = constant.type ? dynamic_cast<const NamedTypeExpr *>(constant.type->get()) : nullptr;
         const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
-        // Conditions compare floats as host doubles. The special values exist at every width, but the finite limits
-        // of the wider widths do not fit in a double, so only the special values are answered here.
         if (type && type->IsFloat()) {
+            const auto *primitive = FindPrimitive(type->kind);
+            const auto *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
+            if (!format) {
+                return std::nullopt;
+            }
             if (constant.name == "Infinity") {
-                return Value{std::numeric_limits<double>::infinity()};
+                return Value{CompileTimeFloat{FloatEncoding::Infinity(*format)}};
             }
             if (constant.name == "NaN") {
-                return Value{std::numeric_limits<double>::quiet_NaN()};
+                return Value{CompileTimeFloat{FloatEncoding::QuietNaN(*format)}};
+            }
+            if (constant.name == "Max" || constant.name == "Lowest") {
+                return Value{CompileTimeFloat{FloatEncoding::MaxFinite(*format, constant.name == "Lowest")}};
+            }
+            if (constant.name == "MinPositive") {
+                return Value{CompileTimeFloat{FloatEncoding::MinPositiveNormal(*format)}};
+            }
+            if (constant.name == "Epsilon") {
+                const auto value = ParseFloatEncoding(
+                    std::format("0x1p{}", 1 - static_cast<std::int64_t>(format->precisionBits)), *format);
+                return value ? std::optional<Value>{CompileTimeFloat{*value}} : std::nullopt;
             }
         }
         return std::nullopt;
@@ -271,6 +286,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
         owner.constExprs = constExprs;
         owner.constSignedIntegerWidths = constSignedIntegerWidths;
         owner.constUnsignedIntegerWidths = constUnsignedIntegerWidths;
+        owner.constFloatWidths = constFloatWidths;
     }
     owner.RegisterConstantImpl(constant);
     IdentExpr reference;

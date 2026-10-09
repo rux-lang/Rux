@@ -11,6 +11,7 @@
 // may reference symbols that do not exist on the current build.
 
 #include "Diagnostics/Diagnostics.h"
+#include "Numeric/SoftwareFloat.h"
 #include "Numeric/WideInteger.h"
 #include "Semantic/Model/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
@@ -40,8 +41,16 @@ struct CompileTimeWideInteger {
     bool operator==(const CompileTimeWideInteger &) const = default;
 };
 
-using CompileTimeValue =
-    std::variant<bool, std::int64_t, std::uint64_t, double, std::string, CompileTimeEnumValue, CompileTimeWideInteger>;
+struct CompileTimeFloat {
+    FloatEncoding value;
+
+    bool operator==(const CompileTimeFloat &other) const noexcept {
+        return CompareFloat(value, other.value) == FloatComparison::Equal;
+    }
+};
+
+using CompileTimeValue = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, CompileTimeEnumValue,
+                                      CompileTimeWideInteger, CompileTimeFloat>;
 
 struct CompileTimeEvaluation {
     std::optional<CompileTimeValue> value;

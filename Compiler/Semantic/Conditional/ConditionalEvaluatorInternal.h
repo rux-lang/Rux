@@ -79,6 +79,7 @@ private:
     std::unordered_map<std::string, const Expr *> constExprs;
     std::unordered_map<std::string, std::uint32_t> constSignedIntegerWidths;
     std::unordered_map<std::string, std::uint32_t> constUnsignedIntegerWidths;
+    std::unordered_map<std::string, std::uint32_t> constFloatWidths;
     std::unordered_map<std::string, std::vector<std::string>> enumVariants;
     std::unordered_set<std::string> constsInProgress;
     std::unordered_set<std::string> builtinEnumNames;

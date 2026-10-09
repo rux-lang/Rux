@@ -125,6 +125,8 @@ TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
                     literal = std::to_string(*number);
                 else if (const auto *unsignedNumber = std::get_if<std::uint64_t>(&value))
                     literal = std::to_string(*unsignedNumber);
+                else if (const auto *exactFloatingNumber = std::get_if<CompileTimeFloat>(&value))
+                    literal = FormatFloatEncoding(exactFloatingNumber->value);
                 else if (const auto *floatingNumber = std::get_if<double>(&value))
                     literal = std::format("{:.17g}", *floatingNumber);
                 else if (const auto *boolean = std::get_if<bool>(&value))
