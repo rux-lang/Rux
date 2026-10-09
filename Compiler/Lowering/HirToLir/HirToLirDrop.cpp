@@ -47,7 +47,7 @@ LirFunc HirToLirContext::SynthesizeDropGlueFunc(const DropGluePlan &plan) {
     builder = &functionBuilder;
     SetBlock(NewBlock("entry"));
 
-    const LirReg address = builder->DefineParameter();
+    const LirReg address = DefineParameter(TypeRef::MakePointer(plan.type));
     function.params.push_back({address, TypeRef::MakePointer(plan.type), "value"});
     EmitDropGlueSteps(plan.steps, address);
     if (!IsTerminated()) {

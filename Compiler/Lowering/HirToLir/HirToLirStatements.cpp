@@ -51,16 +51,10 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
             EmitActivePartialCleanups();
             EmitCleanups(s->cleanups);
             TypeRef retType = builder->Function().returnType;
+            // Through the language's conversion rules, so a returned float reaching an integer or a bool result
+            // converts exactly as the same `as` would.
             if (val != LirNoReg && !retType.IsUnknown() && (*s->value)->type != retType) {
-                LirReg casted = NewReg();
-                LirInstr cast;
-                cast.dst = casted;
-                cast.op = LirOpcode::Cast;
-                cast.type = retType;
-                cast.srcs = {val};
-                cast.strArg = (*s->value)->type.ToString();
-                Emit(std::move(cast));
-                val = casted;
+                val = EmitCast(val, (*s->value)->type, retType);
             }
             Return({val}, retType);
         }

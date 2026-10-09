@@ -6,6 +6,7 @@
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <format>
 #include <string_view>
@@ -32,6 +33,7 @@ namespace {
 HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics)
     : targetContext(target)
     , diagnostics(outputDiagnostics) {
+    softFloatPolicy.arch = target.arch;
 }
 
 LirPackage HirToLirContext::Run(const HirPackage &hir) {
@@ -120,7 +122,13 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
         for (LirFunc &glue : SynthesizeDropGlue(hir.dropGlues)) {
             pkg.modules.back().funcs.push_back(std::move(glue));
         }
+        // Software-float helpers join the same module on the same terms. Each is private, so a package that carries
+        // its own copy of one another package also emits resolves to whichever copy the linker keeps first.
+        for (LirFunc &helper : softFloatHelpers.SynthesizePending(diagnostics)) {
+            pkg.modules.back().funcs.push_back(std::move(helper));
+        }
     }
+    VerifySoftFloatLowering(pkg, softFloatPolicy, diagnostics);
     return pkg;
 }
 
@@ -181,6 +189,15 @@ LirReg HirToLirContext::NewReg() {
     return builder->AllocateRegister();
 }
 
+LirReg HirToLirContext::DefineParameter(const TypeRef &type) {
+    const LirReg reg = builder->DefineParameter();
+    if (registerKinds.size() <= reg) {
+        registerKinds.resize(reg + 1, TypeRef::Kind::Unknown);
+    }
+    registerKinds[reg] = type.kind;
+    return reg;
+}
+
 void HirToLirContext::BuilderFailure(std::string detail) const {
     diagnostics.push_back(ErrorDiagnostic(
         std::format("invalid internal LIR while lowering function '{}': {}",
@@ -212,7 +229,11 @@ void HirToLirContext::SetBlock(const std::uint32_t idx) {
 }
 
 // Instruction emission
-void HirToLirContext::Emit(LirInstr i) const {
+void HirToLirContext::Emit(LirInstr i) {
+    if (EmitSoftFloatReplacement(i)) {
+        return;
+    }
+    RecordRegisterKind(i);
     if (!builder->Insert(std::move(i))) {
         BuilderFailure("cannot insert instruction into the current block: " + std::string(builder->FailureReason()));
     }
@@ -368,7 +389,7 @@ LirReg HirToLirContext::EmitNamedLoad(std::string name, TypeRef type) {
     return r;
 }
 
-void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type, const bool isVolatile) const {
+void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type, const bool isVolatile) {
     LirInstr i;
     i.dst = LirNoReg;
     i.op = LirOpcode::Store;
@@ -409,7 +430,10 @@ LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef to
         const LirReg tested = EmitBinary(LirOpcode::CmpNe, src, zero, TypeRef::MakeBool());
         return TypeRef::MakeBool() == toType ? tested : EmitWidenBool(tested, toType);
     }
-    if (fromType.IsFloat() && toType.IsInteger()) {
+    // A float the target computes in software converts through a helper that saturates the same way, so it stays
+    // one cast here for the software-float rewrite to replace.
+    if (fromType.IsFloat() && toType.IsInteger() &&
+        softFloatPolicy.For(fromType.kind) == Target::FloatLowering::Native) {
         return EmitFloatToInteger(src, fromType, toType);
     }
     return EmitConversion(src, fromType, std::move(toType));
@@ -467,6 +491,8 @@ std::uint32_t SignificandFieldBits(const TypeRef &floatType) {
 /// settled here and each back end only converts values it can represent. A value of 2^63 or more in magnitude is
 /// assembled from its exponent and significand, which is how an integer wider than 64 bits receives it.
 LirReg HirToLirContext::EmitFloatToInteger(const LirReg value, const TypeRef &fromType, const TypeRef &toType) {
+    assert((fromType.kind == TypeRef::Kind::Float32 || fromType.kind == TypeRef::Kind::Float64) &&
+           "only a machine float converts to an integer through compare-and-branch lowering");
     const TypeRef boolType = TypeRef::MakeBool();
     const std::uint32_t width = static_cast<std::uint32_t>(toType.SizeInBytes().value_or(8) * 8);
     const bool isSigned = toType.IsSigned();
@@ -984,13 +1010,14 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
         return lf;
     }
     dropFlags.clear();
+    registerKinds.clear();
     CheckedLirBuilder functionBuilder(lf);
     builder = &functionBuilder;
     SetBlock(NewBlock("entry"));
     for (const auto &param : hf.params) {
         const std::string &name = param.name;
         const TypeRef &type = param.type;
-        const LirReg pr = builder->DefineParameter();
+        const LirReg pr = DefineParameter(param.isVariadic ? TypeRef::MakePointer(type) : type);
         if (param.isVariadic) {
             locals[name] = pr;
             lf.params.push_back({pr, TypeRef::MakePointer(type), name});

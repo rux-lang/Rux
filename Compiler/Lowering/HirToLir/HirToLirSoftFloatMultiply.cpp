@@ -2,4 +2,8 @@
 
 #include "Lowering/HirToLir/HirToLirSoftFloat.h"
 
-namespace Rux {} // namespace Rux
+namespace Rux::HirToLirDetail {
+void SynthesizeSoftFloatMultiplication(SoftFloatHelperSynthesis &synthesis) {
+    EmitSoftFloatPlaceholder(synthesis);
+}
+} // namespace Rux::HirToLirDetail

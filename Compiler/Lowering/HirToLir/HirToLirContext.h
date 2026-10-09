@@ -4,6 +4,7 @@
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
 #include "Lowering/HirToLir/CheckedLirBuilder.h"
+#include "Lowering/HirToLir/HirToLirSoftFloat.h"
 #include "Target/Target.h"
 
 #include <functional>
@@ -91,19 +92,33 @@ private:
     /// reports.
     std::string currentSourceFile;
     std::string currentSourceFunction;
+    /// Helpers the rewritten software-float operations call, synthesized once every module is lowered.
+    SoftFloatHelperRegistry softFloatHelpers;
+    SoftFloatPolicy softFloatPolicy;
+    /// The kind of value each register of the function being lowered holds, which tells a comparison what it compares.
+    std::vector<TypeRef::Kind> registerKinds;
 
     [[nodiscard]] const std::string &SymbolFor(const std::string &name) const;
     [[nodiscard]] static std::optional<TypeRef> CVariadicPromotion(const TypeRef &type);
     void SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr);
 
     [[nodiscard]] LirReg NewReg();
+    /// A register the calling convention fills with a value of `type` before the body runs.
+    [[nodiscard]] LirReg DefineParameter(const TypeRef &type);
     [[nodiscard]] HirTypeLayout TypeLayoutOf(const TypeRef &type) const;
     void BuilderFailure(std::string detail) const;
     [[nodiscard]] LirOpcode RequireOpcode(std::optional<LirOpcode> opcode);
     [[nodiscard]] std::uint32_t NewBlock(std::string label = "") const;
     void SetBlock(std::uint32_t idx);
     [[nodiscard]] bool IsTerminated() const;
-    void Emit(LirInstr instruction) const;
+    void Emit(LirInstr instruction);
+    /// Replaces an instruction on a float the target computes in software with a helper call, emitting the call and
+    /// what reads its result. Returns false, leaving the instruction to be emitted as it is, when nothing replaces it.
+    [[nodiscard]] bool EmitSoftFloatReplacement(LirInstr &instruction);
+    void EmitSoftFloatComparison(const LirInstr &instruction, const std::string &symbol, TypeRef::Kind operandKind);
+    void EmitSoftFloatConversion(const LirInstr &instruction, const std::string &symbol,
+                                 const SoftFloatHelperSignature &signature, TypeRef::Kind operandKind);
+    void RecordRegisterKind(const LirInstr &instruction);
     void Terminate(LirTerminator terminator) const;
     void Jump(std::uint32_t target) const;
     void Branch(LirReg cond, std::uint32_t trueTarget, std::uint32_t falseTarget) const;
@@ -120,7 +135,7 @@ private:
     [[nodiscard]] LirReg EmitAlloca(TypeRef type, std::uint64_t count);
     [[nodiscard]] LirReg EmitLoad(LirReg ptr, TypeRef type);
     [[nodiscard]] LirReg EmitNamedLoad(std::string name, TypeRef type);
-    void EmitStore(LirReg value, LirReg ptr, TypeRef type, bool isVolatile = false) const;
+    void EmitStore(LirReg value, LirReg ptr, TypeRef type, bool isVolatile = false);
     [[nodiscard]] LirReg EmitBinary(LirOpcode op, LirReg left, LirReg right, TypeRef type);
     [[nodiscard]] LirReg EmitUnary(LirOpcode op, LirReg source, const TypeRef &type);
     [[nodiscard]] LirReg EmitCast(LirReg source, const TypeRef &fromType, TypeRef toType);
