@@ -1,6 +1,7 @@
-import Core::{ bool, bool128, bool16, bool256, bool32, bool512, bool64, bool8, byte, char, char16, char32, char8, float,
-               float128, float16, float256, float32, float512, float64, float8, float80, int, int16, int32, int64, int8,
-               uint, uint16, uint32, uint64, uint8 };
+import Core::{ bool, bool128, bool16, bool256, bool32, bool512, bool64, bool8, byte, char, char128, char16, char256,
+               char32, char512, char64, char8, float, float128, float16, float256, float32, float512, float64, float8,
+               float80, int, int16, int32, int64, int8, uint, uint128, uint16, uint256, uint32, uint512, uint64,
+               uint8 };
 import Core::Assert;
 
 // A compile-time condition evaluates floats as host doubles, so of the wide floats' limits it answers only the
@@ -9,7 +10,8 @@ when int32::Bits == 32 && int32::Bytes == 4 &&
      int32::Min == -2147483648 && int32::Max == 2147483647 &&
      uint64::Max > int64::Max && float32::Infinity > float32::Max &&
      float32::NaN != float32::NaN && byte::Max == 255u8 && bool::Bits == 8u && Count::Max == int32::Max &&
-     float80::Bits == 80 && float512::Bytes == 64 && float128::Infinity > 0.0 && float512::NaN != float512::NaN {
+     float80::Bits == 80 && float512::Bytes == 64 && float128::Infinity > 0.0 && float512::NaN != float512::NaN &&
+     char128::Bits == 128 && char512::Bytes == 64 && char512::Max == c512'\u{10FFFF}' {
     const COMPILE_TIME_CONSTANTS_WORK: bool = true;
 } else {
     const COMPILE_TIME_CONSTANTS_WORK: bool = false;
@@ -42,6 +44,18 @@ func Main() -> int {
     Assert(char32::Bits == 32 && char32::Bytes == 4, "char32 width constants");
     Assert(char32::Min as uint32 == 0u32 && char32::Max as uint32 == 0x10FFFFu32,
            "char32 range constants");
+    Assert(char64::Bits == 64 && char64::Bytes == 8, "char64 width constants");
+    Assert(char64::Min as uint64 == 0u64 && char64::Max as uint64 == 0x10FFFFu64, "char64 range constants");
+    Assert(char128::Bits == 128 && char128::Bytes == 16, "char128 width constants");
+    Assert(char128::Min as uint128 == 0u128 && char128::Max as uint128 == 0x10FFFFu128, "char128 range constants");
+    Assert(char256::Bits == 256 && char256::Bytes == 32, "char256 width constants");
+    Assert(char256::Min as uint256 == 0u256 && char256::Max as uint256 == 0x10FFFFu256, "char256 range constants");
+    Assert(char512::Bits == 512 && char512::Bytes == 64, "char512 width constants");
+    Assert(char512::Min as uint512 == 0u512 && char512::Max as uint512 == 0x10FFFFu512, "char512 range constants");
+    // Every scalar-valued width stops at the same code point, whatever room it has beyond it.
+    Assert(char64::Max as uint32 == char32::Max as uint32 && char128::Max as uint32 == char32::Max as uint32 &&
+           char256::Max as uint32 == char32::Max as uint32 && char512::Max as uint32 == char32::Max as uint32,
+           "the wide characters share char32's maximum");
     Assert(char::Max == char32::Max, "char alias constants");
 
     Assert(int8::Bits == 8 && int8::Bytes == 1 && int8::Min == -128i8 && int8::Max == 127i8,

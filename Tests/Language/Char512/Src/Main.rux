@@ -1,21 +1,238 @@
-// char512 is a reserved primitive type: the catalog names it, and this compiler does not implement it.
-// This directory exists so the primitive matrix under Tests/Language is complete by inspection rather than
-// by inference. Every entry in Compiler/Types/PrimitiveCatalog.cpp has a directory here, and
-// LanguageTestMatrixTests checks that the two agree, so a width cannot reach the catalog without somewhere
-// to exercise it.
-// A program using char512 cannot be that exercise, because it does not compile: the compiler reports that the
-// type is reserved but not implemented in this version. A refusal is not something an executable test can
-// assert, since one passes by exiting zero. It is asserted in Tests/Unit/Golden/ReservedPrimitiveTypes.rux
-// instead, where an expected compile failure is the whole point.
-// What is left to check here is the boundary: char64 is the widest implemented character, and this
-// file pins that it is the one carrying the constants. When char512 is implemented, replace this placeholder
-// with the real case rather than adding a directory.
+// char512: one Unicode scalar value in 64 bytes, eight machine words wide.
+// The widest character. What it holds is decided by Unicode, not by the width, so every value sits in the low word
+// and the seven words above it are zero. The cases below are the ones that would notice a word left over: a narrower
+// character widened into one from every scalar width, a literal folded into static data, and a value carried through
+// fields, elements, arguments and returns, all of which a 64-byte value passes and stores in memory.
 
 import Core::Assert;
-import Core::char64;
+import Core::{ char512, uint512 };
+
+const Face = c512'😀';
+const Last: char512 = c512'\u{10FFFF}';
+const Table: char512[4] = [c512'A', c512'λ', c512'😀', c512'\u{10FFFF}'];
+
+func Identity<T>(value: T) -> T { return value; }
+func Width<T>(value: T) -> uint { return sizeof(T); }
+func Echo(value: char512) -> char512 { return value; }
+
+// Reads the whole storage, so a value with any word above the low one set does not compare equal to its code point.
+func Storage(value: char512) -> uint512 {
+    let address = (@value) as *uint512;
+    return *address;
+}
+
+// A runtime value at each narrower scalar width, so the widening below is not folded away while compiling.
+func Narrow(value: char32) -> char32 { return value; }
+func Narrow64(value: char64) -> char64 { return value; }
+func Narrow128(value: char128) -> char128 { return value; }
+func Narrow256(value: char256) -> char256 { return value; }
+
+// A narrower scalar value widens on its way into a parameter and into a return.
+func FromNarrow(value: char32) -> char512 { return value; }
+func FromWide(value: char64) -> char512 { return value; }
+func From128(value: char128) -> char512 { return value; }
+func From256(value: char256) -> char512 { return value; }
+
+// Enough arguments that some of them leave the registers.
+func Fifth(first: char512, second: char512, third: char512, fourth: char512, fifth: char512) -> char512 {
+    return fifth;
+}
+
+// Wide arguments between narrow ones keep their own values and leave their neighbours alone.
+func Between(before: int32, value: char512, after: int32) -> int {
+    return before as int + (value as int) + after as int;
+}
+
+func Classify(value: char512) -> int {
+    return match value {
+        c512'\0' => 1,
+        c512'A' => 2,
+        c512'λ' => 3,
+        c512'\u{1F600}' => 4,
+        c512'\u{10FFFF}' => 5,
+        else => 9
+    };
+}
+
+struct Pair {
+    first: char512;
+    second: char512;
+}
+
+struct Tagged {
+    tag: char8;
+    value: char512;
+}
 
 func Main() -> int {
-    Assert(char64::Bits == 64u, "char64 is the implemented width beside reserved char512");
-    Assert(char64::Bytes * 8u == char64::Bits, "its byte and bit counts agree");
+    // char512 carries a Unicode scalar value, the same thing char32 carries, in sixteen times the room. Its ceiling
+    // is the last code point rather than its own last value.
+    Assert(char512::Bits == 512u && char512::Bytes == 64u, "char512 is 512 bits in 64 bytes");
+    Assert(sizeof(char512) == 64u, "sizeof agrees with Bytes");
+    Assert(sizeof(char512) == sizeof(uint512), "it is as wide as uint512");
+    Assert(char512::Min as uint512 == 0u512, "char512 starts at zero");
+    Assert(char512::Max as uint512 == 0x10FFFFu512, "char512 stops at the last code point");
+    Assert(Storage(char512::Max) == 0x10FFFFu512, "and its constant stores nothing above it");
+
+    // The values a scalar-valued width holds, across the planes.
+    let letter: char512 = c512'A';
+    Assert(letter as uint512 == 65u512, "char512 'A' is 65");
+    let lambda: char512 = c512'λ';
+    Assert(lambda as uint512 == 0x3BBu512, "char512 holds literal non-ASCII source text");
+    let euro: char512 = c512'\u{20AC}';
+    Assert(euro as uint512 == 0x20ACu512, "char512 holds a first-plane code point");
+    let face: char512 = c512'\u{1F600}';
+    Assert(face as uint512 == 0x1F600u512, "char512 holds a code point above the first plane");
+    Assert(c512'😀' == face, "a supplementary character in source text is the same scalar as its escape");
+    let last: char512 = c512'\u{10FFFF}';
+    Assert(last as uint512 == 0x10FFFFu512, "char512 holds the last code point");
+    Assert(Storage(face) == 0x1F600u512 && Storage(last) == 0x10FFFFu512, "with every upper word zero");
+
+    // Escapes decode to the same scalar values as at every other width.
+    Assert(c512'\0' as uint512 == 0u512, "NUL remains a scalar value");
+    Assert(c512'\n' as uint512 == 10u512 && c512'\r' as uint512 == 13u512, "line escapes decode");
+    Assert(c512'\t' as uint512 == 9u512 && c512'\v' as uint512 == 11u512, "spacing escapes decode");
+    Assert(c512'\a' as uint512 == 7u512 && c512'\b' as uint512 == 8u512, "control escapes decode");
+    Assert(c512'\f' as uint512 == 12u512, "form feed decodes");
+    Assert(c512'\\' as uint512 == 92u512 && c512'\'' as uint512 == 39u512, "quoted escapes decode");
+    Assert(c512'\"' as uint512 == 34u512, "a double quote escape decodes");
+    Assert(c512'\u{00000041}' == letter, "zero-padded Unicode escapes decode");
+
+    // A scalar value widens implicitly into a wider scalar value, because every such width holds the same code
+    // points and the widening cannot lose one. The words above the source are zero, not left over.
+    let fromLiteral: char512 = c32'\u{1F600}';
+    Assert(fromLiteral == face && Storage(fromLiteral) == 0x1F600u512, "a char32 literal widens to char512");
+    let from64Literal: char512 = c64'\u{10FFFF}';
+    Assert(from64Literal == last && Storage(from64Literal) == 0x10FFFFu512, "a char64 literal widens to char512");
+    let from128Literal: char512 = c128'λ';
+    Assert(from128Literal == lambda && Storage(from128Literal) == 0x3BBu512, "a char128 literal widens to char512");
+    let from256Literal: char512 = c256'A';
+    Assert(from256Literal == letter && Storage(from256Literal) == 65u512, "a char256 literal widens to char512");
+    let widened: char512 = Narrow('😀');
+    Assert(widened == face && Storage(widened) == 0x1F600u512, "a runtime char32 widens with the upper words zero");
+    let widened64: char512 = Narrow64(c64'λ');
+    Assert(widened64 == lambda && Storage(widened64) == 0x3BBu512, "a runtime char64 widens with the upper words zero");
+    let widened128: char512 = Narrow128(c128'\u{10FFFF}');
+    Assert(widened128 == last && Storage(widened128) == 0x10FFFFu512, "a runtime char128 widens, upper words zero");
+    let widened256: char512 = Narrow256(c256'😀');
+    Assert(widened256 == face && Storage(widened256) == 0x1F600u512, "a runtime char256 widens, upper words zero");
+    Assert(FromNarrow('😀') == face && Storage(FromNarrow('😀')) == 0x1F600u512, "a char32 widens into a return");
+    Assert(FromWide(c64'A') == letter && Storage(FromWide(c64'A')) == 65u512, "and so does a char64");
+    Assert(From128(c128'λ') == lambda && Storage(From128(c128'λ')) == 0x3BBu512, "and so does a char128");
+    Assert(From256(c256'😀') == face && Storage(From256(c256'😀')) == 0x1F600u512, "and so does a char256");
+    Assert(Echo(Narrow('λ')) == lambda, "a char32 argument widens to the parameter");
+    Assert(Storage(Echo(Narrow64(c64'😀'))) == 0x1F600u512, "and so does a char64 argument, upper words zero");
+    Assert(Storage(Echo(Narrow128(c128'A'))) == 65u512, "and so does a char128 argument, upper words zero");
+    Assert(Storage(Echo(Narrow256(c256'λ'))) == 0x3BBu512, "and so does a char256 argument, upper words zero");
+
+    // Comparison and ordering follow the code points, as at every other width.
+    Assert(letter == c512'A', "char512 equality");
+    Assert(letter != euro, "char512 inequality");
+    Assert(letter < euro && letter <= euro, "char512 less-than follows the code point");
+    Assert(face > euro && face >= euro, "char512 orders a later plane above an earlier one");
+    Assert(last >= face && !(face > last), "char512 greater-than-or-equal");
+
+    // Casting to the integer widths and back.
+    Assert(face as int == 128512, "char512 casts to int");
+    Assert(face as int512 == 128512i512, "char512 casts to int512");
+    Assert(face as uint32 == 0x1F600u32 && face as uint256 == 0x1F600u256, "and to the narrower unsigned widths");
+    Assert(0x1F600u512 as char512 == face, "uint512 casts to char512");
+    Assert(0x1F600u512 as char512 as uint512 == 0x1F600u512, "and back");
+    Assert(0x1F600u128 as char512 == face, "uint128 casts to char512");
+    var code: int = 0x3BB;
+    Assert(code as char512 == lambda && Storage(code as char512) == 0x3BBu512, "a runtime int casts to char512");
+    let wideCode: uint512 = 0x10FFFFu512;
+    Assert(wideCode as char512 == last, "a runtime uint512 casts to char512");
+
+    // Narrowing to a narrower scalar value keeps the low bits rather than re-encoding, which is what every other
+    // narrowing character cast does.
+    Assert(face as char32 == '😀', "char512 narrows to char32 when it fits");
+    Assert(face as char32 as uint32 == 0x1F600u32, "keeping the code point");
+    Assert(last as char64 == c64'\u{10FFFF}', "char512 narrows to char64");
+    Assert(lambda as char128 == c128'λ', "char512 narrows to char128");
+    Assert(face as char256 == c256'😀', "char512 narrows to char256");
+    Assert((face as char64) as char512 == face, "a round trip through char64 keeps the value");
+    Assert((last as char128) as char512 == last && (lambda as char256) as char512 == lambda,
+           "and so do round trips through char128 and char256");
+
+    // Assignment and mutation.
+    var cursor: char512 = c512'a';
+    Assert(cursor as uint512 == 97u512, "a char512 var starts at its initializer");
+    cursor = face;
+    Assert(cursor == face && Storage(cursor) == 0x1F600u512, "char512 var mutation");
+    cursor = Narrow('λ');
+    Assert(cursor == lambda && Storage(cursor) == 0x3BBu512, "assigning a narrower value widens it");
+    cursor = Narrow256(c256'A');
+    Assert(cursor == letter && Storage(cursor) == 65u512, "and so does assigning a char256");
+
+    // Prefix recognition does not reserve ordinary identifiers.
+    let c512 = 17;
+    let c512Value = 19;
+    Assert(c512 + c512Value == 36, "c512 remains an ordinary identifier");
+    let inferred = c512'😀';
+    Assert(Width(inferred) == 64u, "the literal infers char512 storage");
+    Assert(Face == inferred && Last == last, "typed and inferred constants keep their width");
+    Assert(Storage(Face) == 0x1F600u512, "an inferred constant stores nothing above its code point");
+    Assert(Identity(c512'😀') == face, "generic inference keeps the literal type");
+    Assert(Echo(c512'λ') == c512'\u{3BB}', "calls and returns preserve source Unicode");
+
+    // Storage: fields, padding and elements.
+    Assert(sizeof(Pair) == 128u, "two char512 fields occupy 128 bytes");
+    Assert(sizeof(Tagged) == 72u, "a char8 beside a char512 is padded to an eight-byte field boundary");
+    let pair = Pair { first: letter, second: face };
+    Assert(pair.first == letter && pair.second == face, "each field keeps its own value");
+    Assert(Storage(pair.second) == 0x1F600u512, "with the upper words zero");
+    var tagged = Tagged { tag: c8'x', value: last };
+    Assert(tagged.tag == c8'x' && tagged.value == last, "and so does a field after the padding");
+    tagged.value = Narrow('A');
+    Assert(tagged.tag == c8'x' && tagged.value == letter, "a field write widens and leaves its neighbour alone");
+    Assert(Storage(tagged.value) == 65u512, "the stored field has its upper words zero");
+    let elements = [c512'A', c512'λ', c512'😀'];
+    Assert(Width(elements[0]) == 64u, "inferred array elements are char512");
+    Assert(elements[0] == letter && elements[1] == lambda && elements[2] == face, "each element keeps its value");
+    var buffer: char512[4];
+    buffer[0] = letter;
+    buffer[1] = Narrow('😀');
+    buffer[2] = last;
+    buffer[3] = c512'\0';
+    Assert(sizeof(char512[4]) == 256u, "an array of four is 256 bytes");
+    Assert(buffer[0] == letter && buffer[1] == face && buffer[2] == last && buffer[3] == c512'\0',
+           "each written element keeps its value");
+    Assert(Storage(buffer[1]) == 0x1F600u512 && Storage(buffer[3]) == 0u512, "with the upper words zero");
+    var above = 0;
+    for element in buffer {
+        if element > c512'z' {
+            above += 1;
+        }
+    }
+    Assert(above == 2, "a loop over the elements compares each one");
+
+    // Static data: a constant is its code point followed by zero words.
+    Assert(Table[0] == letter && Table[1] == lambda && Table[2] == face && Table[3] == last,
+           "a constant array keeps each element");
+    Assert(Storage(Table[2]) == 0x1F600u512 && Storage(Table[3]) == 0x10FFFFu512, "with the upper words zero");
+
+    // Passed and returned at its own width.
+    Assert(Echo(face) == face && Storage(Echo(face)) == 0x1F600u512, "a value survives an argument and a return");
+    Assert(Fifth(letter, lambda, euro, last, face) == face, "the fifth char512 argument arrives intact");
+    Assert(Fifth(face, face, face, face, letter) == letter, "and does not take a neighbour's value");
+    Assert(Between(3i32, letter, 4i32) == 72, "a char512 between two int32 arguments keeps all three");
+
+    // Conditional selection: ternary, match and when.
+    var chooseFirst = false;
+    let selected = chooseFirst ? c512'A' : c512'😀';
+    Assert(selected == face, "a char512 ternary keeps its selected code point");
+    chooseFirst = true;
+    Assert((chooseFirst ? letter : face) == letter, "and the other arm");
+    Assert(Classify(c512'\0') == 1, "a NUL subject does not match another character");
+    Assert(Classify(letter) == 2 && Classify(c512'\u{41}') == 2, "an escape matches plain text");
+    Assert(Classify(Narrow('λ')) == 3, "a widened subject matches");
+    Assert(Classify(face) == 4 && Classify(last) == 5, "a supplementary and the last scalar match");
+    Assert(Classify(c512'B') == 9, "an unmatched char512 takes the default");
+    when c512'A' == c512'\u{41}' && c512'😀' == c512'\u{1F600}' {
+        Assert(true, "constant evaluation uses the same decoded scalar");
+    } else {
+        Assert(false, "character spellings must agree at compile time");
+    }
     return 0;
 }

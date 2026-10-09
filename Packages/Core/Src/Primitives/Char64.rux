@@ -1,6 +1,7 @@
 // `char64`: one Unicode scalar value, in eight bytes.
 // The same repertoire `char32` holds, in twice the storage: the range stops at U+10FFFF and the surrogates are
-// rejected, because a scalar value is what this carries. There is no `c64` literal prefix.
+// rejected, because a scalar value is what this carries. Its literals take the `c64` prefix; there is no `c64`
+// string encoding.
 
 /// One Unicode scalar value, in eight bytes.
 /// @see https://rux-lang.dev/docs/api/core/characters#char64
