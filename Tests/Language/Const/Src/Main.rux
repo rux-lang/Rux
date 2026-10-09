@@ -14,6 +14,17 @@ const SMALL: uint8[3] = [1u8, 2u8, 255u8];
 const NAMED: uint32[2] = [SCALAR, 7u32];
 const TEXT: char8[..] = "abc";
 
+// An element naming a constant computed from an expression is folded to that constant's value. Such a table used to be
+// laid out as zeros, literal elements included.
+const SUM: int32 = 2i32 + 3i32;
+const NEGATED: int32 = -SUM * 4i32;
+const THIRD: float64 = 1.0 / 3.0;
+const WIDE: uint128 = (1u128 << 100u32) + 7u128;
+const COMPUTED: int32[3] = [7i32, SUM, NEGATED];
+const COMPUTED_REALS: float64[2] = [THIRD, RATIO];
+const COMPUTED_WIDE: uint128[2] = [WIDE, 1u128];
+const COMPUTED_REPEAT: int32[3] = [SUM; 3];
+
 // A named constant is a compile-time integer, so it can size an array, count a
 // repeat, and feed another constant.
 const LIMIT: uint = 100;
@@ -105,6 +116,20 @@ func Main() -> int {
     let halves: uint8[HALF + EXTRA] = [7u8; EXTRA + HALF];
     if halves.length != 53 || halves[52] != 7u8 {
         return 17;
+    }
+
+    // Elements naming computed constants carry their values, and the literals beside them survive.
+    if COMPUTED[0] != 7i32 || COMPUTED[1] != 5i32 || COMPUTED[2] != -20i32 {
+        return 18;
+    }
+    if COMPUTED_REALS[0] != THIRD || COMPUTED_REALS[1] != 1.5 {
+        return 19;
+    }
+    if COMPUTED_WIDE[0] != WIDE || COMPUTED_WIDE[1] != 1u128 {
+        return 20;
+    }
+    if COMPUTED_REPEAT[0] != 5i32 || COMPUTED_REPEAT[2] != 5i32 {
+        return 21;
     }
 
     return 0;

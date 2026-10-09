@@ -2,6 +2,8 @@
 
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Lowering/HirToLir/HirToLirContext.h"
+#include "Numeric/IntegerLiteral.h"
+#include "Optimization/ConstantEvaluator.h"
 #include "Types/NativeLayout.h"
 #include "Types/PrimitiveCatalog.h"
 
@@ -27,6 +29,38 @@ namespace {
         }
     }
     return false;
+}
+
+/// The value a constant array element computes, folded the way the optimizer folds it, so a named constant whose
+/// initializer is an expression (`const Sum = 2 + 3`) still has a literal to lay out.
+[[nodiscard]] std::optional<Optimization::TypedConstant>
+FoldConstElement(const HirExpr &e, const std::unordered_map<std::string, const HirConst *> &constants) {
+    if (const auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
+        std::string_view text = lit->value;
+        if (const auto parts = SplitIntegerLiteral(text); parts && !lit->type.IsFloat()) {
+            text.remove_suffix(parts->suffix.size());
+        }
+        return Optimization::ParseConstant(text, lit->type);
+    }
+    if (const auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
+        const auto it = constants.find(v->name);
+        return it != constants.end() && it->second->value ? FoldConstElement(*it->second->value, constants)
+                                                          : std::nullopt;
+    }
+    if (const auto *u = dynamic_cast<const HirUnaryExpr *>(&e)) {
+        const auto operand = FoldConstElement(*u->operand, constants);
+        return operand ? Optimization::EvaluateUnary(u->op, *operand) : std::nullopt;
+    }
+    if (const auto *b = dynamic_cast<const HirBinaryExpr *>(&e)) {
+        const auto left = FoldConstElement(*b->left, constants);
+        const auto right = left ? FoldConstElement(*b->right, constants) : std::nullopt;
+        return right ? Optimization::EvaluateBinary(b->op, *left, *right) : std::nullopt;
+    }
+    if (const auto *c = dynamic_cast<const HirCastExpr *>(&e)) {
+        const auto operand = FoldConstElement(*c->operand, constants);
+        return operand ? Optimization::CastConstant(*operand, c->targetType) : std::nullopt;
+    }
+    return std::nullopt;
 }
 } // namespace
 
@@ -927,8 +961,8 @@ std::string HirToLirContext::PrintConstExpr(const HirExpr &e) {
 }
 
 /// The literal an array element spells out, with a leading minus folded in and a named constant resolved to the literal
-/// it stands for. Anything else is not a constant the backend can lay out; the semantic analyzer rejects those before
-/// we get here.
+/// it stands for. A named constant computed from an expression, or an element the lowering wrapped in a cast, is folded
+/// to the literal of its value. The semantic analyzer rejects anything else before we get here.
 std::optional<std::string> HirToLirContext::PrintConstElement(const HirExpr &e) const {
     if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
         return lit->value;
@@ -942,6 +976,9 @@ std::optional<std::string> HirToLirContext::PrintConstElement(const HirExpr &e) 
         if (const auto it = globalConsts.find(v->name); it != globalConsts.end()) {
             return PrintConstElement(*it->second->value);
         }
+    }
+    if (const auto folded = FoldConstElement(e, globalConsts)) {
+        return folded->ToLiteral();
     }
     return std::nullopt;
 }
@@ -970,6 +1007,8 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
             const HirExpr *element = arr->repeatedElement ? arr->repeatedElement.get() : arr->elements[index].get();
             const auto printed = PrintConstElement(*element);
             if (!printed) {
+                // Without contents the constant would be laid out as zeros, which is a silent wrong value.
+                BuilderFailure(std::format("element {} of constant '{}' has no compile-time value", index, c.name));
                 return;
             }
             elements.push_back(*printed);

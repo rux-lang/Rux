@@ -580,6 +580,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 - **Integers wider than 64 bits converted to `float32` or `float64`** — `value as float64` from an `int128` through a `uint512` copied the integer's low bits into the float instead of converting its value. The conversion now rounds the whole value to nearest with ties to even on every target, as constant folding already did.
 - **`uint64` to float on x86-64** — converting a `uint64`, `uint`, or `char64` to `float32` or `float64` used the signed conversion instruction, so every value at or above 2^63 came out negative. The conversion now goes through a helper that reads the value as unsigned.
 - **Scalar arguments of a narrower type** — an argument the analysis accepted for a wider parameter of the same family, such as an `int64` for an `int128`, a `float32` for a `float64`, or a `bool8` for a `bool64`, reached the callee at its own width, so the callee read whatever lay beside it, or a `float32`'s bits as a `float64`. Arguments, conditional and `match` arms, and bool literal patterns are now converted to the expected type first.
+- **Constant arrays naming computed constants** — a constant array with an element that named a constant computed from an expression, such as `const Sum = 2 + 3` in `[7, Sum]`, was laid out as zeros, its literal elements included, without a diagnostic. Such an element is now folded to its value at compile time, and an element that cannot be folded is reported instead of being written as zero.
 
 ## [0.3.0] - 2026-06-23
 
