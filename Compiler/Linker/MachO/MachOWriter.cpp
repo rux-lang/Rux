@@ -363,11 +363,11 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         WriteU32(textPrefix, 0xD400'1001); // svc #0x80
     }
     else {
+        // The call's return address is what leaves RSP eight past a sixteen-byte boundary at Main's entry, as the
+        // System V ABI requires; an extra eight-byte adjustment here would hand every frame a misaligned base.
         textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16
-        textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8
         callMainDisp = textPrefix.size() + 1;
         textPrefix.insert(textPrefix.end(), {0xE8, 0, 0, 0, 0});       // call Main
-        textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8
         textPrefix.insert(textPrefix.end(), {0x89, 0xC7});             // mov edi, eax
         textPrefix.insert(textPrefix.end(), {0xB8, 0x01, 0, 0, 0x02}); // SYS_exit
         textPrefix.insert(textPrefix.end(), {0x0F, 0x05});             // syscall

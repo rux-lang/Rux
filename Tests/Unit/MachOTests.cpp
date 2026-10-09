@@ -281,6 +281,29 @@ TEST_CASE("Mach-O reader reports the x86-64 executable structure") {
     }
 }
 
+TEST_CASE("Mach-O freestanding x86-64 entry leaves Main a System V aligned stack") {
+    // The kernel starts the thread with RSP at argc. Rounding it down to sixteen and then calling Main leaves RSP eight
+    // past a boundary at Main's entry, which is what every frame's sixteen-byte slots are planned against.
+    RcuFile program;
+    program.arch = RcuArch::X86_64;
+    program.sections.push_back(TextSection({0x31, 0xC0, 0xC3}));
+    program.symbols.push_back({"Main", "int", 0, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const std::vector<std::uint8_t> bytes =
+        LinkBytes(std::move(program), ArtifactKind::Executable,
+                  std::filesystem::temp_directory_path() / "rux-macho-static-entry-alignment-test");
+    MachOImage image;
+    std::string error;
+    REQUIRE(ReadMachO64(bytes, image, error));
+    const MachOSection *textSection = image.Section("__TEXT", "__text");
+    REQUIRE(textSection != nullptr);
+    const std::vector<std::uint8_t> entry(bytes.begin() + textSection->offset, bytes.begin() + textSection->offset + 9);
+    CHECK(entry == std::vector<std::uint8_t>{0x48, 0x83, 0xE4, 0xF0, 0xE8, entry[5], entry[6], entry[7], entry[8]});
+    const std::int32_t displacement = static_cast<std::int32_t>(entry[5] | entry[6] << 8U | entry[7] << 16U |
+                                                                static_cast<std::uint32_t>(entry[8]) << 24U);
+    CHECK((textSection->address + 9 + displacement) % 16 == 0); // the call reaches Main past the padded stub
+}
+
 TEST_CASE("Mach-O reader reports the x86-64 dylib structure") {
     RcuFile library;
     library.arch = RcuArch::X86_64;
