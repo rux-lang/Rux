@@ -1,0 +1,38 @@
+// A `char256` holds one Unicode scalar value in thirty-two bytes, which is one to four bytes of UTF-8.
+// It is a `char64` with more room for numbers no character has. A scalar value stops at U+10FFFF, so every bit
+// above the twenty-first is zero in a real character, and a cast that sets one makes a value that is no character
+// at all. The check runs at the full 256 bits, before anything is narrowed: dropping the high words first would
+// turn a value whose low bits spell `A` into that `A`.
+
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+
+extend char256 : Display {
+    /// Writes this character, or the replacement character when the value is not one.
+    /// The value is checked at its own width first, so a set bit anywhere above the last scalar is a replacement
+    /// rather than whatever character the low bits happen to name.
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char256-write-display
+    pub func WriteDisplay(self: &char256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        let value = (self as uint256) as uint512;
+        if !IsScalarValue512(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
+        return FormatScalar(writer, spec, (value as uint32) as char32);
+    }
+}
+
+extend char256 : Debug {
+    /// The same character, quoted, with a value that is not one preserved as its own number, every bit of it.
+    /// A value that fits sixty-four bits renders exactly as a `char64` of that number does; a wider one is spelled
+    /// in full, in thirty-two or sixty-four hex digits as its size needs.
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char256-write-debug
+    pub func WriteDebug(self: &char256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        return WriteWideCharacterDebug(writer, (self as uint256) as uint512);
+    }
+}

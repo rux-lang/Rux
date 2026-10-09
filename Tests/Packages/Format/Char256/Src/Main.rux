@@ -1,0 +1,174 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Failed, Panic, Succeeded };
+import Format::Render;
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView };
+
+// A `char256` holds one Unicode scalar value in thirty-two bytes, and renders exactly as a `char64` of the same
+// value. Three of its four machine words are never used by a character. A value with a bit set in any of them is
+// no character, whatever its low word spells, so `Display` refuses it before narrowing and `Debug` writes every bit
+// of it: the escape keeps its doubling steps, thirty-two hex digits past the first word and sixty-four past the
+// second.
+// Every case renders twice, once through a constrained borrowed receiver and once through the interface, and
+// `Display` is reached a third way through `Render`'s variadic arguments.
+
+// A value that is not a character, made at run time.
+// The compiler refuses to fold a surrogate or an out-of-range number into a character constant, so the number is
+// passed through a function and the cast happens on a value the compiler cannot see.
+func AsChar256(value: uint256) -> char256 {
+    return value as char256;
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index += 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    spec = ParseFormatSpec(text) catch { else => Panic("the test's specification is valid") };
+    return spec;
+}
+
+// Renders `value` under `spec` through a constrained receiver and through the interface, and checks both.
+func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
+    var storage: char8[192];
+    var writer = BufferWriter((@storage[0])[..192]);
+    Assert(Succeeded(value.WriteDisplay(writer, spec)), "a constrained receiver renders");
+    Assert(Same(writer.Written(), expected), expected);
+    writer.Clear();
+    let shown: &Display = value;
+    Assert(Succeeded(shown.WriteDisplay(writer, spec)), "an interface receiver renders");
+    Assert(Same(writer.Written(), expected), expected);
+}
+
+// The `Debug` counterpart of `Shown`.
+func Inspected<T: Debug>(value: &T, expected: char8[..]) {
+    var storage: char8[192];
+    var writer = BufferWriter((@storage[0])[..192]);
+    Assert(Succeeded(value.WriteDebug(writer, FormatSpec::Plain())), "a constrained debug receiver renders");
+    Assert(Same(writer.Written(), expected), expected);
+    writer.Clear();
+    let shown: &Debug = value;
+    Assert(Succeeded(shown.WriteDebug(writer, FormatSpec::Plain())), "an interface debug receiver renders");
+    Assert(Same(writer.Written(), expected), expected);
+}
+
+// Whether `Display` refuses `spec` rather than rendering under it.
+func Refused<T: Display>(value: &T, spec: FormatSpec) -> bool {
+    var storage: char8[16];
+    var writer = BufferWriter((@storage[0])[..16]);
+    return Failed(value.WriteDisplay(writer, spec));
+}
+
+// Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
+func Rendered(outcome: String ! FormatError, expected: char8[..]) -> bool {
+    let wanted = StringView::FromValidated(expected);
+    return match <-outcome {
+        .Success(text) => text.View().Equals(wanted),
+        .Failure(_) => false
+    };
+}
+
+func Main() -> int {
+    let plain = FormatSpec::Plain();
+
+    // Valid scalars at every UTF-8 length, one to four bytes, and the last scalar there is.
+    let letter = c256'A';
+    Shown<char256>(letter, plain, "A");
+    Inspected<char256>(letter, "'A'");
+    let accented = c256'é';
+    Shown<char256>(accented, plain, "é");
+    Inspected<char256>(accented, "'é'");
+    let euro = c256'€';
+    Shown<char256>(euro, plain, "€");
+    Inspected<char256>(euro, "'€'");
+    let face = c256'😀';
+    Shown<char256>(face, plain, "😀");
+    Inspected<char256>(face, "'😀'");
+    let last = c256'\u{10FFFF}';
+    Shown<char256>(last, plain, "\u{10FFFF}");
+    Inspected<char256>(last, "'\u{10FFFF}'");
+
+    // Debug escapes the quote, the backslash and the controls, as it does everywhere else; Display writes them
+    // as they are.
+    let newline = c256'\n';
+    Shown<char256>(newline, plain, "\n");
+    Inspected<char256>(newline, "'\\n'");
+    let quote = c256'\'';
+    Shown<char256>(quote, plain, "'");
+    Inspected<char256>(quote, "'\\''");
+    let backslash = c256'\\';
+    Shown<char256>(backslash, plain, "\\");
+    Inspected<char256>(backslash, "'\\\\'");
+    let zero = c256'\0';
+    Inspected<char256>(zero, "'\\0'");
+    let control = AsChar256(0x01u256);
+    Inspected<char256>(control, "'\\x{01}'");
+    let c1 = AsChar256(0x85u256);
+    Inspected<char256>(c1, "'\\x{85}'");
+
+    // A width counts characters rather than bytes, and the fill and alignment are the ones every value takes.
+    Shown<char256>(letter, Spec(">3"), "  A");
+    Shown<char256>(letter, Spec("<3"), "A  ");
+    Shown<char256>(letter, Spec("^5"), "  A  ");
+    Shown<char256>(letter, Spec("*^5"), "**A**");
+    Shown<char256>(face, Spec(">3"), "  😀");
+    Shown<char256>(face, Spec("1"), "😀");
+    // A character has no second form, so a style is refused rather than ignored.
+    Assert(Refused<char256>(letter, Spec("x")), "a character refuses a base");
+    Assert(Refused<char256>(letter, Spec("e")), "and any other style");
+
+    // Through Render, as an ordinary variadic argument.
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    Assert(Rendered(Render(allocator, "[{}]", letter), "[A]"), "a char256 is a Render argument");
+    Assert(Rendered(Render(allocator, "{:>4}|{}", face, accented), "   😀|é"), "padded, beside another");
+
+    // Values below 2^64 that are not characters render as a char64 of the same number does: the replacement
+    // under Display, and the number itself under Debug.
+    let surrogate = AsChar256(0xD800u256);
+    Shown<char256>(surrogate, plain, "\u{FFFD}");
+    Inspected<char256>(surrogate, "'\\u{d800}'");
+    let lowSurrogate = AsChar256(0xDFFFu256);
+    Shown<char256>(lowSurrogate, plain, "\u{FFFD}");
+    Inspected<char256>(lowSurrogate, "'\\u{dfff}'");
+    let past = AsChar256(0x110000u256);
+    Shown<char256>(past, plain, "\u{FFFD}");
+    Inspected<char256>(past, "'\\u{00110000}'");
+    let disguised = AsChar256(0x100000041u256);
+    Shown<char256>(disguised, plain, "\u{FFFD}");
+    Inspected<char256>(disguised, "'\\u{0000000100000041}'");
+    let top64 = AsChar256(0xFFFFFFFFFFFFFFFFu256);
+    Shown<char256>(top64, plain, "\u{FFFD}");
+    Inspected<char256>(top64, "'\\u{ffffffffffffffff}'");
+    Shown<char256>(disguised, Spec(">2"), " \u{FFFD}");
+
+    // Values with a bit above the sixty-fourth. Each is refused under Display however good a character its
+    // low word spells, and Debug spells every bit, in as many digits as the highest set bit needs.
+    let word1 = AsChar256((1u256 << 64) | 0x41u256);
+    Shown<char256>(word1, plain, "\u{FFFD}");
+    Inspected<char256>(word1, "'\\u{00000000000000010000000000000041}'");
+    let word1Face = AsChar256((1u256 << 100) | 0x1F600u256);
+    Shown<char256>(word1Face, plain, "\u{FFFD}");
+    Inspected<char256>(word1Face, "'\\u{0000001000000000000000000001f600}'");
+    let top128 = AsChar256(1u256 << 127);
+    Shown<char256>(top128, plain, "\u{FFFD}");
+    Inspected<char256>(top128, "'\\u{80000000000000000000000000000000}'");
+    let word2 = AsChar256((1u256 << 128) | 0x41u256);
+    Shown<char256>(word2, plain, "\u{FFFD}");
+    Inspected<char256>(word2, "'\\u{0000000000000000000000000000000100000000000000000000000000000041}'");
+    let top256 = AsChar256(1u256 << 255);
+    Shown<char256>(top256, plain, "\u{FFFD}");
+    Inspected<char256>(top256, "'\\u{8000000000000000000000000000000000000000000000000000000000000000}'");
+    let all256 = AsChar256(0u256 - 1u256);
+    Shown<char256>(all256, plain, "\u{FFFD}");
+    Inspected<char256>(all256, "'\\u{ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff}'");
+    Shown<char256>(word1, Spec("*<3"), "\u{FFFD}**");
+
+    return 0;
+}

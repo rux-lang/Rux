@@ -50,6 +50,13 @@ func Main() -> int {
     PrintLine(c8'A');
     PrintLine(c16'B');
     PrintLine(c32'C');
+    PrintLine(c64'D');
+    PrintLine(c128'E');
+    PrintLine(c256'F');
+    PrintLine(c512'😀');
+    // A value no character has prints as the replacement character, at the widths past the machine word too.
+    var wideBits: uint128 = (1u128 << 64) | 0x41u128;
+    PrintLine(wideBits as char128);
 
     var system = SystemAllocator();
     let allocator: Allocator = system;

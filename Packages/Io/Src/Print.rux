@@ -188,6 +188,38 @@ pub func Print(value: char32) -> IoError? {
     return PrintValue(value);
 }
 
+/// Writes a `char64` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: char64) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `char128` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: char128) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `char256` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: char256) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `char512` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: char512) -> IoError? {
+    return PrintValue(value);
+}
+
 /// Writes a `int8` to standard output.
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written

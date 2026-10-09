@@ -147,6 +147,38 @@ pub func PrintLine(value: char32) -> IoError? {
     return Terminate(Print(value));
 }
 
+/// Writes a `char64` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: char64) -> IoError? {
+    return Terminate(Print(value));
+}
+
+/// Writes a `char128` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: char128) -> IoError? {
+    return Terminate(Print(value));
+}
+
+/// Writes a `char256` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: char256) -> IoError? {
+    return Terminate(Print(value));
+}
+
+/// Writes a `char512` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: char512) -> IoError? {
+    return Terminate(Print(value));
+}
+
 /// Writes a `int8` to standard output, then a newline.
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
