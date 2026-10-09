@@ -213,7 +213,7 @@ TEST_CASE("float16 addition becomes a call to its synthesized helper") {
     CHECK_EQ(constant.strArg, "0x1.8p0");
 
     CheckHelper(package, "__rux_float_f16_add", {K::Float16, K::Float16}, K::Float16);
-    CHECK(HasOpcode(RequireFunction(package, "__rux_float_f16_add"), LirOpcode::Panic));
+    CHECK_FALSE(HasOpcode(RequireFunction(package, "__rux_float_f16_add"), LirOpcode::Panic));
 }
 
 TEST_CASE("float128 comparisons read the compare helper's ordering code") {

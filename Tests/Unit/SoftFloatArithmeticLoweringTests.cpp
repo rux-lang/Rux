@@ -366,3 +366,138 @@ TEST_CASE("both back ends compile the synthesized compare helpers and pack and u
         CHECK(arm.Diagnostics().empty());
     }
 }
+
+// Addition and subtraction
+
+namespace {
+constexpr std::array<K, 6> SoftwareKinds{K::Float8, K::Float16, K::Float80, K::Float128, K::Float256, K::Float512};
+
+/// A finite encoding of either sign with exponent field `exponentField` and a random significand, or with only its
+/// leading bit when `power` is set; float80 gets the integer bit its exponent calls for.
+WideInteger RandomFinite(std::mt19937_64 &random, const FloatFormat &format, const std::uint32_t exponentField,
+                         const bool power) {
+    const std::uint32_t width = format.valueBits;
+    WideInteger bits =
+        power ? WideInteger::Zero(width) : RandomBits(random, format.FractionBits()).Extended(width, false);
+    if (format.explicitIntegerBit && exponentField != 0) {
+        bits = bits.BitwiseOr(WideInteger::FromUnsigned(1, width).ShiftedLeft(format.FractionBits()));
+    }
+    bits = bits.BitwiseOr(WideInteger::FromUnsigned(exponentField, width).ShiftedLeft(format.SignificandFieldBits()));
+    if (random() % 2 != 0) {
+        bits = bits.BitwiseOr(WideInteger::FromUnsigned(1, width).ShiftedLeft(width - 1));
+    }
+    return bits;
+}
+
+/// Pairs that reach each path of a sum: every pair of special values; random encodings; neighbours of equal or
+/// opposite sign, which cancel all or most of their bits; operands about a precision apart, a power of two among them,
+/// which round to nearest and break ties to even; and operands so far apart that the smaller one survives only in the
+/// sticky bit.
+std::vector<std::pair<WideInteger, WideInteger>> AdditionPairs(const FloatFormat &format) {
+    std::vector<std::pair<WideInteger, WideInteger>> pairs;
+    const std::vector<WideInteger> specials = SpecialValues(format);
+    for (const WideInteger &left : specials) {
+        for (const WideInteger &right : specials) {
+            pairs.emplace_back(left, right);
+        }
+    }
+    std::mt19937_64 random(0xADD00000U + format.valueBits);
+    const std::uint32_t width = format.valueBits;
+    const std::uint32_t largest = format.MaxExponentField() - 1;
+    const std::uint64_t precision = format.precisionBits;
+    const auto below = [](const std::uint32_t exponent, const std::uint64_t distance) {
+        return distance >= exponent ? 0U : exponent - static_cast<std::uint32_t>(distance);
+    };
+    for (int sample = 0; sample < RandomPatterns; ++sample) {
+        const auto exponent = static_cast<std::uint32_t>(1 + random() % largest);
+        const WideInteger left = RandomFinite(random, format, exponent, false);
+        WideInteger right;
+        switch (sample % 4) {
+        case 0:
+            right = RandomBits(random, width);
+            pairs.emplace_back(RandomBits(random, width), right);
+            continue;
+        case 1:
+            right = left.BitwiseXor(WideInteger::FromUnsigned(random() % 8, width));
+            if (random() % 2 != 0) {
+                right = right.BitwiseXor(WideInteger::FromUnsigned(1, width).ShiftedLeft(width - 1));
+            }
+            break;
+        case 2:
+            right = RandomFinite(random, format, below(exponent, precision - 3 + random() % 7), random() % 3 == 0);
+            break;
+        default:
+            right = RandomFinite(random, format, below(exponent, precision + 3 + random() % (3 * precision)),
+                                 random() % 4 == 0);
+            break;
+        }
+        if (random() % 2 != 0) {
+            pairs.emplace_back(right, left);
+        }
+        else {
+            pairs.emplace_back(left, right);
+        }
+    }
+    return pairs;
+}
+
+/// Runs the add and subtract helpers of `kind` on every pair and compares them with `AddFloat` and `SubtractFloat`.
+void CheckAddition(const K kind, const std::vector<std::pair<WideInteger, WideInteger>> &pairs) {
+    const FloatFormat &format = FormatOf(kind);
+    CAPTURE(format.valueBits);
+    SoftFloatHelperRegistry registry;
+    const std::string add = registry.Request({SoftFloatOperation::Add, kind, K::Unknown});
+    const std::string subtract = registry.Request({SoftFloatOperation::Subtract, kind, K::Unknown});
+    std::vector<Diagnostic> diagnostics;
+    const LirPackage package = PackageOf(registry.SynthesizePending(diagnostics));
+    REQUIRE(diagnostics.empty());
+    const LirInterpreter interpreter(package);
+    Mismatches mismatches;
+    for (const auto &[left, right] : pairs) {
+        const FloatEncoding leftEncoding = FloatEncoding::FromBits(format, left);
+        const FloatEncoding rightEncoding = FloatEncoding::FromBits(format, right);
+        const std::string input = std::format("{} and {}", Hex(left), Hex(right));
+        mismatches.Check(Run(interpreter, add, {left, right}), AddFloat(leftEncoding, rightEncoding).Bits(),
+                         "add " + input);
+        mismatches.Check(Run(interpreter, subtract, {left, right}), SubtractFloat(leftEncoding, rightEncoding).Bits(),
+                         "subtract " + input);
+    }
+    CHECK_MESSAGE(mismatches.count == 0, mismatches.first);
+}
+} // namespace
+
+TEST_CASE("synthesized add and subtract helpers match AddFloat and SubtractFloat bit for bit") {
+    for (const K kind : SoftwareKinds) {
+        CheckAddition(kind, AdditionPairs(FormatOf(kind)));
+    }
+}
+
+TEST_CASE("synthesized float8 add and subtract helpers match on every pair of encodings") {
+    std::vector<std::pair<WideInteger, WideInteger>> pairs;
+    for (std::uint64_t left = 0; left < 256; ++left) {
+        for (std::uint64_t right = 0; right < 256; ++right) {
+            pairs.emplace_back(WideInteger::FromUnsigned(left, 8), WideInteger::FromUnsigned(right, 8));
+        }
+    }
+    CheckAddition(K::Float8, pairs);
+}
+
+TEST_CASE("both back ends compile the synthesized add and subtract helpers") {
+    SoftFloatHelperRegistry registry;
+    for (const K kind : SoftwareKinds) {
+        static_cast<void>(registry.Request({SoftFloatOperation::Add, kind, K::Unknown}));
+        static_cast<void>(registry.Request({SoftFloatOperation::Subtract, kind, K::Unknown}));
+    }
+    std::vector<Diagnostic> diagnostics;
+    const LirPackage package = PackageOf(registry.SynthesizePending(diagnostics));
+    REQUIRE(diagnostics.empty());
+    for (const Target::OS os : {Target::OS::Windows, Target::OS::Linux}) {
+        CAPTURE(static_cast<int>(os));
+        const RcuEmitter x86(package, "SoftFloat", os);
+        CHECK_EQ(x86.Generate().size(), 1);
+        CHECK(x86.Diagnostics().empty());
+        const AArch64RcuEmitter arm(package, "SoftFloat", os);
+        CHECK_EQ(arm.Generate().size(), 1);
+        CHECK(arm.Diagnostics().empty());
+    }
+}
