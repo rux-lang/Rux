@@ -263,6 +263,30 @@ TEST_CASE("a method takes variadic and defaulted arguments the way a function do
     CHECK_EQ(diagnostics[3].message, "call to 'Scale' expects between 1 and 2 arguments, but 3 were provided");
 }
 
+TEST_CASE("a named array spreads only into a variadic parameter of its own element type") {
+    const auto diagnostics = AnalyzeErrors(R"(
+        func Sum(values: int64...) -> int64 { return 0i64; }
+        struct Total { base: int64; }
+        extend Total {
+            func Sum(self: &Total, values: int64...) -> int64 { return self.base; }
+        }
+        func Main() {
+            let narrow: int32[2] = [1i32, 2i32];
+            let total = Total { base: 0i64 };
+            let a = Sum(narrow...);
+            let b = total.Sum(narrow...);
+            let view: int64[..] = narrow;
+        }
+    )");
+    // Viewed in place, an `int32` array would be read as half as many `int64` values.
+    REQUIRE_EQ(diagnostics.size(), 3);
+    const std::string spread =
+        "argument 1 to 'Sum' has type 'int32[2]', but variadic parameter 'values' requires 'int64[..]'";
+    CHECK_EQ(diagnostics[0].message, spread);
+    CHECK_EQ(diagnostics[1].message, spread);
+    CHECK_EQ(diagnostics[2].message, "cannot assign 'int32[2]' to 'int64[..]'");
+}
+
 TEST_CASE("overload failures list candidate signatures with declaration context") {
     const auto diagnostics = AnalyzeSource(R"(
         func Choose(value: int) {}

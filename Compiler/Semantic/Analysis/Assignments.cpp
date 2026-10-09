@@ -102,7 +102,11 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             if (targetType.IsWritableSlice() && !PlaceIsWritable(expr, exprType)) {
                 return false;
             }
-            return exprType.inner[0].IsAssignableTo(*sliceElement);
+            // A named array is viewed in place, so the slice reads its elements at their own width: an `int32[2]`
+            // is no `int64[..]`, whatever converting each element on its own would do.
+            TypeRef element = exprType.inner[0];
+            element.isMut = false;
+            return element.IsUnknown() || sliceElement->IsUnknown() || element == *sliceElement;
         }
     }
 
