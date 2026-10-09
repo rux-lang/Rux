@@ -1,0 +1,9 @@
+18:19: error: extern parameter 'value' has type 'Half', whose field 'value' holds 'float16', which has no C ABI mapping
+19:39: error: the return value of extern function 'TakeNested' has type 'Nested', whose field 'inner.value' holds 'float16', which has no C ABI mapping
+19:21: error: extern parameter 'value' has type 'Nested', whose field 'inner.value' holds 'float16', which has no C ABI mapping
+20:22: error: extern parameter 'value' has type 'Samples', whose field 'values' holds 'float80', which has no C ABI mapping
+21:19: error: extern parameter 'value' has type 'Wide<float256>', whose field 'value' holds 'float256', which has no C ABI mapping
+22:19: error: extern parameter 'value' has type 'Bits', whose field 'wide' holds 'float128', which has no C ABI mapping
+28:33: error: the return value of '#Abi' function 'Callback' has type 'Samples', whose field 'values' holds 'float80', which has no C ABI mapping
+28:15: error: parameter 'value' of '#Abi' function 'Callback' has type 'Nested', whose field 'inner.value' holds 'float16', which has no C ABI mapping
+34:18: error: a C-variadic argument has type 'Nested', whose field 'inner.value' holds 'float16', which has no C ABI mapping

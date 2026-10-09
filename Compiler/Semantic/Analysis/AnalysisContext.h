@@ -188,8 +188,21 @@ private:
     void BeginReceiverReferenceBorrow(const CallExpr &call, const Expr &receiver, const TypeRef &referenceType);
     [[nodiscard]] bool TypeStoresReference(const TypeRef &type);
     void ValidateStoredType(const TypeRef &type, SourceLocation location, std::string_view subject);
-    /// Rejects a type that `HasCAbiMapping` refuses where it would cross a C ABI boundary as `subject`.
+    /// Rejects a type that `HasCAbiMapping` refuses where it would cross a C ABI boundary as `subject`: the type
+    /// itself, or any scalar a by-value aggregate of it holds -- a struct or union field, an array element or a tuple
+    /// element, however deeply nested. A pointer, reference or slice crosses as an address, so nothing behind one is
+    /// examined.
     void ValidateCAbiType(const TypeRef &type, SourceLocation location, std::string_view subject);
+
+    /// The first scalar `type` holds by value that has no C ABI mapping, with the field path leading to it ("" when
+    /// it is `type` itself), or nothing when every scalar it holds crosses as C passes it.
+    struct CAbiViolation {
+        std::string path;
+        TypeRef type;
+    };
+
+    [[nodiscard]] std::optional<CAbiViolation> FindCAbiViolation(const TypeRef &type,
+                                                                 std::unordered_set<std::string> &visiting);
     [[nodiscard]] BorrowSnapshot SaveBorrows() const;
     void RestoreBorrows(const BorrowSnapshot &snapshot);
     [[nodiscard]] static BorrowSnapshot MergeBorrows(std::span<const BorrowSnapshot> snapshots);

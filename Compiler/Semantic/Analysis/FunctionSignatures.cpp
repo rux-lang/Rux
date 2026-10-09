@@ -11,16 +11,94 @@ bool HasCAbiMapping(const TypeRef &type) noexcept {
     return !type.IsFloat() || type.kind == TypeRef::Kind::Float32 || type.kind == TypeRef::Kind::Float64;
 }
 
+std::optional<AnalysisContext::CAbiViolation>
+AnalysisContext::FindCAbiViolation(const TypeRef &type, std::unordered_set<std::string> &visiting) {
+    if (!HasCAbiMapping(type)) {
+        return CAbiViolation{"", type};
+    }
+    // Prefix a violation found inside a member with the member's name.
+    const auto inside = [](std::optional<CAbiViolation> found, const std::string_view member) {
+        if (found) {
+            found->path = found->path.empty() ? std::string(member) : std::format("{}.{}", member, found->path);
+        }
+        return found;
+    };
+    switch (type.kind) {
+    case TypeRef::Kind::Array:
+        // A fixed array is its elements in place; the field holding it is the path to them.
+        if (type.arrayLength && !type.inner.empty()) {
+            return FindCAbiViolation(type.inner.front(), visiting);
+        }
+        return std::nullopt;
+    case TypeRef::Kind::Tuple:
+        for (std::size_t index = 0; index < type.inner.size(); ++index) {
+            if (auto found = inside(FindCAbiViolation(type.inner[index], visiting), std::to_string(index))) {
+                return found;
+            }
+        }
+        return std::nullopt;
+    case TypeRef::Kind::Named:
+        break;
+    default:
+        // A pointer, a reference and a slice cross as addresses; nothing they point at is passed.
+        return std::nullopt;
+    }
+
+    const std::string baseName = BaseTypeName(type.name);
+    // A struct cannot hold itself by value; the guard only keeps a malformed declaration from recursing forever.
+    if (!visiting.insert(type.name).second) {
+        return std::nullopt;
+    }
+    std::optional<CAbiViolation> found;
+    if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
+        const auto &typeParams = structure->second->typeParams;
+        for (std::size_t index = 0; index < std::min(typeParams.size(), typeArgs.size()); ++index) {
+            substitutions[typeParams[index].name] = typeArgs[index];
+        }
+        for (const auto &field : structure->second->fields) {
+            found = inside(FindCAbiViolation(ResolveTypeWithSubstitution(*field.type, substitutions), visiting),
+                           field.name);
+            if (found) {
+                break;
+            }
+        }
+    }
+    else if (const auto unionType = unionDecls.find(baseName); unionType != unionDecls.end()) {
+        for (const auto &field : unionType->second->fields) {
+            found = inside(FindCAbiViolation(ResolveTypeWithSubstitution(*field.type, {}), visiting), field.name);
+            if (found) {
+                break;
+            }
+        }
+    }
+    visiting.erase(type.name);
+    return found;
+}
+
 void AnalysisContext::ValidateCAbiType(const TypeRef &type, const SourceLocation location,
                                        const std::string_view subject) {
-    if (HasCAbiMapping(type)) {
+    std::unordered_set<std::string> visiting;
+    const auto violation = FindCAbiViolation(type, visiting);
+    if (!violation) {
         return;
     }
-    EmitError(location, std::format("{} has type '{}', which has no C ABI mapping", subject, type.ToString()),
-              {std::format("'{}' is passed by the compiler's own convention, which matches no C type such as "
-                           "'_Float16', 'long double' or '__float128'",
-                           type.ToString())},
-              "convert the value to 'float32' or 'float64' at the boundary, or pass a pointer to it");
+    const std::vector<std::string> notes = {
+        std::format("'{}' is passed by the compiler's own convention, which matches no C type such as "
+                    "'_Float16', 'long double' or '__float128'",
+                    violation->type.ToString())};
+    if (violation->path.empty()) {
+        EmitError(location, std::format("{} has type '{}', which has no C ABI mapping", subject, type.ToString()),
+                  notes, "convert the value to 'float32' or 'float64' at the boundary, or pass a pointer to it");
+        return;
+    }
+    // A by-value aggregate is laid out in C's registers and memory field by field, so one unmappable field anywhere
+    // inside it makes the whole value one the other side reads differently.
+    EmitError(location,
+              std::format("{} has type '{}', whose field '{}' holds '{}', which has no C ABI mapping", subject,
+                          type.ToString(), violation->path, violation->type.ToString()),
+              notes, "store the field as 'float32' or 'float64', or pass a pointer to the value");
 }
 
 TypeRef AnalysisContext::MakeFuncType(const std::vector<Param> &parameters,
