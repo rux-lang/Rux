@@ -24,6 +24,11 @@ struct ImageLayoutRequest {
     std::uint32_t fileAlignment = 0;
     std::uint32_t instructionStubAlignment = 0;
     std::uint32_t instructionStubSize = 0;
+    /// The strictest alignment any merged input section recorded for code, constants and writable data. Each section
+    /// starts on it, and its section header states it, so an offset the object layout aligned stays aligned in memory.
+    std::uint64_t textAlignment = 16;
+    std::uint64_t constantDataAlignment = 16;
+    std::uint64_t writableDataAlignment = 8;
     std::uint32_t cpuType = 0;
     std::uint32_t cpuSubtype = 0;
     std::uint32_t threadStateFlavor = 0;

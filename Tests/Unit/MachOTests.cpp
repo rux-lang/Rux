@@ -281,6 +281,60 @@ TEST_CASE("Mach-O reader reports the x86-64 executable structure") {
     }
 }
 
+TEST_CASE("Mach-O linker starts and declares each section on its recorded alignment") {
+    // __const follows the code and stubs, and __data follows one eight-byte import pointer, so neither start is aligned
+    // past eight by accident. Each must start on the strictest alignment its inputs recorded and say so in its header.
+    for (std::size_t padding = 0; padding < 32; padding += 4) {
+        CAPTURE(padding);
+        RcuFile program;
+        program.arch = RcuArch::X86_64;
+        std::vector<std::uint8_t> code(padding, 0x90);
+        code.insert(code.end(), {0xE8, 0, 0, 0, 0, 0x31, 0xC0, 0xC3});
+        auto text = TextSection(std::move(code));
+        text.relocs.push_back({static_cast<std::uint32_t>(padding + 1), 3, RcuRelType::Rel32, 0});
+        program.sections.push_back(std::move(text));
+
+        RcuSection rodata;
+        rodata.name = ".rodata";
+        rodata.type = RcuSecType::RoData;
+        rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+        rodata.alignment = 32;
+        rodata.data.assign(64, 0x5A);
+        program.sections.push_back(std::move(rodata));
+
+        RcuSection data;
+        data.name = ".data";
+        data.type = RcuSecType::Data;
+        data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        data.alignment = 16;
+        data.data.assign(16, 0x33);
+        program.sections.push_back(std::move(data));
+
+        program.symbols.push_back({"Main", "int", 0, static_cast<std::uint32_t>(padding + 8), RCU_TEXT_IDX,
+                                   RcuSymKind::Func, RcuSymVis::Global});
+        program.symbols.push_back({"Table", "", 32, 32, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+        program.symbols.push_back({"Slot", "", 0, 16, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
+        program.symbols.push_back(
+            {"getpid", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        const MachOImage image = LinkAndRead(std::move(program), ArtifactKind::Executable,
+                                             std::filesystem::temp_directory_path() / "rux-macho-alignment-test");
+        const MachOSection *textSection = image.Section("__TEXT", "__text");
+        const MachOSection *constSection = image.Section("__TEXT", "__const");
+        const MachOSection *dataSection = image.Section("__DATA", "__data");
+        REQUIRE(textSection != nullptr);
+        REQUIRE(constSection != nullptr);
+        REQUIRE(dataSection != nullptr);
+        CHECK(textSection->alignmentPower == 4);
+        CHECK(constSection->alignmentPower == 5);
+        CHECK(dataSection->alignmentPower == 4);
+        CHECK(constSection->address % 32 == 0);
+        CHECK(constSection->offset % 32 == 0);
+        CHECK(dataSection->address % 16 == 0);
+        CHECK(dataSection->offset % 16 == 0);
+    }
+}
+
 TEST_CASE("Mach-O freestanding x86-64 entry leaves Main a System V aligned stack") {
     // The kernel starts the thread with RSP at argc. Rounding it down to sixteen and then calling Main leaves RSP eight
     // past a boundary at Main's entry, which is what every frame's sixteen-byte slots are planned against.

@@ -878,6 +878,118 @@ TEST_CASE("native object writer stamps the target architecture into every format
     REQUIRE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error));
 }
 
+TEST_CASE("ELF dynamic linker starts read-only and writable data on their recorded alignment") {
+    // The dynamic layout packs .text, .rodata, the GOT and .data back to back, so each start depends on what precedes
+    // it. Sixteen-byte tables must stay aligned whatever the code size, and with an odd GOT: sqrt and the exit the
+    // entry stub imports take five eight-byte slots.
+    for (std::size_t padding = 0; padding < 16; ++padding) {
+        CAPTURE(padding);
+        RcuFile object;
+        RcuSection text;
+        text.name = ".text";
+        text.type = RcuSecType::Text;
+        text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        text.alignment = 16;
+        text.data.assign(padding, 0x90);                                   // nop
+        text.data.insert(text.data.end(), {0xB8, 0x5A, 0x5A, 0x5A, 0x5A}); // mov eax, marker
+        const auto leaWide = static_cast<std::uint32_t>(text.data.size());
+        text.data.insert(text.data.end(), {0x48, 0x8D, 0x05, 0, 0, 0, 0}); // lea rax, [rip + Wide]
+        const auto leaSlot = static_cast<std::uint32_t>(text.data.size());
+        text.data.insert(text.data.end(), {0x48, 0x8D, 0x0D, 0, 0, 0, 0}); // lea rcx, [rip + Slot]
+        const auto callSqrt = static_cast<std::uint32_t>(text.data.size());
+        text.data.insert(text.data.end(), {0xE8, 0, 0, 0, 0, 0x31, 0xC0, 0xC3}); // call sqrt; xor eax, eax; ret
+        text.relocs = {{leaWide + 3, 1, RcuRelType::Rel32, 0},
+                       {leaSlot + 3, 2, RcuRelType::Rel32, 0},
+                       {callSqrt + 1, 3, RcuRelType::Rel32, 0}};
+        const auto textSize = static_cast<std::uint32_t>(text.data.size());
+        object.sections.push_back(std::move(text));
+
+        RcuSection rodata;
+        rodata.name = ".rodata";
+        rodata.type = RcuSecType::RoData;
+        rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+        rodata.alignment = 16;
+        rodata.data.assign(32, 0);
+        rodata.data[0] = 0x77;
+        for (std::size_t i = 16; i < 32; ++i) {
+            rodata.data[i] = static_cast<std::uint8_t>(0xA0 + i);
+        }
+        object.sections.push_back(std::move(rodata));
+
+        RcuSection data;
+        data.name = ".data";
+        data.type = RcuSecType::Data;
+        data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        data.alignment = 16;
+        data.data.assign(32, 0x33);
+        object.sections.push_back(std::move(data));
+
+        object.symbols.push_back({"Main", "int", 0, textSize, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        object.symbols.push_back({"Wide", "", 16, 16, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+        object.symbols.push_back({"Slot", "", 16, 16, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
+        object.symbols.push_back(
+            {"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        const auto output = std::filesystem::temp_directory_path() / "rux-elf-dynamic-data-alignment-test";
+        std::error_code ec;
+        std::filesystem::remove(output, ec);
+        Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
+                      Target::Arch::X86_64);
+        const bool linked = linker.Link(output);
+        CAPTURE(linker.Errors().empty() ? std::string{} : linker.Errors().front().message);
+        REQUIRE(linked);
+        std::ifstream stream(output, std::ios::binary);
+        REQUIRE(stream.is_open());
+        const ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+        stream.close();
+        std::filesystem::remove(output, ec);
+        REQUIRE(!image.NeededLibraries().empty());
+
+        constexpr std::array marker = {std::uint8_t{0xB8}, std::uint8_t{0x5A}, std::uint8_t{0x5A}, std::uint8_t{0x5A},
+                                       std::uint8_t{0x5A}, std::uint8_t{0x48}, std::uint8_t{0x8D}, std::uint8_t{0x05}};
+        const auto found = std::ranges::search(image.bytes, marker);
+        REQUIRE_FALSE(found.empty());
+        const auto markerOffset = static_cast<std::uint64_t>(found.begin() - image.bytes.begin());
+        const auto addressOf = [&](const std::uint64_t fileOffset) -> std::optional<std::uint64_t> {
+            for (const auto &segment : image.Segments()) {
+                if (segment.type == 1 && fileOffset >= segment.offset &&
+                    fileOffset < segment.offset + segment.fileSize) {
+                    return segment.address + (fileOffset - segment.offset);
+                }
+            }
+            return std::nullopt;
+        };
+        const auto fileOffsetOf = [&](const std::uint64_t address) -> std::optional<std::uint64_t> {
+            for (const auto &segment : image.Segments()) {
+                if (segment.type == 1 && address >= segment.address && address < segment.address + segment.fileSize) {
+                    return segment.offset + (address - segment.address);
+                }
+            }
+            return std::nullopt;
+        };
+        const auto ripTarget = [&](const std::uint64_t instructionOffset) -> std::optional<std::uint64_t> {
+            const auto site = addressOf(instructionOffset);
+            if (!site) {
+                return std::nullopt;
+            }
+            const auto displacement = static_cast<std::int32_t>(image.Read32(instructionOffset + 3));
+            return *site + 7 + static_cast<std::int64_t>(displacement);
+        };
+
+        const auto wide = ripTarget(markerOffset + 5);
+        const auto slot = ripTarget(markerOffset + 12);
+        REQUIRE(wide.has_value());
+        REQUIRE(slot.has_value());
+        CHECK(*wide % 16 == 0);
+        CHECK(*slot % 16 == 0);
+        const auto wideOffset = fileOffsetOf(*wide);
+        REQUIRE(wideOffset.has_value());
+        for (std::size_t i = 0; i < 16; ++i) {
+            CHECK(image.bytes[*wideOffset + i] == static_cast<std::uint8_t>(0xB0 + i));
+        }
+    }
+}
+
 TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     NativeObject object;
     object.name = "Library.o";

@@ -68,9 +68,9 @@ void WriteStringCommand(Buf &commands, const std::uint32_t command, const std::u
 }
 
 /// Convert an alignment in bytes to the log2 form Mach-O section headers store.
-std::uint32_t AlignmentPower(const std::uint32_t alignment) {
+std::uint32_t AlignmentPower(const std::uint64_t alignment) {
     std::uint32_t power = 0;
-    for (std::uint32_t value = alignment; value > 1; value >>= 1U) {
+    for (std::uint64_t value = alignment; value > 1; value >>= 1U) {
         ++power;
     }
     return power;
@@ -190,12 +190,15 @@ ImageLayout ImageLayoutBuilder::Plan(const ImageLayoutRequest &request) {
         return sum;
     };
 
-    const auto textOffset = align(kMachHeaderSize + commandsSize, request.fileAlignment, "text offset");
+    const auto commandsEnd = align(kMachHeaderSize + commandsSize, request.fileAlignment, "text offset");
+    const auto textOffset = commandsEnd ? align(*commandsEnd, request.textAlignment, "text offset") : std::nullopt;
     const auto textEnd = textOffset ? add(*textOffset, request.textSize, "text size") : std::nullopt;
     const auto stubOffset =
         textEnd ? align(*textEnd, request.instructionStubAlignment, "instruction-stub offset") : std::nullopt;
     const auto stubEnd = stubOffset ? add(*stubOffset, request.stubSize, "instruction-stub size") : std::nullopt;
-    const std::uint64_t constantAlignment = request.writableConstantSegment ? request.vmPageAlignment : 16;
+    const std::uint64_t constantAlignment = request.writableConstantSegment
+                                              ? std::max(request.vmPageAlignment, request.constantDataAlignment)
+                                              : request.constantDataAlignment;
     const auto constantDataOffset = stubEnd ? align(*stubEnd, constantAlignment, "constant-data offset") : std::nullopt;
     const auto textSegmentFileEnd =
         request.writableConstantSegment
@@ -216,7 +219,9 @@ ImageLayout ImageLayoutBuilder::Plan(const ImageLayoutRequest &request) {
             : (textSegmentFileEnd ? align(*textSegmentFileEnd, request.vmPageAlignment, "data segment") : std::nullopt);
     const auto pointerEnd =
         dataSegmentOffset ? add(*dataSegmentOffset, request.importPointerSize, "import-pointer size") : std::nullopt;
-    const auto dataOffset = pointerEnd ? align(*pointerEnd, 8, "writable-data offset") : std::nullopt;
+    const auto dataOffset = pointerEnd ? align(*pointerEnd, std::max<std::uint64_t>(request.writableDataAlignment, 8),
+                                               "writable-data offset")
+                                       : std::nullopt;
     const auto dataEnd = dataOffset ? add(*dataOffset, request.writableDataSize, "writable-data size") : std::nullopt;
     const auto dataSegmentVMSize =
         dataSegmentOffset && dataEnd
@@ -296,7 +301,7 @@ LoadCommandLayout ImageLayoutBuilder::BuildLoadCommands(const ImageLayoutRequest
     WriteSegment(result.commands, textCommandSize, "__TEXT", request.imageBase, layout.textSegmentVMSize, 0,
                  layout.textSegmentFileEnd, 0x05, 0x05, layout.textSectionCount);
     WriteSection(result.commands, "__text", "__TEXT", layout.textAddress, request.textSize,
-                 static_cast<std::uint32_t>(layout.textOffset), 4, 0x8000'0400);
+                 static_cast<std::uint32_t>(layout.textOffset), AlignmentPower(request.textAlignment), 0x8000'0400);
     if (request.dynamic) {
         WriteSection(result.commands, "__stubs", "__TEXT", layout.stubAddress, request.stubSize,
                      static_cast<std::uint32_t>(layout.stubOffset), AlignmentPower(request.instructionStubAlignment),
@@ -310,7 +315,8 @@ LoadCommandLayout ImageLayoutBuilder::BuildLoadCommands(const ImageLayoutRequest
                      0x03, 1, 0x10);
     }
     WriteSection(result.commands, "__const", constantSegmentName, layout.constantDataAddress, request.constantDataSize,
-                 static_cast<std::uint32_t>(layout.constantDataOffset), 4, 0);
+                 static_cast<std::uint32_t>(layout.constantDataOffset), AlignmentPower(request.constantDataAlignment),
+                 0);
 
     WriteSegment(result.commands, dataCommandSize, "__DATA", layout.dataSegmentAddress, layout.dataSegmentVMSize,
                  layout.importPointerOffset, layout.dataSegmentFileSize, 0x03, 0x03, layout.dataSectionCount);
@@ -320,7 +326,8 @@ LoadCommandLayout ImageLayoutBuilder::BuildLoadCommands(const ImageLayoutRequest
                      static_cast<std::uint32_t>(request.importCount));
     }
     WriteSection(result.commands, "__data", "__DATA", layout.sectionBases.data, request.writableDataSize,
-                 static_cast<std::uint32_t>(layout.writableDataOffset), 0, 0);
+                 static_cast<std::uint32_t>(layout.writableDataOffset),
+                 AlignmentPower(std::max<std::uint64_t>(request.writableDataAlignment, 8)), 0);
 
     WriteSegment(result.commands, kSegmentCommandSize, "__LINKEDIT", layout.linkEditAddress, linkEdit.vmSize,
                  layout.linkEditOffset, linkEdit.fileSize, 0x01, 0x01, 0);

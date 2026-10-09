@@ -768,9 +768,15 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     off = relaOff + relaSz;
     const uint64_t pltOff = alignUp(off, 16);
     off = pltOff + pltSz;
-    const uint64_t textOff = alignUp(off, 16);
+    // Each merged section starts on the strictest alignment any input section
+    // recorded: the layout padded every object's section to its own alignment
+    // relative to the merged start, so that start has to honour all of them.
+    const auto sectionAlignment = [&](const RcuMergedSection section, const uint64_t minimum) {
+        return std::max<uint64_t>(layout.Alignment(section), minimum);
+    };
+    const uint64_t textOff = alignUp(off, sectionAlignment(RcuMergedSection::Text, 16));
     off = textOff + textBuf.size();
-    const uint64_t rodataOff = alignUp(off, 8);
+    const uint64_t rodataOff = alignUp(off, sectionAlignment(RcuMergedSection::RoData, 8));
     off = rodataOff + rodataBuf.size();
     const uint64_t rxFileEnd = off;
 
@@ -779,7 +785,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     off = dynamicOff + dynSz;
     const uint64_t gotOff = alignUp(off, 8);
     off = gotOff + gotSz;
-    const uint64_t dataOff = alignUp(off, 8);
+    const uint64_t dataOff = alignUp(off, sectionAlignment(RcuMergedSection::Data, 8));
     // The RW segment's file size must not claim bytes past the last one we
     // actually write (an empty .data would leave the trailing alignment gap
     // unwritten).
