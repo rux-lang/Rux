@@ -245,6 +245,44 @@ TEST_CASE("variant representation casts are rejected in every direction") {
     CHECK_EQ(diagnostics[3].message, "cannot cast variant 'Value' to variant 'Value'");
 }
 
+TEST_CASE("a pointer to a variant or enum casts by the pointer rules") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Value { Empty, Number(int) }
+        enum Color { Red, Green }
+        union Bits { word: uint64, half: uint32 }
+        struct Point { x: int32; }
+        func Casts(value: *var Value, color: *Color, bits: *Bits, pair: *(int32, int32), address: uint) {
+            let a: uint = value as uint;
+            let b: *opaque = value as *opaque;
+            let c: *uint8 = value as *uint8;
+            let d: *Point = value as *Point;
+            let e: *Value = address as *Value;
+            let f: *var Value = b as *var Value;
+            let g: *opaque = color as *opaque;
+            let h: *Value = color as *Value;
+            let i: *Color = c as *Color;
+            let j: uint = bits as uint;
+            let k: *Bits = address as *Bits;
+            let l: uint = pair as uint;
+            let m: *(int32, int32) = address as *(int32, int32);
+        }
+    )");
+    for (const SemanticDiagnostic &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+        CHECK(diagnostic.severity != Diagnostic::Severity::Error);
+    }
+
+    // The value a reference names is still the variant, and a variant value still has no scalar representation.
+    const auto rejected = AnalyzeSource(R"(
+        variant Value { Empty, Number(int) }
+        func ToScalar(value: &Value) -> uint { return value as uint; }
+        func ToPointer(value: Value) -> *opaque { return value as *opaque; }
+    )");
+    REQUIRE_EQ(rejected.size(), 2);
+    CHECK_EQ(rejected[0].message, "cannot cast variant '&Value' to scalar type 'uint'");
+    CHECK_EQ(rejected[1].message, "cannot cast variant 'Value' to scalar type '*opaque'");
+}
+
 TEST_CASE("variants have structural equality but no built-in ordering") {
     const auto diagnostics = AnalyzeSource(R"(
         variant Value { Empty, Number(int) }

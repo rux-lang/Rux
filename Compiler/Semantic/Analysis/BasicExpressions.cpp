@@ -500,29 +500,32 @@ bool AnalysisContext::CastTypesAreCompatible(const TypeRef &operand, const TypeR
         return IsAddressValue(operand) && IsAddressValue(target);
     }
 
-    const std::string operandName = NamedBaseTypeName(operand);
-    const std::string targetName = NamedBaseTypeName(target);
-    const CaseTypeDeclaration operandCase = operandName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(operandName);
-    const CaseTypeDeclaration targetCase = targetName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(targetName);
+    const CaseTypeDeclaration operandCase = CastCaseType(operand);
+    const CaseTypeDeclaration targetCase = CastCaseType(target);
     if ((operandCase && operandCase.IsVariant()) || (targetCase && targetCase.IsVariant())) {
         return false;
     }
     if (operandCase || targetCase) {
         if (operandCase && targetCase) {
-            return operandName == targetName;
+            return NamedBaseTypeName(operand) == NamedBaseTypeName(target);
         }
         return operandCase ? target.IsInteger() : operand.IsInteger();
     }
     return IsCastValue(operand) && IsCastValue(target);
 }
 
+AnalysisContext::CaseTypeDeclaration AnalysisContext::CastCaseType(const TypeRef &type) const {
+    const TypeRef &value = type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? type.inner.front() : type;
+    if (value.kind != TypeRef::Kind::Named) {
+        return {};
+    }
+    return CaseTypeNamed(BaseTypeName(value.name));
+}
+
 void AnalysisContext::CheckCast(const TypeRef &operand, const TypeRef &target, const SourceLocation location) {
     if (!CastTypesAreCompatible(operand, target)) {
-        const std::string operandName = NamedBaseTypeName(operand);
-        const std::string targetName = NamedBaseTypeName(target);
-        const CaseTypeDeclaration operandCase =
-            operandName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(operandName);
-        const CaseTypeDeclaration targetCase = targetName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(targetName);
+        const CaseTypeDeclaration operandCase = CastCaseType(operand);
+        const CaseTypeDeclaration targetCase = CastCaseType(target);
         if ((operandCase && operandCase.IsVariant()) || (targetCase && targetCase.IsVariant())) {
             const std::string sourceKind = operandCase && operandCase.IsVariant() ? "variant" : "scalar type";
             const std::string destinationKind = targetCase && targetCase.IsVariant() ? "variant" : "scalar type";

@@ -93,5 +93,16 @@ func Main() -> int {
     Assert((match neighbour { .Low => 10, .High => 20 }) == 10, "Expected a tag to ignore its neighbours");
     Assert(before == -1i64 && after == -1i64, "Expected the neighbours themselves to be intact");
 
+    // A pointer to an enum is an address, not the enum's representation, so it casts by the pointer rules: to an
+    // untyped or byte pointer and back, which an enum value itself never does.
+    var color = Color::Blue;
+    let untyped = @color as *opaque;
+    let bytes = @color as *uint8;
+    Assert(untyped as uint == @color as uint && bytes as uint == @color as uint,
+           "Expected every cast of an enum's address to be one address");
+    Assert(*bytes == 20u8, "Expected a byte pointer to an enum to read its uint8 tag");
+    *(untyped as *var Color) = Color::Red;
+    Assert(color == Color::Red, "Expected a write through a pointer cast back from an untyped one to reach the enum");
+
     return 0;
 }

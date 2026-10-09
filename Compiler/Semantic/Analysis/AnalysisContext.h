@@ -788,6 +788,9 @@ private:
 
     /// Resolve a scoped case-bearing type while retaining whether its source declaration used `enum` or `variant`.
     [[nodiscard]] CaseTypeDeclaration CaseTypeNamed(const std::string &name) const;
+    /// The enum or variant a cast operand or target is a value of, read through a reference but never a pointer: a
+    /// pointer is an address whatever it points at, so it casts by the pointer rules alone.
+    [[nodiscard]] CaseTypeDeclaration CastCaseType(const TypeRef &type) const;
 
     /// Report a suffixed integer literal whose magnitude the suffix's own type cannot hold.
     ///

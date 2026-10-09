@@ -54,6 +54,11 @@ variant Outcome<T, E> {
     Error(E)
 }
 
+variant WideMaybe {
+    None,
+    Some(int128)
+}
+
 func MakeParseError() -> Outcome<int32, ParseError> {
     return Outcome::Error<int32, ParseError>(ParseError::InvalidCharacter(2i32));
 }
@@ -255,6 +260,37 @@ func CheckEquality() {
     Assert(matched, "a nested variant payload bound by match compares through its borrowed storage");
 }
 
+func ReadWide(value: WideMaybe) -> int128 {
+    return match value {
+        .None => -1i128,
+        .Some(number) => number
+    };
+}
+
+// A pointer to a variant is an address like any other, so it casts to an integer, an untyped or byte pointer and back
+// by the rules a pointer to a struct or an enum follows. Only a variant value itself has no scalar representation.
+func CheckPointerCasts() {
+    let payload = (1i128 << 100) + 7i128;
+    var wide = WideMaybe::Some(payload);
+    let address = @wide as uint;
+    let untyped = @wide as *opaque;
+    let bytes = @wide as *uint8;
+    Assert(untyped as uint == address && bytes as uint == address, "every cast of a variant's address is one address");
+    Assert(address % alignof(WideMaybe) == 0u, "the address is the variant's own, aligned for its wide payload");
+
+    let back = address as *WideMaybe;
+    Assert(ReadWide(*back) == payload, "a variant read through a pointer cast back from an integer keeps its payload");
+    let writable = untyped as *var WideMaybe;
+    *writable = WideMaybe::None;
+    Assert(ReadWide(wide) == -1i128, "a write through a pointer cast back from an untyped one reaches the variant");
+    *(bytes as *var WideMaybe) = WideMaybe::Some(42i128);
+    Assert(ReadWide(wide) == 42i128, "a byte pointer to a variant converts back to the variant's pointer");
+
+    let parcel = Parcel::Pair(20i32, 22i32);
+    let parcelAddress = @parcel as uint;
+    Assert(UnwrapCount(*(parcelAddress as *Parcel)) == 42i64, "a narrow variant round-trips through its address");
+}
+
 func Main() -> int {
     CheckUnitCases();
     CheckGenericCases();
@@ -265,5 +301,6 @@ func Main() -> int {
     CheckMixedLayouts();
     CheckNestedCases();
     CheckEquality();
+    CheckPointerCasts();
     return 0;
 }
