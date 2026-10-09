@@ -1,3 +1,4 @@
+#include "Numeric/FloatParsing.h"
 #include "Semantic/Analysis/AnalysisContext.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Model/CompilerParameters.h"
@@ -5,10 +6,41 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <format>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace Rux::SemanticDetail {
+std::optional<std::string> IntrinsicFloatConstantLiteral(const TypeRef::Kind kind, const std::string_view name) {
+    const PrimitiveInfo *primitive = FindPrimitive(kind);
+    const FloatFormat *format =
+        primitive && primitive->category == PrimitiveCategory::Float ? FindFloatFormat(primitive->bits) : nullptr;
+    if (!format) {
+        return std::nullopt;
+    }
+    if (name == "Infinity") {
+        return FormatFloatEncoding(FloatEncoding::Infinity(*format));
+    }
+    if (name == "NaN") {
+        return FormatFloatEncoding(FloatEncoding::QuietNaN(*format));
+    }
+    if (name == "Max" || name == "Lowest") {
+        return FormatFloatEncoding(FloatEncoding::MaxFinite(*format, name == "Lowest"));
+    }
+    if (name == "MinPositive") {
+        return FormatFloatEncoding(FloatEncoding::MinPositiveNormal(*format));
+    }
+    if (name == "Epsilon") {
+        // One unit in the last place of one: a power of two the hexadecimal parser holds exactly at every width.
+        const auto epsilon =
+            ParseFloatEncoding(std::format("0x1p{}", 1 - static_cast<std::int64_t>(format->precisionBits)), *format);
+        return epsilon ? std::optional{FormatFloatEncoding(*epsilon)} : std::nullopt;
+    }
+    return std::nullopt;
+}
+
 TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
     if (const auto evaluated = evaluatedAssociatedConstants.find(&declaration);
         evaluated != evaluatedAssociatedConstants.end()) {
@@ -40,10 +72,9 @@ TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
     Define(symbol);
     CheckConstDecl(declaration);
     const TypeRef type = currentScope->Lookup(declaration.name)->type;
-    if (!declaration.intrinsicName.empty() &&
-        (!(type.kind == TypeRef::Kind::Float32 || type.kind == TypeRef::Kind::Float64) ||
-         (declaration.name != "Infinity" && declaration.name != "NaN"))) {
-        EmitError(declaration.location, "intrinsic associated constants support only floating-point Infinity and NaN");
+    if (!declaration.intrinsicName.empty() && !IntrinsicFloatConstantLiteral(type.kind, declaration.name)) {
+        EmitError(declaration.location, "intrinsic associated constants support only floating-point Infinity, NaN, "
+                                        "Max, Lowest, MinPositive and Epsilon");
     }
     if (!declaration.intrinsicName.empty()) {
         const auto separator = declaration.intrinsicName.find('.');
@@ -55,7 +86,7 @@ TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
     if (type.IsInteger() || type.IsFloat() || type.IsBool() || type.IsChar()) {
         std::string literal;
         if (!declaration.intrinsicName.empty()) {
-            literal = declaration.name == "Infinity" ? "inf" : "nan";
+            literal = IntrinsicFloatConstantLiteral(type.kind, declaration.name).value_or("");
         }
         else {
             const auto packageModules = [&](const std::string_view name) {

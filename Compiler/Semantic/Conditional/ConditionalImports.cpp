@@ -242,7 +242,9 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
     if (!constant.intrinsicName.empty()) {
         const auto *named = constant.type ? dynamic_cast<const NamedTypeExpr *>(constant.type->get()) : nullptr;
         const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
-        if (type && (type->kind == TypeRef::Kind::Float32 || type->kind == TypeRef::Kind::Float64)) {
+        // Conditions compare floats as host doubles. The special values exist at every width, but the finite limits
+        // of the wider widths do not fit in a double, so only the special values are answered here.
+        if (type && type->IsFloat()) {
             if (constant.name == "Infinity") {
                 return Value{std::numeric_limits<double>::infinity()};
             }

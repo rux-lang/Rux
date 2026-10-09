@@ -928,6 +928,12 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     emitArgumentTypeError(callableName, i, argType, paramType, parameter);
                 }
             }
+            // A C-variadic argument is passed as C passes it; a Rux variadic overload is resolved elsewhere.
+            if (calleeType.isVariadic && !(calleeSymbol && !calleeSymbol->funcOverloads.empty())) {
+                for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
+                    ValidateCAbiType(argTypes[i], e->args[i]->location, "a C-variadic argument");
+                }
+            }
             if (callAccepted) {
                 const std::vector<TypeRef> parameterTypes(calleeType.inner.begin(),
                                                           calleeType.inner.begin() + paramCount);

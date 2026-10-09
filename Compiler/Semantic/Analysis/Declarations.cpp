@@ -44,6 +44,12 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
     if (!retType.IsOpaque() && !retType.IsUnknown()) {
         ValidateStoredType(retType, d.returnType ? d.returnType->get()->location : d.location, "function return type");
     }
+    // A function with an explicit '#Abi' is called from foreign code, so its signature is held to the C mapping too.
+    const bool foreignAbi = d.callConv != CallingConvention::Default;
+    if (foreignAbi && d.returnType) {
+        ValidateCAbiType(retType, d.returnType->get()->location,
+                         std::format("the return value of '#Abi' function '{}'", d.name));
+    }
 
     auto savedRet = currentReturnType;
     currentReturnType = retType;
@@ -87,6 +93,10 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         sym.type = param.isVariadic ? TypeRef::MakeSlice(ResolveType(*param.type)) : ResolveType(*param.type);
         if (sym.type.kind != TypeRef::Kind::Reference) {
             ValidateStoredType(sym.type, param.location, "function parameter");
+        }
+        if (foreignAbi) {
+            ValidateCAbiType(sym.type, param.location,
+                             std::format("parameter '{}' of '#Abi' function '{}'", param.name, d.name));
         }
         // A format string's placeholders are counted in the bytes of a UTF-8 literal, so the attribute belongs only
         // on the parameter type such a literal is passed as.

@@ -38,6 +38,19 @@ struct AnalysisInputs {
 /// Whether a pattern binds anything a value can be taken out into: a looked-at value is not taken apart.
 [[nodiscard]] bool PatternBindsValue(const Pattern &pattern);
 
+/// The exact hexadecimal literal of the intrinsic associated constant `name` of the float type `kind`: `Infinity`,
+/// a quiet `NaN`, the largest finite `Max` and its negation `Lowest`, the smallest normal `MinPositive`, and `Epsilon`,
+/// the gap between one and the next value. The compiler supplies these for every width, so a package never has to
+/// spell a decimal for a width whose limits no host type holds.
+///
+/// @return nullopt when `kind` is not a float or `name` is not a constant the compiler supplies
+[[nodiscard]] std::optional<std::string> IntrinsicFloatConstantLiteral(TypeRef::Kind kind, std::string_view name);
+
+/// Whether `type` crosses a C ABI boundary the way C passes it. Only float32 and float64 of the floats do: the other
+/// widths are passed by the compiler's own convention, which matches no C type such as `_Float16`, `long double` or
+/// `__float128`. Every other type is left to the checks that already hold for it.
+[[nodiscard]] bool HasCAbiMapping(const TypeRef &type) noexcept;
+
 class AnalysisContext final {
 public:
     AnalysisContext(AnalysisInputs inputs, SemanticFacts &output);
@@ -174,6 +187,8 @@ private:
     void BeginReceiverReferenceBorrow(const CallExpr &call, const Expr &receiver, const TypeRef &referenceType);
     [[nodiscard]] bool TypeStoresReference(const TypeRef &type);
     void ValidateStoredType(const TypeRef &type, SourceLocation location, std::string_view subject);
+    /// Rejects a type that `HasCAbiMapping` refuses where it would cross a C ABI boundary as `subject`.
+    void ValidateCAbiType(const TypeRef &type, SourceLocation location, std::string_view subject);
     [[nodiscard]] BorrowSnapshot SaveBorrows() const;
     void RestoreBorrows(const BorrowSnapshot &snapshot);
     [[nodiscard]] static BorrowSnapshot MergeBorrows(std::span<const BorrowSnapshot> snapshots);

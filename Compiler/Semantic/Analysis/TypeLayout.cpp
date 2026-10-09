@@ -436,6 +436,8 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
             ValidateArrayType(*externFn->returnType->get());
             const TypeRef returnType = ResolveType(*externFn->returnType->get());
             ValidateStoredType(returnType, externFn->returnType->get()->location, "extern return type");
+            ValidateCAbiType(returnType, externFn->returnType->get()->location,
+                             std::format("the return value of extern function '{}'", externFn->name));
         }
         for (auto &p : externFn->params) {
             if (!p.isVariadic) {
@@ -444,6 +446,7 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
                 if (parameterType.kind != TypeRef::Kind::Reference) {
                     ValidateStoredType(parameterType, p.location, "extern parameter");
                 }
+                ValidateCAbiType(parameterType, p.location, std::format("extern parameter '{}'", p.name));
             }
         }
     }

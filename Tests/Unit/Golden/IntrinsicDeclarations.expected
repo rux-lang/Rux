@@ -1,4 +1,4 @@
-2:9: error: intrinsic associated constants support only floating-point Infinity and NaN
+2:9: error: intrinsic associated constants support only floating-point Infinity, NaN, Max, Lowest, MinPositive and Epsilon
 2:9: error: intrinsic associated constant must have its owning floating-point type
 4:9: error: associated constant 'Bits' is already declared
 7:19: error: 'Min' not found in extend for type 'int8'

@@ -3,6 +3,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <doctest.h>
 #include <string>
 #include <unordered_map>
@@ -487,4 +488,36 @@ TEST_CASE("character constants compare decoded scalars during conditional evalua
     REQUIRE(result.diagnostics.empty());
     REQUIRE(result.value.has_value());
     CHECK(std::get<bool>(*result.value));
+}
+
+TEST_CASE("compile-time conditions answer the special values of every float width") {
+    // float128 is still reserved, but the evaluator answers from declarations alone. Its finite limits do not fit the
+    // host double that conditions compare in, so those are not answered.
+    auto parsed = ParseSource(R"(
+        extend float32 { pub intrinsic const Infinity: float32; }
+        extend float128 {
+            pub intrinsic const Infinity: float128;
+            pub intrinsic const NaN: float128;
+            pub intrinsic const Max: float128;
+        }
+        const Narrow = float32::Infinity;
+        const Huge = float128::Infinity;
+        const Invalid = float128::NaN;
+        const Limit = float128::Max;
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    evaluator.SetImports(parsed.module);
+    for (const std::string name : {"Narrow", "Huge"}) {
+        CAPTURE(name);
+        const auto value = evaluator.EvaluateConstant(name);
+        REQUIRE(value.value.has_value());
+        CHECK(std::isinf(std::get<double>(*value.value)));
+        CHECK_GT(std::get<double>(*value.value), 0.0);
+    }
+    const auto invalid = evaluator.EvaluateConstant("Invalid");
+    REQUIRE(invalid.value.has_value());
+    CHECK(std::isnan(std::get<double>(*invalid.value)));
+    CHECK_FALSE(evaluator.EvaluateConstant("Limit").value.has_value());
 }

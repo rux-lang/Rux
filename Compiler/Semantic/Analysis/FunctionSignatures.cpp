@@ -7,6 +7,22 @@
 #include <format>
 
 namespace Rux::SemanticDetail {
+bool HasCAbiMapping(const TypeRef &type) noexcept {
+    return !type.IsFloat() || type.kind == TypeRef::Kind::Float32 || type.kind == TypeRef::Kind::Float64;
+}
+
+void AnalysisContext::ValidateCAbiType(const TypeRef &type, const SourceLocation location,
+                                       const std::string_view subject) {
+    if (HasCAbiMapping(type)) {
+        return;
+    }
+    EmitError(location, std::format("{} has type '{}', which has no C ABI mapping", subject, type.ToString()),
+              {std::format("'{}' is passed by the compiler's own convention, which matches no C type such as "
+                           "'_Float16', 'long double' or '__float128'",
+                           type.ToString())},
+              "convert the value to 'float32' or 'float64' at the boundary, or pass a pointer to it");
+}
+
 TypeRef AnalysisContext::MakeFuncType(const std::vector<Param> &parameters,
                                       const std::optional<TypeExprPtr> &returnType,
                                       const std::vector<std::string> &typeParameters, const bool cVariadic) {

@@ -1,6 +1,9 @@
 #include "Formatter/Formatter.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Numeric/FloatParsing.h"
+#include "Numeric/SoftwareFloat.h"
+#include "Semantic/Analysis/AnalysisContext.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Model/CompilerParameters.h"
 #include "Semantic/SemanticAnalyzer.h"
@@ -8,6 +11,7 @@
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <doctest.h>
 #include <filesystem>
@@ -15,6 +19,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -134,6 +139,142 @@ func Invalid() -> float32 { return float32::NaN; }
     AstToHirLowering lowering(model);
     (void)lowering.Generate();
     CHECK(lowering.Diagnostics().empty());
+}
+
+namespace {
+constexpr std::array<std::string_view, 6> FloatLimitNames{"Infinity", "NaN", "Max", "Lowest", "MinPositive", "Epsilon"};
+
+std::string FloatLimit(const TypeRef::Kind kind, const std::string_view name) {
+    const auto literal = SemanticDetail::IntrinsicFloatConstantLiteral(kind, name);
+    REQUIRE(literal);
+    return *literal;
+}
+} // namespace
+
+TEST_CASE("the compiler supplies exact float limits for every width") {
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        if (primitive.category != PrimitiveCategory::Float) {
+            CHECK_FALSE(SemanticDetail::IntrinsicFloatConstantLiteral(primitive.kind, "Max"));
+            continue;
+        }
+        CAPTURE(primitive.name);
+        const FloatFormat &format = *FindFloatFormat(primitive.bits);
+        const auto encoded = [&](const std::string_view name) {
+            const auto encoding = ParseFloatEncoding(FloatLimit(primitive.kind, name), format);
+            REQUIRE(encoding);
+            return *encoding;
+        };
+        CHECK_EQ(encoded("Infinity").Bits(), FloatEncoding::Infinity(format).Bits());
+        CHECK_EQ(encoded("NaN").Bits(), FloatEncoding::QuietNaN(format).Bits());
+        CHECK_EQ(encoded("Max").Bits(), FloatEncoding::MaxFinite(format).Bits());
+        CHECK_EQ(encoded("Lowest").Bits(), FloatEncoding::MaxFinite(format, true).Bits());
+        CHECK_EQ(encoded("MinPositive").Bits(), FloatEncoding::MinPositiveNormal(format).Bits());
+        // Epsilon is the step from one up to the next value, measured by the same arithmetic that folds constants.
+        const FloatEncoding one = *ParseFloatEncoding("1", format);
+        const FloatEncoding next =
+            FloatEncoding::FromBits(format, one.Bits().Added(WideInteger::FromUnsigned(1, format.valueBits)));
+        CHECK_EQ(encoded("Epsilon").Bits(), SubtractFloat(next, one).Bits());
+        CHECK_FALSE(SemanticDetail::IntrinsicFloatConstantLiteral(primitive.kind, "Min"));
+    }
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float8, "Max"), "0x1.ep7");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float8, "Epsilon"), "0x1.0p-3");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float16, "Max"), "0x1.ffcp15");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float32, "Max"), "0x1.fffffep127");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float32, "Lowest"), "-0x1.fffffep127");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float64, "MinPositive"), "0x1.0p-1022");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float64, "Epsilon"), "0x1.0p-52");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float80, "Epsilon"), "0x1.0p-63");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float80, "Max"), "0x1.fffffffffffffffep16383");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float128, "MinPositive"), "0x1.0p-16382");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float512, "Infinity"), "infinity");
+    CHECK_EQ(FloatLimit(TypeRef::Kind::Float512, "NaN"), "nan");
+}
+
+TEST_CASE("float32 and float64 limits declared as intrinsics fold to exact literals") {
+    std::string source;
+    for (const std::string type : {"float32", "float64"}) {
+        source += "extend " + type + " {\n";
+        for (const std::string_view name : FloatLimitNames) {
+            source += std::format("    pub intrinsic const {}: {};\n", name, type);
+        }
+        source += "}\n";
+    }
+    source += R"(
+const Largest: float64 = float64::Max;
+func Limits() -> float32 { return float32::Max + float32::Lowest + float32::MinPositive * float32::Epsilon; }
+func Special() -> float64 { return float64::Infinity - float64::NaN + Largest + float64::Epsilon; }
+)";
+    auto parsed = ParseIntrinsicSource(source);
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+    for (const std::size_t index : {0U, 1U}) {
+        const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[index].get());
+        REQUIRE(extension);
+        const TypeRef::Kind kind = index == 0 ? TypeRef::Kind::Float32 : TypeRef::Kind::Float64;
+        for (const auto &constant : extension->constants) {
+            CAPTURE(constant->name);
+            const auto *value = model.TryGetConstantValue(*constant);
+            REQUIRE(value);
+            CHECK_EQ(value->type.kind, kind);
+            CHECK_EQ(value->literal, FloatLimit(kind, constant->name));
+        }
+    }
+    AstToHirLowering lowering(model);
+    (void)lowering.Generate();
+    CHECK(lowering.Diagnostics().empty());
+}
+
+TEST_CASE("an intrinsic float constant the compiler does not supply is rejected") {
+    auto parsed = ParseIntrinsicSource("extend float64 { pub intrinsic const Min: float64; }");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE_FALSE(model.diagnostics.empty());
+    CHECK_EQ(model.diagnostics[0].message, "intrinsic associated constants support only floating-point Infinity, NaN, "
+                                           "Max, Lowest, MinPositive and Epsilon");
+}
+
+TEST_CASE("only float32 and float64 of the floats cross a C ABI boundary") {
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        CAPTURE(primitive.name);
+        const bool mapped =
+            primitive.category != PrimitiveCategory::Float || primitive.bits == 32 || primitive.bits == 64;
+        CHECK_EQ(SemanticDetail::HasCAbiMapping(*PrimitiveTypeFromName(primitive.name)), mapped);
+    }
+    CHECK(SemanticDetail::HasCAbiMapping(TypeRef::MakeUnknown()));
+}
+
+TEST_CASE("C ABI signatures accept native floats and reject other widths as C-variadic arguments") {
+    auto parsed = ParseIntrinsicSource(R"(
+#Link("msvcrt.dll")
+extern {
+    func printf(format: *char8, ...) -> int32;
+    func ldexp(value: float64, exponent: int32) -> float64;
+    func ldexpf(value: float32, exponent: int32) -> float32;
+}
+#Abi(.C)
+func Callback(value: float32) -> float64 { return value as float64; }
+func Main() {
+    printf(null, 1.5f32, 2.5, ldexp(1.0, 2i32), ldexpf(1.0f32, 2i32));
+    printf(null, 1.0f16);
+}
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    // float16 is still reserved, so its literal is refused as well; once it is implemented only the ABI error remains.
+    std::size_t abiErrors = 0;
+    for (const auto &diagnostic : model.diagnostics) {
+        CAPTURE(diagnostic.message);
+        if (diagnostic.message.contains("reserved but is not implemented")) {
+            continue;
+        }
+        REQUIRE_EQ(diagnostic.message, "a C-variadic argument has type 'float16', which has no C ABI mapping");
+        CHECK_EQ(diagnostic.location.line, 12);
+        CHECK_EQ(diagnostic.help, std::optional<std::string>("convert the value to 'float32' or 'float64' at the "
+                                                             "boundary, or pass a pointer to it"));
+        ++abiErrors;
+    }
+    CHECK_EQ(abiErrors, 1);
 }
 
 TEST_CASE("a constant two imported extensions declare is ambiguous where it is used") {
