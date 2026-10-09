@@ -241,6 +241,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Changed
 
+- **Wide primitive layout** — primitives with at least 16 bytes of storage have alignment 16 everywhere, and `sizeof` and `alignof` agree with generated code. A struct containing `uint8` followed by `int128` is 32 bytes rather than the previously reported 24; HIR layout fallback follows the same alignment contract.
+- **Software floats at C boundaries** — by-value structs and unions containing `float8`, `float16`, `float80`, `float128`, `float256` or `float512`, including nested fields, are rejected in extern and C ABI signatures and C-variadic arguments.
+- **Array views preserve element width** — viewing or spreading a named array as a slice of a wider element type is rejected instead of letting the callee read elements with the wrong width.
+
 - **CI/CD**: Consolidate manual tool preparation into `PrepareTools.yml` with All, FreeBSD, and Native selections, automatic release prefixes, and FreeBSD checkpoint resume. Reuse the internal `Actions/PrepareFreeBSD` composite action and report an explicit error when the wrong branch is selected.
 
 - **CI/CD**: Restore cached native toolchains and prepare validated FreeBSD images outside push/PR jobs; ordinary FreeBSD CI no longer builds CMake from source. Split architecture dependencies and clang-tidy analysis to reduce waiting, preserve compiler caches before tests, and consolidate CI script entry points. Prepared images require initial publication and manifest promotion.
@@ -457,6 +461,25 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 - **`Core::Option`, `Core::Result`, and `Core::Unit` are removed** — absence, failure, and completion are the native `T?`, `T ! E`, and `()`, and nothing in the workspace uses the library variants any more, so they and their `IsSome`/`IsNone`/`IsSuccess`/`IsError`/`ValueOr`/`TryIntoValue`/`TryIntoError` helpers are gone. `HashSet` and `TreeSet` keep native `()` as the value of the table or tree beneath them. A program that still wants an Option- or Result-shaped variant declares its own.
 
 ### Fixed
+
+- **Explicit receivers and variadic overloads** — `Type::Method(receiver, args...)` lowers the receiver and following arguments in order, including borrowed and mutable receivers, defaults and spreads. Variadic overloads inspect their element types, fixed overloads filled exactly win tied conversions, and `Self...` requirements retain their concrete generic implementation types.
+- **Native object sections and zero-fill storage** — AArch64 Mach-O relocations address symbols, Mach-O object sections have distinct aligned address ranges, and native object symbols retain the correct physical section index. COFF, ELF and Mach-O preserve zero-fill allocation; relocation sites in zero-fill data become initialized storage, and PE images map `.bss` and resolve its addresses.
+- **Scalar module constant storage** — scalar constants emit their full typed bytes at their natural alignment in read-only storage. Repeated `@C` expressions address the same symbol, including across packages, and assembly output agrees with both native back ends.
+- **Wide conditional compilation** — `when` retains floating-point precision and range at every width, including finite intrinsic limits, and folds casts into wide integers and characters without truncating through a host word.
+- **Character patterns and constant arrays** — range patterns accept every character width, and constant arrays accept inline scalar casts and repeated cast elements.
+- **Character runtime checks** — invalid integer and character casts stop with `Panic: invalid character cast` before narrowing, and character division and remainder by zero report the same panic as integer operations. Optimizations preserve these checks when an expression's result is unused.
+- **Narrow float formatting ties** — shortest decimal formatting rounds exact ties to an even final digit, so `0.046875f16` prints as `0.04688`; exhaustive float8 and float16 vectors cover both signs.
+- **Extreme decimal literals** — parsing decimal values near the limits of `float512` uses bounded outward-rounded intervals, retaining exact rounding with an exact fallback when the interval is inconclusive.
+- **Extreme wide-float formatting** — exact decimal conversion uses Karatsuba multiplication for large balanced integers, making `float512::Max` and `MinPositive` practical to render. Golden tests check their shortest strings against an independently computed reference.
+- **Concurrent wide-scalar tests** — native execution tests reserve unique temporary directories so simultaneous test processes cannot overwrite one another's executables.
+
+- **C variadic calling conventions** — narrow integers, booleans and characters receive C's default promotion to `int`, and `float32` promotes to `double`, on every target. Windows x64 floating-point tails no longer print garbage, and calls through function values preserve their variadic tails on Apple and Windows AArch64.
+- **x86-64 assembly output** — `--emit asm` matches object emission for Win64 wide arguments and hidden results, software-float constants and negation, NaN-aware comparisons, wide integers, System V calls, bit casts and `asm func` bodies.
+- **Variadic methods and generic calls** — methods accept typed variadic arguments, spreads and omitted defaults. Generic variadic functions infer type arguments from elements, and `#Format()` methods check literal placeholders.
+- **Variant and enum pointer casts** — pointers to variants and enums follow the same cast rules as other pointers.
+- **Constant-table and entry-point alignment** — linked module tables of wide primitives retain 16-byte alignment on every target. Mach-O headers describe actual section alignment, COFF sections carry alignment with a diagnostic above 8 KB, and freestanding macOS x86-64 entry points align the stack before calling `Main`.
+- **Exact floating-point remainder** — `float32` and `float64` `%` compute the exact truncating remainder on every target and agree with constant folding, including large quotients that previously overflowed the implementation's integer conversion. x86-64 uses `fprem` and AArch64 uses the compiler's remainder helpers.
+- **Wide aggregate placeholders** — x86-64 zeroes every word of an aggregate placeholder constant wider than eight bytes.
 
 - **Frame slot reuse** — both back ends gave every intermediate value and every temporary its own stack storage for the whole function, so a function that built many native values had a frame as large as everything it ever computed, paid once per level in a recursive function. The frame planners now compute liveness over the control-flow graph and let values that are never live together share a slot. The data of a local or temporary is shared the same way when its address never leaves the function's own loads and stores. Frames in the Json parser are two to six times smaller.
 - **No-return calls as values** — a `Panic` or other no-return call used as the value of a `match` arm, a `catch` arm, or a conditional arm no longer produces invalid compiler IR when the result is stored.
