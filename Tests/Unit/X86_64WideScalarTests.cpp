@@ -423,16 +423,29 @@ TEST_CASE("x86-64 assembly text keeps wide bools canonical") {
     const std::string output = modulePrinter.Finalize();
 
     const auto slot = [&](const LirReg reg, const int word) { return framePlan.SlotOffsets().at(reg) - word * 8; };
-    // The constant writes its truth to word 0 and zeros to the three words above it.
-    CHECK(output.find(std::format("mov     qword [rbp - {}], rax", slot(0, 0))) != std::string::npos);
-    for (int word = 1; word < 4; ++word) {
-        CHECK(output.find(std::format("mov     qword [rbp - {}], 0", slot(0, word))) != std::string::npos);
-        CHECK(output.find(std::format("mov     qword [rbp - {}], 0", slot(4, word))) != std::string::npos);
-    }
+    const auto lines = [](const std::vector<std::string> &text) {
+        std::string joined;
+        for (const auto &line : text) {
+            joined += "    " + line + "\n";
+        }
+        return joined;
+    };
+    // The constant writes its truth to word 0 and zeros to the three words above it, a word at a time.
+    CHECK(output.contains(lines({"mov     eax, 1", std::format("mov     qword [rbp - {}], rax", slot(0, 0)),
+                                 "mov     eax, 0", std::format("mov     qword [rbp - {}], rax", slot(0, 1)),
+                                 "mov     eax, 0", std::format("mov     qword [rbp - {}], rax", slot(0, 2)),
+                                 "mov     eax, 0", std::format("mov     qword [rbp - {}], rax", slot(0, 3))})));
+    // Widening an int64 to a bool256 stores its truth and zero-fills the words above.
+    CHECK(output.contains(lines({std::format("mov     qword [rbp - {}], rax", slot(4, 0)), "mov     eax, 0",
+                                 std::format("mov     qword [rbp - {}], rax", slot(4, 1)),
+                                 std::format("mov     qword [rbp - {}], rax", slot(4, 2)),
+                                 std::format("mov     qword [rbp - {}], rax", slot(4, 3))})));
     // `~` flips only the truth bit, and the narrowing cast folds all four source words.
     CHECK(output.find("xor     rax, 1") != std::string::npos);
     CHECK(output.find("not     rax") == std::string::npos);
-    CHECK(output.find(std::format("or      rax, qword [rbp - {}]", slot(1, 3))) != std::string::npos);
+    // A bool source is already 0 or 1, so the folded words are stored without normalizing.
+    CHECK(output.contains(lines({std::format("mov     r10, qword [rbp - {}]", slot(1, 3)), "or      rax, r10"})));
     // The equality compares every word, the last included.
-    CHECK(output.find(std::format("xor     r10, qword [rbp - {}]", slot(4, 3))) != std::string::npos);
+    CHECK(output.contains(lines({std::format("mov     r10, qword [rbp - {}]", slot(0, 3)),
+                                 std::format("mov     rax, qword [rbp - {}]", slot(4, 3)), "cmp     rax, r10"})));
 }

@@ -1,7 +1,9 @@
 #include "CodeGen/X86_64/AssemblyControlFlowPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 #include "CodeGen/X86_64/FramePlan.h"
+#include "Target/AsmInstr.h"
 
+#include <cstdint>
 #include <doctest.h>
 #include <format>
 #include <string>
@@ -101,7 +103,8 @@ TEST_CASE("x86-64 assembly control-flow printing owns calls phi edges and termin
     printer.EmitFunction(function);
 
     const std::string output = modulePrinter.Finalize();
-    CHECK(output.find("mov     rdi, rax\n    call    Direct") != std::string::npos);
+    // System V sets AL to the vector-register count before every call, as the object code does.
+    CHECK(output.find("mov     rdi, rax\n    mov     eax, 0\n    call    Direct") != std::string::npos);
     CHECK(output.find("call    r10") != std::string::npos);
     CHECK(output.find("jz      .Control_false") != std::string::npos);
     CHECK(output.find("jmp     .Control_join") != std::string::npos);
@@ -167,6 +170,51 @@ TEST_CASE("x86-64 assembly control-flow printing comments invalid LIR explicitly
     const std::string output = modulePrinter.Finalize();
     CHECK(output.find("; unsupported LIR opcode ? (999)") != std::string::npos);
     CHECK(output.find("nop    ; missing terminator") != std::string::npos);
+}
+
+TEST_CASE("x86-64 assembly text spells an asm func as its body, with no frame") {
+    // The object emitter encodes an `asm func` as a raw blob; the text must not invent a prologue around it.
+    const auto operand = [](const AsmOperand::Kind kind, std::string name = {}, const std::int64_t imm = 0) {
+        AsmOperand result;
+        result.kind = kind;
+        result.name = std::move(name);
+        result.imm = imm;
+        return result;
+    };
+    AsmOperand memory = operand(AsmOperand::Kind::Mem, {}, -8);
+    memory.memBase = "rdi";
+    memory.memIndex = "rcx";
+    memory.memScale = 4;
+    memory.memSize = 4;
+    AsmInstr load;
+    load.mnemonic = "mov";
+    load.operands = {operand(AsmOperand::Kind::Reg, "eax"), memory};
+    AsmInstr loop;
+    loop.labelDef = ".again";
+    AsmInstr add;
+    add.mnemonic = "add";
+    add.operands = {operand(AsmOperand::Kind::Reg, "eax"), operand(AsmOperand::Kind::Imm, {}, 1)};
+    AsmInstr jump;
+    jump.mnemonic = "jnz";
+    jump.operands = {operand(AsmOperand::Kind::Sym, ".again")};
+    AsmInstr ret;
+    ret.mnemonic = "ret";
+
+    LirFunc function;
+    function.name = "Raw";
+    function.isAsm = true;
+    function.asmBody = {load, loop, add, jump, ret};
+
+    AssemblyModulePrinter modulePrinter(Target::OS::Linux);
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaceNames;
+    AssemblyControlFlowPrinter printer(modulePrinter, layouts, interfaceNames, Target::OS::Linux);
+    printer.EmitFunction(function);
+
+    const std::string output = modulePrinter.Finalize();
+    CHECK(output.contains("Raw:\n    mov     eax, dword [rdi + rcx*4 - 8]\n.again:\n    add     eax, 1\n    jnz     "
+                          ".again\n    ret\n"));
+    CHECK_FALSE(output.contains("push    rbp"));
 }
 
 TEST_CASE("a Win64 float argument on the stack is placed without disturbing the register arguments") {
@@ -251,8 +299,8 @@ TEST_CASE("System V partial-word aggregates use both words in direct and indirec
             if (leading <= 4) {
                 CHECK(output.contains(
                     std::format("mov     qword [rbp - {}], {}", home - 8, Layout::kIntArgRegs[leading + 1])));
-                CHECK(output.contains(
-                    std::format("mov     {}, qword [rbp - {}]", Layout::kIntArgRegs[leading + 1], home - 8)));
+                CHECK(output.contains(std::format("mov     rax, qword [rbp - {}]\n    mov     {}, rax", home - 8,
+                                                  Layout::kIntArgRegs[leading + 1])));
             }
             else {
                 CHECK(output.contains("mov     rax, qword [rbp + 24]"));
@@ -268,7 +316,8 @@ TEST_CASE("System V partial-word aggregates use both words in direct and indirec
                 }
             }
             CHECK(output.contains(std::format("mov     qword [rbp - {}], rdx", plan.SlotOffsets().at(13) - 8)));
-            CHECK(output.contains(std::format("mov     rdx, qword [rbp - {}]", plan.SlotOffsets().at(14) - 8)));
+            CHECK(output.contains(
+                std::format("mov     r10, qword [rbp - {}]\n    mov     rdx, r10", plan.SlotOffsets().at(14) - 8)));
             CHECK(output.contains("call    TakePacket"));
             CHECK(output.contains("call    r10"));
         }

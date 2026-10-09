@@ -192,6 +192,7 @@ set(RUX_TEST_SOURCES
     VariantDropGlueTests.cpp
     VariantRepresentationTests.cpp
     ZeroizationTests.cpp
+    X86_64AssemblyConsistencyTests.cpp
     X86_64AssemblyControlFlowPrinterTests.cpp
     X86_64AssemblyInstructionPrinterTests.cpp
     X86_64AssemblyModulePrinterTests.cpp

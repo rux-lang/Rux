@@ -74,7 +74,7 @@ TEST_CASE("x86-64 assembly instruction printing owns setup scalar and memory tex
     CHECK(output.find("add     rax, r10") != std::string::npos);
     CHECK(output.find("lea     rax, [rbp - ") != std::string::npos);
     CHECK(output.find("mov     qword [r11], rax") != std::string::npos);
-    CHECK(output.find("cvtsi2sd  xmm0, rax") != std::string::npos);
+    CHECK(output.find("cvtsi2sd xmm0, rax") != std::string::npos);
     CHECK(output.find("lea     rax, [rel GlobalValue]") != std::string::npos);
     CHECK(output.find("db    111, 107, 0") != std::string::npos);
 }

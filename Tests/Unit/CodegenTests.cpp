@@ -265,8 +265,11 @@ TEST_CASE("RCU default calling convention follows the requested target") {
 
     const std::string linuxAssembly = AssemblyPrinter(package, Target::OS::Linux).Generate();
     const std::string windowsAssembly = AssemblyPrinter(package, Target::OS::Windows).Generate();
-    CHECK(linuxAssembly.find("mov     rdi, rax\n    call    Consume") != std::string::npos);
-    CHECK(windowsAssembly.find("mov     rcx, rax\n    sub     rsp, 32\n    call    Consume") != std::string::npos);
+    // The text follows the object code: System V sets AL before the call, and Win64 reserves the home area first.
+    CHECK(linuxAssembly.find("mov     rax, rbx\n    mov     rdi, rax\n    mov     eax, 0\n    call    Consume") !=
+          std::string::npos);
+    CHECK(windowsAssembly.find("sub     rsp, 32\n    mov     rax, rbx\n    mov     rcx, rax\n    call    Consume") !=
+          std::string::npos);
 }
 
 TEST_CASE("RCU System V calls pass two-word aggregates in two registers") {
