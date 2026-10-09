@@ -42,6 +42,140 @@ std::string_view PtrSize(const int bytes) {
         return "qword";
     }
 }
+
+[[nodiscard]] bool IsWideBool(const TypeRef &type) {
+    return type.IsBool() && IsWideScalar(type);
+}
+
+/// The text of an instruction that reads or produces a wide bool, mirroring the object emitter's word-by-word lowering
+/// and its canonical form: 0 or 1 in word 0, zeros in every word above. The ordinary paths would treat the value as one
+/// register, storing a single word of a constant and inverting every word under `~`. Returns false for an instruction
+/// that touches no wide bool, or for one the ordinary paths already spell correctly.
+[[nodiscard]] bool PrintWideBool(AssemblyInstructionPrinter &printer, AssemblyModulePrinter &text,
+                                 const LirInstr &instruction) {
+    const auto &types = printer.FramePlan().RegisterTypes();
+    const auto source = instruction.srcs.empty() ? types.end() : types.find(instruction.srcs[0]);
+    const TypeRef operandType = source == types.end() ? instruction.type : source->second;
+    if (instruction.dst == LirNoReg || (!IsWideBool(operandType) && !IsWideBool(instruction.type))) {
+        return false;
+    }
+    const auto &slots = printer.FramePlan().SlotOffsets();
+    // A slot offset names the end of its region, so word `index` of a value sits eight bytes nearer the frame base.
+    const auto word = [&](const LirReg reg, const int index) {
+        return std::format("qword [rbp - {}]", slots.at(reg) - index * 8);
+    };
+    const auto emit = [&](const std::string_view opcode, const std::string &operands) {
+        text.TextInstruction(std::format("{:<8}{}", opcode, operands));
+    };
+    // Stores the truth value in rax, 0 or 1, as `resultType`, zero-filling the words of a wide one.
+    const auto storeTruth = [&](const TypeRef &resultType) {
+        if (!IsWideScalar(resultType)) {
+            printer.StoreA(instruction.dst, resultType);
+            return;
+        }
+        emit("mov", word(instruction.dst, 0) + ", rax");
+        for (int index = 1; index < SizeOf(resultType) / 8; ++index) {
+            emit("mov", word(instruction.dst, index) + ", 0");
+        }
+    };
+    const int words = SizeOf(IsWideBool(operandType) ? operandType : instruction.type) / 8;
+
+    switch (instruction.op) {
+    case LirOpcode::Const:
+        emit("mov", std::format("rax, {}", instruction.strArg == "true" || instruction.strArg == "1" ? 1 : 0));
+        storeTruth(instruction.type);
+        return true;
+    case LirOpcode::And:
+    case LirOpcode::Or:
+    case LirOpcode::Xor: {
+        const std::string_view opcode = instruction.op == LirOpcode::And ? "and"
+                                      : instruction.op == LirOpcode::Or  ? "or"
+                                                                         : "xor";
+        for (int index = 0; index < words; ++index) {
+            emit("mov", "rax, " + word(instruction.srcs[0], index));
+            emit(opcode, "rax, " + word(instruction.srcs[1], index));
+            emit("mov", word(instruction.dst, index) + ", rax");
+        }
+        return true;
+    }
+    case LirOpcode::BitNot:
+        // Only the truth bit flips; the zero words above it are copied.
+        for (int index = 0; index < words; ++index) {
+            emit("mov", "rax, " + word(instruction.srcs[0], index));
+            if (index == 0) {
+                emit("xor", "rax, 1");
+            }
+            emit("mov", word(instruction.dst, index) + ", rax");
+        }
+        return true;
+    case LirOpcode::Not:
+    case LirOpcode::CmpEq:
+    case LirOpcode::CmpNe: {
+        // Every word is folded into rax: the value's own words for `!`, the words where the two sides differ for an
+        // equality.
+        emit("xor", "eax, eax");
+        for (int index = 0; index < words; ++index) {
+            if (instruction.op == LirOpcode::Not) {
+                emit("or", "rax, " + word(instruction.srcs[0], index));
+                continue;
+            }
+            emit("mov", "r10, " + word(instruction.srcs[0], index));
+            emit("xor", "r10, " + word(instruction.srcs[1], index));
+            emit("or", "rax, r10");
+        }
+        emit("test", "rax, rax");
+        emit(instruction.op == LirOpcode::CmpNe ? "setne" : "sete", "al");
+        emit("movzx", "rax, al");
+        storeTruth(instruction.op == LirOpcode::Not && instruction.type.IsBool() ? instruction.type
+                                                                                 : TypeRef::MakeBool());
+        return true;
+    }
+    case LirOpcode::Cast: {
+        const TypeRef &destinationType = instruction.type;
+        if (destinationType.IsBool()) {
+            // The source's truth comes from the words the source has, never from the destination's width.
+            if (IsWideScalar(operandType)) {
+                emit("xor", "eax, eax");
+                for (int index = 0; index < SizeOf(operandType) / 8; ++index) {
+                    emit("or", "rax, " + word(instruction.srcs[0], index));
+                }
+            }
+            else {
+                printer.LoadA(instruction.srcs[0], operandType);
+            }
+            if (!operandType.IsBool()) {
+                emit("test", "rax, rax");
+                emit("setne", "al");
+                emit("movzx", "rax, al");
+            }
+            storeTruth(destinationType);
+            return true;
+        }
+        if (IsWideScalar(destinationType)) {
+            // A wide bool widens or narrows to a wide integer like the unsigned value it holds.
+            const int destinationWords = SizeOf(destinationType) / 8;
+            for (int index = 0; index < destinationWords; ++index) {
+                if (index < words) {
+                    emit("mov", "rax, " + word(instruction.srcs[0], index));
+                    emit("mov", word(instruction.dst, index) + ", rax");
+                }
+                else {
+                    emit("mov", word(instruction.dst, index) + ", 0");
+                }
+            }
+            return true;
+        }
+        emit("mov", "rax, " + word(instruction.srcs[0], 0));
+        if (IsNativeFloat(destinationType)) {
+            emit(destinationType.kind == TypeRef::Kind::Float32 ? "cvtsi2ss" : "cvtsi2sd", "xmm0, rax");
+        }
+        printer.StoreA(instruction.dst, destinationType);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
 } // namespace
 
 AssemblyInstructionPrinter::AssemblyInstructionPrinter(AssemblyModulePrinter &inputModulePrinter,
@@ -469,6 +603,9 @@ int AssemblyInstructionPrinter::ResolveFieldOffset(const LirReg base, const std:
 }
 
 bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
+    if (PrintWideBool(*this, modulePrinter, instruction)) {
+        return true;
+    }
     switch (instruction.op) {
     case LirOpcode::Add:
     case LirOpcode::Sub:
@@ -604,7 +741,8 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     }
     case LirOpcode::BitNot:
         LoadA(instruction.srcs[0], instruction.type);
-        modulePrinter.TextInstruction("not     rax");
+        // As in the object emitter, `~` on a bool is logical negation, which keeps it 0 or 1.
+        modulePrinter.TextInstruction(instruction.type.IsBool() ? "xor     rax, 1" : "not     rax");
         StoreA(instruction.dst, instruction.type);
         return true;
     case LirOpcode::CmpEq:
@@ -727,7 +865,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
 bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
     switch (instruction.op) {
     case LirOpcode::Const: {
-        if (instruction.dst == LirNoReg) {
+        if (instruction.dst == LirNoReg || PrintWideBool(*this, modulePrinter, instruction)) {
             return true;
         }
         const TypeRef &type = instruction.type;
@@ -746,7 +884,7 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
                 std::format("{:<8}qword [rbp - {}], xmm0", "movsd", framePlan.SlotOffsets().at(instruction.dst)));
             return true;
         }
-        else if (type.kind == TypeRef::Kind::Bool) {
+        else if (type.IsBool()) {
             const std::string value = instruction.strArg == "true" || instruction.strArg == "1" ? "1" : "0";
             modulePrinter.TextInstruction(std::format("{:<8}rax, {}", "mov", value));
         }

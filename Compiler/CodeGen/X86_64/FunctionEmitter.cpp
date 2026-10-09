@@ -82,14 +82,30 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     if (EmitWideSoftwareFloatNegation(instruction)) {
         return true;
     }
-    if (instruction.dst == LirNoReg || (!IsWideInteger(operandType) && !IsWideInteger(instruction.type))) {
+    // A wide bool shares these word-by-word paths with a wide integer: bitwise operations and equality work on its
+    // words unchanged, and the cases below that would break its canonical form (one in word 0 or nothing, zeros above)
+    // single it out.
+    if (instruction.dst == LirNoReg || (!IsWideScalar(operandType) && !IsWideScalar(instruction.type))) {
         return false;
     }
-    const TypeRef wideType = IsWideInteger(operandType) ? operandType : instruction.type;
+    const TypeRef wideType = IsWideScalar(operandType) ? operandType : instruction.type;
     const int size = SizeOf(wideType);
     const int words = size / 8;
     const std::int32_t destination = Disp(instruction.dst);
     const auto source = [&](const std::size_t index) { return Disp(instruction.srcs.at(index)); };
+    // Stores a truth value already in rax, 0 or 1, as `resultType`. A wide bool gets it in word 0 and zeros in every
+    // word above; anything narrower is an ordinary register-width store.
+    const auto storeTruth = [&](const TypeRef &resultType) {
+        if (!IsWideScalar(resultType)) {
+            hooks.StoreA(instruction.dst, resultType);
+            return;
+        }
+        encoder.MovRaxStore(destination);
+        encoder.MovEaxImm32(0);
+        for (int offset = 8; offset < SizeOf(resultType); offset += 8) {
+            encoder.MovRaxStore(destination + offset);
+        }
+    };
 
     switch (instruction.op) {
     case LirOpcode::Add:
@@ -288,7 +304,14 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     case LirOpcode::BitNot:
         for (int word = 0; word < words; ++word) {
             encoder.MovRaxLoad(source(0) + word * 8);
-            encoder.NotRax();
+            if (!wideType.IsBool()) {
+                encoder.NotRax();
+            }
+            else if (word == 0) {
+                // As for a narrow bool, `~` is logical negation: only the truth bit in word 0 flips, and the zero
+                // words above it are copied, because inverting them would leave a value no other path reads as a bool.
+                encoder.XorRaxImmediate(1);
+            }
             encoder.MovRaxStore(destination + word * 8);
         }
         return true;
@@ -301,7 +324,7 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
         encoder.TestRaxRax();
         encoder.SeteAl();
         encoder.MovzxRaxAl();
-        hooks.StoreA(instruction.dst, TypeRef::MakeBool());
+        storeTruth(instruction.type.IsBool() ? instruction.type : TypeRef::MakeBool());
         return true;
     }
     case LirOpcode::Shl:
@@ -414,20 +437,41 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     case LirOpcode::Cast: {
         const TypeRef &destinationType = instruction.type;
         if (destinationType.IsBool()) {
-            encoder.MovEaxImm32(0);
-            for (int word = 0; word < words; ++word) {
-                encoder.MovR10Load(source(0) + word * 8);
-                encoder.OrRaxR10();
+            // The truth of the source is read from the words the source has. `words` follows whichever side is wide,
+            // so when only the destination is — an int64 or a bool8 cast to a bool512 — it would read past the
+            // source's slot into its neighbours.
+            if (IsWideScalar(operandType)) {
+                encoder.MovEaxImm32(0);
+                for (int word = 0; word < SizeOf(operandType) / 8; ++word) {
+                    encoder.MovR10Load(source(0) + word * 8);
+                    encoder.OrRaxR10();
+                }
             }
-            encoder.TestRaxRax();
-            encoder.SetneAl();
-            encoder.MovzxRaxAl();
+            else {
+                hooks.LoadA(instruction.srcs[0], operandType);
+            }
+            // A bool of any width already reads as 0 or 1, so a cast between bool widths is a plain zero extension or
+            // truncation of the truth bit; only another source needs normalizing.
+            if (!operandType.IsBool()) {
+                encoder.TestRaxRax();
+                encoder.SetneAl();
+                encoder.MovzxRaxAl();
+            }
+            storeTruth(destinationType);
+            return true;
+        }
+        if (wideType.IsBool() && IsNativeFloat(destinationType)) {
+            // A wide bool's value is word 0, 0 or 1, which converts as the integer it is; its raw bits would not.
+            encoder.MovRaxLoad(source(0));
+            destinationType.kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
             hooks.StoreA(instruction.dst, destinationType);
             return true;
         }
-        if (IsWideInteger(destinationType)) {
+        // A wide bool converts to an integer like the unsigned value it holds: copied and zero-extended, or truncated,
+        // which `IsSigned` being false for every bool gives below.
+        if (IsWideScalar(destinationType)) {
             const int destinationSize = SizeOf(destinationType);
-            if (!IsWideInteger(operandType)) {
+            if (!IsWideScalar(operandType)) {
                 hooks.LoadA(instruction.srcs[0], operandType);
                 encoder.MovRaxStore(destination);
                 if (operandType.IsSigned()) {
@@ -871,15 +915,16 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         else if (IsSoftwareFloat(type)) {
             EmitSoftwareFloatConstant(instruction);
         }
-        else if (type.IsBool()) {
-            encoder.MovEaxImm32((instruction.strArg == "true" || instruction.strArg == "1") ? 1 : 0);
-            hooks.StoreA(instruction.dst, type);
-        }
-        else if (IsWideInteger(type)) {
+        // The wide case comes before the bool one: a wide bool constant fills every word of its slot, where the bool
+        // path below would store one byte and leave the words above it holding whatever the slot held before.
+        else if (IsWideScalar(type)) {
             const std::string &literal = instruction.strArg.empty() ? "0" : instruction.strArg;
-            const auto parts = SplitIntegerLiteral(literal);
             WideInteger value = WideInteger::Zero(static_cast<std::uint32_t>(size * 8));
-            if (parts) {
+            if (type.IsBool()) {
+                value = WideInteger::FromUnsigned(literal == "true" || literal == "1" ? 1 : 0,
+                                                  static_cast<std::uint32_t>(size * 8));
+            }
+            else if (const auto parts = SplitIntegerLiteral(literal)) {
                 if (const auto magnitude =
                         WideInteger::Parse(parts->digits, parts->base, static_cast<std::uint32_t>(size * 8))) {
                     value = parts->negative ? magnitude->Negated() : *magnitude;
@@ -895,6 +940,10 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
                 }
                 encoder.MovRaxStore(Disp(instruction.dst) + offset);
             }
+        }
+        else if (type.IsBool()) {
+            encoder.MovEaxImm32((instruction.strArg == "true" || instruction.strArg == "1") ? 1 : 0);
+            hooks.StoreA(instruction.dst, type);
         }
         else {
             const std::string &value = instruction.strArg.empty() ? "0" : instruction.strArg;
