@@ -490,6 +490,26 @@ TEST_CASE("character constants compare decoded scalars during conditional evalua
     CHECK(std::get<bool>(*result.value));
 }
 
+TEST_CASE("wide character literals and casts into them fold during conditional evaluation") {
+    // A character holds a code point however wide its storage is, so a cast into char128 and wider folds where a
+    // cast into an integer that wide does not.
+    auto parsed = ParseSource(R"(
+        when c128'A' == c128'\u{41}' && c256'😀' > c256'λ' && c512'\u{10FFFF}' >= c512'😀' &&
+             (65 as char128) == c128'A' && (0x1F600u32 as char512) == c512'😀' {
+            func Chosen() {}
+        }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[0].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
 TEST_CASE("compile-time conditions answer the special values of every float width") {
     // The evaluator answers from declarations alone. float128's finite limits do not fit the host double that
     // conditions compare in, so those are not answered.

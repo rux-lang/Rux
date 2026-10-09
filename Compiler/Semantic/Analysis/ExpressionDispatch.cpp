@@ -65,13 +65,6 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
         if (e->segments.size() >= 2 && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
             if (first->kind == Symbol::Kind::Type) {
-                if (IsUnimplementedPrimitiveType(first->name)) {
-                    EmitError(
-                        e->location,
-                        std::format("primitive type '{}' is reserved but is not implemented in this compiler version",
-                                    first->name));
-                    return TypeRef::MakeUnknown();
-                }
                 if (e->segments.size() == 2) {
                     const AssociatedConstantLookup lookup = LookupAssociatedConstant(*first, e->segments[1]);
                     if (!lookup.conflictingPackages.empty()) {
@@ -431,11 +424,13 @@ void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const Typ
         outOfRange();
         return;
     }
-    const auto charValue = EvalConstCharCastValue(*expression.operand);
-    if (!charValue) {
+    const auto constant = EvalConstCharCastValue(*expression.operand);
+    if (!constant) {
         return;
     }
-    if (*charValue > *maximum) {
+    // A wide integer constant can lie beyond a machine word, and so beyond every character width's maximum too.
+    const std::optional<std::uint64_t> charValue = constant->ToUnsigned();
+    if (!charValue || *charValue > *maximum) {
         outOfRange();
     }
     else if (!IsValidCharacterValue(targetType.kind, *charValue)) {

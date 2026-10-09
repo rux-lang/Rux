@@ -12,3 +12,10 @@
 27:20: error: character '\u{80}' (U+0080) does not fit one 'char8' code unit
 28:19: error: character '😀' (U+1F600) does not fit one 'char16' code unit
 34:9: error: character 'é' (U+00E9) does not fit one 'char8' code unit
+43:40: error: cast from 'int' to 'char128' uses invalid surrogate code point U+D800
+44:37: error: constant cast from 'int' to 'char256' is outside the target type's range
+45:59: error: constant cast from 'uint128' to 'char128' is outside the target type's range
+46:79: error: constant cast from 'uint512' to 'char512' is outside the target type's range
+47:45: error: cast from 'uint256' to 'char256' uses invalid surrogate code point U+D800
+54:5: error: cannot assign 'char128' to 'char64'
+55:5: error: cannot assign 'char16' to 'char128'

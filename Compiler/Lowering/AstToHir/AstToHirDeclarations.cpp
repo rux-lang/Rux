@@ -191,6 +191,15 @@ TypeRef AstToHirContext::CharLiteralType(const Token &tok) {
     if (tok.text.starts_with("c64'")) {
         return TypeRef::MakePrimitive(TypeRef::Kind::Char64);
     }
+    if (tok.text.starts_with("c128'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char128);
+    }
+    if (tok.text.starts_with("c256'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char256);
+    }
+    if (tok.text.starts_with("c512'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char512);
+    }
     return TypeRef::MakeChar();
 }
 

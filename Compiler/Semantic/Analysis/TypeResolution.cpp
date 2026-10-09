@@ -264,13 +264,6 @@ TypeRef AnalysisContext::ResolveRangeType(const RangeTypeExpr &range,
 
 TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
     if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-        if (IsUnimplementedPrimitiveType(t->name)) {
-            EmitError(expr.location, std::format("primitive type '{}' is reserved but is not implemented in this "
-                                                 "compiler version",
-                                                 t->name));
-            return TypeRef::MakeUnknown();
-        }
-
         for (const auto &tp : currentTypeParams) {
             if (tp == t->name) {
                 if (!t->typeArgs.empty()) {

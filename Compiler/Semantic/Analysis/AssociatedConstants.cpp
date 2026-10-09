@@ -160,14 +160,8 @@ void AnalysisContext::ImportPrimitiveExtension(const UseDecl &declaration, const
                                                const PrimitiveInfo &primitive, const std::string &name) {
     const auto *extended = programIndex.PrimitiveExtensions(scope.ownerPackage, scope.modulePath);
     if (!extended || !extended->contains(primitive.kind)) {
-        std::vector<std::string> notes;
-        if (!primitive.implemented) {
-            notes.push_back(std::format(
-                "primitive type '{}' is reserved but is not implemented in this compiler version", primitive.name));
-        }
         EmitError(declaration.location,
-                  std::format("{} declares no extension of primitive type '{}'", scope.displayName, name),
-                  std::move(notes),
+                  std::format("{} declares no extension of primitive type '{}'", scope.displayName, name), {},
                   std::format("a primitive type needs no import; import it only from a package that declares "
                               "'extend {} {{ ... }}'",
                               primitive.name));

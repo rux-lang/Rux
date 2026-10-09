@@ -358,11 +358,6 @@ bool AnalysisContext::DeclaresWritableReceiver(const FuncDecl &method) {
     return false;
 }
 
-bool AnalysisContext::IsUnimplementedPrimitiveType(const std::string_view name) {
-    const PrimitiveInfo *info = FindPrimitive(name);
-    return info && !info->implemented;
-}
-
 void AnalysisContext::EmitGenericArityError(const TypeExpr &expression, std::string subject,
                                             const std::size_t expectedCount, const std::size_t actualCount) {
     if (!reportedGenericArity.insert(&expression).second) {
@@ -413,10 +408,8 @@ void AnalysisContext::RegisterBuiltins() {
         globalScope.Define(std::move(symbol), diags, "<builtin>");
     };
     add("opaque", TypeRef::MakeOpaque());
-    // A reserved primitive is still a declared name, so a use of it is diagnosed as unimplemented rather than as an
-    // unknown type; it binds to Unknown because it has no representation to bind to yet.
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        add(primitive.name, primitive.implemented ? TypeRef::MakePrimitive(primitive.kind) : TypeRef::MakeUnknown());
+        add(primitive.name, TypeRef::MakePrimitive(primitive.kind));
     }
     for (const PrimitiveAlias &alias : PrimitiveAliases()) {
         add(alias.name, TypeRef::MakePrimitive(alias.kind));

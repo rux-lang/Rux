@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Numeric/WideInteger.h"
 #include "Semantic/Analysis/MovePlace.h"
 #include "Semantic/Analysis/MoveStateTracker.h"
 #include "Semantic/Analysis/ProgramIndex.h"
@@ -722,8 +723,6 @@ private:
     /// own is readable before the whole local is. Set by the outermost field read and taken by the local's read.
     std::optional<std::string> partReadPath;
 
-    [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
-
     /// The enum `name` names, as seen from the file being checked.
     ///
     /// The struct and enum indexes are keyed by bare name across every package, so the last declaration of a name
@@ -1229,7 +1228,11 @@ private:
 
     bool ConstantFitsTarget(std::int64_t value, const TypeRef &target) const;
 
-    static std::optional<std::uint64_t> EvalConstCharCastValue(const Expr &expr);
+    /// The constant a cast into a character width converts, held at `WideInteger::MaxBits` so an integer literal of
+    /// any width is range-checked by its whole magnitude rather than skipped for not fitting a machine word.
+    ///
+    /// @return nullopt when the operand is not a compile-time character or non-negative integer
+    static std::optional<WideInteger> EvalConstCharCastValue(const Expr &expr);
 
     Symbol *FindUniquePackageType(const std::string &name) const;
 

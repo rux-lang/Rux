@@ -1,4 +1,4 @@
-// AArch64 code generation for bool128, bool256 and bool512.
+// AArch64 code generation for the wide bools and the wide characters.
 //
 // This host cannot execute AArch64 code, so each case runs the emitted function through a small interpreter of the
 // instructions a frame and the wide-scalar paths use, then reads back the value it returned. Memory starts filled with
@@ -485,6 +485,19 @@ private:
     return {value ? 1ULL : 0ULL};
 }
 
+[[nodiscard]] TypeRef WideChar(const int bits) {
+    return TypeRef::MakePrimitive(bits == 128   ? TypeRef::Kind::Char128
+                                  : bits == 256 ? TypeRef::Kind::Char256
+                                                : TypeRef::Kind::Char512);
+}
+
+/// A code point held at `bits`: the value in the low word and zeros in every word above.
+[[nodiscard]] std::vector<std::uint64_t> CodePoint(const int bits, const std::uint64_t value) {
+    std::vector<std::uint64_t> words(static_cast<std::size_t>(bits / 64), 0);
+    words[0] = value;
+    return words;
+}
+
 constexpr std::array kWidths = {128, 256, 512};
 } // namespace
 
@@ -594,5 +607,55 @@ TEST_CASE("AArch64 branches on a wide bool's low word") {
             blocks.push_back(Returning({ConstInstr(2, "2", uint64)}, 2, uint64));
             CHECK(Returned(std::move(blocks), uint64) == std::vector<std::uint64_t>{value ? 1ULL : 2ULL});
         }
+    }
+}
+
+TEST_CASE("AArch64 materializes wide character constants as the code point in the low word") {
+    for (const int bits : kWidths) {
+        CAPTURE(bits);
+        const TypeRef type = WideChar(bits);
+        CHECK(Evaluate({ConstInstr(0, "65", type)}, 0, type) == CodePoint(bits, 65));
+        CHECK(Evaluate({ConstInstr(0, "1114111", type)}, 0, type) == CodePoint(bits, 0x10FFFF));
+    }
+}
+
+TEST_CASE("AArch64 widens into a wide character by zero extension and narrows by truncation") {
+    const TypeRef char32 = TypeRef::MakeChar32();
+    const TypeRef char64 = TypeRef::MakePrimitive(TypeRef::Kind::Char64);
+    const TypeRef uint512 = TypeRef::MakePrimitive(TypeRef::Kind::UInt512);
+    for (const int bits : kWidths) {
+        CAPTURE(bits);
+        const TypeRef type = WideChar(bits);
+        CHECK(Evaluate({ConstInstr(0, "128512", char32), Cast(1, type, 0, char32)}, 1, type) ==
+              CodePoint(bits, 0x1F600));
+        CHECK(Evaluate({ConstInstr(0, "955", char64), Cast(1, type, 0, char64)}, 1, type) == CodePoint(bits, 955));
+        for (const int other : kWidths) {
+            CAPTURE(other);
+            const TypeRef source = WideChar(other);
+            CHECK(Evaluate({ConstInstr(0, "128512", source), Cast(1, type, 0, source)}, 1, type) ==
+                  CodePoint(bits, 0x1F600));
+        }
+        CHECK(Evaluate({ConstInstr(0, "128512", type), Cast(1, char32, 0, type)}, 1, char32) ==
+              std::vector<std::uint64_t>{0x1F600});
+        CHECK(Evaluate({ConstInstr(0, "1114111", type), Cast(1, char64, 0, type)}, 1, char64) ==
+              std::vector<std::uint64_t>{0x10FFFF});
+        CHECK(Evaluate({ConstInstr(0, "65", type), Cast(1, uint512, 0, type)}, 1, uint512) == CodePoint(512, 65));
+    }
+}
+
+TEST_CASE("AArch64 compares wide characters as unsigned values across every word") {
+    const TypeRef narrow = TypeRef::MakeBool();
+    for (const int bits : kWidths) {
+        CAPTURE(bits);
+        const TypeRef type = WideChar(bits);
+        CHECK(Combine(LirOpcode::CmpEq, type, "65", "65", narrow) == Narrow(true));
+        CHECK(Combine(LirOpcode::CmpNe, type, "65", "66", narrow) == Narrow(true));
+        CHECK(Combine(LirOpcode::CmpLt, type, "65", "128512", narrow) == Narrow(true));
+        CHECK(Combine(LirOpcode::CmpGe, type, "1114111", "128512", narrow) == Narrow(true));
+        CHECK(Combine(LirOpcode::CmpGt, type, "65", "128512", narrow) == Narrow(false));
+        // All ones orders above a letter only when the top word compares unsigned.
+        CHECK(Combine(LirOpcode::CmpGt, type, "-1", "65", narrow) == Narrow(true));
+        // Only the second word differs, so a comparison that stopped at the low word would call these equal.
+        CHECK(Combine(LirOpcode::CmpNe, type, "18446744073709551616", "0", narrow) == Narrow(true));
     }
 }

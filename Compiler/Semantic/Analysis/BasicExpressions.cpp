@@ -210,14 +210,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             ValidateSuffixedIntegerLiteral(*literal, false);
         }
         ValidateCharLiteral(literal->token, literal->location);
-        const TypeRef type = LiteralType(literal->token);
-        if (const PrimitiveInfo *primitive = FindPrimitive(type.kind); primitive && !primitive->implemented) {
-            EmitError(literal->location,
-                      std::format("primitive type '{}' is reserved but is not implemented in this compiler version",
-                                  primitive->name));
-            return type;
-        }
-        return type;
+        return LiteralType(literal->token);
     }
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
         // A minus and the literal under it are one written value, so the magnitude is checked against the negative

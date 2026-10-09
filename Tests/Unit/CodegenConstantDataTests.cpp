@@ -51,6 +51,19 @@ TEST_CASE("wide bool constants hold their value in the low byte and zeros above 
     }
 }
 
+TEST_CASE("wide character constants hold their code point in the low word and zeros above it") {
+    for (const auto kind : {TypeRef::Kind::Char128, TypeRef::Kind::Char256, TypeRef::Kind::Char512}) {
+        const auto value = Bytes("1114111", kind);
+        REQUIRE(value.size() == static_cast<std::size_t>(TypeRef::MakePrimitive(kind).SizeInBytes().value_or(0)));
+        CHECK(value[0] == 0xFF);
+        CHECK(value[1] == 0xFF);
+        CHECK(value[2] == 0x10);
+        for (std::size_t index = 3; index < value.size(); ++index) {
+            CHECK(value[index] == 0);
+        }
+    }
+}
+
 TEST_CASE("software float constants are written as their encoding") {
     CHECK(Bytes("1.0", TypeRef::Kind::Float16) == std::vector<std::uint8_t>{0x00, 0x3C});
     CHECK(Bytes("-2.0", TypeRef::Kind::Float8) == std::vector<std::uint8_t>{0xC0});

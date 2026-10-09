@@ -30,7 +30,7 @@ set(RUX_TEST_SOURCES
     AArch64RcuVariadicAbiTests.cpp
     AArch64SoftwareFloatTests.cpp
     AArch64WideIntegerTests.cpp
-    AArch64WideBoolTests.cpp
+    AArch64WideScalarTests.cpp
     AllocationMathTests.cpp
     ArtifactTests.cpp
     BackendDiagnosticTests.cpp
@@ -198,7 +198,7 @@ set(RUX_TEST_SOURCES
     X86_64NativeCallTests.cpp
     X86_64WideIntegerTests.cpp
     X86_64SoftwareFloatTests.cpp
-    X86_64WideBoolTests.cpp
+    X86_64WideScalarTests.cpp
     X86_64X87Tests.cpp
 )
 

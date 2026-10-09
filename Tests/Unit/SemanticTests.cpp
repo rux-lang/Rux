@@ -206,36 +206,25 @@ TEST_CASE("same function signature in distinct modules remains valid") {
     CHECK(diagnostics.empty());
 }
 
-TEST_CASE("documented primitive names report when their implementation is unavailable") {
-    // Taken from the catalog rather than repeated, so implementing a width moves it out of this test by itself.
-    std::vector<std::string_view> types;
-    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        if (!primitive.implemented) {
-            types.push_back(primitive.name);
-        }
-    }
-    REQUIRE_FALSE(types.empty());
-
+TEST_CASE("every primitive name in the catalog resolves as a type") {
+    // Taken from the catalog rather than repeated, so a width added to it is covered here by itself.
     std::string source;
-    for (std::size_t i = 0; i < types.size(); ++i) {
-        source += "struct Holder" + std::to_string(i) + " { value: " + std::string(types[i]) + "; }\n";
+    std::size_t index = 0;
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        source += "struct Holder" + std::to_string(index++) + " { value: " + std::string(primitive.name) + "; }\n";
     }
 
-    const auto diagnostics = AnalyzeSource(source);
-    REQUIRE_EQ(diagnostics.size(), types.size());
-    for (std::size_t i = 0; i < types.size(); ++i) {
-        CAPTURE(types[i]);
-        CHECK_EQ(diagnostics[i].severity, Diagnostic::Severity::Error);
-        CHECK_EQ(diagnostics[i].message, "primitive type '" + std::string(types[i]) +
-                                             "' is reserved but is not implemented in this compiler version");
-    }
+    CHECK(AnalyzeSource(source).empty());
 }
 
-TEST_CASE("unimplemented primitive names cannot be declared as user types") {
-    const auto diagnostics = AnalyzeSource("struct int128 {}");
+TEST_CASE("primitive names cannot be declared as user types") {
+    for (const std::string_view name : {"int128", "char512"}) {
+        CAPTURE(name);
+        const auto diagnostics = AnalyzeSource("struct " + std::string(name) + " {}");
 
-    REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "type 'int128' is already declared in this scope");
+        REQUIRE_EQ(diagnostics.size(), 1);
+        CHECK_EQ(diagnostics.front().message, "type '" + std::string(name) + "' is already declared in this scope");
+    }
 }
 
 TEST_CASE("ordinary unknown types keep the unknown-type diagnostic") {

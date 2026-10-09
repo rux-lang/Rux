@@ -470,6 +470,15 @@ TEST_CASE("wide integers and uint64 on x86-64 convert to native floats through h
     const auto [signedPackage, fromSigned] = LowerCast(K::Int64, K::Float64);
     CHECK_EQ(fromSigned.op, LirOpcode::Cast);
 
+    // A wide character converts as the unsigned integer of its width does, through that integer's helper.
+    CHECK(ConvertsThroughSoftFloatHelper(K::Char128, K::Float64, Target::Arch::AArch64));
+    const auto [charPackage, fromChar] = LowerCast(K::Char128, K::Float64);
+    CHECK_EQ(fromChar.op, LirOpcode::Call);
+    CHECK_EQ(fromChar.strArg, "__rux_float_f64_from_uint128");
+    const auto [softPackage, softFromChar] = LowerCast(K::Char512, K::Float128);
+    CHECK_EQ(softFromChar.op, LirOpcode::Call);
+    CHECK_EQ(softFromChar.strArg, "__rux_float_f128_from_uint512");
+
     for (const LirFunc &function : unsignedPackage.modules.front().funcs) {
         if (function.name == "__rux_float_f64_from_uint64") {
             CHECK_FALSE(function.isPublic);

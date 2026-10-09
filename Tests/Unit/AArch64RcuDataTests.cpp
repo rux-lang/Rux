@@ -210,6 +210,38 @@ TEST_CASE("AArch64 RCU emitter writes a constant array into read-only data") {
     CHECK_EQ(address[1].type, RcuRelType::AArch64AddAbsLo12Nc);
 }
 
+TEST_CASE("AArch64 RCU emitter folds a computed character element of a constant array") {
+    // A named character constant computed by a cast is folded as the unsigned integer of its width, so it is laid
+    // out as its code point rather than refused as having no compile-time value.
+    const auto package = CompileToAArch64Lir(R"(
+        const Smile: char64 = 0x1F600u32 as char64;
+        const NARROW: char64[2] = [c64'a', Smile];
+        const Wide: char128 = 0x10FFFFu32 as char128;
+        const WIDE: char128[2] = [Wide, c128'A'];
+
+        func Main() -> int {
+            let first = NARROW[0];
+            let second = WIDE[0];
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto &object = objects.front();
+
+    std::vector<std::uint8_t> narrow(16, 0);
+    narrow[0] = 'a';
+    narrow[9] = 0xF6;
+    narrow[10] = 0x01;
+    CHECK_EQ(RodataOf(object, "test::NARROW"), narrow);
+    std::vector<std::uint8_t> wide(32, 0);
+    wide[0] = 0xFF;
+    wide[1] = 0xFF;
+    wide[2] = 0x10;
+    wide[16] = 'A';
+    CHECK_EQ(RodataOf(object, "test::WIDE"), wide);
+}
+
 TEST_CASE("AArch64 RCU emitter publishes a constant slice as a header pointing at its elements") {
     // Slice is the standard library's, and this suite compiles no packages, so
     // the declaration the constant needs is written out here.

@@ -260,10 +260,16 @@ Token Lexer::NextToken() {
     // Prefixed character and string literals. The prefix names the code unit, so `c8'x'` is one char8 and `c8"x"` is
     // a slice of char8. Only the exact spellings are prefixes: `c8` with anything but a quote after it, and `c16 "x"`
     // with a space between, are an identifier and go on to be scanned as one.
-    // char64 names a scalar character only; it introduces no string encoding.
+    // char64, char128, char256 and char512 name a scalar character only; they introduce no string encoding.
     if (c == 'c') {
         if (Peek(1) == '6' && Peek(2) == '4' && Peek(3) == '\'') {
             return ScanChar(start, 3);
+        }
+        const bool scalarWidth = (Peek(1) == '1' && Peek(2) == '2' && Peek(3) == '8') ||
+                                 (Peek(1) == '2' && Peek(2) == '5' && Peek(3) == '6') ||
+                                 (Peek(1) == '5' && Peek(2) == '1' && Peek(3) == '2');
+        if (scalarWidth && Peek(4) == '\'') {
+            return ScanChar(start, 4);
         }
         std::size_t width = 0;
         if (Peek(1) == '8') {

@@ -716,3 +716,63 @@ TEST_CASE("char64 prefix leaves identifiers and string encodings unchanged") {
     CHECK_EQ(result.tokens[4].text, R"("text")");
     CHECK_EQ(result.tokens[5].text, R"(c32"text")");
 }
+
+TEST_CASE("char128, char256 and char512 literals retain their spelling and decoded scalar") {
+    for (const std::string prefix : {"c128", "c256", "c512"}) {
+        const std::vector<std::pair<std::string, std::uint32_t>> cases = {
+            {"'A'", 65},     {"'λ'", 0x3BB},  {"'😀'", 0x1F600},         {R"('\0')", 0},
+            {R"('\n')", 10}, {R"('\'')", 39}, {R"('\u{00000041}')", 65}, {R"('\u{10FFFF}')", 0x10FFFF},
+        };
+        for (const auto &[body, scalar] : cases) {
+            const std::string source = prefix + body;
+            CAPTURE(source);
+            const auto result = Lex(source);
+            REQUIRE_FALSE(result.HasErrors());
+            REQUIRE_EQ(result.tokens.size(), 2);
+            CHECK(result.tokens[0].Is(TokenKind::CharLiteral));
+            CHECK_EQ(result.tokens[0].text, source);
+            CHECK_EQ(result.tokens[0].location.offset, 0);
+            CHECK_EQ(result.tokens[0].endLocation.offset, source.size());
+            CHECK(Lexer::DecodeCharLiteralCodePoint(source) == scalar);
+        }
+    }
+}
+
+TEST_CASE("char128, char256 and char512 literals preserve existing character validation") {
+    for (const std::string prefix : {"c128", "c256", "c512"}) {
+        for (const std::string body : {"''", "'ab'", "'😀A'", "'", "'A", "'\n", R"('\q')", R"('\u{}')", R"('\u{D800}')",
+                                       R"('\u{DFFF}')", R"('\u{110000}')", R"('\u{41')"}) {
+            const std::string source = prefix + body;
+            CAPTURE(source);
+            const auto result = Lex(source);
+            REQUIRE(result.HasErrors());
+            REQUIRE_FALSE(result.tokens.empty());
+            CHECK(result.tokens[0].Is(TokenKind::CharLiteral));
+        }
+    }
+}
+
+TEST_CASE("char128, char256 and char512 prefixes introduce no string encoding") {
+    // As with c64, only the exact prefix directly before a single quote is one: the bare prefix, a longer identifier,
+    // a near miss and a prefix before a double quote all stay identifiers, the last followed by an ordinary string.
+    const auto result = Lex(R"(c128 c256Value c5120 c129'x' c128"text" c512"text")");
+    REQUIRE_FALSE(result.HasErrors());
+    const std::vector<std::pair<TokenKind, std::string>> expected = {
+        {TokenKind::Ident, "c128"},
+        {TokenKind::Ident, "c256Value"},
+        {TokenKind::Ident, "c5120"},
+        {TokenKind::Ident, "c129"},
+        {TokenKind::CharLiteral, "'x'"},
+        {TokenKind::Ident, "c128"},
+        {TokenKind::StringLiteral, "\"text\""},
+        {TokenKind::Ident, "c512"},
+        {TokenKind::StringLiteral, "\"text\""},
+    };
+    REQUIRE_EQ(result.tokens.size(), expected.size() + 1);
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        CAPTURE(index);
+        CHECK(result.tokens[index].Is(expected[index].first));
+        CHECK_EQ(result.tokens[index].text, expected[index].second);
+    }
+    CHECK(result.tokens.back().IsEof());
+}

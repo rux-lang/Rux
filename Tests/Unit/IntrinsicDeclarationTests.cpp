@@ -787,13 +787,9 @@ TEST_CASE("a primitive constant nothing imports names the dependency that declar
              std::optional<std::string>("import the extension that declares it, for example 'import Provider::int8;'"));
 }
 
-TEST_CASE("duplicate extension constants and reserved-width APIs are rejected") {
+TEST_CASE("duplicate extension constants are rejected") {
     auto duplicate = ParseIntrinsicSource(IntegerDeclaration + "extend int8 { pub const Max: int8 = 2i8; }");
     CHECK(SemanticAnalyzer({&duplicate.module}, {}, "App").Analyze().HasErrors());
-    auto reserved = ParseIntrinsicSource("func Main() { let value = char128::Bits; }");
-    const auto model = SemanticAnalyzer({&reserved.module}, {}, "App").Analyze();
-    REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message.contains("reserved but is not implemented"));
 }
 
 TEST_CASE("ordinary generic Slice methods retain ordinary receiver identity") {
@@ -931,7 +927,7 @@ intrinsic #config: Config;
     CHECK_EQ(messages[2], "field 'name' of 'Config' is not one the compiler supplies for '#config'");
 }
 
-TEST_CASE("Core extends every implemented primitive once and declares none") {
+TEST_CASE("Core extends every primitive once and declares none") {
     std::map<std::string, std::size_t> documented;
     const auto directory = std::filesystem::path(RUX_PACKAGES_DIR) / "Core" / "Src" / "Primitives";
     for (const auto &entry : std::filesystem::directory_iterator(directory)) {
@@ -951,7 +947,7 @@ TEST_CASE("Core extends every implemented primitive once and declares none") {
     }
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
         CAPTURE(primitive.name);
-        CHECK_EQ(documented[std::string(primitive.name)], primitive.implemented ? 1U : 0U);
+        CHECK_EQ(documented[std::string(primitive.name)], 1U);
     }
 }
 

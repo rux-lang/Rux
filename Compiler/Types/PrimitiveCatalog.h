@@ -35,9 +35,6 @@ struct PrimitiveInfo {
     /// Storage alignment in bytes, or 0 for a pointer-sized type. Capped at 16, the largest scalar alignment any
     /// supported ABI asks for. Record layout caps field alignment further; see `Target/Layout.h`.
     std::uint32_t align = 0;
-    /// Whether the representation is lowered end to end. A reserved primitive resolves here so its spelling, width
-    /// and family are known, and semantic analysis rejects a use of it until the representation lands.
-    bool implemented = false;
 };
 
 /// One alternative spelling of a primitive. An alias is a spelling only: it names the same kind.
@@ -72,8 +69,6 @@ enum class CharacterDomain : std::uint8_t {
 [[nodiscard]] std::string_view CanonicalPrimitiveName(std::string_view name) noexcept;
 
 /// The type `name` spells, resolving aliases.
-///
-/// A reserved primitive resolves like any other, so a caller that must reject one asks `PrimitiveInfo::implemented`.
 ///
 /// @return nullopt when `name` names no primitive
 [[nodiscard]] std::optional<TypeRef> PrimitiveTypeFromName(std::string_view name) noexcept;

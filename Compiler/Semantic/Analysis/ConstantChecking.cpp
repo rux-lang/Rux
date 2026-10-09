@@ -118,6 +118,15 @@ TypeRef AnalysisContext::CharLiteralType(const Token &tok) {
     if (tok.text.starts_with("c64'")) {
         return TypeRef::MakePrimitive(TypeRef::Kind::Char64);
     }
+    if (tok.text.starts_with("c128'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char128);
+    }
+    if (tok.text.starts_with("c256'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char256);
+    }
+    if (tok.text.starts_with("c512'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char512);
+    }
     return TypeRef::MakeChar();
 }
 
@@ -648,23 +657,23 @@ bool AnalysisContext::ConstantFitsTarget(std::int64_t value, const TypeRef &targ
     return false;
 }
 
-std::optional<std::uint64_t> AnalysisContext::EvalConstCharCastValue(const Expr &expr) {
+std::optional<WideInteger> AnalysisContext::EvalConstCharCastValue(const Expr &expr) {
     if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
         if (literal->token.kind == TokenKind::CharLiteral) {
             if (const auto codePoint = Lexer::DecodeCharLiteralCodePoint(literal->token.text)) {
-                return static_cast<std::uint64_t>(*codePoint);
+                return WideInteger::FromUnsigned(*codePoint, WideInteger::MaxBits);
             }
         }
         if (literal->token.kind == TokenKind::IntLiteral) {
-            if (const auto value = ParseIntegerLiteralValue(literal->token)) {
-                return *value;
+            if (auto magnitude = DecodeIntegerLiteral(literal->token.text, WideInteger::MaxBits)) {
+                return magnitude;
             }
         }
     }
 
     if (const auto value = EvalConstInt(expr)) {
         if (*value >= 0) {
-            return static_cast<std::uint64_t>(*value);
+            return WideInteger::FromUnsigned(static_cast<std::uint64_t>(*value), WideInteger::MaxBits);
         }
     }
 

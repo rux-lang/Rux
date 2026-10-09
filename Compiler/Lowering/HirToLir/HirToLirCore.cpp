@@ -31,6 +31,20 @@ namespace {
     return false;
 }
 
+/// The type a constant array element folds at. The evaluator models integers, bools and floats; a character folds as
+/// the unsigned integer of its width, which spells the same code point the character's own literal does.
+[[nodiscard]] TypeRef FoldingType(const TypeRef &type) {
+    const PrimitiveInfo *primitive = FindPrimitive(type.kind);
+    if (!primitive || primitive->category != PrimitiveCategory::Char) {
+        return type;
+    }
+    const auto primitives = PrimitiveCatalog();
+    const auto found = std::ranges::find_if(primitives, [&](const PrimitiveInfo &candidate) {
+        return candidate.category == PrimitiveCategory::UnsignedInt && candidate.bits == primitive->bits;
+    });
+    return found == primitives.end() ? type : TypeRef::MakePrimitive(found->kind);
+}
+
 /// The value a constant array element computes, folded the way the optimizer folds it, so a named constant whose
 /// initializer is an expression (`const Sum = 2 + 3`) still has a literal to lay out.
 [[nodiscard]] std::optional<Optimization::TypedConstant>
@@ -40,7 +54,7 @@ FoldConstElement(const HirExpr &e, const std::unordered_map<std::string, const H
         if (const auto parts = SplitIntegerLiteral(text); parts && !lit->type.IsFloat()) {
             text.remove_suffix(parts->suffix.size());
         }
-        return Optimization::ParseConstant(text, lit->type);
+        return Optimization::ParseConstant(text, FoldingType(lit->type));
     }
     if (const auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
         const auto it = constants.find(v->name);
@@ -58,7 +72,7 @@ FoldConstElement(const HirExpr &e, const std::unordered_map<std::string, const H
     }
     if (const auto *c = dynamic_cast<const HirCastExpr *>(&e)) {
         const auto operand = FoldConstElement(*c->operand, constants);
-        return operand ? Optimization::CastConstant(*operand, c->targetType) : std::nullopt;
+        return operand ? Optimization::CastConstant(*operand, FoldingType(c->targetType)) : std::nullopt;
     }
     return std::nullopt;
 }

@@ -1,8 +1,8 @@
-// x86-64 code generation for bool128, bool256 and bool512.
+// x86-64 code generation for the wide bools and the wide characters.
 //
-// A wide bool is held as 0 or 1 in word 0 and zeros in every word above. The run-time checks below store each result
-// to memory and load it back as the unsigned integer of the same width, so they compare every byte of the slot and not
-// only its truth value.
+// A wide bool is held as 0 or 1 in word 0 and zeros in every word above, and a wide character as the unsigned integer
+// of its code point. The run-time checks below store each result to memory and load it back as the unsigned integer of
+// the same width, so they compare every byte of the slot and not only the low word.
 
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
@@ -37,9 +37,9 @@ namespace {
 }
 
 /// A straight-line function that returns a bit mask of the checks that failed, so a non-zero exit code names them.
-class WideBoolProgram {
+class WideScalarProgram {
 public:
-    WideBoolProgram() {
+    WideScalarProgram() {
         failures = Constant(TypeRef::MakeInt32(), "0");
     }
 
@@ -116,7 +116,7 @@ private:
 
 /// A function with no parameters returning int32: `Scribble` fills a large frame with all-ones words, and `Main` calls
 /// it before `Checks`, whose frame then starts on that dirty stack. A fresh process stack is zero, which would let a
-/// wide bool whose upper words were never written pass every check by accident.
+/// wide value whose upper words were never written pass every check by accident.
 [[nodiscard]] LirFunc StraightLineFunction(std::string name, std::vector<LirInstr> instructions, const LirReg result) {
     LirBlock block;
     block.label = "entry";
@@ -202,7 +202,7 @@ private:
     const TypeRef otherBits = UnsignedOfSize(Layout::SizeOf(otherBool));
     const TypeRef bool8 = TypeRef::MakeBool();
 
-    WideBoolProgram program;
+    WideScalarProgram program;
     const LirReg yes = program.Constant(boolType, "true");
     const LirReg no = program.Constant(boolType, "false");
     const auto expectBits = [&](const LirReg value, std::string expected) {
@@ -263,8 +263,83 @@ private:
     return package;
 }
 
-void RunWideBoolPackage(const TypeRef::Kind kind) {
-    const LirPackage package = WideBoolPackage(kind);
+/// `Echo(value)` returns its wide character argument unchanged, so a call passes one by value both ways.
+[[nodiscard]] LirFunc EchoFunction(const TypeRef &charType) {
+    LirFunc function;
+    function.name = "Echo";
+    function.params.push_back({0, charType, "value"});
+    function.returnType = charType;
+    LirBlock entry;
+    entry.label = "entry";
+    entry.term.emplace();
+    entry.term->kind = LirTermKind::Return;
+    entry.term->retVal = 0;
+    entry.term->retType = charType;
+    function.blocks.push_back(std::move(entry));
+    return function;
+}
+
+[[nodiscard]] LirPackage WideCharPackage(const TypeRef::Kind kind) {
+    const TypeRef charType = TypeRef::MakePrimitive(kind);
+    const int size = Layout::SizeOf(charType);
+    const TypeRef bits = UnsignedOfSize(size);
+    // Another wide character width, wider unless this is already the widest, for the casts between widths.
+    const TypeRef otherChar =
+        TypeRef::MakePrimitive(kind == TypeRef::Kind::Char512 ? TypeRef::Kind::Char128 : TypeRef::Kind::Char512);
+    const TypeRef otherBits = UnsignedOfSize(Layout::SizeOf(otherChar));
+    const TypeRef char32 = TypeRef::MakeChar32();
+    const TypeRef char64 = TypeRef::MakePrimitive(TypeRef::Kind::Char64);
+    const TypeRef bool8 = TypeRef::MakeBool();
+
+    WideScalarProgram program;
+    const auto expectBits = [&](const LirReg value, std::string expected) {
+        program.Expect(program.Reinterpret(value, charType, bits), bits, std::move(expected));
+    };
+
+    // A constant is its code point in word 0 and zeros above it, the last scalar value included.
+    const LirReg letter = program.Constant(charType, "65");
+    const LirReg last = program.Constant(charType, "1114111");
+    expectBits(letter, "65");
+    expectBits(last, "1114111");
+
+    // Widening from a narrow character or another wide one zero-extends; narrowing keeps the code point.
+    const LirReg emoji = program.Unary(LirOpcode::Cast, program.Constant(char32, "128512"), charType);
+    expectBits(emoji, "128512");
+    expectBits(program.Unary(LirOpcode::Cast, program.Constant(char64, "955"), charType), "955");
+    program.Expect(program.Reinterpret(program.Unary(LirOpcode::Cast, emoji, otherChar), otherChar, otherBits),
+                   otherBits, "128512");
+    program.Expect(program.Unary(LirOpcode::Cast, emoji, char32), char32, "128512");
+    program.Expect(program.Unary(LirOpcode::Cast, last, char64), char64, "1114111");
+    program.Expect(program.Unary(LirOpcode::Cast, emoji, otherBits), otherBits, "128512");
+    program.Expect(program.Unary(LirOpcode::Cast, letter, TypeRef::MakeUInt32()), TypeRef::MakeUInt32(), "65");
+
+    // The comparisons read every word, unsigned: a value whose top bit is set orders above a letter, where a signed
+    // comparison of the top word would put it below.
+    program.ExpectTrue(program.Binary(LirOpcode::CmpEq, letter, program.Constant(charType, "65"), bool8));
+    program.ExpectTrue(program.Binary(LirOpcode::CmpNe, letter, emoji, bool8));
+    program.ExpectTrue(program.Binary(LirOpcode::CmpLt, letter, emoji, bool8));
+    program.ExpectTrue(program.Binary(LirOpcode::CmpGe, last, emoji, bool8));
+    program.Expect(program.Binary(LirOpcode::CmpGt, letter, emoji, bool8), bool8, "false");
+    const LirReg topBit = program.Unary(LirOpcode::Cast, program.Constant(bits, "-1"), charType);
+    program.ExpectTrue(program.Binary(LirOpcode::CmpGt, topBit, letter, bool8));
+    const LirReg secondWord = program.Unary(LirOpcode::Cast, program.Constant(bits, "18446744073709551616"), charType);
+    program.ExpectTrue(program.Binary(LirOpcode::CmpNe, secondWord, program.Constant(charType, "0"), bool8));
+
+    // A call passes a wide character by value and returns it the same way.
+    program.Expect(program.Call("Echo", emoji, charType), charType, "128512");
+
+    LirModule module;
+    module.name = "WideChar.rux";
+    module.funcs.push_back(EchoFunction(charType));
+    module.funcs.push_back(ScribbleFunction());
+    module.funcs.push_back(program.Finish());
+    module.funcs.push_back(MainFunction());
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+    return package;
+}
+
+void RunWideScalarPackage(const LirPackage &package) {
     RcuEmitter sysvEmitter(package, "WideBool", Target::OS::Linux);
     const auto sysvObjects = sysvEmitter.Generate();
     REQUIRE(sysvEmitter.Diagnostics().empty());
@@ -278,7 +353,7 @@ void RunWideBoolPackage(const TypeRef::Kind kind) {
 #if RUX_OS_WINDOWS && RUX_ARCH_X86_64
     static std::atomic_uint64_t sequence = 0;
     const std::filesystem::path output =
-        std::filesystem::temp_directory_path() / ("rux-wide-bool-x86-64-" + std::to_string(++sequence) + ".exe");
+        std::filesystem::temp_directory_path() / ("rux-wide-scalar-x86-64-" + std::to_string(++sequence) + ".exe");
     std::error_code error;
     std::filesystem::remove(output, error);
     Linker linker(std::move(objects), "WideBool", {}, ArtifactKind::Executable, Target::OS::Windows,
@@ -289,7 +364,7 @@ void RunWideBoolPackage(const TypeRef::Kind kind) {
     const auto result = System::RunCaptured(output);
     std::filesystem::remove(output, error);
     REQUIRE(result.has_value());
-    // Each set bit is one failed check, numbered in the order WideBoolPackage records them.
+    // Each set bit is one failed check, numbered in the order the package records them.
     CHECK_EQ(result->exitCode, 0);
 #else
     CHECK_FALSE(objects.front().sections.at(RCU_TEXT_IDX).data.empty());
@@ -298,15 +373,22 @@ void RunWideBoolPackage(const TypeRef::Kind kind) {
 } // namespace
 
 TEST_CASE("x86-64 RCU executes bool128 constants, logic, casts and branches") {
-    RunWideBoolPackage(TypeRef::Kind::Bool128);
+    RunWideScalarPackage(WideBoolPackage(TypeRef::Kind::Bool128));
 }
 
 TEST_CASE("x86-64 RCU executes bool256 constants, logic, casts and branches") {
-    RunWideBoolPackage(TypeRef::Kind::Bool256);
+    RunWideScalarPackage(WideBoolPackage(TypeRef::Kind::Bool256));
 }
 
 TEST_CASE("x86-64 RCU executes bool512 constants, logic, casts and branches") {
-    RunWideBoolPackage(TypeRef::Kind::Bool512);
+    RunWideScalarPackage(WideBoolPackage(TypeRef::Kind::Bool512));
+}
+
+TEST_CASE("x86-64 RCU executes char128, char256 and char512 constants, casts, comparisons and calls") {
+    for (const auto kind : {TypeRef::Kind::Char128, TypeRef::Kind::Char256, TypeRef::Kind::Char512}) {
+        CAPTURE(TypeRef::MakePrimitive(kind).ToString());
+        RunWideScalarPackage(WideCharPackage(kind));
+    }
 }
 
 TEST_CASE("x86-64 assembly text keeps wide bools canonical") {

@@ -828,11 +828,16 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             return std::nullopt;
         }
         const auto width = PrimitiveBits(type->kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
-        if (!width || *width > 64) {
+        // A character holds a code point however wide its storage is, so a cast into char128 and wider folds to the
+        // same machine word a cast into char64 does. An integer that wide has no machine-word value to fold to.
+        if (!width || (*width > 64 && !type->IsChar())) {
             return std::nullopt;
         }
         std::uint64_t bits;
         if (const auto *signedValue = std::get_if<std::int64_t>(&*value)) {
+            if (*width > 64 && *signedValue < 0) {
+                return std::nullopt;
+            }
             bits = static_cast<std::uint64_t>(*signedValue);
         }
         else if (const auto *unsignedValue = std::get_if<std::uint64_t>(&*value)) {

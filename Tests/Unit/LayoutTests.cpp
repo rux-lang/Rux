@@ -191,17 +191,19 @@ TEST_CASE("slice writability does not change layout or enclosing field offsets")
     }
 }
 
-TEST_CASE("wide scalars are the integers and bools wider than a doubleword") {
-    for (const auto kind : {TypeRef::Kind::Int128, TypeRef::Kind::UInt512, TypeRef::Kind::Bool128,
-                            TypeRef::Kind::Bool256, TypeRef::Kind::Bool512}) {
+TEST_CASE("wide scalars are the integers, bools and characters wider than a doubleword") {
+    for (const auto kind :
+         {TypeRef::Kind::Int128, TypeRef::Kind::UInt512, TypeRef::Kind::Bool128, TypeRef::Kind::Bool256,
+          TypeRef::Kind::Bool512, TypeRef::Kind::Char128, TypeRef::Kind::Char256, TypeRef::Kind::Char512}) {
         CHECK(IsWideScalar(TypeRef::MakePrimitive(kind)));
         CHECK(IsWideValue(TypeRef::MakePrimitive(kind)));
     }
-    for (const auto kind :
-         {TypeRef::Kind::Int64, TypeRef::Kind::Bool64, TypeRef::Kind::Bool8, TypeRef::Kind::Float128}) {
+    for (const auto kind : {TypeRef::Kind::Int64, TypeRef::Kind::Bool64, TypeRef::Kind::Bool8, TypeRef::Kind::Char64,
+                            TypeRef::Kind::Char32, TypeRef::Kind::Float128}) {
         CHECK_FALSE(IsWideScalar(TypeRef::MakePrimitive(kind)));
     }
     CHECK_FALSE(IsWideInteger(TypeRef::MakePrimitive(TypeRef::Kind::Bool128)));
+    CHECK_FALSE(IsWideInteger(TypeRef::MakePrimitive(TypeRef::Kind::Char128)));
 }
 
 TEST_CASE("wide values add the software floats wider than a doubleword") {

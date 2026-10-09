@@ -1,3 +1,0 @@
-12:19: error: primitive type 'char128' is reserved but is not implemented in this compiler version
-13:20: error: primitive type 'char256' is reserved but is not implemented in this compiler version
-14:21: error: primitive type 'char512' is reserved but is not implemented in this compiler version

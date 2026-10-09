@@ -301,12 +301,8 @@ void AstToHirContext::RegisterBuiltins() {
         globalScope.Define(std::move(symbol));
     };
     add("opaque", TypeRef::MakeOpaque());
-    // Semantic analysis has already rejected any use of a reserved primitive, so lowering binds only the spellings
-    // that carry a representation.
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        if (primitive.implemented) {
-            add(primitive.name, TypeRef::MakePrimitive(primitive.kind));
-        }
+        add(primitive.name, TypeRef::MakePrimitive(primitive.kind));
     }
     for (const PrimitiveAlias &alias : PrimitiveAliases()) {
         add(alias.name, TypeRef::MakePrimitive(alias.kind));

@@ -35,8 +35,8 @@ namespace Rux::Layout {
 /// Multiword integer primitives travel through stack storage and aggregate ABI lanes rather than one machine register.
 [[nodiscard]] bool IsWideInteger(const TypeRef &t);
 
-/// A multiword integer or bool. Both are lowered through the same word-by-word paths; a wide bool keeps its value in
-/// the low word and zeros above it.
+/// A multiword integer, bool or character. All three are lowered through the same word-by-word paths; a wide bool keeps
+/// its value in the low word and zeros above it, and a wide character is the unsigned integer of its code point.
 [[nodiscard]] bool IsWideScalar(const TypeRef &t);
 
 /// Any primitive held as multiword storage rather than in one machine register: a wide scalar, or a software float

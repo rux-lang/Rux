@@ -173,7 +173,7 @@ bool IsWideInteger(const TypeRef &t) {
 }
 
 bool IsWideScalar(const TypeRef &t) {
-    return (t.IsInteger() || t.IsBool()) && SizeOf(t) > 8;
+    return (t.IsInteger() || t.IsBool() || t.IsChar()) && SizeOf(t) > 8;
 }
 
 bool IsWideValue(const TypeRef &t) {

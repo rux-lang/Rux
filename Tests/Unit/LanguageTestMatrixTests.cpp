@@ -16,11 +16,11 @@
 // everywhere, so no word search could establish ownership. Keyword ownership is therefore written out and checked,
 // which also means adding a keyword to the language forces someone to say which case covers it.
 //
-// A reserved width gets a directory too, holding a placeholder that says so. It cannot hold a program that uses the
-// type, because such a program does not compile; the refusal is asserted in Golden/ReservedPrimitiveTypes.rux. The
-// placeholder exists so the matrix is complete by inspection and so an implemented width arrives at a directory
-// that already exists.
+// A directory is not coverage by being there, so each primitive's directory must also use the type it is named for:
+// spell it in code, not only in a comment or a string. That is what tells a real case apart from a placeholder that
+// only describes the width.
 
+#include "Lexer/Lexer.h"
 #include "Lexer/Token.h"
 #include "Types/PrimitiveCatalog.h"
 
@@ -72,9 +72,30 @@ TEST_CASE("Every primitive in the catalog has a language test directory") {
     for (const auto &primitive : PrimitiveCatalog()) {
         const auto directory = DirectoryFor(primitive.name);
         CHECK_MESSAGE(directories.contains(directory), "primitive '", primitive.name, "' has no Tests/Language/",
-                      directory,
-                      " directory. Add one: an implemented width gets a real case, a reserved width gets the "
-                      "placeholder the other reserved widths use.");
+                      directory, " directory. Add one with a case that exercises the width.");
+    }
+}
+
+TEST_CASE("Every primitive's test directory uses the primitive it is named for") {
+    // Read through the lexer, so a spelling inside a comment or a string -- which is all a placeholder describing a
+    // width can offer -- does not count, and only an identifier naming the type in code does.
+    for (const auto &primitive : PrimitiveCatalog()) {
+        const auto sources = LanguageTestsRoot() / DirectoryFor(primitive.name) / "Src";
+        if (!std::filesystem::is_directory(sources)) {
+            continue; // The directory check above reports it.
+        }
+        bool used = false;
+        for (const auto &entry : std::filesystem::recursive_directory_iterator(sources)) {
+            if (used || !entry.is_regular_file() || entry.path().extension() != ".rux") {
+                continue;
+            }
+            const LexerResult lexed = Lexer::FromFile(entry.path());
+            used = std::ranges::any_of(lexed.tokens, [&](const Token &token) {
+                return token.kind == TokenKind::Ident && token.text == primitive.name;
+            });
+        }
+        CHECK_MESSAGE(used, "Tests/Language/", DirectoryFor(primitive.name), " never names '", primitive.name,
+                      "' in code. Its case has to exercise the width, not only describe it.");
     }
 }
 
@@ -180,26 +201,10 @@ TEST_CASE("The keyword ownership table names no keyword the lexer does not have"
                   "the ownership table and the lexer's keyword table are different sizes");
 }
 
-TEST_CASE("The catalog's implemented and reserved counts are what the matrix was built against") {
-    // Not a rule, a tripwire. These numbers are here so that adding or implementing a width fails this case and
-    // sends whoever did it to the directory that now needs writing, rather than leaving the matrix quietly stale.
-    std::size_t implemented = 0;
-    std::size_t reserved = 0;
-    for (const auto &primitive : PrimitiveCatalog()) {
-        if (primitive.implemented) {
-            ++implemented;
-        }
-        else {
-            ++reserved;
-        }
-    }
-
-    CHECK_MESSAGE(implemented == 35,
-                  "the implemented primitive count changed. A newly implemented width needs its placeholder in "
-                  "Tests/Language replaced with a real case, and its line removed from "
-                  "Golden/ReservedPrimitiveTypes.expected.");
-    CHECK_MESSAGE(reserved == 3,
-                  "the reserved primitive count changed. A newly reserved width needs a Tests/Language placeholder "
-                  "and a line in Golden/ReservedPrimitiveTypes.rux.");
-    CHECK(implemented + reserved == PrimitiveCatalog().size());
+TEST_CASE("The catalog's size is what the matrix was built against") {
+    // Not a rule, a tripwire. The number is here so that adding a width fails this case and sends whoever did it to
+    // the directory that now needs writing, rather than leaving the matrix quietly stale.
+    CHECK_MESSAGE(PrimitiveCatalog().size() == 38,
+                  "the primitive count changed. A new width needs a Tests/Language case that exercises it and a "
+                  "documented extend block in Packages/Core.");
 }
