@@ -16,10 +16,10 @@ import Core::{ float32, float64, int64, uint64 };
     a NaN mistaken for a number because a comparison against it was false, a signed zero whose sign was thrown away
     by a comparison, a subnormal treated as zero because it printed as one. So the classification here is by bit
     pattern rather than by comparison wherever a comparison would lie, and the sign of a zero is preserved
-    everywhere it is meaningful. The reserved float widths are absent for the reason recorded throughout this package:
-    `float80` and up are names the compiler rejects, so there is nothing here to classify. Both real widths are
-    covered, and `float32` is not merely widened - its neighbours are not its widened value's neighbours, so stepping
-    is done in its own bits.
+    everywhere it is meaningful. Only the two machine widths are covered: the compiler implements `float8` through
+    `float512`, but this package's operations are written for `float32` and `float64`, and reaching the other widths
+    is outside its scope. `float32` is not merely widened - its neighbours are not its widened value's neighbours, so
+    stepping is done in its own bits.
 */
 
 /// The five kinds IEEE 754 sorts every value into.

@@ -1,7 +1,8 @@
 // Taking a narrow float apart, and putting its shortest digits back together as text.
 // The bits are read through a pointer rather than through a conversion, because there is no conversion that
 // preserves them: casting a `float64` to a `uint64` asks for the value's integer part, and what is wanted is its
-// representation. That is a documented unsafe boundary and the only one in this package.
+// representation. That is a documented unsafe boundary, the same one NarrowParse.rux crosses to turn bits back
+// into a float and WideFloatValue.rux crosses to bridge the wide primitives.
 // What comes out is the significand and the power of two it is scaled by, in the form the exact digit generator
 // takes. A subnormal has a zero exponent field and no implicit leading bit; a normal has the bit and an exponent
 // biased by the format. The third thing the generator needs is whether the value sits at the bottom of its
