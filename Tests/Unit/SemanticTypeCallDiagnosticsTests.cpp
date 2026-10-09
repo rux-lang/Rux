@@ -24,6 +24,17 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     return analyzer.Analyze().diagnostics;
 }
 
+/// The errors analysis reports for `source`, without the warnings an unused binding draws.
+std::vector<SemanticDiagnostic> AnalyzeErrors(const std::string &source) {
+    std::vector<SemanticDiagnostic> errors;
+    for (SemanticDiagnostic &diagnostic : AnalyzeSource(source)) {
+        if (diagnostic.severity == Diagnostic::Severity::Error) {
+            errors.push_back(std::move(diagnostic));
+        }
+    }
+    return errors;
+}
+
 HirPackage LowerSource(const std::string &source) {
     Lexer lexer(source, "constructor-lowering.rux");
     auto lexed = lexer.Tokenize();
@@ -191,6 +202,65 @@ TEST_CASE("call arity diagnostics distinguish required defaulted and variadic pa
     CHECK_EQ(diagnostics[2].message, "call to 'Collect' expects at least 1 argument, but 0 were provided");
     CHECK_EQ(diagnostics[3].message,
              "argument 2 to 'Collect' has type 'bool8', but variadic parameter 'values' requires 'int'");
+}
+
+TEST_CASE("a method takes variadic and defaulted arguments the way a function does") {
+    const auto accepted = AnalyzeErrors(R"(
+        struct Total { base: int128; }
+        extend Total {
+            func Sum(self: &Total, values: int128...) -> int128 { return self.base; }
+            func Add(self: &var Total, label: int32, values: int64...) {}
+            func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
+            func Pick<T>(self: &Total, index: uint, values: T...) -> T { return values[index]; }
+            func Of(values: int128...) -> Total { return Total { base: 0i128 }; }
+        }
+        extend int64 {
+            func Plus(self: int64, values: int64...) -> int64 { return self; }
+        }
+        func Main() {
+            var total = Total { base: 0i128 };
+            let word: int64 = 1i64;
+            let half: int32 = 2i32;
+            let values: int128[2] = [1i128, 2i128];
+            let empty = total.Sum();
+            let one = total.Sum(word);
+            let many = total.Sum(word, half, 3i128);
+            let spread = total.Sum(values...);
+            total.Add(1i32);
+            total.Add(1i32, word, half);
+            let scaled = total.Scale(3i64);
+            let given = total.Scale(3i64, 4i64);
+            let picked = total.Pick(0u, half, half);
+            let plus = word.Plus(half, word);
+            let built = Total::Of(word, half);
+        }
+    )");
+    CAPTURE(accepted.empty() ? std::string{} : accepted[0].message);
+    CHECK(accepted.empty());
+
+    const auto diagnostics = AnalyzeErrors(R"(
+        struct Total { base: int64; }
+        extend Total {
+            func Add(self: &Total, label: int32, values: int64...) {}
+            func Sum(self: &Total, values: int32...) -> int64 { return self.base; }
+            func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
+        }
+        func Main() {
+            let total = Total { base: 1i64 };
+            let values: int32[2] = [1i32, 2i32];
+            total.Add();
+            total.Sum(1i64);
+            total.Sum(1i32, values...);
+            total.Scale(1i64, 2i64, 3i64);
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "call to 'Add' expects at least 1 argument, but 0 were provided");
+    CHECK_EQ(diagnostics[1].message,
+             "argument 1 to 'Sum' has type 'int64', but variadic parameter 'values' requires 'int32'");
+    CHECK_EQ(diagnostics[2].message,
+             "spread argument to 'Sum' must be the only argument for variadic parameter 'values'");
+    CHECK_EQ(diagnostics[3].message, "call to 'Scale' expects between 1 and 2 arguments, but 3 were provided");
 }
 
 TEST_CASE("overload failures list candidate signatures with declaration context") {

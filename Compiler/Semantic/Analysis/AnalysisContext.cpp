@@ -656,8 +656,45 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
     return true;
 }
 
+std::optional<TypeRef>
+AnalysisContext::ResolveVariadicElementType(const FuncDecl &declaration,
+                                            const std::unordered_map<std::string, TypeRef> &substitutions) {
+    if (declaration.params.empty() || !declaration.params.back().isVariadic) {
+        return std::nullopt;
+    }
+    const auto savedTypeParameters = currentTypeParams;
+    currentTypeParams = TypeParameterNames(declaration.typeParams);
+    TypeRef element = ResolveTypeWithSubstitution(*declaration.params.back().type, substitutions);
+    currentTypeParams = savedTypeParameters;
+    return element;
+}
+
+std::optional<std::vector<TypeRef>> AnalysisContext::BoundParameterTypes(
+    const FuncDecl &declaration, const bool isMethod, const std::vector<TypeRef> &fixedTypes,
+    const std::optional<TypeRef> &variadicElement, const std::size_t argumentCount, const CallExpr *call) {
+    const std::size_t requiredCount =
+        static_cast<std::size_t>(std::ranges::count_if(declaration.params, [isMethod](const Param &parameter) {
+            return !(isMethod && parameter.IsReceiver()) && !parameter.isVariadic && !parameter.defaultValue;
+        }));
+    if (argumentCount < requiredCount || (!variadicElement && argumentCount > fixedTypes.size())) {
+        return std::nullopt;
+    }
+    std::vector<TypeRef> bound(fixedTypes.begin(), fixedTypes.begin() + std::min(argumentCount, fixedTypes.size()));
+    if (!variadicElement) {
+        return bound;
+    }
+    // One spread argument hands over the whole slice; any other trailing argument is one element of it.
+    const bool singleSpread = call && argumentCount == fixedTypes.size() + 1 && call->args.size() == argumentCount &&
+                              dynamic_cast<const SpreadExpr *>(call->args[fixedTypes.size()].get());
+    for (std::size_t index = bound.size(); index < argumentCount; ++index) {
+        bound.push_back(singleSpread ? TypeRef::MakeSlice(*variadicElement) : *variadicElement);
+    }
+    return bound;
+}
+
 bool AnalysisContext::DeduceTypeArguments(const FuncDecl &declaration, const std::vector<TypeRef> &argumentTypes,
-                                          std::unordered_map<std::string, TypeRef> &substitutions) {
+                                          std::unordered_map<std::string, TypeRef> &substitutions,
+                                          const CallExpr *call) {
     if (declaration.typeParams.empty()) {
         return true;
     }
@@ -672,10 +709,18 @@ bool AnalysisContext::DeduceTypeArguments(const FuncDecl &declaration, const std
     if (templateFuncType.kind != TypeRef::Kind::Func || templateFuncType.inner.empty()) {
         return false;
     }
-    const std::size_t paramCount = templateFuncType.inner.size() - 1;
-    const std::size_t count = std::min(argumentTypes.size(), paramCount);
+    const std::vector<TypeRef> fixedTypes(templateFuncType.inner.begin(), templateFuncType.inner.end() - 1);
+    const std::size_t count = std::min(argumentTypes.size(), fixedTypes.size());
     for (std::size_t i = 0; i < count; ++i) {
-        DeduceTypeArgument(templateFuncType.inner[i], argumentTypes[i], typeParamNames, substitutions);
+        DeduceTypeArgument(fixedTypes[i], argumentTypes[i], typeParamNames, substitutions);
+    }
+    // Each value the variadic parameter collects is an argument for its element type like any fixed one.
+    if (const std::optional<TypeRef> element = ResolveVariadicElementType(declaration);
+        element && argumentTypes.size() > fixedTypes.size()) {
+        const auto bound = BoundParameterTypes(declaration, false, fixedTypes, element, argumentTypes.size(), call);
+        for (std::size_t i = fixedTypes.size(); bound && i < argumentTypes.size(); ++i) {
+            DeduceTypeArgument((*bound)[i], argumentTypes[i], typeParamNames, substitutions);
+        }
     }
     return substitutions.size() == declaration.typeParams.size();
 }

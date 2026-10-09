@@ -257,8 +257,22 @@ private:
                                                   const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] bool TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason);
     [[nodiscard]] const FuncDecl *SelectBoundOperation(const std::string &typeName, const FuncDecl &required) const;
+    /// Deduces type arguments from the fixed arguments and, past them, from each argument the variadic parameter
+    /// collects. `call` says which argument is spread, so it deduces from the variadic slice rather than an element.
     bool DeduceTypeArguments(const FuncDecl &declaration, const std::vector<TypeRef> &argumentTypes,
-                             std::unordered_map<std::string, TypeRef> &substitutions);
+                             std::unordered_map<std::string, TypeRef> &substitutions, const CallExpr *call = nullptr);
+    /// The element type of a function's trailing variadic parameter with `substitutions` applied, or none when its last
+    /// parameter is fixed. The function's own type parameters are in scope, as they are for its fixed parameters.
+    [[nodiscard]] std::optional<TypeRef>
+    ResolveVariadicElementType(const FuncDecl &declaration,
+                               const std::unordered_map<std::string, TypeRef> &substitutions = {});
+    /// The parameter type each of `argumentCount` arguments binds: a fixed parameter's type, then the variadic element,
+    /// or the variadic slice for one spread argument. None when that many arguments cannot bind the signature: fewer
+    /// than the parameters without a default value, or more than the fixed ones when nothing is variadic. A method's
+    /// receiver is not one of the parameters an argument binds.
+    [[nodiscard]] static std::optional<std::vector<TypeRef>>
+    BoundParameterTypes(const FuncDecl &declaration, bool isMethod, const std::vector<TypeRef> &fixedTypes,
+                        const std::optional<TypeRef> &variadicElement, std::size_t argumentCount, const CallExpr *call);
     bool DeduceTypeArgument(const TypeRef &paramType, const TypeRef &argType,
                             const std::unordered_set<std::string> &typeParamNames,
                             std::unordered_map<std::string, TypeRef> &substitutions);
@@ -915,7 +929,8 @@ private:
     std::vector<const FuncDecl *> ambiguousOverloads;
     [[nodiscard]] const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
                                                          const std::vector<TypeRef> &argumentTypes,
-                                                         const std::vector<TypeExprPtr> &typeArguments);
+                                                         const std::vector<TypeExprPtr> &typeArguments,
+                                                         const CallExpr *call = nullptr);
     /// Queue a body to re-check with concrete type arguments. `site` is the call that supplies them, which an error
     /// found in the instantiated body names.
     void QueueGenericInstantiation(const FuncDecl &declaration,
@@ -924,9 +939,11 @@ private:
     /// The note an error inside an instantiated generic body carries: the instantiation and the call that caused it.
     [[nodiscard]] std::string InstantiationNote(const FuncDecl &declaration,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) const;
+    /// The method `argumentTypes` select. `call`, when the lookup is for one, says which argument is spread into a
+    /// variadic parameter; without it every argument past the fixed parameters is an element.
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
                                                const std::vector<TypeRef> &argumentTypes = {},
-                                               bool requireAccessible = true);
+                                               bool requireAccessible = true, const CallExpr *call = nullptr);
     [[nodiscard]] std::unordered_map<std::string, TypeRef> MethodTypeSubstitutions(const TypeRef &receiverType) const;
     [[nodiscard]] const FuncDecl *LookupMethodCall(const TypeRef &receiverType, const std::string &methodName,
                                                    const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
@@ -942,6 +959,11 @@ private:
     [[nodiscard]] std::vector<TypeRef>
     ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method,
                             const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
+    /// The element type of a method's trailing variadic parameter, resolved for `receiverType` as its fixed parameter
+    /// types are, or none when its last parameter is fixed.
+    [[nodiscard]] std::optional<TypeRef>
+    ResolveMethodVariadicType(const TypeRef &receiverType, const FuncDecl &method,
+                              const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
     [[nodiscard]] const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
                                                         const std::string &methodName) const;
 
@@ -967,6 +989,9 @@ private:
     [[nodiscard]] TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType);
     [[nodiscard]] std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method,
                                                                         const TypeRef &selfType);
+    /// The element type of an interface method's trailing variadic parameter, with `Self` standing for `selfType`.
+    [[nodiscard]] std::optional<TypeRef> ResolveInterfaceMethodVariadicType(const FuncDecl &method,
+                                                                            const TypeRef &selfType);
     [[nodiscard]] TypeRef EnumType(const EnumDecl &declaration, const std::vector<TypeRef> &typeArguments = {});
     [[nodiscard]] TypeRef LiteralType(const Token &token) const;
     void ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType, const TypeRef &targetType) const;

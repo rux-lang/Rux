@@ -574,7 +574,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
 
 [[nodiscard]] const FuncDecl *AnalysisContext::LookupMethod(const TypeRef &receiverType, const std::string &methodName,
                                                             const std::vector<TypeRef> &argTypes,
-                                                            const bool requireAccessible) {
+                                                            const bool requireAccessible, const CallExpr *call) {
     const std::string typeName = NamedBaseTypeName(receiverType);
     if (typeName.empty()) {
         return nullptr;
@@ -597,43 +597,38 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     if (argTypes.empty()) {
         return overloads[0];
     }
-    if (overloads.size() == 1) {
-        // Single overload: validate arity and assignability before
-        // returning.
-        const auto *decl = overloads[0];
-        std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
-        if (paramTypes.size() != argTypes.size()) {
-            return nullptr;
+    // The arguments bind the fixed parameters, then each fills the variadic parameter, so a method takes them exactly
+    // as a function does: a parameter with a default value may be left out, and a variadic one takes any number. An
+    // overload the arguments fill exactly is preferred, so neither a default value nor a variadic parameter takes a
+    // call from the overload written for it.
+    const auto accepts = [&](const FuncDecl &decl, const bool exactArity) {
+        const std::vector<TypeRef> fixedTypes = ResolveMethodParamTypes(receiverType, decl);
+        const std::optional<TypeRef> variadicElement = ResolveMethodVariadicType(receiverType, decl);
+        if (exactArity && (variadicElement || fixedTypes.size() != argTypes.size())) {
+            return false;
+        }
+        const auto paramTypes = BoundParameterTypes(decl, true, fixedTypes, variadicElement, argTypes.size(), call);
+        if (!paramTypes) {
+            return false;
         }
         for (std::size_t i = 0; i < argTypes.size(); ++i) {
-            if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) {
+            const TypeRef &parameter = (*paramTypes)[i];
+            if (argTypes[i].IsUnknown() || parameter.IsUnknown()) {
                 continue;
             }
-            if (!argTypes[i].IsAssignableTo(paramTypes[i]) && !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) &&
-                !argTypes[i].CanReadScalarTo(paramTypes[i]) && !CanConvertToInterface(argTypes[i], paramTypes[i]) &&
-                !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
-                return nullptr;
+            if (!argTypes[i].IsAssignableTo(parameter) && !argTypes[i].CanImplicitlyBorrowTo(parameter) &&
+                !argTypes[i].CanReadScalarTo(parameter) && !CanConvertToInterface(argTypes[i], parameter) &&
+                !(argTypes[i].IsInteger() && parameter.IsInteger())) {
+                return false;
             }
         }
-        return decl;
-    }
-    for (const auto *decl : overloads) {
-        std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
-        if (paramTypes.size() != argTypes.size()) {
-            continue;
-        }
-        bool match = true;
-        for (std::size_t i = 0; i < argTypes.size(); ++i) {
-            if (!argTypes[i].IsUnknown() && !paramTypes[i].IsUnknown() && !argTypes[i].IsAssignableTo(paramTypes[i]) &&
-                !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) && !argTypes[i].CanReadScalarTo(paramTypes[i]) &&
-                !CanConvertToInterface(argTypes[i], paramTypes[i]) &&
-                !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
-                match = false;
-                break;
-            }
-        }
-        if (match) {
-            return decl;
+        return true;
+    };
+    for (const bool exactArity : {true, false}) {
+        const auto selected =
+            std::ranges::find_if(overloads, [&](const FuncDecl *decl) { return accepts(*decl, exactArity); });
+        if (selected != overloads.end()) {
+            return *selected;
         }
     }
     return nullptr;

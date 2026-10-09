@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "VariadicMethods"
+Version = "0.1.0"
+Type = "Executable"
+Description = "A method's variadic parameter collects its arguments the way a function's does: none, one or many, a spread slice, and each element converted to the element type."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

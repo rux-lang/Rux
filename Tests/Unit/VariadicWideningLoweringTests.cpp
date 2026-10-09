@@ -288,6 +288,145 @@ TEST_SUITE("VariadicWideningLowering") {
         CheckConversion(*slice->elements[1], Primitive(TypeRef::Kind::Int8), Primitive(TypeRef::Kind::Int128));
     }
 
+    TEST_CASE("a method's variadic elements are collected and converted like a function's") {
+        const HirPackage package = LowerToHir(R"(
+            struct Total {
+                base: int128;
+            }
+
+            extend Total {
+                func Sum(self: &Total, values: int128...) -> int128 {
+                    return self.base;
+                }
+
+                func Add(self: &var Total, label: int32, values: int64...) -> int64 {
+                    return 0i64;
+                }
+
+                func Pick<T>(self: &Total, index: uint, values: T...) -> T {
+                    return values[index];
+                }
+
+                func Of(values: int128...) -> Total {
+                    return Total { base: 0i128 };
+                }
+            }
+
+            struct Bag<T> {
+                first: T;
+            }
+
+            extend Bag<T> {
+                func Count(self: &Bag<T>, values: T...) -> uint {
+                    return values.length;
+                }
+            }
+
+            extend int64 {
+                func Plus(self: int64, values: int64...) -> int64 {
+                    return self;
+                }
+            }
+
+            func CallSum(total: Total, word: int64, byte: int8) -> int128 {
+                return total.Sum(word, byte);
+            }
+
+            func CallEmpty(total: Total) -> int128 {
+                return total.Sum();
+            }
+
+            func CallAdd(word: int32, half: int32) -> int64 {
+                var total = Total { base: 0i128 };
+                return total.Add(1i32, word, half);
+            }
+
+            func CallPick(total: Total) -> int32 {
+                return total.Pick(1u, 5i32, 6i32);
+            }
+
+            func CallBag(bag: Bag<int128>, word: int64) -> uint {
+                return bag.Count(word);
+            }
+
+            func CallPlus(start: int64, half: int32) -> int64 {
+                return start.Plus(half, 2i64);
+            }
+
+            func CallOf(word: int64) -> Total {
+                return Total::Of(word);
+            }
+        )");
+        const TypeRef int128 = Primitive(TypeRef::Kind::Int128);
+        const TypeRef int64 = Primitive(TypeRef::Kind::Int64);
+        const TypeRef int32 = Primitive(TypeRef::Kind::Int32);
+
+        // The receiver comes first and is never an element; every argument after it is.
+        const auto &sum = RequireVariadicElements(RequireFunction(package, "CallSum"));
+        REQUIRE_EQ(sum.size(), 2);
+        CheckConversion(*sum[0], int64, int128);
+        CheckConversion(*sum[1], Primitive(TypeRef::Kind::Int8), int128);
+        CHECK(RequireVariadicElements(RequireFunction(package, "CallEmpty")).empty());
+
+        // A fixed parameter between the receiver and the variadic one takes the first argument.
+        const auto &add = RequireVariadicElements(RequireFunction(package, "CallAdd"));
+        REQUIRE_EQ(add.size(), 2);
+        CheckConversion(*add[0], int32, int64);
+        CheckConversion(*add[1], int32, int64);
+
+        // A method's own type parameter is deduced from its elements, and a generic type's from the receiver.
+        const auto &pick = RequireVariadicElements(RequireFunction(package, "CallPick"));
+        REQUIRE_EQ(pick.size(), 2);
+        CHECK_EQ(pick[0]->type, int32);
+        const auto &bag = RequireVariadicElements(RequireFunction(package, "CallBag"));
+        REQUIRE_EQ(bag.size(), 1);
+        CheckConversion(*bag[0], int64, int128);
+
+        // A primitive's method takes its receiver by value, and an associated function has none.
+        const auto &plus = RequireVariadicElements(RequireFunction(package, "CallPlus"));
+        REQUIRE_EQ(plus.size(), 2);
+        CheckConversion(*plus[0], int32, int64);
+        CHECK_EQ(plus[1]->type, int64);
+        const auto &of = RequireVariadicElements(RequireFunction(package, "CallOf"));
+        REQUIRE_EQ(of.size(), 1);
+        CheckConversion(*of[0], int64, int128);
+    }
+
+    TEST_CASE("a requirement that spells out its receiver collects the arguments after it") {
+        const HirPackage package = LowerToHir(R"(
+            interface Adder {
+                func Add(self: &Self, seed: int32, values: int128...) -> int128;
+            }
+
+            struct Total {
+                base: int128;
+            }
+
+            extend Total : Adder {
+                func Add(self: &Total, seed: int32, values: int128...) -> int128 {
+                    return self.base;
+                }
+            }
+
+            func CallAdd(adder: Adder, word: int64) -> int128 {
+                return adder.Add(0i32, word, 3i128);
+            }
+        )");
+        const HirFunc &function = RequireFunction(package, "CallAdd");
+        REQUIRE(function.body.has_value());
+        const auto *statement = dynamic_cast<const HirReturnStmt *>(function.body->stmts.back().get());
+        REQUIRE(statement != nullptr);
+        REQUIRE(statement->value.has_value());
+        const auto *call = dynamic_cast<const HirInterfaceCallExpr *>(statement->value->get());
+        REQUIRE(call != nullptr);
+        REQUIRE_EQ(call->args.size(), 2);
+        CHECK_EQ(call->args[0]->type, Primitive(TypeRef::Kind::Int32));
+        const auto *slice = dynamic_cast<const HirArrayExpr *>(call->args.back().get());
+        REQUIRE(slice != nullptr);
+        REQUIRE_EQ(slice->elements.size(), 2);
+        CheckConversion(*slice->elements[0], Primitive(TypeRef::Kind::Int64), Primitive(TypeRef::Kind::Int128));
+    }
+
     TEST_CASE("a C-variadic tail is passed after the default argument promotions on System V") {
         const LirPackage package = LowerToLir(CVariadicSource, "linux-x86_64");
         CheckOperands(CallOperandTypes(RequireFunction(package, "Main"), "Collect"),

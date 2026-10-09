@@ -105,6 +105,28 @@ AnalysisContext::ResolveMethodParamTypes(const TypeRef &receiverType, const Func
     return params;
 }
 
+std::optional<TypeRef>
+AnalysisContext::ResolveMethodVariadicType(const TypeRef &receiverType, const FuncDecl &method,
+                                           const std::unordered_map<std::string, TypeRef> &methodSubstitutions) {
+    if (method.params.empty() || !method.params.back().isVariadic) {
+        return std::nullopt;
+    }
+    const auto savedTypeParams = currentTypeParams;
+    AppendTypeParameterNames(currentTypeParams, method.typeParams);
+    auto substitutions = MethodTypeSubstitutions(receiverType);
+    for (const auto &[name, type] : methodSubstitutions) {
+        substitutions.insert_or_assign(name, type);
+    }
+    TypeRef savedSelfType = currentSelfType;
+    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+                        ? receiverType
+                        : TypeRef::MakePointer(receiverType);
+    TypeRef element = ResolveTypeWithSubstitution(*method.params.back().type, substitutions);
+    currentSelfType = savedSelfType;
+    currentTypeParams = savedTypeParams;
+    return element;
+}
+
 const FuncDecl *AnalysisContext::LookupMethodCall(const TypeRef &receiverType, const std::string &methodName,
                                                   const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
                                                   const std::size_t typeArgumentOffset,
@@ -114,7 +136,7 @@ const FuncDecl *AnalysisContext::LookupMethodCall(const TypeRef &receiverType, c
     if (writtenCount == 0 &&
         std::ranges::none_of(candidates, [](const FuncDecl *method) { return !method->typeParams.empty(); })) {
         substitutions = MethodTypeSubstitutions(receiverType);
-        return LookupMethod(receiverType, methodName, argumentTypes);
+        return LookupMethod(receiverType, methodName, argumentTypes, true, &call);
     }
     for (const FuncDecl *method : candidates) {
         if (writtenCount != 0 && writtenCount != method->typeParams.size()) {
@@ -129,24 +151,29 @@ const FuncDecl *AnalysisContext::LookupMethodCall(const TypeRef &receiverType, c
                                           ResolveType(*call.typeArgs[typeArgumentOffset + i]));
             }
         }
-        auto parameterTypes = ResolveMethodParamTypes(receiverType, *method, resolved);
-        if (parameterTypes.size() != argumentTypes.size()) {
+        const auto boundTypes = [&] {
+            return BoundParameterTypes(*method, true, ResolveMethodParamTypes(receiverType, *method, resolved),
+                                       ResolveMethodVariadicType(receiverType, *method, resolved), argumentTypes.size(),
+                                       &call);
+        };
+        auto parameterTypes = boundTypes();
+        if (!parameterTypes) {
             continue;
         }
         if (writtenCount == 0) {
             for (std::size_t i = 0; i < argumentTypes.size(); ++i) {
-                DeduceTypeArgument(parameterTypes[i], argumentTypes[i], parameters, resolved);
+                DeduceTypeArgument((*parameterTypes)[i], argumentTypes[i], parameters, resolved);
             }
         }
         if (std::ranges::any_of(method->typeParams,
                                 [&](const TypeParameter &parameter) { return !resolved.contains(parameter.name); })) {
             continue;
         }
-        parameterTypes = ResolveMethodParamTypes(receiverType, *method, resolved);
-        bool matches = true;
-        for (std::size_t i = 0; i < argumentTypes.size(); ++i) {
+        parameterTypes = boundTypes();
+        bool matches = parameterTypes.has_value();
+        for (std::size_t i = 0; matches && i < argumentTypes.size(); ++i) {
             const auto &argument = argumentTypes[i];
-            const auto &parameter = parameterTypes[i];
+            const auto &parameter = (*parameterTypes)[i];
             if (!argument.IsUnknown() && !parameter.IsUnknown() && !argument.IsAssignableTo(parameter) &&
                 !argument.CanImplicitlyBorrowTo(parameter) && !argument.CanReadScalarTo(parameter) &&
                 !CanConvertToInterface(argument, parameter) && !(argument.IsInteger() && parameter.IsInteger()) &&
@@ -221,6 +248,14 @@ TypeRef AnalysisContext::ResolveInterfaceMethodReturnType(const FuncDecl &method
     return ResolveTypeWithSubstitution(*method.returnType->get(), SelfSubstitution(selfType));
 }
 
+std::optional<TypeRef> AnalysisContext::ResolveInterfaceMethodVariadicType(const FuncDecl &method,
+                                                                           const TypeRef &selfType) {
+    if (method.params.empty() || !method.params.back().isVariadic) {
+        return std::nullopt;
+    }
+    return ResolveTypeWithSubstitution(*method.params.back().type, SelfSubstitution(selfType));
+}
+
 std::vector<TypeRef> AnalysisContext::ResolveInterfaceMethodParamTypes(const FuncDecl &method,
                                                                        const TypeRef &selfType) {
     const auto substitution = SelfSubstitution(selfType);
@@ -236,7 +271,8 @@ std::vector<TypeRef> AnalysisContext::ResolveInterfaceMethodParamTypes(const Fun
 }
 
 const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const std::vector<TypeRef> &argTypes,
-                                                        const std::vector<TypeExprPtr> &typeArgs) {
+                                                        const std::vector<TypeExprPtr> &typeArgs,
+                                                        const CallExpr *call) {
     ambiguousOverloads.clear();
     if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
         return nullptr;
@@ -252,7 +288,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
             substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
         }
         if (substitutions.size() < decl->typeParams.size()) {
-            DeduceTypeArguments(*decl, argTypes, substitutions);
+            DeduceTypeArguments(*decl, argTypes, substitutions, call);
         }
         TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                         TypeParameterNames(decl->typeParams));
@@ -300,7 +336,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                     substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
                 }
                 if (substitutions.size() < decl->typeParams.size()) {
-                    DeduceTypeArguments(*decl, argTypes, substitutions);
+                    DeduceTypeArguments(*decl, argTypes, substitutions, call);
                 }
                 if (!TypeArgumentsSatisfyBounds(decl->typeParams, substitutions)) {
                     continue;
