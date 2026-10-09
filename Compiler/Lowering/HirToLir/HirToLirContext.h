@@ -174,6 +174,10 @@ private:
     [[nodiscard]] static std::string PrintConstExpr(const HirExpr &expression);
     [[nodiscard]] std::optional<std::string> PrintConstElement(const HirExpr &expression) const;
     void CollectConstContents(const HirConst &constant, LirConstDecl &declaration) const;
+    [[nodiscard]] std::optional<std::vector<LirConstScalar>> ConstValueScalars(const HirConst &constant) const;
+    [[nodiscard]] bool CollectConstValueScalars(const HirExpr &value, const TypeRef &type,
+                                                std::vector<LirConstMember> &path,
+                                                std::vector<LirConstScalar> &scalars) const;
     [[nodiscard]] LirFunc LowerFunc(const HirFunc &function, std::string_view nameOverride = "");
 
     [[nodiscard]] std::vector<LirFunc> SynthesizeDropGlue(const std::vector<DropGluePlan> &plans);

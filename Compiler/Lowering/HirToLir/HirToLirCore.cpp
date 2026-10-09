@@ -938,6 +938,12 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         cd.type = c.type;
         cd.value = PrintConstExpr(*c.value);
         CollectConstContents(c, cd);
+        if (!cd.hasSequenceData) {
+            if (auto scalars = ConstValueScalars(c)) {
+                cd.scalars = std::move(*scalars);
+                cd.hasValueData = true;
+            }
+        }
         lm.consts.push_back(std::move(cd));
     }
     for (const auto &ta : mod.typeAliases) {
@@ -1057,6 +1063,90 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
         cd.elements = std::move(elements);
         cd.hasSequenceData = true;
     }
+}
+
+/// The scalars a constant that is not a sequence folds to, or nullopt when some part of its value has no layout the
+/// code generators know: an enum, an optional, a slice, a value no folding reaches. A constant with scalars is laid out
+/// in read-only data, and `@C` addresses those bytes rather than a fresh copy, so every `@C` is the same pointer.
+std::optional<std::vector<LirConstScalar>> HirToLirContext::ConstValueScalars(const HirConst &c) const {
+    if (!c.value || c.type.IsUnknown() || IsViewType(c.type) || IsArrayType(c.type)) {
+        return std::nullopt;
+    }
+    std::vector<LirConstMember> path;
+    std::vector<LirConstScalar> scalars;
+    if (!CollectConstValueScalars(*c.value, c.type, path, scalars)) {
+        return std::nullopt;
+    }
+    return scalars;
+}
+
+/// Gathers the scalars of one part of a constant's value, of `type`, at `path`. A scalar part is laid out at the type
+/// it is stored at, the way a run-time initializer stores it: the constant's own type at the top, and a member's own
+/// type within a struct, tuple or array.
+bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeRef &type,
+                                               std::vector<LirConstMember> &path,
+                                               std::vector<LirConstScalar> &scalars) const {
+    // A pointer constant has a layout only as the literal `null` spells; an address is a relocation, not bytes.
+    if (type.kind == TypeRef::Kind::Pointer) {
+        const auto *literal = dynamic_cast<const HirLiteralExpr *>(&value);
+        if (!literal || !SplitIntegerLiteral(literal->value)) {
+            return false;
+        }
+        scalars.push_back({path, type, literal->value});
+        return true;
+    }
+    if (type.IsInteger() || type.IsFloat() || type.IsBool() || type.IsChar()) {
+        const auto literal = PrintConstElement(value);
+        if (!literal) {
+            return false;
+        }
+        scalars.push_back({path, type, *literal});
+        return true;
+    }
+    // A constant initialized from another stands for that one's value.
+    if (const auto *name = dynamic_cast<const HirVarExpr *>(&value)) {
+        const auto it = globalConsts.find(name->name);
+        return it != globalConsts.end() && it->second->value &&
+               CollectConstValueScalars(*it->second->value, type, path, scalars);
+    }
+    const auto member = [&](const HirExpr &part, const TypeRef &partType, std::string name) {
+        path.push_back({type, std::move(name)});
+        const bool collected = CollectConstValueScalars(part, partType, path, scalars);
+        path.pop_back();
+        return collected;
+    };
+    if (const auto *init = dynamic_cast<const HirStructInitExpr *>(&value); init && type.kind == TypeRef::Kind::Named) {
+        return std::ranges::all_of(init->fields, [&](const HirStructInitField &field) {
+            return field.value && member(*field.value, field.value->type, field.name);
+        });
+    }
+    if (const auto *tuple = dynamic_cast<const HirTupleExpr *>(&value);
+        tuple && type.kind == TypeRef::Kind::Tuple && tuple->elements.size() == type.inner.size()) {
+        for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
+            if (!tuple->elements[index] ||
+                !member(*tuple->elements[index], tuple->elements[index]->type, std::to_string(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (const auto *array = dynamic_cast<const HirArrayExpr *>(&value);
+        array && type.kind == TypeRef::Kind::Array && !type.inner.empty() && type.arrayLength) {
+        const std::size_t count =
+            array->repeatedElement ? static_cast<std::size_t>(array->repeatCount) : array->elements.size();
+        if (count != *type.arrayLength) {
+            return false;
+        }
+        for (std::size_t index = 0; index < count; ++index) {
+            const HirExpr *element =
+                array->repeatedElement ? array->repeatedElement.get() : array->elements[index].get();
+            if (!element || !member(*element, type.inner.front(), std::to_string(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 // Function lowering

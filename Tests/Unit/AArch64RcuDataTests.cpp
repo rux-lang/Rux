@@ -275,7 +275,7 @@ const TEXT: char8[..] = "abc";
     CHECK_EQ(elements[0].sectionOffset, FindSymbol(object, "test::TEXT")->value);
 }
 
-TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data section") {
+TEST_CASE("AArch64 RCU emitter publishes scalar constant bytes in read-only data") {
     const auto package = CompileToAArch64Lir(R"(
         pub const LIMIT: int32 = 7;
 
@@ -289,12 +289,10 @@ TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data sect
 
     const RcuSymbol *limit = FindSymbol(object, "test::LIMIT");
     REQUIRE(limit != nullptr);
-    CHECK_EQ(limit->sectionIdx, RCU_DATA_IDX);
-    CHECK_EQ(limit->size, 8);
+    CHECK_EQ(limit->sectionIdx, RCU_RODATA_IDX);
+    CHECK_EQ(limit->size, 4);
     CHECK_EQ(limit->visibility, RcuSymVis::Exported);
-    // The value is inlined at every use, so what stands behind the symbol is
-    // storage to take the address of rather than the number itself.
-    CHECK_EQ(object.sections[RCU_DATA_IDX].data.size(), 8);
+    CHECK_EQ(RodataOf(object, "test::LIMIT"), std::vector<std::uint8_t>{7, 0, 0, 0});
 }
 
 // Loads, stores and aggregate addressing
@@ -503,4 +501,30 @@ TEST_CASE("AArch64 RCU emitter reaches a slot past the addressing range through 
     // frame layout's business, so the access itself is read as either.
     CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFF8003FFU) == 0x910003B0U; }));
     CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFBFFFE0U) == 0xF9000200U; }));
+}
+
+TEST_CASE("AArch64 scalar constant addresses relocate to full aligned values") {
+    const auto package = CompileToAArch64Lir(R"(
+        const PAD: int8 = -7i8;
+        pub const WIDE: int128 = 0x0102030405060708090A0B0C0D0E0F10i128;
+        pub func Address() -> *int128 { return @WIDE; }
+    )");
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    REQUIRE_FALSE(objects.empty());
+    const auto &object = objects.front();
+    const auto *symbol = FindSymbol(object, "test::WIDE");
+    REQUIRE(symbol != nullptr);
+    CHECK(symbol->sectionIdx == RCU_RODATA_IDX);
+    CHECK(symbol->size == 16);
+    CHECK(symbol->value % 16 == 0);
+    CHECK(symbol->visibility == RcuSymVis::Exported);
+    const auto bytes = RodataOf(object, "test::WIDE");
+    REQUIRE(bytes.size() == 16);
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        CHECK(bytes[i] == 16 - i);
+    }
+    const auto relocations = RelocsFor(object, RCU_TEXT_IDX, "test::WIDE");
+    REQUIRE(relocations.size() == 2);
+    CHECK(relocations[0].type == RcuRelType::AArch64AdrPrelPgHi21);
+    CHECK(relocations[1].type == RcuRelType::AArch64AddAbsLo12Nc);
 }

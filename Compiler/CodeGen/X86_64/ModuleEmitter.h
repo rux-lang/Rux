@@ -335,6 +335,8 @@ private:
 
     void EmitConstArray(const LirConstDecl &c);
 
+    void EmitConstValue(const LirConstDecl &c);
+
     void GenModule();
 };
 

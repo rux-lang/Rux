@@ -795,15 +795,26 @@ private:
             RcuModuleSection::RoData, arrayOff, static_cast<std::uint32_t>(RodataData().size()) - arrayOff);
     }
 
-    // A scalar constant is inlined at every use, so its symbol exists only for
-    // something to take the address of, and eight zeroed bytes in .data are
-    // what stands behind it.
-    void EmitScalarConst(const LirConstDecl &c) {
-        const auto offset = static_cast<std::uint32_t>(DataData().size());
-        DataData().insert(DataData().end(), 8, 0);
-        dataSyms[c.name] =
-            DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                             RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::Data, offset, 8);
+    // Any other constant is inlined at its uses, but its symbol is what `@C`,
+    // inline assembly, and another object or package reach it through, so it
+    // holds the value itself: the constant's bytes at its type's size and
+    // alignment, in read-only data.
+    void EmitConstValue(const LirConstDecl &c) {
+        const auto visibility = RcuSymVis::ForDefinition(c.isPublic, c.isExported);
+        if (!c.hasValueData) {
+            // A value with no layout here is never addressed through its
+            // symbol, which stays a zeroed placeholder.
+            const auto offset = static_cast<std::uint32_t>(DataData().size());
+            DataData().insert(DataData().end(), 8, 0);
+            dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const, visibility,
+                                                RcuModuleSection::Data, offset, 8);
+            return;
+        }
+        const std::vector<std::uint8_t> bytes = ConstantValueBytes(c, layouts, interfaceNames);
+        const std::uint32_t offset = AlignRodata(ConstantValueAlignment(c, layouts, interfaceNames));
+        (void)moduleBuilder.Append(RcuModuleSection::RoData, bytes);
+        dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const, visibility,
+                                            RcuModuleSection::RoData, offset, static_cast<std::uint32_t>(bytes.size()));
     }
 
     void GenModule();

@@ -148,7 +148,7 @@ void AArch64ModuleEmitter::GenModule() {
         // A constant of sequence type is addressed rather than inlined, so
         // it needs its contents behind its name and not a placeholder.
         if (!c.hasSequenceData) {
-            EmitScalarConst(c);
+            EmitConstValue(c);
         }
         else if (c.type.kind == TypeRef::Kind::Array) {
             EmitConstArray(c);

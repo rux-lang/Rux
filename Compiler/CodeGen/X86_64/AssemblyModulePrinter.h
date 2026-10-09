@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CodeGen/Layout.h"
 #include "Target/Target.h"
 
 #include <sstream>
@@ -18,7 +19,10 @@ class AssemblyModulePrinter {
 public:
     explicit AssemblyModulePrinter(Target::OS targetOs);
 
-    void EmitModuleData(const LirModule &module);
+    /// Prints a module's extern variables, constants and vtables. A constant's bytes are laid out with `layouts`, the
+    /// struct layouts of the whole package, exactly as the object emitter lays them out.
+    void EmitModuleData(const LirModule &module, const Layout::LayoutMap &layouts = {},
+                        const std::unordered_set<std::string> &interfaceNames = {});
     [[nodiscard]] bool DeclareFunction(const LirFunc &function);
     void DeclareExtern(const std::string &name);
 

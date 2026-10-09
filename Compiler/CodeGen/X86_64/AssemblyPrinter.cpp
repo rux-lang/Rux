@@ -29,7 +29,7 @@ namespace {
     AssemblyModulePrinter modulePrinter(targetOs);
     AssemblyControlFlowPrinter functionPrinter(modulePrinter, layouts, interfaceNames, targetOs);
     for (const auto &module : package.modules) {
-        modulePrinter.EmitModuleData(module);
+        modulePrinter.EmitModuleData(module, layouts, interfaceNames);
         for (const auto &function : module.funcs) {
             if (modulePrinter.DeclareFunction(function)) {
                 functionPrinter.EmitFunction(function);

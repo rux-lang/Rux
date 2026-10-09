@@ -199,6 +199,26 @@ void X86_64ModuleEmitter::EmitConstArray(const LirConstDecl &c) {
                          static_cast<uint32_t>(c.elements.size() * static_cast<std::size_t>(elemSize)));
 }
 
+// Any other constant is inlined at its uses, but its symbol is what `@C`, inline assembly, and another object or
+// package reach it through, so it holds the value itself: the constant's bytes at its type's size and alignment, in
+// read-only data.
+void X86_64ModuleEmitter::EmitConstValue(const LirConstDecl &c) {
+    const auto visibility = RcuSymVis::ForDefinition(c.isPublic, c.isExported);
+    if (!c.hasValueData) {
+        // A value with no layout here is never addressed through its symbol, which stays a zeroed placeholder.
+        const auto offset = static_cast<uint32_t>(DataData().size());
+        DataData().insert(DataData().end(), 8, 0);
+        dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const, visibility,
+                                            RcuModuleSection::Data, offset, 8);
+        return;
+    }
+    const std::vector<std::uint8_t> bytes = ConstantValueBytes(c, layouts, interfaceNames);
+    const uint32_t offset = AlignRodata(ConstantValueAlignment(c, layouts, interfaceNames));
+    (void)moduleBuilder.Append(RcuModuleSection::RoData, bytes);
+    dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const, visibility,
+                                        RcuModuleSection::RoData, offset, static_cast<uint32_t>(bytes.size()));
+}
+
 void X86_64ModuleEmitter::GenModule() {
     BuildLayouts();
     PredeclareFunctions();
@@ -206,7 +226,7 @@ void X86_64ModuleEmitter::GenModule() {
     for (const auto &ev : mod.externVars) {
         GetOrAddExtern(ev.name, RcuSymKind::ExternData);
     }
-    // Module constants → .data symbols
+    // Module constants → read-only data symbols
     for (const auto &c : mod.consts) {
         // A constant of slice type is addressed, not inlined, so it needs
         // real contents behind its name rather than a placeholder.
@@ -219,14 +239,7 @@ void X86_64ModuleEmitter::GenModule() {
             }
             continue;
         }
-        const uint32_t offset = static_cast<uint32_t>(DataData().size());
-        // Emit 8 placeholder bytes in .data
-        for (int i = 0; i < 8; ++i) {
-            DataData().push_back(0);
-        }
-        dataSyms[c.name] =
-            DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                             RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::Data, offset, 8);
+        EmitConstValue(c);
     }
     EmitVtables();
     // Functions

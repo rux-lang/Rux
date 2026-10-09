@@ -1,7 +1,7 @@
 #pragma once
 
-// Target-neutral scalar constant serialization for aggregate and slice data.
-// Both native back ends emit the same little-endian RCU representation.
+// Target-neutral constant serialization for module constants, arrays and slices.
+// Both native back ends and the assembly printer emit the same little-endian representation.
 
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
@@ -15,7 +15,9 @@
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace Rux {
@@ -65,5 +67,48 @@ inline void AppendScalarConstant(std::vector<std::uint8_t> &data, const std::str
         const std::uint64_t word = bits.Word64(static_cast<std::size_t>(byte / 8));
         data.push_back(static_cast<std::uint8_t>(word >> (8 * (byte % 8)) & 0xFFU));
     }
+}
+
+/// The bytes a constant that is not a sequence publishes under its name: its type's runtime size, each scalar of its
+/// value at the offset its path of members reaches, and zero in every byte no scalar covers, which is the padding of a
+/// struct or tuple and the six high bytes of a `float80`. A scalar constant is its one scalar at offset zero.
+///
+/// The offsets come from the same layout rules a field or element access reads, so `*@C` and `(@C).field` see the
+/// value the constant names. A scalar whose place would reach past the value is left out rather than written over a
+/// neighbour; the HIR lowering only records paths into the constant's own type, so none does.
+[[nodiscard]] inline std::vector<std::uint8_t>
+ConstantValueBytes(const LirConstDecl &constant, const Layout::LayoutMap &layouts,
+                   const std::unordered_set<std::string> &interfaceNames) {
+    const int size = Layout::RuntimeSizeOf(constant.type, layouts, interfaceNames);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(std::max(size, 0)), 0);
+    std::vector<std::uint8_t> scalar;
+    for (const LirConstScalar &part : constant.scalars) {
+        int offset = 0;
+        for (const LirConstMember &member : part.path) {
+            if (member.aggregate.kind == TypeRef::Kind::Array) {
+                const int stride = member.aggregate.inner.empty()
+                                     ? 0
+                                     : Layout::RuntimeSizeOf(member.aggregate.inner.front(), layouts, interfaceNames);
+                offset += stride * std::stoi(member.member);
+            }
+            else {
+                offset += Layout::FieldOffsetOf(TypeRef::MakePointer(member.aggregate), member.member, layouts,
+                                                interfaceNames);
+            }
+        }
+        scalar.clear();
+        AppendScalarConstant(scalar, part.literal, part.type);
+        if (offset < 0 || static_cast<std::size_t>(offset) + scalar.size() > bytes.size()) {
+            continue;
+        }
+        std::ranges::copy(scalar, bytes.begin() + offset);
+    }
+    return bytes;
+}
+
+/// The alignment a constant that is not a sequence is placed at, the one `alignof` reports for its type.
+[[nodiscard]] inline int ConstantValueAlignment(const LirConstDecl &constant, const Layout::LayoutMap &layouts,
+                                                const std::unordered_set<std::string> &interfaceNames) {
+    return std::max(Layout::RuntimeAlignmentOf(constant.type, layouts, interfaceNames), 1);
 }
 } // namespace Rux

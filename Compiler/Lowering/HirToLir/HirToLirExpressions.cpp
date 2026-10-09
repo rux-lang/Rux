@@ -975,11 +975,14 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         if (const auto constIt = localConsts.find(e->name); constIt != localConsts.end()) {
             return LowerLValue(*constIt->second.value);
         }
+        // So does any other module constant whose value has a layout: `@C` is then the address of those bytes, the
+        // same pointer each time, rather than of a fresh copy.
         if (const auto constIt = globalConsts.find(e->name); constIt != globalConsts.end()) {
-            if (IsViewType(constIt->second->type) || IsArrayType(constIt->second->type)) {
-                return EmitGlobalAddr(e->name, constIt->second->type);
+            const HirConst &constant = *constIt->second;
+            if (IsViewType(constant.type) || IsArrayType(constant.type) || ConstValueScalars(constant)) {
+                return EmitGlobalAddr(constant.name, constant.type);
             }
-            return LowerLValue(*constIt->second->value);
+            return LowerLValue(*constant.value);
         }
         // Global variable address.
         LirReg ptr = NewReg();

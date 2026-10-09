@@ -2,30 +2,94 @@
 
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 
+#include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
 #include "Ir/Lir/Lir.h"
 #include "Target/Platform.h"
+#include "Unicode/Utf.h"
 
+#include <algorithm>
 #include <cstring>
 #include <format>
+#include <span>
+#include <vector>
 
 namespace Rux {
 AssemblyModulePrinter::AssemblyModulePrinter(const Target::OS inputTargetOs)
     : targetOs(inputTargetOs) {
 }
 
-void AssemblyModulePrinter::EmitModuleData(const LirModule &module) {
+namespace {
+/// Bytes as `db` lines of sixteen, the way the object's read-only data holds them.
+void PrintBytes(std::ostringstream &out, const std::span<const std::uint8_t> bytes) {
+    for (std::size_t start = 0; start < bytes.size(); start += 16) {
+        out << "    db    ";
+        for (std::size_t index = start; index < std::min(bytes.size(), start + 16); ++index) {
+            out << (index == start ? "" : ", ") << std::format("0x{:02x}", bytes[index]);
+        }
+        out << '\n';
+    }
+}
+} // namespace
+
+void AssemblyModulePrinter::EmitModuleData(const LirModule &module, const Layout::LayoutMap &layouts,
+                                           const std::unordered_set<std::string> &interfaceNames) {
     for (const auto &externalVariable : module.externVars) {
         DeclareExtern(externalVariable.name);
         data << "; extern var: " << externalVariable.name << '\n';
     }
 
+    // Each constant is printed with the bytes the object emitter places in its read-only data, at the same alignment.
     for (const auto &constant : module.consts) {
+        if (constant.hasSequenceData && constant.type.kind != TypeRef::Kind::Array) {
+            const int elementSize = std::max(Layout::SizeOf(constant.elementType), 1);
+            std::vector<std::uint8_t> elements;
+            std::uint64_t length = constant.elements.size();
+            if (constant.isTextSlice) {
+                const std::string encoded = Layout::EncodeStringLiteral(constant.text, elementSize);
+                elements.assign(encoded.begin(), encoded.end());
+                elements.push_back(0);
+                length = CodeUnitCount(constant.text, elementSize).value_or(0);
+            }
+            for (const auto &element : constant.elements) {
+                AppendScalarConstant(elements, element, constant.elementType);
+            }
+            rodata << "align " << Layout::AlignOf(constant.elementType) << '\n';
+            rodata << constant.name << "$elements:\n";
+            PrintBytes(rodata, elements);
+            if (constant.isPublic) {
+                rodata << "global " << constant.name << '\n';
+            }
+            rodata << "align 8\n" << constant.name << ":  ; " << constant.type.ToString() << '\n';
+            rodata << "    dq    " << constant.name << "$elements, " << length << '\n';
+            continue;
+        }
+        if (constant.hasSequenceData || constant.hasValueData) {
+            std::vector<std::uint8_t> bytes;
+            int alignment = 1;
+            if (constant.hasSequenceData) {
+                for (const auto &element : constant.elements) {
+                    AppendScalarConstant(bytes, element, constant.elementType);
+                }
+                alignment = Layout::AlignOf(constant.elementType);
+            }
+            else {
+                bytes = ConstantValueBytes(constant, layouts, interfaceNames);
+                alignment = ConstantValueAlignment(constant, layouts, interfaceNames);
+            }
+            if (constant.isPublic) {
+                rodata << "global " << constant.name << '\n';
+            }
+            rodata << "align " << alignment << '\n';
+            rodata << constant.name << ":  ; " << constant.type.ToString() << " = " << constant.value << '\n';
+            PrintBytes(rodata, bytes);
+            continue;
+        }
         if (constant.isPublic) {
             data << "global " << constant.name << '\n';
         }
         data << constant.name << ":  ; " << constant.type.ToString() << " = " << constant.value << '\n';
-        data << "    ; (constant — initialized at link time)\n";
+        data << "    ; (constant with no laid-out value: a zeroed placeholder)\n";
     }
 
     for (const auto &vtable : module.vtables) {

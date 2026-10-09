@@ -281,6 +281,21 @@ struct LirUnionDecl {
     std::vector<LirUnionField> fields;
 };
 
+/// One step from a constant's value into a part of it: the member of `aggregate` named `member`, which is a struct
+/// field's name, or a tuple or array element's decimal index.
+struct LirConstMember {
+    TypeRef aggregate;
+    std::string member;
+};
+
+/// One scalar of a constant's value, as a literal of `type`, at the place the members of `path` reach from the start of
+/// the value. A scalar constant is one of these with an empty path.
+struct LirConstScalar {
+    std::vector<LirConstMember> path;
+    TypeRef type;
+    std::string literal;
+};
+
 struct LirConstDecl {
     std::string name;
     bool isPublic = false;
@@ -296,6 +311,13 @@ struct LirConstDecl {
     std::string text;
     bool isTextSlice = false;
     bool hasSequenceData = false;
+
+    /// The contents of a constant that is not a sequence: every scalar its value folds to, which the code generators
+    /// lay out in read-only data at the constant's size and alignment, zero wherever no scalar lies. `@C` addresses
+    /// those bytes. `hasValueData` is false when some part of the value has no layout the code generators know, and the
+    /// symbol is then a placeholder that `@C` does not address.
+    std::vector<LirConstScalar> scalars;
+    bool hasValueData = false;
 };
 
 struct LirTypeAlias {
