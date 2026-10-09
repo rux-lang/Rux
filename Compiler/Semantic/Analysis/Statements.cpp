@@ -988,7 +988,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         CheckGuardKeepsBindings(*guardedPattern);
     }
     else if (const auto *rangePattern = dynamic_cast<const RangePattern *>(&pattern)) {
-        if (!subjectType.IsUnknown() && !subjectType.IsNumeric()) {
+        if (!subjectType.IsUnknown() && !subjectType.IsNumeric() && !subjectType.IsChar()) {
             EmitError(rangePattern->location,
                       std::format("range pattern cannot match value of type '{}'", subjectType.ToString()));
         }

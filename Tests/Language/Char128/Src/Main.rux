@@ -11,6 +11,16 @@ import Core::{ char128, uint128 };
 const Face = c128'😀';
 const Last: char128 = c128'\u{10FFFF}';
 const Table: char128[4] = [c128'A', c128'λ', c128'😀', c128'\u{10FFFF}'];
+const CastTable: char128[2] = [c128'a', 0x41u32 as char128];
+const CastCopies: char256[3] = [0x1F600u128 as char256; 3];
+
+func InLetterRange(value: char128) -> bool {
+    return match value { c128'a'..=c128'z' => true, else => false };
+}
+
+func InWideRange(value: char512) -> bool {
+    return match value { c512'A'..c512'Z' => true, else => false };
+}
 
 func Identity<T>(value: T) -> T { return value; }
 func Width<T>(value: T) -> uint { return sizeof(T); }
@@ -212,6 +222,17 @@ func Main() -> int {
         Assert(true, "constant evaluation uses the same decoded scalar");
     } else {
         Assert(false, "character spellings must agree at compile time");
+    }
+    Assert(CastTable[0] == c128'a' && CastTable[1] == c128'A', "inline casts keep their constant bytes");
+    Assert(CastCopies[2] == c256'😀', "a repeated inline cast keeps its wide character value");
+    Assert(InLetterRange(c128'a') && InLetterRange(c128'z') && !InLetterRange(c128'A'), "inclusive character ranges");
+    Assert(InWideRange(c512'A') && !InWideRange(c512'Z'), "exclusive wide character ranges");
+    when (1u64 as uint128) << 100u == 1267650600228229401496703205376u128 &&
+         (-1i64 as int256) == -1i256 && (65u512 as char128) == c128'A' &&
+         (0x1F600u128 as char512) == c512'😀' {
+        Assert(true, "wide integer casts and character casts fold exactly");
+    } else {
+        Assert(false, "wide constant casts must retain their value");
     }
     return 0;
 }

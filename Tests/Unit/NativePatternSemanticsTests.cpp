@@ -51,6 +51,29 @@ std::vector<std::string> ErrorsIn(const std::string_view body) {
 }
 } // namespace
 
+TEST_CASE("character ranges match every character storage width") {
+    for (const auto &width : {8, 16, 32, 64, 128, 256, 512}) {
+        const std::string type = "char" + std::to_string(width);
+        const std::string prefix = "c" + std::to_string(width);
+        const auto errors = Errors("func Pick(value: " + type + ") -> int { return match value { " + prefix +
+                                   "'a'..=" + prefix + "'z' => 1, else => 0 }; }");
+        CAPTURE(type);
+        CAPTURE(errors.empty() ? std::string{} : errors[0]);
+        CHECK(errors.empty());
+    }
+}
+
+TEST_CASE("constant arrays accept inline constant casts") {
+    const auto errors = Errors(R"(
+        const Letters: char128[2] = [c128'a', 0x41u32 as char128];
+        const Copies: char256[3] = [0x1F600u128 as char256; 3];
+        const Numbers: int128[2] = [1i64 as int128, -2i32 as int128];
+        func First() -> char128 { return Letters[1]; }
+    )");
+    CAPTURE(errors.empty() ? std::string{} : errors[0]);
+    CHECK(errors.empty());
+}
+
 TEST_CASE("fallible matches cover both channels at every level") {
     CHECK(ErrorsIn(R"(
         func Channels(outcome: Options ! ParseError) -> int32 {

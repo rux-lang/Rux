@@ -494,6 +494,9 @@ void AnalysisContext::CheckModuleDecl(const ModuleDecl &d) {
 // An element of a constant array must reduce to a literal, since the array
 // is laid out in read-only data rather than evaluated at each use.
 bool AnalysisContext::IsConstArrayElement(const Expr &e) const {
+    if (const auto *cast = dynamic_cast<const CastExpr *>(&e)) {
+        return IsConstArrayElement(*cast->operand);
+    }
     if (dynamic_cast<const LiteralExpr *>(&e)) {
         return true;
     }
