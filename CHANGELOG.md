@@ -208,6 +208,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 - **Compile-time configuration** — `[Build.Defines]` supplies string values to `config`, and `--define NAME[=VALUE]` overrides them for `build`, `check`, `run`, and `test`. Date/time compiler parameters share one UTC build timestamp and honor `SOURCE_DATE_EPOCH` for reproducible builds.
 - **Manifest-less workspace installation** — bare `rux install` now discovers package manifests below the root `Tests/` tree, immediate member packages, and member `Tests/` trees when no root `Rux.toml` exists. Registry dependencies are deduplicated and installed through the existing transitive resolver, so repository test setup no longer needs a hard-coded package list.
 - **`rux uninstall --global`** — remove every package from the global cache, whether or not the current `Rux.toml` declares it. Completes the `--global` set alongside `rux list --global` and `rux update --global`.
+- **`rux info --json` includes dependency target restrictions** — registry and path dependencies with a `TargetOS` allow-list now expose the canonical operating-system names in the JSON dependency object, matching human-readable `rux info` output.
 
 #### Tooling
 
