@@ -132,6 +132,38 @@ pub func Print(value: bool32) -> IoError? {
     return PrintValue(value);
 }
 
+/// Writes a `bool64` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: bool64) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `bool128` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: bool128) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `bool256` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: bool256) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `bool512` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: bool512) -> IoError? {
+    return PrintValue(value);
+}
+
 /// Writes a `char8` to standard output.
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written

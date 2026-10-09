@@ -1,0 +1,30 @@
+// A `bool256` is the word `true` or the word `false`.
+// The sixth boolean width renders exactly as the other five do. A boolean's text has nothing to do with how many
+// bytes it is stored in, and a width that rendered differently would be a width a caller had to remember.
+
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+
+extend bool256 : Display {
+    /// Writes `true` or `false`.
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/character-text#bool256-write-display
+    pub func WriteDisplay(self: &bool256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        return WriteAligned(writer, spec, self ? "true" : "false", false);
+    }
+}
+
+extend bool256 : Debug {
+    /// The same two words.
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/character-text#bool256-write-debug
+    pub func WriteDebug(self: &bool256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        return self.WriteDisplay(writer, spec);
+    }
+}

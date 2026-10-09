@@ -194,11 +194,11 @@ TEST_CASE("The catalog's implemented and reserved counts are what the matrix was
         }
     }
 
-    CHECK_MESSAGE(implemented == 26,
+    CHECK_MESSAGE(implemented == 29,
                   "the implemented primitive count changed. A newly implemented width needs its placeholder in "
                   "Tests/Language replaced with a real case, and its line removed from "
                   "Golden/ReservedPrimitiveTypes.expected.");
-    CHECK_MESSAGE(reserved == 12,
+    CHECK_MESSAGE(reserved == 9,
                   "the reserved primitive count changed. A newly reserved width needs a Tests/Language placeholder "
                   "and a line in Golden/ReservedPrimitiveTypes.rux.");
     CHECK(implemented + reserved == PrimitiveCatalog().size());

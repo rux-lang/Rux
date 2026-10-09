@@ -1,2 +1,14 @@
-// bool128 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `bool128`: one of two values, stored in 128 bits.
+// Every boolean width holds exactly zero or one whatever its size, so a cast into one asks whether the whole source
+// value is non-zero rather than truncating to the width first.
+
+/// One of two values, stored in 128 bits.
+/// @see https://rux-lang.dev/docs/api/core/booleans#bool128
+extend bool128 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/booleans#bool128-bits
+    pub const Bits: uint = 128;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/booleans#bool128-bytes
+    pub const Bytes: uint = 16;
+}

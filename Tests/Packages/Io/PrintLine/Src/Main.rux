@@ -35,9 +35,17 @@ func Main() -> int {
     let bool8Value: bool8 = true;
     let bool16Value: bool16 = false;
     let bool32Value: bool32 = true;
+    let bool64Value: bool64 = false;
+    let bool128Value: bool128 = true;
+    let bool256Value: bool256 = false;
+    let bool512Value: bool512 = true;
     PrintLine(bool8Value);
     PrintLine(bool16Value);
     PrintLine(bool32Value);
+    PrintLine(bool64Value);
+    PrintLine(bool128Value);
+    PrintLine(bool256Value);
+    PrintLine(bool512Value);
 
     PrintLine(c8'A');
     PrintLine(c16'B');

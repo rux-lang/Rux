@@ -513,7 +513,12 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
         Jump(mergeBlock);
         // Right-hand side path.
         SetBlock(rhsBlock);
+        // The result is a bool8 whatever the operands' width, so a wider right side is narrowed before it meets the
+        // bool8 constant of the other edge.
         LirReg rhs = LowerExpr(*e.right);
+        if (e.right->type.IsBool()) {
+            rhs = EmitCastIfNeeded(rhs, e.right->type, TypeRef::MakeBool());
+        }
         const std::uint32_t rhsBlockIdx = builder->CurrentBlock();
         Jump(mergeBlock);
         // Join with a phi.

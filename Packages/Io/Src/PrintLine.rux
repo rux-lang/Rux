@@ -91,6 +91,38 @@ pub func PrintLine(value: bool32) -> IoError? {
     return Terminate(Print(value));
 }
 
+/// Writes a `bool64` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: bool64) -> IoError? {
+    return Terminate(Print(value));
+}
+
+/// Writes a `bool128` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: bool128) -> IoError? {
+    return Terminate(Print(value));
+}
+
+/// Writes a `bool256` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: bool256) -> IoError? {
+    return Terminate(Print(value));
+}
+
+/// Writes a `bool512` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: bool512) -> IoError? {
+    return Terminate(Print(value));
+}
+
 /// Writes a `char8` to standard output, then a newline.
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written

@@ -1,5 +1,5 @@
-import Core::{ bool, bool16, bool32, bool8, byte, char, char16, char32, char8, float, float32, float64, int, int16,
-               int32, int64, int8, uint, uint16, uint32, uint64, uint8 };
+import Core::{ bool, bool128, bool16, bool256, bool32, bool512, bool64, bool8, byte, char, char16, char32, char8, float,
+               float32, float64, int, int16, int32, int64, int8, uint, uint16, uint32, uint64, uint8 };
 import Core::Assert;
 
 when int32::Bits == 32 && int32::Bytes == 4 &&
@@ -25,6 +25,10 @@ func Main() -> int {
     Assert(bool8::Bits == 8 && bool8::Bytes == 1, "bool8 width constants");
     Assert(bool16::Bits == 16 && bool16::Bytes == 2, "bool16 width constants");
     Assert(bool32::Bits == 32 && bool32::Bytes == 4, "bool32 width constants");
+    Assert(bool64::Bits == 64 && bool64::Bytes == 8, "bool64 width constants");
+    Assert(bool128::Bits == 128 && bool128::Bytes == 16, "bool128 width constants");
+    Assert(bool256::Bits == 256 && bool256::Bytes == 32, "bool256 width constants");
+    Assert(bool512::Bits == 512 && bool512::Bytes == 64, "bool512 width constants");
     Assert(bool::Bits == bool8::Bits && bool::Bytes == bool8::Bytes, "bool alias constants");
 
     Assert(char8::Bits == 8 && char8::Bytes == 1, "char8 width constants");

@@ -222,6 +222,47 @@ TEST_SUITE("WideBoolLowering") {
         CHECK_EQ(merges, 1);
     }
 
+    TEST_CASE("a short-circuit merges a wide right operand as the bool it produces") {
+        // `&&` and `||` produce a bool8 whatever their operands, so the right side is narrowed before the phi rather
+        // than merged at its own width beside the bool8 constant of the skipping edge.
+        const LirPackage package = LowerToLir(R"(
+            func Both(left: bool256, right: bool256) -> bool8 {
+                return left && right;
+            }
+            func Either(left: bool512, right: bool128) -> bool8 {
+                return left || right;
+            }
+        )");
+        for (const std::string name : {"Both", "Either"}) {
+            CAPTURE(name);
+            const LirFunc &function = RequireFunction(package, name);
+            std::unordered_map<LirReg, TypeRef> produced;
+            for (const LirBlock &block : function.blocks) {
+                for (const LirInstr &instruction : block.instrs) {
+                    if (instruction.dst != LirNoReg) {
+                        produced.insert_or_assign(instruction.dst, instruction.type);
+                    }
+                }
+            }
+            std::size_t merges = 0;
+            for (const LirBlock &block : function.blocks) {
+                for (const LirInstr &instruction : block.instrs) {
+                    if (instruction.op != LirOpcode::Phi) {
+                        continue;
+                    }
+                    ++merges;
+                    CHECK_EQ(instruction.type, Primitive(TypeRef::Kind::Bool8));
+                    for (const auto &[reg, predecessor] : instruction.phiPreds) {
+                        CAPTURE(predecessor);
+                        REQUIRE(produced.contains(reg));
+                        CHECK_EQ(produced.at(reg), Primitive(TypeRef::Kind::Bool8));
+                    }
+                }
+            }
+            CHECK_EQ(merges, 1);
+        }
+    }
+
     TEST_CASE("a match's bool arms are converted to the width it produces") {
         const HirPackage package = LowerToHir(R"(
             func Pick(choice: int32, narrow: bool8, wide: bool64, middle: bool16) -> bool32 {

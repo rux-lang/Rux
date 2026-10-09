@@ -23,9 +23,9 @@ constexpr std::array<PrimitiveInfo, 38> Catalog{{
     {K::Bool16, "bool16", C::Bool, 16, 2, 2, true},
     {K::Bool32, "bool32", C::Bool, 32, 4, 4, true},
     {K::Bool64, "bool64", C::Bool, 64, 8, 8, true},
-    {K::Bool128, "bool128", C::Bool, 128, 16, 16, false},
-    {K::Bool256, "bool256", C::Bool, 256, 32, 16, false},
-    {K::Bool512, "bool512", C::Bool, 512, 64, 16, false},
+    {K::Bool128, "bool128", C::Bool, 128, 16, 16, true},
+    {K::Bool256, "bool256", C::Bool, 256, 32, 16, true},
+    {K::Bool512, "bool512", C::Bool, 512, 64, 16, true},
 
     {K::Char8, "char8", C::Char, 8, 1, 1, true},
     {K::Char16, "char16", C::Char, 16, 2, 2, true},
