@@ -15,7 +15,9 @@
 #include "Syntax/Parser/Parser.h"
 #include "Target/TargetTriple.h"
 
+#include <cstdint>
 #include <doctest.h>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -339,6 +341,9 @@ TEST_SUITE("VariadicWideningLowering") {
         for (const LirBlock &block : function.blocks) {
             for (const LirInstr &instruction : block.instrs) {
                 if (instruction.op == LirOpcode::CallIndirect) {
+                    // The boundary is recorded as for a named extern, over the arguments and not the callee.
+                    CHECK(instruction.isCVariadic);
+                    CHECK_EQ(instruction.cVariadicFixedParamCount, std::optional<std::uint32_t>(1));
                     for (const LirReg source : instruction.srcs) {
                         const auto found = produced.find(source);
                         operands.push_back(found == produced.end() ? TypeRef::MakeOpaque() : found->second);

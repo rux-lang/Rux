@@ -79,7 +79,8 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
                 out << std::format("call {} @{}({}){}\n", i.type.ToString(), i.strArg, args, CallMetadata(i));
             }
             else {
-                out << std::format("call_ind {} {}({})\n", i.type.ToString(), RegStr(i.srcs[0]), args);
+                out << std::format("call_ind {} {}({}){}\n", i.type.ToString(), RegStr(i.srcs[0]), args,
+                                   CallMetadata(i));
             }
         }
         else {
@@ -88,8 +89,8 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
                                    CallMetadata(i));
             }
             else {
-                out << std::format("{} = call_ind {} {}({})\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]),
-                                   args);
+                out << std::format("{} = call_ind {} {}({}){}\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]),
+                                   args, CallMetadata(i));
             }
         }
         return;

@@ -8,7 +8,7 @@
 // one back as C sees it, and the text it writes is compared with what C would have written.
 
 import Core::Assert;
-import Core::{ #Error, #target, Architecture, OperatingSystem };
+import Core::{ #Error, #target };
 
 // `sprintf` rather than `snprintf`: the runtime this binds on Windows has the formatted family only under the legacy
 // `msvcrt.dll`, which does not export `snprintf` under that name. Every buffer below is far larger than its text.
@@ -129,14 +129,15 @@ func Main() -> int {
     sprintf(buffer[..].data, "%d %.2f %d %u %d".data, negative, quarter, total, scalar, set);
     Assert(Wrote(buffer[..].data, "-5 0.25 -123456789 122 1"), "promoted values sit beside unpromoted ones");
 
-    // A function value of a C-variadic type passes its tail the same way as the extern it was taken from. Apple
-    // and Windows AArch64 are left out: each places an anonymous argument somewhere a declared one would not go, the
-    // stack or the general-purpose registers, and only a direct call tells code generation where the declared ones end.
-    when !(#target.arch == Architecture::AArch64 &&
-           (#target.os == OperatingSystem::macOS || #target.os == OperatingSystem::Windows)) {
-        let format: func(*char8, *char8, ...) -> int32 = sprintf;
-        format(buffer[..].data, "%d %.2f %d".data, negative, quarter, set);
-        Assert(Wrote(buffer[..].data, "-5 0.25 1"), "a call through a function value promotes its tail too");
-    }
+    // A function value of a C-variadic type passes its tail the same way as the extern it was taken from, promoted
+    // and placed where the platform puts an anonymous argument: on the stack on Apple AArch64, in the general-purpose
+    // registers on Windows AArch64, beside the declared ones everywhere else.
+    let format: func(*char8, *char8, ...) -> int32 = sprintf;
+    format(buffer[..].data, "%d %.2f %d".data, negative, quarter, set);
+    Assert(Wrote(buffer[..].data, "-5 0.25 1"), "a call through a function value promotes its tail too");
+    format(buffer[..].data, "%.3f %d %.3f %d %.3f %d %.3f %d %.3f %d".data, twice, negative, quarter, total, 7.125,
+           set, negativeHalf, scalar, exact, below);
+    Assert(Wrote(buffer[..].data, "2.500 -5 0.250 -123456789 7.125 1 -0.500 122 1.500 -300"),
+           "and places it in register and stack positions like a direct call");
     return 0;
 }

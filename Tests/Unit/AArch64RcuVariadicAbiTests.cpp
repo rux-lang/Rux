@@ -14,6 +14,35 @@
 using namespace Rux;
 using namespace Rux::Testing;
 
+namespace {
+/// The index of the first `blr` in `words`: the call through a function value.
+std::optional<std::size_t> BranchAndLinkRegisterIndex(const std::vector<std::uint32_t> &words) {
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        if ((words[i] & 0xFFFFFC1FU) == 0xD63F0000U) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+/// The only indirect call in `package`, which every function-value test below makes exactly once.
+LirInstr &RequireIndirectCall(LirPackage &package) {
+    LirInstr *found = nullptr;
+    for (auto &function : package.modules.front().funcs) {
+        for (auto &block : function.blocks) {
+            for (auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::CallIndirect) {
+                    REQUIRE(found == nullptr);
+                    found = &instruction;
+                }
+            }
+        }
+    }
+    REQUIRE(found != nullptr);
+    return *found;
+}
+} // namespace
+
 TEST_CASE("Apple AArch64 variadic calls keep fixed arguments in registers and promote the stack tail") {
     const auto package = CompileToAArch64Lir(R"(
         struct Wide { first: int64; second: int64; }
@@ -470,4 +499,228 @@ TEST_CASE("AArch64 RCU emitter passes an anonymous float argument in a vector re
     REQUIRE_MESSAGE(anonymous.has_value(), HexWord(caller[*call - 2]));
     CHECK_EQ(*anonymous, 0);
     CHECK_EQ(ArgumentFilled(caller[*call - 1]), std::optional<unsigned>(1));
+}
+
+// A call through a function value of a C-variadic type places its tail exactly as a call to the named extern does:
+// the boundary the declaration draws reaches code generation with the indirect call too, counted over the arguments
+// and not the callee.
+
+TEST_CASE("Apple AArch64 variadic calls through a function value keep fixed arguments in registers and the tail on "
+          "the stack") {
+    auto package = CompileToAArch64Lir(R"(
+        struct Wide { first: int64; second: int64; }
+
+        #Link("libSystem.B.dylib")
+        extern {
+            func Format(format: *char8, scale: float64, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var narrow: int16 = -2i16;
+            var byte: uint8 = 3u8;
+            var wide = Wide { first: 4i64, second: 5i64 };
+            let format: func(*char8, float64, ...) -> int32 = Format;
+            format(null, 1.5, 2.5f32, narrow, byte, wide);
+            return 0;
+        }
+    )",
+                                       "macos-aarch64");
+    const LirInstr &indirect = RequireIndirectCall(package);
+    CHECK(indirect.isCVariadic);
+    CHECK_EQ(indirect.cVariadicFixedParamCount, std::optional<std::uint32_t>(2));
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::MacOS);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    CHECK_FALSE(BranchAndLinkIndex(caller).has_value());
+    const auto call = BranchAndLinkRegisterIndex(caller);
+    REQUIRE(call.has_value());
+    const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
+
+    // The declared pointer and double use X0 and V0, and nothing anonymous takes another argument register: the
+    // promoted double, both promoted integers and the aggregate fill the eight-byte stack slots a direct call fills.
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(0); }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return VectorArgumentFilled(word, 64) == std::optional<unsigned>(0);
+    }));
+    for (unsigned reg = 1; reg < 8; ++reg) {
+        CHECK_FALSE(std::ranges::any_of(beforeCall, [reg](const std::uint32_t word) {
+            return ArgumentFilled(word) == std::optional<unsigned>(reg) ||
+                   VectorArgumentFilled(word, 32) == std::optional<unsigned>(reg) ||
+                   VectorArgumentFilled(word, 64) == std::optional<unsigned>(reg);
+        }));
+    }
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return VectorStackArgumentStored(word, 64) == std::optional<std::uint32_t>(0);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 4, 9) == std::optional<std::uint32_t>(8);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackArgumentStoredBy(word, 4, 9) == std::optional<std::uint32_t>(16);
+    }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return StackPairArgumentStored(word) == std::optional<std::uint32_t>(24);
+    }));
+    CHECK(std::ranges::any_of(caller, [](const std::uint32_t word) {
+        return StackPointerAdjustment(word, true) == std::optional<std::int64_t>(48);
+    }));
+}
+
+TEST_CASE("Windows AArch64 variadic calls through a function value use consecutive general-purpose slots") {
+    auto package = CompileToAArch64Lir(R"(
+        #Link("ucrtbase.dll")
+        extern {
+            func sprintf(buffer: *char8, format: *char8, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var buffer = "result";
+            var format = "values";
+            let print: func(*char8, *char8, ...) -> int32 = sprintf;
+            var written = print(buffer.data, format.data, 2.5, 7, 3.5f32);
+            return 0;
+        }
+    )",
+                                       "windows-aarch64");
+    const LirInstr &indirect = RequireIndirectCall(package);
+    CHECK(indirect.isCVariadic);
+    CHECK_EQ(indirect.cVariadicFixedParamCount, std::optional<std::uint32_t>(2));
+
+    AArch64RcuEmitter emitter(package, "test", Target::OS::Windows);
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    CHECK_FALSE(BranchAndLinkIndex(caller).has_value());
+    const auto call = BranchAndLinkRegisterIndex(caller);
+    REQUIRE(call.has_value());
+
+    // As for the direct call: both doubles, the promoted float32 among them, cross into X2 and X4 by bit pattern
+    // beside the integer in X3, and no V argument register receives anything.
+    const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(0); }));
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(1); }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return FloatBitsArgumentFilled(word, 64) == std::optional<unsigned>(2);
+    }));
+    CHECK(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return ArgumentFilled(word) == std::optional<unsigned>(3); }));
+    CHECK(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return FloatBitsArgumentFilled(word, 64) == std::optional<unsigned>(4);
+    }));
+    CHECK_FALSE(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return FloatBitsArgumentFilled(word, 32).has_value(); }));
+    for (const auto word : caller) {
+        for (const unsigned bits : {32U, 64U}) {
+            const auto vector = VectorArgumentFilled(word, bits);
+            CHECK(vector.value_or(8) >= 8);
+        }
+    }
+}
+
+TEST_CASE("Linux AArch64 variadic calls through a function value keep generic register placement") {
+    auto package = CompileToAArch64Lir(R"(
+        #Link("libc.so.6")
+        extern {
+            func printf(format: *char8, ...) -> int32;
+        }
+
+        func Main() -> int {
+            var text = "value";
+            let print: func(*char8, ...) -> int32 = printf;
+            var written = print(text.data, 2.5, 7, 1.5f32);
+            return 0;
+        }
+    )");
+    const LirInstr &indirect = RequireIndirectCall(package);
+    CHECK(indirect.isCVariadic);
+    CHECK_EQ(indirect.cVariadicFixedParamCount, std::optional<std::uint32_t>(1));
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    const auto caller = FunctionWords(objects.front(), "Main");
+    const auto call = BranchAndLinkRegisterIndex(caller);
+    REQUIRE(call.has_value());
+    const auto beforeCall = std::ranges::subrange(caller.begin(), caller.begin() + static_cast<std::ptrdiff_t>(*call));
+
+    // Generic AAPCS64 draws no line at the boundary: the doubles take V0 and V1, the integers X0 and X1, and nothing
+    // goes to the stack or crosses into the general-purpose file by bit pattern.
+    for (const unsigned reg : {0U, 1U}) {
+        CHECK(std::ranges::any_of(beforeCall, [reg](const std::uint32_t word) {
+            return ArgumentFilled(word) == std::optional<unsigned>(reg);
+        }));
+        CHECK(std::ranges::any_of(beforeCall, [reg](const std::uint32_t word) {
+            return VectorArgumentFilled(word, 64) == std::optional<unsigned>(reg);
+        }));
+    }
+    CHECK_FALSE(std::ranges::any_of(beforeCall, [](const std::uint32_t word) {
+        return FloatBitsArgumentFilled(word, 32).has_value() || FloatBitsArgumentFilled(word, 64).has_value();
+    }));
+    CHECK_FALSE(std::ranges::any_of(
+        beforeCall, [](const std::uint32_t word) { return VectorStackArgumentStored(word, 64).has_value(); }));
+}
+
+TEST_CASE("AArch64 function values of a fixed-arity type carry no C variadic metadata") {
+    auto package = CompileToAArch64Lir(R"(
+        #Link("libSystem.B.dylib")
+        extern {
+            func Scale(value: float64) -> int32;
+        }
+
+        func Main() -> int {
+            let scale: func(float64) -> int32 = Scale;
+            var result = scale(1.5);
+            return 0;
+        }
+    )",
+                                       "macos-aarch64");
+    const LirInstr &indirect = RequireIndirectCall(package);
+    CHECK_FALSE(indirect.isCVariadic);
+    CHECK_FALSE(indirect.cVariadicFixedParamCount.has_value());
+}
+
+TEST_CASE("AArch64 emitter checks C variadic metadata on a call through a function value") {
+    const auto makePackage = [] {
+        return CompileToAArch64Lir(R"(
+            #Link("libSystem.B.dylib")
+            extern func Log(value: int32, ...) -> int32;
+
+            func Main() -> int {
+                let log: func(int32, ...) -> int32 = Log;
+                log(1, 2);
+                return 0;
+            }
+        )",
+                                   "macos-aarch64");
+    };
+
+    auto missingCount = makePackage();
+    RequireIndirectCall(missingCount).cVariadicFixedParamCount.reset();
+    AArch64RcuEmitter missingEmitter(missingCount, "test", Target::OS::MacOS);
+    (void)missingEmitter.Generate();
+    CHECK(JoinMessages(missingEmitter.Diagnostics()).find("inconsistent C variadic call metadata") !=
+          std::string::npos);
+
+    // Two arguments follow the callee, so three declared parameters is one more than the call has.
+    auto excessiveCount = makePackage();
+    RequireIndirectCall(excessiveCount).cVariadicFixedParamCount = 3;
+    AArch64RcuEmitter excessiveEmitter(excessiveCount, "test", Target::OS::MacOS);
+    (void)excessiveEmitter.Generate();
+    CHECK(JoinMessages(excessiveEmitter.Diagnostics()).find("invalid C variadic fixed-parameter count") !=
+          std::string::npos);
+
+    // Every argument declared is a boundary the count may name, though the callee in front of them is not one.
+    auto allFixed = makePackage();
+    RequireIndirectCall(allFixed).cVariadicFixedParamCount = 2;
+    AArch64RcuEmitter allFixedEmitter(allFixed, "test", Target::OS::MacOS);
+    (void)allFixedEmitter.Generate();
+    CHECK_MESSAGE(allFixedEmitter.Diagnostics().empty(), JoinMessages(allFixedEmitter.Diagnostics()));
 }

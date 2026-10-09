@@ -240,8 +240,10 @@ void AArch64CallEmitter::EmitCall(const LirInstr &instruction, const std::vector
             std::format("AArch64 code generation reached inconsistent C variadic call metadata in '{}'", functionName));
         return;
     }
+    // A call through a function value of a C-variadic type carries the same boundary as a call to the named extern,
+    // counted over the arguments alone, and its tail goes wherever the platform puts an anonymous argument.
     if (instruction.cVariadicFixedParamCount &&
-        (indirect || *instruction.cVariadicFixedParamCount > static_cast<std::uint32_t>(arguments.size()))) {
+        *instruction.cVariadicFixedParamCount > static_cast<std::uint32_t>(arguments.size())) {
         Report(std::format("AArch64 code generation reached an invalid C variadic fixed-parameter count in '{}'",
                            functionName));
         return;

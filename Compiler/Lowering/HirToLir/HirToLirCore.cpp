@@ -215,8 +215,6 @@ void HirToLirContext::SetCVariadicCallMetadata(LirInstr &call, const std::string
     if (found == cVariadicFixedParamCounts.end()) {
         return;
     }
-    call.isCVariadic = true;
-    call.cVariadicFixedParamCount = found->second;
     PassCVariadicArguments(call, found->second, expr);
 }
 
@@ -230,7 +228,13 @@ void HirToLirContext::SetCVariadicCallMetadata(LirInstr &call, const std::string
 /// anonymous argument from there, so a double the caller placed only in an xmm register was never seen. The ABI asks
 /// for the value in both registers; the integer one is the copy a variadic callee reads, so the double travels as its
 /// bits, which also lands it in the right stack slot past the fourth argument.
+///
+/// The call also records where the declared parameters end. Apple AArch64 moves every anonymous argument to the stack
+/// and Windows AArch64 every one to the general-purpose registers, so code generation places the tail only once it
+/// knows the boundary, whether the callee is a named extern or a function value of a C-variadic type.
 void HirToLirContext::PassCVariadicArguments(LirInstr &call, const std::size_t fixedCount, const HirCallExpr &expr) {
+    call.isCVariadic = true;
+    call.cVariadicFixedParamCount = static_cast<std::uint32_t>(fixedCount);
     const CallingConvention convention = call.callConv == CallingConvention::Default
                                            ? PlatformDefaultConvention(targetContext.os, targetContext.arch)
                                            : ResolveCConvention(call.callConv, targetContext.os, targetContext.arch);
