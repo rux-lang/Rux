@@ -394,6 +394,137 @@ public:
     // Move physical register from RAX (used by StoreA)
     void MovPhysRegRax(int rIdx) const;
 
+    // ---- x87 (float80) ---------------------------------------------------------------------------------------------
+    // Encoded in EncoderX87.cpp. Mnemonics follow Intel syntax and the Intel SDM, never AT&T: GNU as swaps the meaning
+    // of fsub/fsubr and fdiv/fdivr in the register-register forms, so AT&T `fsubp %st, %st(1)` is DE E1, not DE E9.
+    //
+    // Operand order for X2: `fld a` then `fld b` leaves ST(0) = b and ST(1) = a. FaddpSt1, FsubpSt1, FmulpSt1 and
+    // FdivpSt1 then compute `a op b` into ST(1) and pop, leaving only the result; FsubrpSt1 and FdivrpSt1 compute
+    // `b op a`. Each memory form uses mod=10 with a disp32, even when the displacement would fit in 8 bits, like the
+    // rest of this encoder.
+
+    /// A general-purpose register in hardware encoding order, used as the base of an x87 memory operand. Distinct
+    /// from the allocator indices `PushReg` and `MovRaxPhysReg` take.
+    enum class Gpr : uint8_t {
+        Rax,
+        Rcx,
+        Rdx,
+        Rbx,
+        Rsp,
+        Rbp,
+        Rsi,
+        Rdi,
+        R8,
+        R9,
+        R10,
+        R11,
+        R12,
+        R13,
+        R14,
+        R15
+    };
+
+    /// FLD m80fp [rbp + d] (DB /5): push the 80-bit value.
+    void FldTbyte(int32_t d) const;
+
+    /// FSTP m80fp [rbp + d] (DB /7): store ST(0) as 10 bytes and pop. Bytes 10-15 of a float80 slot are not written.
+    void FstpTbyte(int32_t d) const;
+
+    /// FLD m64fp [rbp + d] (DD /0): push a float64, widened exactly.
+    void FldQword(int32_t d) const;
+
+    /// FSTP m64fp [rbp + d] (DD /3): round ST(0) to float64 under the control word, store and pop.
+    void FstpQword(int32_t d) const;
+
+    /// FLD m32fp [rbp + d] (D9 /0): push a float32, widened exactly.
+    void FldDword(int32_t d) const;
+
+    /// FSTP m32fp [rbp + d] (D9 /3): round ST(0) to float32 under the control word, store and pop.
+    void FstpDword(int32_t d) const;
+
+    /// FILD m64int [rbp + d] (DF /5): push a signed 64-bit integer, exactly.
+    void FildQword(int32_t d) const;
+
+    /// FILD m32int [rbp + d] (DB /0): push a signed 32-bit integer, exactly.
+    void FildDword(int32_t d) const;
+
+    /// The same eight memory forms addressed as [base + d], with a REX.B prefix for r8-r15 and a SIB byte for rsp and
+    /// r12.
+    void FldTbyteAt(Gpr base, int32_t d) const;
+
+    void FstpTbyteAt(Gpr base, int32_t d) const;
+
+    void FldQwordAt(Gpr base, int32_t d) const;
+
+    void FstpQwordAt(Gpr base, int32_t d) const;
+
+    void FldDwordAt(Gpr base, int32_t d) const;
+
+    void FstpDwordAt(Gpr base, int32_t d) const;
+
+    void FildQwordAt(Gpr base, int32_t d) const;
+
+    void FildDwordAt(Gpr base, int32_t d) const;
+
+    /// FADDP ST(1), ST(0) (DE C1): ST(1) = ST(1) + ST(0), then pop.
+    void FaddpSt1() const;
+
+    /// FSUBP ST(1), ST(0) (DE E9): ST(1) = ST(1) - ST(0), then pop. ST(0) is the subtrahend.
+    void FsubpSt1() const;
+
+    /// FSUBRP ST(1), ST(0) (DE E1): ST(1) = ST(0) - ST(1), then pop. ST(1) is the subtrahend.
+    void FsubrpSt1() const;
+
+    /// FMULP ST(1), ST(0) (DE C9): ST(1) = ST(1) * ST(0), then pop.
+    void FmulpSt1() const;
+
+    /// FDIVP ST(1), ST(0) (DE F9): ST(1) = ST(1) / ST(0), then pop. ST(0) is the divisor.
+    void FdivpSt1() const;
+
+    /// FDIVRP ST(1), ST(0) (DE F1): ST(1) = ST(0) / ST(1), then pop. ST(1) is the divisor.
+    void FdivrpSt1() const;
+
+    /// FPREM (D9 F8): ST(0) = partial remainder of ST(0) / ST(1), truncating like C fmod; nothing is popped. C2 in the
+    /// status word stays set while the reduction is incomplete, so loop `Fprem; FnstswAx; TestAhImm8(0x04); Jnz`.
+    void Fprem() const;
+
+    /// FCHS (D9 E0): ST(0) = -ST(0), flipping only the sign bit.
+    void Fchs() const;
+
+    /// FNSTSW AX (DF E0): AX = the x87 status word, so AH bits 0, 2 and 6 hold C0, C2 and C3.
+    void FnstswAx() const;
+
+    /// FUCOMIP ST(0), ST(i) (DF E8+i): compare ST(0) with ST(i) into ZF/PF/CF like UCOMISD with ST(0) as the left
+    /// operand (CF = ST(0) < ST(i), ZF = equal, PF/ZF/CF all set = unordered), then pop once. Quiet NaNs do not raise.
+    void FucomipSt(int i) const;
+
+    /// FSTP ST(i) (DD D8+i): copy ST(0) into ST(i), then pop. FSTP ST(0) just discards the top; FSTP ST(1) discards
+    /// ST(1) and keeps ST(0).
+    void FstpSt(int i) const;
+
+    /// FLD ST(i) (D9 C0+i): push a copy of ST(i).
+    void FldSt(int i) const;
+
+    /// FXCH ST(i) (D9 C8+i): swap ST(0) and ST(i).
+    void FxchSt(int i) const;
+
+    /// FNSTCW m16 [rbp + d] (D9 /7): store the control word without checking pending exceptions.
+    void Fnstcw(int32_t d) const;
+
+    /// FLDCW m16 [rbp + d] (D9 /5): load the control word.
+    void Fldcw(int32_t d) const;
+
+    /// MOV word [rbp + d], imm16 (66 C7 /0): e.g. the 0x037F control word (64-bit precision, round to nearest, all
+    /// exceptions masked), or zeroing bytes 10-11 of a float80 slot.
+    void MovWordStoreImm16(int32_t d, uint16_t v) const;
+
+    /// MOV dword [rbp + d], imm32 (C7 /0): e.g. zeroing bytes 12-15 of a float80 slot.
+    void MovDwordStoreImm32(int32_t d, int32_t v) const;
+
+    /// TEST AH, imm8 (F6 C4 ib): e.g. 0x04 tests C2 after FnstswAx. Never REX-prefixed, since REX makes AH unreachable.
+    void TestAhImm8(uint8_t v) const;
+    // ---- end x87 ---------------------------------------------------------------------------------------------------
+
 private:
     std::vector<uint8_t> &out;
 
