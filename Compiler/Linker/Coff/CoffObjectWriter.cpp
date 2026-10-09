@@ -220,6 +220,9 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
     std::size_t cursor = headersSize;
     for (std::size_t i = 0; i < sectionCount; ++i) {
         sectionData.push_back(file.sections[i].data);
+        if (file.sections[i].type == RcuSecType::Bss && file.sections[i].relocs.empty()) {
+            sectionData.back().clear();
+        }
         for (const auto &relocation : file.sections[i].relocs) {
             if (!ApplyCoffInlineAddend(sectionData.back(), relocation, targetArch,
                                        file.symbols[relocation.symbolIndex].name, error)) {
@@ -252,16 +255,22 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
     for (std::size_t i = 0; i < sectionCount; ++i) {
         const auto &section = file.sections[i];
         WriteName8(out, section.name.c_str());
+        const bool zeroFill = section.type == RcuSecType::Bss && section.relocs.empty();
         WriteU32(out, 0);
         WriteU32(out, 0);
-        WriteU32(out, static_cast<std::uint32_t>(sectionData[i].size()));
+        // COFF objects encode the allocation size here even without file bytes.
+        // VirtualSize is reserved for executable images.
+        WriteU32(out, static_cast<std::uint32_t>(zeroFill ? section.data.size() : sectionData[i].size()));
         WriteU32(out, rawOffsets[i]);
         WriteU32(out, relocationOffsets[i]);
         WriteU32(out, 0);
         WriteU16(out, static_cast<std::uint16_t>(section.relocs.size()));
         WriteU16(out, 0);
         std::uint32_t characteristics = 0x40000000U;
-        if ((section.flags & RcuSecFlag::Exec) != 0) {
+        if (zeroFill) {
+            characteristics |= 0x80000000U | 0x00000080U;
+        }
+        else if ((section.flags & RcuSecFlag::Exec) != 0) {
             characteristics |= 0x20000000U | 0x00000020U;
         }
         else if ((section.flags & RcuSecFlag::Write) != 0) {
@@ -291,10 +300,11 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
             WriteU32(out, AddString(stringTable, symbol.name));
         }
         WriteU32(out, symbol.value);
-        const std::int16_t section = symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
-                                   : symbol.sectionIdx == RCU_SEC_ABSOLUTE
-                                       ? -1
-                                       : static_cast<std::int16_t>(symbol.sectionIdx + 1);
+        const std::int16_t section =
+            symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
+            : symbol.sectionIdx == RCU_SEC_ABSOLUTE
+                ? -1
+                : static_cast<std::int16_t>(SymbolSectionIndex(file, symbol.sectionIdx).value_or(0) + 1);
         WriteU16(out, static_cast<std::uint16_t>(section));
         WriteU16(out, symbol.kind == RcuSymKind::Func ? 0x20 : 0);
         WriteU8(out, symbol.visibility == RcuSymVis::Local ? 3 : 2);

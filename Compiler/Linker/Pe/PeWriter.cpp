@@ -752,7 +752,9 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
             objects[reference.objectIndex].sections[reference.sectionIndex].relocs[reference.relocationIndex];
         return relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
     });
-    const uint32_t numSections = (dataBuf.empty() ? 2u : 3u) + (hasAbsoluteFixups ? 1u : 0u);
+    const auto bssVirtSize = static_cast<uint32_t>(layout.BssSize());
+    const uint32_t numSections =
+        (dataBuf.empty() ? 2u : 3u) + (bssVirtSize == 0 ? 0u : 1u) + (hasAbsoluteFixups ? 1u : 0u);
     const uint32_t rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
     const uint32_t sizeOfHeaders = AlignUp(rawHdrBytes, kFileAlign);
     const uint32_t textRva = AlignUp(sizeOfHeaders, kSecAlign);
@@ -770,8 +772,12 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         dataFileSize = AlignUp(dataVirtSize, kFileAlign);
         dataFileOff = rdataFileOff + rdataFileSize;
     }
-    const uint32_t sizeOfImage =
+    const uint32_t initializedImageEnd =
         !dataBuf.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign) : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
+
+    const uint32_t bssRva =
+        AlignUp(initializedImageEnd, std::max<uint32_t>(kSecAlign, layout.Alignment(RcuMergedSection::Bss)));
+    const uint32_t sizeOfImage = bssVirtSize == 0 ? initializedImageEnd : bssRva + AlignUp(bssVirtSize, kSecAlign);
 
     // 6. Patch .rdata import table with real RVAs
     for (size_t g = 0; g < importDllNames.size(); ++g) {
@@ -798,6 +804,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         .text = imageBase + textRva,
         .rodata = imageBase + rdataRva,
         .data = imageBase + dataRva,
+        .bss = imageBase + bssRva,
     };
     const auto symbolAddress = [&](const RcuSymbolLocation location) -> std::optional<uint64_t> {
         const auto placement = layout.Symbol(location);
@@ -989,7 +996,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wU8(0);                                             // Linker version 14.0
     wU32(textFileSize);                                 // SizeOfCode
     wU32(rdataFileSize + dataFileSize + relocFileSize); // SizeOfInitializedData
-    wU32(0);                                            // SizeOfUninitializedData
+    wU32(bssVirtSize);                                  // SizeOfUninitializedData
     wU32(textRva);                                      // AddressOfEntryPoint (__rux_start at start of .text)
     wU32(textRva);                                      // BaseOfCode
     wU64(imageBase);
@@ -1064,6 +1071,18 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         wU16(0);
         wU16(0);
         wU32(kScnData);
+    }
+    if (bssVirtSize != 0) {
+        wSec8(".bss");
+        wU32(bssVirtSize);
+        wU32(bssRva);
+        wU32(0);
+        wU32(0);
+        wU32(0);
+        wU32(0);
+        wU16(0);
+        wU16(0);
+        wU32(0xC0000080U); // uninitialized, readable and writable
     }
     if (!relocBuf.empty()) {
         wSec8(".reloc");

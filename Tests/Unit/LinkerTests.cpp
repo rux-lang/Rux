@@ -1128,3 +1128,135 @@ TEST_CASE("ELF linker starts each object's sections on the alignment that object
     CHECK(address % 8 == 0);
     CHECK(image.Read64(image.OffsetOf(address)) == payload);
 }
+
+TEST_CASE("native object writers preserve zero-fill size and physical symbol section") {
+    for (const auto arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {
+        RcuFile file;
+        file.arch = RcuArchFor(arch);
+        file.sections.push_back({".bss",
+                                 RcuSecType::Bss,
+                                 RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write,
+                                 32,
+                                 std::vector<std::uint8_t>(96),
+                                 {}});
+        file.symbols.push_back({"Zero", "", 32, 64, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global});
+        NativeObject object;
+        std::string error;
+        const auto read = [&](const std::size_t offset, const std::size_t width) {
+            std::uint64_t value = 0;
+            for (std::size_t i = 0; i < width; ++i) {
+                value |= static_cast<std::uint64_t>(object.bytes.at(offset + i)) << (i * 8U);
+            }
+            return value;
+        };
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Windows, arch, object, error), error);
+        CHECK(read(20 + 8, 4) == 0);
+        CHECK(read(20 + 16, 4) == 96);
+        CHECK(read(20 + 20, 4) == 0);
+        CHECK((read(20 + 36, 4) & 0xE0U) == 0x80U);
+        CHECK(read(static_cast<std::size_t>(read(8, 4)) + 12, 2) == 1);
+
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::MacOS, arch, object, error), error);
+        CHECK(read(32 + 32, 8) == 96); // segment VM size
+        CHECK(read(32 + 48, 8) == 0);  // segment file size
+        CHECK(read(104 + 40, 8) == 96);
+        CHECK(read(104 + 48, 4) == 0);
+        CHECK((read(104 + 64, 4) & 0xFFU) == 1); // S_ZEROFILL
+
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Linux, arch, object, error), error);
+        const auto headers = static_cast<std::size_t>(read(40, 8));
+        CHECK(read(headers + 64 + 4, 4) == 8); // SHT_NOBITS
+        CHECK(read(headers + 64 + 32, 8) == 96);
+        const auto symbols = static_cast<std::size_t>(read(headers + 128 + 24, 8));
+        CHECK(read(symbols + 24 + 6, 2) == 1);
+    }
+}
+
+TEST_CASE("PE linker maps zero-fill storage and patches references to it") {
+    RcuFile file;
+    file.sections.push_back(
+        {".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Exec, 16, {0xC3}, {}});
+    file.sections.push_back({".data",
+                             RcuSecType::Data,
+                             RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write,
+                             8,
+                             std::vector<std::uint8_t>(8),
+                             {{0, 1, RcuRelType::Abs64, 0}}});
+    file.sections.push_back({".bss",
+                             RcuSecType::Bss,
+                             RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write,
+                             32,
+                             std::vector<std::uint8_t>(96),
+                             {}});
+    file.symbols.push_back({"Main", "int", 0, 1, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    file.symbols.push_back({"Zero", "", 32, 64, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Local});
+    const auto output = std::filesystem::temp_directory_path() / "rux-pe-bss-test.exe";
+    Linker linker({file}, "BssTest", {}, ArtifactKind::Executable, Target::OS::Windows, Target::Arch::X86_64);
+    REQUIRE(linker.Link(output));
+    std::ifstream stream(output, std::ios::binary);
+    const ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+    stream.close();
+    std::error_code ec;
+    std::filesystem::remove(output, ec);
+    const auto pe = image.Read32(0x3C);
+    const auto optional = pe + 24;
+    const auto sections = optional + 240;
+    std::uint32_t bssRva = 0;
+    std::uint32_t dataOffset = 0;
+    for (std::uint32_t i = 0; i < image.bytes[pe + 6]; ++i) {
+        const auto header = sections + i * 40;
+        if (image.bytes[header + 1] == 'b') {
+            bssRva = image.Read32(header + 12);
+            CHECK(image.Read32(header + 8) == 96);
+            CHECK(image.Read32(header + 16) == 0);
+            CHECK(image.Read32(header + 20) == 0);
+        }
+        if (image.bytes[header + 1] == 'd') {
+            dataOffset = image.Read32(header + 20);
+        }
+    }
+    REQUIRE(bssRva != 0);
+    REQUIRE(dataOffset != 0);
+    CHECK(bssRva % 32 == 0);
+    CHECK(image.Read32(optional + 12) == 96);
+    CHECK(image.Read64(dataOffset) == image.Read64(optional + 24) + bssRva + 32);
+}
+
+TEST_CASE("native object writers materialize relocations in zero-fill storage") {
+    for (const auto arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {
+        RcuFile file;
+        file.arch = RcuArchFor(arch);
+        file.sections.push_back({".bss",
+                                 RcuSecType::Bss,
+                                 RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write,
+                                 16,
+                                 std::vector<std::uint8_t>(16),
+                                 {{0, 0, RcuRelType::Abs64, 8}}});
+        file.symbols.push_back({"Zero", "", 0, 16, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global});
+        NativeObject object;
+        std::string error;
+        const auto read = [&](const std::size_t offset, const std::size_t width) {
+            std::uint64_t value = 0;
+            for (std::size_t i = 0; i < width; ++i) {
+                value |= static_cast<std::uint64_t>(object.bytes.at(offset + i)) << (i * 8U);
+            }
+            return value;
+        };
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Windows, arch, object, error), error);
+        CHECK(read(36, 4) == 16);
+        CHECK((read(56, 4) & 0xE0U) == 0x40U);
+        CHECK(read(static_cast<std::size_t>(read(40, 4)), 8) == 8);
+        CHECK(read(52, 2) == 1);
+
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::MacOS, arch, object, error), error);
+        CHECK((read(168, 4) & 0xFFU) == 0);
+        CHECK(read(164, 4) == 1);
+        CHECK(read(static_cast<std::size_t>(read(152, 4)), 8) == 8);
+
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Linux, arch, object, error), error);
+        const auto headers = static_cast<std::size_t>(read(40, 8));
+        CHECK(read(headers + 64 + 4, 4) == 1); // SHT_PROGBITS
+        CHECK(read(headers + 64 + 32, 8) == 16);
+        CHECK(read(headers + 128 + 4, 4) == 4); // SHT_RELA
+    }
+}

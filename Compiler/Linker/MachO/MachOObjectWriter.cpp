@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <limits>
 #include <numeric>
 #include <span>
 #include <string_view>
@@ -219,12 +220,12 @@ bool BuildAArch64MachORelocations(const RcuFile &file, const std::size_t section
         if (relocation.type == RcuRelType::None) {
             continue;
         }
+        // Every relocation names its target symbol, local or not. ARM64_RELOC_BRANCH26, PAGE21 and PAGEOFF12 must be
+        // external, which is why an assembler gives each section a local symbol to relocate against, and every RCU
+        // target already has an entry in the symbol table.
         const auto &target = file.symbols[relocation.symbolIndex];
-        const bool sectionRelative = target.visibility == RcuSymVis::Local && target.sectionIdx < file.sections.size();
-        const std::uint32_t symbol =
-            sectionRelative ? static_cast<std::uint32_t>(target.sectionIdx + 1) : symbolRemap[relocation.symbolIndex];
-        const std::int64_t addend = static_cast<std::int64_t>(relocation.addend) +
-                                    (sectionRelative ? static_cast<std::int64_t>(target.value) : 0);
+        const std::uint32_t symbol = symbolRemap[relocation.symbolIndex];
+        const std::int64_t addend = relocation.addend;
         const auto fail = [&](const std::string_view reason) {
             error = std::format("{} relocation against '{}' in section {} {}", RcuRelTypeName(relocation.type),
                                 target.name, section.name, reason);
@@ -242,7 +243,7 @@ bool BuildAArch64MachORelocations(const RcuFile &file, const std::size_t section
                                .length = static_cast<std::uint8_t>(relocation.type == RcuRelType::Abs64 ? 3 : 2),
                                .type = 0,
                                .pcRelative = false,
-                               .external = !sectionRelative});
+                               .external = true});
             continue;
         }
 
@@ -307,10 +308,26 @@ bool BuildAArch64MachORelocations(const RcuFile &file, const std::size_t section
                            .length = 2,
                            .type = type,
                            .pcRelative = pcRelative,
-                           .external = !sectionRelative});
+                           .external = true});
     }
     return true;
 }
+
+std::uint64_t AlignAddress(const std::uint64_t value, const std::uint64_t alignment) noexcept {
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
+/// Where one RCU section lands in the object. MH_OBJECT holds every section in one unnamed segment, so each section
+/// gets its own range of that segment's addresses: a symbol's n_value is an address in that space rather than an
+/// offset into its section, and sections sharing an address would leave the reader unable to tell them apart. The data
+/// sits at a fixed distance from its address in the file, as an assembler lays it out, so file offsets are aligned
+/// too.
+struct MachOSectionPlacement {
+    std::uint64_t address = 0;
+    std::uint64_t size = 0;
+    std::uint32_t fileOffset = 0;
+    std::uint32_t alignmentPower = 0;
+};
 
 bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, NativeObject &output,
                           std::string &error) {
@@ -321,17 +338,51 @@ bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, Na
     const std::size_t sectionCount = file.sections.size();
     const std::uint32_t segmentCommandSize = static_cast<std::uint32_t>(72 + sectionCount * 80);
     const std::uint32_t commandsSize = segmentCommandSize + 24;
-    const std::size_t dataStart = 32 + commandsSize;
     const auto order = SymbolOrder(file);
     std::vector<std::uint32_t> symbolRemap(file.symbols.size());
     for (std::size_t i = 0; i < order.size(); ++i) {
         symbolRemap[order[i]] = static_cast<std::uint32_t>(i);
     }
+
+    const auto zeroFill = [&](const std::size_t index) {
+        return file.sections[index].type == RcuSecType::Bss && file.sections[index].relocs.empty();
+    };
+    std::vector<MachOSectionPlacement> placements(sectionCount);
+    std::uint64_t maximumAlignment = 1;
+    std::uint64_t addressEnd = 0;
+    std::uint64_t fileAddressEnd = 0;
+    // Zero-fill ranges follow all file-backed ranges even if the RCU sections
+    // arrived in a different order; their headers keep the original indexes.
+    for (const bool placeZeroFill : {false, true}) {
+        for (std::size_t i = 0; i < sectionCount; ++i) {
+            if (zeroFill(i) != placeZeroFill) {
+                continue;
+            }
+            const auto &section = file.sections[i];
+            const std::uint64_t alignment = std::bit_ceil(std::max<std::uint64_t>(1, section.alignment));
+            maximumAlignment = std::max(maximumAlignment, alignment);
+            placements[i].alignmentPower = static_cast<std::uint32_t>(std::countr_zero(alignment));
+            placements[i].address = AlignAddress(addressEnd, alignment);
+            placements[i].size = section.data.size();
+            addressEnd = placements[i].address + placements[i].size;
+        }
+        if (!placeZeroFill) {
+            fileAddressEnd = addressEnd;
+        }
+    }
+    const std::uint64_t dataStart = AlignAddress(32 + commandsSize, maximumAlignment);
+    const std::uint64_t dataEnd = dataStart + fileAddressEnd;
+    if (dataEnd > std::numeric_limits<std::uint32_t>::max()) {
+        error = "section data does not fit in a Mach-O object";
+        return false;
+    }
+    for (std::size_t i = 0; i < sectionCount; ++i) {
+        placements[i].fileOffset = zeroFill(i) ? 0 : static_cast<std::uint32_t>(dataStart + placements[i].address);
+    }
+
     std::vector<std::vector<std::uint8_t>> sectionData;
     std::vector<std::vector<MachORelocation>> sectionRelocations(sectionCount);
-    std::vector<std::uint32_t> sectionOffsets(sectionCount);
     std::vector<std::uint32_t> relocationOffsets(sectionCount);
-    std::size_t cursor = dataStart;
     for (std::size_t i = 0; i < sectionCount; ++i) {
         sectionData.push_back(file.sections[i].data);
         if (targetArch == Target::Arch::AArch64) {
@@ -344,9 +395,9 @@ bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, Na
                 PatchInlineField(sectionData.back(), relocation, relocation.addend);
             }
         }
-        sectionOffsets[i] = static_cast<std::uint32_t>(cursor);
-        cursor += sectionData.back().size();
     }
+    const std::uint64_t relocationStart = AlignAddress(dataEnd, 8);
+    std::uint64_t cursor = relocationStart;
     for (std::size_t i = 0; i < sectionCount; ++i) {
         const std::size_t count =
             targetArch == Target::Arch::AArch64 ? sectionRelocations[i].size() : file.sections[i].relocs.size();
@@ -371,9 +422,9 @@ bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, Na
     out.U32(segmentCommandSize);
     out.Zeros(16);
     out.U64(0);
-    out.U64(0);
+    out.U64(addressEnd);
     out.U64(dataStart);
-    out.U64(symbolOffset - dataStart);
+    out.U64(fileAddressEnd);
     out.U32(7);
     out.U32(7);
     out.U32(static_cast<std::uint32_t>(sectionCount));
@@ -382,19 +433,20 @@ bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, Na
         const auto &section = file.sections[i];
         std::string_view name = section.type == RcuSecType::Text   ? "__text"
                               : section.type == RcuSecType::RoData ? "__const"
+                              : zeroFill(i)                        ? "__bss"
                                                                    : "__data";
-        const std::string_view segment = section.type == RcuSecType::Data ? "__DATA" : "__TEXT";
+        const std::string_view segment =
+            section.type == RcuSecType::Data || section.type == RcuSecType::Bss ? "__DATA" : "__TEXT";
         out.Fixed(name, 16);
         out.Fixed(segment, 16);
-        out.U64(0);
-        out.U64(sectionData[i].size());
-        out.U32(sectionOffsets[i]);
-        out.U32(
-            static_cast<std::uint32_t>(std::countr_zero(std::bit_ceil(std::max<std::uint16_t>(1, section.alignment)))));
+        out.U64(placements[i].address);
+        out.U64(placements[i].size);
+        out.U32(placements[i].fileOffset);
+        out.U32(placements[i].alignmentPower);
         out.U32(relocationOffsets[i]);
         out.U32(static_cast<std::uint32_t>(targetArch == Target::Arch::AArch64 ? sectionRelocations[i].size()
                                                                                : section.relocs.size()));
-        out.U32(section.type == RcuSecType::Text ? 0x80000400U : 0);
+        out.U32(section.type == RcuSecType::Text ? 0x80000400U : zeroFill(i) ? 1U : 0U);
         out.U32(0);
         out.U32(0);
         out.U32(0);
@@ -406,9 +458,14 @@ bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, Na
     out.U32(stringOffset);
     const std::size_t stringSizePatch = out.data.size();
     out.U32(0);
-    for (const auto &data : sectionData) {
-        out.Raw(data);
+    for (std::size_t i = 0; i < sectionCount; ++i) {
+        if (zeroFill(i)) {
+            continue;
+        }
+        out.Zeros(placements[i].fileOffset - out.data.size());
+        out.Raw(sectionData[i]);
     }
+    out.Zeros(static_cast<std::size_t>(relocationStart - out.data.size()));
     for (std::size_t i = 0; i < sectionCount; ++i) {
         if (targetArch == Target::Arch::AArch64) {
             for (const auto &relocation : sectionRelocations[i]) {
@@ -436,11 +493,15 @@ bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, Na
         const std::string nativeName = "_" + symbol.name;
         out.U32(AddString(strings, nativeName));
         const bool external = symbol.visibility != RcuSymVis::Local;
-        out.U8(static_cast<std::uint8_t>((symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0 : 0x0e) | (external ? 1 : 0)));
-        out.U8(symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0 : static_cast<std::uint8_t>(symbol.sectionIdx + 1));
+        // A defined symbol's n_value is its address in the object, so its section's address is added to its offset.
+        const auto section = SymbolSectionIndex(file, symbol.sectionIdx);
+        const bool absolute = !section && symbol.sectionIdx == RCU_SEC_ABSOLUTE;
+        const std::uint8_t type = section ? 0x0e : absolute ? 0x02 : 0x00; // N_SECT, N_ABS, N_UNDF
+        out.U8(static_cast<std::uint8_t>(type | (external || type == 0x00 ? 1 : 0)));
+        out.U8(section ? static_cast<std::uint8_t>(*section + 1) : 0);
         out.U16(0);
-        out.U64(symbol.value);
-        if (external && symbol.sectionIdx != RCU_SEC_EXTERNAL) {
+        out.U64(section ? placements[*section].address + symbol.value : absolute ? symbol.value : 0);
+        if (external && section) {
             output.publicSymbols.push_back(nativeName);
         }
     }

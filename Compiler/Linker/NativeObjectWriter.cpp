@@ -4,6 +4,7 @@
 #include "Linker/Elf/ElfObjectWriter.h"
 #include "Linker/MachO/MachOObjectWriter.h"
 
+#include <algorithm>
 #include <format>
 
 namespace Rux {
@@ -28,5 +29,31 @@ bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, const Tar
         return WriteMachOObject(file, targetArch, output, error);
     }
     return WriteElfObject(file, targetOs, targetArch, output, error);
+}
+
+std::optional<std::size_t> SymbolSectionIndex(const RcuFile &file, const std::uint16_t sectionIdx) {
+    std::uint32_t type = RcuSecType::Null;
+    switch (sectionIdx) {
+    case RCU_TEXT_IDX:
+        type = RcuSecType::Text;
+        break;
+    case RCU_RODATA_IDX:
+        type = RcuSecType::RoData;
+        break;
+    case RCU_DATA_IDX:
+        type = RcuSecType::Data;
+        break;
+    case RCU_BSS_IDX:
+        type = RcuSecType::Bss;
+        break;
+    default:
+        return std::nullopt;
+    }
+    const auto section =
+        std::ranges::find_if(file.sections, [&](const RcuSection &candidate) { return candidate.type == type; });
+    if (section == file.sections.end()) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(section - file.sections.begin());
 }
 } // namespace Rux

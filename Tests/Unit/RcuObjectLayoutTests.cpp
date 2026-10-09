@@ -177,3 +177,18 @@ TEST_CASE("RCU object layout maps fixed symbol section ids across omitted physic
     CHECK(layout.Symbol({0, 1}) == (RcuSectionPlacement{RcuMergedSection::Data, 0}));
     CHECK(layout.Symbol({0, 2}) == (RcuSectionPlacement{RcuMergedSection::Bss, 0}));
 }
+
+TEST_CASE("RCU layout materializes zero-fill relocation sites before linking") {
+    RcuFile object;
+    object.sections = {Section(RcuSecType::Data, 1, {0x42}),
+                       Section(RcuSecType::Bss, 32, std::vector<std::uint8_t>(16), {{0, 0, RcuRelType::Abs64, 0}})};
+    object.symbols.push_back({"Zero", "", 8, 8, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Local});
+    const std::array objects = {object};
+    const auto layout = RcuObjectLayout::Build(objects);
+    CHECK(layout.BssSize() == 0);
+    CHECK(layout.Section(0, 1) == (RcuSectionPlacement{RcuMergedSection::Data, 32}));
+    CHECK(layout.Symbol({0, 0}) == (RcuSectionPlacement{RcuMergedSection::Data, 40}));
+    CHECK(layout.Relocation(0, 1, 0) == (RcuSectionPlacement{RcuMergedSection::Data, 32}));
+    CHECK(layout.Data(RcuMergedSection::Data).size() == 48);
+    CHECK(layout.Alignment(RcuMergedSection::Data) == 32);
+}

@@ -2,6 +2,7 @@
 #include "Linker/Linker.h"
 #include "Linker/MachO/CodeSignature.h"
 #include "Linker/MachO/MachOLayout.h"
+#include "Linker/NativeObjectWriter.h"
 #include "MachOReader.h"
 
 #include <algorithm>
@@ -332,6 +333,125 @@ TEST_CASE("Mach-O linker starts and declares each section on its recorded alignm
         CHECK(constSection->offset % 32 == 0);
         CHECK(dataSection->address % 16 == 0);
         CHECK(dataSection->offset % 16 == 0);
+    }
+}
+
+TEST_CASE("Mach-O objects give each section its own aligned address range") {
+    // MH_OBJECT keeps every section in one unnamed segment, and a symbol's n_value is an address in it, so sections
+    // must not overlap there: each starts on its own alignment after the previous one, its data sits at the same
+    // distance from its address in the file, and a relocation's r_address stays an offset into its own section.
+    for (const Target::Arch arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {
+        CAPTURE(Target::ToDisplayString(arch));
+        RcuFile file;
+        file.arch = RcuArchFor(arch);
+        file.sourcePath = "Layout.rux";
+        RcuSection text = TextSection({});
+        if (arch == Target::Arch::X86_64) {
+            text.data = {0x48, 0x8D, 0x05, 0, 0, 0, 0, 0xC3}; // lea rax, [rip + Table]; ret
+            text.relocs.push_back({3, 1, RcuRelType::Rel32, 0});
+        }
+        else {
+            text.alignment = 4;
+            text.data = {0x00, 0x00, 0x00, 0x90, 0x00, 0x00, 0x00, 0x91, 0xC0, 0x03, 0x5F, 0xD6}; // adrp; add; ret
+            text.relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});
+            text.relocs.push_back({4, 1, RcuRelType::AArch64AddAbsLo12Nc, 0});
+        }
+        const std::uint64_t textSize = text.data.size();
+        file.sections.push_back(std::move(text));
+
+        RcuSection rodata;
+        rodata.name = ".rodata";
+        rodata.type = RcuSecType::RoData;
+        rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+        rodata.alignment = 32;
+        for (std::uint8_t i = 0; i < 24; ++i) {
+            rodata.data.push_back(static_cast<std::uint8_t>(0xA0 + i));
+        }
+        file.sections.push_back(std::move(rodata));
+
+        RcuSection data;
+        data.name = ".data";
+        data.type = RcuSecType::Data;
+        data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        data.alignment = 8;
+        data.data.assign(12, 0x33);
+        data.relocs.push_back({0, 1, RcuRelType::Abs64, 0});
+        file.sections.push_back(std::move(data));
+
+        file.symbols.push_back({"Main", "int", 0, static_cast<std::uint32_t>(textSize), RCU_TEXT_IDX, RcuSymKind::Func,
+                                RcuSymVis::Global});
+        file.symbols.push_back({"Table", "", 8, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+        file.symbols.push_back({"Slot", "", 4, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
+        file.symbols.push_back({"Other", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        NativeObject native;
+        std::string error;
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::MacOS, arch, native, error), error);
+        MachOImage object;
+        REQUIRE_MESSAGE(ReadMachO64(native.bytes, object, error), error);
+        CHECK(object.fileType == 1); // MH_OBJECT
+        REQUIRE(object.segments.size() == 1);
+        const MachOSegment &segment = object.segments.front();
+        REQUIRE(segment.sections.size() == 3);
+        const MachOSection &textSection = segment.sections[0];
+        const MachOSection &constSection = segment.sections[1];
+        const MachOSection &dataSection = segment.sections[2];
+
+        // __text at 0, __const on the next 32-byte boundary, __data on eight right after it.
+        CHECK(textSection.address == 0);
+        CHECK(textSection.size == textSize);
+        CHECK(constSection.address == 32);
+        CHECK(constSection.size == 24);
+        CHECK(constSection.alignmentPower == 5);
+        CHECK(dataSection.address == 56);
+        CHECK(dataSection.size == 12);
+        CHECK(dataSection.alignmentPower == 3);
+        CHECK(segment.vmAddress == 0);
+        CHECK(segment.vmSize == 68);
+        CHECK(segment.fileSize == 68);
+        CHECK(segment.fileOffset % 32 == 0);
+        for (const MachOSection &section : segment.sections) {
+            CAPTURE(section.name);
+            CHECK(section.offset == segment.fileOffset + section.address);
+            CHECK(section.offset % (std::uint32_t{1} << section.alignmentPower) == 0);
+        }
+        for (std::size_t i = 0; i < 24; ++i) {
+            CHECK(native.bytes[constSection.offset + i] == static_cast<std::uint8_t>(0xA0 + i));
+        }
+        CHECK(native.bytes[dataSection.offset + 8] == 0x33);
+
+        // Defined symbols carry their section's address plus their offset in it; the import stays undefined.
+        REQUIRE(object.symbols.size() == 4);
+        const auto symbol = [&](const std::string_view name) -> const MachOSymbol & {
+            const auto found = std::ranges::find(object.symbols, name, &MachOSymbol::name);
+            REQUIRE(found != object.symbols.end());
+            return *found;
+        };
+        CHECK(symbol("_Main").value == 0);
+        CHECK(symbol("_Main").section == 1);
+        CHECK(symbol("_Table").value == 40);
+        CHECK(symbol("_Table").section == 2);
+        CHECK(symbol("_Slot").value == 60);
+        CHECK(symbol("_Slot").section == 3);
+        CHECK(symbol("_Other").type == 0x01); // N_UNDF | N_EXT
+        CHECK(symbol("_Other").value == 0);
+
+        // Relocation entries follow the section data on an eight-byte boundary and address their own section.
+        const auto word = [&](const std::size_t offset) {
+            return static_cast<std::uint32_t>(native.bytes[offset]) | native.bytes[offset + 1] << 8U |
+                   native.bytes[offset + 2] << 16U | static_cast<std::uint32_t>(native.bytes[offset + 3]) << 24U;
+        };
+        const auto relocationOffset = [&](const std::size_t index) { return word(32 + 72 + index * 80 + 56); };
+        CHECK(relocationOffset(0) >= segment.fileOffset + segment.fileSize);
+        CHECK(relocationOffset(0) % 8 == 0);
+        if (arch == Target::Arch::X86_64) {
+            CHECK(word(relocationOffset(0)) == 3);
+        }
+        else {
+            CHECK(word(relocationOffset(0)) == 0);
+            CHECK(word(relocationOffset(0) + 8) == 4);
+        }
+        CHECK(word(relocationOffset(2)) == 0);
     }
 }
 

@@ -792,7 +792,7 @@ TEST_CASE("an AArch64 relative relocation carries no x86-64 displacement bias") 
     CHECK(arm.Relocation(arm.SectionHeader(*armRela), 0) == std::array<std::int64_t, 3>{261, 1, 16});
 }
 
-TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with explicit addends") {
+TEST_CASE("AArch64 Mach-O objects relocate against symbols with explicit addends") {
     RcuFile file;
     file.arch = RcuArch::AArch64;
     file.sourcePath = "Library.rux";
@@ -859,7 +859,7 @@ TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with exp
         CHECK_FALSE(record.external);
     };
     addend(0, 0, 4);
-    addend(2, 4, 0x00FFFFFC); // signed -4: local offset four plus addend -8
+    addend(2, 4, 0x00FFFFF8); // signed -8, relative to the local symbol rather than its section
     addend(4, 8, 0x1234);
     addend(6, 12, 0x234);
     addend(8, 16, 0x238);
@@ -872,11 +872,13 @@ TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with exp
     CHECK(externalBranch.pcRelative);
     CHECK(externalBranch.external);
 
+    // ld64 and lld refuse a BRANCH26, PAGE21 or PAGEOFF12 that names a section, so a local target is named by its
+    // symbol too.
     const auto localBranch = object.Relocation(0, 3);
-    CHECK(localBranch.symbol == 1); // one-based __text section ordinal
+    CHECK(localBranch.symbol == 0); // _Hidden
     CHECK(localBranch.type == 2);
     CHECK(localBranch.pcRelative);
-    CHECK_FALSE(localBranch.external);
+    CHECK(localBranch.external);
 
     for (const auto &[index, type, pcRelative] :
          std::array{std::tuple{5U, 3U, true}, std::tuple{7U, 4U, false}, std::tuple{9U, 4U, false}}) {
@@ -903,16 +905,16 @@ TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with exp
     CHECK_FALSE(externalPointer.pcRelative);
     CHECK(externalPointer.external);
     const auto localPointer = object.Relocation(1, 1);
-    CHECK(localPointer.symbol == 1); // one-based __text section ordinal
+    CHECK(localPointer.symbol == 0); // _Hidden
     CHECK(localPointer.length == 3);
-    CHECK_FALSE(localPointer.external);
+    CHECK(localPointer.external);
     const auto pointer32 = object.Relocation(1, 2);
     CHECK(pointer32.length == 2);
     CHECK(pointer32.external);
 
     const auto dataAt = object.SectionData(1);
     CHECK(object.Giant(dataAt) == 24);
-    CHECK(object.Giant(dataAt + 8) == 12); // local offset four plus addend eight
+    CHECK(object.Giant(dataAt + 8) == 8); // the addend alone, since the symbol supplies the offset
     CHECK(object.Word(dataAt + 16) == 0xFFFFFFFC);
 }
 

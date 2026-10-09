@@ -376,6 +376,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     // owns per-object alignment and all typed symbol/relocation offsets.
     RcuLayoutPrefixes prefixes;
     prefixes.text = textPrefix;
+    // The image layout has one file-backed writable section. Include zero-fill
+    // storage there so its symbols and relocation sites have valid addresses.
+    prefixes.materializeBss = true;
     const RcuObjectLayout layout = RcuObjectLayout::Build(objects, prefixes);
     Buf textBuffer = layout.Data(RcuMergedSection::Text);
     Buf rodataBuffer = layout.Data(RcuMergedSection::RoData);

@@ -34,6 +34,7 @@ struct RcuLayoutPrefixes {
     std::uint8_t textPadding = 0;
     std::uint8_t rodataPadding = 0;
     std::uint8_t dataPadding = 0;
+    bool materializeBss = false;
 };
 
 struct RcuSectionPlacement {

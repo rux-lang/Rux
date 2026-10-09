@@ -62,6 +62,13 @@ RcuObjectLayout RcuObjectLayout::Build(const std::span<const RcuFile> inputObjec
     layout.data[Index(RcuMergedSection::Data)].assign(prefixes.data.begin(), prefixes.data.end());
     layout.objects.resize(inputObjects.size());
 
+    const auto mergedFor = [&](const RcuSection &section) {
+        // Relocated zero-fill storage needs initial file-backed bytes.
+        if (section.type == RcuSecType::Bss && (prefixes.materializeBss || !section.relocs.empty())) {
+            return std::optional{RcuMergedSection::Data};
+        }
+        return MergedSectionFor(section.type);
+    };
     const std::array padding = {prefixes.textPadding, prefixes.rodataPadding, prefixes.dataPadding};
     for (std::size_t objectIndex = 0; objectIndex < inputObjects.size(); ++objectIndex) {
         const RcuFile &object = inputObjects[objectIndex];
@@ -71,7 +78,7 @@ RcuObjectLayout RcuObjectLayout::Build(const std::span<const RcuFile> inputObjec
 
         std::array<std::uint16_t, 4> objectAlignments = {1, 1, 1, 1};
         for (const RcuSection &section : object.sections) {
-            if (const auto merged = MergedSectionFor(section.type)) {
+            if (const auto merged = mergedFor(section)) {
                 const auto index = Index(*merged);
                 objectAlignments[index] = std::max(objectAlignments[index], section.alignment);
                 layout.alignments[index] = std::max(layout.alignments[index], section.alignment);
@@ -88,9 +95,13 @@ RcuObjectLayout RcuObjectLayout::Build(const std::span<const RcuFile> inputObjec
 
         for (std::size_t sectionIndex = 0; sectionIndex < object.sections.size(); ++sectionIndex) {
             const RcuSection &section = object.sections[sectionIndex];
-            const auto merged = MergedSectionFor(section.type);
+            const auto merged = mergedFor(section);
             if (!merged) {
                 continue;
+            }
+            if (*merged != RcuMergedSection::Bss) {
+                Pad(layout.data[Index(*merged)], section.alignment, padding[Index(*merged)]);
+                offsets[Index(*merged)] = layout.data[Index(*merged)].size();
             }
             objectPlacement.sections[sectionIndex] = RcuSectionPlacement{*merged, offsets[Index(*merged)]};
             if (*merged == RcuMergedSection::Bss) {

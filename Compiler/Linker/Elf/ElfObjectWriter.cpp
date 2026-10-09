@@ -325,7 +325,7 @@ bool Serialize(const RcuFile &file, const Target::Elf64Profile &profile, NativeO
     for (const auto &input : file.sections) {
         ElfSection section;
         section.name = input.name == ".rodata" ? ".rodata" : input.name;
-        section.type = input.type == RcuSecType::Bss ? 8 : 1;
+        section.type = input.type == RcuSecType::Bss && input.relocs.empty() ? 8 : 1;
         section.flags = ((input.flags & RcuSecFlag::Write) != 0 ? 0x1U : 0U) |
                         ((input.flags & RcuSecFlag::Alloc) != 0 ? 0x2U : 0U) |
                         ((input.flags & RcuSecFlag::Exec) != 0 ? 0x4U : 0U);
@@ -355,10 +355,11 @@ bool Serialize(const RcuFile &file, const Target::Elf64Profile &profile, NativeO
         symbols.U32(name);
         symbols.U8(static_cast<std::uint8_t>((bind << 4U) | type));
         symbols.U8(0);
-        const std::uint16_t sectionIndex = symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
-                                         : symbol.sectionIdx == RCU_SEC_ABSOLUTE
-                                             ? 0xfff1
-                                             : static_cast<std::uint16_t>(symbol.sectionIdx + 1);
+        const std::uint16_t sectionIndex =
+            symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
+            : symbol.sectionIdx == RCU_SEC_ABSOLUTE
+                ? 0xfff1
+                : static_cast<std::uint16_t>(SymbolSectionIndex(file, symbol.sectionIdx).value_or(0) + 1);
         symbols.U16(sectionIndex);
         symbols.U64(symbol.value);
         symbols.U64(symbol.size);
