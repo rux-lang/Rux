@@ -430,24 +430,47 @@ TEST_CASE("x86-64 assembly text encodes software-float constants and negates the
     }
 }
 
-TEST_CASE("x86-64 assembly text gives SSE comparisons the unordered handling and remainders the fmod sequence") {
+TEST_CASE("x86-64 assembly text gives SSE comparisons the unordered handling and remainders the fprem loop") {
     for (const Target::OS os : Systems) {
-        CAPTURE(static_cast<int>(os));
-        const LirFunc function = FloatComparisons(TypeRef::MakeFloat64());
-        const std::string text = AssemblyPrinter(PackageOf({function}), os).Generate();
-        const auto contains = [&](const std::vector<std::string> &lines) {
-            CAPTURE(Lines(lines));
-            CHECK(text.contains(Lines(lines)));
-        };
-        // A NaN operand sets PF: every comparison but `!=` masks it off, and `!=` folds it in.
-        contains({"ucomisd xmm0, xmm1", "sete    al", "setnp   dl", "and     al, dl", "movzx   rax, al"});
-        contains({"ucomisd xmm0, xmm1", "setne   al", "setp    dl", "or      al, dl", "movzx   rax, al"});
-        for (const std::string_view set : {"setb", "setbe", "seta", "setae"}) {
-            contains({"ucomisd xmm0, xmm1", std::format("{:<7} al", set), "setnp   dl", "and     al, dl"});
+        for (const TypeRef &type : {TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
+            CAPTURE(static_cast<int>(os));
+            CAPTURE(type.ToString());
+            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const LirFunc function = FloatComparisons(type);
+            const std::string text = AssemblyPrinter(PackageOf({function}), os).Generate();
+            const X86_64FramePlan plan = PlanX86_64Frame(function, {}, {}, os);
+            const auto contains = [&](const std::vector<std::string> &lines) {
+                CAPTURE(Lines(lines));
+                CHECK(text.contains(Lines(lines)));
+            };
+            // A NaN operand sets PF: every comparison but `!=` masks it off, and `!=` folds it in.
+            const std::string compare = float32 ? "ucomiss xmm0, xmm1" : "ucomisd xmm0, xmm1";
+            contains({compare, "sete    al", "setnp   dl", "and     al, dl", "movzx   rax, al"});
+            contains({compare, "setne   al", "setp    dl", "or      al, dl", "movzx   rax, al"});
+            for (const std::string_view set : {"setb", "setbe", "seta", "setae"}) {
+                contains({compare, std::format("{:<7} al", set), "setnp   dl", "and     al, dl"});
+            }
+
+            // The remainder (register 8) pushes the divisor and then the dividend from their slots, loops on
+            // fprem's C2 flag, drops the divisor and stores the exact remainder: the `EmitRemainder` sequence.
+            const std::string_view width = float32 ? "dword" : "qword";
+            const std::string pushes = Lines({std::format("fld     {} [rbp - {}]", width, plan.SlotOffsets().at(1)),
+                                              std::format("fld     {} [rbp - {}]", width, plan.SlotOffsets().at(0))});
+            const std::size_t start = text.find(pushes);
+            REQUIRE(start != std::string::npos);
+            const std::size_t label = start + pushes.size();
+            const std::size_t colon = text.find(":\n", label);
+            REQUIRE(colon != std::string::npos);
+            const std::string loop = text.substr(label, colon - label);
+            CHECK(loop.starts_with(".x87_fprem_"));
+            const std::string body = Lines({"fprem", "fnstsw  ax", "test    ah, 4", "jnz     " + loop, "fstp    st1",
+                                            std::format("fstp    {} [rbp - {}]", width, plan.SlotOffsets().at(8))});
+            CHECK_EQ(text.compare(colon + 2, body.size(), body), 0);
+            // Exact, so the control word is untouched, and nothing of the truncated-quotient formula is left.
+            CHECK_FALSE(text.contains("fnstcw"));
+            CHECK_FALSE(text.contains("cvtts"));
+            CHECK_FALSE(text.contains("divs"));
         }
-        contains({"movapd  xmm2, xmm0", "movapd  xmm3, xmm1", "divsd   xmm0, xmm1", "cvttsd2si rax, xmm0",
-                  "pxor    xmm0, xmm0", "cvtsi2sd xmm0, rax", "mulsd   xmm0, xmm3", "subsd   xmm2, xmm0",
-                  "movapd  xmm0, xmm2"});
     }
 }
 

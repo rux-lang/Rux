@@ -1,7 +1,8 @@
-// x86-64 x87 lowering for float80.
+// x86-64 x87 lowering for float80, and for the float32 and float64 remainder.
 //
 // The x87 unit computes in the 80-bit extended format float80 is stored in, so on x86-64 float80 arithmetic,
-// comparisons and conversions to and from the machine floats run there instead of through the software helpers.
+// comparisons and conversions to and from the machine floats run there instead of through the software helpers. SSE
+// has no remainder instruction, so float32 and float64 `%` run the same exact `fprem` loop as float80's.
 //
 // Every instruction here starts and ends with an empty x87 register stack: its operands are pushed from their frame
 // slots, combined, and the one result is popped straight back into the destination slot. Nothing stays on the stack
@@ -144,17 +145,46 @@ void SetComparison(const X64Enc &encoder, const LirOpcode op) {
     encoder.SetnpDl();
     encoder.AndAlDl();
 }
+
+/// Whether `instruction` is a float32 or float64 remainder, which x86-64 computes with `fprem` whether or not float80
+/// is lowered to x87: SSE has no remainder instruction, and `x - trunc(x / y) * y` rounds twice.
+[[nodiscard]] bool IsNativeFloatRemainder(const LirInstr &instruction) {
+    return instruction.op == LirOpcode::Mod && IsFloat(instruction.type) && instruction.srcs.size() == 2;
+}
+
+/// `dst = srcs[0] % srcs[1]`, truncated like C fmod. ST(1) = divisor, ST(0) = dividend. Each `fprem` reduces the
+/// exponent gap by at most 63 and leaves C2 set while more remains. The final remainder is exact, and it is
+/// representable in the operands' own format, so neither the precision control nor the store rounds it.
+void EmitRemainder(const X64Enc &encoder, const X87Stack &x87, const LirInstr &instruction) {
+    x87.Push(instruction.srcs[1], instruction.type);
+    x87.Push(instruction.srcs[0], instruction.type);
+    const std::uint32_t loop = encoder.Size();
+    encoder.Fprem();
+    encoder.FnstswAx();
+    encoder.TestAhImm8(0x04);
+    std::uint32_t repeat = 0;
+    encoder.Jnz(repeat);
+    encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
+    encoder.FstpSt(1); // drop the divisor, keeping the remainder
+    x87.Pop(instruction.dst, instruction.type);
+}
 } // namespace
 
 bool X86_64FunctionEmitter::EmitX87(const LirInstr &instruction) {
-    if (Target::FloatLoweringFor(TypeRef::Kind::Float80, Target::Arch::X86_64) != Target::FloatLowering::X87 ||
-        instruction.dst == LirNoReg || instruction.srcs.empty()) {
+    if (instruction.dst == LirNoReg || instruction.srcs.empty()) {
+        return false;
+    }
+    const X87Stack x87(encoder, framePlan, hooks);
+    if (IsNativeFloatRemainder(instruction)) {
+        EmitRemainder(encoder, x87, instruction);
+        return true;
+    }
+    if (Target::FloatLoweringFor(TypeRef::Kind::Float80, Target::Arch::X86_64) != Target::FloatLowering::X87) {
         return false;
     }
     const auto &types = framePlan.RegisterTypes();
     const TypeRef sourceType = types.contains(instruction.srcs[0]) ? types.at(instruction.srcs[0]) : instruction.type;
     const TypeRef &type = instruction.type;
-    const X87Stack x87(encoder, framePlan, hooks);
 
     switch (instruction.op) {
     case LirOpcode::Add:
@@ -183,25 +213,12 @@ bool X86_64FunctionEmitter::EmitX87(const LirInstr &instruction) {
         x87.Pop(instruction.dst, type);
         x87.EndRounding();
         return true;
-    case LirOpcode::Mod: {
+    case LirOpcode::Mod:
         if (!IsFloat80(type) || instruction.srcs.size() != 2) {
             return false;
         }
-        // ST(1) = divisor, ST(0) = dividend. Each `fprem` reduces the exponent gap by at most 63 and leaves C2 set
-        // while more remains; the final remainder is exact and truncated like C fmod, so no rounding is involved.
-        x87.Push(instruction.srcs[1], type);
-        x87.Push(instruction.srcs[0], type);
-        const std::uint32_t loop = encoder.Size();
-        encoder.Fprem();
-        encoder.FnstswAx();
-        encoder.TestAhImm8(0x04);
-        std::uint32_t repeat = 0;
-        encoder.Jnz(repeat);
-        encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
-        encoder.FstpSt(1); // drop the divisor, keeping the remainder
-        x87.Pop(instruction.dst, type);
+        EmitRemainder(encoder, x87, instruction);
         return true;
-    }
     case LirOpcode::CmpEq:
     case LirOpcode::CmpNe:
     case LirOpcode::CmpLt:

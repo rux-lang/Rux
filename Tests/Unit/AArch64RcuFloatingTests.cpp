@@ -110,12 +110,15 @@ TEST_CASE("AArch64 RCU emitter lowers each floating-point operator to one instru
     CHECK(objects.front().sections[RCU_RODATA_IDX].data.empty());
 }
 
-TEST_CASE("AArch64 RCU emitter synthesizes a floating-point remainder from a truncated quotient") {
+TEST_CASE("AArch64 RCU emitter computes a floating-point remainder with the synthesized helper") {
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {
             var left: float64 = 10.0;
             var right: float64 = 4.0;
             var remainder = left % right;
+            var narrowLeft: float32 = 10.0f32;
+            var narrowRight: float32 = 4.0f32;
+            var narrowRemainder = narrowLeft % narrowRight;
             return 0;
         }
     )");
@@ -125,19 +128,21 @@ TEST_CASE("AArch64 RCU emitter synthesizes a floating-point remainder from a tru
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    // The dividend less its quotient truncated toward zero times the divisor,
-    // which is three instructions: the truncation happens in the register
-    // rather than through a 64-bit integer as it does on x86-64, and the
-    // multiply folds into the subtraction that recovers the remainder.
-    const auto quotient = std::ranges::find_if(
-        words, [](const std::uint32_t w) { return (w & 0xFFE0FC1FU) == (0x1E601800U | 18U); }); // fdiv d18, dN, dM
-    REQUIRE_MESSAGE(quotient != words.end(), "fdiv d18, dN, dM");
-    const auto index = static_cast<std::size_t>(quotient - words.begin());
-    REQUIRE_LT(index + 2, words.size());
-    CHECK_EQ(HexWord(words[index + 1]), HexWord(0x1E65C252U));               // frintz d18, d18
-    CHECK_EQ(HexWord(words[index + 2] & 0xFFE08000U), HexWord(0x1F408000U)); // fmsub dD, d18, dM, dA
-    CHECK_EQ(HexWord(words[index + 2] >> 5U & 0x1FU), HexWord(18U));         // ... from the quotient
-    CHECK_FALSE(HasFloatForm(words, 0x1E600800U));                           // fmul dD, dN, dM
+    // AArch64 has no remainder instruction, and the dividend less its truncated quotient times the divisor rounds
+    // twice, so the remainder is a call to the exact helper compile-time folding agrees with, and no division,
+    // truncation or fused multiply-subtract is left in `Main`.
+    CHECK_EQ(FunctionRelocs(objects.front(), "Main", "__rux_float_f64_rem").size(), 1);
+    CHECK_EQ(FunctionRelocs(objects.front(), "Main", "__rux_float_f32_rem").size(), 1);
+    CHECK_FALSE(HasFloatForm(words, 0x1E601800U)); // fdiv dD, dN, dM
+    CHECK_FALSE(HasFloatForm(words, 0x1E201800U)); // fdiv sD, sN, sM
+    CHECK_FALSE(std::ranges::any_of(words, [](const std::uint32_t w) {
+        return (w & 0xFF3FFC00U) == 0x1E25C000U; // frintz
+    }));
+    CHECK_FALSE(std::ranges::any_of(words, [](const std::uint32_t w) {
+        return (w & 0xFF208000U) == 0x1F008000U; // fmsub
+    }));
+    CHECK(FindSymbol(objects.front(), "__rux_float_f64_rem") != nullptr);
+    CHECK(FindSymbol(objects.front(), "__rux_float_f32_rem") != nullptr);
 }
 
 TEST_CASE("AArch64 RCU emitter converts between the two precisions and no further") {

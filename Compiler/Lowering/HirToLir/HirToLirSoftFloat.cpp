@@ -201,6 +201,10 @@ std::optional<SoftFloatHelperKey> SoftFloatHelperFor(const LirInstr &instruction
     case LirOpcode::Div:
         return arithmetic(SoftFloatOperation::Divide);
     case LirOpcode::Mod:
+        if (policy.For(instruction.type.kind) == FloatLowering::Native &&
+            !Target::HasNativeFloatRemainder(policy.arch)) {
+            return SoftFloatHelperKey{SoftFloatOperation::Remainder, instruction.type.kind, TypeRef::Kind::Unknown};
+        }
         return arithmetic(SoftFloatOperation::Remainder);
     case LirOpcode::CmpEq:
     case LirOpcode::CmpNe:

@@ -300,8 +300,6 @@ public:
 
     void DivssXmm01() const;
 
-    void FmodssXmm01() const;
-
     void AddsdXmm01() const;
 
     void SubsdXmm01() const;
@@ -309,8 +307,6 @@ public:
     void MulsdXmm01() const;
 
     void DivsdXmm01() const;
-
-    void FmodsdXmm01() const;
 
     // Float compare
     void UcomissXmm01() const;

@@ -327,6 +327,41 @@ TEST_CASE("x87 remainder loops on fprem's C2 flag and leaves the control word al
     }
 }
 
+TEST_CASE("float32 and float64 remainders run the same exact fprem loop, not an SSE formula") {
+    for (const TypeRef &type : {Primitive(TypeRef::Kind::Float32), Primitive(TypeRef::Kind::Float64)}) {
+        for (const Target::OS os : Systems) {
+            CAPTURE(type.ToString());
+            CAPTURE(static_cast<int>(os));
+            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const LirFunc function = SingleInstruction(LirOpcode::Mod, {type, type}, type);
+            const Frame frame(function, os);
+            // Machine floats live in frame slots, which `fld` and `fstp` address directly.
+            REQUIRE_FALSE(frame.plan.PhysicalRegisters().contains(0));
+            REQUIRE_FALSE(frame.plan.PhysicalRegisters().contains(2));
+            CHECK_GE(frame.plan.WideTemporarySize(), 8);
+            Bytes expected;
+            const X64Enc e(expected);
+            float32 ? e.FldDword(frame.Slot(1)) : e.FldQword(frame.Slot(1)); // divisor
+            float32 ? e.FldDword(frame.Slot(0)) : e.FldQword(frame.Slot(0)); // dividend
+            const std::uint32_t top = e.Size();
+            e.Fprem();
+            e.FnstswAx();
+            e.TestAhImm8(0x04);
+            std::uint32_t patch = 0;
+            e.Jnz(patch);
+            e.Patch32(patch, static_cast<std::int32_t>(top) - static_cast<std::int32_t>(patch + 4));
+            e.FstpSt(1);
+            float32 ? e.FstpDword(frame.Slot(2)) : e.FstpQword(frame.Slot(2));
+            const Bytes text = TextOf(function, os);
+            CHECK(Contains(text, expected));
+            // Exact, so the control word is left alone; and nothing of the truncated-quotient formula remains.
+            CHECK_FALSE(Contains(text, Encode([&](const X64Enc &x) { x.Fnstcw(frame.ControlWords()); })));
+            CHECK_FALSE(Contains(text, float32 ? Bytes{0xF3, 0x0F, 0x2C} : Bytes{0xF2, 0x48, 0x0F, 0x2C})); // cvtts?2si
+            CHECK_FALSE(Contains(text, float32 ? Bytes{0xF3, 0x0F, 0x5E} : Bytes{0xF2, 0x0F, 0x5E}));       // divs?
+        }
+    }
+}
+
 TEST_CASE("x87 comparisons use fucomip with the SSE unordered patterns and pop both operands") {
     struct Case {
         LirOpcode op;
@@ -604,10 +639,47 @@ private:
     REQUIRE_LE(program.Checks(), 31);
     return program.Finish();
 }
-} // namespace
 
-TEST_CASE("x86-64 RCU executes float80 arithmetic, comparisons and conversions on the x87 unit") {
-    const LirPackage package = PackageOf({X87Checks()});
+/// float32 and float64 remainders on the fprem loop, each against the bits `RemainderFloat` folds: quotients past
+/// 2^31 and 2^63, where the truncated-quotient formula overflowed its integer, ones below that it rounded, signed
+/// zeros, an infinite divisor, subnormals and the widest exponent gaps.
+[[nodiscard]] LirFunc RemainderChecks() {
+    X87Program program;
+    const auto check = [&](const std::uint32_t bits, const std::string_view left, const std::string_view right) {
+        const TypeRef type = Primitive(bits == 32 ? TypeRef::Kind::Float32 : TypeRef::Kind::Float64);
+        const FloatEncoding dividend = Parse(left, bits);
+        const FloatEncoding divisor = Parse(right, bits);
+        const LirReg remainder = program.Operation(LirOpcode::Mod,
+                                                   {program.Constant(type, FormatFloatEncoding(dividend)),
+                                                    program.Constant(type, FormatFloatEncoding(divisor))},
+                                                   type);
+        program.ExpectBits(remainder, type, RemainderFloat(dividend, divisor));
+    };
+    for (const std::uint32_t bits : {32U, 64U}) {
+        check(bits, "30000000000", "7");
+        check(bits, "1e20", "3");
+        check(bits, "-7.5", "2");
+        check(bits, "-6", "3");
+        check(bits, "1", "0.1");
+        check(bits, "0.1", "0.01");
+        check(bits, "-5.25", "infinity");
+        check(bits, "0x1p-140", "3");
+    }
+    check(32, "0x1.fffffep127", "3");
+    check(32, "0x1.fffffep127", "0x1.4p-147");
+    check(32, "0x1p-126", "0x1.4p-147");
+    check(64, "0x1.fffffffffffffp1023", "3");
+    check(64, "1e308", "1e-308");
+    check(64, "0x1.fffffffffffffp1023", "0x1.8p-1073");
+    check(64, "0x1p-1050", "0x1.8p-1062");
+    REQUIRE_LE(program.Checks(), 31);
+    return program.Finish();
+}
+
+/// Emits `main` for both conventions and, on a Windows x86-64 host, links and runs it: each set bit of the exit code
+/// names a failed check, in the order the function records them.
+void CheckRuns(const LirFunc &main) {
+    const LirPackage package = PackageOf({main});
     RcuEmitter sysvEmitter(package, "X87", Target::OS::Linux);
     REQUIRE_EQ(sysvEmitter.Generate().size(), 1);
     REQUIRE(sysvEmitter.Diagnostics().empty());
@@ -630,11 +702,19 @@ TEST_CASE("x86-64 RCU executes float80 arithmetic, comparisons and conversions o
     const auto result = System::RunCaptured(output);
     std::filesystem::remove(output, error);
     REQUIRE(result.has_value());
-    // Each set bit names a failed check, in the order X87Checks records them.
     CHECK_EQ(result->exitCode, 0);
 #else
     CHECK_FALSE(objects.front().sections.at(RCU_TEXT_IDX).data.empty());
 #endif
+}
+} // namespace
+
+TEST_CASE("x86-64 RCU executes float80 arithmetic, comparisons and conversions on the x87 unit") {
+    CheckRuns(X87Checks());
+}
+
+TEST_CASE("x86-64 RCU executes float32 and float64 remainders exactly, as constant folding computes them") {
+    CheckRuns(RemainderChecks());
 }
 
 // ---- assembly text -------------------------------------------------------------------------------------------------

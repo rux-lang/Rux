@@ -54,7 +54,8 @@ enum class SoftFloatOrdering : std::uint8_t {
 struct SoftFloatHelperKey {
     SoftFloatOperation operation = SoftFloatOperation::Add;
     /// A float the target computes in software, or float80. `ConvertFrom` may also name float32 or float64, for the
-    /// integer conversions `ConvertsThroughSoftFloatHelper` routes through a helper.
+    /// integer conversions `ConvertsThroughSoftFloatHelper` routes through a helper, and `Remainder` may name them on a
+    /// target without `Target::HasNativeFloatRemainder`.
     TypeRef::Kind format = TypeRef::Kind::Unknown;
     /// A conversion's other side, normalized by `SoftFloatHelperOperandKind`; `Unknown` for every other operation.
     TypeRef::Kind other = TypeRef::Kind::Unknown;
@@ -69,9 +70,9 @@ struct SoftFloatHelperSignature {
     TypeRef result;
 };
 
-/// `__rux_float_<f8|f16|f80|f128|f256|f512>_<op>`, where `<op>` is `add`, `sub`, `mul`, `div`, `rem`, `compare`,
-/// `to_<type>` or `from_<type>`, and `<type>` is the primitive spelling of the key's `other`, such as `int64` or
-/// `float32`.
+/// `__rux_float_<f8|f16|f32|f64|f80|f128|f256|f512>_<op>`, where `<op>` is `add`, `sub`, `mul`, `div`, `rem`,
+/// `compare`, `to_<type>` or `from_<type>`, and `<type>` is the primitive spelling of the key's `other`, such as
+/// `int64` or `float32`.
 [[nodiscard]] std::string SoftFloatHelperName(const SoftFloatHelperKey &key);
 [[nodiscard]] SoftFloatHelperSignature SoftFloatHelperSignatureOf(const SoftFloatHelperKey &key);
 

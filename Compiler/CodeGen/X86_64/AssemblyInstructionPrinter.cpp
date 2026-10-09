@@ -177,17 +177,40 @@ void PrintFloatComparison(const AssemblyInstructionPrinter &printer, const LirOp
     printer.Instruction(unorderedTrue ? "or" : "and", "al, dl");
 }
 
-/// The text of a float80 instruction the object emitter lowers to x87 (`X86_64FunctionEmitter::EmitX87`), in the same
-/// order and on the same frame addresses. Returns false for anything that lowering leaves to the other paths.
+/// The `fprem` loop of a float32, float64 or float80 remainder, mirroring `EmitRemainder` in `X87Emitter.cpp`: st1 =
+/// divisor, st0 = dividend; `fprem` leaves C2 (bit 2 of ah after `fnstsw`) set while the reduction is partial. The
+/// remainder is exact, so the control word is left alone.
+void PrintRemainder(AssemblyInstructionPrinter &printer, const X87Text &x87, const LirInstr &instruction) {
+    x87.Push(instruction.srcs[1], instruction.type);
+    x87.Push(instruction.srcs[0], instruction.type);
+    const std::string loop = printer.ModulePrinter().CreateLocalLabel(".x87_fprem_");
+    printer.ModulePrinter().TextLabel(loop);
+    x87.Emit("fprem");
+    x87.Emit("fnstsw", "ax");
+    x87.Emit("test", "ah, 4");
+    x87.Emit("jnz", loop);
+    x87.Emit("fstp", "st1");
+    x87.Pop(instruction.dst, instruction.type);
+}
+
+/// The text of an instruction the object emitter lowers to x87 (`X86_64FunctionEmitter::EmitX87`), in the same order
+/// and on the same frame addresses: float80 arithmetic, comparisons and conversions, and every float32 and float64
+/// remainder. Returns false for anything that lowering leaves to the other paths.
 [[nodiscard]] bool PrintX87(AssemblyInstructionPrinter &printer, const LirInstr &instruction) {
-    if (Target::FloatLoweringFor(TypeRef::Kind::Float80, Target::Arch::X86_64) != Target::FloatLowering::X87 ||
-        instruction.dst == LirNoReg || instruction.srcs.empty()) {
+    if (instruction.dst == LirNoReg || instruction.srcs.empty()) {
+        return false;
+    }
+    const X87Text x87(printer);
+    if (instruction.op == LirOpcode::Mod && IsFloat(instruction.type) && instruction.srcs.size() == 2) {
+        PrintRemainder(printer, x87, instruction);
+        return true;
+    }
+    if (Target::FloatLoweringFor(TypeRef::Kind::Float80, Target::Arch::X86_64) != Target::FloatLowering::X87) {
         return false;
     }
     const auto &types = printer.FramePlan().RegisterTypes();
     const TypeRef sourceType = types.contains(instruction.srcs[0]) ? types.at(instruction.srcs[0]) : instruction.type;
     const TypeRef &type = instruction.type;
-    const X87Text x87(printer);
 
     switch (instruction.op) {
     case LirOpcode::Add:
@@ -210,24 +233,12 @@ void PrintFloatComparison(const AssemblyInstructionPrinter &printer, const LirOp
         x87.EndRounding();
         return true;
     }
-    case LirOpcode::Mod: {
+    case LirOpcode::Mod:
         if (!IsFloat80(type) || instruction.srcs.size() != 2) {
             return false;
         }
-        // st1 = divisor, st0 = dividend; `fprem` leaves C2 (bit 2 of ah after `fnstsw`) set while the reduction is
-        // partial. The remainder is exact, so the control word is left alone.
-        x87.Push(instruction.srcs[1], type);
-        x87.Push(instruction.srcs[0], type);
-        const std::string loop = printer.ModulePrinter().CreateLocalLabel(".x87_fprem_");
-        printer.ModulePrinter().TextLabel(loop);
-        x87.Emit("fprem");
-        x87.Emit("fnstsw", "ax");
-        x87.Emit("test", "ah, 4");
-        x87.Emit("jnz", loop);
-        x87.Emit("fstp", "st1");
-        x87.Pop(instruction.dst, type);
+        PrintRemainder(printer, x87, instruction);
         return true;
-    }
     case LirOpcode::CmpEq:
     case LirOpcode::CmpNe:
     case LirOpcode::CmpLt:
@@ -1268,7 +1279,8 @@ bool AssemblyInstructionPrinter::EmitWideArithmetic(const LirInstr &instruction)
 // ---- scalar arithmetic (FunctionEmitter.cpp, EmitArithmetic) ------------------------------------------------------
 
 bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
-    // float80 is checked first: a conversion between it and float32 or float64 must not reach the SSE paths below.
+    // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
+    // paths below, and neither must a float32 or float64 remainder.
     if (PrintX87(*this, instruction) || EmitWideArithmetic(instruction)) {
         return true;
     }
@@ -1331,23 +1343,8 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         LoadA(instruction.srcs[0], type);
         LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
-            if (instruction.op == LirOpcode::Div) {
-                Instruction(float32 ? "divss" : "divsd", "xmm0, xmm1");
-            }
-            else {
-                // x - trunc(x / y) * y, as the emitter's `FmodssXmm01` and `FmodsdXmm01` compute it.
-                const std::string_view copy = float32 ? "movaps" : "movapd";
-                Instruction(copy, "xmm2, xmm0");
-                Instruction(copy, "xmm3, xmm1");
-                Instruction(float32 ? "divss" : "divsd", "xmm0, xmm1");
-                Instruction(float32 ? "cvttss2si" : "cvttsd2si", float32 ? "eax, xmm0" : "rax, xmm0");
-                Instruction("pxor", "xmm0, xmm0");
-                Instruction(float32 ? "cvtsi2ss" : "cvtsi2sd", float32 ? "xmm0, eax" : "xmm0, rax");
-                Instruction(float32 ? "mulss" : "mulsd", "xmm0, xmm3");
-                Instruction(float32 ? "subss" : "subsd", "xmm2, xmm0");
-                Instruction(copy, "xmm0, xmm2");
-            }
+            // A float remainder never gets here: `PrintX87` spells it as the `fprem` loop.
+            Instruction(type.kind == TypeRef::Kind::Float32 ? "divss" : "divsd", "xmm0, xmm1");
         }
         else {
             if (type.IsSigned()) {

@@ -2,10 +2,11 @@
 
 // Where each float width's arithmetic comes from on a given architecture.
 //
-// float32 and float64 are machine floats everywhere. Every other width is computed by helper functions the compiler
-// synthesizes from integer operations while lowering to LIR, except float80 on x86-64, where the x87 unit computes in
-// exactly that format. One table decides this, so the lowering that rewrites operations into helper calls and the back
-// end that emits x87 code cannot disagree about which operations reach it.
+// float32 and float64 are machine floats everywhere, though a target without an exact remainder instruction leaves
+// their `%` to a helper. Every other width is computed by helper functions the compiler synthesizes from integer
+// operations while lowering to LIR, except float80 on x86-64, where the x87 unit computes in exactly that format. One
+// table decides this, so the lowering that rewrites operations into helper calls and the back end that emits x87 code
+// cannot disagree about which operations reach it.
 
 #include "Target/Target.h"
 #include "Types/Type.h"
@@ -58,6 +59,14 @@ inline constexpr bool X87Float80 = true;
     default:
         return FloatLowering::None;
     }
+}
+
+/// Whether `arch` computes the exact float32 and float64 remainder `%` itself. x86-64 does, with the x87 `fprem` loop
+/// (`X86_64/X87Emitter.cpp`). AArch64 has no remainder instruction, and the truncated-quotient formula
+/// `x - trunc(x / y) * y` it could build from division rounds twice, so there the synthesized remainder helper computes
+/// it, exactly as compile-time folding does, while every other machine-float operation stays native.
+[[nodiscard]] constexpr bool HasNativeFloatRemainder(const Arch arch) noexcept {
+    return arch == Arch::X86_64;
 }
 
 /// Whether an x87-lowered width keeps `operation` in LIR for the back end. The rest -- conversion to any integer

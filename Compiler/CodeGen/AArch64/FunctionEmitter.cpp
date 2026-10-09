@@ -20,7 +20,6 @@ constexpr unsigned kSrcAddr = 11;
 constexpr unsigned kTemp2 = 12;
 constexpr unsigned kFpTemp = 16;
 constexpr unsigned kFpTemp2 = 17;
-constexpr unsigned kFpTemp3 = 18;
 constexpr std::int32_t kFrameRecordSize = 16;
 
 [[nodiscard]] unsigned AccessWidth(const int size) {
@@ -316,20 +315,19 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     case LirOpcode::Mod: {
         const TypeRef &type = instruction.type;
         if (IsFloat(type)) {
+            if (instruction.op == LirOpcode::Mod) {
+                // AArch64 has no exact remainder instruction, so lowering turns a float `%` into a call to the
+                // synthesized remainder helper (`Target::HasNativeFloatRemainder`).
+                Report(std::format("AArch64 code generation reached a {} remainder in '{}'; it must be a helper call",
+                                   type.ToString(), functionName));
+                return true;
+            }
             const auto operands = LoadFloatOperands(instruction, type);
             if (!operands) {
                 return true;
             }
             const A64Reg out = hooks.FloatResultRegister(instruction.dst, FpReg(type, kFpTemp));
-            if (instruction.op == LirOpcode::Div) {
-                Must(encoder.Fdiv(out, operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
-                hooks.StoreFpToSlot(out, instruction.dst);
-                return true;
-            }
-            const A64Reg quotient = FpReg(type, kFpTemp3);
-            Must(encoder.Fdiv(quotient, operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
-            Must(encoder.Frintz(quotient, quotient), LirOpcodeName(instruction.op));
-            Must(encoder.Fmsub(out, quotient, operands->rhs, operands->lhs), LirOpcodeName(instruction.op));
+            Must(encoder.Fdiv(out, operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
             hooks.StoreFpToSlot(out, instruction.dst);
             return true;
         }

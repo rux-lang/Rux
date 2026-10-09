@@ -28,7 +28,9 @@ namespace {
 using K = TypeRef::Kind;
 using Pair = std::pair<WideInteger, WideInteger>;
 
-constexpr std::array<K, 6> FloatKinds{K::Float8, K::Float16, K::Float80, K::Float128, K::Float256, K::Float512};
+/// float32 and float64 too: AArch64 computes their remainder with the helper (`Target::HasNativeFloatRemainder`).
+constexpr std::array<K, 8> FloatKinds{K::Float8,  K::Float16,  K::Float32,  K::Float64,
+                                      K::Float80, K::Float128, K::Float256, K::Float512};
 /// Random pairs per format and operation.
 constexpr int RandomPairs = 2000;
 

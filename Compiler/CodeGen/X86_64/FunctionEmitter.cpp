@@ -518,7 +518,8 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
 }
 
 bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
-    // float80 is checked first: a conversion between it and float32 or float64 must not reach the SSE paths below.
+    // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
+    // paths below, and neither must a float32 or float64 remainder.
     if (EmitX87(instruction)) {
         return true;
     }
@@ -588,12 +589,8 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], type);
         hooks.LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            if (instruction.op == LirOpcode::Div) {
-                type.kind == TypeRef::Kind::Float32 ? encoder.DivssXmm01() : encoder.DivsdXmm01();
-            }
-            else {
-                type.kind == TypeRef::Kind::Float32 ? encoder.FmodssXmm01() : encoder.FmodsdXmm01();
-            }
+            // A float remainder never gets here: `EmitX87` computes it with `fprem`.
+            type.kind == TypeRef::Kind::Float32 ? encoder.DivssXmm01() : encoder.DivsdXmm01();
         }
         else {
             if (type.IsSigned()) {

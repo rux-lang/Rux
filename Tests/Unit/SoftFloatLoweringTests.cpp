@@ -331,6 +331,37 @@ TEST_CASE("an x87 policy keeps the operations the x87 unit computes") {
     CHECK_FALSE(SoftFloatHelperFor(add, K::Float80, SoftFloatPolicy{Target::Arch::X86_64}).has_value());
 }
 
+TEST_CASE("float32 and float64 remainders go to the helper only where the target has no exact remainder") {
+    // x86-64 computes them with fprem; AArch64 has no remainder instruction.
+    const SoftFloatPolicy arm{Target::Arch::AArch64};
+    const SoftFloatPolicy x86{Target::Arch::X86_64};
+    CHECK_FALSE(Target::HasNativeFloatRemainder(Target::Arch::AArch64));
+    CHECK(Target::HasNativeFloatRemainder(Target::Arch::X86_64));
+    for (const K kind : {K::Float32, K::Float64}) {
+        CAPTURE(Primitive(kind).ToString());
+        const LirInstr remainder = Instruction(LirOpcode::Mod, 2, kind, {0, 1});
+        CHECK_EQ(SoftFloatHelperFor(remainder, kind, arm), SoftFloatHelperKey{SoftFloatOperation::Remainder, kind});
+        CHECK_FALSE(SoftFloatHelperFor(remainder, kind, x86).has_value());
+        // Everything else on a machine float stays a machine instruction on both.
+        for (const LirOpcode op : {LirOpcode::Add, LirOpcode::Sub, LirOpcode::Mul, LirOpcode::Div}) {
+            CHECK_FALSE(SoftFloatHelperFor(Instruction(op, 2, kind, {0, 1}), kind, arm).has_value());
+        }
+        CHECK_FALSE(SoftFloatHelperFor(Instruction(LirOpcode::CmpLt, 2, K::Bool8, {0, 1}), kind, arm).has_value());
+
+        // The verifier holds lowering to the same rule.
+        std::vector<Diagnostic> diagnostics;
+        VerifySoftFloatLowering(HandBuilt(kind, remainder), arm, diagnostics);
+        CHECK_EQ(diagnostics.size(), 1);
+        diagnostics.clear();
+        VerifySoftFloatLowering(HandBuilt(kind, remainder), x86, diagnostics);
+        CHECK(diagnostics.empty());
+    }
+    // An integer remainder is never a helper.
+    CHECK_FALSE(SoftFloatHelperFor(Instruction(LirOpcode::Mod, 2, K::Int64, {0, 1}), K::Int64, arm).has_value());
+    CHECK_EQ(SoftFloatHelperName({SoftFloatOperation::Remainder, K::Float32}), "__rux_float_f32_rem");
+    CHECK_EQ(SoftFloatHelperName({SoftFloatOperation::Remainder, K::Float64}), "__rux_float_f64_rem");
+}
+
 TEST_CASE("the registry synthesizes each requested helper once") {
     SoftFloatHelperRegistry registry;
     const SoftFloatHelperKey key{SoftFloatOperation::Multiply, K::Float256};

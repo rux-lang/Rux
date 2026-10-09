@@ -282,6 +282,11 @@ private:
         for (const LirBlock &block : func.blocks) {
             for (const LirInstr &instruction : block.instrs) {
                 largest = std::max(largest, WideTemporarySize(instruction, plan.registerTypes));
+                // A float32 or float64 remainder runs on the x87 unit (`X87Emitter.cpp`), which loads and stores only
+                // memory: it gets the scratch slots an x87 instruction moves a register-held value through.
+                if (instruction.op == LirOpcode::Mod && IsFloat(instruction.type)) {
+                    largest = std::max(largest, 8);
+                }
             }
         }
         if (largest == 0) {
