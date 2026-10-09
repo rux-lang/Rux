@@ -157,3 +157,59 @@ TEST_CASE("a variant's storage marker carries its alignment to code generation")
     }
     FAIL("missing lowered function Make");
 }
+
+TEST_CASE("a payload without a semantic layout fact is laid out by the alignment its type states") {
+    // Lowering asks the semantic layout first and otherwise reads the type itself. The two must be one rule, or a
+    // payload after a tuple holding an int128 is read eight bytes before where its constructor wrote it.
+    const std::string source = R"(
+        variant Holder { Empty, Pair((uint8, int128), int128) }
+        func Read(value: Holder) -> int128 {
+            return match value {
+                .Pair(_, second) => second,
+                .Empty => 0i128
+            };
+        }
+    )";
+    Lexer lexer(source, "layout.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "layout.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    // The constants `Read` computes, offsets among them, with every fact present or with the tuple's removed.
+    const std::string tuple =
+        TypeRef::MakeTuple({TypeRef::MakeUInt8(), TypeRef::MakePrimitive(TypeRef::Kind::Int128)}).ToString();
+    const auto constants = [&model, &tuple](const bool withTupleFact) {
+        HirPackage hir = AstToHirLowering(model).Generate();
+        REQUIRE(hir.typeLayouts.contains(tuple));
+        if (!withTupleFact) {
+            hir.typeLayouts.erase(tuple);
+        }
+        HirToLirLowering lowering(std::move(hir), TargetContext::CreateNative());
+        const LirPackage package = lowering.Generate();
+        REQUIRE(lowering.Diagnostics().empty());
+        std::vector<std::string> values;
+        for (const LirModule &module : package.modules) {
+            for (const LirFunc &function : module.funcs) {
+                if (function.name != "Read") {
+                    continue;
+                }
+                for (const LirBlock &block : function.blocks) {
+                    for (const LirInstr &instruction : block.instrs) {
+                        if (instruction.op == LirOpcode::Const) {
+                            values.push_back(instruction.strArg);
+                        }
+                    }
+                }
+            }
+        }
+        return values;
+    };
+    const std::vector<std::string> withFact = constants(true);
+    REQUIRE_FALSE(withFact.empty());
+    CHECK(constants(false) == withFact);
+}

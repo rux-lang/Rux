@@ -432,9 +432,12 @@ HirTypeLayout HirToLirContext::TypeLayoutOf(const TypeRef &type) const {
             return {native->size, native->alignment};
         }
     }
-    // Manually constructed HIR may omit semantic facts. Primitive-only recipes retain their self-contained layout.
+    // HIR without a semantic fact for this type -- one built by hand, or a composite no declaration names -- is laid
+    // out by the type's own reading, the one rule semantic analysis and code generation share: a tuple or an array of
+    // 128-bit elements takes their sixteen-byte alignment here exactly as it does there. Only a type that reading
+    // cannot place at all falls back to a word.
     const auto size = type.SizeInBytes().value_or(8);
-    return {size, PrimitiveAlign(type.kind, 8).value_or(size > 0 ? std::min<std::uint64_t>(size, 8) : 1)};
+    return {size, type.AlignInBytes().value_or(size > 0 ? std::min<std::uint64_t>(size, 8) : 1)};
 }
 
 LirReg HirToLirContext::EmitLoad(LirReg ptr, TypeRef type) {
