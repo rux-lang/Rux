@@ -1,0 +1,4 @@
+2:1: error: type 'bool' is already declared in this scope
+3:1: error: type 'int8' is already declared in this scope
+5:5: error: type 'byte' is already declared in this scope
+7:1: error: name 'float' cannot be declared as a function because it is already a type in this scope

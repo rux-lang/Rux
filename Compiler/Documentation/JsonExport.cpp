@@ -2,6 +2,7 @@
 
 #include "Diagnostics/Diagnostics.h"
 #include "Documentation/Signatures.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cctype>
@@ -140,10 +141,28 @@ struct Extension {
 
 struct Context {
     const GenerateOptions &options;
-    /// Every `extend` block in the package, keyed by the qualified name of the type it extends, in source order.
+    /// Every `extend` block in the package, keyed by the qualified name of the type it extends, in source order. A
+    /// built-in primitive is keyed by its canonical name wherever the block sits, since no module declares it.
     std::map<std::string, std::vector<Extension>> extensions;
+    /// For each primitive the package extends, the first block with documentation: it stands for the primitive as an
+    /// item, the way a type's own declaration would.
+    std::map<std::string, const ImplDecl *> primitiveAnchors;
     std::vector<Diagnostic> diagnostics;
 };
+
+/// The built-in primitive an `extend` block extends, or nullptr for any other declaration.
+const PrimitiveInfo *ExtendedPrimitive(const Decl &decl) {
+    const auto *extension = dynamic_cast<const ImplDecl *>(&decl);
+    return extension ? FindPrimitive(extension->typeName) : nullptr;
+}
+
+/// The name an item is listed under: a primitive's canonical name for its extension, else the declaration's own.
+std::string ItemName(const Decl &decl) {
+    if (const PrimitiveInfo *primitive = ExtendedPrimitive(decl)) {
+        return std::string(primitive->name);
+    }
+    return DeclName(decl);
+}
 
 std::string Qualify(const std::string &prefix, const std::string &name) {
     return prefix.empty() ? name : prefix + "::" + name;
@@ -363,8 +382,11 @@ const std::vector<TypeParameter> &DeclTypeParams(const Decl &decl) {
 }
 
 std::string ItemKind(const Decl &decl) {
-    if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-        return alias->intrinsicName.empty() ? "type" : "intrinsic-type";
+    if (dynamic_cast<const TypeAliasDecl *>(&decl)) {
+        return "type";
+    }
+    if (ExtendedPrimitive(decl)) {
+        return "primitive";
     }
     return DeclKind(decl);
 }
@@ -478,7 +500,7 @@ void WriteConstantMember(JsonWriter &json, Context &context, const ConstDecl &co
 /// the type in source order. A block keeps its constants and functions apart, so they are merged back by position.
 void WriteMembers(JsonWriter &json, Context &context, const Decl &decl, const std::string &qualified,
                   const SourceFile &source) {
-    const std::string typeName = DeclName(decl);
+    const std::string typeName = ItemName(decl);
     const bool includePrivate = context.options.includePrivate;
     json.BeginArray();
     if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
@@ -583,7 +605,7 @@ void WriteCases(JsonWriter &json, Context &context, const EnumDecl &declaration,
 
 void WriteItem(JsonWriter &json, Context &context, const Decl &decl, const std::string &moduleName,
                const SourceFile &source, const std::string &prefix) {
-    const std::string qualified = Qualify(prefix, DeclName(decl));
+    const std::string qualified = ExtendedPrimitive(decl) ? ItemName(decl) : Qualify(prefix, DeclName(decl));
     const auto &typeParams = DeclTypeParams(decl);
     std::string displayName = qualified;
     if (!typeParams.empty()) {
@@ -598,7 +620,7 @@ void WriteItem(JsonWriter &json, Context &context, const Decl &decl, const std::
     const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl);
     const auto *constant = dynamic_cast<const ConstDecl *>(&decl);
     const bool type = structure || unionType || enumeration || dynamic_cast<const InterfaceDecl *>(&decl) ||
-                      dynamic_cast<const TypeAliasDecl *>(&decl);
+                      dynamic_cast<const TypeAliasDecl *>(&decl) || ExtendedPrimitive(decl);
 
     json.BeginObject();
     json.Key("kind");
@@ -670,13 +692,21 @@ void WriteItem(JsonWriter &json, Context &context, const Decl &decl, const std::
 
 /// Write every visible item `decl` stands for. A module contributes its items under qualified names rather than an
 /// item of its own, an extern block contributes each of its declarations, and an `extend` block contributes members
-/// to the type it extends rather than an item.
+/// to the type it extends rather than an item. A built-in primitive has no declaration, so the documented block that
+/// anchors it becomes its item, holding the members of every block that extends it.
 void WriteItems(JsonWriter &json, Context &context, const Decl &decl, const std::string &moduleName,
                 const SourceFile &source, const std::string &prefix = {}, const bool containingModulesPublic = true) {
-    // The public type names only decide whether an `extend` block is shown, and a block never becomes an item.
+    // The public type names only decide whether a declared type's `extend` block is shown, and such a block never
+    // becomes an item.
     static const std::unordered_set<std::string> unconsulted;
-    if (dynamic_cast<const ImplDecl *>(&decl) ||
-        !Visible(decl, context.options.includePrivate, containingModulesPublic, unconsulted)) {
+    if (!Visible(decl, context.options.includePrivate, containingModulesPublic, unconsulted)) {
+        return;
+    }
+    if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+        const auto anchor = context.primitiveAnchors.find(ItemName(decl));
+        if (anchor != context.primitiveAnchors.end() && anchor->second == extension) {
+            WriteItem(json, context, decl, moduleName, source, {});
+        }
         return;
     }
     if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
@@ -706,6 +736,14 @@ void CollectExtensions(Context &context, const Decl &decl, const SourceFile &sou
         return;
     }
     if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+        if (const PrimitiveInfo *primitive = ExtendedPrimitive(decl)) {
+            const std::string name(primitive->name);
+            context.extensions[name].push_back({extension, &source});
+            if (extension->documentation.Present()) {
+                context.primitiveAnchors.try_emplace(name, extension);
+            }
+            return;
+        }
         const std::string typeName = extension->typeName.substr(0, extension->typeName.find('<'));
         context.extensions[Qualify(prefix, typeName)].push_back({extension, &source});
     }
@@ -779,7 +817,7 @@ bool JsonSnapshot::HasErrors() const {
 
 JsonSnapshot RenderJson(const Manifest &manifest, const std::span<const ParseResult> modules,
                         const GenerateOptions &options) {
-    Context context{.options = options, .extensions = {}, .diagnostics = {}};
+    Context context{.options = options, .extensions = {}, .primitiveAnchors = {}, .diagnostics = {}};
     std::vector<SourceFile> sources;
     sources.reserve(modules.size());
     for (const auto &module : modules) {

@@ -5,6 +5,7 @@
 #include "Semantic/Model/CompilerParameters.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cctype>
@@ -30,7 +31,6 @@ ParseResult ParseIntrinsicSource(const std::string &source, const std::string &f
 }
 
 const std::string IntegerDeclaration = R"(
-pub intrinsic type int8;
 extend int8 {
     pub const Min: int8 = -128i8;
     pub const Max: int8 = 127i8;
@@ -43,27 +43,23 @@ pub type Utf8 = char8[..];
 )";
 } // namespace
 
-TEST_CASE("intrinsic declarations preserve types fields and associated constants in the AST") {
+TEST_CASE("primitive extensions preserve fields and associated constants in the AST") {
     auto parsed = ParseIntrinsicSource(IntegerDeclaration + R"(
 pub struct Packet { pub data: *char8; pub length: uint; }
-pub intrinsic type float32;
 extend float32 { pub intrinsic const Infinity: float32; }
 )");
-    REQUIRE_EQ(parsed.module.items.size(), 5);
-    const auto *scalar = dynamic_cast<const TypeAliasDecl *>(parsed.module.items[0].get());
-    REQUIRE(scalar);
-    CHECK_EQ(scalar->intrinsicName, "int8");
-    const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
+    REQUIRE_EQ(parsed.module.items.size(), 3);
+    const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[0].get());
     REQUIRE(extension);
     REQUIRE_EQ(extension->constants.size(), 3);
     CHECK_EQ(extension->constants[0]->name, "Min");
     CHECK(extension->constants[0]->value);
-    const auto *string = dynamic_cast<const StructDecl *>(parsed.module.items[2].get());
+    const auto *string = dynamic_cast<const StructDecl *>(parsed.module.items[1].get());
     REQUIRE(string);
     CHECK(string->intrinsicName.empty());
     REQUIRE_EQ(string->fields.size(), 2);
     CHECK_EQ(string->fields[1].name, "length");
-    const auto *floating = dynamic_cast<const ImplDecl *>(parsed.module.items[4].get());
+    const auto *floating = dynamic_cast<const ImplDecl *>(parsed.module.items[2].get());
     REQUIRE(floating);
     REQUIRE_EQ(floating->constants.size(), 1);
     CHECK_EQ(floating->constants[0]->intrinsicName, "float32.Infinity");
@@ -76,7 +72,7 @@ TEST_CASE("scalar representation requires no intrinsic declaration") {
     CHECK_FALSE(model.HasErrors());
 }
 
-TEST_CASE("associated constants require a visible declaration") {
+TEST_CASE("associated constants require an imported extension") {
     auto dependency = ParseIntrinsicSource(IntegerDeclaration, "replacement.rux");
     for (const bool imported : {false, true}) {
         CAPTURE(imported);
@@ -126,7 +122,6 @@ TEST_CASE("private associated constants stay private to their package") {
 
 TEST_CASE("floating special values require explicit associated declarations") {
     auto parsed = ParseIntrinsicSource(R"(
-pub intrinsic type float32;
 extend float32 {
     pub intrinsic const Infinity: float32;
     pub intrinsic const NaN: float32;
@@ -141,16 +136,25 @@ func Invalid() -> float32 { return float32::NaN; }
     CHECK(lowering.Diagnostics().empty());
 }
 
-TEST_CASE("different intrinsic providers cannot overwrite one visible declaration") {
+TEST_CASE("a constant two imported extensions declare is ambiguous where it is used") {
     auto first = ParseIntrinsicSource(IntegerDeclaration, "first.rux");
     auto second = ParseIntrinsicSource(IntegerDeclaration, "second.rux");
-    auto parsed = ParseIntrinsicSource("import First::int8; import Second::int8; func Main() {} ");
-    const auto model =
-        SemanticAnalyzer({&parsed.module},
-                         {{"First", {{"first.rux", &first.module}}}, {"Second", {{"second.rux", &second.module}}}},
-                         "App")
-            .Analyze();
-    CHECK(model.HasErrors());
+    for (const bool used : {false, true}) {
+        CAPTURE(used);
+        auto parsed =
+            ParseIntrinsicSource("import First::int8; import Second::int8; " +
+                                 std::string(used ? "func Main() -> int8 { return int8::Min; }" : "func Main() {}"));
+        const auto model =
+            SemanticAnalyzer({&parsed.module},
+                             {{"First", {{"first.rux", &first.module}}}, {"Second", {{"second.rux", &second.module}}}},
+                             "App")
+                .Analyze();
+        REQUIRE_EQ(model.HasErrors(), used);
+        if (used) {
+            CHECK_EQ(model.diagnostics[0].message,
+                     "associated constant 'Min' of 'int8' is declared by 'First' and 'Second'");
+        }
+    }
 }
 
 TEST_CASE("intrinsic declarations reject unknown kinds and incompatible fields") {
@@ -162,13 +166,13 @@ TEST_CASE("intrinsic declarations reject unknown kinds and incompatible fields")
              "intrinsic struct string16 { pub data: *char8; pub length: uint; }",
              "intrinsic struct Slice<T> { data: *T; pub length: uint; }",
              "intrinsic struct Range<T, U> { pub start: T; pub end: T; }",
-             "intrinsic type int8; extend int8 { intrinsic const Infinity: int8; }",
-             "intrinsic type int8; extend int8 { const X = 1; const X = 2; }",
+             "extend int8 { intrinsic const Infinity: int8; }",
+             "extend int8 { const X = 1; const X = 2; }",
          }) {
         CAPTURE(source);
         auto tokens = Lexer(source, "removed.rux").Tokenize();
         auto parsed = Parser(std::move(tokens.tokens), "removed.rux").Parse();
-        if (source.contains("intrinsic struct")) {
+        if (source.contains("intrinsic struct") || source.contains("intrinsic type")) {
             CHECK(parsed.HasErrors());
         }
         else {
@@ -214,7 +218,7 @@ TEST_CASE("character slice annotations and members need no provider") {
     }
 }
 
-TEST_CASE("an intrinsic type import in another file does not expose its members") {
+TEST_CASE("a primitive extension import in another file does not expose its members") {
     auto dependency = ParseIntrinsicSource(IntegerDeclaration + StringDeclaration, "provider.rux");
     auto imported = ParseIntrinsicSource("import Provider::{ int8, Utf8 };", "imported.rux");
     auto isolated = ParseIntrinsicSource("func Main() -> int8 { return int8::Max; }", "isolated.rux");
@@ -311,7 +315,6 @@ TEST_CASE("an import in a discarded conditional branch never loads a provider") 
 
 TEST_CASE("native source constant expressions use the compilation target") {
     auto dependency = ParseIntrinsicSource(R"(
-pub intrinsic type uint;
 extend uint {
     pub const Bits: uint = sizeof(uint) * 8u;
     pub const Max: uint = ~0u;
@@ -385,10 +388,28 @@ extend Factory {
 }
 
 TEST_CASE("ordinary declarations cannot replace reserved primitive names") {
-    for (const std::string source : {"struct float128 {}", "type int8 = int32;"}) {
+    for (const std::string source : {"struct float128 {}", "type int8 = int32;", "type bool = int32;", "struct byte {}",
+                                     "module Inner { struct char {} }", "func float() {}"}) {
+        CAPTURE(source);
         auto parsed = ParseIntrinsicSource(source);
         const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
-        CHECK(model.HasErrors());
+        REQUIRE(model.HasErrors());
+        CHECK(model.diagnostics[0].message.contains("already"));
+        REQUIRE_FALSE(model.diagnostics[0].notes.empty());
+        CHECK(model.diagnostics[0].notes[0].ends_with("is a built-in type"));
+    }
+}
+
+TEST_CASE("a dependency cannot declare an item with a built-in type name") {
+    for (const std::string source :
+         {"pub type bool = int32;", "pub struct int8 {}", "pub module M { pub struct byte {} }"}) {
+        CAPTURE(source);
+        auto dependency = ParseIntrinsicSource(source, "provider.rux");
+        auto parsed = ParseIntrinsicSource("func Main() {}");
+        const auto model =
+            SemanticAnalyzer({&parsed.module}, {{"Provider", {{"provider.rux", &dependency.module}}}}, "App").Analyze();
+        REQUIRE(model.HasErrors());
+        CHECK(model.diagnostics[0].message.contains("is already declared in this scope"));
     }
 }
 
@@ -400,8 +421,7 @@ TEST_CASE("wide extrema are evaluated from declarations and recorded for lowerin
         const std::string maximum = WideInteger::MaxValue(width, true).ToDecimal();
         const std::string unsignedMaximum = WideInteger::AllOnes(width).ToDecimal();
         auto parsed = ParseIntrinsicSource(
-            "intrinsic type " + signedName + "; intrinsic type " + unsignedName + "; " + "extend " + signedName +
-            " { pub const Min: " + signedName + " = " + minimum + "i" + std::to_string(width) +
+            "extend " + signedName + " { pub const Min: " + signedName + " = " + minimum + "i" + std::to_string(width) +
             "; pub const Max: " + signedName + " = " + maximum + "i" + std::to_string(width) + "; } " + "extend " +
             unsignedName + " { pub const Max: " + unsignedName + " = " + unsignedMaximum + "u" + std::to_string(width) +
             "; } " + "when " + signedName + "::Min < 0 && " + signedName + "::Max > 0 && " + unsignedName + "::Max > " +
@@ -410,7 +430,7 @@ TEST_CASE("wide extrema are evaluated from declarations and recorded for lowerin
             "::Min; } } else { func Bad() { Missing(); } }");
         const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
         REQUIRE_FALSE(model.HasErrors());
-        const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[2].get());
+        const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[0].get());
         REQUIRE(extension);
         const auto *value = model.TryGetConstantValue(*extension->constants[0]);
         REQUIRE(value);
@@ -436,24 +456,23 @@ func Main() { let range = 1..3; let start = range.start;
 TEST_CASE("conditional constant evaluation retains earlier declarations while folding") {
     auto parsed = ParseIntrinsicSource(R"(
 const Base: int8 = 126i8;
-intrinsic type int8;
 extend int8 { pub const Max: int8 = Base + 1i8; }
 when int8::Max == 127i8 { func Main() -> int8 { return int8::Max; } }
 else { func Main() { Missing(); } }
 )");
     const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
     REQUIRE_FALSE(model.HasErrors());
-    const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[2].get());
+    const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
     REQUIRE(extension);
     REQUIRE(model.TryGetConstantValue(*extension->constants[0]));
     CHECK_EQ(model.TryGetConstantValue(*extension->constants[0])->literal, "127");
     (void)AstToHirLowering(model).Generate();
 }
 
-TEST_CASE("intrinsic bindings reject alias spellings and mismatched special float owners") {
+TEST_CASE("removed intrinsic forms and mismatched special float owners are rejected") {
     for (const std::string source :
          {"intrinsic type float;", "intrinsic struct string { pub data: *char8; pub length: uint; }",
-          "intrinsic type int8; extend int8 { pub intrinsic const Infinity: float64; }"}) {
+          "extend int8 { pub intrinsic const Infinity: float64; }"}) {
         auto tokens = Lexer(source, "removed.rux").Tokenize();
         auto parsed = Parser(std::move(tokens.tokens), "removed.rux").Parse();
         CHECK((parsed.HasErrors() || SemanticAnalyzer({&parsed.module}, {}, "App").Analyze().HasErrors()));
@@ -490,7 +509,6 @@ func Main() -> uint { return sizeof(UserView<uint8>) + sizeof(SystemTime) + size
 
 TEST_CASE("selected extension constants become visible to later conditions") {
     auto parsed = ParseIntrinsicSource(R"(
-intrinsic type int8;
 when true { extend int8 { pub const Max: int8 = 127i8; } }
 when false { extend int8 { pub const Max: int8 = 2i8; } }
 when int8::Max == 127i8 { func Main() -> int8 { return int8::Max; } }
@@ -518,15 +536,121 @@ else { func Main() { Missing(); } }
     (void)AstToHirLowering(model).Generate();
 }
 
-TEST_CASE("scalar intrinsic type facts retain the owning declaration") {
-    auto parsed = ParseIntrinsicSource(IntegerDeclaration + "func End(value: int8) -> int8 { return value; }");
-    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+TEST_CASE("an intrinsic type declaration is rejected with the extension that replaces it") {
+    for (const auto &[source, help] :
+         {std::pair{"pub intrinsic type int8;", "declare its associated constants in 'extend int8 { ... }' instead"},
+          std::pair{"intrinsic type bool;", "declare its associated constants in 'extend bool8 { ... }' instead"}}) {
+        CAPTURE(source);
+        auto tokens =
+            Lexer(std::string(source) + "\nextend int8 { pub const Max: int8 = 127i8; }", "removed.rux").Tokenize();
+        auto parsed = Parser(std::move(tokens.tokens), "removed.rux").Parse();
+        REQUIRE_EQ(parsed.diagnostics.size(), 1);
+        CHECK_EQ(parsed.diagnostics[0].message,
+                 "intrinsic type declarations have been removed; primitive types are built in");
+        CHECK_EQ(parsed.diagnostics[0].help, std::optional<std::string>(help));
+        // Recovery stops at the extension that follows, so an old provider reports the one line it must change.
+        REQUIRE_EQ(parsed.module.items.size(), 1);
+        CHECK(dynamic_cast<const ImplDecl *>(parsed.module.items[0].get()));
+    }
+}
+
+TEST_CASE("an alias spelling imports the extension of its canonical width") {
+    auto provider = ParseIntrinsicSource(R"(
+extend uint8 { pub const Max: uint8 = 255u8; }
+extend bool8 { pub const Bits: uint = 8u; }
+)",
+                                         "provider.rux");
+    auto parsed = ParseIntrinsicSource(R"(
+import Provider::{ byte, bool };
+when byte::Max == 255u8 && uint8::Max == 255u8 && bool::Bits == 8u && bool8::Bits == 8u {
+    func Main() -> uint8 { return byte::Max - uint8::Max + (bool::Bits + bool8::Bits) as uint8; }
+} else {
+    func Main() { Missing(); }
+}
+)");
+    const auto model =
+        SemanticAnalyzer({&parsed.module}, {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
     REQUIRE_FALSE(model.HasErrors());
-    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.back().get());
-    REQUIRE(function);
-    const Decl *binding = model.TryGetIntrinsicTypeBinding(*function->params[0].type);
-    REQUIRE(binding);
-    CHECK(binding == parsed.module.items[0].get());
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("a primitive is imported only from a module that extends it") {
+    auto provider = ParseIntrinsicSource(IntegerDeclaration, "provider.rux");
+    for (const std::string name : {"int16", "byte"}) {
+        CAPTURE(name);
+        auto parsed = ParseIntrinsicSource("import Provider::" + name + "; func Main() {}");
+        const auto model =
+            SemanticAnalyzer({&parsed.module}, {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+        REQUIRE_EQ(model.diagnostics.size(), 1);
+        CHECK_EQ(model.diagnostics[0].message,
+                 std::format("package 'Provider' declares no extension of primitive type '{}'", name));
+        CHECK_EQ(model.diagnostics[0].help,
+                 std::optional<std::string>(std::format("a primitive type needs no import; import it only from a "
+                                                        "package that declares 'extend {} {{ ... }}'",
+                                                        name == "byte" ? "uint8" : name)));
+    }
+}
+
+TEST_CASE("a package sees its own primitive extensions in every file without an import") {
+    auto extension = ParseIntrinsicSource(IntegerDeclaration, "limits.rux");
+    auto parsed = ParseIntrinsicSource(R"(
+when int8::Max == 127i8 { func Main() -> int8 { return int8::Max; } }
+else { func Main() { Missing(); } }
+)",
+                                       "main.rux");
+    const auto model = SemanticAnalyzer({&extension.module, &parsed.module}, {}, "App").Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("a glob import exposes the primitive extensions of the module it reaches") {
+    auto provider =
+        ParseIntrinsicSource("pub module Limits { extend int8 { pub const Max: int8 = 127i8; } }", "provider.rux");
+    for (const auto &[path, reaches] : {std::pair{"Provider::Limits::*", true}, std::pair{"Provider::*", false}}) {
+        CAPTURE(path);
+        auto parsed = ParseIntrinsicSource(std::format("import {}; func Main() -> int8 {{ return int8::Max; }}", path));
+        const auto model =
+            SemanticAnalyzer({&parsed.module}, {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+        CHECK_EQ(model.HasErrors(), !reaches);
+    }
+}
+
+TEST_CASE("an alias reaches the extensions in force where it is declared and where it is used") {
+    auto original = ParseIntrinsicSource(IntegerDeclaration, "original.rux");
+    auto aliases = ParseIntrinsicSource("pub type Tiny = int8;", "aliases.rux");
+    auto parsed = ParseIntrinsicSource(R"(
+import Original::int8;
+import Aliases::Tiny;
+when Tiny::Max == 127i8 { func Main() -> int8 { return Tiny::Min; } }
+else { func Main() { Missing(); } }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module},
+                                        {{"Original", {{"original.rux", &original.module}}},
+                                         {"Aliases", {{"aliases.rux", &aliases.module}}}},
+                                        "App")
+                           .Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("a primitive constant nothing imports names the dependency that declares it") {
+    auto provider = ParseIntrinsicSource(IntegerDeclaration, "provider.rux");
+    auto parsed = ParseIntrinsicSource("func Main() -> int8 { return int8::Max; }");
+    const auto model =
+        SemanticAnalyzer({&parsed.module}, {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+    REQUIRE_EQ(model.diagnostics.size(), 1);
+    CHECK_EQ(model.diagnostics[0].message, "'Max' not found in extend for type 'int8'");
+    CHECK_EQ(model.diagnostics[0].help,
+             std::optional<std::string>("import the extension that declares it, for example 'import Provider::int8;'"));
 }
 
 TEST_CASE("duplicate extension constants and reserved-width APIs are rejected") {
@@ -671,6 +795,30 @@ intrinsic #config: Config;
     CHECK_EQ(messages[0], "field 'wordSize' of 'Target' is not one the compiler supplies for '#target'");
     CHECK_EQ(messages[1], "'Machine' is not a value the compiler supplies for '#machine'");
     CHECK_EQ(messages[2], "field 'name' of 'Config' is not one the compiler supplies for '#config'");
+}
+
+TEST_CASE("Core extends every implemented primitive once and declares none") {
+    std::map<std::string, std::size_t> documented;
+    const auto directory = std::filesystem::path(RUX_PACKAGES_DIR) / "Core" / "Src" / "Primitives";
+    for (const auto &entry : std::filesystem::directory_iterator(directory)) {
+        CAPTURE(entry.path().filename().string());
+        std::ifstream input(entry.path(), std::ios::binary);
+        REQUIRE(input);
+        const std::string source((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        CHECK_FALSE(source.contains("intrinsic type"));
+        auto parsed = ParseIntrinsicSource(source, entry.path().filename().string());
+        for (const auto &item : parsed.module.items) {
+            const auto *extension = dynamic_cast<const ImplDecl *>(item.get());
+            REQUIRE_MESSAGE(extension, "Core's primitive files hold only extensions");
+            if (extension->documentation.Present()) {
+                ++documented[extension->typeName];
+            }
+        }
+    }
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        CAPTURE(primitive.name);
+        CHECK_EQ(documented[std::string(primitive.name)], primitive.implemented ? 1U : 0U);
+    }
 }
 
 TEST_CASE("Core declares exactly the fields the compiler supplies") {

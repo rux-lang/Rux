@@ -1,10 +1,8 @@
 // `float64`: IEEE 754 binary64.
 // Fifty-three bits of significand, so about seventeen decimal digits round-trip. This is the width `float` names.
 
-/// The compiler representation of float64.
+/// An IEEE 754 binary64 floating-point number.
 /// @see https://rux-lang.dev/docs/api/core/floating-point#float64
-pub intrinsic type float64;
-
 extend float64 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/floating-point#float64-bits

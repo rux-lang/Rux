@@ -284,7 +284,6 @@ struct PlaceReplacement {
 };
 
 struct SemanticFacts {
-    std::unordered_map<const TypeExpr *, const Decl *> intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> constantReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> evaluatedAssociatedConstants;
@@ -361,7 +360,6 @@ struct SemanticFacts {
  * detaches everything analysis recorded about it.
  */
 struct SemanticModel {
-    [[nodiscard]] const Decl *TryGetIntrinsicTypeBinding(const TypeExpr &type) const noexcept;
     [[nodiscard]] const ConstDecl *TryGetAssociatedConstant(const Expr &expression) const noexcept;
     [[nodiscard]] const ConstDecl *TryGetConstantReference(const Expr &expression) const noexcept;
     [[nodiscard]] const EvaluatedAssociatedConstant *TryGetConstantValue(const ConstDecl &declaration) const noexcept;

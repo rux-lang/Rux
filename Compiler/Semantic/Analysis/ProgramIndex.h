@@ -65,6 +65,9 @@ private:
 
 [[nodiscard]] std::string_view SymbolKindName(Symbol::Kind kind);
 [[nodiscard]] std::string DeclarationNote(const Symbol &symbol);
+/// The error for declaring `symbol` where `previous` already holds its name.
+[[nodiscard]] SemanticDiagnostic DuplicateDeclaration(const Symbol &previous, const Symbol &symbol,
+                                                      const std::string &sourceName);
 
 /// Owns the package/module declaration topology built before semantic checking. The analyzer supplies type resolution
 /// because aliases and typed constants still use its in-progress type context.
@@ -105,6 +108,11 @@ public:
     }
 
     [[nodiscard]] const DeclarationInfo *InfoFor(const Decl &declaration) const;
+    /// The built-in primitives (by canonical kind) a package extends with `extend` blocks directly in one module.
+    ///
+    /// @return nullptr when that module extends none
+    [[nodiscard]] const std::unordered_set<TypeRef::Kind> *PrimitiveExtensions(const std::string &package,
+                                                                               const std::string &modulePath) const;
 
     [[nodiscard]] const auto &Packages() const {
         return packageScopes;
@@ -167,6 +175,9 @@ public:
     }
 
 private:
+    /// Define a package item, rejecting a name a built-in type already holds in any enclosing scope.
+    bool DefineItem(Scope &scope, const Symbol &symbol, const std::string &sourceName);
+
     std::vector<SemanticDiagnostic> &diagnostics;
     std::vector<SemanticSymbol> &publicSymbols;
     Scope globalScope;
@@ -189,5 +200,8 @@ private:
     std::vector<std::pair<std::string, const Decl *>> nominalDeclarations;
     std::unordered_map<const Decl *, std::string> nominalNames;
     std::unordered_map<const TypeExpr *, const Decl *> typeOwners;
+    /// Owner package -> module path -> canonical primitive kinds extended directly in that module.
+    std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_set<TypeRef::Kind>>>
+        primitiveExtensions;
 };
 } // namespace Rux::SemanticDetail

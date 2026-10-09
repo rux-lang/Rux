@@ -4,8 +4,6 @@
 
 /// A target pointer-sized signed integer.
 /// @see https://rux-lang.dev/docs/api/core/integers#int
-pub intrinsic type int;
-
 extend int {
     /// The target representation width in bits.
     /// @see https://rux-lang.dev/docs/api/core/integers#int-bits

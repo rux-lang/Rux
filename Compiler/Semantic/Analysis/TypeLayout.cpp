@@ -422,13 +422,8 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         (void)CheckNamedConstant(*constDecl);
     }
     else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-        if (!aliasDecl->intrinsicName.empty()) {
-            CheckIntrinsicType(*aliasDecl);
-        }
-        else {
-            ValidateArrayType(*aliasDecl->type);
-            ResolveType(*aliasDecl->type);
-        }
+        ValidateArrayType(*aliasDecl->type);
+        ResolveType(*aliasDecl->type);
     }
     else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
         if (externFn->dll.empty()) {

@@ -2,10 +2,8 @@
 // The same repertoire `char32` holds, in twice the storage: the range stops at U+10FFFF and the surrogates are
 // rejected, because a scalar value is what this carries. There is no `c64` literal prefix.
 
-/// The compiler representation of char64.
+/// One Unicode scalar value, in eight bytes.
 /// @see https://rux-lang.dev/docs/api/core/characters#char64
-pub intrinsic type char64;
-
 extend char64 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/characters#char64-bits

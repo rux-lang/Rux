@@ -640,8 +640,9 @@ struct Decl {
     SourceLocation location;
     bool isPublic = false;
     Syntax::Documentation documentation;
-    /// Non-empty for declarations whose implementation/value is supplied by the compiler rather than Rux source: the
-    /// `intrinsic` keyword sets it to the registry key derived from the declaration itself (see ParseDecl).
+    /// Non-empty for a function, constant or `#` value the compiler supplies rather than Rux source: the `intrinsic`
+    /// keyword sets it to the registry key derived from the declaration itself (see ParseDecl). Types are never
+    /// intrinsic: every primitive is built in.
     std::string intrinsicName;
     std::string warnMessage;  // non-empty = emit this warning at each call site
     std::string errorMessage; // non-empty = emit this error at each call site

@@ -2,10 +2,8 @@
 // Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
 // trapping. Core's checked arithmetic is what reports instead of wrapping.
 
-/// The compiler representation of uint16.
+/// An unsigned integer in 16 bits.
 /// @see https://rux-lang.dev/docs/api/core/integers#uint16
-pub intrinsic type uint16;
-
 extend uint16 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/integers#uint16-bits

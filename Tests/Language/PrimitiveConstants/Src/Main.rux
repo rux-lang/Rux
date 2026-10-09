@@ -5,7 +5,7 @@ import Core::Assert;
 when int32::Bits == 32 && int32::Bytes == 4 &&
      int32::Min == -2147483648 && int32::Max == 2147483647 &&
      uint64::Max > int64::Max && float32::Infinity > float32::Max &&
-     float32::NaN != float32::NaN {
+     float32::NaN != float32::NaN && byte::Max == 255u8 && bool::Bits == 8u && Count::Max == int32::Max {
     const COMPILE_TIME_CONSTANTS_WORK: bool = true;
 } else {
     const COMPILE_TIME_CONSTANTS_WORK: bool = false;
@@ -13,9 +13,14 @@ when int32::Bits == 32 && int32::Bytes == 4 &&
 
 const GLOBAL_LIMIT: int32 = int32::Max;
 
+// A local alias reaches the constants of the primitive it names.
+type Count = int32;
+
 func Main() -> int {
     Assert(COMPILE_TIME_CONSTANTS_WORK, "primitive constants work in compile-time conditions");
     Assert(GLOBAL_LIMIT == 2147483647i32, "primitive constants initialize global constants");
+
+    Assert(Count::Max == int32::Max && Count::Bits == 32u, "local alias constants");
 
     Assert(bool8::Bits == 8 && bool8::Bytes == 1, "bool8 width constants");
     Assert(bool16::Bits == 16 && bool16::Bytes == 2, "bool16 width constants");

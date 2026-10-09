@@ -73,7 +73,19 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                     return TypeRef::MakeUnknown();
                 }
                 if (e->segments.size() == 2) {
-                    if (const auto *constant = LookupAssociatedConstant(*first, e->segments[1])) {
+                    const AssociatedConstantLookup lookup = LookupAssociatedConstant(*first, e->segments[1]);
+                    if (!lookup.conflictingPackages.empty()) {
+                        std::string packages;
+                        for (const std::string &package : lookup.conflictingPackages) {
+                            packages += std::format("{}'{}'", packages.empty() ? "" : " and ", package);
+                        }
+                        EmitError(e->location,
+                                  std::format("associated constant '{}' of '{}' is declared by {}", e->segments[1],
+                                              first->name, packages),
+                                  {}, std::format("import the extension of '{}' from only one of them", first->name));
+                        return TypeRef::MakeUnknown();
+                    }
+                    if (const ConstDecl *constant = lookup.constant) {
                         if (!IsAccessible(*constant)) {
                             EmitPrivacyError(e->location, *constant, "associated constant", constant->name);
                             return TypeRef::MakeUnknown();
@@ -130,7 +142,11 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                         }
                     }
                 }
-                EmitError(e->location, std::format("'{}' not found in extend for type '{}'", methodName, first->name));
+                EmitError(e->location, std::format("'{}' not found in extend for type '{}'", methodName, first->name),
+                          {},
+                          e->segments.size() == 2 && first->kind == Symbol::Kind::Type
+                              ? AssociatedConstantImportHelp(*first, methodName)
+                              : std::nullopt);
                 return TypeRef::MakeUnknown();
             }
             if (e->segments.size() > 2) {

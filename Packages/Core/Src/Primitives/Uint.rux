@@ -3,8 +3,6 @@
 
 /// A target pointer-sized unsigned integer.
 /// @see https://rux-lang.dev/docs/api/core/integers#uint
-pub intrinsic type uint;
-
 extend uint {
     /// The target representation width in bits.
     /// @see https://rux-lang.dev/docs/api/core/integers#uint-bits

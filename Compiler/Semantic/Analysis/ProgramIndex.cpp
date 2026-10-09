@@ -77,11 +77,25 @@ std::string_view SymbolKindName(const Symbol::Kind kind) {
 }
 
 std::string DeclarationNote(const Symbol &symbol) {
+    if (symbol.ownerPackage == "<builtin>") {
+        return std::format("'{}' is a built-in type", symbol.name);
+    }
     if (symbol.sourceName.empty() || symbol.location.line == 0) {
         return std::format("'{}' is declared as a {}", symbol.name, SymbolKindName(symbol.kind));
     }
     return std::format("'{}' was declared as a {} at '{}':{}:{}", symbol.name, SymbolKindName(symbol.kind),
                        symbol.sourceName, symbol.location.line, symbol.location.column);
+}
+
+SemanticDiagnostic DuplicateDeclaration(const Symbol &previous, const Symbol &symbol, const std::string &sourceName) {
+    const std::string message =
+        previous.kind == symbol.kind
+            ? std::format("{} '{}' is already declared in this scope", SymbolKindName(symbol.kind), symbol.name)
+            : std::format("name '{}' cannot be declared as a {} because it is already a {} "
+                          "in this scope",
+                          symbol.name, SymbolKindName(symbol.kind), SymbolKindName(previous.kind));
+    return {
+        SemanticDiagnostic::Severity::Error, sourceName, symbol.location, message, {DeclarationNote(previous)}, {}, {}};
 }
 
 Scope::Scope(Scope *parentScope)
@@ -93,14 +107,6 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
         symbol.sourceName = sourceName;
     }
     if (auto iterator = table.find(symbol.name); iterator != table.end()) {
-        if (iterator->second.ownerPackage == "<builtin>" && symbol.kind == Symbol::Kind::Type && symbol.declaration &&
-            (!symbol.intrinsicName.empty() ||
-             (dynamic_cast<const TypeAliasDecl *>(symbol.declaration) &&
-              std::ranges::any_of(PrimitiveAliases(),
-                                  [&](const PrimitiveAlias &alias) { return alias.name == symbol.name; })))) {
-            iterator->second = std::move(symbol);
-            return true;
-        }
         if (iterator->second.kind == Symbol::Kind::Func && symbol.kind == Symbol::Kind::Func) {
             iterator->second.funcOverloads.insert(iterator->second.funcOverloads.end(), symbol.funcOverloads.begin(),
                                                   symbol.funcOverloads.end());
@@ -114,20 +120,7 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
             iterator->second.isEffectivelyPublic = iterator->second.isEffectivelyPublic || symbol.isEffectivelyPublic;
             return true;
         }
-        const Symbol &previous = iterator->second;
-        const std::string message =
-            previous.kind == symbol.kind
-                ? std::format("{} '{}' is already declared in this scope", SymbolKindName(symbol.kind), symbol.name)
-                : std::format("name '{}' cannot be declared as a {} because it is already a {} "
-                              "in this scope",
-                              symbol.name, SymbolKindName(symbol.kind), SymbolKindName(previous.kind));
-        diagnostics.push_back({SemanticDiagnostic::Severity::Error,
-                               sourceName,
-                               symbol.location,
-                               message,
-                               {DeclarationNote(previous)},
-                               {},
-                               {}});
+        diagnostics.push_back(DuplicateDeclaration(iterator->second, symbol, sourceName));
         return false;
     }
     table.emplace(symbol.name, std::move(symbol));
@@ -306,11 +299,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
         symbol.declaration = &declaration;
-        symbol.intrinsicName = declaration.intrinsicName;
-        if (!declaration.intrinsicName.empty()) {
-            symbol.type = PrimitiveTypeFromName(declaration.intrinsicName).value_or(TypeRef::MakeUnknown());
-        }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back(
                 {publicKind, name, sourceName, declaration.location, std::move(resolvedType), isMut});
         }
@@ -337,7 +326,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.modulePath = modulePath;
         symbol.intrinsicName = function->intrinsicName;
         symbol.funcOverloads.push_back(function);
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back(
                 {SemanticSymbol::Kind::Func, function->name, sourceName, function->location, {}, false});
         }
@@ -373,7 +362,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         for (const auto &method : interface->methods) {
             symbol.interfaceMethods.push_back(method->name);
         }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Interface, interface->name, sourceName, interface->location,
                                      "interface", false});
         }
@@ -394,7 +383,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
             const auto provisional = ProvisionalRepresentation(**constant->type);
             symbol.type = provisional ? *provisional : resolveType(**constant->type);
         }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Const, constant->name, sourceName, constant->location,
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
@@ -409,16 +398,10 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
         symbol.declaration = alias;
-        symbol.intrinsicName = alias->intrinsicName;
-        if (!alias->intrinsicName.empty()) {
-            symbol.type = PrimitiveTypeFromName(alias->intrinsicName).value_or(TypeRef::MakeUnknown());
-        }
-        else {
-            // Provisional representation only. Checking the alias still resolves and validates its source type.
-            const auto provisional = ProvisionalRepresentation(*alias->type);
-            symbol.type = provisional ? *provisional : resolveType(*alias->type);
-        }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        // Provisional representation only. Checking the alias still resolves and validates its source type.
+        const auto provisional = ProvisionalRepresentation(*alias->type);
+        symbol.type = provisional ? *provisional : resolveType(*alias->type);
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Type, alias->name, sourceName, alias->location,
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
@@ -434,7 +417,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
         symbol.externDecl = externFunction;
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Func, externFunction->name, sourceName,
                                      externFunction->location, "extern", false});
         }
@@ -467,7 +450,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
             symbol.ownerPackage = ownerPackage;
             symbol.modulePath = childPath;
             symbol.moduleScope = moduleScope;
-            if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+            if (DefineItem(scope, symbol, sourceName) && isGlobal) {
                 publicSymbols.push_back(
                     {SemanticSymbol::Kind::Module, module->name, sourceName, declaration.location, {}, false});
             }
@@ -505,7 +488,32 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         if (implementation->interfaceName) {
             implementedInterfaces[typeName].insert(*implementation->interfaceName);
         }
+        if (const PrimitiveInfo *primitive = FindPrimitive(implementation->typeName)) {
+            primitiveExtensions[ownerPackage][modulePath].insert(primitive->kind);
+        }
     }
+}
+
+bool SemanticProgramIndex::DefineItem(Scope &scope, const Symbol &symbol, const std::string &sourceName) {
+    // A built-in type name is reserved in every package and module, not only in the one compiled against the global
+    // scope: a dependency's or a module's own scope would otherwise shadow it silently.
+    if (!scope.LookupLocal(symbol.name)) {
+        if (const Symbol *builtin = scope.Lookup(symbol.name); builtin && builtin->ownerPackage == "<builtin>") {
+            diagnostics.push_back(DuplicateDeclaration(*builtin, symbol, sourceName));
+            return false;
+        }
+    }
+    return scope.Define(symbol, diagnostics, sourceName);
+}
+
+const std::unordered_set<TypeRef::Kind> *
+SemanticProgramIndex::PrimitiveExtensions(const std::string &package, const std::string &modulePath) const {
+    const auto owner = primitiveExtensions.find(package);
+    if (owner == primitiveExtensions.end()) {
+        return nullptr;
+    }
+    const auto module = owner->second.find(modulePath);
+    return module == owner->second.end() ? nullptr : &module->second;
 }
 
 const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::InfoFor(const Decl &declaration) const {
@@ -554,7 +562,7 @@ void SemanticProgramIndex::FinalizeNominalIdentities() {
             unions[identity] = unionType;
         else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(declaration))
             interfaces[identity] = interface;
-        if (Symbol *symbol = info.scope->LookupLocal(name); symbol && declaration->intrinsicName.empty()) {
+        if (Symbol *symbol = info.scope->LookupLocal(name)) {
             symbol->type = TypeRef::MakeNamed(identity);
         }
     }

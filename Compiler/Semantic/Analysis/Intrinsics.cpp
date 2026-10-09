@@ -9,74 +9,6 @@
 #include <string_view>
 
 namespace Rux::SemanticDetail {
-bool AnalysisContext::IsVisibleTypeSymbol(const Symbol &symbol) const {
-    if (!symbol.declaration) {
-        return false;
-    }
-    if (symbol.ownerPackage == currentPackage) {
-        return true;
-    }
-    const auto imported = explicitTypeImports.find(currentFile);
-    return imported != explicitTypeImports.end() && imported->second.contains(symbol.declaration);
-}
-
-const Decl *AnalysisContext::IntrinsicTypeBinding(const Symbol &symbol) const {
-    std::unordered_set<const Decl *> visited;
-    const auto resolve = [&](this auto &&self, const Symbol &candidate) -> const Decl * {
-        if (!candidate.declaration || !visited.insert(candidate.declaration).second)
-            return nullptr;
-        if (!candidate.intrinsicName.empty())
-            return candidate.declaration;
-        const auto *alias = dynamic_cast<const TypeAliasDecl *>(candidate.declaration);
-        const auto *named = alias ? dynamic_cast<const NamedTypeExpr *>(alias->type.get()) : nullptr;
-        if (!named)
-            return nullptr;
-        const Scope *scope = &globalScope;
-        if (const auto package = packageModuleScopes.find(candidate.ownerPackage);
-            package != packageModuleScopes.end()) {
-            const auto module = package->second.find(candidate.modulePath);
-            if (module == package->second.end())
-                return nullptr;
-            scope = module->second;
-        }
-        while (scope) {
-            if (const auto target = scope->Table().find(named->name); target != scope->Table().end()) {
-                return self(target->second);
-            }
-            scope = scope->Parent();
-        }
-        return nullptr;
-    };
-    return resolve(symbol);
-}
-
-const ConstDecl *AnalysisContext::LookupAssociatedConstant(const Symbol &type, const std::string &name) const {
-    // A built-in scalar name provides representation, but no package API.
-    if (!IsVisibleTypeSymbol(type)) {
-        return nullptr;
-    }
-    const Decl *binding = IntrinsicTypeBinding(type);
-    const auto bindingOwner = declarationInfos.find(binding);
-    const std::string &ownerPackage =
-        bindingOwner == declarationInfos.end() ? type.ownerPackage : bindingOwner->second.ownerPackage;
-    for (const ImplDecl *implementation : implDecls) {
-        const auto owner = declarationInfos.find(implementation);
-        if (owner == declarationInfos.end() || owner->second.ownerPackage != ownerPackage) {
-            continue;
-        }
-        const auto primitive = PrimitiveTypeFromName(implementation->typeName);
-        if (implementation->typeName != type.name && (!primitive || *primitive != type.type)) {
-            continue;
-        }
-        for (const auto &constant : implementation->constants) {
-            if (constant->name == name) {
-                return constant.get();
-            }
-        }
-    }
-    return nullptr;
-}
-
 TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
     if (const auto evaluated = evaluatedAssociatedConstants.find(&declaration);
         evaluated != evaluatedAssociatedConstants.end()) {
@@ -318,20 +250,6 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
                   {},
                   supplied.empty() ? std::format("remove the fields of '{}'; the compiler supplies none", root->name)
                                    : std::format("remove '{}'; the compiler supplies {}", field.name, supplied));
-    }
-}
-
-void AnalysisContext::CheckIntrinsicType(const Decl &declaration) {
-    const std::string &name = declaration.intrinsicName;
-    const auto primitive = PrimitiveTypeFromName(name);
-    if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
-        if (!primitive || CanonicalPrimitiveName(name) != name || IsUnimplementedPrimitiveType(name)) {
-            EmitError(declaration.location, std::format("'{}' is not a supported intrinsic scalar type", name));
-        }
-        else {
-            typeNodeTypes[alias->type.get()] = *primitive;
-        }
-        return;
     }
 }
 

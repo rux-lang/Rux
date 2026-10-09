@@ -2,10 +2,8 @@
 // The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
 // is behind nearly every edge case in checked arithmetic.
 
-/// The compiler representation of int256.
+/// A signed integer in 256 bits, two's complement.
 /// @see https://rux-lang.dev/docs/api/core/integers#int256
-pub intrinsic type int256;
-
 extend int256 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/integers#int256-bits

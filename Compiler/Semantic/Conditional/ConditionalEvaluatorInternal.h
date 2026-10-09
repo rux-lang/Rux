@@ -2,6 +2,7 @@
 
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/SemanticVersion.h"
+#include "Types/Type.h"
 
 #include <cstdint>
 #include <optional>
@@ -60,9 +61,16 @@ private:
     std::unordered_map<std::string, const StructDecl *> externalIntrinsicTypes;
     std::unordered_set<const ConstDecl *> activeAssociatedConstants;
     std::unordered_set<const Decl *> activeTypeAliases;
+    /// The canonical primitive each alias in scope names, so `Tiny::Max` also finds `int8::Max` where it is used.
+    std::unordered_map<std::string, std::string> aliasPrimitiveTargets;
     void ImportDeclarations(const UseDecl &use);
     void BindImportedDeclaration(const Decl &declaration, const std::vector<Module *> &modules, const Module &source,
                                  bool external = true);
+    /// Bind the constants of one `extend` block under `typeName::Name`.
+    void BindPrimitiveExtension(const ImplDecl &extension, const std::string &typeName,
+                                const std::vector<Module *> &modules, const Module &source, bool external);
+    /// Bind every public constant another package's `extend` blocks declare for one primitive.
+    void BindPrimitiveExtensions(TypeRef::Kind kind, const std::vector<Module *> &modules);
     [[nodiscard]] std::optional<Value> EvalDeclaredConstant(const ConstantBinding &binding, SourceLocation location);
     std::vector<Diagnostic> diags;
     std::string currentFile;
@@ -88,6 +96,8 @@ private:
     void RegisterConstantImpl(const ConstDecl &decl);
     void CollectCompileTimeDecls(const std::vector<DeclPtr> &decls);
     void SetRuxImportsForModule(const Module &module);
+    /// Bind the package's own declarations: its primitive extensions, then its aliases and nested modules.
+    void BindLocalDeclarations();
     void CollectRuxImports(const std::vector<DeclPtr> &decls);
     [[nodiscard]] bool RequireRuxImport(const std::string &name, SourceLocation location);
     [[nodiscard]] std::optional<std::string> IntrinsicArgument(const IntrinsicExpr &expr, bool allowEnum = false);

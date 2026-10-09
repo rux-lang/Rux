@@ -5,4 +5,4 @@ rux_add_component(RuxDocumentation
     Install.cpp
     JsonExport.cpp
     Signatures.cpp)
-target_link_libraries(RuxDocumentation PUBLIC RuxSyntax RuxPackage RuxDiagnostics)
+target_link_libraries(RuxDocumentation PUBLIC RuxSyntax RuxPackage RuxDiagnostics RuxTypes)

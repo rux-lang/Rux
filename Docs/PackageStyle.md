@@ -78,6 +78,7 @@ Maintained package APIs use `///` throughout.
 | Public `asm` function            | ABI, effects, clobber assumptions and raw-memory safety obligations                                        |
 | Public `extern`                  | Foreign API meaning, linked runtime, sentinels, error source and pointer requirements                      |
 | Public `const` or type alias     | Meaning and units or value contract, or the reason the alias exists                                        |
+| Primitive extension              | What the primitive is and a canonical `@see` URL; the comment is the primitive's API reference entry       |
 | Destructor                       | Cleanup behavior and retained unsafe assumptions; never `@returns`                                         |
 
 The summary is the first sentence, so it is one complete sentence that stands alone; avoid abbreviations such as "e.g." in it, since the period would end it early. A summary must say something. A restatement of the declaration's own name is not a summary: `/// Reads a byte.` on `func ReadByte()` conveys nothing the signature did not.

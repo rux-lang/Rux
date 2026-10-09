@@ -1,8 +1,8 @@
 # Core
 
-Core declares primitive associated APIs, diagnostics, value protocols, and compile-time context.
+Core declares primitive associated constants, diagnostics, value protocols, and compile-time context.
 
-Core is optional. Scalar types, arithmetic, arrays, inferred string literals, and range syntax work without it. Import a declaration to use its associated constants. Slice and range fields are compiler-owned. A replacement package can provide the same intrinsic declarations; the compiler assigns no privilege to the name or manifest identity of Core.
+Core is optional. Scalar types, arithmetic, arrays, inferred string literals, and range syntax work without it. Every primitive type is built into the compiler; Core extends them, and importing a primitive from Core imports its associated constants. Slice and range fields are compiler-owned. A replacement package can provide the same extensions and intrinsic declarations; the compiler assigns no privilege to the name or manifest identity of Core.
 
 ## Installation
 
@@ -24,7 +24,7 @@ rux add Rux/Core
 - **Float classification** — `IsNaN`, `IsZero`, `IsInfinite`, `IsFinite`, `IsNegativeZero`, `IsSignNegative`, `IsSignPositive`, and `SignOf`. All are arithmetic rather than bit inspection, so one implementation serves every float width including the software-lowered ones, whose storage carries padding no generic function could locate a sign bit inside of. The sign of a zero, which comparison cannot see, is read from the infinity it divides into.
 - **Primitive associated constants** — `Bits`, `Bytes`, `Min`, `Max` and the floating-point set (`Lowest`, `MinPositive`, `Epsilon`, `Infinity`, `NaN`) for the supported integer and character widths, width metadata for supported booleans, and the finite/special constant set for `float32` and `float64`. Reserved widths remain unimplemented. The string widths expose none: a string is a view over code units rather than a value with a width, so a width or a limit would describe neither it nor the units.
 
-## Primitive declarations and imports
+## Primitive constants and imports
 
 ```rux
 import Core::int8;
@@ -36,9 +36,9 @@ func Main() -> int {
 }
 ```
 
-Without the `int8` import, `int8` still names the scalar type, but `int8::Min` is unavailable. Loading a dependency that imports it does not import its APIs into the caller. The same rule applies between source files.
+`int8` is built into the compiler, so it names the scalar type without an import; `import Core::int8;` imports Core's `extend int8` block, which is what makes `int8::Min` available. The built-in aliases import their canonical widths: `import Core::byte;` gives `byte::Max`, the same constant as `uint8::Max`, and `import Core::bool;` gives `bool::Bits`. Loading a dependency that imports it does not import its APIs into the caller. The same rule applies between source files.
 
-Core defines integer and character limits, width metadata, and finite floating constants using ordinary constant expressions. Native integer metadata uses `sizeof`, so it follows the compilation target. Only floating-point `Infinity` and `NaN` use bodyless `intrinsic const` declarations inside extensions.
+Core declares no primitive type: each primitive file holds one documented `extend` block. Core defines integer and character limits, width metadata, and finite floating constants using ordinary constant expressions. Native integer metadata uses `sizeof`, so it follows the compilation target. Only floating-point `Infinity` and `NaN` use bodyless `intrinsic const` declarations inside extensions.
 
 ## Sequence views and ranges
 

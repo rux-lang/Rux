@@ -298,8 +298,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         }
 
         if (Symbol *symbol = currentScope->Lookup(t->name); symbol && symbol->declaration) {
-            if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(symbol->declaration);
-                alias && alias->intrinsicName.empty()) {
+            if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(symbol->declaration)) {
                 if (!resolvedArgs.empty()) {
                     EmitGenericArityError(expr, std::format("type alias '{}'", t->name), 0, resolvedArgs.size());
                     return TypeRef::MakeUnknown();

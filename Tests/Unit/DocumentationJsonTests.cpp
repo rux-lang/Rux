@@ -689,10 +689,11 @@ std::filesystem::path SnapshotRoot(const std::string &name) {
 
 /// Write the fixture where a package keeps it and parse it from there, since a snapshot reads the file again for its
 /// header and its constants' values.
-ParseResult ParseFixture(const std::filesystem::path &root) {
-    const auto path = root / "Src" / "Shapes.rux";
-    std::ofstream(path, std::ios::binary) << Fixture;
-    auto lexed = Lexer(std::string(Fixture), path.string()).Tokenize();
+ParseResult ParseFixture(const std::filesystem::path &root, const std::string_view source = Fixture,
+                         const std::string_view file = "Shapes.rux") {
+    const auto path = root / "Src" / file;
+    std::ofstream(path, std::ios::binary) << source;
+    auto lexed = Lexer(std::string(source), path.string()).Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
     auto parsed = Parser(std::move(lexed.tokens), path.string()).Parse();
     REQUIRE_FALSE(parsed.HasErrors());
@@ -754,5 +755,45 @@ TEST_CASE("a JSON snapshot installs as one file per package and documents privat
     REQUIRE(refused.diagnostics.size() == 1);
     CHECK(refused.diagnostics.front().message.contains("unmarked"));
     CHECK(ReadSnapshotFile(unmanaged / "keep.txt") == "keep");
+    RemoveSnapshotRoot(root);
+}
+
+TEST_CASE("a JSON snapshot lists a documented primitive extension as the primitive's item") {
+    constexpr std::string_view Primitives = R"rux(/// A signed integer in 16 bits.
+/// @see https://rux-lang.dev/docs/api/shapes/int16
+extend int16 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 16u;
+}
+
+extend int16 {
+    /// The largest representable value.
+    pub const Max: int16 = 32767i16;
+}
+
+extend byte {
+    /// The largest representable value.
+    pub const Max: uint8 = 255u8;
+}
+)rux";
+    const auto root = SnapshotRoot("rux-documentation-json-primitives");
+    const std::array modules{ParseFixture(root, Primitives, "Limits.rux")};
+    const auto snapshot = Documentation::RenderJson(
+        SnapshotManifest(), modules,
+        {.packageRoot = root, .outputDirectory = root / "site", .includePrivate = false, .target = "linux-x86_64"});
+    CHECK(snapshot.diagnostics.empty());
+    const std::string &content = snapshot.file.content;
+    CHECK(content.contains(R"("kind": "primitive",
+      "name": "int16",
+      "displayName": "int16",
+      "module": "Limits",)"));
+    CHECK(content.contains(R"("signature": "extend int16")"));
+    CHECK(content.contains(R"("summary": "A signed integer in 16 bits.")"));
+    CHECK(content.contains(R"("https://rux-lang.dev/docs/api/shapes/int16")"));
+    // Every block's members gather under the one item; an undocumented extension stands for no item.
+    CHECK(content.contains(R"("signature": "pub const Bits: uint")"));
+    CHECK(content.contains(R"("signature": "pub const Max: int16")"));
+    CHECK_FALSE(content.contains(R"("name": "uint8")"));
+    CHECK_FALSE(content.contains(R"("signature": "pub const Max: uint8")"));
     RemoveSnapshotRoot(root);
 }

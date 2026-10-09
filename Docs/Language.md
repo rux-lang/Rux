@@ -301,22 +301,40 @@ Package READMEs identify these retained boundaries beside the APIs that expose t
 
 ## Strings and Text
 
-### Intrinsic declarations
+### Primitive types and associated constants
 
-An intrinsic declaration binds a source API to a compiler representation. It does not load a package or give its declaring package special privileges. Core supplies the standard declarations; another package can supply its own.
+Every primitive type is built into the compiler: the integer, floating-point, boolean and character widths, the pointer-sized `int` and `uint`, `opaque`, and the four built-in aliases `bool` (`bool8`), `byte` (`uint8`), `char` (`char32`) and `float` (`float64`). They are usable in every package without an import, and no package declares them. A built-in name is reserved in every package and module, so `type bool = int32;` or `struct int8 {}` is rejected with "type 'bool' is already declared in this scope". Locals, parameters and fields may still use the spelling.
+
+A package adds associated constants to a primitive with an ordinary extension. Core supplies the standard ones; another package can supply its own, and the compiler gives Core's package name no privilege.
 
 ```rux
-pub intrinsic type int8;
-
+/// A signed integer in 8 bits, two's complement.
+/// @see https://rux-lang.dev/docs/api/core/integers#int8
 extend int8 {
     pub const Min: int8 = -128i8;
     pub const Max: int8 = 127i8;
 }
 ```
 
-Scalar representation and arithmetic exist independently of these declarations. Associated constants are source members: `import Core::int8;` exposes Core's public constants, while merely depending on Core does not. Constants retain normal package visibility. Their initializers are checked in the declaring package, not the caller's scope.
+An extension names a primitive by any spelling, and an alias extends its canonical width: `extend byte { ... }` is `extend uint8 { ... }`.
 
-`intrinsic type` is reserved for implemented scalar types. Slices and ranges are native types, with no source declaration controlling their representation. An ordinary struct never acquires compiler-owned behavior from its name.
+Associated constants are source members, visible where they are imported:
+
+- A package sees its own primitive extensions in every file, with no import.
+- `import Core::int8;` imports Core's extensions of `int8` into that file. The module the path names must extend `int8`, or the import is rejected with "package 'Core' declares no extension of primitive type 'int8'". A primitive needs no import as a type, only for its constants.
+- An alias spelling imports its canonical width: `import Core::byte;` makes both `byte::Max` and `uint8::Max` available, and they are the same constant.
+- A glob import, `import Pkg::Module::*;`, imports the extensions of every primitive that module extends.
+- A user alias such as `type Tiny = int8;` reaches the extensions in force where it is declared and those imported where it is used, so `Tiny::Max` works wherever `Tiny` is visible.
+- Depending on Core without importing exposes nothing, and a dependency's imports never reach its consumers.
+- When two imported extensions declare the same constant, a use of it is ambiguous and is rejected; importing both is not.
+
+Constants retain normal package visibility. Their initializers are checked in the declaring package, not the caller's scope. Expressions, constant initializers and `when` conditions resolve them identically.
+
+The `intrinsic type` declaration is removed: `intrinsic type int8;` is rejected with "intrinsic type declarations have been removed; primitive types are built in" and help naming the extension that replaces it. Slices and ranges are native types, with no source declaration controlling their representation. An ordinary struct never acquires compiler-owned behavior from its name.
+
+### Intrinsic declarations
+
+An intrinsic declaration names a function, constant or value the compiler supplies. It does not load a package or give its declaring package special privileges. Core supplies the standard declarations; another package can supply its own.
 
 Extension blocks may contain ordinary typed constants as well as methods. The only compiler-supplied associated constant values are `intrinsic const Infinity: float32;` and `intrinsic const NaN: float32;`, and their `float64` counterparts, declared inside extensions of the corresponding floating-point type. Other limits and metadata belong in ordinary source initializers.
 

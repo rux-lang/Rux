@@ -2,10 +2,8 @@
 // A scalar value rather than a code unit, so it stops at U+10FFFF and rejects the surrogate range whatever room the
 // width has beyond it. This is the width `char` names.
 
-/// The compiler representation of char32.
+/// One Unicode scalar value.
 /// @see https://rux-lang.dev/docs/api/core/characters#char32
-pub intrinsic type char32;
-
 extend char32 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/characters#char32-bits

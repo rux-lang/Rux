@@ -454,18 +454,17 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
 /// The constant or function after an `intrinsic`. Its name is the intrinsic's: a constant takes its type (`Target`), a
 /// free function its own name (`Assert`). A method is namespaced by the type it extends, and is keyed in ParseImplDecl.
 DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, const SourceLocation intrinsicLoc) {
+    // Every primitive type is built into the compiler, so a package contributes only its associated constants.
     if (Match(TokenKind::TypeKeyword)) {
-        auto decl = std::make_unique<TypeAliasDecl>();
-        decl->location = intrinsicLoc;
-        decl->isPublic = isPublic;
-        decl->name = ExpectBefore(TokenKind::Ident, "a type name after 'intrinsic type'").text;
-        decl->intrinsicName = decl->name;
-        auto type = std::make_unique<NamedTypeExpr>();
-        type->location = intrinsicLoc;
-        type->name = decl->name;
-        decl->type = std::move(type);
-        ExpectBefore(TokenKind::Semicolon, "';' after the intrinsic type declaration");
-        return ApplyAttrs(std::move(decl), attrs);
+        NamedTypeExpr named;
+        if (Check(TokenKind::Ident)) {
+            named.name = Advance().text;
+        }
+        const std::string extended = named.name.empty() ? "T" : ImplTypeName(named);
+        EmitError(intrinsicLoc, "intrinsic type declarations have been removed; primitive types are built in",
+                  std::format("declare its associated constants in 'extend {} {{ ... }}' instead", extended));
+        // The caller's recovery skips the rest through the ';', and so stops before the `extend` that follows.
+        return nullptr;
     }
     if (Check(TokenKind::StructKeyword)) {
         EmitError(intrinsicLoc, "intrinsic aggregate declarations have been removed; use native slice or range types");

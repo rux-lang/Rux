@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <format>
 #include <limits>
+#include <unordered_set>
 
 namespace Rux {
 void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration, const std::vector<Module *> &modules,
@@ -51,54 +52,52 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
         }
         return;
     }
+    if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+        // A package sees its own extensions of a primitive without importing them.
+        if (const PrimitiveInfo *primitive = FindPrimitive(extension->typeName); primitive && !external) {
+            BindPrimitiveExtension(*extension, std::string(primitive->name), modules, source, false);
+        }
+        return;
+    }
     const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration);
     if (!alias) {
         return;
     }
-    std::string target = alias->intrinsicName;
-    if (target.empty()) {
-        const auto *named = dynamic_cast<const NamedTypeExpr *>(alias->type.get());
-        if (!named || !named->typeArgs.empty()) {
-            return;
-        }
-        target = named->name;
+    const auto *named = dynamic_cast<const NamedTypeExpr *>(alias->type.get());
+    if (!named || !named->typeArgs.empty()) {
+        return;
     }
-    const auto primitive = PrimitiveTypeFromName(target);
-    for (const Module *module : modules) {
-        const auto collect = [&](this auto &&self, const Decl *item) -> void {
-            if (const auto *extension = dynamic_cast<const ImplDecl *>(item)) {
-                const auto extended = PrimitiveTypeFromName(extension->typeName);
-                if (extension->typeName != target && (!primitive || !extended || *primitive != *extended)) {
-                    return;
-                }
-                for (const auto &member : extension->constants) {
-                    if (external && !member->isPublic) {
-                        continue;
-                    }
-                    const std::string key = alias->name + "::" + member->name;
-                    const auto previous = associatedDeclarations.find(key);
-                    if (previous != associatedDeclarations.end() && previous->second.declaration != member.get()) {
-                        previous->second.declaration = nullptr;
-                    }
-                    else {
-                        associatedDeclarations.insert_or_assign(key, ConstantBinding{member.get(), modules, module});
+    // A primitive's constants are keyed by its canonical name, so an alias inherits them under that name.
+    const std::string target(CanonicalPrimitiveName(named->name));
+    if (FindPrimitive(target)) {
+        aliasPrimitiveTargets.insert_or_assign(alias->name, target);
+    }
+    else if (const auto aliased = aliasPrimitiveTargets.find(target); aliased != aliasPrimitiveTargets.end()) {
+        aliasPrimitiveTargets.insert_or_assign(alias->name, aliased->second);
+    }
+    else {
+        for (const Module *module : modules) {
+            const auto collect = [&](this auto &&self, const Decl *item) -> void {
+                if (const auto *extension = dynamic_cast<const ImplDecl *>(item)) {
+                    if (extension->typeName == target) {
+                        BindPrimitiveExtension(*extension, alias->name, modules, *module, external);
                     }
                 }
+                else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item);
+                         nested && (!external || nested->isPublic)) {
+                    for (const auto &child : nested->items)
+                        self(child.get());
+                }
+            };
+            for (const auto &item : module->items)
+                collect(item.get());
+            for (const auto &[selected, owner] : selectedDeclarations) {
+                if (owner == module)
+                    collect(selected);
             }
-            else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item);
-                     nested && (!external || nested->isPublic)) {
-                for (const auto &child : nested->items)
-                    self(child.get());
-            }
-        };
-        for (const auto &item : module->items)
-            collect(item.get());
-        for (const auto &[selected, owner] : selectedDeclarations) {
-            if (owner == module)
-                collect(selected);
         }
     }
-    if (alias->intrinsicName.empty() && !activeTypeAliases.contains(alias)) {
+    if (!activeTypeAliases.contains(alias)) {
         const auto inherit = [&](const auto &bindings) {
             std::vector<std::pair<std::string, ConstantBinding>> inherited;
             for (const auto &[key, value] : bindings) {
@@ -127,6 +126,45 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
     }
 }
 
+void ConditionalEvaluator::Impl::BindPrimitiveExtension(const ImplDecl &extension, const std::string &typeName,
+                                                        const std::vector<Module *> &modules, const Module &source,
+                                                        const bool external) {
+    for (const auto &member : extension.constants) {
+        if (external && !member->isPublic) {
+            continue;
+        }
+        const std::string key = typeName + "::" + member->name;
+        const auto previous = associatedDeclarations.find(key);
+        if (previous != associatedDeclarations.end() && previous->second.declaration != member.get()) {
+            previous->second.declaration = nullptr;
+        }
+        else {
+            associatedDeclarations.insert_or_assign(key, ConstantBinding{member.get(), modules, &source});
+        }
+    }
+}
+
+void ConditionalEvaluator::Impl::BindPrimitiveExtensions(const TypeRef::Kind kind,
+                                                         const std::vector<Module *> &modules) {
+    for (const Module *module : modules) {
+        const auto collect = [&](this auto &&self, const std::vector<DeclPtr> &items) -> void {
+            for (const auto &item : items) {
+                if (const auto *extension = dynamic_cast<const ImplDecl *>(item.get())) {
+                    if (const PrimitiveInfo *primitive = FindPrimitive(extension->typeName);
+                        primitive && primitive->kind == kind) {
+                        BindPrimitiveExtension(*extension, std::string(primitive->name), modules, *module, true);
+                    }
+                }
+                else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item.get());
+                         nested && nested->isPublic) {
+                    self(nested->items);
+                }
+            }
+        };
+        collect(module->items);
+    }
+}
+
 void ConditionalEvaluator::Impl::ImportDeclarations(const UseDecl &use) {
     if (!resolveImports || use.path.empty()) {
         return;
@@ -138,9 +176,24 @@ void ConditionalEvaluator::Impl::ImportDeclarations(const UseDecl &use) {
         names.push_back(modulePath.back());
         modulePath.pop_back();
     }
+    // A primitive is built in, so importing one by name, or a glob reaching a module that extends it, imports the
+    // package's extensions of it.
+    std::unordered_set<TypeRef::Kind> extended;
     for (const Module *module : imported) {
         const auto visit = [&](this auto &&self, const std::vector<DeclPtr> &items, const std::size_t depth) -> void {
             for (const auto &item : items) {
+                const auto *extension = dynamic_cast<const ImplDecl *>(item.get());
+                if (extension && depth == modulePath.size()) {
+                    const PrimitiveInfo *primitive = FindPrimitive(extension->typeName);
+                    const auto imports = [&](const std::string &name) {
+                        const PrimitiveInfo *named = FindPrimitive(name);
+                        return named && primitive && named->kind == primitive->kind;
+                    };
+                    if (primitive && (use.kind == UseDecl::Kind::Glob || std::ranges::any_of(names, imports))) {
+                        extended.insert(primitive->kind);
+                    }
+                    continue;
+                }
                 if (!item || !item->isPublic) {
                     continue;
                 }
@@ -167,6 +220,9 @@ void ConditionalEvaluator::Impl::ImportDeclarations(const UseDecl &use) {
             }
         };
         visit(module->items, 0);
+    }
+    for (const TypeRef::Kind kind : extended) {
+        BindPrimitiveExtensions(kind, imported);
     }
 }
 
@@ -206,6 +262,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
         // Selected declarations may already have moved out of a conditional branch.
         // Their indexed bindings remain valid until the enclosing fold completes.
         owner.associatedDeclarations = associatedDeclarations;
+        owner.aliasPrimitiveTargets = aliasPrimitiveTargets;
         owner.importedConstants = importedConstants;
         owner.intrinsicBindings = intrinsicBindings;
         owner.externalIntrinsicTypes = externalIntrinsicTypes;

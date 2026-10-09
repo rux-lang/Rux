@@ -16,6 +16,7 @@
 #include "Lexer/Lexer.h"
 #include "Syntax/Ast/Ast.h"
 #include "Syntax/Parser/Parser.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <doctest.h>
@@ -251,6 +252,16 @@ void CollectDecl(const Decl &declaration, const bool inheritedPublic, std::vecto
         return;
     }
     if (const auto *block = dynamic_cast<const ImplDecl *>(&declaration)) {
+        // A built-in primitive has no declaration to document, so its documented extension is its API entry.
+        if (FindPrimitive(block->typeName) && block->documentation.Present()) {
+            Subject subject;
+            subject.kind = "primitive";
+            subject.name = block->typeName;
+            subject.documentation = &block->documentation;
+            subject.isPublic = true;
+            subject.signature = block->typeName;
+            subjects.push_back(std::move(subject));
+        }
         CollectImpl(*block, subjects);
         return;
     }

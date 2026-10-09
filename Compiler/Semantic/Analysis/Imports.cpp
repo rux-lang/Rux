@@ -4,6 +4,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/PrimitiveCatalog.h"
 #include "Types/Type.h"
 
 #include <algorithm>
@@ -208,6 +209,11 @@ void AnalysisContext::PromoteFromPackage(const UseDecl &d, const std::string &pk
     }
     if (const Symbol *module = InaccessibleModule(scope.ownerPackage, scope.modulePath)) {
         EmitPrivacyError(d.location, *module);
+        return;
+    }
+    // A primitive is built in, so no package declares it: importing one imports that package's extension of it.
+    if (const PrimitiveInfo *primitive = FindPrimitive(name)) {
+        ImportPrimitiveExtension(d, scope, *primitive, name);
         return;
     }
     auto sym_it = scope.table->find(name);
@@ -440,6 +446,11 @@ void AnalysisContext::CheckUseDecl(const UseDecl &d) {
                 if (accessible->kind == Symbol::Kind::Type && accessible->declaration) {
                     explicitTypeImports[currentFile].insert(accessible->declaration);
                 }
+            }
+        }
+        if (const auto *extended = programIndex.PrimitiveExtensions(scope.ownerPackage, scope.modulePath)) {
+            for (const TypeRef::Kind kind : *extended) {
+                primitiveExtensionImports[currentFile][kind].insert(scope.ownerPackage);
             }
         }
     }

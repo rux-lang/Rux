@@ -10,11 +10,6 @@
 #include <utility>
 
 namespace Rux {
-const Decl *SemanticModel::TryGetIntrinsicTypeBinding(const TypeExpr &type) const noexcept {
-    const auto found = facts.intrinsicTypeBindings.find(&type);
-    return found == facts.intrinsicTypeBindings.end() ? nullptr : found->second;
-}
-
 const ConstDecl *SemanticModel::TryGetAssociatedConstant(const Expr &expression) const noexcept {
     const auto found = facts.associatedConstants.find(&expression);
     return found == facts.associatedConstants.end() ? nullptr : found->second;

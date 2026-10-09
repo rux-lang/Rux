@@ -26,10 +26,9 @@ func Main() -> int {
     CHECK_EQ(executed->exitCode, 0);
 }
 
-TEST_CASE("compiler driver obtains intrinsic declarations from an ordinary dependency") {
+TEST_CASE("compiler driver obtains primitive extensions and intrinsic values from an ordinary dependency") {
     DependencyFixture fixture;
     fixture.SetDependencySource(R"(
-pub intrinsic type int8;
 extend int8 { pub const Min: int8 = -128i8; }
 pub enum OperatingSystem { Unknown, FreeBSD, Linux, macOS, Windows }
 pub struct Target { pub os: OperatingSystem; }

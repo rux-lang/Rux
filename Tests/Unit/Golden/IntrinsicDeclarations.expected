@@ -1,13 +1,11 @@
-1:1: error: 'Mystery' is not a supported intrinsic scalar type
-2:1: error: 'float' is not a supported intrinsic scalar type
-5:9: error: intrinsic associated constants support only floating-point Infinity and NaN
-5:9: error: intrinsic associated constant must have its owning floating-point type
-7:9: error: associated constant 'Bits' is already declared
-10:19: error: 'Min' not found in extend for type 'int8'
-19:11: error: field 'wordSize' of 'Target' is not one the compiler supplies for '#target'
-20:11: error: 'Machine' is not a value the compiler supplies for '#machine'
-21:11: error: 'Frobnicate' is not a supported intrinsic function
-22:11: error: intrinsic 'Assert' must be declared as 'func Assert(condition: bool, message: char8[..])'
-23:11: error: intrinsic 'Panic' must be declared as 'func Panic(message: char8[..])'
-24:11: error: intrinsic '#Warn' must be declared as 'func #Warn(message: char8[..])'
-26:15: error: 'Target.Measure' is not a supported intrinsic function
+2:9: error: intrinsic associated constants support only floating-point Infinity and NaN
+2:9: error: intrinsic associated constant must have its owning floating-point type
+4:9: error: associated constant 'Bits' is already declared
+7:19: error: 'Min' not found in extend for type 'int8'
+16:11: error: field 'wordSize' of 'Target' is not one the compiler supplies for '#target'
+17:11: error: 'Machine' is not a value the compiler supplies for '#machine'
+18:11: error: 'Frobnicate' is not a supported intrinsic function
+19:11: error: intrinsic 'Assert' must be declared as 'func Assert(condition: bool, message: char8[..])'
+20:11: error: intrinsic 'Panic' must be declared as 'func Panic(message: char8[..])'
+21:11: error: intrinsic '#Warn' must be declared as 'func #Warn(message: char8[..])'
+23:15: error: 'Target.Measure' is not a supported intrinsic function

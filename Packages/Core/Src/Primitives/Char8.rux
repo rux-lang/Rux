@@ -3,10 +3,8 @@
 // these. It does not widen implicitly to `char16` or `char32`, because a UTF-8 byte above 0x7F is not the unit of the
 // same number in either encoding.
 
-/// The compiler representation of char8.
+/// One UTF-8 code unit.
 /// @see https://rux-lang.dev/docs/api/core/characters#char8
-pub intrinsic type char8;
-
 extend char8 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/characters#char8-bits

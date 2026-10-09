@@ -2,10 +2,8 @@
 // The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
 // is behind nearly every edge case in checked arithmetic.
 
-/// The compiler representation of int32.
+/// A signed integer in 32 bits, two's complement.
 /// @see https://rux-lang.dev/docs/api/core/integers#int32
-pub intrinsic type int32;
-
 extend int32 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-bits

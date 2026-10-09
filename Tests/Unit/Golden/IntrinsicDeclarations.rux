@@ -1,6 +1,3 @@
-intrinsic type Mystery;
-intrinsic type float;
-intrinsic type float64;
 extend float64 {
     pub intrinsic const Infinity: int8;
     pub const Bits: uint = 64u;

@@ -167,9 +167,6 @@ void AnalysisContext::CheckAsmBodyArchitecture(const FuncDecl &d) const {
 }
 
 void AnalysisContext::CheckStructDecl(const StructDecl &d) {
-    if (!d.intrinsicName.empty()) {
-        CheckIntrinsicType(d);
-    }
     auto savedTypeParams = currentTypeParams;
     currentTypeParams = TypeParameterNames(d.typeParams);
     const ScopedTypeParameterBounds boundScope(*this, &d.typeParams);

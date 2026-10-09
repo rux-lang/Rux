@@ -328,14 +328,33 @@ void ConditionalEvaluator::Impl::RegisterDeclarations(const std::vector<DeclPtr>
         }
     }
     // Existing aliases must see extensions introduced by the selected branch.
-    for (const Module *module : localModules) {
-        for (const auto &declaration : module->items) {
-            if (declaration)
-                BindImportedDeclaration(*declaration, localModules, *module, false);
+    BindLocalDeclarations();
+}
+
+void ConditionalEvaluator::Impl::BindLocalDeclarations() {
+    // Extensions first, so an alias declared before the block that extends its primitive still inherits its constants.
+    for (const bool extensions : {true, false}) {
+        // A package's own nested modules hold its declarations too; another package's are reached by import paths.
+        const auto bind = [&](this auto &&self, const Decl &declaration, const Module &module) -> void {
+            if (const auto *nested = dynamic_cast<const ModuleDecl *>(&declaration)) {
+                for (const auto &item : nested->items) {
+                    if (item)
+                        self(*item, module);
+                }
+            }
+            else if ((dynamic_cast<const ImplDecl *>(&declaration) != nullptr) == extensions) {
+                BindImportedDeclaration(declaration, localModules, module, false);
+            }
+        };
+        for (const Module *module : localModules) {
+            for (const auto &declaration : module->items) {
+                if (declaration)
+                    bind(*declaration, *module);
+            }
         }
-    }
-    for (const auto &[declaration, module] : selectedDeclarations) {
-        BindImportedDeclaration(*declaration, localModules, *module, false);
+        for (const auto &[declaration, module] : selectedDeclarations) {
+            bind(*declaration, *module);
+        }
     }
 }
 
@@ -400,22 +419,24 @@ void ConditionalEvaluator::Impl::RegisterConstantImpl(const ConstDecl &decl) {
     if (!named) {
         return;
     }
-    if (named->name == "int8")
+    // `byte` is `uint8` by another name, and has its width.
+    const std::string_view name = CanonicalPrimitiveName(named->name);
+    if (name == "int8")
         constSignedIntegerWidths.emplace(decl.name, 8);
-    else if (named->name == "int16")
+    else if (name == "int16")
         constSignedIntegerWidths.emplace(decl.name, 16);
-    else if (named->name == "int32")
+    else if (name == "int32")
         constSignedIntegerWidths.emplace(decl.name, 32);
-    else if (named->name == "int64" || named->name == "int")
-        constSignedIntegerWidths.emplace(decl.name, named->name == "int64" ? 64 : context.target.pointer_size * 8);
-    else if (named->name == "uint8")
+    else if (name == "int64" || name == "int")
+        constSignedIntegerWidths.emplace(decl.name, name == "int64" ? 64 : context.target.pointer_size * 8);
+    else if (name == "uint8")
         constUnsignedIntegerWidths.emplace(decl.name, 8);
-    else if (named->name == "uint16")
+    else if (name == "uint16")
         constUnsignedIntegerWidths.emplace(decl.name, 16);
-    else if (named->name == "uint32")
+    else if (name == "uint32")
         constUnsignedIntegerWidths.emplace(decl.name, 32);
-    else if (named->name == "uint64" || named->name == "uint")
-        constUnsignedIntegerWidths.emplace(decl.name, named->name == "uint64" ? 64 : context.target.pointer_size * 8);
+    else if (name == "uint64" || name == "uint")
+        constUnsignedIntegerWidths.emplace(decl.name, name == "uint64" ? 64 : context.target.pointer_size * 8);
 }
 
 void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclPtr> &decls) {
@@ -461,14 +482,9 @@ void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
     importedConstants.clear();
     intrinsicBindings.clear();
     externalIntrinsicTypes.clear();
+    aliasPrimitiveTargets.clear();
     CollectRuxImports(module.items);
-    for (const Module *local : localModules) {
-        for (const auto &declaration : local->items) {
-            if (declaration) {
-                BindImportedDeclaration(*declaration, localModules, *local, false);
-            }
-        }
-    }
+    BindLocalDeclarations();
 }
 
 void ConditionalEvaluator::Impl::CollectRuxImports(const std::vector<DeclPtr> &decls) {
@@ -1063,12 +1079,27 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
 
     if (const auto *e = dynamic_cast<const PathExpr *>(&expr)) {
         if (e->segments.size() == 2) {
-            const auto binding = associatedDeclarations.find(e->segments[0] + "::" + e->segments[1]);
+            const std::string &head = e->segments[0];
+            auto binding =
+                associatedDeclarations.find(std::string(CanonicalPrimitiveName(head)) + "::" + e->segments[1]);
+            // An alias also reaches the extensions of its primitive in force where it is used.
+            if (const auto target = aliasPrimitiveTargets.find(head); target != aliasPrimitiveTargets.end()) {
+                const auto primitive = associatedDeclarations.find(target->second + "::" + e->segments[1]);
+                if (binding == associatedDeclarations.end()) {
+                    binding = primitive;
+                }
+                else if (primitive != associatedDeclarations.end() &&
+                         primitive->second.declaration != binding->second.declaration) {
+                    EmitError(e->location, "associated constant has ambiguous imported declarations");
+                    reportedError = true;
+                    return std::nullopt;
+                }
+            }
             if (binding != associatedDeclarations.end()) {
                 return EvalDeclaredConstant(binding->second, e->location);
             }
-            if (PrimitiveTypeFromName(e->segments[0])) {
-                EmitError(e->location, "primitive associated constant requires an imported or local declaration");
+            if (PrimitiveTypeFromName(head)) {
+                EmitError(e->location, "primitive associated constant requires an imported or local extension");
                 reportedError = true;
                 return std::nullopt;
             }

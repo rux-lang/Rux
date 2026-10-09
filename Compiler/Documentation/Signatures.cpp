@@ -1,5 +1,7 @@
 #include "Documentation/Signatures.h"
 
+#include "Types/PrimitiveCatalog.h"
+
 #include <algorithm>
 
 namespace Rux::Documentation {
@@ -206,8 +208,7 @@ std::string DeclSignature(const Decl &decl) {
     if (const auto *function = dynamic_cast<const FuncDecl *>(&decl))
         return FunctionSignature(*function);
     if (const auto *value = dynamic_cast<const StructDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + (value->intrinsicName.empty() ? "" : "intrinsic ") +
-               "struct " + value->name + TypeParams(value->typeParams);
+        return std::string(value->isPublic ? "pub " : "") + "struct " + value->name + TypeParams(value->typeParams);
     if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + (value->IsVariant() ? "variant " : "enum ") + value->name +
                TypeParams(value->typeParams);
@@ -221,8 +222,7 @@ std::string DeclSignature(const Decl &decl) {
         return std::string(value->isPublic ? "pub " : "") + "const " + value->name +
                (value->type ? ": " + TypeText(value->type->get()) : "");
     if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + (value->intrinsicName.empty() ? "" : "intrinsic ") +
-               "type " + value->name + (value->intrinsicName.empty() ? " = " + TypeText(value->type.get()) : ";");
+        return std::string(value->isPublic ? "pub " : "") + "type " + value->name + " = " + TypeText(value->type.get());
     if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))
         return "extend " + value->typeName;
     if (const auto *value = dynamic_cast<const ExternVarDecl *>(&decl))
@@ -267,7 +267,9 @@ bool Visible(const Decl &decl, const bool includePrivate, const bool containingM
         return true;
     if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
         const std::string typeName = extension->typeName.substr(0, extension->typeName.find('<'));
-        return containingModulesPublic && publicTypes.contains(typeName) &&
+        // A built-in primitive is public everywhere; its documented extension is the entry for the API it adds.
+        const bool documentedPrimitive = FindPrimitive(typeName) && extension->documentation.Present();
+        return containingModulesPublic && (publicTypes.contains(typeName) || documentedPrimitive) &&
                (std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; }) ||
                 std::ranges::any_of(extension->constants, [](const auto &constant) { return constant->isPublic; }));
     }

@@ -4,6 +4,7 @@
 #include "Semantic/Analysis/MoveStateTracker.h"
 #include "Semantic/Analysis/ProgramIndex.h"
 #include "Semantic/SemanticAnalyzer.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <array>
 #include <cstdint>
@@ -519,21 +520,41 @@ private:
     std::unordered_set<const Expr *> &referenceWrites;
     std::unordered_map<const Expr *, PlaceReplacement> &placeReplacements;
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
-    std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> &constantReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
     std::unordered_set<const TypeAliasDecl *> checkingTypeAliases;
-    [[nodiscard]] const ConstDecl *LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
+
+    /// The associated constant `type::name` names here. Several packages may extend one primitive, so a name two of
+    /// them declare is reported rather than chosen.
+    struct AssociatedConstantLookup {
+        const ConstDecl *constant = nullptr;
+        /// Every package declaring the name, when more than one does.
+        std::vector<std::string> conflictingPackages;
+    };
+
+    [[nodiscard]] AssociatedConstantLookup LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
+    /// For a primitive constant nothing in scope declares, an import that would reach one a dependency does.
+    [[nodiscard]] std::optional<std::string> AssociatedConstantImportHelp(const Symbol &type,
+                                                                          const std::string &name) const;
     [[nodiscard]] TypeRef CheckAssociatedConstant(const ConstDecl &declaration);
-    void CheckIntrinsicType(const Decl &declaration);
     /// Checks `intrinsic #name: Root;`: the compiler supplies a value only for a known root, and fills in only the
     /// fields `CompilerParameters.h` lists for it.
     void CheckCompilerParameterDeclaration(const ConstDecl &declaration, const TypeRef &type);
     std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
+    /// Per source file: for each primitive (by canonical kind), the packages whose extensions of it the file imported,
+    /// with `import Pkg::int8;` or a glob reaching a module that extends it.
+    std::unordered_map<std::string, std::unordered_map<TypeRef::Kind, std::unordered_set<std::string>>>
+        primitiveExtensionImports;
     [[nodiscard]] bool IsVisibleTypeSymbol(const Symbol &symbol) const;
-    [[nodiscard]] const Decl *IntrinsicTypeBinding(const Symbol &symbol) const;
+    /// The primitive a type symbol names, following aliases, with the packages whose extensions of it apply where the
+    /// symbol is used: the current package, the current file's imports and, for an alias, those of every file that
+    /// declares an alias in the chain.
+    ///
+    /// @return nullopt when `symbol` names no primitive
+    [[nodiscard]] std::optional<TypeRef::Kind> PrimitiveProviders(const Symbol &symbol,
+                                                                  std::unordered_set<std::string> &providers) const;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
@@ -1073,6 +1094,10 @@ private:
         std::string ownerPackage;
         std::string modulePath;
     };
+
+    /// Records `import ...::name;` of a primitive's extension, or reports that the module extends no such primitive.
+    void ImportPrimitiveExtension(const UseDecl &declaration, const ImportScope &scope, const PrimitiveInfo &primitive,
+                                  const std::string &name);
 
     /// A generic that instantiates itself at a strictly larger type argument -- `Grow<T>` calling `Grow<*T>` -- never
     /// closes its set of instantiations. Deduplication does not help, because every instantiation is genuinely new.

@@ -1,4 +1,3 @@
-pub intrinsic type int8;
 extend int8 {
     pub const Min: int8 = -128i8;
     pub const Max: int8 = 127i8;
@@ -7,13 +6,15 @@ extend int8 {
 }
 pub type Tiny = int8;
 
-pub intrinsic type uint;
+extend byte {
+    pub const Max: uint8 = 255u8;
+}
+
 extend uint {
     pub const Bits: uint = sizeof(uint) * 8u;
     pub const Max: uint = ~0u;
 }
 
-pub intrinsic type float64;
 extend float64 {
     pub const Epsilon: float64 = 2.220446049250313e-16f64;
     pub intrinsic const Infinity: float64;

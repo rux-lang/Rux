@@ -2,10 +2,8 @@
 // Twenty-four bits of significand, so about seven decimal digits round-trip. Rux/Format is what converts one to and
 // from decimal text exactly.
 
-/// The compiler representation of float32.
+/// An IEEE 754 binary32 floating-point number.
 /// @see https://rux-lang.dev/docs/api/core/floating-point#float32
-pub intrinsic type float32;
-
 extend float32 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/floating-point#float32-bits

@@ -2,10 +2,8 @@
 // A code unit, not a character: every value that fits is valid, including a surrogate, which is exactly what a code
 // unit is. A scalar value outside the basic plane takes two of these.
 
-/// The compiler representation of char16.
+/// One UTF-16 code unit.
 /// @see https://rux-lang.dev/docs/api/core/characters#char16
-pub intrinsic type char16;
-
 extend char16 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/characters#char16-bits

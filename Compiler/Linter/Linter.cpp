@@ -593,7 +593,7 @@ private:
         }
         else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             CheckDocumentation(decl, "type alias", alias->name);
-            if (alias->intrinsicName.empty() && !Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
+            if (!Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
                 WarnNaming(alias->location, "type alias name", alias->name, NamingConvention::PascalCase, siblingNames);
             }
         }

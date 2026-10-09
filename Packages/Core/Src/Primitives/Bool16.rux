@@ -2,10 +2,8 @@
 // Every boolean width holds exactly zero or one whatever its size, so a cast into one asks whether the whole source
 // value is non-zero rather than truncating to the width first.
 
-/// The compiler representation of bool16.
+/// One of two values, stored in 16 bits.
 /// @see https://rux-lang.dev/docs/api/core/booleans#bool16
-pub intrinsic type bool16;
-
 extend bool16 {
     /// The number of bits in the representation.
     /// @see https://rux-lang.dev/docs/api/core/booleans#bool16-bits
