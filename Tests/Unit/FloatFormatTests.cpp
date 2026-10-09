@@ -173,17 +173,31 @@ TEST_CASE("floating literals retain an exact normalized decimal value") {
 }
 
 TEST_CASE("every float suffix resolves to its declared primitive width") {
+    // Each literal is annotated with its suffix's width and with another one. It must satisfy exactly the first: no
+    // implicit conversion joins two of these widths, so a literal typed at the wrong width is refused.
     for (const std::string_view suffix : {"f8", "f16", "f80", "f128", "f256", "f512"}) {
-        const std::string source = "func Main() { let value = 1.0" + std::string(suffix) + "; }";
-        Lexer lexer(source, "float.rux");
-        auto lexed = lexer.Tokenize();
-        REQUIRE_FALSE(lexed.HasErrors());
-        Parser parser(std::move(lexed.tokens), "float.rux");
-        auto parsed = parser.Parse();
-        REQUIRE_FALSE(parsed.HasErrors());
-        SemanticAnalyzer analyzer({&parsed.module}, {}, "Float", "Windows");
-        const auto diagnostics = analyzer.Analyze().diagnostics;
-        REQUIRE_EQ(diagnostics.size(), 1);
-        CHECK(diagnostics.front().message.contains("primitive type 'float" + std::string(suffix.substr(1)) + "'"));
+        const std::string width(suffix.substr(1));
+        for (const bool matching : {true, false}) {
+            CAPTURE(suffix);
+            CAPTURE(matching);
+            const std::string annotated = matching ? width : (width == "8" ? "16" : "8");
+            const std::string source =
+                "func Main() { let value: float" + annotated + " = 1.0" + std::string(suffix) + "; }";
+            Lexer lexer(source, "float.rux");
+            auto lexed = lexer.Tokenize();
+            REQUIRE_FALSE(lexed.HasErrors());
+            Parser parser(std::move(lexed.tokens), "float.rux");
+            auto parsed = parser.Parse();
+            REQUIRE_FALSE(parsed.HasErrors());
+            SemanticAnalyzer analyzer({&parsed.module}, {}, "Float", "Windows");
+            const auto diagnostics = analyzer.Analyze().diagnostics;
+            if (matching) {
+                CHECK(diagnostics.empty());
+            }
+            else {
+                REQUIRE_EQ(diagnostics.size(), 1);
+                CHECK(diagnostics.front().message.contains("'float" + width + "'"));
+            }
+        }
     }
 }

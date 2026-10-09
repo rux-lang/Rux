@@ -1,21 +1,371 @@
-// float16 is a reserved primitive type: the catalog names it, and this compiler does not implement it.
-// This directory exists so the primitive matrix under Tests/Language is complete by inspection rather than
-// by inference. Every entry in Compiler/Types/PrimitiveCatalog.cpp has a directory here, and
-// LanguageTestMatrixTests checks that the two agree, so a width cannot reach the catalog without somewhere
-// to exercise it.
-// A program using float16 cannot be that exercise, because it does not compile: the compiler reports that the
-// type is reserved but not implemented in this version. A refusal is not something an executable test can
-// assert, since one passes by exiting zero. It is asserted in Tests/Unit/Golden/ReservedPrimitiveTypes.rux
-// instead, where an expected compile failure is the whole point.
-// What is left to check here is the boundary: float32 is the narrowest implemented float, and this
-// file pins that it is the one carrying the constants. When float16 is implemented, replace this placeholder
-// with the real case rather than adding a directory.
+// float16: IEEE 754 binary16, eleven bits of significand in two bytes.
+// No target has float16 arithmetic the compiler uses, so every operation below runs in a helper the compiler
+// synthesizes, and the claim under test is that the helper agrees with the compiler's own constant folding to the
+// bit. Each run-time operand passes through a function, so the operation runs rather than folds; each expected value
+// is a `const` whose initializer the compiler folds in software. A result is compared by its stored bits, read
+// through a pointer, so a wrong sign on a zero or a wrong last bit fails rather than comparing equal. A NaN result is
+// only checked to be a NaN, since its sign and payload are unspecified.
 
 import Core::Assert;
-import Core::float32;
+import Core::{ float16, float8, float80, float128, float256, float512 };
+
+const Third: float16 = 0.333251953125f16;
+const Large: float16 = 60000.0f16;
+const Tiny: float16 = 5.9604644775390625e-08f16;
+const Normal: float16 = 6.103515625e-05f16;
+
+const FoldedSum: float16 = 1.5f16 + Third;
+const FoldedDifference: float16 = Third - 1.5f16;
+const FoldedProduct: float16 = Third * 3.0f16;
+const FoldedQuotient: float16 = 1.0f16 / 3.0f16;
+const FoldedRemainder: float16 = 10.0f16 % Third;
+const FoldedNegativeRemainder: float16 = -7.5f16 % 2.0f16;
+const FoldedOverflow: float16 = Large + Large;
+const FoldedUnderflow: float16 = Tiny / 2.0f16;
+const FoldedSubnormalSum: float16 = Tiny + Normal;
+const FoldedSubnormalProduct: float16 = Normal * 0.0078125f16;
+const FoldedCancellation: float16 = 1.0009765625f16 - 1.0f16;
+const FoldedTieDown: float16 = 2048.0f16 + 1.0f16;
+const FoldedTieUp: float16 = 2048.0f16 + 3.0f16;
+
+const FoldedFromInt: float16 = 2049 as float16;
+const FoldedFromLargeInt: float16 = 70000i32 as float16;
+const FoldedFromUint64: float16 = 18446744073709551615u64 as float16;
+const FoldedFromInt128: float16 = -12345678901234567890123i128 as float16;
+const FoldedFromUint512: float16 = 65519u512 as float16;
+const FoldedToInt8: int8 = 300.0f16 as int8;
+const FoldedToUint8: uint8 = -3.75f16 as uint8;
+const FoldedToInt64: int64 = -65504.0f16 as int64;
+const FoldedToInt128: int128 = 1234.5f16 as int128;
+const FoldedToUint: uint = 65504.0f16 as uint;
+
+const FoldedToFloat32: float32 = Third as float32;
+const FoldedToFloat64: float64 = Tiny as float64;
+const FoldedToFloat8: float8 = Third as float8;
+const FoldedToFloat80: float80 = Third as float80;
+const FoldedToFloat128: float128 = Large as float128;
+const FoldedToFloat256: float256 = Tiny as float256;
+const FoldedToFloat512: float512 = Normal as float512;
+const FoldedFromFloat32: float16 = 0.1f32 as float16;
+const FoldedFromFloat64: float16 = 0.1 as float16;
+const FoldedFromFloat8: float16 = 0.375f8 as float16;
+const FoldedFromFloat128: float16 = 0.1f128 as float16;
+const FoldedFromFloat512: float16 = 1.0e300f512 as float16;
+
+const FoldedWeighted: float16 = 1.0f16 + 2.0f16 + 3.0f16 + 4.0f16 + 5.0f16 + 6.0f16 + 7.0f16 + 8.0f16 + 9.0f16 +
+                                 Third + (0.5 as float16) * (3i32 as float16);
+
+const FoldedLess: float16 = FoldedSum - 1.5f16;
+const FoldedTimes: float16 = FoldedLess * 3.0f16;
+const FoldedOver: float16 = FoldedTimes / 7.0f16;
+const FoldedModulo: float16 = FoldedOver % 0.0625f16;
+
+const Table: float16[5] = [1.0f16, -0.0f16, 65504.0f16, 5.9604644775390625e-08f16, -2.5f16];
+
+func Bits(value: float16) -> uint16 {
+    let address = (@value) as *uint16;
+    return *address;
+}
+
+func Bits8(value: float8) -> uint8 {
+    let address = (@value) as *uint8;
+    return *address;
+}
+
+func Bits32(value: float32) -> uint32 {
+    let address = (@value) as *uint32;
+    return *address;
+}
+
+func Bits64(value: float64) -> uint64 {
+    let address = (@value) as *uint64;
+    return *address;
+}
+
+// A float80 is ten bytes held in sixteen; only the ten carry the value.
+func Bits80(value: float80) -> uint128 {
+    let address = (@value) as *uint128;
+    return *address & ((1u128 << 80) - 1u128);
+}
+
+func Bits128(value: float128) -> uint128 {
+    let address = (@value) as *uint128;
+    return *address;
+}
+
+func Bits256(value: float256) -> uint256 {
+    let address = (@value) as *uint256;
+    return *address;
+}
+
+func Bits512(value: float512) -> uint512 {
+    let address = (@value) as *uint512;
+    return *address;
+}
+
+func Same(actual: float16, expected: float16) -> bool {
+    return Bits(actual) == Bits(expected);
+}
+
+func IsNan(value: float16) -> bool {
+    return value != value;
+}
+
+func Echo(value: float16) -> float16 {
+    return value;
+}
+
+func Add(left: float16, right: float16) -> float16 {
+    return left + right;
+}
+
+func Subtract(left: float16, right: float16) -> float16 {
+    return left - right;
+}
+
+func Multiply(left: float16, right: float16) -> float16 {
+    return left * right;
+}
+
+func Divide(left: float16, right: float16) -> float16 {
+    return left / right;
+}
+
+func Remainder(left: float16, right: float16) -> float16 {
+    return left % right;
+}
+
+func Negate(value: float16) -> float16 {
+    return -value;
+}
+
+func Less(left: float16, right: float16) -> bool {
+    return left < right;
+}
+
+func LessOrEqual(left: float16, right: float16) -> bool {
+    return left <= right;
+}
+
+func Greater(left: float16, right: float16) -> bool {
+    return left > right;
+}
+
+func GreaterOrEqual(left: float16, right: float16) -> bool {
+    return left >= right;
+}
+
+func Equal(left: float16, right: float16) -> bool {
+    return left == right;
+}
+
+func NotEqual(left: float16, right: float16) -> bool {
+    return left != right;
+}
+
+func Truth(value: float16) -> bool {
+    return value as bool;
+}
+
+// More float16 parameters than any target passes in registers, among other kinds, so some arrive on the stack.
+func Weighted(a: float16, scale: float64, b: float16, count: int32, c: float16, d: float16, e: float16, f: float16,
+              g: float16, h: float16, i: float16, j: float16) -> float16 {
+    let tail = (scale as float16) * (count as float16);
+    return a + b + c + d + e + f + g + h + i + j + tail;
+}
+
+func FromInt(value: int) -> float16 {
+    return value as float16;
+}
+
+func FromInt32(value: int32) -> float16 {
+    return value as float16;
+}
+
+func FromUint64(value: uint64) -> float16 {
+    return value as float16;
+}
+
+func FromInt128(value: int128) -> float16 {
+    return value as float16;
+}
+
+func FromUint512(value: uint512) -> float16 {
+    return value as float16;
+}
+
+func FromFloat32(value: float32) -> float16 {
+    return value as float16;
+}
+
+func FromFloat64(value: float64) -> float16 {
+    return value as float16;
+}
+
+func FromFloat8(value: float8) -> float16 {
+    return value as float16;
+}
+
+func FromFloat128(value: float128) -> float16 {
+    return value as float16;
+}
+
+func FromFloat512(value: float512) -> float16 {
+    return value as float16;
+}
+
+struct Sample {
+    tag: uint8;
+    value: float16;
+    weight: float16;
+}
+
+func Scaled(sample: Sample) -> float16 {
+    return sample.value * sample.weight;
+}
 
 func Main() -> int {
-    Assert(float32::Bits == 32u, "float32 is the implemented width beside reserved float16");
-    Assert(float32::Bytes * 8u == float32::Bits, "its byte and bit counts agree");
+    Assert(float16::Bits == 16u && float16::Bytes == 2u, "float16 is 16 bits in 2 bytes");
+    Assert(sizeof(float16) == 2u, "sizeof agrees with Bytes");
+
+    // The limits Core declares, by their encodings.
+    Assert(Bits(float16::Max) == 0x7BFFu16, "Max is the largest finite encoding");
+    Assert(Bits(float16::Lowest) == 0xFBFFu16, "Lowest is its negation");
+    Assert(Bits(float16::MinPositive) == 0x0400u16, "MinPositive is the smallest normal");
+    Assert(Bits(float16::Epsilon) == 0x1400u16, "Epsilon is two to the minus ten");
+    Assert(Bits(float16::Infinity) == 0x7C00u16, "Infinity has an all-ones exponent and no fraction");
+    Assert(IsNan(float16::NaN), "NaN is a NaN");
+    Assert(Same(Add(float16::Max, float16::Epsilon), float16::Max), "a sub-half-ulp addition leaves Max alone");
+    Assert(Same(Add(float16::Max, float16::Max), float16::Infinity), "doubling Max overflows to infinity");
+
+    // Each operation, against the folded constant.
+    Assert(Same(Add(Echo(1.5f16), Echo(Third)), FoldedSum), "addition rounds as folding does");
+    Assert(Same(Subtract(Echo(Third), Echo(1.5f16)), FoldedDifference), "subtraction rounds as folding does");
+    Assert(Same(Multiply(Echo(Third), Echo(3.0f16)), FoldedProduct), "multiplication rounds as folding does");
+    Assert(Same(Divide(Echo(1.0f16), Echo(3.0f16)), FoldedQuotient), "division rounds as folding does");
+    Assert(Same(Remainder(Echo(10.0f16), Echo(Third)), FoldedRemainder), "the remainder agrees with folding");
+    Assert(Same(Remainder(Echo(-7.5f16), Echo(2.0f16)), FoldedNegativeRemainder), "and keeps the dividend's sign");
+    Assert(Bits(FoldedNegativeRemainder) == 0xBE00u16, "-7.5 % 2 is -1.5");
+    Assert(Same(Add(Echo(Large), Echo(Large)), FoldedOverflow), "an overflowing sum");
+    Assert(Same(FoldedOverflow, float16::Infinity), "is the infinity");
+    Assert(Same(Divide(Echo(Tiny), Echo(2.0f16)), FoldedUnderflow), "halving the smallest subnormal ties to zero");
+    Assert(Bits(FoldedUnderflow) == 0x0000u16, "to the even zero");
+    Assert(Same(Add(Echo(Tiny), Echo(Normal)), FoldedSubnormalSum), "a subnormal and a normal add exactly");
+    Assert(Same(Multiply(Echo(Normal), Echo(0.0078125f16)), FoldedSubnormalProduct), "a product lands subnormal");
+    Assert(Same(Subtract(Echo(1.0009765625f16), Echo(1.0f16)), FoldedCancellation), "cancellation is exact");
+    Assert(Same(Add(Echo(2048.0f16), Echo(1.0f16)), FoldedTieDown), "a tie rounds to the even significand");
+    Assert(Bits(FoldedTieDown) == Bits(2048.0f16), "which is 2048 below");
+    Assert(Same(Add(Echo(2048.0f16), Echo(3.0f16)), FoldedTieUp), "and another tie rounds up to it");
+    Assert(Bits(FoldedTieUp) == Bits(2052.0f16), "which is 2052 above");
+
+    // NaN: produced at run time, unordered against everything, and absorbing.
+    let infinity = Echo(float16::Infinity);
+    let zero = Echo(0.0f16);
+    Assert(IsNan(Subtract(infinity, infinity)), "infinity minus infinity is a NaN");
+    Assert(IsNan(Multiply(infinity, zero)), "infinity times zero is a NaN");
+    Assert(IsNan(Divide(zero, zero)), "zero over zero is a NaN");
+    Assert(IsNan(Remainder(Echo(1.0f16), zero)), "a remainder by zero is a NaN");
+    Assert(IsNan(Remainder(infinity, Echo(2.0f16))), "and so is a remainder of infinity");
+    let nan = Echo(float16::NaN);
+    Assert(IsNan(Add(nan, Echo(1.0f16))) && IsNan(Multiply(Echo(2.0f16), nan)), "a NaN operand gives a NaN");
+    Assert(!Equal(nan, nan) && NotEqual(nan, nan), "a NaN is not equal to itself");
+    Assert(!Less(nan, infinity) && !Greater(nan, Negate(infinity)), "nor ordered against an infinity");
+    Assert(!LessOrEqual(nan, nan) && !GreaterOrEqual(nan, zero), "nor against itself or zero");
+
+    // The zeros: equal, but distinct in their bits and in what they divide to.
+    let negativeZero = Echo(-0.0f16);
+    Assert(Bits(negativeZero) == 0x8000u16, "minus zero has only its sign bit set");
+    Assert(Equal(negativeZero, zero) && !NotEqual(negativeZero, zero), "the two zeros compare equal");
+    Assert(!Less(negativeZero, zero) && LessOrEqual(negativeZero, zero), "and neither is below the other");
+    Assert(Same(Divide(Echo(1.0f16), negativeZero), Negate(infinity)), "one over minus zero is minus infinity");
+    Assert(Same(Add(negativeZero, zero), zero), "minus zero plus zero is plus zero");
+    Assert(Same(Add(negativeZero, negativeZero), negativeZero), "minus zero plus minus zero keeps the sign");
+    Assert(Same(Subtract(zero, zero), zero), "zero minus zero is plus zero");
+    Assert(Same(Multiply(negativeZero, Echo(3.0f16)), negativeZero), "a product's zero takes the sign rule");
+
+    // The ordered comparisons, including across the subnormals and the infinities.
+    Assert(Less(Echo(Tiny), Echo(Normal)) && Greater(Echo(Normal), Echo(Tiny)), "subnormals order below normals");
+    Assert(Less(Negate(infinity), Echo(float16::Lowest)), "minus infinity is below Lowest");
+    Assert(Greater(infinity, Echo(float16::Max)), "infinity is above Max");
+    Assert(Less(Echo(-2.5f16), Echo(1.5f16)) && GreaterOrEqual(Echo(2.5f16), Echo(2.5f16)), "across sign and equal");
+
+    // Negation flips the sign bit and nothing else.
+    Assert(Bits(Negate(Echo(1.5f16))) == 0xBE00u16, "negating 1.5");
+    Assert(Bits(Negate(zero)) == 0x8000u16, "negating zero gives minus zero");
+    Assert(Bits(Negate(negativeZero)) == 0x0000u16, "and negating minus zero gives zero");
+    Assert(Same(Negate(Echo(Tiny)), -Tiny), "negating a subnormal");
+
+    // A cast to bool asks whether the value is non-zero, which a NaN is.
+    Assert(Truth(Echo(1.0f16)) && Truth(Echo(Tiny)) && Truth(infinity), "non-zero values are true");
+    Assert(!Truth(zero) && !Truth(negativeZero), "both zeros are false");
+    Assert(Truth(nan) == (float16::NaN as bool), "a NaN converts as folding converts it");
+
+    // Integer to float16, rounding to nearest and overflowing to infinity.
+    Assert(Same((Echo(2049.0f16) as int) as float16, 2048.0f16), "a round trip through int");
+    Assert(Same(FromInt(2049), FoldedFromInt), "2049 ties to the even 2048");
+    Assert(Same(FromInt32(70000i32), FoldedFromLargeInt) && Same(FoldedFromLargeInt, float16::Infinity),
+           "an int32 beyond Max converts to infinity");
+    Assert(Same(FromUint64(18446744073709551615u64), FoldedFromUint64), "uint64::Max converts as folding does");
+    Assert(Same(FromInt128(-12345678901234567890123i128), FoldedFromInt128),
+           "a negative int128 converts as folding does");
+    Assert(Same(FromUint512(65519u512), FoldedFromUint512), "a uint512 just below the overflow tie rounds down to Max");
+    Assert(Same(FoldedFromUint512, float16::Max), "which is Max");
+
+    // float16 to integer, truncating toward zero and saturating at the target's range.
+    Assert((Echo(300.0f16) as int8) == FoldedToInt8 && FoldedToInt8 == 127i8, "300 saturates an int8");
+    Assert((Echo(-3.75f16) as uint8) == FoldedToUint8 && FoldedToUint8 == 0u8, "a negative value saturates a uint8");
+    Assert((Echo(-65504.0f16) as int64) == FoldedToInt64, "Lowest converts to int64");
+    Assert((Echo(1234.5f16) as int128) == FoldedToInt128 && FoldedToInt128 == 1234i128, "truncation to int128");
+    Assert((Echo(65504.0f16) as uint) == FoldedToUint, "Max converts to uint");
+    Assert((nan as int32) == 0i32 && (nan as uint64) == 0u64, "a NaN converts to zero");
+    Assert((infinity as int16) == 32767i16 && (Negate(infinity) as int16) == -32768i16, "infinities saturate");
+    Assert((Echo(-0.0f16) as int32) == 0i32 && (Echo(Tiny) as int32) == 0i32, "the zeros and subnormals truncate");
+
+    // To and from every other float width.
+    Assert(Bits32(Echo(Third) as float32) == Bits32(FoldedToFloat32), "float16 widens to float32 exactly");
+    Assert(Bits64(Echo(Tiny) as float64) == Bits64(FoldedToFloat64), "a subnormal widens to float64 exactly");
+    Assert(Bits8(Echo(Third) as float8) == Bits8(FoldedToFloat8), "float16 narrows to float8 as folding does");
+    Assert(Bits80(Echo(Third) as float80) == Bits80(FoldedToFloat80), "float16 widens to float80");
+    Assert(Bits128(Echo(Large) as float128) == Bits128(FoldedToFloat128), "float16 widens to float128");
+    Assert(Bits256(Echo(Tiny) as float256) == Bits256(FoldedToFloat256), "float16 widens to float256");
+    Assert(Bits512(Echo(Normal) as float512) == Bits512(FoldedToFloat512), "float16 widens to float512");
+    Assert(Same(FromFloat32(0.1f32), FoldedFromFloat32), "float32 narrows to float16 as folding does");
+    Assert(Same(FromFloat64(0.1), FoldedFromFloat64), "float64 narrows to float16 as folding does");
+    Assert(Same(FromFloat8(0.375f8), FoldedFromFloat8), "float8 widens to float16 exactly");
+    Assert(Same(FromFloat128(0.1f128), FoldedFromFloat128), "float128 narrows to float16 as folding does");
+    Assert(Same(FromFloat512(1.0e300f512), FoldedFromFloat512), "a float512 beyond Max narrows to infinity");
+    Assert(Same(FoldedFromFloat512, float16::Infinity), "which is the infinity");
+    Assert(IsNan((Echo(float16::NaN) as float64) as float16), "a NaN survives a round trip through float64");
+    Assert(IsNan((Echo(float16::NaN) as float128) as float16), "and through float128");
+    Assert(Same((Echo(-0.0f16) as float512) as float16, negativeZero), "minus zero survives a float512 round trip");
+
+    // Arguments and returns, including some on the stack and some in a struct.
+    let total = Weighted(1.0f16, 0.5, 2.0f16, 3i32, 3.0f16, 4.0f16, 5.0f16, 6.0f16, 7.0f16, 8.0f16, 9.0f16,
+                         Third);
+    Assert(Same(total, FoldedWeighted), "twelve mixed parameters each arrive intact");
+    let sample = Sample { tag: 7u8, value: Echo(Third), weight: Echo(-3.0f16) };
+    Assert(sample.tag == 7u8 && Same(sample.value, Third), "a float16 field holds its value");
+    Assert(Same(Scaled(sample), -FoldedProduct), "a struct of float16 fields passes by value");
+
+    // Static data, element by element.
+    Assert(Bits(Table[0]) == 0x3C00u16 && Bits(Table[1]) == 0x8000u16, "one and minus zero are stored as encoded");
+    Assert(Bits(Table[2]) == 0x7BFFu16 && Bits(Table[3]) == 0x0001u16, "and so are Max and the smallest subnormal");
+    Assert(Same(Table[4], Negate(Echo(2.5f16))), "and a negative element");
+    var copy: float16[5] = Table;
+    copy[1] = Echo(Third);
+    Assert(Same(copy[1], Third) && Same(copy[4], -2.5f16), "a copied array is assignable element by element");
+
+    // Compound assignment, step by step against the folded chain.
+    var x: float16 = Echo(Third);
+    x += Echo(1.5f16);
+    Assert(Same(x, FoldedSum), "+= agrees with folding");
+    x -= Echo(1.5f16);
+    Assert(Same(x, FoldedLess), "-= agrees with folding");
+    x *= Echo(3.0f16);
+    Assert(Same(x, FoldedTimes), "*= agrees with folding");
+    x /= Echo(7.0f16);
+    Assert(Same(x, FoldedOver), "/= agrees with folding");
+    x %= Echo(0.0625f16);
+    Assert(Same(x, FoldedModulo), "%= agrees with folding");
     return 0;
 }

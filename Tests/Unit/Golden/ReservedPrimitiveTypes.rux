@@ -2,8 +2,8 @@
 //
 // A reserved name resolves like any other type and is then refused through PrimitiveInfo::implemented, so the
 // failure has to be the compiler-version reservation message rather than an unknown-type error: the difference
-// tells an author "this compiler cannot do it yet" apart from "you misspelled it". Nine of the catalog's
-// thirty-eight entries are reserved, and this pins all nine at once.
+// tells an author "this compiler cannot do it yet" apart from "you misspelled it". Three of the catalog's
+// thirty-eight entries are reserved, and this pins all three at once.
 //
 // The implemented widths are declared below the reserved ones on purpose. They must contribute no diagnostic, so
 // this case also proves the refusal discriminates rather than rejecting every wide-sounding name.
@@ -12,13 +12,6 @@ func Reserved() {
     var charWide: char128;
     var charWider: char256;
     var charWidest: char512;
-
-    var floatTiny: float8;
-    var floatHalf: float16;
-    var floatExtended: float80;
-    var floatQuad: float128;
-    var floatOcta: float256;
-    var floatHexa: float512;
 }
 
 func Implemented() {
@@ -53,6 +46,12 @@ func Implemented() {
     var u512: uint512;
     var uNative: uint;
 
+    var f8: float8;
+    var f16: float16;
     var f32: float32;
     var f64: float64;
+    var f80: float80;
+    var f128: float128;
+    var f256: float256;
+    var f512: float512;
 }

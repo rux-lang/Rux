@@ -491,8 +491,8 @@ TEST_CASE("character constants compare decoded scalars during conditional evalua
 }
 
 TEST_CASE("compile-time conditions answer the special values of every float width") {
-    // float128 is still reserved, but the evaluator answers from declarations alone. Its finite limits do not fit the
-    // host double that conditions compare in, so those are not answered.
+    // The evaluator answers from declarations alone. float128's finite limits do not fit the host double that
+    // conditions compare in, so those are not answered.
     auto parsed = ParseSource(R"(
         extend float32 { pub intrinsic const Infinity: float32; }
         extend float128 {

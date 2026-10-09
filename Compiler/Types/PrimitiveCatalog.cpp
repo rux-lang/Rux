@@ -53,15 +53,15 @@ constexpr std::array<PrimitiveInfo, 38> Catalog{{
     {K::UInt512, "uint512", C::UnsignedInt, 512, 64, 16, true},
     {K::UInt, "uint", C::UnsignedInt, PointerSized, PointerSized, PointerSized, true},
 
-    {K::Float8, "float8", C::Float, 8, 1, 1, false},
-    {K::Float16, "float16", C::Float, 16, 2, 2, false},
+    {K::Float8, "float8", C::Float, 8, 1, 1, true},
+    {K::Float16, "float16", C::Float, 16, 2, 2, true},
     {K::Float32, "float32", C::Float, 32, 4, 4, true},
     {K::Float64, "float64", C::Float, 64, 8, 8, true},
     // x87 extended precision: 80 value bits held in 16 bytes of storage, which is why size is not bits / 8.
-    {K::Float80, "float80", C::Float, 80, 16, 16, false},
-    {K::Float128, "float128", C::Float, 128, 16, 16, false},
-    {K::Float256, "float256", C::Float, 256, 32, 16, false},
-    {K::Float512, "float512", C::Float, 512, 64, 16, false},
+    {K::Float80, "float80", C::Float, 80, 16, 16, true},
+    {K::Float128, "float128", C::Float, 128, 16, 16, true},
+    {K::Float256, "float256", C::Float, 256, 32, 16, true},
+    {K::Float512, "float512", C::Float, 512, 64, 16, true},
 }};
 
 // Derive the kind index from the catalog so aliases, widths and implementation status still have one owner.

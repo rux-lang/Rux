@@ -1,2 +1,34 @@
-// float8 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `float8`: an eight-bit E4M3 float.
+// One sign bit, four exponent bits with a bias of seven and three fraction bits: four bits of significand, so about
+// one decimal digit. Unlike the E4M3 variant that trades them for range, it keeps IEEE 754's infinities and NaNs in
+// the all-ones exponent, which is why the largest finite value is 240 rather than 448. Its arithmetic runs in
+// software on every target.
+
+/// An eight-bit E4M3 floating-point number with IEEE 754 infinities and NaNs.
+/// @see https://rux-lang.dev/docs/api/core/floating-point#float8
+extend float8 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-bits
+    pub const Bits: uint = 8;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-bytes
+    pub const Bytes: uint = 1;
+    /// The lowest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-lowest
+    pub const Lowest: float8 = -240.0f8;
+    /// The highest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-max
+    pub const Max: float8 = 240.0f8;
+    /// The smallest positive normal value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-min-positive
+    pub const MinPositive: float8 = 0.015625f8;
+    /// The difference between one and the next representable value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-epsilon
+    pub const Epsilon: float8 = 0.125f8;
+    /// Positive infinity.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-infinity
+    pub intrinsic const Infinity: float8;
+    /// A quiet not-a-number value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float8-nan
+    pub intrinsic const NaN: float8;
+}

@@ -261,20 +261,13 @@ func Main() {
 }
 )");
     const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
-    // float16 is still reserved, so its literal is refused as well; once it is implemented only the ABI error remains.
-    std::size_t abiErrors = 0;
-    for (const auto &diagnostic : model.diagnostics) {
-        CAPTURE(diagnostic.message);
-        if (diagnostic.message.contains("reserved but is not implemented")) {
-            continue;
-        }
-        REQUIRE_EQ(diagnostic.message, "a C-variadic argument has type 'float16', which has no C ABI mapping");
-        CHECK_EQ(diagnostic.location.line, 12);
-        CHECK_EQ(diagnostic.help, std::optional<std::string>("convert the value to 'float32' or 'float64' at the "
-                                                             "boundary, or pass a pointer to it"));
-        ++abiErrors;
-    }
-    CHECK_EQ(abiErrors, 1);
+    // float16 is implemented, so the C ABI refusal is the only diagnostic.
+    REQUIRE_EQ(model.diagnostics.size(), 1);
+    const auto &diagnostic = model.diagnostics.front();
+    CHECK_EQ(diagnostic.message, "a C-variadic argument has type 'float16', which has no C ABI mapping");
+    CHECK_EQ(diagnostic.location.line, 12);
+    CHECK_EQ(diagnostic.help, std::optional<std::string>("convert the value to 'float32' or 'float64' at the "
+                                                         "boundary, or pass a pointer to it"));
 }
 
 TEST_CASE("a constant two imported extensions declare is ambiguous where it is used") {
