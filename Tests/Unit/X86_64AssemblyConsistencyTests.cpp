@@ -11,6 +11,7 @@
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Object/Rcu/Rcu.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <doctest.h>
@@ -204,6 +205,18 @@ void CheckAddressesAgree(const LirFunc &function, const Target::OS os) {
                     std::move(instructions), next, type);
 }
 
+const TypeRef Triple = TypeRef::MakeTuple({TypeRef::MakeInt64(), TypeRef::MakeInt64(), TypeRef::MakeInt64()});
+const TypeRef View = TypeRef::MakeSlice(TypeRef::MakeInt32());
+
+/// The placeholder `Const 0` lowering gives an expression with no value of its own, at aggregate types of 24 and 16
+/// bytes, and an int64 to return.
+[[nodiscard]] LirFunc Placeholders() {
+    return Function("Placeholders", {},
+                    {Instruction(LirOpcode::Const, 0, Triple, {}, "0"), Instruction(LirOpcode::Const, 1, View, {}, "0"),
+                     Instruction(LirOpcode::Const, 2, TypeRef::MakeInt64(), {}, "0")},
+                    2, TypeRef::MakeInt64());
+}
+
 /// Every word-by-word operation on a wide integer of `type`, and the casts in and out of it.
 [[nodiscard]] LirFunc WideIntegers(const std::string &name, const TypeRef &type) {
     std::vector<LirInstr> instructions = {Instruction(LirOpcode::Const, 2, type, {}, "340282366920938463463374607431"),
@@ -321,7 +334,8 @@ TEST_CASE("x86-64 assembly text and object code use the same frame addresses in 
                                       WideIntegers("Unsigned128", UInt128),
                                       WideIntegers("Signed256", Int256),
                                       WideBoolAndChar(),
-                                      WidePhi()};
+                                      WidePhi(),
+                                      Placeholders()};
     for (LirFunc &function : ManyArguments()) {
         functions.push_back(std::move(function));
     }
@@ -471,6 +485,45 @@ TEST_CASE("x86-64 assembly text gives SSE comparisons the unordered handling and
             CHECK_FALSE(text.contains("cvtts"));
             CHECK_FALSE(text.contains("divs"));
         }
+    }
+}
+
+TEST_CASE("an aggregate placeholder constant zeroes every word of its slot in the object code and the text") {
+    for (const Target::OS os : Systems) {
+        CAPTURE(static_cast<int>(os));
+        const LirFunc function = Placeholders();
+        const LirPackage package = PackageOf({function});
+        const std::string text = AssemblyPrinter(package, os).Generate();
+        const X86_64FramePlan plan = PlanX86_64Frame(function, {}, {}, os);
+        const std::int32_t triple = plan.SlotOffsets().at(0);
+        const std::int32_t view = plan.SlotOffsets().at(1);
+        // Once `al` was the whole of a 24-byte placeholder, and rdx's leftover the second word of a 16-byte one.
+        const std::vector<std::string> zeroTriple = {"mov     eax, 0",
+                                                     std::format("mov     qword [rbp - {}], rax", triple),
+                                                     std::format("mov     qword [rbp - {}], rax", triple - 8),
+                                                     std::format("mov     qword [rbp - {}], rax", triple - 16)};
+        const std::vector<std::string> zeroView = {"mov     eax, 0", std::format("mov     qword [rbp - {}], rax", view),
+                                                   std::format("mov     qword [rbp - {}], rax", view - 8)};
+        CHECK(text.contains(Lines(zeroTriple)));
+        CHECK(text.contains(Lines(zeroView)));
+        CHECK_FALSE(text.contains("], al"));
+        CHECK_FALSE(text.contains("], rdx"));
+
+        // The object code writes the same words: each `mov [rbp - n], rax` is REX.W 89 85 and the displacement.
+        const std::vector<std::uint8_t> code = CodeOf(package, os);
+        const auto stores = [&](const std::int32_t slot, const int words) {
+            std::vector<std::uint8_t> bytes = {0xB8, 0, 0, 0, 0}; // mov eax, 0
+            for (int word = 0; word < words; ++word) {
+                const std::int32_t displacement = -slot + word * 8;
+                bytes.insert(bytes.end(), {0x48, 0x89, 0x85});
+                for (int shift = 0; shift < 32; shift += 8) {
+                    bytes.push_back(static_cast<std::uint8_t>(static_cast<std::uint32_t>(displacement) >> shift));
+                }
+            }
+            return std::ranges::search(code, bytes).begin() != code.end();
+        };
+        CHECK(stores(triple, 3));
+        CHECK(stores(view, 2));
     }
 }
 

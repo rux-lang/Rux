@@ -938,6 +938,13 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
                 encoder.MovRaxStore(Disp(instruction.dst) + offset);
             }
         }
+        // Lowering's placeholder for an expression with no value of its own, such as a block without a trailing
+        // expression, is the constant 0 of the expression's type, and that type can be a struct, optional, fallible or
+        // other aggregate wider than a register. Every word of its slot is zeroed: a register store would cover one
+        // byte of a slot over sixteen bytes and leave rdx's garbage in the second word of one of nine to sixteen.
+        else if (IsAggregate(type) && SizeOfRuntime(type) > 8) {
+            ZeroWide(Disp(instruction.dst), SizeOfRuntime(type));
+        }
         else if (type.IsBool()) {
             encoder.MovEaxImm32((instruction.strArg == "true" || instruction.strArg == "1") ? 1 : 0);
             hooks.StoreA(instruction.dst, type);

@@ -1557,6 +1557,10 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
                 Instruction("mov", Rbp("qword", Disp(instruction.dst) + offset) + ", rax");
             }
         }
+        // Lowering's placeholder 0 of an aggregate wider than a register zeroes every word of its slot.
+        else if (IsAggregate(type) && SizeOfRuntime(type) > 8) {
+            ZeroWide(Disp(instruction.dst), SizeOfRuntime(type));
+        }
         else if (type.IsBool()) {
             Instruction("mov",
                         std::format("eax, {}", instruction.strArg == "true" || instruction.strArg == "1" ? 1 : 0));
