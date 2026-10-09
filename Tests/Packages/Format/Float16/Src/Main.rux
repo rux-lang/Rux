@@ -93,6 +93,9 @@ func Pass(value: float16) -> float16 {
 }
 
 func Main() -> int {
+    // Equally close shortest decimals choose the even last digit, for either sign.
+    if !Shows(0.046875f16, "", "0.04688") { return 70; }
+    if !Shows(-0.046875f16, "", "-0.04688") { return 71; }
     let code = CheckTable();
     if code != 0 { return code; }
 

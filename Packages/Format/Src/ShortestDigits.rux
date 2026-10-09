@@ -181,11 +181,12 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         }
         if low && high {
             // Both sides allow stopping, so the nearer one wins: twice what is left against the denominator says
-            // which. A tie goes down, which keeps the digit the value's own rather than its neighbour's.
+            // which. An exact tie chooses the even final digit, as the wide formatter does.
             var twice = FixedNat();
             twice.Assign(state.numerator);
             if !twice.ShiftLeft(1) { return false; }
-            if twice.Compare(state.denominator) > 0 { digit = digit + 1; }
+            let halfway = twice.Compare(state.denominator);
+            if halfway > 0 || (halfway == 0 && digit % 2 == 1) { digit = digit + 1; }
         }
         else if high {
             digit = digit + 1;

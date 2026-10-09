@@ -196,10 +196,8 @@ Unpacked Unpack(const FloatEncoding &encoding) {
 }
 
 /// Burger and Dybvig free-format digit generation: the shortest digits that read back as the same value.
-/// When the last digit and the one above it are equally near the value, the wide formats take the even digit, as
-/// WideDecimal.rux does, and the narrow ones keep the lower digit, as ShortestDigits.rux does.
-std::string ShortestDigits(const Unpacked &value, const FloatFormat &format, std::int64_t &exponent10,
-                           const bool tieToEven = true) {
+/// When the last digit and the one above it are equally near the value, every format takes the even digit.
+std::string ShortestDigits(const Unpacked &value, const FloatFormat &format, std::int64_t &exponent10) {
     const WideInteger leading = WideInteger::FromUnsigned(1, 512).ShiftedLeft(format.precisionBits - 1);
     const std::int64_t minimumExponent =
         1 - format.exponentBias - (static_cast<std::int64_t>(format.precisionBits) - 1);
@@ -282,7 +280,7 @@ std::string ShortestDigits(const Unpacked &value, const FloatFormat &format, std
             Big twice = r;
             twice.ShiftLeft(1);
             const int order = twice.Compare(s);
-            if (order > 0 || (order == 0 && tieToEven && (digit & 1) == 1)) {
+            if (order > 0 || (order == 0 && (digit & 1) == 1)) {
                 ++digit;
             }
         }
@@ -604,7 +602,7 @@ std::string NarrowText(const FloatFormat &format, const std::uint64_t pattern, c
         return value.negative ? "-0.0" : "0.0";
     }
     std::int64_t exponent10 = 0;
-    const std::string digits = ShortestDigits(value, format, exponent10, false);
+    const std::string digits = ShortestDigits(value, format, exponent10);
     const std::string text = Render(digits, exponent10, value.negative, capacity);
     Verify(format, bits, digits, exponent10, text);
     return text;
