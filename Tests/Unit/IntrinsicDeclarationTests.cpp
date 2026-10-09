@@ -656,7 +656,7 @@ TEST_CASE("a primitive constant nothing imports names the dependency that declar
 TEST_CASE("duplicate extension constants and reserved-width APIs are rejected") {
     auto duplicate = ParseIntrinsicSource(IntegerDeclaration + "extend int8 { pub const Max: int8 = 2i8; }");
     CHECK(SemanticAnalyzer({&duplicate.module}, {}, "App").Analyze().HasErrors());
-    auto reserved = ParseIntrinsicSource("func Main() { let value = float128::Max; }");
+    auto reserved = ParseIntrinsicSource("func Main() { let value = char128::Bits; }");
     const auto model = SemanticAnalyzer({&reserved.module}, {}, "App").Analyze();
     REQUIRE(model.HasErrors());
     CHECK(model.diagnostics[0].message.contains("reserved but is not implemented"));

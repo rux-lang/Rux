@@ -35,6 +35,19 @@ namespace Rux::Layout {
 /// Multiword integer primitives travel through stack storage and aggregate ABI lanes rather than one machine register.
 [[nodiscard]] bool IsWideInteger(const TypeRef &t);
 
+/// A multiword integer or bool. Both are lowered through the same word-by-word paths; a wide bool keeps its value in
+/// the low word and zeros above it.
+[[nodiscard]] bool IsWideScalar(const TypeRef &t);
+
+/// Any primitive held as multiword storage rather than in one machine register: a wide scalar, or a software float
+/// wider than a doubleword.
+[[nodiscard]] bool IsWideValue(const TypeRef &t);
+
+/// Bytes of scratch storage an instruction's wide lowering needs, or zero when it has none. The result and every source
+/// operand count, because a comparison or a narrowing conversion reads a wide operand while producing a narrow result.
+[[nodiscard]] int WideTemporarySize(const LirInstr &instruction,
+                                    const std::unordered_map<LirReg, TypeRef> &registerTypes);
+
 /// The unsigned integer type of the same width, which is how a logical right shift reads its operand: `lshr` on a
 /// signed type is the one place a value's bits are widened by its width rather than by its signedness. Anything that is
 /// not a signed integer already reads that way and is returned unchanged.

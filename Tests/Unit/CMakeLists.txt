@@ -30,6 +30,7 @@ set(RUX_TEST_SOURCES
     AArch64RcuVariadicAbiTests.cpp
     AArch64SoftwareFloatTests.cpp
     AArch64WideIntegerTests.cpp
+    AArch64WideBoolTests.cpp
     AllocationMathTests.cpp
     ArtifactTests.cpp
     BackendDiagnosticTests.cpp
@@ -42,6 +43,7 @@ set(RUX_TEST_SOURCES
     CheckedLirBuilderTests.cpp
     CodegenFrameSlotSharingTests.cpp
     CodegenTests.cpp
+    CodegenConstantDataTests.cpp
     ChecksumTests.cpp
     CliContractTests.cpp
     CliProcessTests.cpp
@@ -124,6 +126,13 @@ set(RUX_TEST_SOURCES
     MoveCleanupTests.cpp
     OptimizerRegressionTests.cpp
     OperandWideningLoweringTests.cpp
+    SoftFloatLoweringTests.cpp
+    SoftFloatArithmeticLoweringTests.cpp
+    SoftFloatConversionLoweringTests.cpp
+    SoftFloatDivisionLoweringTests.cpp
+    SoftFloatMultiplyLoweringTests.cpp
+    SoftFloatLoweringTestSupport.cpp
+    WideBoolLoweringTests.cpp
     OptimizerTests.cpp
     LirOptimizationTests.cpp
     LirReachabilityTests.cpp
@@ -189,6 +198,8 @@ set(RUX_TEST_SOURCES
     X86_64NativeCallTests.cpp
     X86_64WideIntegerTests.cpp
     X86_64SoftwareFloatTests.cpp
+    X86_64WideBoolTests.cpp
+    X86_64X87Tests.cpp
 )
 
 if (TARGET RuxFormatter)

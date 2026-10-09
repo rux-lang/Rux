@@ -60,6 +60,9 @@ private:
     [[nodiscard]] bool IsRegPointerTo(LirReg reg, const TypeRef &pointee) const;
     [[nodiscard]] int FieldOffset(LirReg base, const std::string &fieldName) const;
     [[nodiscard]] bool EmitWideArithmetic(const LirInstr &instruction);
+    /// Emits a float80 operation the x87 unit computes. Returns false for anything else, including every float80
+    /// operation while `Target::X87Float80` is off.
+    [[nodiscard]] bool EmitX87(const LirInstr &instruction);
     [[nodiscard]] bool EmitWideSoftwareFloatNegation(const LirInstr &instruction);
     void EmitSoftwareFloatConstant(const LirInstr &instruction);
     void ZeroWide(std::int32_t destination, int size) const;

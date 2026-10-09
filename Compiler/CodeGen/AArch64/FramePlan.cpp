@@ -57,7 +57,7 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &type) const {
-        if (IsWideInteger(type) || (IsSoftwareFloat(type) && RuntimeSize(type) > 8)) {
+        if (IsWideValue(type)) {
             return true;
         }
         if (type.IsRange()) {
@@ -302,9 +302,7 @@ private:
         int largest = 0;
         for (const LirBlock &block : func.blocks) {
             for (const LirInstr &instruction : block.instrs) {
-                if (IsWideInteger(instruction.type)) {
-                    largest = std::max(largest, RuntimeSize(instruction.type));
-                }
+                largest = std::max(largest, WideTemporarySize(instruction, plan.registerTypes));
             }
         }
         if (largest == 0) {

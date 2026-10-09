@@ -14,6 +14,7 @@ rux_add_component(RuxCodeGenX86_64
     Encoder.cpp
     EncoderFloating.cpp
     EncoderMemory.cpp
+    EncoderX87.cpp
     FramePlan.cpp
     FunctionEmitter.cpp
     WideIntegerEmitter.cpp
@@ -21,5 +22,6 @@ rux_add_component(RuxCodeGenX86_64
     ModuleValues.cpp
     ModuleRuntimeFailure.cpp
     RcuEmitter.cpp
-    SoftwareFloatEmitter.cpp)
+    SoftwareFloatEmitter.cpp
+    X87Emitter.cpp)
 target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)

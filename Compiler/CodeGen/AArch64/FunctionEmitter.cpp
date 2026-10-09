@@ -124,7 +124,7 @@ int AArch64FunctionEmitter::RuntimeAlign(const TypeRef &type) const {
 }
 
 bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
-    if (IsWideInteger(type) || (IsSoftwareFloat(type) && RuntimeSize(type) > 8)) {
+    if (IsWideValue(type)) {
         return true;
     }
     if (type.IsRange()) {

@@ -36,7 +36,7 @@ namespace Rux::AArch64Detail {
 // register. What counts as an aggregate is a property of the LIR type
 // rather than of the machine, so this is the x86-64 rule unchanged.
 [[nodiscard]] bool AArch64ModuleEmitter::IsAggregate(const TypeRef &t) const {
-    if (IsWideInteger(t) || (IsSoftwareFloat(t) && RuntimeSize(t) > 8)) {
+    if (IsWideValue(t)) {
         return true;
     }
     if (t.IsRange()) {

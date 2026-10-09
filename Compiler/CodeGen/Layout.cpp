@@ -3,6 +3,7 @@
 #include "Types/PrimitiveCatalog.h"
 #include "Unicode/Utf.h"
 
+#include <algorithm>
 #include <charconv>
 
 namespace Rux::Layout {
@@ -169,6 +170,26 @@ bool IsSoftwareFloat(const TypeRef &t) {
 
 bool IsWideInteger(const TypeRef &t) {
     return t.IsInteger() && SizeOf(t) > 8;
+}
+
+bool IsWideScalar(const TypeRef &t) {
+    return (t.IsInteger() || t.IsBool()) && SizeOf(t) > 8;
+}
+
+bool IsWideValue(const TypeRef &t) {
+    return IsWideScalar(t) || (IsSoftwareFloat(t) && SizeOf(t) > 8);
+}
+
+int WideTemporarySize(const LirInstr &instruction, const std::unordered_map<LirReg, TypeRef> &registerTypes) {
+    // float80 is the one software float a backend computes on directly (x87), and it is staged through scratch slots.
+    const auto needs = [](const TypeRef &type) { return IsWideScalar(type) || type.kind == TypeRef::Kind::Float80; };
+    int largest = needs(instruction.type) ? SizeOf(instruction.type) : 0;
+    for (const LirReg source : instruction.srcs) {
+        if (const auto found = registerTypes.find(source); found != registerTypes.end() && needs(found->second)) {
+            largest = std::max(largest, SizeOf(found->second));
+        }
+    }
+    return largest;
 }
 
 TypeRef UnsignedIntegerType(const TypeRef &type) {

@@ -76,7 +76,7 @@ int AssemblyInstructionPrinter::SizeOfRuntime(const TypeRef &type) const {
 }
 
 bool AssemblyInstructionPrinter::IsAggregate(const TypeRef &type) const {
-    if (IsWideInteger(type) || (IsSoftwareFloat(type) && SizeOfRuntime(type) > 8)) {
+    if (IsWideValue(type)) {
         return true;
     }
     if (type.IsRange()) {

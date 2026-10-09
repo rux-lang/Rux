@@ -20,6 +20,12 @@ rux_add_component(RuxLowering
     HirToLir/HirToLirCore.cpp
     HirToLir/HirToLirDrop.cpp
     HirToLir/HirToLirExpressions.cpp
+    HirToLir/HirToLirSoftFloat.cpp
+    HirToLir/HirToLirSoftFloatArithmetic.cpp
+    HirToLir/HirToLirSoftFloatConvert.cpp
+    HirToLir/HirToLirSoftFloatCore.cpp
+    HirToLir/HirToLirSoftFloatDivide.cpp
+    HirToLir/HirToLirSoftFloatMultiply.cpp
     HirToLir/HirToLirStatements.cpp)
 target_link_libraries(RuxLowering PUBLIC
-    RuxAst RuxSemanticModel RuxHir RuxLir RuxUnicode)
+    RuxAst RuxSemanticModel RuxHir RuxLir RuxNumeric RuxTarget RuxUnicode)

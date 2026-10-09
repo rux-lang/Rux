@@ -3,7 +3,7 @@
 namespace Rux::X86_64Detail {
 
 [[nodiscard]] bool X86_64ModuleEmitter::IsAggregate(const TypeRef &t) const {
-    if (IsWideInteger(t) || (IsSoftwareFloat(t) && SizeOfRuntime(t) > 8)) {
+    if (IsWideValue(t)) {
         return true;
     }
     if (t.IsRange()) {

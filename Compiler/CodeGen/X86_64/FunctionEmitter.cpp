@@ -31,7 +31,7 @@ int X86_64FunctionEmitter::SizeOfRuntime(const TypeRef &type) const {
 }
 
 bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
-    if (IsWideInteger(type) || (IsSoftwareFloat(type) && SizeOfRuntime(type) > 8)) {
+    if (IsWideValue(type)) {
         return true;
     }
     if (type.IsRange()) {
@@ -474,6 +474,10 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
 }
 
 bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
+    // float80 is checked first: a conversion between it and float32 or float64 must not reach the SSE paths below.
+    if (EmitX87(instruction)) {
+        return true;
+    }
     if (EmitWideArithmetic(instruction)) {
         return true;
     }

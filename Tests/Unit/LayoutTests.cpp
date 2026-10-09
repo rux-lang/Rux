@@ -190,3 +190,61 @@ TEST_CASE("slice writability does not change layout or enclosing field offsets")
         }
     }
 }
+
+TEST_CASE("wide scalars are the integers and bools wider than a doubleword") {
+    for (const auto kind : {TypeRef::Kind::Int128, TypeRef::Kind::UInt512, TypeRef::Kind::Bool128,
+                            TypeRef::Kind::Bool256, TypeRef::Kind::Bool512}) {
+        CHECK(IsWideScalar(TypeRef::MakePrimitive(kind)));
+        CHECK(IsWideValue(TypeRef::MakePrimitive(kind)));
+    }
+    for (const auto kind :
+         {TypeRef::Kind::Int64, TypeRef::Kind::Bool64, TypeRef::Kind::Bool8, TypeRef::Kind::Float128}) {
+        CHECK_FALSE(IsWideScalar(TypeRef::MakePrimitive(kind)));
+    }
+    CHECK_FALSE(IsWideInteger(TypeRef::MakePrimitive(TypeRef::Kind::Bool128)));
+}
+
+TEST_CASE("wide values add the software floats wider than a doubleword") {
+    for (const auto kind :
+         {TypeRef::Kind::Float80, TypeRef::Kind::Float128, TypeRef::Kind::Float256, TypeRef::Kind::Float512}) {
+        CHECK(IsWideValue(TypeRef::MakePrimitive(kind)));
+    }
+    for (const auto kind :
+         {TypeRef::Kind::Float8, TypeRef::Kind::Float16, TypeRef::Kind::Float32, TypeRef::Kind::Float64}) {
+        CHECK_FALSE(IsWideValue(TypeRef::MakePrimitive(kind)));
+    }
+}
+
+TEST_CASE("wide temporaries are sized by the widest wide value an instruction reads or writes") {
+    std::unordered_map<LirReg, TypeRef> registerTypes;
+    registerTypes[1] = TypeRef::MakePrimitive(TypeRef::Kind::Int256);
+    registerTypes[2] = TypeRef::MakePrimitive(TypeRef::Kind::Float80);
+    registerTypes[3] = TypeRef::MakePrimitive(TypeRef::Kind::Int32);
+
+    LirInstr compare;
+    compare.op = LirOpcode::CmpLt;
+    compare.dst = 4;
+    compare.type = TypeRef::MakePrimitive(TypeRef::Kind::Bool8);
+    compare.srcs = {1, 1};
+    CHECK(WideTemporarySize(compare, registerTypes) == 32);
+
+    LirInstr narrowing;
+    narrowing.op = LirOpcode::Cast;
+    narrowing.dst = 5;
+    narrowing.type = TypeRef::MakePrimitive(TypeRef::Kind::Float64);
+    narrowing.srcs = {2};
+    CHECK(WideTemporarySize(narrowing, registerTypes) == 16);
+
+    LirInstr narrow;
+    narrow.op = LirOpcode::Add;
+    narrow.dst = 6;
+    narrow.type = TypeRef::MakePrimitive(TypeRef::Kind::Int32);
+    narrow.srcs = {3, 3};
+    CHECK(WideTemporarySize(narrow, registerTypes) == 0);
+
+    LirInstr wideBool;
+    wideBool.op = LirOpcode::Const;
+    wideBool.dst = 7;
+    wideBool.type = TypeRef::MakePrimitive(TypeRef::Kind::Bool512);
+    CHECK(WideTemporarySize(wideBool, registerTypes) == 64);
+}
