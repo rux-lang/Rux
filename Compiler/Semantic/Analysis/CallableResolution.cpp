@@ -82,7 +82,8 @@ TypeRef AnalysisContext::ResolveMethodReturnType(const TypeRef &receiverType, co
 
 std::vector<TypeRef>
 AnalysisContext::ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method,
-                                         const std::unordered_map<std::string, TypeRef> &methodSubstitutions) {
+                                         const std::unordered_map<std::string, TypeRef> &methodSubstitutions,
+                                         const bool includeReceiver) {
     const auto savedTypeParams = currentTypeParams;
     AppendTypeParameterNames(currentTypeParams, method.typeParams);
     auto substitutions = MethodTypeSubstitutions(receiverType);
@@ -95,7 +96,7 @@ AnalysisContext::ResolveMethodParamTypes(const TypeRef &receiverType, const Func
                         : TypeRef::MakePointer(receiverType);
     std::vector<TypeRef> params;
     for (const auto &param : method.params) {
-        if (param.isVariadic || param.name == "self") {
+        if (param.isVariadic || (!includeReceiver && param.name == "self")) {
             continue;
         }
         params.push_back(ResolveTypeWithSubstitution(*param.type, substitutions));
@@ -130,13 +131,14 @@ AnalysisContext::ResolveMethodVariadicType(const TypeRef &receiverType, const Fu
 const FuncDecl *AnalysisContext::LookupMethodCall(const TypeRef &receiverType, const std::string &methodName,
                                                   const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
                                                   const std::size_t typeArgumentOffset,
-                                                  std::unordered_map<std::string, TypeRef> &substitutions) {
+                                                  std::unordered_map<std::string, TypeRef> &substitutions,
+                                                  const bool receiverIsArgument) {
     const auto candidates = AccessibleMethodCandidates(receiverType, methodName);
     const std::size_t writtenCount = call.typeArgs.size() - typeArgumentOffset;
     if (writtenCount == 0 &&
         std::ranges::none_of(candidates, [](const FuncDecl *method) { return !method->typeParams.empty(); })) {
         substitutions = MethodTypeSubstitutions(receiverType);
-        return LookupMethod(receiverType, methodName, argumentTypes, true, &call);
+        return LookupMethod(receiverType, methodName, argumentTypes, true, &call, receiverIsArgument);
     }
     for (const FuncDecl *method : candidates) {
         if (writtenCount != 0 && writtenCount != method->typeParams.size()) {
@@ -152,7 +154,8 @@ const FuncDecl *AnalysisContext::LookupMethodCall(const TypeRef &receiverType, c
             }
         }
         const auto boundTypes = [&] {
-            return BoundParameterTypes(*method, true, ResolveMethodParamTypes(receiverType, *method, resolved),
+            return BoundParameterTypes(*method, !receiverIsArgument,
+                                       ResolveMethodParamTypes(receiverType, *method, resolved, receiverIsArgument),
                                        ResolveMethodVariadicType(receiverType, *method, resolved), argumentTypes.size(),
                                        &call);
         };
@@ -322,7 +325,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
         }
         return decl;
     }
-    for (const bool allowVariadic : {false, true}) {
+    for (const bool exactArity : {true, false}) {
         for (const bool exactOnly : {true, false}) {
             // Every overload this pass accepts is collected, so that declaration order never decides the call.
             std::vector<OverloadMatch> matches;
@@ -348,23 +351,18 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                 }
                 const std::size_t paramCount = funcType.inner.size() - 1;
                 const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                if (isVariadic != allowVariadic) {
+                if (exactArity && (isVariadic || argTypes.size() != paramCount)) {
                     continue;
                 }
-                std::size_t requiredCount = 0;
-                for (const auto &p : decl->params) {
-                    if (!p.isVariadic && !p.defaultValue) {
-                        ++requiredCount;
-                    }
-                }
-                const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
-                                                : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                if (!arityOk) {
+                const std::vector<TypeRef> fixedTypes(funcType.inner.begin(), funcType.inner.end() - 1);
+                const auto boundTypes = BoundParameterTypes(
+                    *decl, false, fixedTypes, ResolveVariadicElementType(*decl, substitutions), argTypes.size(), call);
+                if (!boundTypes) {
                     continue;
                 }
                 bool match = true;
-                for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                    const TypeRef &paramType = funcType.inner[i];
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    const TypeRef &paramType = (*boundTypes)[i];
                     if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
                         continue;
                     }
@@ -386,7 +384,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                     }
                 }
                 if (match) {
-                    matches.push_back({decl, std::vector<TypeRef>(funcType.inner.begin(), funcType.inner.end() - 1)});
+                    matches.push_back({decl, *boundTypes});
                 }
             }
             if (const FuncDecl *selected = SelectOverload(matches, argTypes)) {

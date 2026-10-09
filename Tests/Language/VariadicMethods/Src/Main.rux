@@ -7,6 +7,22 @@
 
 import Core::Assert;
 
+func Select(values: int32...) -> int32 { return 1i32; }
+func Select(values: float64...) -> int32 { return 2i32; }
+func Exact(value: int32) -> int32 { return 1i32; }
+func Exact(value: int32, extra: int32 = 0i32) -> int32 { return 2i32; }
+
+interface Merger {
+    func Merge(self: &Self, others: Self...) -> uint;
+}
+
+struct Item<T> { value: T; }
+extend Item<T> : Merger {
+    func Merge(self: &Item<T>, others: Item<T>...) -> uint { return others.length; }
+}
+
+func MergeItems<T: Merger>(item: &T, other: T) -> uint { return item.Merge(other); }
+
 struct Total {
     base: int128;
     count: int32;
@@ -112,7 +128,7 @@ extend int64 {
 
 /// Through an interface value the implementing type is not known; the call is dispatched, and collects alike.
 func ThroughInterface(summer: &Summer, word: int64) -> int128 {
-    return summer.Tally(1i32, word, 2i8);
+    return summer.Tally(1i8, word, 2i8);
 }
 
 /// Through a generic parameter bounded by the interfaces, the call is direct to the implementation.
@@ -178,5 +194,24 @@ func Main() -> int {
     let built = Total::Of(1i128, half, byte);
     Assert(built.base == 2i128 && built.count == 3i32, "an associated function collects its variadic arguments");
     Assert(Total::Of().count == 0i32, "an associated function accepts no variadic arguments");
+
+    // A method called through its type takes the receiver as its first argument, and collects the ones after it.
+    Assert(Total::Sum(total) == 100i128, "a method through its type accepts no variadic arguments");
+    Assert(Total::Sum(total, word, half, byte) == 100i128, "a method through its type collects the rest");
+    Assert(Total::Count(total, values...) == 3u, "a method through its type takes a spread after the receiver");
+    Assert(Total::HighWords(total, word, half) == -2i128, "a method through its type widens its elements");
+    Total::Add(running, 16i32, word, half);
+    Assert(running.count == 31i32 && running.base == 53i128, "a writable receiver is borrowed through its type");
+    Assert(Total::Scaled(total, 3i128) == 106i128, "a default fills an omitted argument after the receiver");
+    Assert(Total::Pick(total, 2u, 5i32, 6i32, 7i32) == 7i32, "a generic method through its type deduces its element");
+    Assert(Bag::PickOr<int128>(bag, 0u, half) == -2i128, "a generic type's method through its type collects");
+    Assert(int64::Plus(start, 1i64, byte) == 44i64, "a by-value receiver through its type is the first argument");
+    Assert(Select(1i32, 2i32) == 1i32, "integer elements select the integer variadic overload");
+    Assert(Select(1.0f64, 2.0f64) == 2i32, "float elements select the float variadic overload");
+    let choices: int32[2] = [1i32, 2i32];
+    Assert(Select(choices...) == 1i32, "a spread selects its element overload");
+    Assert(Exact(1i32) == 1i32, "an exact fixed overload wins over omitted defaults");
+    let item = Item<int32> { value: 1i32 };
+    Assert(MergeItems(item, item) == 1u, "Self variadic requirements retain concrete generic element types");
     return 0;
 }

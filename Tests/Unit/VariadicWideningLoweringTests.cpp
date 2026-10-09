@@ -83,8 +83,8 @@ const LirFunc &RequireFunction(const LirPackage &package, const std::string &nam
     throw std::runtime_error("missing lowered function");
 }
 
-/// The elements of the slice built for the variadic parameter of the call the function returns the result of.
-const std::vector<HirExprPtr> &RequireVariadicElements(const HirFunc &function) {
+/// The call the function returns the result of.
+const HirCallExpr &RequireReturnedCall(const HirFunc &function) {
     REQUIRE(function.body.has_value());
     REQUIRE_FALSE(function.body->stmts.empty());
     const auto *statement = dynamic_cast<const HirReturnStmt *>(function.body->stmts.back().get());
@@ -92,8 +92,14 @@ const std::vector<HirExprPtr> &RequireVariadicElements(const HirFunc &function) 
     REQUIRE(statement->value.has_value());
     const auto *call = dynamic_cast<const HirCallExpr *>(statement->value->get());
     REQUIRE(call != nullptr);
-    REQUIRE_FALSE(call->args.empty());
-    const auto *slice = dynamic_cast<const HirArrayExpr *>(call->args.back().get());
+    return *call;
+}
+
+/// The elements of the slice built for the variadic parameter of the call the function returns the result of.
+const std::vector<HirExprPtr> &RequireVariadicElements(const HirFunc &function) {
+    const HirCallExpr &call = RequireReturnedCall(function);
+    REQUIRE_FALSE(call.args.empty());
+    const auto *slice = dynamic_cast<const HirArrayExpr *>(call.args.back().get());
     REQUIRE(slice != nullptr);
     return slice->elements;
 }
@@ -409,7 +415,7 @@ TEST_SUITE("VariadicWideningLowering") {
             }
 
             func CallAdd(adder: Adder, word: int64) -> int128 {
-                return adder.Add(0i32, word, 3i128);
+                return adder.Add(0i8, word, 3i128);
             }
         )");
         const HirFunc &function = RequireFunction(package, "CallAdd");
@@ -420,11 +426,139 @@ TEST_SUITE("VariadicWideningLowering") {
         const auto *call = dynamic_cast<const HirInterfaceCallExpr *>(statement->value->get());
         REQUIRE(call != nullptr);
         REQUIRE_EQ(call->args.size(), 2);
-        CHECK_EQ(call->args[0]->type, Primitive(TypeRef::Kind::Int32));
+        CheckConversion(*call->args[0], Primitive(TypeRef::Kind::Int8), Primitive(TypeRef::Kind::Int32));
         const auto *slice = dynamic_cast<const HirArrayExpr *>(call->args.back().get());
         REQUIRE(slice != nullptr);
         REQUIRE_EQ(slice->elements.size(), 2);
         CheckConversion(*slice->elements[0], Primitive(TypeRef::Kind::Int64), Primitive(TypeRef::Kind::Int128));
+    }
+
+    TEST_CASE("a method called through its type passes the receiver as the first argument") {
+        const HirPackage package = LowerToHir(R"(
+            struct Total {
+                base: int128;
+            }
+
+            extend Total {
+                func Sum(self: &Total, values: int128...) -> int128 {
+                    return self.base;
+                }
+
+                func Add(self: &var Total, label: int32, values: int64...) -> int64 {
+                    return 0i64;
+                }
+
+                func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 {
+                    return amount * factor;
+                }
+
+                func Take(self: Total, extra: int64) -> int64 {
+                    return extra;
+                }
+            }
+
+            struct Bag<T> {
+                first: T;
+            }
+
+            extend Bag<T> {
+                func Count(self: &Bag<T>, values: T...) -> uint {
+                    return values.length;
+                }
+            }
+
+            func CallSum(total: Total, word: int64, byte: int8) -> int128 {
+                return Total::Sum(total, word, byte);
+            }
+
+            func CallAdd(word: int32) -> int64 {
+                var total = Total { base: 0i128 };
+                return Total::Add(total, 1i32, word);
+            }
+
+            func CallScale(total: Total) -> int64 {
+                return Total::Scale(total, 3i64);
+            }
+
+            func CallTake(total: Total, half: int32) -> int64 {
+                return Total::Take(total, half);
+            }
+
+            func CallBag(bag: Bag<int128>, word: int64) -> uint {
+                return Bag::Count<int128>(bag, word);
+            }
+        )");
+        const TypeRef total = TypeRef::MakeNamed("Total");
+        const TypeRef int128 = Primitive(TypeRef::Kind::Int128);
+        const TypeRef int64 = Primitive(TypeRef::Kind::Int64);
+        const TypeRef int32 = Primitive(TypeRef::Kind::Int32);
+
+        // The receiver is the first argument, borrowed as the method declares it, and the rest follow it.
+        const HirCallExpr &sum = RequireReturnedCall(RequireFunction(package, "CallSum"));
+        REQUIRE_EQ(sum.args.size(), 2);
+        CHECK_EQ(sum.args[0]->type, TypeRef::MakeReference(total));
+        const auto &elements = RequireVariadicElements(RequireFunction(package, "CallSum"));
+        REQUIRE_EQ(elements.size(), 2);
+        CheckConversion(*elements[0], int64, int128);
+        CheckConversion(*elements[1], Primitive(TypeRef::Kind::Int8), int128);
+
+        TypeRef writable = total;
+        writable.isMut = true;
+        const HirCallExpr &add = RequireReturnedCall(RequireFunction(package, "CallAdd"));
+        REQUIRE_EQ(add.args.size(), 3);
+        CHECK_EQ(add.args[0]->type, TypeRef::MakeReference(writable));
+        CHECK_EQ(add.args[1]->type, int32);
+        const auto &added = RequireVariadicElements(RequireFunction(package, "CallAdd"));
+        REQUIRE_EQ(added.size(), 1);
+        CheckConversion(*added[0], int32, int64);
+
+        // An omitted argument with a default value is filled after the receiver and the written ones.
+        const HirCallExpr &scale = RequireReturnedCall(RequireFunction(package, "CallScale"));
+        REQUIRE_EQ(scale.args.size(), 3);
+        CHECK_EQ(scale.args[0]->type, TypeRef::MakeReference(total));
+        CHECK_EQ(scale.args[1]->type, int64);
+        CHECK_EQ(scale.args[2]->type, int64);
+
+        // A receiver taken by value is passed as the value, and the next argument converts to its own parameter.
+        const HirCallExpr &take = RequireReturnedCall(RequireFunction(package, "CallTake"));
+        REQUIRE_EQ(take.args.size(), 2);
+        CHECK_EQ(take.args[0]->type, total);
+        CheckConversion(*take.args[1], int32, int64);
+
+        // A generic type's receiver is the instantiation the type arguments name.
+        const HirCallExpr &bag = RequireReturnedCall(RequireFunction(package, "CallBag"));
+        REQUIRE_EQ(bag.args.size(), 2);
+        CHECK_EQ(bag.args[0]->type, TypeRef::MakeReference(TypeRef::MakeNamed("Bag<int128>")));
+        const auto &counted = RequireVariadicElements(RequireFunction(package, "CallBag"));
+        REQUIRE_EQ(counted.size(), 1);
+        CheckConversion(*counted[0], int64, int128);
+    }
+
+    TEST_CASE("a Self variadic requirement uses its concrete generic implementation element") {
+        const HirPackage package = LowerToHir(R"(
+            interface Merger { func Merge(self: &Self, others: Self...) -> uint; }
+            struct Item<T> { value: T; }
+            extend Item<T> : Merger {
+                func Merge(self: &Item<T>, others: Item<T>...) -> uint { return others.length; }
+            }
+            func MergeItems<T: Merger>(item: &T, other: T) -> uint { return item.Merge(other); }
+            func Main() -> uint {
+                let item = Item<int32> { value: 1i32 };
+                return MergeItems(item, item);
+            }
+        )");
+        bool found = false;
+        for (const auto &module : package.modules) {
+            for (const auto &function : module.funcs) {
+                if (function.name.starts_with("MergeItems_")) {
+                    const auto &elements = RequireVariadicElements(function);
+                    REQUIRE_EQ(elements.size(), 1);
+                    CHECK_EQ(elements[0]->type, TypeRef::MakeNamed("Item<int32>"));
+                    found = true;
+                }
+            }
+        }
+        CHECK(found);
     }
 
     TEST_CASE("a C-variadic tail is passed after the default argument promotions on System V") {

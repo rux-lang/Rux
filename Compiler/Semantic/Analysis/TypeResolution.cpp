@@ -574,7 +574,8 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
 
 [[nodiscard]] const FuncDecl *AnalysisContext::LookupMethod(const TypeRef &receiverType, const std::string &methodName,
                                                             const std::vector<TypeRef> &argTypes,
-                                                            const bool requireAccessible, const CallExpr *call) {
+                                                            const bool requireAccessible, const CallExpr *call,
+                                                            const bool receiverIsArgument) {
     const std::string typeName = NamedBaseTypeName(receiverType);
     if (typeName.empty()) {
         return nullptr;
@@ -593,8 +594,9 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     if (overloads.empty()) {
         return nullptr;
     }
-    // Best-effort scrape for property access (missing args).
-    if (argTypes.empty()) {
+    // Best-effort scrape for property access (missing args). A call is matched like any other, so that one of several
+    // overloads is not chosen for an empty argument list it cannot take.
+    if (argTypes.empty() && !call) {
         return overloads[0];
     }
     // The arguments bind the fixed parameters, then each fills the variadic parameter, so a method takes them exactly
@@ -602,12 +604,13 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     // overload the arguments fill exactly is preferred, so neither a default value nor a variadic parameter takes a
     // call from the overload written for it.
     const auto accepts = [&](const FuncDecl &decl, const bool exactArity) {
-        const std::vector<TypeRef> fixedTypes = ResolveMethodParamTypes(receiverType, decl);
+        const std::vector<TypeRef> fixedTypes = ResolveMethodParamTypes(receiverType, decl, {}, receiverIsArgument);
         const std::optional<TypeRef> variadicElement = ResolveMethodVariadicType(receiverType, decl);
         if (exactArity && (variadicElement || fixedTypes.size() != argTypes.size())) {
             return false;
         }
-        const auto paramTypes = BoundParameterTypes(decl, true, fixedTypes, variadicElement, argTypes.size(), call);
+        const auto paramTypes =
+            BoundParameterTypes(decl, !receiverIsArgument, fixedTypes, variadicElement, argTypes.size(), call);
         if (!paramTypes) {
             return false;
         }

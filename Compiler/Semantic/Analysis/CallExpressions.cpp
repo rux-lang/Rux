@@ -730,10 +730,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 const std::string &methodName = path->segments[1];
                 const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
                 std::unordered_map<std::string, TypeRef> methodSubstitutions;
+                // Written through its type, a method is the function its declaration spells out: the receiver is an
+                // ordinary first parameter, so `Pair::Get(pair)` passes `pair` as `self` and checks it like any other
+                // argument, borrowing and moving included.
                 if (const FuncDecl *method = LookupMethodCall(receiverType, methodName, *e, argTypes,
-                                                              receiverArgumentCount, methodSubstitutions)) {
+                                                              receiverArgumentCount, methodSubstitutions, true)) {
                     std::vector<TypeRef> paramTypes =
-                        ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);
+                        ResolveMethodParamTypes(receiverType, *method, methodSubstitutions, true);
                     // An associated function on a generic type is instantiated by the type arguments written at the
                     // call, exactly as a method is by its receiver's.
                     CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
@@ -741,11 +744,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     QueueGenericInstantiation(*method, methodSubstitutions,
                                               expression.callee ? expression.callee->location : expression.location);
                     const bool callAccepted = checkBoundArguments(
-                        std::format("{}::{}", path->segments[0], methodName), argTypes, *method, true, paramTypes,
+                        std::format("{}::{}", path->segments[0], methodName), argTypes, *method, false, paramTypes,
                         ResolveMethodVariadicType(receiverType, *method, methodSubstitutions));
                     if (callAccepted) {
                         ConsumeCallArguments(*e, argTypes, &paramTypes);
-                        CheckFormatArguments(*e, *method, true);
+                        CheckFormatArguments(*e, *method, false);
                     }
                     RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
                                           methodSubstitutions, receiverType);
@@ -765,13 +768,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                             return TypeRef::MakeUnknown();
                         }
                         if (candidates.size() == 1) {
-                            static_cast<void>(
-                                checkBoundArguments(callable, argTypes, *candidates.front(), true,
-                                                    ResolveMethodParamTypes(receiverType, *candidates.front()),
-                                                    ResolveMethodVariadicType(receiverType, *candidates.front())));
+                            static_cast<void>(checkBoundArguments(
+                                callable, argTypes, *candidates.front(), false,
+                                ResolveMethodParamTypes(receiverType, *candidates.front(), {}, true),
+                                ResolveMethodVariadicType(receiverType, *candidates.front())));
                         }
                         else {
-                            emitOverloadError(callable, argTypes, candidates, true, receiverType);
+                            emitOverloadError(callable, argTypes, candidates, false, receiverType);
                         }
                         return TypeRef::MakeUnknown();
                     }
@@ -907,10 +910,12 @@ void AnalysisContext::RecordFunctionBinding(const CallExpr &call, const FuncDecl
     binding.receiverType = std::move(receiverType);
     binding.callingConvention = declaration.callConv;
     if (!declaration.params.empty() && declaration.params.back().isVariadic) {
-        // The boundary counts the written arguments before the variadic ones. A receiver is never written among them:
-        // a method call passes it before the argument list, and an interface or constrained call passes the value the
-        // operation is called on, whether or not the requirement spells out `self`.
-        const bool passesReceiver = dispatch == ResolvedCallableBinding::DispatchKind::Method ||
+        // The boundary counts the written arguments before the variadic ones. A receiver is written among them only in
+        // a call through the type, `Pair::Sum(pair, ...)`: a method call passes it before the argument list, and an
+        // interface or constrained call passes the value the operation is called on, whether or not the requirement
+        // spells out `self`.
+        const bool throughType = dynamic_cast<const PathExpr *>(call.callee.get()) != nullptr;
+        const bool passesReceiver = (dispatch == ResolvedCallableBinding::DispatchKind::Method && !throughType) ||
                                     dispatch == ResolvedCallableBinding::DispatchKind::Interface ||
                                     dispatch == ResolvedCallableBinding::DispatchKind::Constrained;
         std::size_t boundary = 0;

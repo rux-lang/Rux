@@ -140,10 +140,13 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
         }
     }
 
-    // Interface requirements usually omit self, whereas concrete method signatures declare it explicitly.
-    // Only a receiver present in the signature consumes a parameter-type slot.
-    const std::size_t typeOffset =
-        hasReceiver && !declaration.params.empty() && declaration.params.front().IsReceiver() ? 1 : 0;
+    // Interface function types omit the receiver even when the requirement spells it out. Concrete method types
+    // include it, so only those signatures consume a parameter-type slot.
+    const std::size_t typeOffset = hasReceiver &&
+                                           binding.dispatch != ResolvedCallableBinding::DispatchKind::Interface &&
+                                           !declaration.params.empty() && declaration.params.front().IsReceiver()
+                                     ? 1
+                                     : 0;
     const std::size_t fixedCount = binding.variadicBoundary.value_or(parameters.size());
     std::vector<HirExprPtr> arguments;
     arguments.reserve(std::max(call.args.size(), fixedCount) + (binding.variadicBoundary ? 1 : 0));
@@ -168,7 +171,21 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
 
     assert(fixedCount < parameters.size() && parameters[fixedCount]->isVariadic &&
            "Rux variadic binding has no variadic parameter");
-    const TypeRef elementType = ResolveTypeWithSubstitution(*parameters[fixedCount]->type, binding.substitutions);
+    // A constrained call binds the concrete implementation, whose generic parameters belong to its receiver rather
+    // than to the enclosing generic function. Resolve the element with that receiver's substitutions as well.
+    auto substitutions = binding.substitutions;
+    if (binding.receiverType) {
+        auto receiver = *binding.receiverType;
+        if ((receiver.kind == TypeRef::Kind::Pointer || receiver.kind == TypeRef::Kind::Reference) &&
+            !receiver.inner.empty()) {
+            receiver = receiver.inner.front();
+        }
+        substitutions.insert_or_assign("Self", receiver);
+        for (const auto &[name, type] : MethodTypeSubstitutions(receiver)) {
+            substitutions.try_emplace(name, type);
+        }
+    }
+    const TypeRef elementType = ResolveTypeWithSubstitution(*parameters[fixedCount]->type, substitutions);
     const bool singleSpread =
         call.args.size() == fixedCount + 1 && dynamic_cast<const SpreadExpr *>(call.args[fixedCount].get()) != nullptr;
     if (singleSpread) {

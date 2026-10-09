@@ -943,15 +943,18 @@ private:
     [[nodiscard]] std::string InstantiationNote(const FuncDecl &declaration,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) const;
     /// The method `argumentTypes` select. `call`, when the lookup is for one, says which argument is spread into a
-    /// variadic parameter; without it every argument past the fixed parameters is an element.
+    /// variadic parameter; without it every argument past the fixed parameters is an element. With
+    /// `receiverIsArgument`, as for a call written through the type, a method's receiver is the first argument.
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
                                                const std::vector<TypeRef> &argumentTypes = {},
-                                               bool requireAccessible = true, const CallExpr *call = nullptr);
+                                               bool requireAccessible = true, const CallExpr *call = nullptr,
+                                               bool receiverIsArgument = false);
     [[nodiscard]] std::unordered_map<std::string, TypeRef> MethodTypeSubstitutions(const TypeRef &receiverType) const;
     [[nodiscard]] const FuncDecl *LookupMethodCall(const TypeRef &receiverType, const std::string &methodName,
                                                    const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
                                                    std::size_t typeArgumentOffset,
-                                                   std::unordered_map<std::string, TypeRef> &substitutions);
+                                                   std::unordered_map<std::string, TypeRef> &substitutions,
+                                                   bool receiverIsArgument = false);
     [[nodiscard]] const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const;
     [[nodiscard]] TypeRef InstantiateAssociatedReceiver(TypeRef receiverType,
                                                         const std::vector<TypeExprPtr> &typeArguments);
@@ -959,9 +962,11 @@ private:
     [[nodiscard]] TypeRef
     ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method,
                             const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
+    /// The types of a method's fixed parameters for `receiverType`, without the receiver unless `includeReceiver`.
     [[nodiscard]] std::vector<TypeRef>
     ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method,
-                            const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
+                            const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {},
+                            bool includeReceiver = false);
     /// The element type of a method's trailing variadic parameter, resolved for `receiverType` as its fixed parameter
     /// types are, or none when its last parameter is fixed.
     [[nodiscard]] std::optional<TypeRef>

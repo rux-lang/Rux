@@ -263,6 +263,85 @@ TEST_CASE("a method takes variadic and defaulted arguments the way a function do
     CHECK_EQ(diagnostics[3].message, "call to 'Scale' expects between 1 and 2 arguments, but 3 were provided");
 }
 
+TEST_CASE("a method called through its type takes its receiver as the first argument") {
+    const auto accepted = AnalyzeErrors(R"(
+        struct Pair { a: int32; b: int32; }
+        extend Pair {
+            func Get(self: &Pair) -> int32 { return self.a; }
+            func Bump(self: &var Pair, by: int32 = 1i32) { self.a += by; }
+            func Same(self: Pair, other: Pair) -> bool { return self.a == other.a; }
+            func Sum(self: &Pair, values: int64...) -> int64 { return 0i64; }
+            func Of(a: int32) -> Pair { return Pair { a: a, b: 0i32 }; }
+        }
+        extend int64 {
+            func Plus(self: int64, values: int64...) -> int64 { return self; }
+        }
+        func Main() {
+            var p = Pair { a: 1i32, b: 2i32 };
+            let got = Pair::Get(p);
+            Pair::Bump(p);
+            Pair::Bump(p, 3i32);
+            let same = Pair::Same(p, p);
+            let empty = Pair::Sum(p);
+            let many = Pair::Sum(p, 1i32, 2i64);
+            let values: int64[2] = [1i64, 2i64];
+            let spread = Pair::Sum(p, values...);
+            let built = Pair::Of(4i32);
+            let plus = int64::Plus(1i64, 2i32);
+        }
+    )");
+    CAPTURE(accepted.empty() ? std::string{} : accepted[0].message);
+    CHECK(accepted.empty());
+
+    const auto diagnostics = AnalyzeErrors(R"(
+        struct Pair { a: int32; b: int32; }
+        extend Pair {
+            func Get(self: &Pair) -> int32 { return self.a; }
+            func Bump(self: &var Pair, by: int32 = 1i32) { self.a += by; }
+            func Same(self: Pair, other: Pair) -> bool { return self.a == other.a; }
+            func Sum(self: &Pair, values: int64...) -> int64 { return 0i64; }
+        }
+        func Main() {
+            let q = Pair { a: 1i32, b: 2i32 };
+            let missing = Pair::Get();
+            let one = Pair::Same(q);
+            Pair::Bump(q);
+            let wrong = Pair::Sum(1i64);
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "call to 'Pair::Get' expects 1 argument, but 0 were provided");
+    CHECK_EQ(diagnostics[1].message, "call to 'Pair::Same' expects 2 arguments, but 1 was provided");
+    CHECK_EQ(diagnostics[2].message, "argument 1 to 'Pair::Bump' cannot borrow immutable 'q' as '&var Pair'");
+    CHECK_EQ(diagnostics[3].message,
+             "argument 1 to 'Pair::Sum' has type 'int64', but parameter 'self' requires '&Pair'");
+}
+
+TEST_CASE("free overloads select by every variadic element and exact fixed arity") {
+    const auto accepted = AnalyzeErrors(R"(
+        func Pick(values: int32...) -> int32 { return 1i32; }
+        func Pick(values: float64...) -> int32 { return 2i32; }
+        func Exact(value: int32) -> int32 { return 1i32; }
+        func Exact(value: int32, extra: int32 = 0i32) -> int32 { return 2i32; }
+        func Main() {
+            let ints = Pick(1i32, 2i32);
+            let floats = Pick(1.0f64, 2.0f64);
+            let values: int32[2] = [1i32, 2i32];
+            let spread = Pick(values...);
+            let exact = Exact(1i32);
+        }
+    )");
+    CAPTURE(accepted.empty() ? std::string{} : accepted[0].message);
+    CHECK(accepted.empty());
+    const auto ambiguous = AnalyzeErrors(R"(
+        func Pick(values: int32...) -> int32 { return 1i32; }
+        func Pick(values: float64...) -> int32 { return 2i32; }
+        func Main() { let empty = Pick(); }
+    )");
+    REQUIRE_EQ(ambiguous.size(), 1);
+    CHECK(ambiguous[0].message.find("ambiguous") != std::string::npos);
+}
+
 TEST_CASE("a named array spreads only into a variadic parameter of its own element type") {
     const auto diagnostics = AnalyzeErrors(R"(
         func Sum(values: int64...) -> int64 { return 0i64; }
