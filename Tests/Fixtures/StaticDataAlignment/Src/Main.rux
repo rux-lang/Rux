@@ -1,0 +1,24 @@
+// Constant tables a dependency package places in its own read-only data, each wide one preceded by a byte-sized one so
+// that only padding the link keeps leaves it on its alignment.
+
+const BigWord: uint256 = (1u256 << 200u32) + 5u256;
+const LeadByte: uint8[3] = [0x11u8, 0x22u8, 0x33u8];
+const WideWords: uint256[2] = [BigWord, 0xFFu256];
+const TrailByte: uint8[1] = [0x44u8];
+const WideReals: float128[2] = [1.5f128, -0.25f128];
+
+/// The address of the provider's first uint256 element, or zero when its elements read back wrong.
+pub func ProviderWords() -> uint {
+    if LeadByte[2] != 0x33u8 || WideWords[0] != BigWord || WideWords[1] != 0xFFu256 {
+        return 0u;
+    }
+    return @WideWords[0] as uint;
+}
+
+/// The address of the provider's first float128 element, or zero when its elements read back wrong.
+pub func ProviderReals() -> uint {
+    if TrailByte[0] != 0x44u8 || WideReals[0] != 1.5f128 || WideReals[1] != -0.25f128 {
+        return 0u;
+    }
+    return @WideReals[0] as uint;
+}

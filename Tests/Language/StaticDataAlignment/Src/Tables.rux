@@ -1,0 +1,36 @@
+// A second module's constant tables, laid out in its own object. Each wide table follows a byte-sized one, so the
+// object's read-only data asks for a sixteen-byte alignment that only the linker can keep.
+
+module StaticDataAlignment::Tables {
+    const Large: int128 = (1i128 << 100u32) + 3i128;
+    const Tag: uint8[1] = [0x5Au8];
+    const Signed: int128[3] = [-1i128, Large, 7i128];
+    const Odd: uint8[5] = [1u8, 2u8, 3u8, 4u8, 5u8];
+    const Characters: char128[2] = [c128'A', c128'\u{10FFFF}'];
+    const Flag: uint8[1] = [0x7Eu8];
+    const Extended: float80[2] = [2.5f80, -8.0f80];
+
+    pub func SignedAddress() -> uint {
+        return @Signed[0] as uint;
+    }
+
+    pub func SignedIntact() -> bool {
+        return Tag[0] == 0x5Au8 && Signed[0] == -1i128 && Signed[1] == Large && Signed[2] == 7i128;
+    }
+
+    pub func CharactersAddress() -> uint {
+        return @Characters[0] as uint;
+    }
+
+    pub func CharactersIntact() -> bool {
+        return Odd[4] == 5u8 && Characters[0] == c128'A' && Characters[1] == c128'\u{10FFFF}';
+    }
+
+    pub func ExtendedAddress() -> uint {
+        return @Extended[0] as uint;
+    }
+
+    pub func ExtendedIntact() -> bool {
+        return Flag[0] == 0x7Eu8 && Extended[0] == 2.5f80 && Extended[1] == -8.0f80;
+    }
+}

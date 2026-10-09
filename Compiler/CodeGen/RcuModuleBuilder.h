@@ -55,7 +55,8 @@ public:
     [[nodiscard]] const std::vector<std::uint8_t> &SectionData(RcuModuleSection section) const;
     [[nodiscard]] const std::vector<RcuReloc> &Relocations(RcuModuleSection section) const;
 
-    /// Zero-pad a section and return the offset at which the next value begins.
+    /// Zero-pad a section and return the offset at which the next value begins. The section's recorded alignment
+    /// grows to the strictest value requested, so the offset keeps its alignment once the linker places the section.
     [[nodiscard]] std::uint32_t AlignSection(RcuModuleSection section, std::uint16_t alignment);
     [[nodiscard]] std::uint32_t Append(RcuModuleSection section, std::span<const std::uint8_t> bytes);
     /// Discard a speculative suffix of a section and its relocations. AArch64 uses this when a branch-layout pass must
@@ -102,6 +103,7 @@ private:
     RcuModuleDescription description;
     std::array<std::vector<std::uint8_t>, 3> sectionData;
     std::array<std::vector<RcuReloc>, 3> sectionRelocations;
+    std::array<std::uint16_t, 3> sectionAlignments = {1, 1, 1};
     std::vector<RcuSymbol> symbols;
     std::vector<SymbolState> symbolStates;
     std::vector<Diagnostic> diagnostics;

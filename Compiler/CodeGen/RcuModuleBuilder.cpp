@@ -57,8 +57,17 @@ namespace {
     return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64MovwUabsG3;
 }
 
+/// The alignment a section starts with before any value asks for more: code at a cache-friendly sixteen, data at the
+/// doubleword every pointer, length and 64-bit scalar the emitters place there needs.
+[[nodiscard]] constexpr std::uint16_t BaseAlignment(const RcuModuleSection section) noexcept {
+    return section == RcuModuleSection::Text ? 16 : 8;
+}
+
+/// A section's recorded alignment is the strictest any of its values asked for, never less than its base. The linker
+/// pads each object's section to this before appending it, so an offset `AlignSection` made a multiple of N stays a
+/// multiple of N at run time only if N is recorded here.
 [[nodiscard]] RcuSection MakeSection(const RcuModuleSection id, std::vector<std::uint8_t> data,
-                                     std::vector<RcuReloc> relocations) {
+                                     std::vector<RcuReloc> relocations, const std::uint16_t alignment) {
     RcuSection section;
     section.data = std::move(data);
     section.relocs = std::move(relocations);
@@ -67,21 +76,19 @@ namespace {
         section.name = ".text";
         section.type = RcuSecType::Text;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
-        section.alignment = 16;
         break;
     case RcuModuleSection::RoData:
         section.name = ".rodata";
         section.type = RcuSecType::RoData;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
-        section.alignment = 8;
         break;
     case RcuModuleSection::Data:
         section.name = ".data";
         section.type = RcuSecType::Data;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
-        section.alignment = 8;
         break;
     }
+    section.alignment = std::max(BaseAlignment(id), alignment);
     return section;
 }
 } // namespace
@@ -127,6 +134,8 @@ std::uint32_t RcuModuleBuilder::AlignSection(const RcuModuleSection section, con
     while (data.size() % alignment != 0) {
         data.push_back(0);
     }
+    auto &strictest = sectionAlignments[SectionIndex(section)];
+    strictest = std::max(strictest, alignment);
     return static_cast<std::uint32_t>(data.size());
 }
 
@@ -411,12 +420,12 @@ RcuModuleBuildResult RcuModuleBuilder::Finalize() {
     file.compilerFlags = description.compilerFlags;
     file.sourceHash = description.sourceHash;
     file.sections.reserve(3);
-    file.sections.push_back(
-        MakeSection(RcuModuleSection::Text, std::move(sectionData[0]), std::move(sectionRelocations[0])));
-    file.sections.push_back(
-        MakeSection(RcuModuleSection::RoData, std::move(sectionData[1]), std::move(sectionRelocations[1])));
-    file.sections.push_back(
-        MakeSection(RcuModuleSection::Data, std::move(sectionData[2]), std::move(sectionRelocations[2])));
+    file.sections.push_back(MakeSection(RcuModuleSection::Text, std::move(sectionData[0]),
+                                        std::move(sectionRelocations[0]), sectionAlignments[0]));
+    file.sections.push_back(MakeSection(RcuModuleSection::RoData, std::move(sectionData[1]),
+                                        std::move(sectionRelocations[1]), sectionAlignments[1]));
+    file.sections.push_back(MakeSection(RcuModuleSection::Data, std::move(sectionData[2]),
+                                        std::move(sectionRelocations[2]), sectionAlignments[2]));
     file.symbols = std::move(symbols);
     result.file = std::move(file);
     return result;
