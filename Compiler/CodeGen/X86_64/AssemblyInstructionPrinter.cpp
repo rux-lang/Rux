@@ -4,6 +4,7 @@
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
+#include "Target/FloatLowering.h"
 #include "Target/Platform.h"
 
 #include <algorithm>
@@ -172,6 +173,210 @@ std::string_view PtrSize(const int bytes) {
         printer.StoreA(instruction.dst, destinationType);
         return true;
     }
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool IsFloat80(const TypeRef &type) {
+    return type.kind == TypeRef::Kind::Float80;
+}
+
+/// The text of the x87 slot traffic for one instruction, mirroring `X87Stack` in `X87Emitter.cpp`: every operand is
+/// pushed from its frame slot and the one result popped back, so the register stack is empty between instructions.
+/// The first wide temporary holds the caller's control word with the pinned one after it; the second is the spill slot
+/// a value reaches the x87 unit through when it has no frame slot of the right width.
+class X87Text {
+public:
+    X87Text(AssemblyInstructionPrinter &printer, AssemblyModulePrinter &text)
+        : printer(printer)
+        , text(text)
+        , controlWords(printer.FramePlan().WideTemporaryOffset(0))
+        , spill(printer.FramePlan().WideTemporaryOffset(1)) {
+    }
+
+    void Emit(const std::string_view opcode, const std::string_view operands = {}) const {
+        text.TextInstruction(operands.empty() ? std::string(opcode) : std::format("{:<8}{}", opcode, operands));
+    }
+
+    /// Saves the caller's control word and selects 64-bit precision with round to nearest.
+    void BeginRounding() const {
+        Emit("fnstcw", std::format("word [rbp - {}]", controlWords));
+        Emit("mov", std::format("word [rbp - {}], 0x037F", controlWords - 2));
+        Emit("fldcw", std::format("word [rbp - {}]", controlWords - 2));
+    }
+
+    /// Restores the control word `BeginRounding` saved.
+    void EndRounding() const {
+        Emit("fldcw", std::format("word [rbp - {}]", controlWords));
+    }
+
+    /// Pushes `reg`: a float80 as it is, a machine float widened exactly, a signed integer through `fild` after it is
+    /// sign-extended to 64 bits in the spill slot.
+    void Push(const LirReg reg, const TypeRef &type) const {
+        const bool physical = printer.FramePlan().PhysicalRegisters().contains(reg);
+        if (IsFloat80(type)) {
+            Emit("fld", std::format("tword [rbp - {}]", Slot(reg)));
+            return;
+        }
+        if (IsFloat(type)) {
+            const std::int32_t address = physical ? Spill(reg, type) : Slot(reg);
+            Emit("fld", std::format("{} [rbp - {}]", type.kind == TypeRef::Kind::Float32 ? "dword" : "qword", address));
+            return;
+        }
+        Emit("fild", std::format("qword [rbp - {}]", !physical && SizeOf(type) == 8 ? Slot(reg) : Spill(reg, type)));
+    }
+
+    /// Pops the x87 top into `reg`, rounding to `type` under the current control word. A float80 destination gets its
+    /// six padding bytes zeroed.
+    void Pop(const LirReg reg, const TypeRef &type) const {
+        if (IsFloat80(type)) {
+            const std::int32_t slot = Slot(reg);
+            Emit("fstp", std::format("tword [rbp - {}]", slot));
+            Emit("mov", std::format("word [rbp - {}], 0", slot - 10));
+            Emit("mov", std::format("dword [rbp - {}], 0", slot - 12));
+            return;
+        }
+        const std::string_view width = type.kind == TypeRef::Kind::Float32 ? "dword" : "qword";
+        if (!printer.FramePlan().PhysicalRegisters().contains(reg)) {
+            Emit("fstp", std::format("{} [rbp - {}]", width, Slot(reg)));
+            return;
+        }
+        Emit("fstp", std::format("{} [rbp - {}]", width, spill));
+        Emit("mov",
+             std::format("{}, {} [rbp - {}]", type.kind == TypeRef::Kind::Float32 ? "eax" : "rax", width, spill));
+        printer.StoreA(reg, type);
+    }
+
+private:
+    [[nodiscard]] std::int32_t Slot(const LirReg reg) const {
+        return printer.FramePlan().SlotOffsets().at(reg);
+    }
+
+    /// Writes `reg` to the spill slot as a 64-bit value and returns the slot.
+    [[nodiscard]] std::int32_t Spill(const LirReg reg, const TypeRef &type) const {
+        printer.LoadA(reg, type);
+        Emit("mov", std::format("qword [rbp - {}], rax", spill));
+        return spill;
+    }
+
+    AssemblyInstructionPrinter &printer;
+    AssemblyModulePrinter &text;
+    std::int32_t controlWords;
+    std::int32_t spill;
+};
+
+/// The text of a float80 instruction the object emitter lowers to x87 (`X86_64FunctionEmitter::EmitX87`), in the same
+/// order and on the same frame addresses. Returns false for anything that lowering leaves to the other paths.
+[[nodiscard]] bool PrintX87(AssemblyInstructionPrinter &printer, AssemblyModulePrinter &text,
+                            const LirInstr &instruction) {
+    if (Target::FloatLoweringFor(TypeRef::Kind::Float80, Target::Arch::X86_64) != Target::FloatLowering::X87 ||
+        instruction.dst == LirNoReg || instruction.srcs.empty()) {
+        return false;
+    }
+    const auto &types = printer.FramePlan().RegisterTypes();
+    const TypeRef sourceType = types.contains(instruction.srcs[0]) ? types.at(instruction.srcs[0]) : instruction.type;
+    const TypeRef &type = instruction.type;
+    const X87Text x87(printer, text);
+
+    switch (instruction.op) {
+    case LirOpcode::Add:
+    case LirOpcode::Sub:
+    case LirOpcode::Mul:
+    case LirOpcode::Div: {
+        if (!IsFloat80(type) || instruction.srcs.size() != 2) {
+            return false;
+        }
+        const std::string_view opcode = instruction.op == LirOpcode::Add ? "faddp"
+                                      : instruction.op == LirOpcode::Sub ? "fsubp"
+                                      : instruction.op == LirOpcode::Mul ? "fmulp"
+                                                                         : "fdivp";
+        x87.BeginRounding();
+        x87.Push(instruction.srcs[0], type);
+        x87.Push(instruction.srcs[1], type);
+        // Intel operand order: st1 = st1 op st0, then pop, so the left operand pushed first is the minuend.
+        x87.Emit(opcode, "st1, st0");
+        x87.Pop(instruction.dst, type);
+        x87.EndRounding();
+        return true;
+    }
+    case LirOpcode::Mod: {
+        if (!IsFloat80(type) || instruction.srcs.size() != 2) {
+            return false;
+        }
+        // st1 = divisor, st0 = dividend; `fprem` leaves C2 (bit 2 of ah after `fnstsw`) set while the reduction is
+        // partial. The remainder is exact, so the control word is left alone.
+        x87.Push(instruction.srcs[1], type);
+        x87.Push(instruction.srcs[0], type);
+        const std::string loop = text.CreateLocalLabel(".x87_fprem_");
+        text.TextLabel(loop);
+        x87.Emit("fprem");
+        x87.Emit("fnstsw", "ax");
+        x87.Emit("test", "ah, 4");
+        x87.Emit("jnz", loop);
+        x87.Emit("fstp", "st1");
+        x87.Pop(instruction.dst, type);
+        return true;
+    }
+    case LirOpcode::CmpEq:
+    case LirOpcode::CmpNe:
+    case LirOpcode::CmpLt:
+    case LirOpcode::CmpLe:
+    case LirOpcode::CmpGt:
+    case LirOpcode::CmpGe: {
+        if (!IsFloat80(sourceType) || instruction.srcs.size() != 2) {
+            return false;
+        }
+        x87.Push(instruction.srcs[1], sourceType);
+        x87.Push(instruction.srcs[0], sourceType);
+        x87.Emit("fucomip", "st0, st1");
+        x87.Emit("fstp", "st0");
+        // The flags read like UCOMISD's: an unordered result sets PF, which makes every comparison but `!=` false.
+        std::string_view setOpcode;
+        switch (instruction.op) {
+        case LirOpcode::CmpEq:
+            setOpcode = "sete";
+            break;
+        case LirOpcode::CmpNe:
+            setOpcode = "setne";
+            break;
+        case LirOpcode::CmpLt:
+            setOpcode = "setb";
+            break;
+        case LirOpcode::CmpLe:
+            setOpcode = "setbe";
+            break;
+        case LirOpcode::CmpGt:
+            setOpcode = "seta";
+            break;
+        default:
+            setOpcode = "setae";
+            break;
+        }
+        const bool unorderedTrue = instruction.op == LirOpcode::CmpNe;
+        x87.Emit(setOpcode, "al");
+        x87.Emit(unorderedTrue ? "setp" : "setnp", "dl");
+        x87.Emit(unorderedTrue ? "or" : "and", "al, dl");
+        x87.Emit("movzx", "rax, al");
+        printer.StoreA(instruction.dst, TypeRef::MakeBool());
+        return true;
+    }
+    case LirOpcode::Cast:
+        if (IsFloat80(type) &&
+            (IsFloat(sourceType) || (sourceType.IsInteger() && sourceType.IsSigned() && SizeOf(sourceType) <= 8))) {
+            // Every float32, float64 and 64-bit signed integer is exact in float80: nothing rounds.
+            x87.Push(instruction.srcs[0], sourceType);
+            x87.Pop(instruction.dst, type);
+            return true;
+        }
+        if (IsFloat80(sourceType) && IsFloat(type)) {
+            x87.BeginRounding();
+            x87.Push(instruction.srcs[0], sourceType);
+            x87.Pop(instruction.dst, type);
+            x87.EndRounding();
+            return true;
+        }
+        return false;
     default:
         return false;
     }
@@ -603,7 +808,7 @@ int AssemblyInstructionPrinter::ResolveFieldOffset(const LirReg base, const std:
 }
 
 bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
-    if (PrintWideBool(*this, modulePrinter, instruction)) {
+    if (PrintX87(*this, modulePrinter, instruction) || PrintWideBool(*this, modulePrinter, instruction)) {
         return true;
     }
     switch (instruction.op) {

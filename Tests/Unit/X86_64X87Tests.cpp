@@ -3,6 +3,7 @@
 // Every expected byte string follows the Intel SDM opcode tables and was cross-checked against clang's integrated
 // assembler in Intel syntax with the `{disp32}` prefix, which forces the disp32 forms this encoder always emits.
 
+#include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
@@ -18,9 +19,11 @@
 #include <cstdint>
 #include <doctest.h>
 #include <filesystem>
+#include <format>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace Rux;
@@ -632,4 +635,162 @@ TEST_CASE("x86-64 RCU executes float80 arithmetic, comparisons and conversions o
 #else
     CHECK_FALSE(objects.front().sections.at(RCU_TEXT_IDX).data.empty());
 #endif
+}
+
+// ---- assembly text -------------------------------------------------------------------------------------------------
+
+namespace {
+/// One function holding every x87 form the lowering emits: the four rounding operations, the fprem loop, an ordered
+/// and the unordered-true comparison, both widening conversions and both narrowing ones.
+[[nodiscard]] LirFunc X87TextFunction() {
+    const TypeRef float32 = Primitive(TypeRef::Kind::Float32);
+    const TypeRef float64 = Primitive(TypeRef::Kind::Float64);
+    LirFunc function;
+    function.name = "X87Text";
+    function.isPublic = true;
+    function.returnType = float64;
+    function.params = {
+        {0, Extended, "left"}, {1, Extended, "right"}, {2, float64, "wide"}, {3, TypeRef::MakeInt16(), "small"}};
+    const auto instruction = [](const LirOpcode op, const LirReg dst, const TypeRef &type, std::vector<LirReg> srcs) {
+        LirInstr result;
+        result.op = op;
+        result.dst = dst;
+        result.type = type;
+        result.srcs = std::move(srcs);
+        return result;
+    };
+    LirBlock block;
+    block.label = "entry";
+    block.instrs = {
+        instruction(LirOpcode::Add, 4, Extended, {0, 1}),
+        instruction(LirOpcode::Sub, 5, Extended, {0, 1}),
+        instruction(LirOpcode::Mul, 6, Extended, {0, 1}),
+        instruction(LirOpcode::Div, 7, Extended, {0, 1}),
+        instruction(LirOpcode::Mod, 8, Extended, {0, 1}),
+        instruction(LirOpcode::CmpLt, 9, TypeRef::MakeBool(), {0, 1}),
+        instruction(LirOpcode::CmpNe, 10, TypeRef::MakeBool(), {0, 1}),
+        instruction(LirOpcode::Cast, 11, Extended, {2}),
+        instruction(LirOpcode::Cast, 12, float64, {4}),
+        instruction(LirOpcode::Cast, 13, float32, {4}),
+        instruction(LirOpcode::Cast, 14, Extended, {3}),
+    };
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 12;
+    block.term->retType = float64;
+    function.blocks.push_back(std::move(block));
+    return function;
+}
+
+/// The lines as the module printer writes them: indented four spaces, one per line.
+[[nodiscard]] std::string Lines(const std::vector<std::string> &lines) {
+    std::string text;
+    for (const auto &line : lines) {
+        text += "    " + line + "\n";
+    }
+    return text;
+}
+
+void Append(std::vector<std::string> &lines, std::vector<std::string> more) {
+    for (auto &line : more) {
+        lines.push_back(std::move(line));
+    }
+}
+} // namespace
+
+TEST_CASE("x86-64 assembly text spells the x87 lowering on the frame addresses the object code uses") {
+    for (const Target::OS os : Systems) {
+        CAPTURE(static_cast<int>(os));
+        const LirFunc function = X87TextFunction();
+        const std::string text = AssemblyPrinter(PackageOf({function}), os).Generate();
+        const X86_64FramePlan plan = PlanX86_64Frame(function, {}, {}, os);
+        const auto slot = [&](const LirReg reg) { return plan.SlotOffsets().at(reg); };
+        const std::int32_t controlWords = plan.WideTemporaryOffset(0);
+        const std::int32_t spill = plan.WideTemporaryOffset(1);
+        const auto contains = [&](const std::string &expected) {
+            CAPTURE(expected);
+            CHECK(text.find(expected) != std::string::npos);
+        };
+        const std::vector<std::string> begin = {std::format("fnstcw  word [rbp - {}]", controlWords),
+                                                std::format("mov     word [rbp - {}], 0x037F", controlWords - 2),
+                                                std::format("fldcw   word [rbp - {}]", controlWords - 2)};
+        const std::string end = std::format("fldcw   word [rbp - {}]", controlWords);
+        const auto popFloat80 = [&](const LirReg reg) {
+            return std::vector<std::string>{std::format("fstp    tword [rbp - {}]", slot(reg)),
+                                            std::format("mov     word [rbp - {}], 0", slot(reg) - 10),
+                                            std::format("mov     dword [rbp - {}], 0", slot(reg) - 12)};
+        };
+
+        // Each rounding operation: pin the control word, push left then right, combine into st1 and pop, store the
+        // result with its padding zeroed, restore the caller's word.
+        const std::pair<LirReg, std::string_view> arithmetic[] = {
+            {4, "faddp"}, {5, "fsubp"}, {6, "fmulp"}, {7, "fdivp"}};
+        for (const auto &[result, opcode] : arithmetic) {
+            CAPTURE(opcode);
+            std::vector<std::string> lines = begin;
+            lines.push_back(std::format("fld     tword [rbp - {}]", slot(0)));
+            lines.push_back(std::format("fld     tword [rbp - {}]", slot(1)));
+            lines.push_back(std::format("{:<8}st1, st0", opcode));
+            Append(lines, popFloat80(result));
+            lines.push_back(end);
+            contains(Lines(lines));
+        }
+
+        // The remainder pushes the divisor first, loops on C2 and drops the divisor. It is exact, so it never touches
+        // the control word.
+        const std::string loopStart =
+            Lines({std::format("fld     tword [rbp - {}]", slot(1)), std::format("fld     tword [rbp - {}]", slot(0))});
+        const std::size_t remainder = text.find(loopStart);
+        REQUIRE(remainder != std::string::npos);
+        const std::size_t label = remainder + loopStart.size();
+        const std::size_t colon = text.find(":\n", label);
+        REQUIRE(colon != std::string::npos);
+        const std::string loop = text.substr(label, colon - label);
+        CHECK(loop.starts_with(".x87_fprem_"));
+        std::vector<std::string> loopBody = {"fprem", "fnstsw  ax", "test    ah, 4", "jnz     " + loop, "fstp    st1"};
+        Append(loopBody, popFloat80(8));
+        CHECK_EQ(text.compare(colon + 2, Lines(loopBody).size(), Lines(loopBody)), 0);
+        CHECK(text.find(Lines(loopBody) + Lines({end})) == std::string::npos);
+
+        // Comparisons push right then left so st0 holds the left operand, pop both, and read the flags as UCOMISD's.
+        const std::vector<std::string> compare = {std::format("fld     tword [rbp - {}]", slot(1)),
+                                                  std::format("fld     tword [rbp - {}]", slot(0)), "fucomip st0, st1",
+                                                  "fstp    st0"};
+        std::vector<std::string> less = compare;
+        Append(less, {"setb    al", "setnp   dl", "and     al, dl", "movzx   rax, al"});
+        contains(Lines(less));
+        std::vector<std::string> notEqual = compare;
+        Append(notEqual, {"setne   al", "setp    dl", "or      al, dl", "movzx   rax, al"});
+        contains(Lines(notEqual));
+
+        // Widening is exact and left unwrapped; narrowing rounds under the pinned word.
+        std::vector<std::string> widen = {std::format("fld     qword [rbp - {}]", slot(2))};
+        Append(widen, popFloat80(11));
+        contains(Lines(widen));
+        CHECK(text.find(Lines(begin) + Lines(widen)) == std::string::npos);
+
+        const auto narrow = [&](const LirReg result, const std::string_view width) {
+            std::vector<std::string> lines = begin;
+            lines.push_back(std::format("fld     tword [rbp - {}]", slot(4)));
+            const bool physical = plan.PhysicalRegisters().contains(result);
+            lines.push_back(std::format("fstp    {} [rbp - {}]", width, physical ? spill : slot(result)));
+            return Lines(lines);
+        };
+        contains(narrow(12, "qword"));
+        contains(narrow(13, "dword"));
+
+        // A narrow signed integer is sign-extended into the 64-bit spill slot `fild` reads.
+        std::vector<std::string> integer = {std::format("mov     qword [rbp - {}], rax", spill),
+                                            std::format("fild    qword [rbp - {}]", spill)};
+        Append(integer, popFloat80(14));
+        contains(Lines(integer));
+        if (!plan.PhysicalRegisters().contains(3)) {
+            contains(Lines({std::format("movsx   rax, word [rbp - {}]", slot(3))}) + Lines(integer));
+        }
+
+        // Nothing falls through to the SSE or integer spellings.
+        CHECK(text.find("addsd") == std::string::npos);
+        CHECK(text.find("ucomisd") == std::string::npos);
+        CHECK(text.find("imul") == std::string::npos);
+    }
 }

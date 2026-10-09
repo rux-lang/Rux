@@ -1,0 +1,100 @@
+// float80 runs on the x87 unit on x86-64, and the result must be the one the compiler folds: every rounding at the full
+// 64-bit significand, ties to even. The Win64 default control word selects 53-bit precision, so each rounding
+// operation pins 64-bit precision around itself and restores the caller's word afterwards. Elsewhere float80 runs
+// through the software helpers, which must give the same bits.
+// Every operand passes through a function, so the operation runs rather than folds, and each result is compared by its
+// 80 value bits, read through a pointer cast, against a constant the compiler folds or against a written-out encoding.
+
+import Core::Assert;
+
+func Add(left: float80, right: float80) -> float80 {
+    return left + right;
+}
+
+func Subtract(left: float80, right: float80) -> float80 {
+    return left - right;
+}
+
+func Divide(left: float80, right: float80) -> float80 {
+    return left / right;
+}
+
+func Remainder(left: float80, right: float80) -> float80 {
+    return left % right;
+}
+
+func Narrow(value: float80) -> float64 {
+    return value as float64;
+}
+
+func Widen(value: float64) -> float80 {
+    return value as float80;
+}
+
+func FromInt64(value: int64) -> float80 {
+    return value as float80;
+}
+
+func AddFloat64(left: float64, right: float64) -> float64 {
+    return left + right;
+}
+
+/// The 80 value bits of a float80: the 64-bit significand in the low bytes and the sign and exponent above it.
+func Bits(value: float80) -> uint128 {
+    return *(@value as *uint128) & 0xFFFFFFFFFFFFFFFFFFFFu128;
+}
+
+const One: float80 = 1.0f80;
+const Three: float80 = 3.0f80;
+// 2^-63 and 2^-64: one unit and half a unit in the last place of a float80 at 1.
+const Ulp: float80 = 1.08420217248550443400745280086994171142578125e-19f80;
+const HalfUlp: float80 = 5.42101086242752217003726400434970855712890625e-20f80;
+
+const OnePlusUlp: float80 = One + Ulp;
+const OneMinusHalfUlp: float80 = One - HalfUlp;
+const Third: float80 = One / Three;
+const Large: float80 = 1.0e4000f80;
+const Seven: float80 = 7.0f80;
+const LargeRemainder: float80 = Large % Seven;
+const Wide: float80 = 12345678901234567890123456789.0f80;
+const WideRemainder: float80 = Wide % Three;
+
+func Main() -> int {
+    // Exact only at 64-bit precision: 53 bits would round both back to 1.
+    let onePlusUlp = Add(One, Ulp);
+    Assert(onePlusUlp != One, "1 + 2^-63 is not rounded away");
+    Assert(Bits(onePlusUlp) == 0x3FFF8000000000000001u128, "1 + 2^-63 is exact");
+    Assert(Bits(onePlusUlp) == Bits(OnePlusUlp), "and matches the folded sum");
+    Assert(Bits(Subtract(One, HalfUlp)) == 0x3FFEFFFFFFFFFFFFFFFFu128, "1 - 2^-64 is exact below 1");
+    Assert(Bits(Subtract(One, HalfUlp)) == Bits(OneMinusHalfUlp), "and matches the folded difference");
+
+    // Halfway cases round to the even significand: down to 1, and up to 1 + 2^-62.
+    Assert(Bits(Add(One, HalfUlp)) == Bits(One), "1 + 2^-64 ties down to even");
+    Assert(Bits(Add(OnePlusUlp, HalfUlp)) == 0x3FFF8000000000000002u128, "1 + 2^-63 + 2^-64 ties up to even");
+
+    // 1/3 rounds up in its 64th significand bit; 53-bit precision would end the significand in ...A800.
+    let third = Divide(One, Three);
+    Assert(Bits(third) == 0x3FFDAAAAAAAAAAAAAAABu128, "1/3 is rounded at 64 bits");
+    Assert(Bits(third) == Bits(Third), "and matches the folded quotient");
+
+    // fprem reduces at most 63 bits of exponent per step, so these loop; the remainder is exact and keeps the
+    // dividend's sign, as C's fmod does.
+    Assert(Bits(Remainder(Large, Seven)) == Bits(LargeRemainder), "1e4000 % 7 matches the folded remainder");
+    Assert(Bits(Remainder(Wide, Three)) == Bits(WideRemainder), "a 94-bit dividend matches the folded remainder");
+    Assert(Remainder(10.5f80, Three) == 1.5f80, "10.5 % 3 is 1.5");
+    Assert(Bits(Remainder(-7.5f80, 2.0f80)) == 0xBFFFC000000000000000u128, "-7.5 % 2 is -1.5");
+
+    // Conversions: machine floats and int64 widen exactly; narrowing rounds once, to the float64 nearest.
+    Assert(Bits(Widen(0.1)) == Bits(0.1 as float80), "float64 0.1 widens exactly");
+    Assert(Bits(FromInt64(-9223372036854775807i64)) == Bits(-9223372036854775807.0f80), "int64 converts exactly");
+    Assert(Narrow(onePlusUlp) == 1.0, "1 + 2^-63 narrows to 1");
+    Assert(Narrow(third) == 1.0 / 3.0, "1/3 narrows to the float64 quotient");
+
+    // float64 keeps its own 53-bit rounding after the x87 work above: 1 + 2^-53 is a tie that rounds to 1, where a
+    // 64-bit computation would keep it.
+    Assert(AddFloat64(1.0, 0.00000000000000011102230246251565404236316680908203125) == 1.0,
+           "float64 still rounds at 53 bits");
+    Assert(AddFloat64(1.0, 0.0000000000000002220446049250313080847263336181640625) > 1.0,
+           "and keeps one float64 unit");
+    return 0;
+}
