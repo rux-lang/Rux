@@ -1,7 +1,7 @@
 // What the character widths and character slices share: the replacement rule, and the escape that undoes it.
 // Every character width has values that are not characters. A `char8` above 0x7F is one piece of a character
-// spread over several; a `char16` in the surrogate range is half of one; a `char32` or any wider width can be cast
-// from a number that is no scalar value at all. There is one rule for all of them and it has two halves.
+// spread over several; a `char16` in the surrogate range is half of one; raw storage read as `char32` or a wider
+// width can contain a number that is no scalar value at all. There is one rule for all of them and it has two halves.
 // `Display` replaces. A value that is not a whole character is written as U+FFFD, which is what "there was
 // something here and it could not be represented" looks like in text, and it keeps the promise every reader of the
 // output relies on: what comes out is well-formed UTF-8. That is lossy, and it is meant to be — two different

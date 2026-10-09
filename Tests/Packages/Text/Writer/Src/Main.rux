@@ -119,10 +119,9 @@ func Main() -> int {
     // WriteAscii refuses a byte that is not a whole character rather than writing half of one.
     Assert(FailureCode(WriteAscii(writer, 0xC3u8 as char8)) == 2, "a byte above 0x7F is not one ASCII character");
 
-    // WriteScalar refuses a value that is not a scalar value. A surrogate half encodes nothing on its own, and the
-    // compiler refuses to fold one into a char32 at all, so the value has to arrive at run time to be tested here.
+    // WriteScalar rejects a surrogate read from raw storage independently of checked character casts.
     var half: uint32 = 0xD800;
-    Assert(FailureCode(WriteScalar(writer, half as char32)) == 2, "a surrogate half is not a scalar value");
+    Assert(FailureCode(WriteScalar(writer, *((@half) as *char32))) == 2, "a surrogate half is not a scalar value");
 
     // A helper's failure propagates the writer's own failure unchanged rather than replacing it.
     var tiny: char8[2];

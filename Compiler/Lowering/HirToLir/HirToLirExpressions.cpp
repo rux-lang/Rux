@@ -1,6 +1,7 @@
 // Scalar, lvalue, and call expression lowering.
 
 #include "Lowering/HirToLir/HirToLirContext.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cassert>
@@ -68,7 +69,7 @@ std::string SignedMinimumLiteral(const TypeRef &type) {
 
 void HirToLirContext::EmitDivisionChecks(const LirReg dividend, const LirReg divisor, const HirExpr &divisorExpr,
                                          const TypeRef &type, const SourceLocation &location) {
-    if (!type.IsInteger()) {
+    if (!type.IsInteger() && !type.IsChar()) {
         return;
     }
     const auto known = KnownDivisorOf(divisorExpr, type);
@@ -237,7 +238,39 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         return LowerTuple(*e);
     }
     if (auto *e = dynamic_cast<const HirCastExpr *>(&expr)) {
-        return EmitCast(LowerExpr(*e->operand), e->operand->type, e->type);
+        const LirReg value = LowerExpr(*e->operand);
+        const TypeRef &sourceType = e->operand->type;
+        if (e->type.IsChar()) {
+            // Check before narrowing, so discarded high bits and negative values cannot become valid characters.
+            TypeRef checkType = TypeRef::MakeUInt64();
+            switch (sourceType.IsFloat() ? 8 : sourceType.SizeInBytes().value_or(8)) {
+            case 16:
+                checkType.kind = TypeRef::Kind::UInt128;
+                break;
+            case 32:
+                checkType.kind = TypeRef::Kind::UInt256;
+                break;
+            case 64:
+                checkType.kind = TypeRef::Kind::UInt512;
+                break;
+            default:
+                break;
+            }
+            const LirReg unsignedValue = EmitCastIfNeeded(value, sourceType, checkType);
+            const LirReg maximum = EmitConst(std::to_string(*MaxCharacterValue(e->type.kind)), checkType);
+            LirReg valid = EmitBinary(LirOpcode::CmpLe, unsignedValue, maximum, TypeRef::MakeBool());
+            if (CharacterDomainOf(e->type.kind) == CharacterDomain::ScalarValue) {
+                const LirReg below =
+                    EmitBinary(LirOpcode::CmpLt, unsignedValue, EmitConst("55296", checkType), TypeRef::MakeBool());
+                const LirReg above =
+                    EmitBinary(LirOpcode::CmpGt, unsignedValue, EmitConst("57343", checkType), TypeRef::MakeBool());
+                valid = EmitBinary(LirOpcode::And, valid, EmitBinary(LirOpcode::Or, below, above, TypeRef::MakeBool()),
+                                   TypeRef::MakeBool());
+            }
+            EmitTrapUnless(valid, "invalid character cast", e->location);
+            return EmitCast(unsignedValue, checkType, e->type);
+        }
+        return EmitCast(value, sourceType, e->type);
     }
     if (auto *e = dynamic_cast<const HirIsExpr *>(&expr)) {
         // Should only be reached for interface types (rejected by

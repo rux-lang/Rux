@@ -10,11 +10,9 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 // Every case renders twice, once through a constrained borrowed receiver and once through the interface, and
 // `Display` is reached a third way through `Render`'s variadic arguments.
 
-// A value that is not a character, made at run time.
-// The compiler refuses to fold a surrogate or an out-of-range number into a character constant, so the number is
-// passed through a function and the cast happens on a value the compiler cannot see.
+// Reinterpret malformed raw storage to test presentation independently of checked character casts.
 func AsChar128(value: uint128) -> char128 {
-    return value as char128;
+    return *((@value) as *char128);
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {

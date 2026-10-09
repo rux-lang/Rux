@@ -1,6 +1,6 @@
 // A `char32` holds one Unicode scalar value, which is one to four bytes of UTF-8.
 // A `char32` is checked when it is made, so a value that is not a scalar value cannot ordinarily be in one. It is
-// still checked here, because a cast can produce one and the writer's promise is worth more than the check costs.
+// still checked here, because raw storage can contain one and the writer must preserve valid UTF-8.
 
 import Text::{ IsScalarValue, TextError };
 
@@ -21,8 +21,8 @@ extend char32 : Display {
 
 extend char32 : Debug {
     /// The same character, quoted, with a value that is not one preserved as `\u{xxxx}`.
-    /// Where `Display` writes U+FFFD, this writes the value itself, so a cast that produced a surrogate and one
-    /// that produced a number past the last scalar are not the same rendering.
+    /// Where `Display` writes U+FFFD, this writes the value itself, so raw storage containing a surrogate and storage
+    /// containing a number past the last scalar have different renderings.
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

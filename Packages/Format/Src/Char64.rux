@@ -1,6 +1,6 @@
 // A `char64` holds one Unicode scalar value in eight bytes, which is one to four bytes of UTF-8.
 // The width is the whole difficulty. A scalar value stops at U+10FFFF and a `char64` has room for four billion
-// times that, so a cast can put a number in one that no character has. Checking after narrowing to `uint32` would
+// times that, so raw storage can hold a number that no character has. Checking after narrowing to `uint32` would
 // be worse than not checking: `0x100000041` narrows to `0x41`, which is a perfectly good `A`, and the wrong
 // character is harder to notice than a refused one. So validity is decided at the full sixty-four bits, before
 // anything is narrowed.

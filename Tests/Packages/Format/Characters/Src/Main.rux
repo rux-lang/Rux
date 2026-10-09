@@ -16,17 +16,13 @@ import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView,
 // buys.
 // `Display` is reached through `Render`'s variadic arguments; explicit `Debug` bindings exercise interface dispatch.
 
-// A value that is not a scalar, made at run time.
-// The compiler refuses to fold a surrogate or an out-of-range number into a `char32` or a `char64` at all, which is
-// the right answer for a constant and leaves no way to write one down. Passing the number through a function makes
-// the cast a run-time one, which is how such a value reaches a program in the first place — out of a cast on data
-// that came from somewhere else.
+// Reinterpret malformed raw storage to exercise presentation independently of checked character casts.
 func AsChar32(value: uint32) -> char32 {
-    return value as char32;
+    return *((@value) as *char32);
 }
 
 func AsChar64(value: uint64) -> char64 {
-    return value as char64;
+    return *((@value) as *char64);
 }
 
 func SameBytes(actual: char8[..], expected: char8[..]) -> bool {

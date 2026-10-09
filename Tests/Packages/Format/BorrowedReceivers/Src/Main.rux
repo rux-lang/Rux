@@ -121,7 +121,7 @@ func Main() -> int {
     Shown<char64>(wide, plain, "😀");
     Inspected<char64>(wide, plain, "'😀'");
     var invalidBits: uint64 = 0x100000041;
-    let invalidWide = invalidBits as char64;
+    let invalidWide = *((@invalidBits) as *char64);
     Shown<char64>(invalidWide, plain, "�");
     Inspected<char64>(invalidWide, plain, "'\\u{0000000100000041}'");
     let hex: uint32 = 255;

@@ -112,7 +112,7 @@ extend char16[..] : Debug {
 extend char32[..] : Display {
     /// Writes this text as UTF-8, with every element that is not a character replaced by U+FFFD.
     /// Every element stands alone here: UTF-32 has no pairs, so an element is a character or it is nothing, and
-    /// the only way it becomes nothing is a cast. One element renders as exactly one character either way.
+    /// raw storage can contain a value that is no scalar. One element renders as exactly one character either way.
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

@@ -534,3 +534,125 @@ func Main() -> int {
         }
     }
 }
+
+TEST_CASE("character division and remainder by zero report a panic at every width") {
+    for (const std::string width : {"8", "16", "32", "64", "128", "256", "512"}) {
+        for (const std::string op : {"/", "%"}) {
+            const std::string source = "func Divide(a: char" + width + ", b: char" + width + ") -> char" + width +
+                                       " {\n    return a " + op + " b;\n}\nfunc Main() -> int {\n    return Divide(c" +
+                                       width + "'A', c" + width + "'\\0') as int;\n}\n";
+            CAPTURE(width);
+            CAPTURE(op);
+            CheckTrapsOnHost(source, Report("division by zero", "Divide", 2, 14));
+        }
+    }
+}
+
+TEST_CASE("runtime character casts reject values outside the target character domain") {
+    for (const std::string width : {"8", "16", "32", "64", "128", "256", "512"}) {
+        const std::string maximum = width == "8" ? "256" : width == "16" ? "65536" : "1114112";
+        for (const std::string &value : {maximum, std::string("-1")}) {
+            const std::string source = "func Convert(value: int128) -> char" + width + " {\n    return value as char" +
+                                       width + ";\n}\nfunc Main() -> int {\n    return Convert(" + value +
+                                       ") as int;\n}\n";
+            CAPTURE(width);
+            CAPTURE(value);
+            for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+                const auto result = RunOnHost(source, profile);
+                CHECK(result.output.contains("Panic: invalid character cast"));
+                CHECK_NE(result.exitCode, 0);
+            }
+        }
+    }
+    for (const std::string width : {"32", "64", "128", "256", "512"}) {
+        const std::string source = "func Convert(value: uint128) -> char" + width + " {\n    return value as char" +
+                                   width + ";\n}\nfunc Main() -> int {\n    return Convert(55296) as int;\n}\n";
+        CAPTURE(width);
+        for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+            const auto result = RunOnHost(source, profile);
+            CHECK(result.output.contains("Panic: invalid character cast"));
+            CHECK_NE(result.exitCode, 0);
+        }
+    }
+}
+
+TEST_CASE("optimization preserves character casts whose result is discarded") {
+    for (const std::string expression : {"((value as char128) as int) * 0", "((value as char128) as int) % 1"}) {
+        const std::string source = "func Convert(value: uint128) -> int { return " + expression +
+                                   "; } func Main() -> int { return Convert(18446744073709551681u128); }";
+        CAPTURE(expression);
+        for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+            const auto result = RunOnHost(source, profile);
+            CHECK(result.output.contains("Panic: invalid character cast"));
+            CHECK_NE(result.exitCode, 0);
+        }
+    }
+}
+
+TEST_CASE("constant propagation preserves invalid character cast checks before narrowing") {
+    const std::string source = R"(
+        func Main() -> int {
+            return ((18446744073709551616u128 + 65u128) as char8) as int;
+        }
+    )";
+    for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+        const auto result = RunOnHost(source, profile);
+        CHECK(result.output.contains("Panic: invalid character cast"));
+        CHECK_NE(result.exitCode, 0);
+    }
+}
+
+TEST_CASE("float character casts retain checks for infinity and surrogates") {
+    for (const std::string value : {"1.0f64 / 0.0f64", "55296.0f64"}) {
+        const std::string source = "func Convert(value: float64) -> int { return ((value as char32) as int) * 0; } "
+                                   "func Main() -> int { return Convert(" +
+                                   value + "); }";
+        for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+            const auto result = RunOnHost(source, profile);
+            CHECK(result.output.contains("Panic: invalid character cast"));
+            CHECK_NE(result.exitCode, 0);
+        }
+    }
+}
+
+TEST_CASE("float character casts store the validated saturated integer") {
+    for (const std::string width : {"8", "16", "32", "64", "128", "256", "512"}) {
+        const std::string source =
+            "func Convert(value: float64) -> char" + width + R"( { return value as char)" + width + R"(; }
+            func Main() -> int {
+                if Convert(-1.0f64) as uint64 != 0u64 { return 91; }
+                if Convert(0.0f64 / 0.0f64) as uint64 != 0u64 { return 92; }
+                if Convert(65.9f64) as uint64 != 65u64 { return 93; }
+                return 0;
+            }
+        )";
+        CAPTURE(width);
+        CheckRunsOnHost(source, 0);
+    }
+}
+
+TEST_CASE("unused character casts retain narrow signed and widest unsigned validation") {
+    for (const std::string source : {"func Convert(value: int8) { let unused = value as char512; } "
+                                     "func Main() -> int { Convert(-1i8); return 0; }",
+                                     "func Convert(value: uint512) { let unused = value as char8; } "
+                                     "func Main() -> int { Convert(18446744073709551681u512); return 0; }"}) {
+        CAPTURE(source);
+        for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+            const auto result = RunOnHost(source, profile);
+            CHECK(result.output.contains("Panic: invalid character cast"));
+            CHECK_NE(result.exitCode, 0);
+        }
+    }
+}
+
+TEST_CASE("discarded character division still traps in release builds") {
+    const std::string source = R"(
+        func Divide(value: char128, divisor: char128) -> int { return ((value / divisor) as int) * 0; }
+        func Main() -> int { return Divide(c128'A', c128'\0'); }
+    )";
+    for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+        const auto result = RunOnHost(source, profile);
+        CHECK(result.output.contains("Panic: division by zero"));
+        CHECK_NE(result.exitCode, 0);
+    }
+}

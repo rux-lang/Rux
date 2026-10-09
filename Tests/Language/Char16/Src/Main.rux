@@ -35,10 +35,10 @@ func Main() -> int {
     Assert(c16'A' as int == 65, "char16 casts to int");
     Assert(0x20ACu32 as char16 as uint32 == 0x20ACu32, "uint32 casts to char16 and back");
 
-    // Narrowing to a char8, which keeps only the low byte: the euro sign does not
-    // fit in one, and what survives is the truncation rather than a replacement.
+    // Extracting a raw byte requires an integer conversion and explicit masking; a checked character cast refuses
+    // the euro because it does not fit in one byte.
     let euro: char16 = c16'\u{20AC}';
-    Assert(euro as char8 as uint8 == 0xAC, "char16 truncates to char8");
+    Assert(((euro as uint16) & 0xFFu16) as char8 as uint8 == 0xAC, "explicit masking extracts a code unit byte");
 
     // Widening from a char8, and on to a char32, neither of which loses anything.
     let narrow: char8 = c8'Z';

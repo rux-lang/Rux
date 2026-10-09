@@ -1,5 +1,7 @@
 #include "Optimization/HirConstantFolder.h"
 
+#include "Types/PrimitiveCatalog.h"
+
 #include <algorithm>
 #include <array>
 #include <memory>
@@ -553,6 +555,18 @@ bool HirConstantFolder::FoldCast(HirExprPtr &expr) {
     if (!operand) {
         return false;
     }
+    if (cast->targetType.IsChar()) {
+        if (!cast->operand->type.IsInteger() && !cast->operand->type.IsChar()) {
+            return false;
+        }
+        // Invalid casts must reach lowering's trap with the original value. Folding the conversion first could
+        // discard nonzero high words or a sign and turn an invalid value into an apparently valid code unit.
+        const auto scalar = operand->Bits().ToUnsigned();
+        if ((operand->GetKind() == TypedConstant::Kind::SignedInteger && operand->Bits().IsNegative()) || !scalar ||
+            !IsValidCharacterValue(cast->targetType.kind, *scalar)) {
+            return false;
+        }
+    }
     const auto result = CastConstant(*operand, cast->targetType);
     if (!result) {
         return false;
@@ -605,6 +619,9 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
         return std::ranges::all_of(tuple->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });
     }
     if (const auto *cast = dynamic_cast<const HirCastExpr *>(&expr)) {
+        if (cast->targetType.IsChar()) {
+            return false;
+        }
         return IsDiscardable(*cast->operand);
     }
     if (const auto *typeTest = dynamic_cast<const HirIsExpr *>(&expr)) {
