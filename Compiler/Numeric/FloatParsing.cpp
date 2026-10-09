@@ -75,6 +75,51 @@ public:
         limbs.push_back(static_cast<std::uint32_t>(carry));
     }
 
+    [[nodiscard]] BigUnsigned Multiplied(const BigUnsigned &other) const {
+        BigUnsigned result;
+        result.limbs.assign(limbs.size() + other.limbs.size(), 0);
+        for (std::size_t left = 0; left < limbs.size(); ++left) {
+            std::uint64_t carry = 0;
+            for (std::size_t right = 0; right < other.limbs.size(); ++right) {
+                const std::uint64_t product =
+                    static_cast<std::uint64_t>(limbs[left]) * other.limbs[right] + result.limbs[left + right] + carry;
+                result.limbs[left + right] = static_cast<std::uint32_t>(product);
+                carry = product >> 32;
+            }
+            result.limbs[left + other.limbs.size()] = static_cast<std::uint32_t>(carry);
+        }
+        result.Normalize();
+        return result;
+    }
+
+    /// Divide by 2^amount, rounding outwards when this is the upper end of an interval.
+    [[nodiscard]] BigUnsigned ShiftedRight(const std::uint64_t amount, const bool roundUp) const {
+        const std::size_t words = static_cast<std::size_t>(amount / 32);
+        const std::uint32_t bits = amount % 32;
+        BigUnsigned result;
+        bool discarded = false;
+        for (std::size_t index = 0; index < std::min(words, limbs.size()); ++index) {
+            discarded |= limbs[index] != 0;
+        }
+        if (words < limbs.size()) {
+            result.limbs.resize(limbs.size() - words);
+            if (bits != 0) {
+                discarded |= (limbs[words] & ((std::uint32_t{1} << bits) - 1)) != 0;
+            }
+            for (std::size_t index = words; index < limbs.size(); ++index) {
+                result.limbs[index - words] = limbs[index] >> bits;
+                if (bits != 0 && index + 1 < limbs.size()) {
+                    result.limbs[index - words] |= limbs[index + 1] << (32 - bits);
+                }
+            }
+        }
+        result.Normalize();
+        if (roundUp && discarded) {
+            result.AddSmall(1);
+        }
+        return result;
+    }
+
     [[nodiscard]] BigUnsigned ShiftedLeft(const std::uint64_t amount) const {
         if (IsZero()) {
             return {};
@@ -139,7 +184,7 @@ private:
 }
 
 [[nodiscard]] FloatEncoding RoundRatio(BigUnsigned numerator, BigUnsigned denominator, const bool negative,
-                                       const FloatFormat &format) {
+                                       const FloatFormat &format, const std::int64_t binaryScale = 0) {
     if (numerator.IsZero()) {
         return FloatEncoding::Zero(format, negative);
     }
@@ -179,8 +224,57 @@ private:
     return PackFloat(UnpackedFloat{.format = &format,
                                    .classification = FloatClass::Normal,
                                    .negative = negative,
-                                   .exponent = exponent,
+                                   .exponent = exponent + binaryScale,
                                    .significand = quotient});
+}
+
+/// [lower, upper] * 2^scale contains the exact positive value. Keeping 1024 leading bits leaves over 500 guard
+/// bits even for float512. Every discarded lower bit rounds the upper endpoint up, so the optimization cannot
+/// silently choose the wrong side of a halfway case: uncertain intervals use the exact parser below.
+struct PowerInterval {
+    BigUnsigned lower;
+    BigUnsigned upper;
+    std::int64_t scale = 0;
+};
+
+[[nodiscard]] PowerInterval MultiplyInterval(const PowerInterval &left, const PowerInterval &right) {
+    PowerInterval result{left.lower.Multiplied(right.lower), left.upper.Multiplied(right.upper),
+                         left.scale + right.scale};
+    constexpr std::uint64_t retainedBits = 1024;
+    const std::uint64_t length = result.upper.BitLength();
+    if (length > retainedBits) {
+        const std::uint64_t discard = length - retainedBits;
+        result.lower = result.lower.ShiftedRight(discard, false);
+        result.upper = result.upper.ShiftedRight(discard, true);
+        result.scale += static_cast<std::int64_t>(discard);
+    }
+    return result;
+}
+
+[[nodiscard]] std::optional<FloatEncoding> ParseScaledDecimal(const BigUnsigned &numerator,
+                                                              const std::int64_t decimalExponent, const bool negative,
+                                                              const FloatFormat &format) {
+    const BigUnsigned one = BigUnsigned::Parse("1", 10);
+    const BigUnsigned five = BigUnsigned::Parse("5", 10);
+    PowerInterval power{one, one};
+    PowerInterval base{five, five};
+    std::uint64_t remaining = static_cast<std::uint64_t>(decimalExponent < 0 ? -decimalExponent : decimalExponent);
+    while (remaining != 0) {
+        if ((remaining & 1U) != 0) {
+            power = MultiplyInterval(power, base);
+        }
+        remaining >>= 1;
+        if (remaining != 0) {
+            base = MultiplyInterval(base, base);
+        }
+    }
+    const bool multiply = decimalExponent >= 0;
+    const std::int64_t scale = decimalExponent + (multiply ? power.scale : -power.scale);
+    const FloatEncoding lower = multiply ? RoundRatio(numerator.Multiplied(power.lower), one, negative, format, scale)
+                                         : RoundRatio(numerator, power.upper, negative, format, scale);
+    const FloatEncoding upper = multiply ? RoundRatio(numerator.Multiplied(power.upper), one, negative, format, scale)
+                                         : RoundRatio(numerator, power.lower, negative, format, scale);
+    return lower.Bits() == upper.Bits() ? std::optional{lower} : std::nullopt;
 }
 
 [[nodiscard]] std::optional<FloatEncoding> ParseHexFloat(std::string_view literal, const FloatFormat &format) {
@@ -265,6 +359,11 @@ std::optional<FloatEncoding> ParseFloatEncoding(const std::string_view literal, 
     }
 
     BigUnsigned numerator = BigUnsigned::Parse(parts->digits, 10);
+    if (parts->decimalExponent > 64 || parts->decimalExponent < -64) {
+        if (auto fast = ParseScaledDecimal(numerator, parts->decimalExponent, parts->negative, format)) {
+            return fast;
+        }
+    }
     BigUnsigned denominator = BigUnsigned::Parse("1", 10);
     if (parts->decimalExponent >= 0) {
         for (std::int64_t index = 0; index < parts->decimalExponent; ++index) {

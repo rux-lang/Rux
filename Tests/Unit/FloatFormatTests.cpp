@@ -2,6 +2,7 @@
 #include "Numeric/FloatEncoding.h"
 #include "Numeric/FloatFormat.h"
 #include "Numeric/FloatLiteral.h"
+#include "Numeric/FloatParsing.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 #include "Types/PrimitiveCatalog.h"
@@ -200,4 +201,55 @@ TEST_CASE("every float suffix resolves to its declared primitive width") {
             }
         }
     }
+}
+
+TEST_CASE("float512 extreme decimal literals round exactly without exponent-sized arithmetic") {
+    const auto &format = Format(512);
+    const auto maximum =
+        ParseFloatEncoding("2065063539835887924399119494581650169527436049302967034784166417680004155333565293605750967"
+                           "753552715142786823706457493482454929376754635907792000880558e1262461",
+                           format);
+    const auto minimum =
+        ParseFloatEncoding("1936986403971803627488623572428543460963250743569242152976820404263225780984727937030763605"
+                           "544545579208354072281172669513916893467785427815424510311479e-1262761",
+                           format);
+    REQUIRE(maximum.has_value());
+    REQUIRE(minimum.has_value());
+    CHECK(maximum->Bits() == FloatEncoding::MaxFinite(format).Bits());
+    CHECK(minimum->Bits() == FloatEncoding::MinPositiveNormal(format).Bits());
+    const auto negative =
+        ParseFloatEncoding("-193698640397180362748862357242854346096325074356924215297682040426322578098472793703076360"
+                           "5544545579208354072281172669513916893467785427815424510311479e-1262761",
+                           format);
+    REQUIRE(negative.has_value());
+    CHECK(negative->Bits() == minimum->Bits().BitwiseOr(WideInteger::FromUnsigned(1, 512).ShiftedLeft(511)));
+}
+
+TEST_CASE("bounded decimal intervals fall back at an exact subnormal halfway") {
+    // 5^1075 * 10^-1075 is exactly 2^-1075, halfway from zero to binary64's least subnormal.
+    // Its power of five exceeds the interval precision, so its enclosing endpoints round differently.
+    std::string digits =
+        "2470328229206232720882843964341106861825299013071623822127928412503377536351043759326499181808179961"
+        "8989828234772285886546332835517796989819938739800539093906315035659515570226392290858392449105184435"
+        "9318028499365361525003193704576782492193656236698636584807570015857692699037063119282795585513329278"
+        "3433840935197801553124659726357957462276646527282722005637400648549997709659947045402082816622623785"
+        "7393450736339007967761930577506740176324673600968951340535537458516661134223766678604162159680461914"
+        "4672918403005300575308490487653917113865916462395249126236538818796362393732804238910186723484976682"
+        "3508986338858792562830275599565752445550725518931369083625477918694866799496832404970582102851318545"
+        "1396213837722826145437693412532098591327667236328125";
+    const auto &format = Format(64);
+    const auto halfway = ParseFloatEncoding(digits + "e-1075", format);
+    REQUIRE(halfway.has_value());
+    CHECK(halfway->Bits() == FloatEncoding::Zero(format).Bits());
+    const auto negative = ParseFloatEncoding("-" + digits + "e-1075", format);
+    REQUIRE(negative.has_value());
+    CHECK(negative->Bits() == FloatEncoding::Zero(format, true).Bits());
+    digits.back() = '4';
+    const auto below = ParseFloatEncoding(digits + "e-1075", format);
+    REQUIRE(below.has_value());
+    CHECK(below->Bits() == FloatEncoding::Zero(format).Bits());
+    digits.back() = '6';
+    const auto above = ParseFloatEncoding(digits + "e-1075", format);
+    REQUIRE(above.has_value());
+    CHECK(above->Bits() == FloatEncoding::MinPositiveSubnormal(format).Bits());
 }
