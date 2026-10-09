@@ -45,6 +45,26 @@ pub func BitsOfFloat32(value: float32) -> uint32 {
     return *address;
 }
 
+/// The bits of `value`, as they are stored.
+/// As `BitsOfFloat64`, at the half-precision width.
+/// @param value the float to read
+/// @returns its sixteen bits
+/// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float16
+pub func BitsOfFloat16(value: float16) -> uint16 {
+    let address = (@value) as *uint16;
+    return *address;
+}
+
+/// The bits of `value`, as they are stored.
+/// As `BitsOfFloat64`, at the eight-bit width: a sign, four exponent bits and three stored significand bits.
+/// @param value the float to read
+/// @returns its eight bits
+/// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float8
+pub func BitsOfFloat8(value: float8) -> uint8 {
+    let address = (@value) as *uint8;
+    return *address;
+}
+
 /// Takes a `float64` apart into the significand and exponent its digits are generated from.
 /// A NaN or an infinity has no decimal and is not this function's business; a caller establishes the value is
 /// finite first. A zero comes back with a zero significand, which the caller writes as `0` without generating
@@ -90,6 +110,53 @@ pub func DecomposeFloat32(value: float32) -> FloatParts {
     return FloatParts {
         significand: mantissa | 0x800000,
         exponent: biased - 150,
+        atBinadeBottom: mantissa == 0 && biased > 1,
+        negative: negative
+    };
+}
+
+/// Takes a `float16` apart into the significand and exponent its digits are generated from.
+/// IEEE 754 binary16: eleven bits of significand and an exponent biased by fifteen. The neighbours the generator
+/// measures against are this width's own, so the digits that come back are the shortest that read back as a
+/// `float16`, not as the `float32` or `float64` the value would widen to. Cannot fail; runs in constant time and
+/// allocates nothing.
+/// @param value the finite float to take apart
+/// @returns its significand, exponent, binade position and sign
+/// @see https://rux-lang.dev/docs/api/format/float-text#decompose-float16
+pub func DecomposeFloat16(value: float16) -> FloatParts {
+    let bits = BitsOfFloat16(value);
+    let mantissa = (bits & 0x3FF) as uint64;
+    let biased = ((bits >> 10) & 0x1F) as int;
+    let negative = (bits >> 15) != 0;
+    if biased == 0 {
+        return FloatParts { significand: mantissa, exponent: -24, atBinadeBottom: false, negative: negative };
+    }
+    return FloatParts {
+        significand: mantissa | 0x400,
+        exponent: biased - 25,
+        atBinadeBottom: mantissa == 0 && biased > 1,
+        negative: negative
+    };
+}
+
+/// Takes a `float8` apart into the significand and exponent its digits are generated from.
+/// The E4M3 layout with IEEE-style specials: four bits of significand, an exponent biased by seven, and the
+/// all-ones exponent kept for the infinities and NaNs, so the largest finite value is 240. As with the other
+/// widths, the neighbours are this width's own. Cannot fail; runs in constant time and allocates nothing.
+/// @param value the finite float to take apart
+/// @returns its significand, exponent, binade position and sign
+/// @see https://rux-lang.dev/docs/api/format/float-text#decompose-float8
+pub func DecomposeFloat8(value: float8) -> FloatParts {
+    let bits = BitsOfFloat8(value);
+    let mantissa = (bits & 0x7) as uint64;
+    let biased = ((bits >> 3) & 0xF) as int;
+    let negative = (bits >> 7) != 0;
+    if biased == 0 {
+        return FloatParts { significand: mantissa, exponent: -9, atBinadeBottom: false, negative: negative };
+    }
+    return FloatParts {
+        significand: mantissa | 0x8,
+        exponent: biased - 10,
         atBinadeBottom: mantissa == 0 && biased > 1,
         negative: negative
     };

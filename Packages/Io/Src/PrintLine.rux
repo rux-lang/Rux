@@ -227,6 +227,22 @@ pub func PrintLine(value: uint) -> IoError? {
     return Terminate(Print(value));
 }
 
+/// Writes a `float8` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: float8) -> IoError? {
+    return Terminate(Print(value));
+}
+
+/// Writes a `float16` to standard output, then a newline.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line
+pub func PrintLine(value: float16) -> IoError? {
+    return Terminate(Print(value));
+}
+
 /// Writes a `float32` to standard output, then a newline.
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written

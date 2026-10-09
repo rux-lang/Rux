@@ -1,0 +1,114 @@
+// The text of a `float16`.
+// The shortest decimal that reads back as the same `float16`, found at this width's own neighbours: 0.1 is stored
+// as 0.0999755859375, and the shortest decimal no other `float16` is closer to is "0.1", where measuring against
+// the `float32` the value widens to would ask for "0.099975586". A precision in the placeholder asks for fixed
+// notation instead, and the `e` and `E` styles for scientific notation, through the same writers as the wider
+// widths.
+// There is no hardware arithmetic for this width on the targets Rux supports, so the classification below reads
+// the bits rather than comparing values: it costs a mask instead of a call into the software comparison.
+
+
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+
+// The exponent field and the stored significand field of a float16, and the sign bit.
+const ExponentMask16: uint16 = 0x7C00;
+const MagnitudeMask16: uint16 = 0x7FFF;
+const SignBit16: uint16 = 0x8000;
+
+// The decimal exponent at or above which a float16 renders in scientific notation. Five is the digit count at
+// which every float16 is distinguishable from every other, so a value needing that many places in fixed
+// notation is one whose fixed form is all trailing zeros.
+const ScientificFrom16 = 5;
+
+// Whether the value is a NaN: the exponent field all ones and a non-zero significand.
+/// Provides the public `IsNan` operation.
+/// @param value the value to act on
+/// @returns whether the value is a NaN
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-nan
+pub func IsNan(value: float16) -> bool {
+    return (BitsOfFloat16(value) & MagnitudeMask16) > ExponentMask16;
+}
+
+// Whether the value is one of the two infinities: the exponent field all ones and a zero significand.
+/// Provides the public `IsInfinite` operation.
+/// @param value the value to act on
+/// @returns whether the value is either infinity
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-infinite
+pub func IsInfinite(value: float16) -> bool {
+    return (BitsOfFloat16(value) & MagnitudeMask16) == ExponentMask16;
+}
+
+// Whether the value is an ordinary number: neither a NaN nor an infinity, which is any exponent field short of
+// all ones.
+/// Provides the public `IsFinite` operation.
+/// @param value the value to act on
+/// @returns whether the value is neither infinite nor a NaN
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-finite
+pub func IsFinite(value: float16) -> bool {
+    return (BitsOfFloat16(value) & ExponentMask16) != ExponentMask16;
+}
+
+extend float16 : Display {
+    /// Writes this value's decimal text.
+    /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
+    /// more than the longest rendering — sign, digits, point and exponent — can need.
+    /// A precision asks for that many digits after the point in fixed notation. The style `e` or `E` asks for
+    /// scientific notation, `1.2345e+04`, where a precision counts the digits after the mantissa's point. A NaN or an
+    /// infinity renders as `NaN`, `Inf` or `-Inf` under every placeholder.
+    /// Reports `UnsupportedRequest` for any other style or a precision past `MaximumPrecision`, and otherwise
+    /// whatever the writer reported, stopping at the first refusal.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float-text#float16-write-display
+    pub func WriteDisplay(self: &float16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        var mark = c8'e';
+        let scientific = ScientificMark(spec, @mark)?;
+        // A NaN or an infinity has no digits for a precision or an exponent to place, so it renders the same under
+        // every placeholder, with only the sign and the alignment applied.
+        if !IsFinite(self) {
+            return WriteNonFinite(writer, spec, IsNan(self), (BitsOfFloat16(self) & SignBit16) != 0);
+        }
+        if scientific {
+            return WriteScientificNotation(writer, spec, DecomposeFloat16(self), mark);
+        }
+        // Precision means digits after the decimal point, exactly, with ties to even, and a request past the
+        // supported bound is refused rather than clamped.
+        if spec.HasPrecision() {
+            return WritePrecision(writer, spec, DecomposeFloat16(self));
+        }
+        // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
+        // without moving it.
+        var storage: char8[52];
+        var cursor = ByteCursor((@storage[2])[..50]);
+        WriteFloat(cursor, self);
+        var rendered = cursor.Written();
+        if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
+            storage[1] = c8'+';
+            rendered = (@storage[1])[..rendered.length + 1];
+        }
+        return WriteAligned(writer, spec, rendered, true);
+    }
+}
+
+extend float16 : Debug {
+    /// The same text.
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float-text#float16-write-debug
+    pub func WriteDebug(self: &float16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+// Appends the text of a finite float16 to a cursor. The exact shortest form, at this width's own neighbours. The
+// workspace is far larger than a float16 needs, so a false from the generator is a defect rather than a value;
+// the float64 the value widens to exactly is written to five digits in that case, so that the rendering is still
+// a number rather than nothing.
+func WriteFloat(cursor: &var ByteCursor, value: float16) {
+    if !WriteShortestFloat(cursor, DecomposeFloat16(value), ScientificFrom16) {
+        WriteDecimal(cursor, value as float64, 5);
+    }
+}
