@@ -297,6 +297,11 @@ extend BigNat {
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-set-product
     func SetProduct(self: &var BigNat, left: &BigNat, right: &BigNat) -> bool {
+        let longer = left.length > right.length ? left.length : right.length;
+        let shorter = left.length < right.length ? left.length : right.length;
+        if shorter >= 32 && longer <= shorter * 2 {
+            return self.SetSplitProduct(left, right, longer / 2);
+        }
         let total = left.length + right.length;
         if !self.Reserve(total + 1) { return false; }
         var index: uint = 0;
@@ -320,6 +325,42 @@ extend BigNat {
         }
         self.length = total;
         self.Trim();
+        return true;
+    }
+
+    // Copies a limb range for the recursive product. Each temporary owns its storage and releases it on failure.
+    func SetRange(self: &var BigNat, source: &BigNat, start: uint, count: uint) -> bool {
+        let available = start < source.length ? source.length - start : 0u;
+        let size = count < available ? count : available;
+        if !self.Reserve(size) { return false; }
+        var index: uint = 0;
+        while index < size {
+            self.limbs[index] = source.limbs[start + index];
+            index = index + 1;
+        }
+        self.length = size;
+        self.Trim();
+        return true;
+    }
+
+    // Karatsuba: (a0 + a1 B)(b0 + b1 B) needs three half-size products, not four. B is a whole-limb power of two,
+    // so recombination is exact shifts and additions. Small or very unequal operands keep the schoolbook loop.
+    func SetSplitProduct(self: &var BigNat, left: &BigNat, right: &BigNat, split: uint) -> bool {
+        var a0 = BigNat(self.allocator);
+        var a1 = BigNat(self.allocator);
+        var b0 = BigNat(self.allocator);
+        var b1 = BigNat(self.allocator);
+        var low = BigNat(self.allocator);
+        var high = BigNat(self.allocator);
+        var middle = BigNat(self.allocator);
+        if !a0.SetRange(left, 0, split) || !a1.SetRange(left, split, left.length) ||
+           !b0.SetRange(right, 0, split) || !b1.SetRange(right, split, right.length) { return false; }
+        if !low.SetProduct(a0, b0) || !high.SetProduct(a1, b1) || !a0.Add(a1) || !b0.Add(b1) ||
+           !middle.SetProduct(a0, b0) { return false; }
+        middle.Subtract(low);
+        middle.Subtract(high);
+        if !middle.ShiftLeft(split * 64) || !high.ShiftLeft(split * 128) ||
+           !self.Assign(low) || !self.Add(middle) || !self.Add(high) { return false; }
         return true;
     }
 
