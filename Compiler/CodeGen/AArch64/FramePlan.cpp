@@ -158,19 +158,25 @@ private:
         return IsAggregate(type) && RuntimeSize(type) > 16 && !homogeneous;
     }
 
-    std::int32_t AllocateRegion(const int byteCount) {
-        const int alignment = byteCount > 0 ? std::min(byteCount, 8) : 1;
+    // The alignment a value of `type` needs in its frame slot. Frame offsets count up from the sixteen-byte aligned
+    // stack pointer, so an offset that is a multiple of this places the value where its `alignof` says it is.
+    [[nodiscard]] int StorageAlign(const TypeRef &type) const {
+        return std::clamp(RuntimeAlignmentOf(type, layouts, interfaceNames), 1, 16);
+    }
+
+    std::int32_t AllocateRegion(const int byteCount, const int storageAlignment = 1) {
+        const int alignment = std::max(byteCount > 0 ? std::min(byteCount, 8) : 1, storageAlignment);
         nextOffset = AlignUp(nextOffset, alignment);
         const std::int32_t offset = nextOffset;
         nextOffset += byteCount > 0 ? byteCount : 8;
         return offset;
     }
 
-    std::int32_t AllocateSlot(const LirReg reg, const int byteCount) {
+    std::int32_t AllocateSlot(const LirReg reg, const int byteCount, const int storageAlignment = 1) {
         if (const auto found = plan.slotOffsets.find(reg); found != plan.slotOffsets.end()) {
             return found->second;
         }
-        const std::int32_t offset = AllocateRegion(byteCount);
+        const std::int32_t offset = AllocateRegion(byteCount, storageAlignment);
         plan.slotOffsets[reg] = offset;
         return offset;
     }
@@ -243,7 +249,7 @@ private:
     void PlanParameters() {
         for (const auto &parameter : func.params) {
             plan.registerTypes[parameter.reg] = parameter.type;
-            AllocateSlot(parameter.reg, std::max(8, SlotSize(parameter.type)));
+            AllocateSlot(parameter.reg, std::max(8, SlotSize(parameter.type)), StorageAlign(parameter.type));
         }
     }
 
@@ -258,6 +264,21 @@ private:
             return size > 0 ? size : 8;
         });
         std::vector<std::int32_t> sharedDataOffsets(dataSharing.slotSizes.size(), -1);
+        // A shared region is aligned for the strictest of the values that take turns in it.
+        std::vector<int> sharedAlignments(sharing.slotSizes.size(), 1);
+        std::vector<int> sharedDataAlignments(dataSharing.slotSizes.size(), 1);
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (const auto shared = sharing.slotOf.find(instruction.dst); shared != sharing.slotOf.end()) {
+                    sharedAlignments[shared->second] =
+                        std::max(sharedAlignments[shared->second], StorageAlign(instruction.type));
+                }
+                if (const auto shared = dataSharing.slotOf.find(instruction.dst); shared != dataSharing.slotOf.end()) {
+                    sharedDataAlignments[shared->second] =
+                        std::max(sharedDataAlignments[shared->second], StorageAlign(instruction.type));
+                }
+            }
+        }
         for (std::uint32_t blockIndex = 0; blockIndex < func.blocks.size(); ++blockIndex) {
             for (const auto &instruction : func.blocks[blockIndex].instrs) {
                 if (instruction.op == LirOpcode::Phi) {
@@ -276,24 +297,26 @@ private:
                         shared != dataSharing.slotOf.end()) {
                         std::int32_t &offset = sharedDataOffsets[shared->second];
                         if (offset < 0) {
-                            offset = AllocateRegion(dataSharing.slotSizes[shared->second]);
+                            offset = AllocateRegion(dataSharing.slotSizes[shared->second],
+                                                    sharedDataAlignments[shared->second]);
                         }
                         plan.allocaDataOffsets[instruction.dst] = offset;
                         continue;
                     }
-                    plan.allocaDataOffsets[instruction.dst] = AllocateRegion(AllocaSize(instruction));
+                    plan.allocaDataOffsets[instruction.dst] =
+                        AllocateRegion(AllocaSize(instruction), StorageAlign(instruction.type));
                     continue;
                 }
                 plan.registerTypes[instruction.dst] = instruction.type;
                 if (const auto shared = sharing.slotOf.find(instruction.dst); shared != sharing.slotOf.end()) {
                     std::int32_t &offset = sharedOffsets[shared->second];
                     if (offset < 0) {
-                        offset = AllocateRegion(sharing.slotSizes[shared->second]);
+                        offset = AllocateRegion(sharing.slotSizes[shared->second], sharedAlignments[shared->second]);
                     }
                     plan.slotOffsets.try_emplace(instruction.dst, offset);
                     continue;
                 }
-                AllocateSlot(instruction.dst, SlotSize(instruction.type));
+                AllocateSlot(instruction.dst, SlotSize(instruction.type), StorageAlign(instruction.type));
             }
         }
     }

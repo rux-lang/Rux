@@ -149,7 +149,7 @@ void X86_64ModuleEmitter::EmitVtables() {
 // it reaches those of any other slice.
 void X86_64ModuleEmitter::EmitConstSlice(const LirConstDecl &c) {
     const int elemSize = std::max(SizeOf(c.elementType), 1);
-    const uint32_t elemsOff = AlignRodata(std::min(elemSize, 8));
+    const uint32_t elemsOff = AlignRodata(AlignOf(c.elementType));
     std::uint64_t length = 0;
     if (c.isTextSlice) {
         // Text is emitted in the constant's own encoding, and its length counts that encoding's code units.

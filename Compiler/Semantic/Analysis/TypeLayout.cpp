@@ -183,8 +183,11 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
         return finish(native ? std::optional(ResolvedTypeLayout{native->size, native->alignment}) : std::nullopt);
     }
 
+    // A scalar takes the alignment its type states -- a primitive's from the catalog, which is what code generation
+    // lays it out by too -- rather than one derived from its size.
     const auto size = inputType.SizeInBytes();
-    return finish(size ? std::optional(ResolvedTypeLayout{*size, Layout::FieldAlign(*size)}) : std::nullopt);
+    const auto alignment = inputType.AlignInBytes();
+    return finish(size && alignment ? std::optional(ResolvedTypeLayout{*size, *alignment}) : std::nullopt);
 }
 
 std::optional<ResolvedTypeLayout>
@@ -277,7 +280,7 @@ TypeRef AnalysisContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
             typeLayouts.insert_or_assign(type.name, *layout);
         }
         if (decl.form == EnumDecl::Form::Variant && layout) {
-            type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+            type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
             return type;
         }
         type.inner.push_back(EnumBaseType(decl));
@@ -302,7 +305,7 @@ TypeRef AnalysisContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
             // An instantiation composed only inside generic bodies -- where nothing concrete ever spells it --
             // otherwise reached lowering with no marker at all.
             typeLayouts.insert_or_assign(type.name, *layout);
-            type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+            type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
         }
     }
     return type;

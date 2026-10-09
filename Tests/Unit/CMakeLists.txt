@@ -186,6 +186,7 @@ set(RUX_TEST_SOURCES
     SourceTextLexerTests.cpp
     StringCodeGenTests.cpp
     StringLoweringTests.cpp
+    TypeLayoutAgreementTests.cpp
     UserMessageProcessTests.cpp
     UtfTests.cpp
     VariantEqualityTests.cpp

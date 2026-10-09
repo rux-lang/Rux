@@ -26,16 +26,7 @@ int AArch64CallPlanner::RuntimeSize(const TypeRef &type) const {
 }
 
 int AArch64CallPlanner::RuntimeAlign(const TypeRef &type) const {
-    if (!type.IsRange() && type.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(type.name);
-        if (interfaceNames.contains(base)) {
-            return 8;
-        }
-        if (const auto found = layouts.find(base); found != layouts.end()) {
-            return found->second.alignment;
-        }
-    }
-    return AlignOf(type);
+    return RuntimeAlignmentOf(type, layouts, interfaceNames);
 }
 
 bool AArch64CallPlanner::IsAggregate(const TypeRef &type) const {

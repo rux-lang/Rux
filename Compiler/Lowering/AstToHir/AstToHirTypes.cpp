@@ -1145,7 +1145,7 @@ TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
         // marker rather than the tag has to say how large the value is.
         if (decl.form == EnumDecl::Form::Variant) {
             if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
-                type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+                type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
                 return type;
             }
         }
@@ -1158,7 +1158,7 @@ TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
         // builder of this type: an instantiation whose layout is not knowable yet -- a type argument still a
         // parameter -- carries no marker from either, and is not lowered until it has been substituted.
         if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
-            type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+            type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
         }
     }
     return type;

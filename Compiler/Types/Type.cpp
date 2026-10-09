@@ -33,6 +33,19 @@ std::string Grouped(std::string spelling, const bool grouped) {
 bool IsLooseNativeForm(const TypeRef &type) noexcept {
     return type.IsSum() || type.IsFallible();
 }
+
+/// A tuple's {size, alignment}, its elements laid out by the record rule each at its own alignment.
+std::optional<std::pair<std::uint64_t, std::uint64_t>> TupleLayout(const std::vector<TypeRef> &elements) noexcept {
+    return Layout::FieldsSizeAndAlign(
+        elements, [](const TypeRef &element) -> std::optional<std::pair<std::uint64_t, std::uint64_t>> {
+            const auto size = element.SizeInBytes();
+            const auto alignment = element.AlignInBytes();
+            if (!size || !alignment) {
+                return std::nullopt;
+            }
+            return std::pair{*size, *alignment};
+        });
+}
 } // namespace
 
 TypeRef TypeRef::MakeSum(std::vector<TypeRef> members) {
@@ -310,7 +323,7 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     case Kind::RangeFull:
         return 0;
     case Kind::Tuple: {
-        const auto layout = Layout::FieldsSizeAndAlign(inner, [](const TypeRef &elem) { return elem.SizeInBytes(); });
+        const auto layout = TupleLayout(inner);
         if (!layout) {
             return std::nullopt;
         }
@@ -332,6 +345,65 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
         // Every primitive was already answered from the catalog above.
         return std::nullopt;
     }
+}
+
+std::optional<std::uint64_t> TypeRef::AlignInBytes() const noexcept {
+    if (const auto primitive = PrimitiveAlign(kind, DefaultPointerSize)) {
+        return *primitive;
+    }
+    switch (kind) {
+    case Kind::Opaque:
+    case Kind::RangeFull:
+        return 1;
+    case Kind::Pointer:
+    case Kind::Reference:
+    case Kind::Func:
+    case Kind::Slice:
+        return Layout::WordAlign(DefaultPointerSize);
+    case Kind::Array:
+    case Kind::Range:
+    case Kind::RangeInclusive:
+    case Kind::RangeFrom:
+    case Kind::RangeTo:
+    case Kind::RangeToInclusive:
+    case Kind::Named:
+        // An array and a range are their elements laid end to end, and a named type is its layout marker.
+        if (inner.empty()) {
+            return std::nullopt;
+        }
+        return inner[0].AlignInBytes();
+    case Kind::Tuple: {
+        const auto layout = TupleLayout(inner);
+        if (!layout) {
+            return std::nullopt;
+        }
+        return layout->second;
+    }
+    default:
+        // Unknown, a type parameter, and a native tagged layout, which the shared layout facts publish.
+        return std::nullopt;
+    }
+}
+
+TypeRef TypeRef::MakeStorageMarker(const std::uint64_t size, const std::uint64_t alignment) {
+    TypeRef word;
+    switch (alignment) {
+    case 2:
+        word = MakeUInt16();
+        break;
+    case 4:
+        word = MakeUInt32();
+        break;
+    case 8:
+        word = MakeUInt64();
+        break;
+    case 16:
+        word = MakePrimitive(Kind::UInt128);
+        break;
+    default:
+        return MakeArray(MakeUInt8(), size);
+    }
+    return MakeArray(std::move(word), size / alignment);
 }
 
 std::string TypeRef::InstantiationName(const std::string_view base, const std::vector<TypeRef> &typeArgs) {

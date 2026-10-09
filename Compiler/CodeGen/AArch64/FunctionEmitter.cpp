@@ -111,16 +111,7 @@ int AArch64FunctionEmitter::RuntimeSize(const TypeRef &type) const {
 }
 
 int AArch64FunctionEmitter::RuntimeAlign(const TypeRef &type) const {
-    if (!type.IsRange() && type.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(type.name);
-        if (interfaceNames.contains(base)) {
-            return 8;
-        }
-        if (const auto it = layouts.find(base); it != layouts.end()) {
-            return it->second.alignment;
-        }
-    }
-    return AlignOf(type);
+    return RuntimeAlignmentOf(type, layouts, interfaceNames);
 }
 
 bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {

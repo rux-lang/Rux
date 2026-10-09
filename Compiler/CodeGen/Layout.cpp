@@ -7,9 +7,8 @@
 #include <charconv>
 
 namespace Rux::Layout {
-namespace {
-[[nodiscard]] int RuntimeAlignmentOf(const TypeRef &type, const LayoutMap &layouts,
-                                     const std::unordered_set<std::string> &interfaceNames) {
+int RuntimeAlignmentOf(const TypeRef &type, const LayoutMap &layouts,
+                       const std::unordered_set<std::string> &interfaceNames) {
     if (const auto native = RuntimeNativeLayout(type, layouts, interfaceNames)) {
         return static_cast<int>(native->alignment);
     }
@@ -39,6 +38,7 @@ namespace {
     return AlignOf(type);
 }
 
+namespace {
 /// Tuple projections and stack allocation must use the same concrete element layouts, including named types.
 [[nodiscard]] int TupleElementOffset(const TypeRef &tuple, const std::size_t index, const LayoutMap &layouts,
                                      const std::unordered_set<std::string> &interfaceNames) {
@@ -97,7 +97,7 @@ int SizeOf(const TypeRef &t) {
         int maxAlign = 1;
         for (const auto &elem : t.inner) {
             const int sz = SizeOf(elem);
-            const int al = sz > 0 ? std::min(sz, 8) : 1;
+            const int al = AlignOf(elem);
             if (al > 1) {
                 offset = AlignUp(offset, al);
             }
@@ -146,13 +146,21 @@ int AlignOf(const TypeRef &t) {
     if (t.kind == TypeRef::Kind::Array) {
         return t.inner.empty() ? 1 : AlignOf(t.inner[0]);
     }
-    // A primitive states its own alignment, which for the wide widths is below its size; everything else takes the
-    // record rule's natural alignment, capped at a doubleword.
-    if (const auto primitive = PrimitiveAlign(t.kind, 8)) {
-        return static_cast<int>(*primitive);
+    if (t.kind == TypeRef::Kind::Tuple) {
+        int alignment = 1;
+        for (const TypeRef &element : t.inner) {
+            alignment = std::max(alignment, AlignOf(element));
+        }
+        return alignment;
+    }
+    // A primitive states its own alignment, which for the wide widths is below its size, and so does everything else
+    // `TypeRef` can lay out by itself -- a named type through its storage marker -- by the rule semantic analysis
+    // reports through `alignof`. What is left is a word: a struct this has no layout map to look up.
+    if (const auto alignment = t.AlignInBytes()) {
+        return static_cast<int>(*alignment);
     }
     const int size = SizeOf(t);
-    return size > 0 ? std::min(size, 8) : 1;
+    return static_cast<int>(WordAlign(static_cast<std::uint64_t>(size)));
 }
 
 bool IsFloat(const TypeRef &t) {

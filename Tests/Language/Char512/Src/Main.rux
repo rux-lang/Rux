@@ -178,7 +178,8 @@ func Main() -> int {
 
     // Storage: fields, padding and elements.
     Assert(sizeof(Pair) == 128u, "two char512 fields occupy 128 bytes");
-    Assert(sizeof(Tagged) == 72u, "a char8 beside a char512 is padded to an eight-byte field boundary");
+    Assert(sizeof(Tagged) == 80u, "a char8 beside a char512 is padded to its sixteen-byte alignment");
+    Assert(alignof(Tagged) == 16u && alignof(char512) == 16u, "and the struct takes the char512 alignment");
     let pair = Pair { first: letter, second: face };
     Assert(pair.first == letter && pair.second == face, "each field keeps its own value");
     Assert(Storage(pair.second) == 0x1F600u512, "with the upper words zero");

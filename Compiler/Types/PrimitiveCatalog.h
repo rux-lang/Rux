@@ -33,7 +33,7 @@ struct PrimitiveInfo {
     /// deliberately not `bits / 8`.
     std::uint32_t size = 0;
     /// Storage alignment in bytes, or 0 for a pointer-sized type. Capped at 16, the largest scalar alignment any
-    /// supported ABI asks for. Record layout caps field alignment further; see `Target/Layout.h`.
+    /// supported ABI asks for. Record layout places a field at exactly this alignment; see `Target/Layout.h`.
     std::uint32_t align = 0;
 };
 

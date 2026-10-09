@@ -114,7 +114,8 @@ func Main() -> int {
 
     // Storage: fields, padding and elements.
     Assert(sizeof(Pair) == 64u, "two bool256 fields occupy 64 bytes");
-    Assert(sizeof(Tagged) == 40u, "a bool8 beside a bool256 is padded to an eight-byte field boundary");
+    Assert(sizeof(Tagged) == 48u, "a bool8 beside a bool256 is padded to its sixteen-byte alignment");
+    Assert(alignof(Tagged) == 16u && alignof(bool256) == 16u, "and the struct takes the bool256 alignment");
     let pair = Pair { first: true, second: false };
     Assert(pair.first && !pair.second, "each field keeps its own value");
     let tagged = Tagged { tag: false, flag: yes };

@@ -235,9 +235,12 @@ TEST_CASE("nested and generic variants receive concrete independent layouts") {
     CHECK_GT(layouts.at("Inner").size, 8);
     CHECK_GT(layouts.at("Outer").size, layouts.at("Inner").size);
     CHECK_EQ(layouts.at("Maybe<uint8>").alignment, 8);
-    CHECK_EQ(layouts.at("Maybe<uint128>").alignment, 8);
+    // A uint128 payload is sixteen-byte aligned, so it starts sixteen bytes in, past the tag and its padding.
+    CHECK_EQ(layouts.at("Maybe<uint128>").alignment, 16);
+    CHECK_EQ(layouts.at("Maybe<uint128>").size, 32);
     CHECK_GT(layouts.at("Maybe<uint128>").size, layouts.at("Maybe<uint8>").size);
-    CHECK_EQ(layouts.at("Maybe<Inner>").size, layouts.at("Maybe<uint128>").size);
+    CHECK_EQ(layouts.at("Maybe<Inner>").size, 24);
+    CHECK_EQ(layouts.at("Maybe<Inner>").alignment, 8);
 }
 
 TEST_CASE("zero-sized payloads do not erase the private variant tag") {
@@ -302,7 +305,8 @@ TEST_CASE("enum and variant type markers reflect declaration kind rather than ca
     for (const std::string name : {"Units", "Payload"}) {
         REQUIRE_EQ(allocations.at(name).inner.size(), 1);
         CHECK_EQ(allocations.at(name).inner.front().kind, TypeRef::Kind::Array);
-        CHECK_EQ(allocations.at(name).inner.front().inner.front().kind, TypeRef::Kind::Char8);
+        // The marker's words are as wide as the variant's alignment: a tag word, so eight bytes.
+        CHECK_EQ(allocations.at(name).inner.front().inner.front().kind, TypeRef::Kind::UInt64);
     }
 }
 
@@ -319,13 +323,17 @@ TEST_CASE("generic variant parameters and returns carry identical concrete marke
         }
     )");
 
-    for (const std::string name : {"Byte", "Word"}) {
+    // The marker states the alignment as well as the size: words of the tag's eight bytes for a byte payload, and
+    // sixteen-byte words once the payload is a uint128.
+    for (const auto &[name, word] :
+         {std::pair{"Byte", TypeRef::Kind::UInt64}, std::pair{"Word", TypeRef::Kind::UInt128}}) {
         const LirFunc &function = RequireFunction(package, name);
         REQUIRE_EQ(function.params.size(), 1);
         CHECK_EQ(function.params.front().type, function.returnType);
         REQUIRE_EQ(function.returnType.inner.size(), 1);
         CHECK_EQ(function.returnType.inner.front().kind, TypeRef::Kind::Array);
-        CHECK_EQ(function.returnType.inner.front().inner.front().kind, TypeRef::Kind::Char8);
+        CHECK_EQ(function.returnType.inner.front().inner.front().kind, word);
+        CHECK_EQ(function.returnType.AlignInBytes(), function.returnType.inner.front().inner.front().AlignInBytes());
     }
     const LirFunc &byte = RequireFunction(package, "Byte");
     const LirFunc &word = RequireFunction(package, "Word");

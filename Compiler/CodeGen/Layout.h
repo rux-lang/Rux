@@ -101,6 +101,13 @@ void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &la
 [[nodiscard]] int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts,
                                 const std::unordered_set<std::string> &interfaceNames);
 
+/// Alignment of a LIR type as the running program lays it out, the companion of `RuntimeSizeOf`: a struct answers
+/// from its computed layout, an interface value is word-aligned, and a composite takes its strictest element's. Struct
+/// field placement, frame slots, call layout and block copies all read this, so they agree with each other and with
+/// the `alignof` semantic analysis reports.
+[[nodiscard]] int RuntimeAlignmentOf(const TypeRef &type, const LayoutMap &layouts,
+                                     const std::unordered_set<std::string> &interfaceNames);
+
 /// Byte offset of `fieldName` inside the value `pointerType` addresses, which is what a FieldPtr adds to its base.
 /// `pointerType` is the type the base register holds, so a pointer is expected and anything else has no field to find.
 ///

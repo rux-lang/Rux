@@ -296,6 +296,12 @@ struct TypeRef {
         return t;
     }
 
+    /// The storage marker a payload-carrying enum keeps in its `inner`: an array of unsigned words of `alignment`
+    /// bytes that is `size` bytes long, so the marker states the enum's alignment as well as its size and the backend
+    /// lays the enum out where the front end did. `size` is a multiple of `alignment`, which is a power of two no
+    /// wider than sixteen.
+    static TypeRef MakeStorageMarker(std::uint64_t size, std::uint64_t alignment);
+
     static TypeRef MakeRange(TypeRef elem, bool hasStart = true, bool hasEnd = true, bool inclusive = false) {
         TypeRef t;
         if (hasStart && hasEnd) {
@@ -505,6 +511,10 @@ struct TypeRef {
     /// verifies each instantiation; this never grants an implicit aggregate copy.
     [[nodiscard]] bool CanReadScalarTo(const TypeRef &other) const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
+    /// The alignment a value of this type takes in memory, by the same purely syntactic reading as `SizeInBytes`: a
+    /// primitive states its own in the catalog, a composite takes its strictest element's, and a named type answers
+    /// only through its layout marker.
+    [[nodiscard]] std::optional<std::uint64_t> AlignInBytes() const noexcept;
     [[nodiscard]] std::string ToString() const;
 
     /// The spelling a diagnostic shows for a value of this type. It is `ToString()`, except for the two internal

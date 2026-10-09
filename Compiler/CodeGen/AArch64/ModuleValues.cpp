@@ -20,16 +20,7 @@ namespace Rux::AArch64Detail {
 // can only derive an alignment from a size, so a named type answers from
 // its computed layout wherever the package declared one.
 [[nodiscard]] int AArch64ModuleEmitter::RuntimeAlign(const TypeRef &t) const {
-    if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(t.name);
-        if (interfaceNames.contains(base)) {
-            return 8;
-        }
-        if (const auto it = layouts.find(base); it != layouts.end()) {
-            return it->second.alignment;
-        }
-    }
-    return AlignOf(t);
+    return RuntimeAlignmentOf(t, layouts, interfaceNames);
 }
 
 // Whether a value of this type moves as a block of bytes rather than in one

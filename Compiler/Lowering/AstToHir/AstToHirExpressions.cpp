@@ -84,7 +84,7 @@ TypeRef AstToHirContext::RestoreEnumLayoutMarkers(TypeRef type) const {
         return type;
     }
     if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
-        type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+        type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
     }
     return type;
 }
