@@ -878,6 +878,47 @@ TEST_CASE("native object writer stamps the target architecture into every format
     REQUIRE(WriteNativeObject(file, Target::OS::MacOS, Target::Arch::AArch64, object, error));
 }
 
+TEST_CASE("native object writers state each section's recorded alignment") {
+    RcuFile file;
+    file.arch = RcuArch::X86_64;
+    file.sourcePath = "Tables.rux";
+    const auto section = [](const char *name, const std::uint32_t type, const std::uint32_t flags,
+                            const std::uint16_t alignment) {
+        RcuSection result;
+        result.name = name;
+        result.type = type;
+        result.flags = flags;
+        result.alignment = alignment;
+        result.data = std::vector<std::uint8_t>(alignment, 0);
+        return result;
+    };
+    file.sections.push_back(
+        section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read, 16));
+    file.sections.push_back(section(".rodata", RcuSecType::RoData, RcuSecFlag::Alloc | RcuSecFlag::Read, 32));
+    file.sections.push_back(
+        section(".data", RcuSecType::Data, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 16));
+
+    // COFF keeps the alignment in IMAGE_SCN_ALIGN_*, bits 20-23 of each section's characteristics.
+    NativeObject object;
+    std::string error;
+    REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Windows, Target::Arch::X86_64, object, error), error);
+    const auto characteristics = [&](const std::size_t index) {
+        std::uint32_t value = 0;
+        for (std::size_t i = 0; i < 4; ++i) {
+            value |= static_cast<std::uint32_t>(object.bytes[20 + index * 40 + 36 + i]) << (i * 8U);
+        }
+        return value;
+    };
+    CHECK((characteristics(0) & 0x00F0'0000U) == 0x0050'0000U); // IMAGE_SCN_ALIGN_16BYTES
+    CHECK((characteristics(1) & 0x00F0'0000U) == 0x0060'0000U); // IMAGE_SCN_ALIGN_32BYTES
+    CHECK((characteristics(2) & 0x00F0'0000U) == 0x0050'0000U);
+
+    // An alignment past COFF's 8 KB maximum cannot be stated, so the writer refuses it instead of dropping it.
+    file.sections[1].alignment = 16384;
+    CHECK_FALSE(WriteNativeObject(file, Target::OS::Windows, Target::Arch::X86_64, object, error));
+    CHECK(error == "section .rodata alignment of 16384 bytes cannot be stated in a COFF object");
+}
+
 TEST_CASE("ELF dynamic linker starts read-only and writable data on their recorded alignment") {
     // The dynamic layout packs .text, .rodata, the GOT and .data back to back, so each start depends on what precedes
     // it. Sixteen-byte tables must stay aligned whatever the code size, and with an odd GOT: sqrt and the exit the
