@@ -298,7 +298,8 @@ TEST_CASE("float32 operations stay machine instructions") {
 
 TEST_CASE("an x87 policy keeps the operations the x87 unit computes") {
     const SoftFloatPolicy x87{Target::Arch::X86_64, &X87Float80};
-    const SoftFloatPolicy software{Target::Arch::X86_64};
+    // AArch64 has no x87 unit, so the default policy computes float80 in software there.
+    const SoftFloatPolicy software{Target::Arch::AArch64};
     const LirInstr add = Instruction(LirOpcode::Add, 2, K::Float80, {0, 1});
     const LirInstr less = Instruction(LirOpcode::CmpLt, 2, K::Bool8, {0, 1});
 
@@ -323,10 +324,11 @@ TEST_CASE("an x87 policy keeps the operations the x87 unit computes") {
              SoftFloatHelperKey{SoftFloatOperation::ConvertTo, K::Float80, K::Float128});
     CHECK_EQ(cast(K::Float128, K::Float80, x87),
              SoftFloatHelperKey{SoftFloatOperation::ConvertTo, K::Float128, K::Float80});
-    // Under the software policy every float80 conversion is a helper.
+    // Under the software policy every float80 conversion is a helper; the default policy picks x87 on x86-64.
     CHECK_EQ(cast(K::Int32, K::Float80, software),
              SoftFloatHelperKey{SoftFloatOperation::ConvertFrom, K::Float80, K::Int32});
     CHECK_FALSE(cast(K::Int32, K::Int64, software).has_value());
+    CHECK_FALSE(SoftFloatHelperFor(add, K::Float80, SoftFloatPolicy{Target::Arch::X86_64}).has_value());
 }
 
 TEST_CASE("the registry synthesizes each requested helper once") {

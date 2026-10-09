@@ -36,9 +36,10 @@ enum class FloatOperation : std::uint8_t {
     OtherFloat,       ///< conversion to or from another software float width
 };
 
-/// Whether float80 is computed by the x87 unit on x86-64. It starts false: until the x87 lowering lands, float80 is
-/// computed in software on every architecture like the other non-native widths.
-inline constexpr bool X87Float80 = false;
+/// Whether float80 is computed by the x87 unit on x86-64. The x86-64 back end lowers the operations
+/// `IsX87NativeOperation` names to x87 code (`X86_64/X87Emitter.cpp`); turning this off computes float80 in software
+/// on every architecture like the other non-native widths.
+inline constexpr bool X87Float80 = true;
 
 /// How `kind` is computed on `arch`.
 [[nodiscard]] constexpr FloatLowering FloatLoweringFor(const TypeRef::Kind kind, const Arch arch) noexcept {

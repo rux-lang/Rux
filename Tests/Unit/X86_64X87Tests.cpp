@@ -4,9 +4,23 @@
 // assembler in Intel syntax with the `{disp32}` prefix, which forces the disp32 forms this encoder always emits.
 
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/FramePlan.h"
+#include "CodeGen/X86_64/RcuEmitter.h"
+#include "Linker/Linker.h"
+#include "Numeric/FloatParsing.h"
+#include "Numeric/SoftwareFloat.h"
+#include "System/Process.h"
+#include "Target/FloatLowering.h"
+#include "Target/Platform.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <doctest.h>
+#include <filesystem>
+#include <span>
+#include <string>
+#include <string_view>
 #include <vector>
 
 using namespace Rux;
@@ -155,4 +169,467 @@ TEST_CASE("x87 encodings compose into a precision-pinned subtraction and an fpre
     encoder.Patch32(patch, static_cast<std::int32_t>(top) - static_cast<std::int32_t>(patch + 4));
     encoder.FstpSt(1);
     CHECK(loop == Bytes{0xD9, 0xF8, 0xDF, 0xE0, 0xF6, 0xC4, 0x04, 0x0F, 0x85, 0xF3, 0xFF, 0xFF, 0xFF, 0xDD, 0xD9});
+}
+
+// ---- float80 lowering ----------------------------------------------------------------------------------------------
+
+namespace {
+[[nodiscard]] TypeRef Primitive(const TypeRef::Kind kind) {
+    return TypeRef::MakePrimitive(kind);
+}
+
+const TypeRef Extended = Primitive(TypeRef::Kind::Float80);
+
+/// `%n = op %0[, %1]` over the function's parameters, returned.
+[[nodiscard]] LirFunc SingleInstruction(const LirOpcode op, const std::vector<TypeRef> &parameterTypes,
+                                        const TypeRef &resultType) {
+    LirFunc function;
+    function.name = "Operation";
+    function.isPublic = true;
+    function.returnType = resultType;
+    LirInstr instruction;
+    instruction.op = op;
+    instruction.type = resultType;
+    for (LirReg reg = 0; reg < parameterTypes.size(); ++reg) {
+        function.params.push_back({reg, parameterTypes[reg], "p" + std::to_string(reg)});
+        instruction.srcs.push_back(reg);
+    }
+    instruction.dst = static_cast<LirReg>(parameterTypes.size());
+    LirBlock block;
+    block.label = "entry";
+    block.instrs = {instruction};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = instruction.dst;
+    block.term->retType = resultType;
+    function.blocks.push_back(std::move(block));
+    return function;
+}
+
+[[nodiscard]] LirPackage PackageOf(std::vector<LirFunc> functions) {
+    LirModule module;
+    module.name = "X87.rux";
+    module.funcs = std::move(functions);
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+    return package;
+}
+
+[[nodiscard]] Bytes TextOf(const LirFunc &function, const Target::OS os) {
+    const LirPackage package = PackageOf({function}); // the emitter keeps a reference
+    RcuEmitter emitter(package, "X87", os);
+    const auto objects = emitter.Generate();
+    REQUIRE(emitter.Diagnostics().empty());
+    REQUIRE_EQ(objects.size(), 1);
+    return objects.front().sections.at(RCU_TEXT_IDX).data;
+}
+
+[[nodiscard]] bool Contains(const Bytes &text, const Bytes &sequence) {
+    return std::ranges::search(text, sequence).begin() != text.end();
+}
+
+/// The frame addresses the lowering uses, read from the same plan the RCU emitter builds.
+struct Frame {
+    explicit Frame(const LirFunc &function, const Target::OS os)
+        : plan(PlanX86_64Frame(function, {}, {}, os)) {
+    }
+
+    [[nodiscard]] std::int32_t Slot(const LirReg reg) const {
+        return -plan.SlotOffsets().at(reg);
+    }
+
+    [[nodiscard]] std::int32_t ControlWords() const {
+        return -plan.WideTemporaryOffset(0);
+    }
+
+    [[nodiscard]] std::int32_t Spill() const {
+        return -plan.WideTemporaryOffset(1);
+    }
+
+    X86_64FramePlan plan;
+};
+
+void BeginRounding(const X64Enc &e, const std::int32_t controlWords) {
+    e.Fnstcw(controlWords);
+    e.MovWordStoreImm16(controlWords + 2, 0x037F);
+    e.Fldcw(controlWords + 2);
+}
+
+void PopFloat80(const X64Enc &e, const std::int32_t slot) {
+    e.FstpTbyte(slot);
+    e.MovWordStoreImm16(slot + 10, 0);
+    e.MovDwordStoreImm32(slot + 12, 0);
+}
+
+constexpr Target::OS Systems[] = {Target::OS::Windows, Target::OS::Linux};
+} // namespace
+
+TEST_CASE("float80 is computed by the x87 unit on x86-64 only") {
+    using namespace Target;
+    CHECK_EQ(FloatLoweringFor(TypeRef::Kind::Float80, Arch::X86_64), FloatLowering::X87);
+    CHECK_EQ(FloatLoweringFor(TypeRef::Kind::Float80, Arch::AArch64), FloatLowering::Software);
+    CHECK_EQ(FloatLoweringFor(TypeRef::Kind::Float128, Arch::X86_64), FloatLowering::Software);
+    CHECK_EQ(FloatLoweringFor(TypeRef::Kind::Float64, Arch::X86_64), FloatLowering::Native);
+}
+
+TEST_CASE("x87 lowering pins 64-bit precision around float80 arithmetic and zeroes the padding") {
+    struct Case {
+        LirOpcode op;
+        void (X64Enc::*combine)() const;
+    };
+
+    for (const Case operation : {Case{LirOpcode::Add, &X64Enc::FaddpSt1}, Case{LirOpcode::Sub, &X64Enc::FsubpSt1},
+                                 Case{LirOpcode::Mul, &X64Enc::FmulpSt1}, Case{LirOpcode::Div, &X64Enc::FdivpSt1}}) {
+        for (const Target::OS os : Systems) {
+            CAPTURE(static_cast<int>(operation.op));
+            CAPTURE(static_cast<int>(os));
+            const LirFunc function = SingleInstruction(operation.op, {Extended, Extended}, Extended);
+            const Frame frame(function, os);
+            CHECK_EQ(frame.plan.WideTemporarySize(), 16);
+            // fnstcw; fld left; fld right; op; fstp tbyte result; zero bytes 10-15; fldcw (the caller's word).
+            const Bytes expected = Encode([&](const X64Enc &e) {
+                BeginRounding(e, frame.ControlWords());
+                e.FldTbyte(frame.Slot(0));
+                e.FldTbyte(frame.Slot(1));
+                (e.*operation.combine)();
+                PopFloat80(e, frame.Slot(2));
+                e.Fldcw(frame.ControlWords());
+            });
+            CHECK(Contains(TextOf(function, os), expected));
+        }
+    }
+}
+
+TEST_CASE("x87 remainder loops on fprem's C2 flag and leaves the control word alone") {
+    for (const Target::OS os : Systems) {
+        CAPTURE(static_cast<int>(os));
+        const LirFunc function = SingleInstruction(LirOpcode::Mod, {Extended, Extended}, Extended);
+        const Frame frame(function, os);
+        Bytes expected;
+        const X64Enc e(expected);
+        e.FldTbyte(frame.Slot(1)); // divisor
+        e.FldTbyte(frame.Slot(0)); // dividend
+        const std::uint32_t top = e.Size();
+        e.Fprem();
+        e.FnstswAx();
+        e.TestAhImm8(0x04);
+        std::uint32_t patch = 0;
+        e.Jnz(patch);
+        e.Patch32(patch, static_cast<std::int32_t>(top) - static_cast<std::int32_t>(patch + 4));
+        e.FstpSt(1);
+        PopFloat80(e, frame.Slot(2));
+        const Bytes text = TextOf(function, os);
+        CHECK(Contains(text, expected));
+        CHECK_FALSE(Contains(text, Encode([&](const X64Enc &x) { x.Fnstcw(frame.ControlWords()); })));
+    }
+}
+
+TEST_CASE("x87 comparisons use fucomip with the SSE unordered patterns and pop both operands") {
+    struct Case {
+        LirOpcode op;
+        void (X64Enc::*set)() const;
+        bool unorderedTrue;
+    };
+
+    for (const Case comparison :
+         {Case{LirOpcode::CmpEq, &X64Enc::SeteAl, false}, Case{LirOpcode::CmpNe, &X64Enc::SetneAl, true},
+          Case{LirOpcode::CmpLt, &X64Enc::SetbAl, false}, Case{LirOpcode::CmpLe, &X64Enc::SetbeAl, false},
+          Case{LirOpcode::CmpGt, &X64Enc::SetaAl, false}, Case{LirOpcode::CmpGe, &X64Enc::SetaeAl, false}}) {
+        for (const Target::OS os : Systems) {
+            CAPTURE(static_cast<int>(comparison.op));
+            CAPTURE(static_cast<int>(os));
+            const LirFunc function = SingleInstruction(comparison.op, {Extended, Extended}, TypeRef::MakeBool());
+            const Frame frame(function, os);
+            // A bool result still gets scratch: its operands are float80.
+            CHECK_EQ(frame.plan.WideTemporarySize(), 16);
+            const Bytes expected = Encode([&](const X64Enc &e) {
+                e.FldTbyte(frame.Slot(1));
+                e.FldTbyte(frame.Slot(0));
+                e.FucomipSt(1);
+                e.FstpSt(0);
+                (e.*comparison.set)();
+                comparison.unorderedTrue ? e.SetpDl() : e.SetnpDl();
+                comparison.unorderedTrue ? e.OrAlDl() : e.AndAlDl();
+                e.MovzxRaxAl();
+            });
+            CHECK(Contains(TextOf(function, os), expected));
+        }
+    }
+}
+
+TEST_CASE("x87 conversions widen machine floats exactly and round to them under the pinned control word") {
+    const TypeRef float32 = Primitive(TypeRef::Kind::Float32);
+    const TypeRef float64 = Primitive(TypeRef::Kind::Float64);
+    for (const Target::OS os : Systems) {
+        CAPTURE(static_cast<int>(os));
+        const LirFunc widen64 = SingleInstruction(LirOpcode::Cast, {float64}, Extended);
+        const Frame widen64Frame(widen64, os);
+        const Bytes widen64Text = TextOf(widen64, os);
+        CHECK(Contains(widen64Text, Encode([&](const X64Enc &e) {
+                           e.FldQword(widen64Frame.Slot(0));
+                           PopFloat80(e, widen64Frame.Slot(1));
+                       })));
+        CHECK_FALSE(Contains(widen64Text, Encode([&](const X64Enc &e) { e.Fnstcw(widen64Frame.ControlWords()); })));
+
+        const LirFunc widen32 = SingleInstruction(LirOpcode::Cast, {float32}, Extended);
+        const Frame widen32Frame(widen32, os);
+        CHECK(Contains(TextOf(widen32, os), Encode([&](const X64Enc &e) {
+                           e.FldDword(widen32Frame.Slot(0));
+                           PopFloat80(e, widen32Frame.Slot(1));
+                       })));
+
+        const LirFunc narrow64 = SingleInstruction(LirOpcode::Cast, {Extended}, float64);
+        const Frame narrow64Frame(narrow64, os);
+        CHECK_EQ(narrow64Frame.plan.WideTemporarySize(), 16);
+        CHECK(Contains(TextOf(narrow64, os), Encode([&](const X64Enc &e) {
+                           BeginRounding(e, narrow64Frame.ControlWords());
+                           e.FldTbyte(narrow64Frame.Slot(0));
+                           e.FstpQword(narrow64Frame.Slot(1));
+                           e.Fldcw(narrow64Frame.ControlWords());
+                       })));
+
+        const LirFunc narrow32 = SingleInstruction(LirOpcode::Cast, {Extended}, float32);
+        const Frame narrow32Frame(narrow32, os);
+        CHECK(Contains(TextOf(narrow32, os), Encode([&](const X64Enc &e) {
+                           BeginRounding(e, narrow32Frame.ControlWords());
+                           e.FldTbyte(narrow32Frame.Slot(0));
+                           e.FstpDword(narrow32Frame.Slot(1));
+                           e.Fldcw(narrow32Frame.ControlWords());
+                       })));
+    }
+}
+
+TEST_CASE("x87 converts narrow signed integers through a sign-extended 64-bit spill") {
+    for (const Target::OS os : Systems) {
+        CAPTURE(static_cast<int>(os));
+        const LirFunc function = SingleInstruction(LirOpcode::Cast, {TypeRef::MakeInt16()}, Extended);
+        const Frame frame(function, os);
+        const auto physical = frame.plan.PhysicalRegisters().find(0);
+        const Bytes expected = Encode([&](const X64Enc &e) {
+            if (physical != frame.plan.PhysicalRegisters().end()) {
+                e.MovRaxPhysReg(physical->second);
+                e.MovsxRaxAx();
+            }
+            else {
+                e.MovsxRaxWord(frame.Slot(0));
+            }
+            e.MovRaxStore(frame.Spill());
+            e.FildQword(frame.Spill());
+            PopFloat80(e, frame.Slot(1));
+        });
+        CHECK(Contains(TextOf(function, os), expected));
+    }
+}
+
+namespace {
+const FloatFormat &FormatOf(const std::uint32_t bits) {
+    return *FindFloatFormat(bits);
+}
+
+[[nodiscard]] FloatEncoding Parse(const std::string_view text, const std::uint32_t bits = 80) {
+    return *ParseFloatEncoding(text, FormatOf(bits));
+}
+
+/// A straight-line `Main` returning a bitmask of failed checks. Each float check stores the value through an alloca
+/// and reloads its storage as an unsigned integer, so it compares every byte, float80 padding included, against the
+/// bits `SoftwareFloat` folds.
+class X87Program {
+public:
+    [[nodiscard]] LirReg Constant(const TypeRef &type, std::string text) {
+        LirInstr instruction;
+        instruction.op = LirOpcode::Const;
+        instruction.type = type;
+        instruction.strArg = std::move(text);
+        return Add(std::move(instruction));
+    }
+
+    [[nodiscard]] LirReg Float80Constant(const FloatEncoding &value) {
+        return Constant(Extended, FormatFloatEncoding(value));
+    }
+
+    [[nodiscard]] LirReg Operation(const LirOpcode op, const std::vector<LirReg> &sources, const TypeRef &type) {
+        LirInstr instruction;
+        instruction.op = op;
+        instruction.type = type;
+        instruction.srcs = sources;
+        return Add(std::move(instruction));
+    }
+
+    void ExpectBits(const LirReg value, const TypeRef &type, const FloatEncoding &expected) {
+        const std::uint32_t bytes = expected.Format().storageBytes;
+        const TypeRef storage = bytes == 16 ? Primitive(TypeRef::Kind::UInt128)
+                              : bytes == 8  ? TypeRef::MakeUInt64()
+                                            : TypeRef::MakeUInt32();
+        const std::uint64_t high = bytes == 16 ? expected.Bits().Word64(1) : 0;
+        const std::uint64_t words[] = {expected.Bits().Word64(0), high};
+        const std::string text = WideInteger::FromWords(std::span(words, bytes == 16 ? 2 : 1), bytes * 8).ToDecimal();
+
+        LirInstr alloca;
+        alloca.op = LirOpcode::Alloca;
+        alloca.type = type;
+        const LirReg address = Add(std::move(alloca));
+        LirInstr store;
+        store.op = LirOpcode::Store;
+        store.type = type;
+        store.srcs = {value, address};
+        instructions.push_back(std::move(store));
+        LirInstr load;
+        load.op = LirOpcode::Load;
+        load.type = storage;
+        load.srcs = {address};
+        const LirReg loaded = Add(std::move(load));
+        Record(Operation(LirOpcode::CmpEq, {loaded, Constant(storage, text)}, TypeRef::MakeBool()));
+    }
+
+    void Expect(const LirReg condition, const bool expected) {
+        Record(expected ? condition : Operation(LirOpcode::Not, {condition}, TypeRef::MakeBool()));
+    }
+
+    [[nodiscard]] LirFunc Finish() {
+        LirBlock block;
+        block.label = "entry";
+        block.instrs = std::move(instructions);
+        block.term.emplace();
+        block.term->kind = LirTermKind::Return;
+        block.term->retVal = failures;
+        block.term->retType = TypeRef::MakeInt32();
+        LirFunc function;
+        function.name = "Main";
+        function.isPublic = true;
+        function.returnType = TypeRef::MakeInt32();
+        function.blocks.push_back(std::move(block));
+        return function;
+    }
+
+    [[nodiscard]] std::uint32_t Checks() const {
+        return checks;
+    }
+
+private:
+    LirReg Add(LirInstr instruction) {
+        instruction.dst = next++;
+        instructions.push_back(std::move(instruction));
+        return instructions.back().dst;
+    }
+
+    void Record(const LirReg matches) {
+        if (failures == LirNoReg) {
+            failures = Constant(TypeRef::MakeInt32(), "0");
+        }
+        const LirReg mismatch = Operation(LirOpcode::Not, {matches}, TypeRef::MakeBool());
+        const LirReg code = Operation(LirOpcode::Cast, {mismatch}, TypeRef::MakeInt32());
+        const LirReg weight = Constant(TypeRef::MakeInt32(), std::to_string(1U << checks++));
+        failures =
+            Operation(LirOpcode::Add, {failures, Operation(LirOpcode::Mul, {code, weight}, TypeRef::MakeInt32())},
+                      TypeRef::MakeInt32());
+    }
+
+    std::vector<LirInstr> instructions;
+    LirReg next = 0;
+    LirReg failures = LirNoReg;
+    std::uint32_t checks = 0;
+};
+
+[[nodiscard]] LirFunc X87Checks() {
+    const TypeRef float32 = Primitive(TypeRef::Kind::Float32);
+    const TypeRef float64 = Primitive(TypeRef::Kind::Float64);
+    X87Program program;
+    const auto value = [&](const std::string_view text) { return program.Float80Constant(Parse(text)); };
+    const auto binary = [&](const LirOpcode op, const LirReg left, const LirReg right) {
+        return program.Operation(op, {left, right}, Extended);
+    };
+
+    // Exact only at 64-bit precision: the Win64 default of 53 bits would round both to 1.
+    const LirReg one = value("1");
+    program.ExpectBits(binary(LirOpcode::Add, one, value("0x1p-63")), Extended, Parse("0x1.0000000000000002p0"));
+    program.ExpectBits(binary(LirOpcode::Sub, one, value("0x1p-64")), Extended, Parse("0x1.fffffffffffffffep-1"));
+    // A tie at 64-bit precision rounds to even.
+    program.ExpectBits(binary(LirOpcode::Add, one, value("0x1p-64")), Extended, Parse("1"));
+    program.ExpectBits(binary(LirOpcode::Add, value("0x1.0000000000000002p0"), value("0x1p-64")), Extended,
+                       Parse("0x1.0000000000000004p0"));
+
+    const LirReg three = value("3");
+    const LirReg third = binary(LirOpcode::Div, one, three);
+    program.ExpectBits(third, Extended, DivideFloat(Parse("1"), Parse("3")));
+    program.ExpectBits(binary(LirOpcode::Mul, value("1.1"), value("1.1")), Extended,
+                       MultiplyFloat(Parse("1.1"), Parse("1.1")));
+    // Gradual underflow and overflow.
+    program.ExpectBits(binary(LirOpcode::Div, value("0x1p-16445"), value("2")), Extended, Parse("0"));
+    program.ExpectBits(binary(LirOpcode::Mul, value("0x1.fffffffffffffffep16383"), value("2")), Extended,
+                       FloatEncoding::Infinity(FormatOf(80)));
+    // fprem needs many partial steps for a 2^1000 exponent gap; the remainder keeps the dividend's sign.
+    program.ExpectBits(binary(LirOpcode::Mod, value("0x1p1000"), three), Extended,
+                       RemainderFloat(Parse("0x1p1000"), Parse("3")));
+    program.ExpectBits(binary(LirOpcode::Mod, value("-7.5"), value("2")), Extended, Parse("-1.5"));
+    program.ExpectBits(binary(LirOpcode::Mod, value("5"), value("infinity")), Extended, Parse("5"));
+
+    program.ExpectBits(program.Operation(LirOpcode::Cast, {program.Constant(float64, "0.1")}, Extended), Extended,
+                       ConvertFloat(Parse("0.1", 64), FormatOf(80)));
+    program.ExpectBits(program.Operation(LirOpcode::Cast, {program.Constant(float32, "0.1")}, Extended), Extended,
+                       ConvertFloat(Parse("0.1", 32), FormatOf(80)));
+    program.ExpectBits(program.Operation(LirOpcode::Cast, {third}, float64), float64,
+                       ConvertFloat(DivideFloat(Parse("1"), Parse("3")), FormatOf(64)));
+    program.ExpectBits(program.Operation(LirOpcode::Cast, {third}, float32), float32,
+                       ConvertFloat(DivideFloat(Parse("1"), Parse("3")), FormatOf(32)));
+    // Halfway between two float64 values: ties to even, rounded once.
+    program.ExpectBits(program.Operation(LirOpcode::Cast, {value("0x1.00000000000008p0")}, float64), float64,
+                       Parse("1", 64));
+
+    const auto fromInteger = [&](const TypeRef &type, const std::string &text, const std::int64_t integer) {
+        const LirReg converted = program.Operation(LirOpcode::Cast, {program.Constant(type, text)}, Extended);
+        program.ExpectBits(
+            converted, Extended,
+            IntegerToFloat(WideInteger::FromUnsigned(static_cast<std::uint64_t>(integer), 64), true, FormatOf(80)));
+    };
+    fromInteger(TypeRef::MakeInt8(), "-128", -128);
+    fromInteger(TypeRef::MakeInt16(), "-12345", -12345);
+    fromInteger(TypeRef::MakeInt32(), "-5", -5);
+    fromInteger(TypeRef::MakeInt64(), "-9223372036854775807", -9223372036854775807);
+
+    const LirReg nan = value("nan");
+    const auto compare = [&](const LirOpcode op, const LirReg left, const LirReg right) {
+        return program.Operation(op, {left, right}, TypeRef::MakeBool());
+    };
+    program.Expect(compare(LirOpcode::CmpLt, one, three), true);
+    program.Expect(compare(LirOpcode::CmpGt, one, three), false);
+    program.Expect(compare(LirOpcode::CmpGe, three, three), true);
+    program.Expect(compare(LirOpcode::CmpEq, value("0"), value("-0")), true);
+    program.Expect(compare(LirOpcode::CmpLe, nan, nan), false);
+    program.Expect(compare(LirOpcode::CmpEq, nan, nan), false);
+    program.Expect(compare(LirOpcode::CmpNe, nan, one), true);
+    program.Expect(compare(LirOpcode::CmpNe, three, three), false);
+    REQUIRE_LE(program.Checks(), 31);
+    return program.Finish();
+}
+} // namespace
+
+TEST_CASE("x86-64 RCU executes float80 arithmetic, comparisons and conversions on the x87 unit") {
+    const LirPackage package = PackageOf({X87Checks()});
+    RcuEmitter sysvEmitter(package, "X87", Target::OS::Linux);
+    REQUIRE_EQ(sysvEmitter.Generate().size(), 1);
+    REQUIRE(sysvEmitter.Diagnostics().empty());
+
+    RcuEmitter emitter(package, "X87", Target::OS::Windows);
+    auto objects = emitter.Generate();
+    REQUIRE(emitter.Diagnostics().empty());
+    REQUIRE_EQ(objects.size(), 1);
+
+#if RUX_OS_WINDOWS && RUX_ARCH_X86_64
+    static std::atomic_uint64_t sequence = 0;
+    const std::filesystem::path output =
+        std::filesystem::temp_directory_path() / ("rux-x87-" + std::to_string(++sequence) + ".exe");
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    Linker linker(std::move(objects), "X87", {}, ArtifactKind::Executable, Target::OS::Windows, Target::Arch::X86_64);
+    const bool linked = linker.Link(output);
+    const std::string linkMessage = linker.Errors().empty() ? "link failed" : linker.Errors().front().message;
+    REQUIRE_MESSAGE(linked, linkMessage);
+    const auto result = System::RunCaptured(output);
+    std::filesystem::remove(output, error);
+    REQUIRE(result.has_value());
+    // Each set bit names a failed check, in the order X87Checks records them.
+    CHECK_EQ(result->exitCode, 0);
+#else
+    CHECK_FALSE(objects.front().sections.at(RCU_TEXT_IDX).data.empty());
+#endif
 }
