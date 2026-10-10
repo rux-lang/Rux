@@ -6,6 +6,7 @@ MinRux = "0.4.0"
 Packages = [
     "Packages/Algorithms",
     "Packages/Allocator",
+    "Packages/Atomic",
     "Packages/C",
     "Packages/Collections",
     "Packages/CommandLine",

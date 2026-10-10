@@ -6,12 +6,13 @@ Core is an optional declaration provider. Every primitive type is built into the
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **29 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **30 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
 | `Algorithms`  | Generic algorithms over caller-owned slices                          | Core                                                     |
 | `Allocator`   | Allocation policies, validated layouts and allocation owners         | Core, Memory                                             |
+| `Atomic`      | Values threads share without a lock, and their memory orders         | Core                                                     |
 | `C`           | Explicit interoperability with C runtime APIs                        | Core                                                     |
 | `Collections` | Owning containers and their traversal/storage invariants             | Core, Memory, Allocator, Algorithms, Hash, Entropy, Text |
 | `CommandLine` | Declarative argument parsing, subcommands and generated help         | Core, Path, Process, Text                                |
@@ -59,7 +60,7 @@ Layer 3  Allocator, Entropy
              |
 Layer 2  Memory
              |
-Layer 1  Linux, macOS, FreeBSD, C,
+Layer 1  Linux, macOS, FreeBSD, C, Atomic,
          Algorithms, Hash, Crypto, Math, Unicode
              |
 Layer 0  Core, Windows
@@ -69,7 +70,7 @@ Layer 0  Core, Windows
 
 ## Retired Identities
 
-The workspace matches the catalog above: 29 packages, and none of the five identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
+The workspace matches the catalog above: 30 packages, and none of the five identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
 | Former identity | What happened               | Status                                  |
 | --------------- | --------------------------- | --------------------------------------- |
@@ -147,7 +148,7 @@ The rule applies to what the three actually have in common. `Brk` is absent on D
 
 No first-party package is published, and none is marked publishable. A package becomes publishable only when every documentation check, archive check and applicable review gate is complete; the rule was applied, and the answer today is that one criterion blocks all of them. What has actually been measured, at which commit and on which host, is recorded in [package acceptance evidence](PackageAcceptance.md).
 
-**What passes for all 29 packages.** Canonical `SourceLibrary` manifests with no path dependency, package tests on local paths only, `rux check` clean on all eight target cells, `rux doc` generating with no missing declaration, no duplicate route and no unsafe link, and `rux publish --dry-run` validating a deterministic archive — two packs of the same tree agree byte for byte, which the CLI tests assert. Every fenced `rux` block in every README is compiled by `Tests/Unit/PackageExampleTests.cpp`, which exists because five of them were broken and nothing else looked.
+**What passes for all 30 packages.** Canonical `SourceLibrary` manifests with no path dependency, package tests on local paths only, `rux check` clean on all eight target cells, `rux doc` generating with no missing declaration, no duplicate route and no unsafe link, and `rux publish --dry-run` validating a deterministic archive — two packs of the same tree agree byte for byte, which the CLI tests assert. Every fenced `rux` block in every README is compiled by `Tests/Unit/PackageExampleTests.cpp`, which exists because five of them were broken and nothing else looked.
 
 **What blocks all of them.** Native behavior must be executed on Windows, Linux, macOS and FreeBSD across both architectures. Only the host cell runs locally: the compiler refuses to run a foreign target's test programs by design, reporting that the host can build and check the target but not execute it. The other seven cells are compiled and never run, so the syscall numbers, flag values, errno constants and `struct stat` offsets of the four platform binding packages rest on published documentation rather than on a passing test. Closing this needs the [CI matrix](CI-CD.md) or VMs; marking anything publishable before then would treat "it compiles for that target" as the same claim as "it works on that target".
 

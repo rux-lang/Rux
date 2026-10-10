@@ -1,0 +1,220 @@
+// A value that threads share without a lock.
+// `Atomic<T>` holds one integer of 8 to 64 bits, `bool` or pointer and reaches it only through `Core`'s atomic
+// intrinsics, so no thread ever sees a value half written and every change is one indivisible step. The methods take
+// the value by shared reference, because the whole point is that several threads reach it at once; the hardware, not
+// the borrow, is what keeps their accesses apart.
+// The plain methods are sequentially consistent, which is the ordering that is never wrong: every thread agrees on one
+// order of all of them. The `With` forms take a weaker `MemoryOrder` for code that has worked out it is enough. The
+// intrinsics need their order written as a case, so a `With` method selects among them with a `match`; the plain
+// methods involve no such choice.
+
+import Core::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchAnd, AtomicFetchOr, AtomicFetchSub,
+               AtomicFetchXor, AtomicLoad, AtomicStore, MemoryOrder };
+
+/// One value that threads read and change without a lock.
+/// `T` must be an integer of 8 to 64 bits, `bool` or a pointer; any other type is refused where the methods are used.
+/// Shared by reference between threads; the value lives inside, so it must outlive every thread that reaches it.
+/// Copying an `Atomic` copies its current value into a new, unrelated one.
+/// @typeParam T the value's type: an integer of 8 to 64 bits, `bool`, or a pointer
+/// @see https://rux-lang.dev/docs/api/atomic/atomic
+pub struct Atomic<T> {
+    value: T;
+}
+
+extend Atomic<T> {
+    /// An atomic value holding `value`.
+    /// Making one is not itself atomic: it must be finished before another thread can reach it, as any value must be.
+    /// @param value the initial value
+    /// @returns an atomic holding `value`
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#new
+    pub func Atomic(value: T) -> Atomic<T> {
+        return Atomic<T> { value: value };
+    }
+
+    // The address every operation goes through. The shared reference is the point: the value is changed through
+    // atomic instructions only, which is safe however many threads hold it.
+    func Address(self: &Atomic<T>) -> *var T {
+        return (@self.value) as *var T;
+    }
+
+    /// The current value, read with sequential consistency.
+    /// @returns the value
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#load
+    pub func Load(self: &Atomic<T>) -> T {
+        return AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent);
+    }
+
+    /// The current value, read with `order`, which must be `Relaxed`, `Acquire` or `SequentiallyConsistent`.
+    /// `Release` and `AcquireRelease` read as `Acquire` and `SequentiallyConsistent` respectively, the nearest orders a
+    /// load can have.
+    /// @param order which other operations may move across this one
+    /// @returns the value
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#load-with
+    pub func LoadWith(self: &Atomic<T>, order: MemoryOrder) -> T {
+        return match order {
+            .Relaxed => AtomicLoad(self.Address(), MemoryOrder::Relaxed),
+            .Acquire => AtomicLoad(self.Address(), MemoryOrder::Acquire),
+            .Release => AtomicLoad(self.Address(), MemoryOrder::Acquire),
+            else => AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent)
+        };
+    }
+
+    /// Replaces the value, with sequential consistency.
+    /// @param value the new value
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#store
+    pub func Store(self: &Atomic<T>, value: T) {
+        AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+    }
+
+    /// Replaces the value with `order`, which must be `Relaxed`, `Release` or `SequentiallyConsistent`.
+    /// `Acquire` and `AcquireRelease` store as `Release` and `SequentiallyConsistent` respectively, the nearest orders
+    /// a store can have.
+    /// @param value the new value
+    /// @param order which other operations may move across this one
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#store-with
+    pub func StoreWith(self: &Atomic<T>, value: T, order: MemoryOrder) {
+        match order {
+            .Relaxed => AtomicStore(self.Address(), value, MemoryOrder::Relaxed),
+            .Release => AtomicStore(self.Address(), value, MemoryOrder::Release),
+            .Acquire => AtomicStore(self.Address(), value, MemoryOrder::Release),
+            else => AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+        }
+    }
+
+    /// Replaces the value and returns the one replaced, as one step, with sequential consistency.
+    /// @param value the new value
+    /// @returns the value before
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#exchange
+    pub func Exchange(self: &Atomic<T>, value: T) -> T {
+        return AtomicExchange(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+    }
+
+    /// Replaces the value with `desired` if it is `expected`, as one step, with sequential consistency.
+    /// Succeeds with the value before, which is `expected`, when it replaced it, and fails with the value it found
+    /// otherwise, so a loop can retry from what is really there. Never fails spuriously.
+    /// @param expected the value that must be there
+    /// @param desired the value to put there
+    /// @returns the value before, as success when it was replaced and as failure when it was not
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange
+    pub func CompareExchange(self: &Atomic<T>, expected: T, desired: T) -> T ! T {
+        let previous = AtomicCompareExchange(self.Address(), expected, desired, MemoryOrder::SequentiallyConsistent,
+                                             MemoryOrder::SequentiallyConsistent);
+        if previous == expected { return previous; }
+        fail previous;
+    }
+
+    /// Replaces the value with `desired` if it is `expected`, with `success` when it does and `failure` when it does
+    /// not.
+    /// Orders a failure cannot have are strengthened to the nearest it can: `Release` reads as `Relaxed`,
+    /// `AcquireRelease` as `Acquire`, and a failure order stronger than the success order as the success order's
+    /// acquire part.
+    /// @param expected the value that must be there
+    /// @param desired the value to put there
+    /// @param success the order when the value is replaced
+    /// @param failure the order when it is not
+    /// @returns the value before, as success when it was replaced and as failure when it was not
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange-with
+    pub func CompareExchangeWith(self: &Atomic<T>, expected: T, desired: T, success: MemoryOrder,
+                                 failure: MemoryOrder) -> T ! T {
+        let address = self.Address();
+        let acquireOnFailure = failure == MemoryOrder::Acquire || failure == MemoryOrder::AcquireRelease ||
+                               failure == MemoryOrder::SequentiallyConsistent;
+        let previous = match success {
+            .Relaxed => AtomicCompareExchange(address, expected, desired, MemoryOrder::Relaxed, MemoryOrder::Relaxed),
+            .Release => AtomicCompareExchange(address, expected, desired, MemoryOrder::Release, MemoryOrder::Relaxed),
+            .Acquire => acquireOnFailure
+                ? AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Acquire)
+                : AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Relaxed),
+            .AcquireRelease => acquireOnFailure
+                ? AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease, MemoryOrder::Acquire)
+                : AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease, MemoryOrder::Relaxed),
+            else => failure == MemoryOrder::SequentiallyConsistent
+                ? AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
+                                        MemoryOrder::SequentiallyConsistent)
+                : AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
+                                        MemoryOrder::Relaxed)
+        };
+        if previous == expected { return previous; }
+        fail previous;
+    }
+
+    /// Adds `value`, wrapping on overflow, and returns the value before, as one step, with sequential consistency.
+    /// Only for integer `T`.
+    /// @param value what to add
+    /// @returns the value before the addition
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-add
+    pub func FetchAdd(self: &Atomic<T>, value: T) -> T {
+        return AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+    }
+
+    /// Subtracts `value`, wrapping on overflow, and returns the value before, as one step, with sequential
+    /// consistency.
+    /// Only for integer `T`.
+    /// @param value what to subtract
+    /// @returns the value before the subtraction
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-sub
+    pub func FetchSub(self: &Atomic<T>, value: T) -> T {
+        return AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+    }
+
+    /// Adds `value` with `order`, wrapping on overflow, and returns the value before.
+    /// The relaxed form is what a counter whose value nothing else depends on needs. Only for integer `T`.
+    /// @param value what to add
+    /// @param order which other operations may move across this one
+    /// @returns the value before the addition
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-add-with
+    pub func FetchAddWith(self: &Atomic<T>, value: T, order: MemoryOrder) -> T {
+        return match order {
+            .Relaxed => AtomicFetchAdd(self.Address(), value, MemoryOrder::Relaxed),
+            .Acquire => AtomicFetchAdd(self.Address(), value, MemoryOrder::Acquire),
+            .Release => AtomicFetchAdd(self.Address(), value, MemoryOrder::Release),
+            .AcquireRelease => AtomicFetchAdd(self.Address(), value, MemoryOrder::AcquireRelease),
+            else => AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+        };
+    }
+
+    /// Subtracts `value` with `order`, wrapping on overflow, and returns the value before.
+    /// The release form is what dropping one reference to shared data needs, so that the last one sees every write
+    /// the others made. Only for integer `T`.
+    /// @param value what to subtract
+    /// @param order which other operations may move across this one
+    /// @returns the value before the subtraction
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-sub-with
+    pub func FetchSubWith(self: &Atomic<T>, value: T, order: MemoryOrder) -> T {
+        return match order {
+            .Relaxed => AtomicFetchSub(self.Address(), value, MemoryOrder::Relaxed),
+            .Acquire => AtomicFetchSub(self.Address(), value, MemoryOrder::Acquire),
+            .Release => AtomicFetchSub(self.Address(), value, MemoryOrder::Release),
+            .AcquireRelease => AtomicFetchSub(self.Address(), value, MemoryOrder::AcquireRelease),
+            else => AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+        };
+    }
+
+    /// Combines the value with `value` by bitwise and, and returns the value before, with sequential consistency.
+    /// Only for integer or `bool` `T`.
+    /// @param value the bits to keep
+    /// @returns the value before
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-and
+    pub func FetchAnd(self: &Atomic<T>, value: T) -> T {
+        return AtomicFetchAnd(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+    }
+
+    /// Combines the value with `value` by bitwise or, and returns the value before, with sequential consistency.
+    /// Only for integer or `bool` `T`.
+    /// @param value the bits to set
+    /// @returns the value before
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-or
+    pub func FetchOr(self: &Atomic<T>, value: T) -> T {
+        return AtomicFetchOr(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+    }
+
+    /// Combines the value with `value` by bitwise exclusive or, and returns the value before, with sequential
+    /// consistency.
+    /// Only for integer or `bool` `T`.
+    /// @param value the bits to flip
+    /// @returns the value before
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-xor
+    pub func FetchXor(self: &Atomic<T>, value: T) -> T {
+        return AtomicFetchXor(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+    }
+}
