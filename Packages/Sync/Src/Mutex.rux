@@ -1,0 +1,199 @@
+// A value that one thread at a time may reach, and the condition threads wait on while they hold it.
+// A `Mutex<T>` is a handle: the value and its lock live in storage every clone of the handle shares, so a thread is
+// given its own handle with `Clone` and the storage lasts until the last handle is gone. Locking returns a guard,
+// which is the only way to reach the value and which releases the lock when it is dropped.
+
+import Core::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
+import Sync::{
+    AllocateBlock, DestroyBlock, LockWordContended, LockWord, ReleaseBlock, RetainBlock, TryLockWord, UnlockWord,
+    WaitWhile, WakeAll, WakeOne
+};
+import Time::Duration;
+
+struct MutexBlock<T> {
+    references: uint32;
+    word: uint32;
+    value: T;
+}
+
+/// A value guarded by a lock, shared between the threads that hold a handle to it.
+/// `Clone` gives another handle to the same value, to move to another thread. The value is destroyed when the last
+/// handle and the last guard are gone. A handle is not copied.
+/// @typeParam T the type of the guarded value
+/// @see https://rux-lang.dev/docs/api/sync/mutex#mutex
+pub struct Mutex<T> {
+    block: *var MutexBlock<T>;
+}
+
+/// The lock on a `Mutex<T>`, held for as long as the guard lives, and the way to reach the value.
+/// Dropping the guard, or calling `Unlock`, releases the lock. A guard is not copied.
+/// @typeParam T the type of the guarded value
+/// @see https://rux-lang.dev/docs/api/sync/mutex#mutex-guard
+pub struct MutexGuard<T> {
+    block: *var MutexBlock<T>;
+}
+
+extend Mutex<T> {
+    func =(self: &var Mutex<T>, other: &Mutex<T>);
+
+    /// A new lock guarding `value`. Running out of memory for it is a program error.
+    /// @param value the value to guard
+    /// @returns the first handle to it
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#mutex
+    pub func Mutex(value: T) -> Mutex<T> {
+        return Mutex<T> { block: AllocateBlock(MutexBlock<T> { references: 1, word: 0, value: <-value }) };
+    }
+
+    /// Another handle to the same value.
+    /// @returns the handle
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#clone
+    pub func Clone(self: &Mutex<T>) -> Mutex<T> {
+        RetainBlock(@self.block.references);
+        return Mutex<T> { block: self.block };
+    }
+
+    /// Takes the lock, waiting while another thread holds it, and returns the guard that holds it.
+    /// Not reentrant: locking again on the thread that holds the lock waits forever.
+    /// @returns the guard
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#lock
+    pub func Lock(self: &Mutex<T>) -> MutexGuard<T> {
+        LockWord(@self.block.word);
+        RetainBlock(@self.block.references);
+        return MutexGuard<T> { block: self.block };
+    }
+
+    /// Takes the lock if nobody holds it, without waiting.
+    /// @returns the guard, or none when another thread holds the lock
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#try-lock
+    pub func TryLock(self: &Mutex<T>) -> MutexGuard<T>? {
+        if !TryLockWord(@self.block.word) { return none; }
+        RetainBlock(@self.block.references);
+        return MutexGuard<T> { block: self.block };
+    }
+
+    func ~Mutex(self: &var Mutex<T>) {
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<MutexBlock<T>>(self.block);
+        }
+    }
+}
+
+extend MutexGuard<T> {
+    func =(self: &var MutexGuard<T>, other: &MutexGuard<T>);
+
+    /// The guarded value, which this thread alone may read and write while the guard holds the lock.
+    /// The address is valid for as long as the guard holds the lock; keeping it longer is a program error.
+    /// @returns the value's address
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#get
+    pub func Get(self: &MutexGuard<T>) -> *var T {
+        return @self.block.value;
+    }
+
+    /// Whether the guard still holds the lock.
+    /// @returns false once `Unlock` was called
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#is-locked
+    pub func IsLocked(self: &MutexGuard<T>) -> bool {
+        return self.block != null;
+    }
+
+    /// Releases the lock before the guard is dropped. Unlocking a guard twice does nothing.
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#unlock
+    pub func Unlock(self: &var MutexGuard<T>) {
+        if self.block == null { return; }
+        let block = self.block;
+        self.block = null;
+        UnlockWord(@block.word);
+        if ReleaseBlock(@block.references) {
+            DestroyBlock<MutexBlock<T>>(block);
+        }
+    }
+
+    func ~MutexGuard(self: &var MutexGuard<T>) {
+        self.Unlock();
+    }
+}
+
+struct ConditionBlock {
+    references: uint32;
+    sequence: uint32;
+}
+
+/// A condition threads wait on while holding a `Mutex<T>`, until another thread says it may hold.
+/// A wait releases the lock while it sleeps and takes it again before it returns, so the waiter re-checks the
+/// condition under the lock. A wait may also return when nothing notified it, which is why it is always called in a
+/// loop that checks the condition. `Clone` gives another handle to the same condition. A handle is not copied.
+/// @see https://rux-lang.dev/docs/api/sync/mutex#condition
+pub struct Condition {
+    block: *var ConditionBlock;
+}
+
+extend Condition {
+    func =(self: &var Condition, other: &Condition);
+
+    /// A new condition. Running out of memory for it is a program error.
+    /// @returns the first handle to it
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#condition
+    pub func Condition() -> Condition {
+        return Condition { block: AllocateBlock(ConditionBlock { references: 1, sequence: 0 }) };
+    }
+
+    /// Another handle to the same condition.
+    /// @returns the handle
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#clone-condition
+    pub func Clone(self: &Condition) -> Condition {
+        RetainBlock(@self.block.references);
+        return Condition { block: self.block };
+    }
+
+    /// Releases the guard's lock, sleeps until notified, and takes the lock again.
+    /// @typeParam T the type of the guarded value
+    /// @param guard a guard that holds its lock
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#wait
+    pub func Wait<T>(self: &Condition, guard: &var MutexGuard<T>) {
+        self.Sleep<T>(guard, -1);
+    }
+
+    /// Releases the guard's lock, sleeps until notified or until `timeout` has passed, and takes the lock again.
+    /// @typeParam T the type of the guarded value
+    /// @param guard a guard that holds its lock
+    /// @param timeout how long to wait at most; a negative one does not wait
+    /// @returns false when the time ran out without a notification
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#wait-for
+    pub func WaitFor<T>(self: &Condition, guard: &var MutexGuard<T>, timeout: Duration) -> bool {
+        if timeout.IsNegative() { return false; }
+        let nanoseconds = timeout.TotalNanoseconds() ?? 0x7FFFFFFFFFFFFFFFi64;
+        return self.Sleep<T>(guard, nanoseconds);
+    }
+
+    /// Wakes one thread waiting on the condition, if any.
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#notify-one
+    pub func NotifyOne(self: &Condition) {
+        AtomicFetchAdd(@self.block.sequence, 1u32, MemoryOrder::Release);
+        WakeOne(@self.block.sequence);
+    }
+
+    /// Wakes every thread waiting on the condition.
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#notify-all
+    pub func NotifyAll(self: &Condition) {
+        AtomicFetchAdd(@self.block.sequence, 1u32, MemoryOrder::Release);
+        WakeAll(@self.block.sequence);
+    }
+
+    // The sequence is read before the lock is released, so a notification made after the release changes it and
+    // ends the sleep at once. Taking the lock back as contended keeps a wake owed to another sleeper from being lost.
+    func Sleep<T>(self: &Condition, guard: &var MutexGuard<T>, nanoseconds: int64) -> bool {
+        let block = guard.block;
+        if block == null { return true; }
+        let sequence = AtomicLoad(@self.block.sequence, MemoryOrder::Relaxed);
+        UnlockWord(@block.word);
+        let notified = WaitWhile(@self.block.sequence, sequence, nanoseconds);
+        LockWordContended(@block.word);
+        return notified;
+    }
+
+    func ~Condition(self: &var Condition) {
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<ConditionBlock>(self.block);
+        }
+    }
+}

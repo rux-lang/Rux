@@ -1,0 +1,203 @@
+// A queue that threads send values into and receive values out of, with room for a fixed number of them.
+// The values sit in a ring under one lock. A sender waits while the ring is full and a receiver while it is empty,
+// each on its own sequence word that the other side advances and wakes. Closing the channel wakes everyone: senders
+// then fail and get their value back, and receivers take what is left and then learn that nothing more will come.
+
+import Core::{ AtomicFetchAdd, AtomicLoad, MemoryOrder, Panic };
+import Memory::{ Alloc, Free };
+import Sync::{
+    AllocateBlock, DestroyBlock, DiscardValue, LockWord, LockWordContended, ReleaseBlock, RetainBlock, UnlockWord,
+    WaitWhile, WakeAll, WakeOne
+};
+
+struct ChannelBlock<T> {
+    references: uint32;
+    word: uint32;
+    // Advanced when a value arrives or the channel closes; receivers sleep on it.
+    arrivals: uint32;
+    // Advanced when a value leaves or the channel closes; senders sleep on it.
+    departures: uint32;
+    closed: bool;
+    head: uint;
+    length: uint;
+    capacity: uint;
+    slots: *var T;
+}
+
+/// A bounded queue of values passed between threads, any number of which may send and receive.
+/// Values arrive in the order they were sent. `Clone` gives another handle to the same channel; the values still in
+/// it are destroyed when the last handle is gone. A handle is not copied.
+/// @typeParam T the type of the values
+/// @see https://rux-lang.dev/docs/api/sync/channel#channel
+pub struct Channel<T> {
+    block: *var ChannelBlock<T>;
+}
+
+extend Channel<T> {
+    func =(self: &var Channel<T>, other: &Channel<T>);
+
+    /// A channel with room for `capacity` values. Zero capacity is a program error, as is running out of memory.
+    /// @param capacity how many values may wait in the channel at once
+    /// @returns the first handle to it
+    /// @see https://rux-lang.dev/docs/api/sync/channel#channel
+    pub func Channel(capacity: uint) -> Channel<T> {
+        if capacity == 0u { Panic("a channel needs room for at least one value"); }
+        let slots = Alloc(capacity * sizeof(T)) as *var T;
+        if slots == null { Panic("out of memory for a channel"); }
+        return Channel<T> {
+            block: AllocateBlock(ChannelBlock<T> {
+                references: 1, word: 0, arrivals: 0, departures: 0, closed: false, head: 0, length: 0,
+                capacity: capacity, slots: slots
+            })
+        };
+    }
+
+    /// Another handle to the same channel.
+    /// @returns the handle
+    /// @see https://rux-lang.dev/docs/api/sync/channel#clone
+    pub func Clone(self: &Channel<T>) -> Channel<T> {
+        RetainBlock(@self.block.references);
+        return Channel<T> { block: self.block };
+    }
+
+    /// Sends `value`, waiting while the channel is full.
+    /// @param value the value to send
+    /// @returns nothing, or fails with the value when the channel is closed
+    /// @see https://rux-lang.dev/docs/api/sync/channel#send
+    pub func Send(self: &Channel<T>, value: T) -> ! T {
+        let block = self.block;
+        LockWord(@block.word);
+        while block.length == block.capacity && !block.closed {
+            let departures = AtomicLoad(@block.departures, MemoryOrder::Relaxed);
+            UnlockWord(@block.word);
+            WaitWhile(@block.departures, departures, -1);
+            LockWordContended(@block.word);
+        }
+        if block.closed {
+            UnlockWord(@block.word);
+            fail value;
+        }
+        self.Push(<-value);
+    }
+
+    /// Sends `value` if there is room, without waiting.
+    /// @param value the value to send
+    /// @returns nothing, or fails with the value when the channel is full or closed
+    /// @see https://rux-lang.dev/docs/api/sync/channel#try-send
+    pub func TrySend(self: &Channel<T>, value: T) -> ! T {
+        let block = self.block;
+        LockWord(@block.word);
+        if block.closed || block.length == block.capacity {
+            UnlockWord(@block.word);
+            fail value;
+        }
+        self.Push(<-value);
+    }
+
+    /// Receives the oldest value, waiting while the channel is empty.
+    /// @returns the value, or none once the channel is closed and empty
+    /// @see https://rux-lang.dev/docs/api/sync/channel#receive
+    pub func Receive(self: &Channel<T>) -> T? {
+        let block = self.block;
+        LockWord(@block.word);
+        while block.length == 0u && !block.closed {
+            let arrivals = AtomicLoad(@block.arrivals, MemoryOrder::Relaxed);
+            UnlockWord(@block.word);
+            WaitWhile(@block.arrivals, arrivals, -1);
+            LockWordContended(@block.word);
+        }
+        if block.length == 0u {
+            UnlockWord(@block.word);
+            return none;
+        }
+        return self.Pop();
+    }
+
+    /// Receives the oldest value if there is one, without waiting.
+    /// @returns the value, or none when the channel is empty
+    /// @see https://rux-lang.dev/docs/api/sync/channel#try-receive
+    pub func TryReceive(self: &Channel<T>) -> T? {
+        let block = self.block;
+        LockWord(@block.word);
+        if block.length == 0u {
+            UnlockWord(@block.word);
+            return none;
+        }
+        return self.Pop();
+    }
+
+    /// Closes the channel: sends fail from now on, and receivers take what is left and then get none. Closing a
+    /// closed channel does nothing.
+    /// @see https://rux-lang.dev/docs/api/sync/channel#close
+    pub func Close(self: &Channel<T>) {
+        let block = self.block;
+        LockWord(@block.word);
+        block.closed = true;
+        AtomicFetchAdd(@block.arrivals, 1u32, MemoryOrder::Relaxed);
+        AtomicFetchAdd(@block.departures, 1u32, MemoryOrder::Relaxed);
+        UnlockWord(@block.word);
+        WakeAll(@block.arrivals);
+        WakeAll(@block.departures);
+    }
+
+    /// Whether the channel was closed.
+    /// @returns true once `Close` was called on any handle
+    /// @see https://rux-lang.dev/docs/api/sync/channel#is-closed
+    pub func IsClosed(self: &Channel<T>) -> bool {
+        let block = self.block;
+        LockWord(@block.word);
+        let closed = block.closed;
+        UnlockWord(@block.word);
+        return closed;
+    }
+
+    /// How many values wait in the channel right now, which other threads may change at any moment.
+    /// @returns the number of values
+    /// @see https://rux-lang.dev/docs/api/sync/channel#length
+    pub func Length(self: &Channel<T>) -> uint {
+        let block = self.block;
+        LockWord(@block.word);
+        let length = block.length;
+        UnlockWord(@block.word);
+        return length;
+    }
+
+    // Appends a value under the lock, releases it and wakes a receiver.
+    func Push(self: &Channel<T>, value: T) {
+        let block = self.block;
+        Slot<T>(block, (block.head + block.length) % block.capacity)[0] <- value;
+        block.length = block.length + 1u;
+        AtomicFetchAdd(@block.arrivals, 1u32, MemoryOrder::Relaxed);
+        UnlockWord(@block.word);
+        WakeOne(@block.arrivals);
+    }
+
+    // Takes the oldest value under the lock, releases it and wakes a sender.
+    func Pop(self: &Channel<T>) -> T? {
+        let block = self.block;
+        let value <- Slot<T>(block, block.head)[0];
+        block.head = (block.head + 1u) % block.capacity;
+        block.length = block.length - 1u;
+        AtomicFetchAdd(@block.departures, 1u32, MemoryOrder::Relaxed);
+        UnlockWord(@block.word);
+        WakeOne(@block.departures);
+        return <-value;
+    }
+
+    func ~Channel(self: &var Channel<T>) {
+        let block = self.block;
+        if !ReleaseBlock(@block.references) { return; }
+        while block.length != 0u {
+            DiscardValue<T>(Slot<T>(block, block.head));
+            block.head = (block.head + 1u) % block.capacity;
+            block.length = block.length - 1u;
+        }
+        Free(block.slots as *opaque);
+        DestroyBlock<ChannelBlock<T>>(block);
+    }
+}
+
+// The slot at `index` in the ring.
+func Slot<T>(block: *var ChannelBlock<T>, index: uint) -> *var T {
+    return ((block.slots as uint) + index * sizeof(T)) as *var T;
+}

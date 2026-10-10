@@ -1,0 +1,29 @@
+// Waiting on a value in memory until another thread changes it, which is what every lock is built on.
+// `WaitOnAddress` puts the calling thread to sleep only if the value still matches the caller's copy, so a wake that
+// lands between the caller's check and its sleep is never lost. The entry points live in the synchronization API set
+// rather than in Kernel32 by name; the loader resolves the set to the system DLL that implements it.
+
+#Link("api-ms-win-core-synch-l1-2-0.dll")
+pub extern {
+    /// Waits for the value at an address to change.
+    /// @param address the value to wait on
+    /// @param compareAddress a copy of the value the caller last saw; the wait ends at once when they differ
+    /// @param addressSize the value's size in bytes: 1, 2, 4 or 8
+    /// @param milliseconds how long to wait at most, or `INFINITE`
+    /// @returns non-zero after a wake, and zero on time-out or failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/synch#wait-on-address
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitonaddress
+    func WaitOnAddress(address: *opaque, compareAddress: *opaque, addressSize: uint64, milliseconds: uint32) -> bool32;
+
+    /// Wakes one thread waiting on an address.
+    /// @param address the value it waits on
+    /// @see https://rux-lang.dev/docs/api/windows/synch#wake-by-address-single
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-wakebyaddresssingle
+    func WakeByAddressSingle(address: *opaque);
+
+    /// Wakes every thread waiting on an address.
+    /// @param address the value they wait on
+    /// @see https://rux-lang.dev/docs/api/windows/synch#wake-by-address-all
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-wakebyaddressall
+    func WakeByAddressAll(address: *opaque);
+}

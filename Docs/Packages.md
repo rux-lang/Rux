@@ -6,7 +6,7 @@ Core is an optional declaration provider. Every primitive type is built into the
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **31 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **32 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -34,6 +34,7 @@ The v0.1.0 release ships **31 packages**. This table is the target catalog: it i
 | `Path`        | Lossless native strings and lexical path operations                  | Core, Memory, Allocator, Text                            |
 | `Process`     | The running process: arguments, environment, identifier and exit     | Core, Path, OS                                           |
 | `Random`      | Seeded generators, distributions and sampling                        | Core, Math, Entropy                                      |
+| `Sync`        | Locks, conditions, once-only setup, counters and channels for threads | Core, Memory, Time, OS                                   |
 | `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator                                  |
 | `Thread`      | Starting, joining and detaching threads, and the current thread      | Core, Memory, OS                                         |
 | `Time`        | Clock, duration, calendar and temporal text semantics                | Core, OS, Text                                           |
@@ -51,7 +52,7 @@ Arrows point toward dependencies. This is a dependency ordering, not a requireme
 ```text
 Layer 7  FileSystem, Json, Toml, CommandLine
              |
-Layer 6  Io, Uuid, Process
+Layer 6  Io, Uuid, Process, Sync
              |
 Layer 5  Format, Time, Path, Collections, Encoding, NanoId
              |
@@ -71,12 +72,11 @@ Layer 0  Core, Windows
 
 ## Retired Identities
 
-The workspace matches the catalog above: 31 packages, and none of the four identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
+The workspace matches the catalog above: 32 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
 | Former identity | What happened               | Status                                  |
 | --------------- | --------------------------- | --------------------------------------- |
 | `Rux/Storage`   | Renamed to `Rux/FileSystem` | Migrated; the identity no longer exists |
-| `Rux/Sync`      | Withdrawn from the release  | Deleted; the identity no longer exists  |
 | `Rux/Benchmark` | Withdrawn from the release  | Deleted; the identity no longer exists  |
 | `Rux/Simd`      | Withdrawn from the release  | Deleted; the identity no longer exists  |
 
@@ -92,11 +92,8 @@ These packages are deliberately absent from the release set. Their sources and e
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Benchmark` | Configuration and result arithmetic with no measurement loop, and a `BlackBox` that is an ordinary local store and load. Measurement methodology is not a `Time` concern.   |
 | `Simd`      | Four scalar records performing field-by-field arithmetic. Scalar records do not establish the accelerated SIMD contract the package advertised.                             |
-| `Sync`      | AArch64 updates use ordinary loads and stores, guards expose raw fields and permit copying, and `Once` cannot initialize. The whole package goes, including x86-64 atomics. |
 
-Removing `Sync` is not a claim that the inspected x86-64 atomics are incorrect; it is a decision not to release a partial concurrency package. A future concurrency package must be complete and independently validated. `Time::SleepFor` is the supported waiting API for v0.1.0.
-
-`Thread` was withdrawn for the same reason: its non-Windows sleep and yield shared one spin hint and `CurrentId` always returned 1. It returns rebuilt on the C library's threads and `CreateThread`, with real joining, identifiers and yielding, on the compiler's atomics and thread-local storage. No lock or channel is promised yet.
+`Sync` and `Thread` were withdrawn from an earlier cut because they were partial: `Sync`'s AArch64 updates used ordinary loads and stores, its guards exposed raw fields and could be copied, and its `Once` could not initialize; `Thread`'s non-Windows sleep and yield shared one spin hint and its `CurrentId` always returned 1. Both return rebuilt on the compiler's atomic intrinsics and thread-local storage: `Thread` on the C library's threads and `CreateThread`, `Sync` on each system's wait-on-address primitive, with guards that own their lock and cannot be copied.
 
 ## Naming and Ownership Decisions
 

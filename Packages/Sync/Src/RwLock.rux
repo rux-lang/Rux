@@ -1,0 +1,159 @@
+// A value many threads may read at once, or one thread may write.
+// The state word counts the readers holding the lock, or is `Writing` while a writer holds it. Waiters register in a
+// second word before they sleep, so a release only makes a system call when someone may be asleep; both words use
+// sequentially consistent operations, which is what keeps a release from missing a waiter that registered just
+// before it looked. Readers and writers are not queued in order, so a steady stream of readers can keep a writer
+// waiting.
+
+import Core::{ AtomicCompareExchange, AtomicFetchAdd, AtomicFetchSub, AtomicLoad, AtomicStore, MemoryOrder };
+import Sync::{ AllocateBlock, DestroyBlock, ReleaseBlock, RetainBlock, WaitWhile, WakeAll };
+
+const Writing: uint32 = 0xFFFFFFFF;
+
+struct RwLockBlock<T> {
+    references: uint32;
+    state: uint32;
+    waiters: uint32;
+    value: T;
+}
+
+/// A value guarded by a lock that many readers or one writer may hold, shared between the threads that hold a handle.
+/// `Clone` gives another handle to the same value. The value is destroyed when the last handle and the last guard are
+/// gone. A handle is not copied.
+/// @typeParam T the type of the guarded value
+/// @see https://rux-lang.dev/docs/api/sync/rw-lock#rw-lock
+pub struct RwLock<T> {
+    block: *var RwLockBlock<T>;
+}
+
+/// A shared hold on an `RwLock<T>`: the value may be read, and other readers may hold it too.
+/// @typeParam T the type of the guarded value
+/// @see https://rux-lang.dev/docs/api/sync/rw-lock#read-guard
+pub struct ReadGuard<T> {
+    block: *var RwLockBlock<T>;
+}
+
+/// The exclusive hold on an `RwLock<T>`: the value may be read and written, and nobody else holds the lock.
+/// @typeParam T the type of the guarded value
+/// @see https://rux-lang.dev/docs/api/sync/rw-lock#write-guard
+pub struct WriteGuard<T> {
+    block: *var RwLockBlock<T>;
+}
+
+extend RwLock<T> {
+    func =(self: &var RwLock<T>, other: &RwLock<T>);
+
+    /// A new lock guarding `value`. Running out of memory for it is a program error.
+    /// @param value the value to guard
+    /// @returns the first handle to it
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#rw-lock
+    pub func RwLock(value: T) -> RwLock<T> {
+        return RwLock<T> {
+            block: AllocateBlock(RwLockBlock<T> { references: 1, state: 0, waiters: 0, value: <-value })
+        };
+    }
+
+    /// Another handle to the same value.
+    /// @returns the handle
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#clone
+    pub func Clone(self: &RwLock<T>) -> RwLock<T> {
+        RetainBlock(@self.block.references);
+        return RwLock<T> { block: self.block };
+    }
+
+    /// Takes a shared hold, waiting while a writer holds the lock.
+    /// @returns the read guard
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#read
+    pub func Read(self: &RwLock<T>) -> ReadGuard<T> {
+        let block = self.block;
+        while true {
+            let state = AtomicLoad(@block.state, MemoryOrder::SequentiallyConsistent);
+            if state < Writing - 1u32 {
+                if AtomicCompareExchange(@block.state, state, state + 1u32, MemoryOrder::Acquire,
+                                         MemoryOrder::Relaxed) == state {
+                    break;
+                }
+                continue;
+            }
+            Sleep<T>(block, state);
+        }
+        RetainBlock(@block.references);
+        return ReadGuard<T> { block: block };
+    }
+
+    /// Takes the exclusive hold, waiting while any reader or writer holds the lock.
+    /// @returns the write guard
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write
+    pub func Write(self: &RwLock<T>) -> WriteGuard<T> {
+        let block = self.block;
+        while AtomicCompareExchange(@block.state, 0u32, Writing, MemoryOrder::Acquire, MemoryOrder::Relaxed) != 0u32 {
+            let state = AtomicLoad(@block.state, MemoryOrder::SequentiallyConsistent);
+            if state != 0u32 {
+                Sleep<T>(block, state);
+            }
+        }
+        RetainBlock(@block.references);
+        return WriteGuard<T> { block: block };
+    }
+
+    func ~RwLock(self: &var RwLock<T>) {
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<RwLockBlock<T>>(self.block);
+        }
+    }
+}
+
+extend ReadGuard<T> {
+    func =(self: &var ReadGuard<T>, other: &ReadGuard<T>);
+
+    /// The guarded value, to read while the guard holds the lock.
+    /// @returns the value's address
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#read-guard-get
+    pub func Get(self: &ReadGuard<T>) -> *T {
+        return @self.block.value;
+    }
+
+    func ~ReadGuard(self: &var ReadGuard<T>) {
+        let block = self.block;
+        if AtomicFetchSub(@block.state, 1u32, MemoryOrder::SequentiallyConsistent) == 1u32 {
+            WakeSleepers<T>(block);
+        }
+        if ReleaseBlock(@block.references) {
+            DestroyBlock<RwLockBlock<T>>(block);
+        }
+    }
+}
+
+extend WriteGuard<T> {
+    func =(self: &var WriteGuard<T>, other: &WriteGuard<T>);
+
+    /// The guarded value, which this thread alone may read and write while the guard holds the lock.
+    /// @returns the value's address
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write-guard-get
+    pub func Get(self: &WriteGuard<T>) -> *var T {
+        return @self.block.value;
+    }
+
+    func ~WriteGuard(self: &var WriteGuard<T>) {
+        let block = self.block;
+        AtomicStore(@block.state, 0u32, MemoryOrder::SequentiallyConsistent);
+        WakeSleepers<T>(block);
+        if ReleaseBlock(@block.references) {
+            DestroyBlock<RwLockBlock<T>>(block);
+        }
+    }
+}
+
+// Sleeps while the state is still `state`, registered as a waiter for the time.
+func Sleep<T>(block: *var RwLockBlock<T>, state: uint32) {
+    AtomicFetchAdd(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+    WaitWhile(@block.state, state, -1);
+    AtomicFetchSub(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+}
+
+// Wakes every waiter after the state changed, if any registered.
+func WakeSleepers<T>(block: *var RwLockBlock<T>) {
+    if AtomicLoad(@block.waiters, MemoryOrder::SequentiallyConsistent) != 0u32 {
+        WakeAll(@block.state);
+    }
+}

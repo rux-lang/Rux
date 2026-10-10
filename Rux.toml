@@ -28,6 +28,7 @@ Packages = [
     "Packages/Path",
     "Packages/Process",
     "Packages/Random",
+    "Packages/Sync",
     "Packages/Text",
     "Packages/Thread",
     "Packages/Time",

@@ -1,0 +1,41 @@
+// Waiting on a word in memory until another thread changes it, which is what every lock is built on.
+// `_umtx_op(2)` puts the calling thread to sleep only if the word still holds the value the caller last saw, and
+// checks that in the kernel, so a wake that lands between the caller's check and its sleep is never lost. Only the
+// private forms are bound: the word is never shared with another process.
+
+import FreeBSD::{ Syscall6, Timespec };
+
+const SysUmtxOp: uint64 = 454;
+
+/// `UMTX_OP_WAIT_UINT_PRIVATE`: sleep while a 32-bit word holds the expected value.
+/// @see https://rux-lang.dev/docs/api/freebsd/umtx#umtx-op-wait-uint-private
+#Allow("naming.const")
+pub const UMTX_OP_WAIT_UINT_PRIVATE: int32 = 15;
+
+/// `UMTX_OP_WAKE_PRIVATE`: wake threads sleeping on the word.
+/// @see https://rux-lang.dev/docs/api/freebsd/umtx#umtx-op-wake-private
+#Allow("naming.const")
+pub const UMTX_OP_WAKE_PRIVATE: int32 = 16;
+
+/// Sleeps while `*address` equals `expected`, until a wake, a signal or the timeout.
+/// @param address the word to wait on, four-byte aligned
+/// @param expected the value the caller last saw there
+/// @param timeout how long to wait at most, relative to now, or null to wait without a limit
+/// @returns zero after a wake or when the word already differs, or a negative error number: `EINTR` or `ETIMEDOUT`
+/// @see https://rux-lang.dev/docs/api/freebsd/umtx#umtx-wait
+/// @see https://man.freebsd.org/cgi/man.cgi?query=_umtx_op&sektion=2
+pub func UmtxWait(address: *uint32, expected: uint32, timeout: *Timespec) -> int64 {
+    // A null size in the fourth argument says the fifth is a relative `timespec`.
+    return Syscall6(SysUmtxOp, address as uint64, UMTX_OP_WAIT_UINT_PRIVATE as uint64, expected as uint64, 0,
+                    timeout as uint64, 0);
+}
+
+/// Wakes up to `count` threads sleeping on `address`.
+/// @param address the word they wait on
+/// @param count how many to wake at most
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/umtx#umtx-wake
+/// @see https://man.freebsd.org/cgi/man.cgi?query=_umtx_op&sektion=2
+pub func UmtxWake(address: *uint32, count: int32) -> int64 {
+    return Syscall6(SysUmtxOp, address as uint64, UMTX_OP_WAKE_PRIVATE as uint64, count as uint64, 0, 0, 0);
+}

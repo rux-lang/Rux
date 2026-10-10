@@ -1,0 +1,41 @@
+// Waiting on a word in memory until another thread changes it, which is what every lock is built on.
+// `__ulock_wait` puts the calling thread to sleep only if the word still holds the value the caller last saw, and
+// checks that in the kernel, so a wake that lands between the caller's check and its sleep is never lost. The C++
+// standard library and every other runtime on the platform wait this way; the interface is libSystem's.
+
+import macOS::SystemLib;
+
+/// `UL_COMPARE_AND_WAIT`: wait on a 32-bit word that holds the expected value.
+/// @see https://rux-lang.dev/docs/api/macos/ulock#ul-compare-and-wait
+#Allow("naming.const")
+pub const UL_COMPARE_AND_WAIT: uint32 = 1;
+
+/// `ULF_WAKE_ALL`: wake every thread waiting on the word rather than one.
+/// @see https://rux-lang.dev/docs/api/macos/ulock#ulf-wake-all
+#Allow("naming.const")
+pub const ULF_WAKE_ALL: uint32 = 0x100;
+
+/// `ULF_NO_ERRNO`: report failure as a negative error number rather than through errno.
+/// @see https://rux-lang.dev/docs/api/macos/ulock#ulf-no-errno
+#Allow("naming.const")
+pub const ULF_NO_ERRNO: uint32 = 0x01000000;
+
+#Link(SystemLib)
+extern {
+    /// Sleeps while `*address` equals `value`, until a wake, a signal or the timeout.
+    /// @param operation `UL_COMPARE_AND_WAIT`, combined with `ULF_NO_ERRNO`
+    /// @param address the word to wait on, four-byte aligned
+    /// @param value the value the caller last saw there
+    /// @param timeout microseconds to wait at most, or zero to wait without a limit
+    /// @returns the number of waiters left, or a failure: `EINTR`, `ETIMEDOUT`, or `EFAULT` when the word moved
+    /// @see https://rux-lang.dev/docs/api/macos/ulock#ulock-wait
+    pub func __ulock_wait(operation: uint32, address: *opaque, value: uint64, timeout: uint32) -> int32;
+
+    /// Wakes a thread, or all of them with `ULF_WAKE_ALL`, sleeping on `address`.
+    /// @param operation `UL_COMPARE_AND_WAIT`, combined with `ULF_WAKE_ALL` and `ULF_NO_ERRNO`
+    /// @param address the word they wait on
+    /// @param wakeValue zero
+    /// @returns zero, or a failure: `ENOENT` when nothing was waiting
+    /// @see https://rux-lang.dev/docs/api/macos/ulock#ulock-wake
+    pub func __ulock_wake(operation: uint32, address: *opaque, wakeValue: uint64) -> int32;
+}

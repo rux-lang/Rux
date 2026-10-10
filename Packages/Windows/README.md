@@ -20,6 +20,7 @@ rux add Rux/Windows
 | `Entropy`   | `BCryptGenRandom` behind a `GetRandom` that either fills the buffer or fails            |
 | `Clock`     | `QueryPerformanceCounter`, `QueryPerformanceFrequency`, the precise wall clock, and the epoch conversion |
 | `Shell`     | `CommandLineToArgvW`, which splits the command line into arguments the way the C runtime does |
+| `Synch`     | `WaitOnAddress`, `WakeByAddressSingle` and `WakeByAddressAll`, from the synchronization API set |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
