@@ -10,6 +10,7 @@ Packages = [
     "Packages/C",
     "Packages/Collections",
     "Packages/CommandLine",
+    "Packages/Compress",
     "Packages/Core",
     "Packages/Crypto",
     "Packages/Encoding",

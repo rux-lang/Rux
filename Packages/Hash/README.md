@@ -15,6 +15,7 @@ rux add Rux/Hash
 | `Hasher` | the `Hasher` contract, and the writers every caller of one needs               |
 | `Fnv`    | FNV-1a over 32 and 64 bits, incremental and one-shot                          |
 | `Crc`    | CRC-32 and CRC-32C, their tables and their polynomials                         |
+| `Adler`  | Adler-32, the checksum the zlib format ends with                               |
 | `XxHash` | xxHash64, seeded, streaming and one-shot                                       |
 | `SipHash`| keyed SipHash-2-4, for tables whose keys someone else chooses                  |
 

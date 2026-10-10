@@ -6,7 +6,7 @@ Core is an optional declaration provider. Every primitive type is built into the
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **33 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **34 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -16,6 +16,7 @@ The v0.1.0 release ships **33 packages**. This table is the target catalog: it i
 | `C`           | Explicit interoperability with C runtime APIs                        | Core                                                     |
 | `Collections` | Owning containers and their traversal/storage invariants             | Core, Memory, Allocator, Algorithms, Hash, Entropy, Text |
 | `CommandLine` | Declarative argument parsing, subcommands and generated help         | Core, Path, Process, Text                                |
+| `Compress`    | Deflate compression in the raw, zlib and gzip formats                | Core, Memory, Allocator, Hash, Io, Collections           |
 | `Core`        | Optional intrinsic declarations and fundamental value protocols      | None                                                     |
 | `Crypto`      | Cryptographic digest, MAC, KDF and secret-buffer operations          | Core                                                     |
 | `Encoding`    | Byte-to-text encodings: hexadecimal, Base64, Base32, Base58, percent | Text                                                     |
@@ -53,7 +54,7 @@ Arrows point toward dependencies. This is a dependency ordering, not a requireme
 ```text
 Layer 8  CommandLine
              |
-Layer 7  FileSystem, Json, Toml, Process
+Layer 7  FileSystem, Json, Toml, Process, Compress
              |
 Layer 6  Io, Uuid, Sync
              |
@@ -75,7 +76,7 @@ Layer 0  Core, Windows
 
 ## Retired Identities
 
-The workspace matches the catalog above: 33 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
+The workspace matches the catalog above: 34 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
 | Former identity | What happened               | Status                                  |
 | --------------- | --------------------------- | --------------------------------------- |

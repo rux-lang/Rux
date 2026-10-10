@@ -1,0 +1,219 @@
+// The canonical Huffman codes of RFC 1951: reading them from code lengths, and choosing lengths for a set of
+// frequencies.
+// A code is described entirely by the length of each symbol's code word, so both directions work from lengths.
+// Decoding counts the codes of each length and walks the lengths one bit at a time, as zlib's `puff` does: no table to
+// build beyond the counts and the symbols in code order. Encoding builds an ordinary Huffman tree, then limits its
+// depth the way zlib does, moving the deepest leaves up and splitting a shallower one until every code fits, and
+// hands the lengths out again with the shortest to the most frequent symbols.
+
+// The longest code word a format allows.
+const MaximumBits: uint = 15;
+
+// The code of a literal/length or distance alphabet as a decoder reads it.
+struct DecodeTable {
+    counts: uint16[16];
+    symbols: uint16[288];
+}
+
+extend DecodeTable {
+    func DecodeTable() -> DecodeTable {
+        return DecodeTable { counts: [0u16; 16], symbols: [0u16; 288] };
+    }
+
+    // Builds the table from `count` code lengths. Fails for lengths that describe more codes than fit; a code with
+    // fewer is allowed, as a block that uses a single distance has one.
+    func Build(self: &var DecodeTable, lengths: *uint8, count: uint) -> bool {
+        var length: uint = 0;
+        while length <= MaximumBits {
+            self.counts[length] = 0;
+            length = length + 1;
+        }
+        var symbol: uint = 0;
+        while symbol < count {
+            self.counts[lengths[symbol] as uint] = self.counts[lengths[symbol] as uint] + 1u16;
+            symbol = symbol + 1;
+        }
+        if self.counts[0] as uint == count { return true; }
+        var left: int32 = 1;
+        length = 1;
+        while length <= MaximumBits {
+            left = left * 2 - self.counts[length] as int32;
+            if left < 0 { return false; }
+            length = length + 1;
+        }
+        var offsets: uint16[16] = [0u16; 16];
+        length = 1;
+        while length < MaximumBits {
+            offsets[length + 1] = offsets[length] + self.counts[length];
+            length = length + 1;
+        }
+        symbol = 0;
+        while symbol < count {
+            let bits = lengths[symbol] as uint;
+            if bits != 0 {
+                self.symbols[offsets[bits] as uint] = symbol as uint16;
+                offsets[bits] = offsets[bits] + 1u16;
+            }
+            symbol = symbol + 1;
+        }
+        return true;
+    }
+}
+
+// Chooses code lengths of at most `limit` bits for `count` symbols with the given frequencies; a symbol of frequency
+// zero gets length zero. A single used symbol gets length one, which a decoder accepts as an incomplete code.
+func ChooseLengths(frequencies: *uint32, count: uint, limit: uint, lengths: *var uint8) {
+    // Tree nodes: leaves first, then the inner nodes made by joining the two lightest.
+    var weights: uint32[600] = [0u32; 600];
+    var parents: uint16[600] = [0u16; 600];
+    var alive: bool[600] = [false; 600];
+    var leaves: uint16[300] = [0u16; 300];
+    var used: uint = 0;
+    var symbol: uint = 0;
+    while symbol < count {
+        lengths[symbol] = 0;
+        if frequencies[symbol] != 0u32 {
+            leaves[used] = symbol as uint16;
+            weights[used] = frequencies[symbol];
+            alive[used] = true;
+            used = used + 1;
+        }
+        symbol = symbol + 1;
+    }
+    if used == 0u { return; }
+    if used == 1u {
+        lengths[leaves[0] as uint] = 1;
+        return;
+    }
+    var nodes = used;
+    var remaining = used;
+    while remaining > 1u {
+        var first: uint = 600;
+        var second: uint = 600;
+        var index: uint = 0;
+        while index < nodes {
+            if alive[index] {
+                if first == 600u || weights[index] < weights[first] {
+                    second = first;
+                    first = index;
+                }
+                else if second == 600u || weights[index] < weights[second] {
+                    second = index;
+                }
+            }
+            index = index + 1;
+        }
+        alive[first] = false;
+        alive[second] = false;
+        weights[nodes] = weights[first] + weights[second];
+        alive[nodes] = true;
+        parents[first] = nodes as uint16;
+        parents[second] = nodes as uint16;
+        nodes = nodes + 1;
+        remaining = remaining - 1;
+    }
+    let root = nodes - 1;
+
+    // Each leaf's depth, clamped to the limit, counted per length.
+    var depthCounts: uint32[32] = [0u32; 32];
+    var overflow: uint32 = 0;
+    var leaf: uint = 0;
+    while leaf < used {
+        var depth: uint = 0;
+        var node = leaf;
+        while node != root {
+            node = parents[node] as uint;
+            depth = depth + 1;
+        }
+        if depth > limit {
+            depth = limit;
+            overflow = overflow + 1u32;
+        }
+        depthCounts[depth] = depthCounts[depth] + 1u32;
+        leaf = leaf + 1;
+    }
+    // Clamping left too many codes at the limit. Each step takes a leaf from the deepest level above the limit that
+    // has one and makes it the parent of two leaves one level down, which frees room for two clamped leaves.
+    while overflow > 0u32 {
+        var bits = limit - 1;
+        while depthCounts[bits] == 0u32 { bits = bits - 1; }
+        depthCounts[bits] = depthCounts[bits] - 1u32;
+        depthCounts[bits + 1] = depthCounts[bits + 1] + 2u32;
+        depthCounts[limit] = depthCounts[limit] - 1u32;
+        overflow = overflow > 1u32 ? overflow - 2u32 : 0u32;
+    }
+
+    // Hand the lengths out again, the longest to the least frequent.
+    var order: uint16[300] = [0u16; 300];
+    var at: uint = 0;
+    while at < used {
+        order[at] = leaves[at];
+        at = at + 1;
+    }
+    var sorted: uint = 1;
+    while sorted < used {
+        let moving = order[sorted];
+        var place = sorted;
+        while place > 0u && frequencies[order[place - 1] as uint] > frequencies[moving as uint] {
+            order[place] = order[place - 1];
+            place = place - 1;
+        }
+        order[place] = moving;
+        sorted = sorted + 1;
+    }
+    var next: uint = 0;
+    var bits = limit;
+    while bits >= 1u {
+        var taken: uint32 = 0;
+        while taken < depthCounts[bits] {
+            lengths[order[next] as uint] = bits as uint8;
+            next = next + 1;
+            taken = taken + 1u32;
+        }
+        bits = bits - 1;
+    }
+}
+
+// The canonical code word of each symbol, bit-reversed so it can be written least significant bit first.
+func AssignCodes(lengths: *uint8, count: uint, codes: *var uint16) {
+    var counts: uint16[16] = [0u16; 16];
+    var symbol: uint = 0;
+    while symbol < count {
+        counts[lengths[symbol] as uint] = counts[lengths[symbol] as uint] + 1u16;
+        symbol = symbol + 1;
+    }
+    counts[0] = 0;
+    var next: uint16[16] = [0u16; 16];
+    var code: uint32 = 0;
+    var bits: uint = 1;
+    while bits <= MaximumBits {
+        code = (code + counts[bits - 1] as uint32) << 1;
+        next[bits] = code as uint16;
+        bits = bits + 1;
+    }
+    symbol = 0;
+    while symbol < count {
+        let length = lengths[symbol] as uint;
+        if length != 0u {
+            codes[symbol] = Reverse(next[length], length);
+            next[length] = next[length] + 1u16;
+        }
+        else {
+            codes[symbol] = 0;
+        }
+        symbol = symbol + 1;
+    }
+}
+
+// The low `length` bits of `code` in reverse order.
+func Reverse(code: uint16, length: uint) -> uint16 {
+    var result: uint16 = 0;
+    var value = code;
+    var index: uint = 0;
+    while index < length {
+        result = (result << 1) | (value & 1u16);
+        value = value >> 1;
+        index = index + 1;
+    }
+    return result;
+}
