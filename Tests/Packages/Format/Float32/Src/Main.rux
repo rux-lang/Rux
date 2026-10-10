@@ -88,5 +88,11 @@ func Main() -> int {
     let code70 = Check(2.5f32, "2.5", 70);
     if code70 != 0 { return code70; }
 
+    // Two shortest decimals equally close to the value: the even last digit wins, for either sign.
+    code = Check(2097152.75f32, "2097152.8", 71);
+    if code != 0 { return code; }
+    code = Check(-2097152.75f32, "-2097152.8", 72);
+    if code != 0 { return code; }
+
     return 0;
 }
