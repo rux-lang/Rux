@@ -157,12 +157,16 @@ evaluation, dumps, DCE, both encoders, and the x86 assembly printer understand i
 Unsigned 32/64-bit power-of-two division and remainder use logical shifts and masks. Signed arithmetic and zero
 divisors retain their original paths. Frame plans retain unique integer constants for immediate shift selection.
 
-Release optimization runs CFG cleanup before private range/slice field replacement and scalar memory promotion.
+Release optimization runs CFG cleanup before private aggregate field replacement and scalar memory promotion.
 Promotion admits only direct, type-identical, nonvolatile loads and stores of nonescaping scalar slots. Per-slot
 liveness and definite-initialization dataflow construct pruned SSA merges, including allocations inside loops;
 uninitialized, escaped, aliased, and mixed-width storage retains its memory behavior. Trivial phi nodes collapse before
-constant/copy propagation and dead-code cleanup. Field replacement initially handles only independent `start`/`end`
-range fields and `data`/`length` slice fields; whole-object uses keep the original representation. Analysis snapshots
+constant/copy propagation and dead-code cleanup. Field replacement handles ranges, slices, scalar tuples and concrete
+structs with at most 16 scalar fields. Closed whole-object load/store chains become independent field snapshots at the
+original load point, so later source mutation cannot change a copy. Escapes propagate through the entire copy component.
+Unknown/overlapping projections, raw-byte access, unions, active variant payloads, nested aggregates, generic/ambiguous
+declarations and volatile accesses retain object storage. Observable padding and address identity are never discarded.
+Analysis snapshots
 are local to each transformation and are rebuilt after changes. Debug does not run these transformations.
 
 Native register allocation uses a per-function control-flow snapshot from `Ir/Lir/ControlFlow.h`. Liveness propagates

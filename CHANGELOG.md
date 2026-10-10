@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Private aggregate scalar replacement** — concrete structs and tuples with scalar fields, including closed
+  whole-object copy chains, can be split into promotable locals. Copies snapshot their fields before later mutation;
+  raw-byte access, escapes, overlapping representations and volatile operations preserve the original storage.
+
 - **Bounded control-flow inlining** — small scalar helpers with branches, loops, multiple returns, and direct call
   chains can be expanded in callee-first order. Recursive components and their wrappers remain callable; per-function
   and package growth limits bound expansion. Return merging preserves SSA edges and avoids artificial numeric casts.

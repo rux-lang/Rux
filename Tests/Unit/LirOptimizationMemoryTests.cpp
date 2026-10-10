@@ -1,5 +1,6 @@
 #include "Optimization/LirMemoryPromotion.h"
 #include "Optimization/LirScalarReplacement.h"
+#include "Optimization/LirSsaVerifier.h"
 #include "OptimizerTestSupport.h"
 
 using namespace Rux;
@@ -147,4 +148,55 @@ TEST_CASE("Scalar replacement promotes private range descriptors and loop-local 
     CHECK_EQ(Count(package, LirOpcode::Store), 0);
     auto verifier = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Debug);
     CHECK_FALSE(verifier.RunLir(package).HasErrors());
+}
+
+TEST_CASE("Scalar replacement preserves snapshots in private struct and tuple copy chains") {
+    auto package = CompileToLir(R"(
+        struct Pair { small: int8; large: int64; }
+        func Work(input: int64) -> int64 {
+            var first = Pair { small: 3i8, large: input };
+            var second = first;
+            first.large = 99;
+            second.small = 7i8;
+            var pair = (second.large, first.large);
+            let copy = pair;
+            pair.0 = 11;
+            return copy.0 + copy.1 + (second.small as int64);
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirScalarReplacement replacement;
+    Optimization::LirMemoryPromotion promotion;
+    CHECK(replacement.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(promotion.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(package, LirOpcode::FieldPtr), 0);
+    CHECK_EQ(Count(package, LirOpcode::Alloca), 0);
+    CHECK_EQ(Count(package, LirOpcode::Load), 0);
+    CHECK_EQ(Count(package, LirOpcode::Store), 0);
+    CHECK(replacement.Run(package, {}) == Optimization::PassChange::None);
+    Optimization::LirSsaVerifier verifier;
+    std::vector<Diagnostic> diagnostics;
+    Optimization::PassContext context;
+    context.diagnostics = &diagnostics;
+    static_cast<void>(verifier.Run(package, context));
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("Scalar replacement propagates representation escapes through aggregate copies") {
+    auto package = CompileToLir(R"(
+        struct Pair { small: int8; large: int64; }
+        func Inspect(value: *Pair) -> int8 { return *(value as *int8); }
+        func Work(input: int64) -> int64 {
+            let first = Pair { small: 3i8, large: input };
+            let second = first;
+            return second.large + (Inspect(@second) as int64);
+        }
+    )",
+                                BuildProfile::Debug);
+    const auto allocations = Count(package, LirOpcode::Alloca);
+    const auto loads = Count(package, LirOpcode::Load);
+    Optimization::LirScalarReplacement replacement;
+    CHECK(replacement.Run(package, {}) == Optimization::PassChange::None);
+    CHECK_EQ(Count(package, LirOpcode::Alloca), allocations);
+    CHECK_EQ(Count(package, LirOpcode::Load), loads);
 }
