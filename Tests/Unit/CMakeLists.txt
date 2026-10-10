@@ -47,6 +47,8 @@ set(RUX_TEST_SOURCES
     CodegenConstantDataTests.cpp
     CodegenModuleVariableTests.cpp
     ThreadLocalTests.cpp
+    TestAttributeTests.cpp
+    TestEntryTests.cpp
     ChecksumTests.cpp
     CliContractTests.cpp
     CliProcessTests.cpp

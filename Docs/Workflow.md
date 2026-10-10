@@ -195,6 +195,8 @@ func Main() -> int {
 }
 ```
 
+A test package may instead hold functions marked `#Test()` and no `Main`, and depend on the `Test` package. A test build then generates a `Main` that runs each of them and reports it by name with its time, and `rux test -- <filter>` passes the filter on so only matching tests run. A first-party package whose own sources mark `#Test()` functions is run the same way, as a package of its own, so a library's tests can sit beside its code. See [`Packages/Test`](../Packages/Test/README.md).
+
 Each language test lives at `Tests/Language/<Name>/` with a `Rux.toml` manifest and `Src/Main.rux`:
 
 ```toml

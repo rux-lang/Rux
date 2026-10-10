@@ -1,0 +1,94 @@
+// A package of `#Test()` functions and no `Main`: a test build generates the runner. The tests check every check's
+// passing case and the message of its failing one, a skip, a test that returns nothing, a test inside a module, and
+// how a run filters and counts.
+
+import Test::{
+    Expect, ExpectEqual, ExpectFailure, ExpectNear, ExpectNone, ExpectNotEqual, ExpectSome, ExpectSuccess, ExpectText,
+    RunTestsWith, TestCase, TestFailure, TestOptions
+};
+
+// The message of the failure `outcome` holds, or a failure of the test when it passed.
+func MessageOf(outcome: ! TestFailure) -> TestFailure ! TestFailure {
+    return ExpectFailure(outcome, "the check should have failed")?;
+}
+
+#Test()
+func ChecksThatHold() -> ! TestFailure {
+    Expect(1 + 1 == 2, "arithmetic")?;
+    ExpectEqual(40 + 2, 42)?;
+    ExpectNotEqual(3, 4)?;
+    ExpectNear(0.1 + 0.2, 0.3, 0.000001)?;
+    ExpectText("same", "same")?;
+    let found: int32? = 7;
+    ExpectEqual(ExpectSome(found, "present")?, 7)?;
+    let missing: int32? = none;
+    ExpectNone(missing, "absent")?;
+}
+
+#Test()
+func FailureMessages() -> ! TestFailure {
+    ExpectText(MessageOf(Expect(false, "the flag is set"))?.Message(), "the flag is set")?;
+    ExpectText(MessageOf(ExpectEqual(1, 2))?.Message(), "expected 2, but got 1")?;
+    ExpectText(MessageOf(ExpectNotEqual(5, 5))?.Message(), "expected anything but 5")?;
+    ExpectText(MessageOf(ExpectNear(1.0, 2.0, 0.5))?.Message(), "expected 2.0 within 0.5, but got 1.0")?;
+    ExpectText(MessageOf(ExpectText("hello world", "hello there"))?.Message(),
+               "texts differ at byte 6 (expected 11 bytes, got 11)\n  expected \"hello there\"\n  but got  \"hello world\"")?;
+}
+
+#Test()
+func OutcomeChecks() -> ! TestFailure {
+    let good: int32 ! TestFailure = 3;
+    ExpectEqual(ExpectSuccess(good, "succeeds")?, 3)?;
+    let bad: int32 ! TestFailure = .Failure(TestFailure::Of("broken"));
+    ExpectText(ExpectFailure(bad, "fails")?.Message(), "broken")?;
+    let skip = TestFailure::Skip("later");
+    Expect(skip.IsSkip() && !TestFailure::Of("x").IsSkip(), "skips are told apart")?;
+}
+
+#Test()
+func ReturnsNothing() {
+    let value = 2 * 21;
+    if value != 42 { return; }
+}
+
+#Test()
+func Skipped() -> ! TestFailure {
+    fail TestFailure::Skip("shows how a skip is reported");
+}
+
+module Nested {
+    import Test::{ ExpectEqual, TestFailure };
+
+    #Test()
+    func Inner() -> ! TestFailure {
+        ExpectEqual(Twice(4), 8)?;
+    }
+
+    func Twice(value: int32) -> int32 {
+        return value * 2;
+    }
+}
+
+func Passes() -> ! TestFailure {}
+
+func Fails() -> ! TestFailure {
+    fail TestFailure::Of("on purpose");
+}
+
+#Test()
+func Filtering() -> ! TestFailure {
+    let table = [TestCase { name: "Group::Passes", run: Passes }, TestCase { name: "Group::Fails", run: Fails }];
+    var options = TestOptions();
+    options.quiet = true;
+    ExpectEqual(RunTestsWith(table[..], options), 1)?;
+    options.skip = "Fails";
+    ExpectEqual(RunTestsWith(table[..], options), 0)?;
+    options.skip = "";
+    options.filter = "Group::Pass";
+    ExpectEqual(RunTestsWith(table[..], options), 0)?;
+    options.exact = true;
+    options.filter = "Group::Fails";
+    ExpectEqual(RunTestsWith(table[..], options), 1)?;
+    options.list = true;
+    ExpectEqual(RunTestsWith(table[..], options), 0)?;
+}

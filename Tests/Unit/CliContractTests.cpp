@@ -33,6 +33,7 @@ TEST_CASE("CLI contract owns positional limits and value-taking options") {
     CHECK(PositionalsFor(add->name).maximum == 1);
     CHECK(PositionalsFor(build->name).maximum == 0);
     CHECK(PositionalsFor(run->name).acceptsPassthrough);
+    CHECK(PositionalsFor("test").acceptsPassthrough);
 
     const auto *target = FindOption(*build, "--target");
     const auto *release = FindOption(*build, "--release");

@@ -68,7 +68,11 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
         compileTimeContext.config[name] = value;
     }
 
-    if (opts.manifest.package.type == ManifestPackageType::SharedLibrary) {
+    // A test build of any package is an executable that runs its tests.
+    if (opts.isTest) {
+        compileTimeContext.outputKind = OutputKind::Executable;
+    }
+    else if (opts.manifest.package.type == ManifestPackageType::SharedLibrary) {
         compileTimeContext.outputKind = OutputKind::SharedLibrary;
     }
     else if (opts.manifest.package.type == ManifestPackageType::StaticLibrary) {
@@ -215,7 +219,7 @@ CompileResult CompilerDriver::Impl::Compile() {
     // A SourceLibrary package has no artifact of its own: it is compiled into whichever
     // package depends on it. Checking it in place is still useful, so the kind is
     // only rejected once a build is actually requested.
-    if (!opts.checkOnly && opts.manifest.package.type == ManifestPackageType::SourceLibrary) {
+    if (!opts.checkOnly && !opts.isTest && opts.manifest.package.type == ManifestPackageType::SourceLibrary) {
         Emit(ErrorDiagnostic(
             "package '" + opts.manifest.package.name.Text() +
             "' has Type = \"SourceLibrary\" and is compiled into dependent packages; it cannot be built or "
@@ -225,6 +229,10 @@ CompileResult CompilerDriver::Impl::Compile() {
     }
 
     if (!LexAndParseSources()) {
+        finish();
+        return result;
+    }
+    if (opts.isTest && !SynthesizeTestEntry()) {
         finish();
         return result;
     }
@@ -528,7 +536,8 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
             return false;
         }
     }
-    const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
+    const ArtifactKind artifactKind =
+        opts.isTest ? ArtifactKind::Executable : PackageArtifactKind(opts.manifest.package.type);
     auto optimizationPipeline =
         Optimization::OptimizationPipeline::ForProfile(compileTimeContext.profile, artifactKind);
     BeginPhase(CompilePhase::OptimizingHir, opts.manifest.package.name.Text());

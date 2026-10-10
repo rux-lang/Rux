@@ -6,7 +6,7 @@ Core is an optional declaration provider. Every primitive type is built into the
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **38 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **39 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -39,6 +39,7 @@ The v0.1.0 release ships **38 packages**. This table is the target catalog: it i
 | `Random`      | Seeded generators, distributions and sampling                        | Core, Math, Entropy                                      |
 | `Regex`       | Regular expressions matched in linear time                           | Core, Allocator, Collections, Text, Unicode              |
 | `Sync`        | Locks, conditions, once-only setup, counters and channels for threads | Core, Memory, Time, OS                                   |
+| `Test`        | Unit-test checks, failures and the runner `#Test()` functions use    | Core, Allocator, Collections, Format, Io, Process, Text, Time |
 | `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator                                  |
 | `Thread`      | Starting, joining and detaching threads, and the current thread      | Core, Memory, OS                                         |
 | `Time`        | Clock, duration, calendar and temporal text semantics                | Core, OS, Text                                           |
@@ -56,7 +57,7 @@ The v0.1.0 release ships **38 packages**. This table is the target catalog: it i
 Arrows point toward dependencies. This is a dependency ordering, not a requirement that every package depend on every lower layer.
 
 ```text
-Layer 8  CommandLine, TimeZone
+Layer 8  CommandLine, TimeZone, Test
              |
 Layer 7  FileSystem, Json, Toml, Process, Compress, Net, Log
              |
@@ -80,7 +81,7 @@ Layer 0  Core, Windows
 
 ## Retired Identities
 
-The workspace matches the catalog above: 38 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
+The workspace matches the catalog above: 39 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
 | Former identity | What happened               | Status                                  |
 | --------------- | --------------------------- | --------------------------------------- |

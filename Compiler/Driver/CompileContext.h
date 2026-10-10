@@ -37,6 +37,9 @@ private:
 
     /// Pipeline phases. Each returns false when the pipeline cannot continue.
     bool LexAndParseSources();
+    /// In a test build, adds a generated `Main` that runs the package's `#Test()` functions. Defined in
+    /// TestEntry.cpp.
+    bool SynthesizeTestEntry();
     bool LoadDependencies();
     bool Analyze();
     bool GenerateArtifact(std::filesystem::path &artifactPath,

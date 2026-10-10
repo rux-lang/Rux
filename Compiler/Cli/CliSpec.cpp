@@ -187,13 +187,13 @@ constexpr std::array run_opts = {
 constexpr std::array run_exs = {""sv, "--release"sv, "-- --port 8080"sv};
 
 // Test
-constexpr std::array test_usage = {"[options]"sv};
+constexpr std::array test_usage = {"[options] [-- <test arguments>...]"sv};
 constexpr std::array test_opts = {
     OptionDoc{.flags = "--jobs <N>"sv, .desc = "Run up to N test packages concurrently (default: 1)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Build and run the tests for the specified target platform"sv}};
-constexpr std::array test_exs = {""sv, "--release"sv};
+constexpr std::array test_exs = {""sv, "--release"sv, "-- Parser"sv, "-- --exact Parser::ReadsNumbers"sv};
 
 // Uninstall
 constexpr std::array uninstall_usage = {""sv, "[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv,
@@ -451,8 +451,11 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = "Run package unit tests"sv,
                .usage = Data::test_usage,
                .postUsage = {},
-               .footer = "In a workspace, a registry dependency in a namespace that a member declares resolves only "
-                         "from members; any other comes from the package cache."sv,
+               .footer =
+                   "Runs every executable package under Tests/, and every package whose sources mark functions "
+                   "'#Test()', with a generated runner; arguments after '--' go to each test program, where the "
+                   "runner reads them as name filters. In a workspace, a registry dependency in a namespace that a "
+                   "member declares resolves only from members; any other comes from the package cache."sv,
                .examples = Data::test_exs,
                .options = Data::test_opts,
                .conflicts = {}},
@@ -632,6 +635,7 @@ const PositionalSpec &PositionalsFor(const std::string_view command) {
         PositionalSpec{.command = "new", .arguments = nameArg, .minimum = 1, .maximum = 1},
         PositionalSpec{.command = "remove", .arguments = nameArg, .minimum = 1, .maximum = 1},
         PositionalSpec{.command = "run", .arguments = {}, .minimum = 0, .maximum = 0, .acceptsPassthrough = true},
+        PositionalSpec{.command = "test", .arguments = {}, .minimum = 0, .maximum = 0, .acceptsPassthrough = true},
         PositionalSpec{.command = "uninstall", .arguments = packageArg, .minimum = 0, .maximum = 1}};
     static constexpr PositionalSpec none{};
     const auto it = std::ranges::find(specs, command, &PositionalSpec::command);

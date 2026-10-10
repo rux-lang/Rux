@@ -106,9 +106,11 @@ private:
         bool usedLibrary = false;
         bool usedSymbol = false;
         bool usedNoReturn = false;
+        bool usedTest = false;
         bool usedAbi = false;
         SourceLocation linkLocation;
         SourceLocation noReturnLocation;
+        SourceLocation testLocation;
         SourceLocation abiLocation;
         SourceLocation allowLocation;
     };

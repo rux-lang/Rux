@@ -9,7 +9,8 @@ namespace Rux::CliSupport {
 using namespace Driver;
 using namespace System;
 
-TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, const bool color) {
+TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, const bool color,
+                           const std::span<const std::string_view> arguments) {
     TestOutcome outcome;
     const auto started = std::chrono::steady_clock::now();
     auto Finish = [&]() {
@@ -46,7 +47,7 @@ TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, con
 
     // Execute the test binary, capturing its combined stdout/stderr.
     std::error_code launchError;
-    auto run = RunCaptured(exePath, {}, &launchError);
+    auto run = RunCaptured(exePath, arguments, &launchError);
     if (!run) {
         if (launchError) {
             outcome.diagnostics =

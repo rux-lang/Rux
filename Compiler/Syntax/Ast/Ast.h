@@ -738,6 +738,8 @@ struct WhenDecl : Decl {
 struct FuncDecl : Decl {
     bool isAsm = false;
     bool isNoReturn = false;
+    /// Marked `#Test()`: a test that a test build of its package runs.
+    bool isTest = false;
     CallingConvention callConv = CallingConvention::Default;
     std::string name;
     std::vector<TypeParameter> typeParams;

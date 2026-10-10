@@ -10,6 +10,7 @@ rux_add_component(RuxDriver
     DependencyGraph.cpp
     BuildPlan.cpp
     BuildTarget.cpp
+    TestEntry.cpp
 )
 target_link_libraries(RuxDriver PUBLIC RuxDriverModel RuxDiagnostics RuxPackage RuxAst
     PRIVATE RuxBuildInfo RuxSource RuxSystem RuxPackageCache RuxLexer RuxSyntax RuxSemantic

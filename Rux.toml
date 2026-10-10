@@ -33,6 +33,7 @@ Packages = [
     "Packages/Random",
     "Packages/Regex",
     "Packages/Sync",
+    "Packages/Test",
     "Packages/Text",
     "Packages/Thread",
     "Packages/Time",

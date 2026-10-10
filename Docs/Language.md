@@ -311,7 +311,7 @@ A method may be called as `Type::Method(receiver, args...)`, with an explicit fi
 
 ### Attributes
 
-An attribute is a `#Name(...)` call written before what it describes. Before a declaration, `#Abi(.Win64)` selects a calling convention, `#Link("library")` describes how an extern declaration is imported, `#NoReturn()` marks a function that never returns to its caller, `#Allow("naming.type")` suppresses one lint rule for that declaration, and `#Error("message")` and `#Warn("message")` report at each use. `#Format()` is the one attribute written before a parameter:
+An attribute is a `#Name(...)` call written before what it describes. Before a declaration, `#Abi(.Win64)` selects a calling convention, `#Link("library")` describes how an extern declaration is imported, `#NoReturn()` marks a function that never returns to its caller, `#Test()` marks a function that a test build of its package runs, `#Allow("naming.type")` suppresses one lint rule for that declaration, and `#Error("message")` and `#Warn("message")` report at each use. `#Format()` is the one attribute written before a parameter:
 
 ```rux
 pub func PrintLine(#Format() format: char8[..], args: Display...) -> IoError?

@@ -40,8 +40,14 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     std::size_t jobs = 1;
     std::string_view target;
     std::map<std::string, std::string> defines;
+    std::vector<std::string_view> testArguments;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto arg = args[i];
+        // Everything after `--` goes to each test program, where a generated runner reads it as filters.
+        if (arg == "--") {
+            testArguments.assign(args.begin() + static_cast<std::ptrdiff_t>(i) + 1, args.end());
+            break;
+        }
         if (arg == "--jobs") {
             if (i + 1 == args.size()) {
                 diagnostics.Error("option '--jobs' requires a positive integer");
@@ -119,6 +125,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
 
     std::filesystem::path projectRoot;
     std::vector<TestRoot> testRoots;
+    // Packages whose own sources hold '#Test()' functions, run beside the packages under Tests/.
+    std::vector<TestPackage> sourceTestPackages;
     std::vector<std::filesystem::path> localPackageRoots;
     std::set<std::string> localNamespaces;
     if (manifestPath) {
@@ -159,6 +167,10 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                 localPackageRoots.push_back(memberDir);
                 if (memberResult.manifest->package.ns)
                     localNamespaces.insert(memberResult.manifest->package.ns->Normalized());
+                if (SourcesDeclareTests(memberDir)) {
+                    sourceTestPackages.push_back(
+                        {memberDir, std::filesystem::path(member).generic_string(), *memberResult.manifest});
+                }
                 if (auto memberTests = memberDir / "Tests"; std::filesystem::exists(memberTests, ec)) {
                     testRoots.push_back({std::move(memberTests), std::filesystem::path(member).generic_string()});
                 }
@@ -169,6 +181,9 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                             std::format("{} v{} {}", manifest->package.name.Text(), manifest->package.version.Text(),
                                         FormatBuildContext(profile, *targetTriple)));
             testRoots.push_back({projectRoot / "Tests", {}});
+            if (SourcesDeclareTests(projectRoot)) {
+                sourceTestPackages.push_back({projectRoot, manifest->package.name.Text(), *manifest});
+            }
         }
     }
     else {
@@ -202,11 +217,13 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     auto discovered = DiscoverTestPackages(testRoots);
     for (const auto &diagnostic : discovered.diagnostics)
         diagnostics.Write(diagnostic.Render(), MessageVisibility::Always);
-    const auto &testPackages = discovered.packages;
     if (!discovered.diagnostics.empty()) {
         return 1;
     }
-    if (!discovered.anyRootExists) {
+    discovered.packages.insert(discovered.packages.begin(), std::make_move_iterator(sourceTestPackages.begin()),
+                               std::make_move_iterator(sourceTestPackages.end()));
+    const auto &testPackages = discovered.packages;
+    if (!discovered.anyRootExists && testPackages.empty()) {
         output.Success("Passed", std::format("0 tests in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
         output.Detail("No test directory found at 'Tests/'");
         return 0;
@@ -252,7 +269,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     RunTestTasks(
         tasks, jobs,
         [&](const std::size_t index) {
-            outcomes[index] = RunTestPackage(testPackages[index], compileOptions, diagnostics.Style().enabled);
+            outcomes[index] =
+                RunTestPackage(testPackages[index], compileOptions, diagnostics.Style().enabled, testArguments);
         },
         [&](const std::size_t index) {
             const std::string &label = testPackages[index].label;

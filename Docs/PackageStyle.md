@@ -1,6 +1,6 @@
 # First-Party Package Style
 
-This page is the house style for the 38 first-party packages under `Packages/`. It is narrower than [Comments and Documentation](Comments.md), which defines the _language_ contract — what comment syntax exists, how documentation attaches, and which tags the compiler understands. Nothing here changes that contract. Both `//` and `///` remain supported everywhere in the language; this page says which one first-party package sources use, and what a documented declaration in those packages must contain.
+This page is the house style for the 39 first-party packages under `Packages/`. It is narrower than [Comments and Documentation](Comments.md), which defines the _language_ contract — what comment syntax exists, how documentation attaches, and which tags the compiler understands. Nothing here changes that contract. Both `//` and `///` remain supported everywhere in the language; this page says which one first-party package sources use, and what a documented declaration in those packages must contain.
 
 The rules are enforced by `Tests/Unit/PackageDocumentationStyleTests.cpp`, which reads the same lexer trivia, AST declarations and `Syntax::Documentation` metadata the compiler does. It does not rescan Rux with regular expressions. Run it on its own with:
 

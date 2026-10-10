@@ -93,15 +93,15 @@ std::string Parser::DecodeStringLiteralText(const std::string &text) {
 /// Parses one `#Name(...)` attribute call, with the '#' already consumed. `#Error` and `#Warn` act at each use of the
 /// declaration, `#Allow` suppresses a named lint rule for one declaration, `#Link` describes how an extern declaration
 /// is imported (`#Library` and `#Symbol` are retained as compatibility spellings), and `#When` conditionally includes
-/// the declaration at compile time, `#Abi(...)` selects a calling convention, and `#NoReturn()` marks a function that
-/// never returns to its caller.
+/// the declaration at compile time, `#Abi(...)` selects a calling convention, `#NoReturn()` marks a function that
+/// never returns to its caller, and `#Test()` marks a function that a test build of its package runs.
 void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();
     const std::string name = Advance().text;
 
     if (name != "Error" && name != "Warn" && name != "Allow" && name != "Link" && name != "Library" &&
-        name != "Symbol" && name != "NoReturn" && name != "Abi") {
+        name != "Symbol" && name != "NoReturn" && name != "Test" && name != "Abi") {
         // `#Intrinsic("Name")` became the `intrinsic` keyword, which takes its
         // name from the declaration instead of repeating it in a string.
         EmitError(nameLoc, name == "Intrinsic"
@@ -128,6 +128,22 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         attrs.noReturnLocation = attributeLoc;
         if (!Check(TokenKind::RightParen)) {
             EmitError(CurrentLocation(), "'#NoReturn' does not accept arguments");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        return;
+    }
+
+    if (name == "Test") {
+        if (attrs.usedTest) {
+            EmitError(nameLoc, "duplicate '#Test' attribute");
+        }
+        attrs.usedTest = true;
+        attrs.testLocation = attributeLoc;
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#Test' does not accept arguments");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
@@ -440,6 +456,27 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
         }
         else {
             EmitError(attrs.noReturnLocation, "'#NoReturn' can only be applied to a function");
+        }
+    }
+
+    if (attrs.usedTest) {
+        if (auto *function = dynamic_cast<FuncDecl *>(decl.get())) {
+            function->isTest = true;
+            if (!function->typeParams.empty()) {
+                EmitError(attrs.testLocation, "a '#Test' function cannot be generic");
+            }
+            if (function->Receiver() != nullptr) {
+                EmitError(attrs.testLocation, "a '#Test' function cannot be a method");
+            }
+            else if (!function->params.empty()) {
+                EmitError(attrs.testLocation, "a '#Test' function takes no parameters");
+            }
+            if (!function->body) {
+                EmitError(attrs.testLocation, "a '#Test' function needs a body");
+            }
+        }
+        else {
+            EmitError(attrs.testLocation, "'#Test' can only be applied to a function");
         }
     }
 
