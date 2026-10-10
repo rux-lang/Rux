@@ -225,3 +225,15 @@ See the platform guides for native requirements and runtime verification: [FreeB
 ## Parallel Test Builds
 
 `rux test --jobs N` compiles and executes up to N discovered executable packages concurrently. The default is one worker. Each worker owns its compiler state, diagnostics, and captured program output. Reports remain in discovery order, and a failing package does not stop later packages. Packages with overlapping executable or intermediate paths are serialized through the complete compile-and-run operation; path aliases are normalized before scheduling. The option does not add persistent Rux build caching or change package output paths, target validation, or registry restrictions.
+
+### Per-pass IR snapshots
+
+`rux build --release --emit passes` writes the input and the state after each executed HIR/LIR pass under
+`Temp/Optimization/<invocation>/Hir` and `Lir`. Names include the one-based fixed-point iteration and pipeline slot;
+`00-00-input.txt` records each pipeline's input. Repeated instances of a pass remain distinct. Each invocation uses a
+new directory, so older snapshots remain available without appearing to belong to a newer, shorter run.
+
+Combine this with `--disable-pass` and `--stats` to identify the transformation responsible for a code change.
+Disabled passes produce no snapshot. Snapshot failures fail the build; the compiler does not silently discard requested
+inspection output. Snapshot I/O is excluded from per-pass timings but included in total compilation time. Ordinary
+builds create no snapshots. `--emit passes` is diagnostic and can produce substantial output for large packages.

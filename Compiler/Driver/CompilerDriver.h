@@ -50,6 +50,7 @@ struct CompileOptions {
     bool dumpSema = false;
     bool dumpHir = false;
     bool dumpLir = false;
+    bool dumpOptimizationPasses = false;
     bool dumpAsm = false;
     bool dumpRcu = false;
     bool collectOptimizationStatistics = false;

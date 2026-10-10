@@ -38,7 +38,7 @@ constexpr std::array build_opts = {
     OptionDoc{.flags = "--disable-pass <name>"sv,
               .desc = "Disable an optional optimization pass for diagnosis; repeat for multiple passes"sv},
     OptionDoc{.flags = "--emit <kind[,kind...]>"sv,
-              .desc = "Additionally emit tokens, ast, sema, hir, lir, asm, or rcu inspection output"sv},
+              .desc = "Additionally emit tokens, ast, sema, hir, lir, passes, asm, or rcu inspection output"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
     OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, optimization, and performance statistics"sv},
     OptionDoc{.flags = "--target <triple>"sv,

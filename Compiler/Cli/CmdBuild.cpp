@@ -39,6 +39,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     bool dumpSema = false;
     bool dumpHir = false;
     bool dumpLir = false;
+    bool dumpOptimizationPasses = false;
     bool dumpAsm = false;
     bool dumpRcu = false;
     bool showStats = false;
@@ -87,14 +88,17 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                     dumpHir = true;
                 else if (value == "lir")
                     dumpLir = true;
+                else if (value == "passes")
+                    dumpOptimizationPasses = true;
                 else if (value == "asm")
                     dumpAsm = true;
                 else if (value == "rcu")
                     dumpRcu = true;
                 else {
                     diagnostics.Error(std::format("value '{}' is not supported by option '--emit'", value));
-                    diagnostics.Note("supported emission kinds are 'tokens', 'ast', 'sema', 'hir', 'lir', 'asm', and "
-                                     "'rcu'");
+                    diagnostics.Note(
+                        "supported emission kinds are 'tokens', 'ast', 'sema', 'hir', 'lir', 'passes', 'asm', and "
+                        "'rcu'");
                     return 2;
                 }
                 if (comma == std::string_view::npos)
@@ -219,6 +223,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         copts.dumpSema = dumpSema;
         copts.dumpHir = dumpHir;
         copts.dumpLir = dumpLir;
+        copts.dumpOptimizationPasses = dumpOptimizationPasses;
         copts.dumpAsm = dumpAsm;
         copts.dumpRcu = dumpRcu;
         CompilerDriver driver(std::move(copts));

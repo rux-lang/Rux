@@ -69,6 +69,11 @@ PassRunReport OptimizationPipeline::RunLir(LirPackage &package) {
     return lir.Run(package);
 }
 
+void OptimizationPipeline::SetObservers(HirPassPipeline::Observer hirObserver, LirPassPipeline::Observer lirObserver) {
+    hir.SetObserver(std::move(hirObserver));
+    lir.SetObserver(std::move(lirObserver));
+}
+
 std::vector<Diagnostic> OptimizationPipeline::Configure(const std::span<const std::string> disabled,
                                                         const bool statistics) {
     auto names = HirPassNames();

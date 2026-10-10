@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
+  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
+
 - **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
   bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
 
@@ -671,6 +674,9 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 ### Added
 
+- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
+  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
+
 - **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
   bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
 
@@ -764,6 +770,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 
 ### Added
 
+- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
+  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
+
 - **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
   bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
 
@@ -802,6 +811,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 Expands the compiler with control flow, composite types, modules, and a richer type system.
 
 ### Added
+
+- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
+  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
 
 - **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
   bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
@@ -852,6 +864,9 @@ func Main() -> int32 {
 ```
 
 ### Added
+
+- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
+  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
 
 - **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
   bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.

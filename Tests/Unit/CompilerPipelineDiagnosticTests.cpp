@@ -275,3 +275,81 @@ TEST_CASE("optimization fixed-point failures are accumulated as diagnostics") {
     CHECK(report.diagnostics[0].message == "IR optimization did not reach a fixed point after 2 iterations");
     REQUIRE(report.diagnostics[0].help.has_value());
 }
+
+TEST_CASE("optimization snapshots distinguish repeated pass instances and stop on output failure") {
+    HirPackage package;
+    Optimization::HirPassPipeline pipeline(BuildProfile::Release, 2);
+    pipeline.Add(std::make_unique<AlwaysChangingPass>());
+    pipeline.Add(std::make_unique<AlwaysChangingPass>());
+    std::vector<std::pair<std::size_t, std::size_t>> snapshots;
+    pipeline.SetObserver(
+        [&](const HirPackage &, const std::string_view, const std::size_t iteration, const std::size_t index) {
+            snapshots.emplace_back(iteration, index);
+            return true;
+        });
+    static_cast<void>(pipeline.Run(package));
+    const std::vector<std::pair<std::size_t, std::size_t>> expected = {{0, 0}, {1, 1}, {1, 2}, {2, 1}, {2, 2}};
+    CHECK(snapshots == expected);
+
+    snapshots.clear();
+    const std::vector<std::string> disabled = {"always-changing"};
+    pipeline.Configure(disabled, false);
+    CHECK(pipeline.Run(package).reachedFixedPoint);
+    REQUIRE_EQ(snapshots.size(), 1);
+    pipeline.SetObserver([](const HirPackage &, std::string_view, std::size_t, std::size_t) { return false; });
+    const auto failed = pipeline.Run(package);
+    CHECK_FALSE(failed.reachedFixedPoint);
+    REQUIRE(failed.HasErrors());
+    CHECK(failed.diagnostics.front().message.contains("snapshot"));
+}
+
+TEST_CASE("driver retains distinct optimization snapshots without changing generated assembly") {
+    DriverDiagnosticFixture fixture;
+    fixture.WriteSource("func Main() -> int { let value = 21; return value * 2; }\n");
+    auto options = fixture.Options(false);
+    options.profile = BuildProfile::Release;
+    options.target = *Target::TargetTriple::Parse("linux-x86_64");
+    options.dumpAsm = true;
+    const auto plain = CompilerDriver(options).Compile();
+    REQUIRE(plain.ok);
+    const auto asmPath = options.manifestPath.parent_path() / "Temp" / "Asm" / "out.asm";
+    const auto read = [](const std::filesystem::path &path) {
+        std::ifstream input(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+    };
+    const auto assembly = read(asmPath);
+    REQUIRE_FALSE(assembly.empty());
+    options.dumpOptimizationPasses = true;
+    const auto observed = CompilerDriver(options).Compile();
+    REQUIRE(observed.ok);
+    CHECK_EQ(read(asmPath), assembly);
+    std::vector<std::filesystem::path> paths;
+    for (const auto &output : observed.inspectionOutputs) {
+        if (output.path.string().find("Optimization") != std::string::npos) {
+            REQUIRE(std::filesystem::is_regular_file(output.path));
+            paths.push_back(output.path);
+        }
+    }
+    CHECK_GT(paths.size(), 10);
+    const auto repeated = CompilerDriver(options).Compile();
+    REQUIRE(repeated.ok);
+    for (const auto &output : repeated.inspectionOutputs)
+        if (output.path.string().find("Optimization") != std::string::npos)
+            CHECK(std::ranges::find(paths, output.path) == paths.end());
+}
+
+TEST_CASE("driver reports an unwritable optimization snapshot destination") {
+    DriverDiagnosticFixture fixture;
+    auto options = fixture.Options(false);
+    const auto temporary = options.manifestPath.parent_path() / "Temp";
+    std::filesystem::create_directories(temporary);
+    {
+        std::ofstream blocked(temporary / "Optimization");
+        blocked << "not a directory";
+    }
+    options.dumpOptimizationPasses = true;
+    const auto result = CompilerDriver(options).Compile();
+    CHECK_FALSE(result.ok);
+    REQUIRE_FALSE(result.diagnostics.empty());
+    CHECK(result.diagnostics.back().message.contains("snapshot directory"));
+}

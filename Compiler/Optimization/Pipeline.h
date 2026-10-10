@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <format>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -29,6 +30,14 @@ namespace Rux::Optimization {
 template <typename Ir>
 class PassPipeline {
 public:
+    /// Read-only snapshots before optimization and after each executed pass. Returning false aborts the pipeline.
+    /// Callbacks are outside pass timings and are never invoked for disabled passes.
+    using Observer = std::function<bool(const Ir &, std::string_view, std::size_t, std::size_t)>;
+
+    void SetObserver(Observer inputObserver) {
+        observer = std::move(inputObserver);
+    }
+
     /**
      * @brief Build an empty pipeline.
      *
@@ -72,6 +81,17 @@ public:
      */
     [[nodiscard]] PassRunReport Run(Ir &ir) {
         PassRunReport report;
+        const auto observe = [&](const std::string_view name, const std::size_t iteration, const std::size_t index) {
+            if (observer && !observer(ir, name, iteration, index)) {
+                report.diagnostics.push_back(
+                    ErrorDiagnostic(std::format("unable to capture {} optimization snapshot", irName)));
+                report.reachedFixedPoint = false;
+                return false;
+            }
+            return true;
+        };
+        if (!observe("input", 0, 0))
+            return report;
         if (passes.empty()) {
             return report;
         }
@@ -119,6 +139,8 @@ public:
                     ++report.iterations;
                     return report;
                 }
+                if (!observe(pass->Name(), iteration + 1, passIndex + 1))
+                    return report;
             }
 
             ++report.iterations;
@@ -144,6 +166,7 @@ private:
     std::vector<std::unique_ptr<Pass<Ir>>> passes;
     std::unordered_set<std::string> disabledPasses;
     bool collectStatistics = false;
+    Observer observer;
 
     [[nodiscard]] static std::size_t InstructionCount(const Ir &ir) {
         std::size_t count = 0;
@@ -186,6 +209,7 @@ public:
     [[nodiscard]] PassRunReport RunLir(LirPackage &package);
     /// Validate diagnostic bisection options. Required normalization and verification cannot be disabled.
     [[nodiscard]] std::vector<Diagnostic> Configure(std::span<const std::string> disabled, bool statistics);
+    void SetObservers(HirPassPipeline::Observer hirObserver, LirPassPipeline::Observer lirObserver);
 
 private:
     OptimizationPipeline(BuildProfile profile, std::size_t fixedPointLimit);

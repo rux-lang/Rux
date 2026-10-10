@@ -153,6 +153,13 @@ Type = "Executable"
     CHECK_NE(required.exitCode, 0);
     CHECK(required.output.contains("cannot be disabled"));
 
+    const auto snapshots = Run(
+        std::array<std::string_view, 7>{"--manifest", manifest, "build", "--release", "--emit", "passes", "--quiet"});
+    CAPTURE(snapshots.output);
+    CHECK_EQ(snapshots.exitCode, 0);
+    CHECK(snapshots.output.empty());
+    CHECK(std::filesystem::is_directory(root / "Temp" / "Optimization"));
+
     std::error_code error;
     std::filesystem::remove_all(root, error);
 }

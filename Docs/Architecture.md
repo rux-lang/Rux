@@ -336,3 +336,7 @@ pre-emission assignment: the evicted value uses its canonical stack home everywh
 interference constraint even if its successor is evicted. Loop membership is an immutable CFG/dominance snapshot;
 clients must rebuild after CFG changes and check its bounded-analysis completion flag. Large/incomplete allocation
 analyses use unweighted counts, and LICM skips an incomplete loop analysis.
+Optimization pipelines accept optional read-only observers for the initial IR and each successful pass invocation.
+`build --emit passes` installs HIR/LIR observers writing into a fresh invocation directory; iteration and pipeline slot
+identify repeated instances unambiguously. Disabled passes are skipped. Output failure aborts optimization and fails
+the build. Snapshot I/O is outside pass timers, and normal builds leave the observers unset.

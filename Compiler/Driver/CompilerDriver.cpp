@@ -543,6 +543,32 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     if (EmitAll(optimizationPipeline.Configure(opts.disabledOptimizationPasses, opts.collectOptimizationStatistics))) {
         return false;
     }
+    if (opts.dumpOptimizationPasses) {
+        // Retain each invocation independently: stale files from a longer earlier pipeline must not masquerade as
+        // snapshots of this build. Refuse an existing destination instead of overwriting another invocation.
+        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto directory = root / "Temp" / "Optimization" / std::to_string(nonce);
+        std::error_code error;
+        if (!std::filesystem::create_directories(directory, error)) {
+            Emit(ErrorDiagnostic(
+                std::format("could not create optimization snapshot directory '{}'", directory.string()),
+                {error ? error.message() : "destination already exists"}));
+            return false;
+        }
+        optimizationPipeline.SetObservers(
+            [this, directory](const HirPackage &package, const std::string_view name, const std::size_t iteration,
+                              const std::size_t passIndex) {
+                const auto path = directory / "Hir" / std::format("{:02}-{:02}-{}.txt", iteration, passIndex, name);
+                return WriteInspectionOutput(InspectionKind::Hir, path,
+                                             [&] { return HirPrinter::Dump(package, path); });
+            },
+            [this, directory](const LirPackage &package, const std::string_view name, const std::size_t iteration,
+                              const std::size_t passIndex) {
+                const auto path = directory / "Lir" / std::format("{:02}-{:02}-{}.txt", iteration, passIndex, name);
+                return WriteInspectionOutput(InspectionKind::Lir, path,
+                                             [&] { return LirPrinter::Dump(package, path); });
+            });
+    }
     BeginPhase(CompilePhase::OptimizingHir, opts.manifest.package.name.Text());
     const auto hirOptimization = optimizationPipeline.RunHir(hirPackage);
     stats.optimizationPasses = hirOptimization.passStatistics;
