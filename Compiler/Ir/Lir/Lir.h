@@ -320,6 +320,17 @@ struct LirConstDecl {
     bool hasValueData = false;
 };
 
+/// A module variable: writable storage under `name`, starting as the bytes its scalars lay out at the type's size and
+/// alignment, zero wherever no scalar lies. A value whose bytes are all zero is placed in zero-fill storage.
+struct LirGlobal {
+    std::string name;
+    bool isPublic = false;
+    /// Public and owned by the package being compiled: a library artifact exports it and keeps it reachable.
+    bool isExported = false;
+    TypeRef type;
+    std::vector<LirConstScalar> scalars;
+};
+
 struct LirTypeAlias {
     std::string name;
     bool isPublic = false;
@@ -349,6 +360,7 @@ struct LirModule {
     std::vector<LirEnumDecl> enums;
     std::vector<LirUnionDecl> unions;
     std::vector<LirConstDecl> consts;
+    std::vector<LirGlobal> globals;
     std::vector<LirTypeAlias> typeAliases;
     std::vector<LirExternVar> externVars;
     std::vector<LirFunc> funcs;

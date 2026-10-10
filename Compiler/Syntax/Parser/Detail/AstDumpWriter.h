@@ -82,6 +82,7 @@ private:
     void PrintModuleDecl(const ModuleDecl &decl);
     void PrintUseDecl(const UseDecl &decl) const;
     void PrintConstDecl(const ConstDecl &decl);
+    void PrintGlobalDecl(const GlobalDecl &decl);
     void PrintTypeAliasDecl(const TypeAliasDecl &decl) const;
     void PrintExternFuncDecl(const ExternFuncDecl &decl) const;
     void PrintExternVarDecl(const ExternVarDecl &decl) const;

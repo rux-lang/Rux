@@ -76,13 +76,16 @@ inline void AppendScalarConstant(std::vector<std::uint8_t> &data, const std::str
 /// The offsets come from the same layout rules a field or element access reads, so `*@C` and `(@C).field` see the
 /// value the constant names. A scalar whose place would reach past the value is left out rather than written over a
 /// neighbour; the HIR lowering only records paths into the constant's own type, so none does.
-[[nodiscard]] inline std::vector<std::uint8_t>
-ConstantValueBytes(const LirConstDecl &constant, const Layout::LayoutMap &layouts,
-                   const std::unordered_set<std::string> &interfaceNames) {
-    const int size = Layout::RuntimeSizeOf(constant.type, layouts, interfaceNames);
+///
+/// Module variables start as the same bytes, so their initial value is laid out by the same rule.
+[[nodiscard]] inline std::vector<std::uint8_t> ValueBytes(const TypeRef &type,
+                                                          const std::vector<LirConstScalar> &scalars,
+                                                          const Layout::LayoutMap &layouts,
+                                                          const std::unordered_set<std::string> &interfaceNames) {
+    const int size = Layout::RuntimeSizeOf(type, layouts, interfaceNames);
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(std::max(size, 0)), 0);
     std::vector<std::uint8_t> scalar;
-    for (const LirConstScalar &part : constant.scalars) {
+    for (const LirConstScalar &part : scalars) {
         int offset = 0;
         for (const LirConstMember &member : part.path) {
             if (member.aggregate.kind == TypeRef::Kind::Array) {
@@ -106,9 +109,21 @@ ConstantValueBytes(const LirConstDecl &constant, const Layout::LayoutMap &layout
     return bytes;
 }
 
+[[nodiscard]] inline std::vector<std::uint8_t>
+ConstantValueBytes(const LirConstDecl &constant, const Layout::LayoutMap &layouts,
+                   const std::unordered_set<std::string> &interfaceNames) {
+    return ValueBytes(constant.type, constant.scalars, layouts, interfaceNames);
+}
+
+/// The alignment a value of `type` is placed at in module storage, the one `alignof` reports for the type.
+[[nodiscard]] inline int ValueAlignment(const TypeRef &type, const Layout::LayoutMap &layouts,
+                                        const std::unordered_set<std::string> &interfaceNames) {
+    return std::max(Layout::RuntimeAlignmentOf(type, layouts, interfaceNames), 1);
+}
+
 /// The alignment a constant that is not a sequence is placed at, the one `alignof` reports for its type.
 [[nodiscard]] inline int ConstantValueAlignment(const LirConstDecl &constant, const Layout::LayoutMap &layouts,
                                                 const std::unordered_set<std::string> &interfaceNames) {
-    return std::max(Layout::RuntimeAlignmentOf(constant.type, layouts, interfaceNames), 1);
+    return ValueAlignment(constant.type, layouts, interfaceNames);
 }
 } // namespace Rux

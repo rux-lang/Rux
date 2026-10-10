@@ -424,6 +424,9 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
     else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
         (void)CheckNamedConstant(*constDecl);
     }
+    else if (auto *globalDecl = dynamic_cast<const GlobalDecl *>(&decl)) {
+        CheckGlobalDecl(*globalDecl);
+    }
     else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
         ValidateArrayType(*aliasDecl->type);
         ResolveType(*aliasDecl->type);

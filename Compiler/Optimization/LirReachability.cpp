@@ -44,6 +44,11 @@ PackageIndex BuildIndex(const LirPackage &package) {
             IndexSymbol(index.data, module.vtables[vtableIndex].label, declaration);
             IndexSymbol(index.all, module.vtables[vtableIndex].label, declaration);
         }
+        for (std::size_t globalIndex = 0; globalIndex < module.globals.size(); ++globalIndex) {
+            const LirDeclarationId declaration{LirDeclarationKind::Global, moduleIndex, globalIndex};
+            IndexSymbol(index.data, module.globals[globalIndex].name, declaration);
+            IndexSymbol(index.all, module.globals[globalIndex].name, declaration);
+        }
         for (std::size_t variableIndex = 0; variableIndex < module.externVars.size(); ++variableIndex) {
             const LirDeclarationId declaration{LirDeclarationKind::ExternVariable, moduleIndex, variableIndex};
             IndexSymbol(index.data, module.externVars[variableIndex].name, declaration);
@@ -131,6 +136,11 @@ private:
             for (std::size_t vtableIndex = 0; vtableIndex < module.vtables.size(); ++vtableIndex) {
                 Add({LirDeclarationKind::Vtable, moduleIndex, vtableIndex});
             }
+            for (std::size_t globalIndex = 0; globalIndex < module.globals.size(); ++globalIndex) {
+                if (module.globals[globalIndex].isExported) {
+                    Add({LirDeclarationKind::Global, moduleIndex, globalIndex});
+                }
+            }
             for (std::size_t variableIndex = 0; variableIndex < module.externVars.size(); ++variableIndex) {
                 if (module.externVars[variableIndex].isExported) {
                     Add({LirDeclarationKind::ExternVariable, moduleIndex, variableIndex});
@@ -152,6 +162,8 @@ private:
             VisitVtable(module.vtables[declaration.declarationIndex]);
             break;
         case LirDeclarationKind::ExternVariable:
+        case LirDeclarationKind::Global:
+            // Storage refers to nothing: its initial value is bytes, never an address.
             break;
         }
     }

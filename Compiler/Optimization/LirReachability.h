@@ -14,6 +14,7 @@ enum class LirDeclarationKind {
     Constant,
     Vtable,
     ExternVariable,
+    Global,
 };
 
 /// Where one declaration lives, as a pair of indices rather than a pointer, so an identifier stays valid while the pass

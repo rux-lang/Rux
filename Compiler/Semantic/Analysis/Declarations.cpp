@@ -511,17 +511,27 @@ bool AnalysisContext::IsConstArrayElement(const Expr &e) const {
 }
 
 // A constant is computed by the compiler and stands for that one value at every use, so nothing in its initializer may
-// depend on the running program: a call runs code, and a variable holds a value only once the program runs.
-bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const ConstDecl &constant) {
+// depend on the running program: a call runs code, and a variable holds a value only once the program runs. A module
+// variable's initial value is the bytes its storage starts with, which the compiler writes, so the same rule applies.
+bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const Decl &owner) {
     const auto reject = [&](const Expr &part, std::string message) {
-        std::string help = localConstants.contains(&constant)
-                             ? std::format("declare '{}' with 'let' to compute it at run time", constant.name)
-                             : std::string("initialize a constant from literals, operators, casts, and other "
-                                           "constants");
+        std::string help;
+        if (const auto *global = dynamic_cast<const GlobalDecl *>(&owner)) {
+            help = std::format("initialize '{}' from literals, operators, casts, and constants, and assign it from a "
+                               "function at run time",
+                               global->name);
+        }
+        else if (const auto *constant = dynamic_cast<const ConstDecl *>(&owner);
+                 constant && localConstants.contains(constant)) {
+            help = std::format("declare '{}' with 'let' to compute it at run time", constant->name);
+        }
+        else {
+            help = "initialize a constant from literals, operators, casts, and other constants";
+        }
         EmitError(part.location, std::move(message), {}, std::move(help));
         return false;
     };
-    const auto check = [&](const Expr *part) { return !part || CheckCompileTimeInitializer(*part, constant); };
+    const auto check = [&](const Expr *part) { return !part || CheckCompileTimeInitializer(*part, owner); };
     const auto checkAll = [&](const std::vector<ExprPtr> &parts) {
         return std::ranges::all_of(parts, [&](const ExprPtr &part) { return check(part.get()); });
     };
@@ -720,6 +730,58 @@ void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
     if (Symbol *sym = currentScope->Lookup(d.name)) {
         sym->type = constType;
     }
+}
+
+void AnalysisContext::CheckGlobalDecl(const GlobalDecl &d) {
+    ValidateArrayType(*d.type);
+    const TypeRef globalType = ResolveType(*d.type);
+    ValidateStoredType(globalType, d.location, "module variable");
+    // Module storage lives until the process exits and no destructor ever runs on it, so a type whose value owns
+    // something that must be released would leak it or, worse, be released by nobody while code still believes it
+    // will be.
+    if (!globalType.IsUnknown() && MayNeedDestruction(globalType)) {
+        EmitError(
+            d.type->location,
+            std::format("module variable '{}' has type '{}', which needs destruction", d.name, globalType.ToString()),
+            {}, "a module variable lives until the program exits and is never destroyed");
+    }
+    if (globalType.IsSlice()) {
+        EmitError(d.type->location,
+                  std::format("module variable '{}' cannot have slice type '{}'", d.name, globalType.ToString()), {},
+                  "store a fixed array, or a pointer and a length, in the module variable");
+    }
+    const TypeRef valueType = CheckExpr(*d.value);
+    if (!valueType.IsUnknown() && !globalType.IsUnknown() && !CanAssignExprTo(*d.value, valueType, globalType)) {
+        EmitError(d.value->location,
+                  AssignmentErrorMessage(*d.value, globalType,
+                                         std::format("cannot assign '{}' to module variable of type '{}'",
+                                                     valueType.DisplayString(), globalType.ToString())));
+    }
+    const bool compileTime = valueType.IsUnknown() || CheckCompileTimeInitializer(*d.value, d);
+    if (compileTime && globalType.kind == TypeRef::Kind::Array) {
+        const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());
+        const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(d.value.get());
+        if (!array && !repeat) {
+            EmitError(d.value->location, "a module variable array must be initialized with an array literal");
+        }
+        else if (array) {
+            for (const auto &element : array->elements) {
+                if (!IsConstArrayElement(*element)) {
+                    EmitError(element->location, "element of a module variable array must be a literal or a "
+                                                 "named constant");
+                    break;
+                }
+            }
+        }
+        else if (!IsConstArrayElement(*repeat->value)) {
+            EmitError(repeat->value->location,
+                      "element of a module variable array must be a literal or a named constant");
+        }
+    }
+    if (Symbol *symbol = currentScope->LookupLocal(d.name); symbol && symbol->declaration == &d) {
+        symbol->type = globalType;
+    }
+    checkedGlobalTypes.emplace(&d, globalType);
 }
 
 std::string AnalysisContext::JoinPathSegments(const std::vector<std::string> &path, std::size_t first,

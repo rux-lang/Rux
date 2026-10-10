@@ -265,6 +265,23 @@ A `const` initializer, at module level or inside a function, is computed by the 
 
 Taking `@C` for a scalar module constant of type `T` produces a read-only `*T` pointing to its aligned, read-only module storage. Repeated address expressions identify the same object, including through a public import from another package, and dereferencing it yields the complete constant value.
 
+### Module variables
+
+At module level, `var Name: Type = value;` declares a module variable: one storage location for the whole program, shared by every function that can name it. `pub var` publishes it like any other declaration, so another package can import it, read it and assign to it, and a module's variable is reached through its path, as in `Settings::Level = 5;`. The type is always written, because other functions and packages agree on the variable's layout, and an initial value is required. `let` has no module-level form: a value that never changes is a `const`.
+
+```rux
+var Requests: uint64 = 0;
+pub var Verbosity: int32 = 1;
+
+func Record() {
+    Requests += 1;
+}
+```
+
+The initial value follows the `const` initializer rules: it is computed by the compiler from literals, operators, casts, constants, and struct, array and tuple values built from them, so a call or another variable is rejected with the same messages. The variable starts the program holding exactly those bytes. A value whose bytes are all zero is placed in zero-fill storage and takes no space in the executable; any other value is placed in initialized data. `@Name` is a writable `*var T` to that storage, aligned as `alignof(T)` reports, and every `@Name` and every package names the same address.
+
+Module storage is never destroyed, so a module variable cannot have a type that needs destruction, and it cannot hold a slice, which would borrow storage it does not own. Nothing moves out of a module variable, since every function shares it and it must always hold a value; `<-Name` is rejected with `cannot move out of module variable 'Name'`, and a copy or a fresh assignment is the way to take its value. Module variables are named in PascalCase, like other module-level declarations. A `pub var` written inside a function body is rejected: a local is declared with `var` and no `pub`.
+
 The removed `var value: T` parameter form is an error. A function that needs mutable local storage moves the parameter into a local with `var local <- value`; a function that mutates caller-owned storage instead accepts `value: &var T`.
 
 A parameter's default value is evaluated where the call is written, in the caller's scope, each time the argument is omitted. It therefore cannot read any parameter of its own function, `self` included: `func C(x: int, y: int = x)` is an error. An overload that passes the value, `func C(x: int) -> int { return C(x, x); }`, gives the same call.

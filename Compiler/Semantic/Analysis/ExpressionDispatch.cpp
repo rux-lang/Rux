@@ -37,6 +37,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             if (sym->kind == Symbol::Kind::Const && sym->declaration) {
                 constantReferences[e] = static_cast<const ConstDecl *>(sym->declaration);
             }
+            else if (const auto *global = dynamic_cast<const GlobalDecl *>(sym->declaration);
+                     global && sym->kind == Symbol::Kind::Var) {
+                globalReferences[e] = global;
+            }
             return ReadTrackedSymbol(*sym, e->location);
         }
         EmitUndefinedName(e->location, e->name);
@@ -172,6 +176,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
         if (current->kind == Symbol::Kind::Const && current->declaration) {
             constantReferences[e] = static_cast<const ConstDecl *>(current->declaration);
+        }
+        else if (const auto *global = dynamic_cast<const GlobalDecl *>(current->declaration);
+                 global && current->kind == Symbol::Kind::Var) {
+            globalReferences[e] = global;
         }
         return ReadTrackedSymbol(*current, e->location);
     }

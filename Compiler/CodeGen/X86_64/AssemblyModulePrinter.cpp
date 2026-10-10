@@ -92,6 +92,25 @@ void AssemblyModulePrinter::EmitModuleData(const LirModule &module, const Layout
         data << "    ; (constant with no laid-out value: a zeroed placeholder)\n";
     }
 
+    // A module variable is printed where the object emitter places it: initialized data when any byte is non-zero,
+    // reserved zero-fill storage otherwise.
+    for (const auto &global : module.globals) {
+        const std::vector<std::uint8_t> bytes = ValueBytes(global.type, global.scalars, layouts, interfaceNames);
+        const bool zero = std::ranges::all_of(bytes, [](const std::uint8_t byte) { return byte == 0; });
+        std::ostringstream &section = zero ? bss : data;
+        if (global.isPublic) {
+            section << "global " << global.name << '\n';
+        }
+        section << "align " << ValueAlignment(global.type, layouts, interfaceNames) << '\n';
+        section << global.name << ":  ; var " << global.type.ToString() << '\n';
+        if (zero) {
+            section << "    resb  " << bytes.size() << '\n';
+        }
+        else {
+            PrintBytes(section, bytes);
+        }
+    }
+
     for (const auto &vtable : module.vtables) {
         rodata << vtable.label << ":\n";
         for (const auto &method : vtable.methods) {
@@ -226,6 +245,9 @@ std::string AssemblyModulePrinter::Finalize() {
     }
     if (const std::string section = data.str(); !section.empty()) {
         output << "section .data\n" << section << '\n';
+    }
+    if (const std::string section = bss.str(); !section.empty()) {
+        output << "section .bss\n" << section << '\n';
     }
     if (const std::string section = text.str(); !section.empty()) {
         output << "section .text\n" << section;

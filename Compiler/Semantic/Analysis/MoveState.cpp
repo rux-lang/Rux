@@ -923,6 +923,26 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     if (!CheckBorrowedMove(expression, location)) {
         return false;
     }
+    // A module variable is storage every function shares and nothing tracks, so moving out of it would leave the
+    // next reader, in any function, holding a value that has gone.
+    const Expr *root = &expression;
+    while (true) {
+        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+            root = field->object.get();
+        }
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(root); index && !IsIndexOperatorCall(*index)) {
+            root = index->object.get();
+        }
+        else {
+            break;
+        }
+    }
+    if (const auto global = globalReferences.find(root); global != globalReferences.end()) {
+        EmitError(location, std::format("cannot move out of module variable '{}'", global->second->name),
+                  {"a module variable is shared by every function and must always hold a value"},
+                  "copy the value, or assign a new value to the variable after reading it");
+        return false;
+    }
     const auto usesReferenceStorage = [&](this auto &&self, const Expr &candidate) -> bool {
         const Expr *object = nullptr;
         if (const auto *field = dynamic_cast<const FieldExpr *>(&candidate)) {

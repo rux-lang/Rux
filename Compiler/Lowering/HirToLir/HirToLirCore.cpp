@@ -120,6 +120,12 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
             globalConsts[mod.name + "::" + c.name] = &c;
         }
     }
+    globalVars.clear();
+    for (const auto &mod : hir.modules) {
+        for (const auto &global : mod.globals) {
+            globalVars[global.name] = &global;
+        }
+    }
     // Calling conventions are resolved package-wide: a call may target an
     // extern function declared in an imported module (e.g. C::printf), so
     // the map must span every module, not just the one being lowered.
@@ -945,6 +951,20 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
             }
         }
         lm.consts.push_back(std::move(cd));
+    }
+    for (const auto &global : mod.globals) {
+        LirGlobal lg;
+        lg.name = global.name;
+        lg.isPublic = global.isPublic;
+        lg.isExported = global.isExported;
+        lg.type = global.type;
+        std::vector<LirConstMember> path;
+        if (!global.value || !CollectConstValueScalars(*global.value, global.type, path, lg.scalars)) {
+            // Laying the storage out as zeros would start the program with a value nobody wrote.
+            BuilderFailure(
+                std::format("the initial value of module variable '{}' has no layout in module storage", global.name));
+        }
+        lm.globals.push_back(std::move(lg));
     }
     for (const auto &ta : mod.typeAliases) {
         lm.typeAliases.push_back({ta.name, ta.isPublic, ta.type});

@@ -219,6 +219,14 @@ void X86_64ModuleEmitter::EmitConstValue(const LirConstDecl &c) {
                                         RcuModuleSection::RoData, offset, static_cast<uint32_t>(bytes.size()));
 }
 
+// A module variable is writable storage under its own name, starting as its initial value.
+void X86_64ModuleEmitter::EmitGlobal(const LirGlobal &global) {
+    const PlacedGlobal placed = PlaceGlobal(moduleBuilder, global, layouts, interfaceNames);
+    dataSyms[global.name] = DefineDataSymbol(global.name, global.type.ToString(), RcuSymKind::Data,
+                                             RcuSymVis::ForDefinition(global.isPublic, global.isExported),
+                                             placed.section, placed.offset, placed.size);
+}
+
 void X86_64ModuleEmitter::GenModule() {
     BuildLayouts();
     PredeclareFunctions();
@@ -240,6 +248,9 @@ void X86_64ModuleEmitter::GenModule() {
             continue;
         }
         EmitConstValue(c);
+    }
+    for (const auto &global : mod.globals) {
+        EmitGlobal(global);
     }
     EmitVtables();
     // Functions

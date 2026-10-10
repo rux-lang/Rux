@@ -145,6 +145,9 @@ std::optional<std::string> DeclName(const Decl &decl) {
     if (const auto *constant = dynamic_cast<const ConstDecl *>(&decl)) {
         return constant->name;
     }
+    if (const auto *global = dynamic_cast<const GlobalDecl *>(&decl)) {
+        return global->name;
+    }
     if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
         return alias->name;
     }
@@ -589,6 +592,17 @@ private:
             }
             if (cnst->value) {
                 VisitExpr(*cnst->value);
+            }
+        }
+        else if (const auto *global = dynamic_cast<const GlobalDecl *>(&decl)) {
+            // A module variable is a module-level name like a constant or a function, so it is spelled the same way.
+            CheckDocumentation(decl, "module variable", global->name);
+            if (!IsPascalCase(global->name)) {
+                WarnNaming(global->location, "module variable name", global->name, NamingConvention::PascalCase,
+                           siblingNames);
+            }
+            if (global->value) {
+                VisitExpr(*global->value);
             }
         }
         else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {

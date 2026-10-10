@@ -65,6 +65,8 @@ private:
     CheckedLirBuilder *builder = nullptr;
     std::unordered_map<std::string, LirReg> locals;
     std::unordered_map<std::string, const HirConst *> globalConsts;
+    /// Module variables of every module, by linker name: each is one storage location reached through its address.
+    std::unordered_map<std::string, const HirGlobal *> globalVars;
     std::unordered_map<std::string, LocalConstValue> localConsts;
     std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
     /// The drop glue of every droppable type, keyed by its spelling.

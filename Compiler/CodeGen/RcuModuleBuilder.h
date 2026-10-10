@@ -1,7 +1,8 @@
 #pragma once
 
-// Target-neutral construction of the three sections emitted by both native
-// back ends. Instruction encoding remains owned by each back end; this class
+// Target-neutral construction of the sections emitted by both native back
+// ends: text, read-only data and data always, and zero-fill storage when a
+// module variable needs some. Instruction encoding remains owned by each back end; this class
 // owns the RCU bookkeeping around those bytes.
 
 #include "Diagnostics/Diagnostics.h"
@@ -20,6 +21,9 @@ enum class RcuModuleSection : std::uint16_t {
     Text = RCU_TEXT_IDX,
     RoData = RCU_RODATA_IDX,
     Data = RCU_DATA_IDX,
+    /// Zero-fill storage. Its bytes are carried as zeros and written only when the section is non-empty, so a module
+    /// with no zero-initialized variables keeps exactly three sections.
+    Bss = RCU_BSS_IDX,
 };
 
 struct RcuModuleDescription {
@@ -101,9 +105,9 @@ private:
     };
 
     RcuModuleDescription description;
-    std::array<std::vector<std::uint8_t>, 3> sectionData;
-    std::array<std::vector<RcuReloc>, 3> sectionRelocations;
-    std::array<std::uint16_t, 3> sectionAlignments = {1, 1, 1};
+    std::array<std::vector<std::uint8_t>, 4> sectionData;
+    std::array<std::vector<RcuReloc>, 4> sectionRelocations;
+    std::array<std::uint16_t, 4> sectionAlignments = {1, 1, 1, 1};
     std::vector<RcuSymbol> symbols;
     std::vector<SymbolState> symbolStates;
     std::vector<Diagnostic> diagnostics;

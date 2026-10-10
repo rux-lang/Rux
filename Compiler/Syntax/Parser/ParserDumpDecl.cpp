@@ -188,6 +188,9 @@ void DeclarationPrinter::Print(const Decl &decl) {
     else if (const auto *constant = dynamic_cast<const ConstDecl *>(&decl)) {
         PrintConstDecl(*constant);
     }
+    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&decl)) {
+        PrintGlobalDecl(*global);
+    }
     else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
         PrintTypeAliasDecl(*alias);
     }
@@ -537,6 +540,19 @@ void DeclarationPrinter::PrintConstDecl(const ConstDecl &decl) {
         out << " : " << TypeString(decl.type->get());
     }
     out << '\n';
+    ++indent;
+    if (decl.value) {
+        printExpression(*decl.value);
+    }
+    --indent;
+}
+
+void DeclarationPrinter::PrintGlobalDecl(const GlobalDecl &decl) {
+    Pad();
+    if (decl.isPublic) {
+        out << "pub ";
+    }
+    out << "GlobalDecl '" << decl.name << "' : " << TypeString(decl.type.get()) << '\n';
     ++indent;
     if (decl.value) {
         printExpression(*decl.value);

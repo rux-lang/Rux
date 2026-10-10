@@ -292,6 +292,11 @@ bool LirPrinter::Dump(const LirPackage &package, const std::filesystem::path &pa
             std::string pub = c.isPublic ? "pub " : "";
             out << std::format("\n{}const {}: {} = {}\n", pub, c.name, c.type.ToString(), c.value);
         }
+        for (const auto &global : mod.globals) {
+            std::string pub = global.isPublic ? "pub " : "";
+            out << std::format("\n{}var {}: {} ({} scalars)\n", pub, global.name, global.type.ToString(),
+                               global.scalars.size());
+        }
         for (const auto &ev : mod.externVars) {
             std::string pub = ev.isPublic ? "pub " : "";
             out << std::format("\nextern {}{}: {}\n", pub, ev.name, ev.type.ToString());

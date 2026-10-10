@@ -169,6 +169,8 @@ std::string DeclName(const Decl &decl) {
         return value->name;
     if (const auto *value = dynamic_cast<const ConstDecl *>(&decl))
         return value->name;
+    if (const auto *value = dynamic_cast<const GlobalDecl *>(&decl))
+        return value->name;
     if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
         return value->name;
     if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl))
@@ -195,6 +197,8 @@ std::string DeclKind(const Decl &decl) {
         return "module";
     if (dynamic_cast<const ConstDecl *>(&decl))
         return "constant";
+    if (dynamic_cast<const GlobalDecl *>(&decl))
+        return "variable";
     if (dynamic_cast<const TypeAliasDecl *>(&decl))
         return "type alias";
     if (dynamic_cast<const ExternFuncDecl *>(&decl) || dynamic_cast<const ExternVarDecl *>(&decl))
@@ -221,6 +225,8 @@ std::string DeclSignature(const Decl &decl) {
     if (const auto *value = dynamic_cast<const ConstDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "const " + value->name +
                (value->type ? ": " + TypeText(value->type->get()) : "");
+    if (const auto *value = dynamic_cast<const GlobalDecl *>(&decl))
+        return std::string(value->isPublic ? "pub " : "") + "var " + value->name + ": " + TypeText(value->type.get());
     if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "type " + value->name + " = " + TypeText(value->type.get());
     if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))

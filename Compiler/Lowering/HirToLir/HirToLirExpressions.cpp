@@ -110,6 +110,9 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
             LirReg value = LowerExpr(*it->second->value);
             return EmitCastIfNeeded(value, it->second->value->type, it->second->type);
         }
+        if (const auto it = globalVars.find(e->name); it != globalVars.end()) {
+            return EmitLoad(EmitGlobalAddr(it->second->name, it->second->type), e->type);
+        }
         auto it = locals.find(e->name);
         if (it != locals.end()) {
             if (IsInterfaceType(e->type)) {
@@ -1001,6 +1004,10 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         auto it = locals.find(e->name);
         if (it != locals.end()) {
             return it->second;
+        }
+        // A module variable is its storage: reading, writing and `@` all start from the one address.
+        if (const auto global = globalVars.find(e->name); global != globalVars.end()) {
+            return EmitGlobalAddr(global->second->name, global->second->type);
         }
         // A slice-typed constant lives in read-only data under its own
         // name, so indexing or reading .length works off that address. A

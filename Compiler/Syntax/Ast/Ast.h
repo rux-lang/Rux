@@ -871,6 +871,14 @@ struct ConstDecl : Decl {
     ExprPtr value;
 };
 
+/// var Name: Type = expr; at module scope. One storage location for the whole program, initialized from a
+/// compile-time value and writable by every function that can name it.
+struct GlobalDecl : Decl {
+    std::string name;
+    TypeExprPtr type;
+    ExprPtr value;
+};
+
 // type Name = Type;
 struct TypeAliasDecl : Decl {
     std::string name;

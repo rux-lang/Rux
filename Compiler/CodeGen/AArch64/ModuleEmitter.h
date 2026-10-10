@@ -10,6 +10,7 @@
 #include "CodeGen/BackendDiagnostics.h"
 #include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
+#include "CodeGen/GlobalData.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/RcuModuleBuilder.h"
@@ -815,6 +816,14 @@ private:
         (void)moduleBuilder.Append(RcuModuleSection::RoData, bytes);
         dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const, visibility,
                                             RcuModuleSection::RoData, offset, static_cast<std::uint32_t>(bytes.size()));
+    }
+
+    // A module variable is writable storage under its own name, starting as its initial value.
+    void EmitGlobal(const LirGlobal &global) {
+        const PlacedGlobal placed = PlaceGlobal(moduleBuilder, global, layouts, interfaceNames);
+        dataSyms[global.name] = DefineDataSymbol(global.name, global.type.ToString(), RcuSymKind::Data,
+                                                 RcuSymVis::ForDefinition(global.isPublic, global.isExported),
+                                                 placed.section, placed.offset, placed.size);
     }
 
     void GenModule();

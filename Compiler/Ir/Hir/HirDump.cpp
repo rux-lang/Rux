@@ -461,6 +461,11 @@ bool HirPrinter::Dump(const HirPackage &package, const std::filesystem::path &pa
             std::string pub = c.isPublic ? "pub " : "";
             out << std::format("\n{}const {}: {} = {}\n", pub, c.name, c.type.ToString(), PrintExpr(*c.value));
         }
+        for (const auto &global : mod.globals) {
+            std::string pub = global.isPublic ? "pub " : "";
+            out << std::format("\n{}var {}: {} = {}\n", pub, global.name, global.type.ToString(),
+                               global.value ? PrintExpr(*global.value) : std::string("?"));
+        }
         for (const auto &ta : mod.typeAliases) {
             std::string pub = ta.isPublic ? "pub " : "";
             out << std::format("\n{}type {} = {}\n", pub, ta.name, ta.type.ToString());

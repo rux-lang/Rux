@@ -156,6 +156,17 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         identity += declaration->name;
         symbolIdentities.emplace(declaration, ResolvedSymbolIdentity{std::move(identity)});
     }
+    for (const auto &[declaration, type] : checkedGlobalTypes) {
+        (void)type;
+        const auto &owner = declarationInfos.at(declaration);
+        // One storage location per variable across the whole program, so the name is qualified like a constant's.
+        std::string identity = owner.ownerPackage + "::";
+        if (!owner.modulePath.empty()) {
+            identity += owner.modulePath + "::";
+        }
+        identity += declaration->name;
+        symbolIdentities.emplace(declaration, ResolvedSymbolIdentity{std::move(identity)});
+    }
     std::unordered_map<std::string, std::unordered_set<std::string>> owners;
     for (const auto &[name, declarations] : functionsByName) {
         (void)name;

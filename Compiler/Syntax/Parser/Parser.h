@@ -138,6 +138,7 @@ private:
     std::unique_ptr<ModuleDecl> ParseModuleDecl(bool isPublic);
     std::unique_ptr<UseDecl> ParseUseDecl(bool requireSemicolon = true);
     std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
+    std::unique_ptr<GlobalDecl> ParseGlobalDecl(bool isPublic);
     std::unique_ptr<WhenDecl> ParseWhenDecl();
     std::unique_ptr<WhenDecl> ParseWhenBody(SourceLocation loc);
     /// Compile-time match forms `when subject { pattern => body, ... }`. The subject has already been parsed; the

@@ -24,6 +24,8 @@ namespace {
         return ".rodata";
     case RcuModuleSection::Data:
         return ".data";
+    case RcuModuleSection::Bss:
+        return ".bss";
     }
     return "<invalid>";
 }
@@ -85,6 +87,11 @@ namespace {
     case RcuModuleSection::Data:
         section.name = ".data";
         section.type = RcuSecType::Data;
+        section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        break;
+    case RcuModuleSection::Bss:
+        section.name = ".bss";
+        section.type = RcuSecType::Bss;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
         break;
     }
@@ -419,13 +426,17 @@ RcuModuleBuildResult RcuModuleBuilder::Finalize() {
     file.ruxVersion = description.ruxVersion;
     file.compilerFlags = description.compilerFlags;
     file.sourceHash = description.sourceHash;
-    file.sections.reserve(3);
+    file.sections.reserve(4);
     file.sections.push_back(MakeSection(RcuModuleSection::Text, std::move(sectionData[0]),
                                         std::move(sectionRelocations[0]), sectionAlignments[0]));
     file.sections.push_back(MakeSection(RcuModuleSection::RoData, std::move(sectionData[1]),
                                         std::move(sectionRelocations[1]), sectionAlignments[1]));
     file.sections.push_back(MakeSection(RcuModuleSection::Data, std::move(sectionData[2]),
                                         std::move(sectionRelocations[2]), sectionAlignments[2]));
+    if (!sectionData[3].empty()) {
+        file.sections.push_back(MakeSection(RcuModuleSection::Bss, std::move(sectionData[3]),
+                                            std::move(sectionRelocations[3]), sectionAlignments[3]));
+    }
     file.symbols = std::move(symbols);
     result.file = std::move(file);
     return result;

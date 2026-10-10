@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ModuleVar"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Module-level variables keep one stable, writable storage location shared by every function and package."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+ModuleVarProvider = { Path = "../../Fixtures/ModuleVar" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

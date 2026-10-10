@@ -186,6 +186,9 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
             ValidatePublicResolvedType(symbol->type, declaration, std::format("public constant '{}'", constant->name));
         }
     }
+    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&declaration)) {
+        ValidatePublicType(*global->type, std::format("public module variable '{}'", global->name));
+    }
     else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
         ValidatePublicType(*alias->type, std::format("public type alias '{}'", alias->name));
     }

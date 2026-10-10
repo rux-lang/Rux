@@ -696,6 +696,18 @@ struct HirConst {
     SourceLocation location;
 };
 
+// var Name: Type = expr; at module scope. `name` is the linker name every reference uses.
+struct HirGlobal {
+    std::string name;
+    bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact exports it.
+    bool isExported = false;
+    TypeRef type;
+    /// The compile-time initial value, lowered as the declared type.
+    HirExprPtr value;
+    SourceLocation location;
+};
+
 // extern func Name(params) -> Type from "DLL";
 struct HirExternFunc {
     std::string name;
@@ -739,6 +751,7 @@ struct HirModule {
     std::vector<HirInterface> interfaces;
     std::vector<HirImplBlock> impls;
     std::vector<HirConst> consts;
+    std::vector<HirGlobal> globals;
     std::vector<HirExternFunc> externFuncs;
     std::vector<HirExternVar> externVars;
     std::vector<HirTypeAlias> typeAliases;

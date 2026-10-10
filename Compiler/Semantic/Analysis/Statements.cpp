@@ -621,6 +621,12 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         CheckLoopExit(true, continueStatement->label, statement.location);
     }
     else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
+        if (const auto *global = dynamic_cast<const GlobalDecl *>(declarationStatement->decl.get())) {
+            EmitError(global->location,
+                      std::format("module variable '{}' must be declared at module scope", global->name), {},
+                      "declare a local with 'var' and no 'pub', or move the declaration out of the function");
+            return;
+        }
         if (const auto *constant = dynamic_cast<const ConstDecl *>(declarationStatement->decl.get())) {
             localConstants.insert(constant);
         }

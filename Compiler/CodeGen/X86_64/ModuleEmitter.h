@@ -3,6 +3,7 @@
 #include "CodeGen/BackendDiagnostics.h"
 #include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
+#include "CodeGen/GlobalData.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/RcuModuleBuilder.h"
@@ -336,6 +337,8 @@ private:
     void EmitConstArray(const LirConstDecl &c);
 
     void EmitConstValue(const LirConstDecl &c);
+
+    void EmitGlobal(const LirGlobal &global);
 
     void GenModule();
 };

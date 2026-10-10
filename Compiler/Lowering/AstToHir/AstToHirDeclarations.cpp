@@ -548,6 +548,20 @@ HirConst AstToHirContext::LowerConst(const ConstDecl &d) {
     return hc;
 }
 
+HirGlobal AstToHirContext::LowerGlobal(const GlobalDecl &d) {
+    HirGlobal global;
+    global.name = d.name;
+    if (const auto *identity = model.TryGetSymbolIdentity(d)) {
+        global.name = identity->linkerName;
+    }
+    global.isPublic = model.IsEffectivelyPublic(d);
+    global.isExported = global.isPublic && model.IsExported(d);
+    global.type = ResolveType(*d.type);
+    global.value = LowerExprAs(*d.value, global.type);
+    global.location = d.location;
+    return global;
+}
+
 HirExternFunc AstToHirContext::LowerExternFunc(const ExternFuncDecl &d) {
     HirExternFunc hef;
     hef.name = d.name;

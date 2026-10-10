@@ -44,6 +44,7 @@ private:
     std::ostringstream text;
     std::ostringstream data;
     std::ostringstream rodata;
+    std::ostringstream bss;
     std::ostringstream externs;
     std::ostringstream globals;
     std::unordered_map<std::string, std::string> stringLabels;

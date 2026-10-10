@@ -1510,7 +1510,8 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
                                     receiver));
         return false;
     }
-    if (!IsAssignablePlace(target)) {
+    // A qualified name is a place only when it names a module variable; every other path names a value.
+    if (!IsAssignablePlace(target) && !globalReferences.contains(&target)) {
         EmitError(target.location,
                   std::format("operator '{}' requires an assignable target, but its left operand has type '{}'",
                               operatorName, targetType.ToString()));

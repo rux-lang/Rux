@@ -161,6 +161,15 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->name = model.TryGetSymbolIdentity(*constant)->linkerName;
         return lowered;
     }
+    // A module variable is named by its linker identity wherever it is written, so an imported name, a qualified
+    // path and the owner's own name all reach one storage location.
+    if (const GlobalDecl *global = model.TryGetGlobalReference(expression)) {
+        auto lowered = std::make_unique<HirVarExpr>();
+        lowered->location = expression.location;
+        lowered->type = ResolvedExpressionType(expression);
+        lowered->name = model.TryGetSymbolIdentity(*global)->linkerName;
+        return lowered;
+    }
     if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
         return LowerExpr(*move->operand);
     }

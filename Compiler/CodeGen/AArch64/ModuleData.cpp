@@ -157,6 +157,9 @@ void AArch64ModuleEmitter::GenModule() {
             EmitConstSlice(c);
         }
     }
+    for (const auto &global : mod.globals) {
+        EmitGlobal(global);
+    }
     EmitVtables();
     for (const auto &func : mod.funcs) {
         GenFunc(func);

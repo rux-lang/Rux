@@ -565,6 +565,7 @@ private:
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> &constantReferences;
+    std::unordered_map<const Expr *, const GlobalDecl *> &globalReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
     std::unordered_set<const TypeAliasDecl *> checkingTypeAliases;
@@ -720,6 +721,7 @@ private:
     std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
     std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
     std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
+    std::unordered_map<const GlobalDecl *, TypeRef> checkedGlobalTypes;
     std::unordered_set<const ConstDecl *> checkingConstants;
     /// Constants declared by a statement inside a function body rather than at module level.
     std::unordered_set<const ConstDecl *> localConstants;
@@ -1347,13 +1349,14 @@ private:
     bool IsConstArrayElement(const Expr &e) const;
 
     void CheckConstDecl(const ConstDecl &d);
+    void CheckGlobalDecl(const GlobalDecl &d);
     /// Whether `expression` is a value the compiler computes, as a `const` initializer must be: literals, operators,
     /// casts, type queries, compile-time intrinsics, other constants, and aggregates and cases built from them.
     ///
     /// @param expression the checked initializer, or one part of it
     /// @param constant the constant it initializes, named in the help
     /// @returns false after reporting the first part computed at run time
-    bool CheckCompileTimeInitializer(const Expr &expression, const ConstDecl &constant);
+    bool CheckCompileTimeInitializer(const Expr &expression, const Decl &owner);
     [[nodiscard]] TypeRef CheckNamedConstant(const ConstDecl &declaration);
 
     static std::string JoinPathSegments(const std::vector<std::string> &path, std::size_t first,

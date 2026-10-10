@@ -287,6 +287,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
         ownType(alias->type.get());
     }
+    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&declaration)) {
+        ownType(global->type.get());
+    }
     auto defineSimple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind publicKind,
                             std::string resolvedType = {}, bool isMut = false) {
         Symbol symbol;
@@ -385,6 +388,25 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         }
         if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Const, constant->name, sourceName, constant->location,
+                                     symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
+        }
+    }
+    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&declaration)) {
+        Symbol symbol;
+        symbol.kind = Symbol::Kind::Var;
+        symbol.name = global->name;
+        symbol.location = global->location;
+        symbol.isMut = true;
+        symbol.isPublic = global->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
+        symbol.declaration = global;
+        // Typed up front, as a constant is, so an importing file sees the type before the owner is checked.
+        const auto provisional = ProvisionalRepresentation(*global->type);
+        symbol.type = provisional ? *provisional : resolveType(*global->type);
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
+            publicSymbols.push_back({SemanticSymbol::Kind::Var, global->name, sourceName, global->location,
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
     }

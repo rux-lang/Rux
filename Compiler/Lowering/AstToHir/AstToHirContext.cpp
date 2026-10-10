@@ -379,6 +379,14 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.intrinsicName = constDecl->intrinsicName;
         globalScope.Define(std::move(symbol));
     }
+    else if (const auto *globalDecl = dynamic_cast<const GlobalDecl *>(&decl)) {
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Var;
+        symbol.name = globalDecl->name;
+        symbol.type = ResolveType(*globalDecl->type);
+        symbol.isMut = true;
+        globalScope.Define(std::move(symbol));
+    }
     else if (const auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
         simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
     }
@@ -561,6 +569,9 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         if (constDecl->intrinsicName.empty()) {
             module.consts.push_back(LowerConst(*constDecl));
         }
+    }
+    else if (const auto *globalDecl = dynamic_cast<const GlobalDecl *>(&decl)) {
+        module.globals.push_back(LowerGlobal(*globalDecl));
     }
     else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
         module.externFuncs.push_back(LowerExternFunc(*externFunction));

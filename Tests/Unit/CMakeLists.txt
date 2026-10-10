@@ -44,6 +44,7 @@ set(RUX_TEST_SOURCES
     CodegenFrameSlotSharingTests.cpp
     CodegenTests.cpp
     CodegenConstantDataTests.cpp
+    CodegenModuleVariableTests.cpp
     ChecksumTests.cpp
     CliContractTests.cpp
     CliProcessTests.cpp
@@ -170,6 +171,7 @@ set(RUX_TEST_SOURCES
     SemanticGenericInstantiationTests.cpp
     SemanticIterationDiagnosticsTests.cpp
     SemanticNameDiagnosticsTests.cpp
+    SemanticModuleVariableTests.cpp
     SemanticOperatorAssignmentDiagnosticsTests.cpp
     SemanticTypeCallDiagnosticsTests.cpp
     SemanticSliceTypeTests.cpp

@@ -574,6 +574,30 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     return decl;
 }
 
+// var Name: Type = expr; at module scope
+std::unique_ptr<GlobalDecl> Parser::ParseGlobalDecl(bool isPublic) {
+    const auto loc = CurrentLocation();
+    ExpectBefore(TokenKind::VarKeyword, "'var' to start the module variable declaration");
+
+    auto decl = std::make_unique<GlobalDecl>();
+    decl->location = loc;
+    decl->isPublic = isPublic;
+    decl->name = ExpectBefore(TokenKind::Ident, "a variable name after 'var'").text;
+
+    // The type is required: a module variable is storage other functions and packages address, and its layout is
+    // part of what they agree on, so it is written down rather than inferred from an initializer.
+    ExpectBefore(TokenKind::Colon, "':' and the variable type after the module variable name",
+                 "write module variables as 'var Name: Type = value;'");
+    decl->type = ParseType("add the module variable type after ':'");
+
+    ExpectBefore(TokenKind::Assign, "'=' before the module variable's initial value",
+                 "a module variable needs an initial value; write '= 0' or another constant");
+    decl->value = ParseRequiredExpr("after '=' in the module variable declaration");
+
+    ExpectBefore(TokenKind::Semicolon, "';' after the module variable declaration");
+    return decl;
+}
+
 // when cond { decls } else when cond { decls } else { decls }
 std::unique_ptr<WhenDecl> Parser::ParseWhenDecl() {
     const auto loc = CurrentLocation();

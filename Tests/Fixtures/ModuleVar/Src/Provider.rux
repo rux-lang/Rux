@@ -1,0 +1,24 @@
+// Module variables another package reads and writes, and functions of this package that observe the same storage.
+
+pub var Counter: int64 = 0;
+pub var Seed: uint32 = 0xDEADBEEF;
+pub var Table: int32[4] = [1, 2, 3, 4];
+var Hidden: int64 = 40;
+
+pub func Bump() -> int64 {
+    Counter = Counter + 1;
+    return Counter;
+}
+
+pub func CounterAddress() -> *var int64 {
+    return @Counter;
+}
+
+pub func TableSum() -> int32 {
+    return Table[0] + Table[1] + Table[2] + Table[3];
+}
+
+pub func NextHidden() -> int64 {
+    Hidden += 2;
+    return Hidden;
+}

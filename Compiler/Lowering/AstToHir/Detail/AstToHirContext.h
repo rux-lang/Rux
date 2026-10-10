@@ -325,6 +325,7 @@ private:
     [[nodiscard]] HirImplBlock LowerImpl(const ImplDecl &decl);
     [[nodiscard]] HirConst LowerConst(const ConstDecl &decl);
     [[nodiscard]] HirExternFunc LowerExternFunc(const ExternFuncDecl &decl);
+    [[nodiscard]] HirGlobal LowerGlobal(const GlobalDecl &decl);
     [[nodiscard]] HirExternVar LowerExternVar(const ExternVarDecl &decl);
     [[nodiscard]] HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl);
     [[nodiscard]] HirExprPtr LowerExpr(const Expr &expression);

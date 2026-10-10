@@ -132,6 +132,14 @@ DeclPtr Parser::ParseDecl() {
     if (Check(TokenKind::ConstKeyword)) {
         return AttachDocumentation(ApplyAttrs(ParseConstDecl(isPublic), attrs));
     }
+    if (Check(TokenKind::VarKeyword)) {
+        return AttachDocumentation(ApplyAttrs(ParseGlobalDecl(isPublic), attrs));
+    }
+    if (Check(TokenKind::LetKeyword)) {
+        EmitError(CurrentLocation(), "'let' is not allowed at module scope",
+                  "use 'const' for a value that never changes, or 'var' for a module variable");
+        return AttachDocumentation(nullptr);
+    }
     if (Check(TokenKind::TypeKeyword)) {
         return AttachDocumentation(ApplyAttrs(ParseTypeAliasDecl(isPublic), attrs));
     }
@@ -149,7 +157,7 @@ DeclPtr Parser::ParseDecl() {
     EmitExpected(
         CurrentLocation(), expected,
         "start a declaration with 'func', 'struct', 'enum', 'variant', 'union', 'interface', 'extend', 'module', "
-        "'import', 'const', 'type', 'extern', or 'intrinsic'");
+        "'import', 'const', 'var', 'type', 'extern', or 'intrinsic'");
     return AttachDocumentation(nullptr);
 }
 

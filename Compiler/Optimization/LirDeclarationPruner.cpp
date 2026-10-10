@@ -100,6 +100,16 @@ PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &con
                       }) ||
                   changed;
         changed = Prune(
+                      module.globals,
+                      [&](const std::size_t index) {
+                          return reachability.IsReachable({LirDeclarationKind::Global, moduleIndex, index});
+                      },
+                      [&](const LirGlobal &) {
+                          ++stats.constants;
+                          ++stats.estimatedIrNodes;
+                      }) ||
+                  changed;
+        changed = Prune(
                       module.externVars,
                       [&](const std::size_t index) {
                           return reachability.IsReachable({LirDeclarationKind::ExternVariable, moduleIndex, index});
