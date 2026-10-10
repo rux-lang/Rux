@@ -98,7 +98,8 @@ public:
     /// Pushes `reg`: a float80 as it is, a machine float widened exactly, a signed integer through `fild` after it is
     /// sign-extended to 64 bits in the spill slot.
     void Push(const LirReg reg, const TypeRef &type) const {
-        const bool physical = printer.FramePlan().PhysicalRegisters().contains(reg);
+        const bool physical =
+            printer.FramePlan().PhysicalRegisters().contains(reg) || printer.FramePlan().FloatRegisters().contains(reg);
         if (IsFloat80(type)) {
             Emit("fld", AssemblyInstructionPrinter::Rbp("tword", printer.Disp(reg)));
             return;
@@ -125,12 +126,13 @@ public:
         }
         const bool float32 = type.kind == TypeRef::Kind::Float32;
         const std::string_view width = float32 ? "dword" : "qword";
-        if (!printer.FramePlan().PhysicalRegisters().contains(reg)) {
+        if (!printer.FramePlan().PhysicalRegisters().contains(reg) &&
+            !printer.FramePlan().FloatRegisters().contains(reg)) {
             Emit("fstp", AssemblyInstructionPrinter::Rbp(width, printer.Disp(reg)));
             return;
         }
         Emit("fstp", AssemblyInstructionPrinter::Rbp(width, spill));
-        Emit("mov", std::format("{}, {}", float32 ? "eax" : "rax", AssemblyInstructionPrinter::Rbp(width, spill)));
+        Emit(float32 ? "movss" : "movsd", "xmm0, " + AssemblyInstructionPrinter::Rbp(width, spill));
         printer.StoreA(reg, type);
     }
 
@@ -138,7 +140,14 @@ private:
     /// Writes `reg` to the spill slot as a 64-bit value and returns the slot.
     [[nodiscard]] std::int32_t Spill(const LirReg reg, const TypeRef &type) const {
         printer.LoadA(reg, type);
-        Emit("mov", AssemblyInstructionPrinter::Rbp("qword", spill) + ", rax");
+        if (IsFloat(type)) {
+            const bool single = type.kind == TypeRef::Kind::Float32;
+            Emit(single ? "movss" : "movsd",
+                 AssemblyInstructionPrinter::Rbp(single ? "dword" : "qword", spill) + ", xmm0");
+        }
+        else {
+            Emit("mov", AssemblyInstructionPrinter::Rbp("qword", spill) + ", rax");
+        }
         return spill;
     }
 
@@ -412,6 +421,16 @@ std::string_view AssemblyInstructionPrinter::PhysicalRegisterName(const int inde
 // ---- operand moves (ModuleValues.cpp) ----------------------------------------------------------------------------
 
 void AssemblyInstructionPrinter::LoadA(const LirReg reg, const TypeRef &type) {
+    if (const auto found = framePlan.FloatRegisters().find(reg); found != framePlan.FloatRegisters().end()) {
+        if (IsFloat(type)) {
+            Instruction("movaps", std::format("xmm0, xmm{}", found->second));
+        }
+        else {
+            Instruction(SizeOfRuntime(type) == 8 ? "movq" : "movd",
+                        std::format("{}, xmm{}", SizeOfRuntime(type) == 8 ? "rax" : "eax", found->second));
+        }
+        return;
+    }
     const int size = SizeOfRuntime(type);
     if (const auto physical = framePlan.PhysicalRegisters().find(reg);
         physical != framePlan.PhysicalRegisters().end()) {
@@ -460,6 +479,16 @@ void AssemblyInstructionPrinter::LoadA(const LirReg reg, const TypeRef &type) {
 }
 
 void AssemblyInstructionPrinter::LoadB(const LirReg reg, const TypeRef &type) {
+    if (const auto found = framePlan.FloatRegisters().find(reg); found != framePlan.FloatRegisters().end()) {
+        if (IsFloat(type)) {
+            Instruction("movaps", std::format("xmm1, xmm{}", found->second));
+        }
+        else {
+            Instruction(SizeOfRuntime(type) == 8 ? "movq" : "movd",
+                        std::format("{}, xmm{}", SizeOfRuntime(type) == 8 ? "r10" : "r10d", found->second));
+        }
+        return;
+    }
     const int size = SizeOfRuntime(type);
     if (const auto physical = framePlan.PhysicalRegisters().find(reg);
         physical != framePlan.PhysicalRegisters().end()) {
@@ -503,6 +532,10 @@ void AssemblyInstructionPrinter::LoadB(const LirReg reg, const TypeRef &type) {
 }
 
 void AssemblyInstructionPrinter::StoreA(const LirReg reg, const TypeRef &type) {
+    if (const auto found = framePlan.FloatRegisters().find(reg); found != framePlan.FloatRegisters().end()) {
+        Instruction("movaps", std::format("xmm{}, xmm0", found->second));
+        return;
+    }
     if (const auto physical = framePlan.PhysicalRegisters().find(reg);
         physical != framePlan.PhysicalRegisters().end()) {
         Instruction("mov", std::format("{}, rax", PhysicalRegisterName(physical->second)));
@@ -661,6 +694,9 @@ void AssemblyInstructionPrinter::EmitFunctionSetup(const LirFunc &function) {
     }
     EmitStackAllocation(framePlan.FrameSize() -
                         static_cast<std::int32_t>(framePlan.UsedPhysicalRegisters().size() * 8));
+    for (const auto &[reg, offset] : framePlan.FloatSaves()) {
+        Instruction("movdqu", std::format("{}, xmm{}", Rbp("oword", -offset), reg));
+    }
 
     // The incoming argument registers and stack slots are spilled to the parameters' frame slots. A value no register
     // holds whole arrives by address under Win64, and is copied into the slot here, so the body reads its own copy.
@@ -787,6 +823,14 @@ void AssemblyInstructionPrinter::EmitFunctionSetup(const LirFunc &function) {
             Instruction("movzx", "rax, " + Rbp(size == 2 ? "word" : "byte", displacement));
         }
         Instruction("mov", std::format("{}, rax", PhysicalRegisterName(physical->second)));
+    }
+    for (const auto &parameter : function.params) {
+        if (const auto found = framePlan.FloatRegisters().find(parameter.reg);
+            found != framePlan.FloatRegisters().end()) {
+            const bool single = parameter.type.kind == TypeRef::Kind::Float32;
+            Instruction(single ? "movss" : "movsd", "xmm0, " + Rbp(single ? "dword" : "qword", Disp(parameter.reg)));
+            Instruction("movaps", std::format("xmm{}, xmm0", found->second));
+        }
     }
 }
 
@@ -1545,11 +1589,11 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         const int size = SizeOf(type);
         if (type.kind == TypeRef::Kind::Float32) {
             Instruction("movss", std::format("xmm0, dword [rel {}]", modulePrinter.InternFloat32(instruction.strArg)));
-            Instruction("movss", Rbp("dword", Disp(instruction.dst)) + ", xmm0");
+            StoreA(instruction.dst, type);
         }
         else if (type.kind == TypeRef::Kind::Float64) {
             Instruction("movsd", std::format("xmm0, qword [rel {}]", modulePrinter.InternFloat64(instruction.strArg)));
-            Instruction("movsd", Rbp("qword", Disp(instruction.dst)) + ", xmm0");
+            StoreA(instruction.dst, type);
         }
         else if (IsSoftwareFloat(type)) {
             EmitSoftwareFloatConstant(instruction);

@@ -108,6 +108,9 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
     }
     const int32_t remainingFrame = framePlan.FrameSize() - static_cast<int32_t>(usedPhysicalRegisters.size() * 8);
     EmitStackAlloc(remainingFrame);
+    for (const auto &[reg, offset] : framePlan.FloatSaves()) {
+        enc.MovXmmSave(reg, -offset);
+    }
     // Spill ABI param registers to stack slots
     bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
     int intIdx = 0, fltIdx = 0, sysvStackIdx = 0, win64Idx = 0;
@@ -265,6 +268,14 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
         }
     }
     // Basic blocks
+    for (const auto &parameter : func.params) {
+        if (const auto found = framePlan.FloatRegisters().find(parameter.reg);
+            found != framePlan.FloatRegisters().end()) {
+            parameter.type.kind == TypeRef::Kind::Float32 ? enc.MovssXmm0Load(Disp(parameter.reg))
+                                                          : enc.MovsdXmm0Load(Disp(parameter.reg));
+            enc.MovXmm(found->second, 0);
+        }
+    }
     terminatorEmitter.Begin(func.blocks.size());
     for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
         terminatorEmitter.MarkBlock(bi);

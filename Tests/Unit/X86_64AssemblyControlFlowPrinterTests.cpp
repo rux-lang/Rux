@@ -247,14 +247,14 @@ TEST_CASE("a Win64 float argument on the stack is placed without disturbing the 
     REQUIRE(callSite != std::string::npos);
     // Once the last register argument is in place, nothing before the call may touch a vector register: the four of
     // them are the call's first four arguments and are already loaded.
-    const std::size_t lastRegisterArgument = output.rfind("movss   xmm3,", callSite);
+    const std::size_t lastRegisterArgument = output.rfind("movaps  xmm3,", callSite);
     REQUIRE(lastRegisterArgument != std::string::npos);
     const std::string placement = output.substr(lastRegisterArgument, callSite - lastRegisterArgument);
-    CHECK_EQ(placement.find("xmm0"), std::string::npos);
-    CHECK_EQ(placement.find("xmm1"), std::string::npos);
-    CHECK_EQ(placement.find("xmm2"), std::string::npos);
+    CHECK_EQ(placement.find(" xmm0,"), std::string::npos);
+    CHECK_EQ(placement.find(" xmm1,"), std::string::npos);
+    CHECK_EQ(placement.find(" xmm2,"), std::string::npos);
     // The fifth argument reaches its slot as raw bits instead.
-    CHECK(placement.find("mov     eax, dword") != std::string::npos);
+    CHECK(placement.find("movd    eax, xmm") != std::string::npos);
     CHECK(placement.find("mov     qword [rsp + 32], rax") != std::string::npos);
 }
 

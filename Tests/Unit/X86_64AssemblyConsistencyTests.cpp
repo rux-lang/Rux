@@ -484,11 +484,18 @@ TEST_CASE("x86-64 assembly text gives SSE comparisons the unordered handling and
                 contains({compare, std::format("{:<7} al", set), "setnp   dl", "and     al, dl"});
             }
 
-            // The remainder (register 8) pushes the divisor and then the dividend from their slots, loops on
+            // The remainder (register 8) pushes the divisor and then the dividend through a scratch slot, loops on
             // fprem's C2 flag, drops the divisor and stores the exact remainder: the `EmitRemainder` sequence.
             const std::string_view width = float32 ? "dword" : "qword";
-            const std::string pushes = Lines({std::format("fld     {} [rbp - {}]", width, plan.SlotOffsets().at(1)),
-                                              std::format("fld     {} [rbp - {}]", width, plan.SlotOffsets().at(0))});
+            const auto spill = plan.WideTemporaryOffset(1);
+            std::vector<std::string> pushLines;
+            for (const auto reg : {1u, 0u}) {
+                REQUIRE(plan.FloatRegisters().contains(reg));
+                pushLines.push_back(std::format("movaps  xmm0, xmm{}", plan.FloatRegisters().at(reg)));
+                pushLines.push_back(std::format("{}   {} [rbp - {}], xmm0", float32 ? "movss" : "movsd", width, spill));
+                pushLines.push_back(std::format("fld     {} [rbp - {}]", width, spill));
+            }
+            const std::string pushes = Lines(pushLines);
             const std::size_t start = text.find(pushes);
             REQUIRE(start != std::string::npos);
             const std::size_t label = start + pushes.size();
@@ -496,8 +503,11 @@ TEST_CASE("x86-64 assembly text gives SSE comparisons the unordered handling and
             REQUIRE(colon != std::string::npos);
             const std::string loop = text.substr(label, colon - label);
             CHECK(loop.starts_with(".x87_fprem_"));
-            const std::string body = Lines({"fprem", "fnstsw  ax", "test    ah, 4", "jnz     " + loop, "fstp    st1",
-                                            std::format("fstp    {} [rbp - {}]", width, plan.SlotOffsets().at(8))});
+            const std::string body =
+                Lines({"fprem", "fnstsw  ax", "test    ah, 4", "jnz     " + loop, "fstp    st1",
+                       std::format("fstp    {} [rbp - {}]", width, spill),
+                       std::format("{}   xmm0, {} [rbp - {}]", float32 ? "movss" : "movsd", width, spill),
+                       std::format("movaps  xmm{}, xmm0", plan.FloatRegisters().at(8))});
             CHECK_EQ(text.compare(colon + 2, body.size(), body), 0);
             // Exact, so the control word is untouched, and nothing of the truncated-quotient formula is left.
             CHECK_FALSE(text.contains("fnstcw"));

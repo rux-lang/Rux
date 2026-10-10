@@ -915,14 +915,14 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             std::uint32_t relocationOffset;
             encoder.MovssXmm0Rip(relocationOffset);
             hooks.AddTextRelocation(relocationOffset, symbol);
-            encoder.MovssXmm0Store(Disp(instruction.dst));
+            hooks.StoreA(instruction.dst, type);
         }
         else if (type.kind == TypeRef::Kind::Float64) {
             const std::uint32_t symbol = hooks.InternFloat64Literal(instruction.strArg);
             std::uint32_t relocationOffset;
             encoder.MovsdXmm0Rip(relocationOffset);
             hooks.AddTextRelocation(relocationOffset, symbol);
-            encoder.MovsdXmm0Store(Disp(instruction.dst));
+            hooks.StoreA(instruction.dst, type);
         }
         else if (IsSoftwareFloat(type)) {
             EmitSoftwareFloatConstant(instruction);

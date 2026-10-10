@@ -46,6 +46,16 @@ public:
         return usedPhysicalRegisters;
     }
 
+    /// Scalar float32/float64 homes are XMM8-XMM15, disjoint from every ABI argument and emitter scratch register.
+    [[nodiscard]] const std::unordered_map<LirReg, int> &FloatRegisters() const {
+        return floatRegisters;
+    }
+
+    /// Full 128-bit Win64 nonvolatile saves, as {architectural XMM number, positive frame offset}.
+    [[nodiscard]] const std::vector<std::pair<int, std::int32_t>> &FloatSaves() const {
+        return floatSaves;
+    }
+
     [[nodiscard]] const std::unordered_map<LirReg, std::uint64_t> &ImmediateValues() const {
         return immediateValues;
     }
@@ -88,6 +98,8 @@ private:
     X86_64PhiMoves phiMoves;
     std::unordered_map<LirReg, int> physicalRegisters;
     std::vector<int> usedPhysicalRegisters;
+    std::unordered_map<LirReg, int> floatRegisters;
+    std::vector<std::pair<int, std::int32_t>> floatSaves;
     std::int32_t frameSize = 0;
     std::int32_t hiddenReturnOffset = 0;
     std::int32_t phiTemporaryOffset = 0;

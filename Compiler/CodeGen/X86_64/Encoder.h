@@ -134,6 +134,10 @@ public:
 
     /// MOVSS xmmN, [rbp + d]
     void MovssXmmNLoad(int n, int32_t d) const;
+    void MovXmm(int destination, int source) const;
+    void MovXmmSave(int reg, int32_t displacement) const;
+    void MovXmmRestore(int reg, int32_t displacement) const;
+    void MovFloatBits(int destinationGpr, int sourceXmm, bool wide) const;
 
     // MOVSD xmmN, [rbp + d]
     void MovsdXmmNLoad(int n, int32_t d) const;

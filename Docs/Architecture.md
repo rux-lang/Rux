@@ -169,7 +169,13 @@ virtual parallel-copy schedule therefore cannot acquire a new cycle from physica
 allocate their existing callee-saved pools across multiple blocks. AArch64 scalar phi moves read and write canonical
 register homes, using stack storage only for spills, aggregates, and cycle temporaries. Software floating-point values
 keep memory homes until their specialized emitters support register locations consistently. This allocation remains
-conservative: it does not yet split intervals, allocate caller-saved registers, or allocate x86 scalar FP registers.
+conservative: it does not yet split intervals or allocate caller-saved GPRs. x86 scalar float32/float64 values can use
+XMM8-XMM15, disjoint from argument and scratch registers. Win64 functions preserve all 128 bits of every used XMM
+register. Intervals touching a call that may clobber those registers retain stack homes, including System V calls on a
+Windows target; thread-local lookup and stderr helpers are also conservative barriers. Functions using wide or
+software scalar arithmetic retain their previous FP memory policy. Calls, constants, phi moves, returns, bit
+reinterpretations, and x87 remainders all honor the selected FP home. Stack slots remain reserved until all consumers
+can safely tolerate absent homes; direct instruction operands and cost-aware splitting remain future work.
 
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 

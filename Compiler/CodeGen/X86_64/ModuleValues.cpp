@@ -4,6 +4,15 @@ namespace Rux::X86_64Detail {
 
 // Load A (rax / xmm0) and B (r10 / xmm1)
 void X86_64ModuleEmitter::LoadA(const LirReg reg, const TypeRef &t) const {
+    if (const auto found = FramePlan().FloatRegisters().find(reg); found != FramePlan().FloatRegisters().end()) {
+        if (IsFloat(t)) {
+            enc.MovXmm(0, found->second);
+        }
+        else {
+            enc.MovFloatBits(0, found->second, SizeOfRuntime(t) == 8);
+        }
+        return;
+    }
     const auto &physicalRegisters = FramePlan().PhysicalRegisters();
     auto it = physicalRegisters.find(reg);
     if (it != physicalRegisters.end()) {
@@ -81,6 +90,15 @@ void X86_64ModuleEmitter::LoadA(const LirReg reg, const TypeRef &t) const {
 }
 
 void X86_64ModuleEmitter::LoadB(LirReg reg, const TypeRef &t) const {
+    if (const auto found = FramePlan().FloatRegisters().find(reg); found != FramePlan().FloatRegisters().end()) {
+        if (IsFloat(t)) {
+            enc.MovXmm(1, found->second);
+        }
+        else {
+            enc.MovFloatBits(10, found->second, SizeOfRuntime(t) == 8);
+        }
+        return;
+    }
     const auto &physicalRegisters = FramePlan().PhysicalRegisters();
     auto it = physicalRegisters.find(reg);
     if (it != physicalRegisters.end()) {

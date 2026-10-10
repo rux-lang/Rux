@@ -63,7 +63,7 @@ public:
     /// Pushes `reg` onto the x87 stack: a float80 as it is, a float32 or float64 widened exactly, and a signed integer
     /// through `fild` after sign-extending it to 64 bits in the spill slot.
     void Push(const LirReg reg, const TypeRef &type) const {
-        const bool physical = framePlan.PhysicalRegisters().contains(reg);
+        const bool physical = framePlan.PhysicalRegisters().contains(reg) || framePlan.FloatRegisters().contains(reg);
         if (IsFloat80(type)) {
             encoder.FldTbyte(Slot(reg));
             return;
@@ -88,12 +88,12 @@ public:
             return;
         }
         const bool float32 = type.kind == TypeRef::Kind::Float32;
-        if (!framePlan.PhysicalRegisters().contains(reg)) {
+        if (!framePlan.PhysicalRegisters().contains(reg) && !framePlan.FloatRegisters().contains(reg)) {
             float32 ? encoder.FstpDword(Slot(reg)) : encoder.FstpQword(Slot(reg));
             return;
         }
         float32 ? encoder.FstpDword(spill) : encoder.FstpQword(spill);
-        float32 ? encoder.MovEaxLoad(spill) : encoder.MovRaxLoad(spill);
+        float32 ? encoder.MovssXmm0Load(spill) : encoder.MovsdXmm0Load(spill);
         hooks.StoreA(reg, type);
     }
 
@@ -106,7 +106,12 @@ private:
     /// keeps its raw bits in the low bytes.
     [[nodiscard]] std::int32_t Spill(const LirReg reg, const TypeRef &type) const {
         hooks.LoadA(reg, type);
-        encoder.MovRaxStore(spill);
+        if (IsFloat(type)) {
+            type.kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Store(spill) : encoder.MovsdXmm0Store(spill);
+        }
+        else {
+            encoder.MovRaxStore(spill);
+        }
         return spill;
     }
 

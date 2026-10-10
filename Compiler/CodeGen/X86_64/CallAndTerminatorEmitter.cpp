@@ -160,8 +160,14 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
                 continue;
             }
             if (IsFloat(type)) {
-                SizeOf(type) == 4 ? encoder.MovssXmmNLoad(index, displacement)
-                                  : encoder.MovsdXmmNLoad(index, displacement);
+                if (const auto found = framePlan.FloatRegisters().find(argument);
+                    found != framePlan.FloatRegisters().end()) {
+                    encoder.MovXmm(index, found->second);
+                }
+                else {
+                    SizeOf(type) == 4 ? encoder.MovssXmmNLoad(index, displacement)
+                                      : encoder.MovsdXmmNLoad(index, displacement);
+                }
             }
             else if (IsWin64ByRefAggregate(type)) {
                 encoder.LeaArgStackWin64(index, displacement);
@@ -185,8 +191,14 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
         const std::int32_t displacement = Disp(argument);
         if (IsFloat(type)) {
             if (floatIndex < 8) {
-                SizeOf(type) == 4 ? encoder.MovssXmmNLoad(floatIndex, displacement)
-                                  : encoder.MovsdXmmNLoad(floatIndex, displacement);
+                if (const auto found = framePlan.FloatRegisters().find(argument);
+                    found != framePlan.FloatRegisters().end()) {
+                    encoder.MovXmm(floatIndex, found->second);
+                }
+                else {
+                    SizeOf(type) == 4 ? encoder.MovssXmmNLoad(floatIndex, displacement)
+                                      : encoder.MovsdXmmNLoad(floatIndex, displacement);
+                }
                 ++floatIndex;
             }
         }
@@ -232,7 +244,7 @@ bool X86_64CallEmitter::EmitBitCast(const LirInstr &instruction) const {
         return false;
     }
     if (instruction.strArg == "FloatBits64") {
-        encoder.MovsdXmm0Load(Disp(instruction.srcs[0]));
+        hooks.LoadA(instruction.srcs[0], TypeRef::MakeFloat64());
         encoder.Byte(0x66);
         encoder.Byte(0x48);
         encoder.Byte(0x0F);
@@ -248,7 +260,7 @@ bool X86_64CallEmitter::EmitBitCast(const LirInstr &instruction) const {
         encoder.Byte(0xC0); // movq xmm0, rax
     }
     else if (instruction.strArg == "FloatBits32") {
-        encoder.MovssXmm0Load(Disp(instruction.srcs[0]));
+        hooks.LoadA(instruction.srcs[0], TypeRef::MakeFloat32());
         encoder.Byte(0x66);
         encoder.Byte(0x0F);
         encoder.Byte(0x7E);
@@ -590,6 +602,9 @@ void X86_64TerminatorEmitter::Emit(const std::uint32_t blockIndex, const LirTerm
         if (terminator.retVal && *terminator.retVal != LirNoReg) {
             framePlan.HiddenReturnOffset() != 0 ? hooks.StoreHiddenReturnValue(*terminator.retVal, terminator.retType)
                                                 : LoadReturnValue(*terminator.retVal, terminator.retType);
+        }
+        for (const auto &[reg, offset] : framePlan.FloatSaves()) {
+            encoder.MovXmmRestore(reg, -offset);
         }
         if (const auto &saved = framePlan.UsedPhysicalRegisters(); !saved.empty()) {
             const std::int32_t remainder = framePlan.FrameSize() - static_cast<std::int32_t>(saved.size() * 8);

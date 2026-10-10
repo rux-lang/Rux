@@ -12,6 +12,11 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Native x86 scalar floating-point registers** — float32/float64 intermediates can remain in XMM registers through
+  control flow and compatible calls. Win64 preserves their complete nonvolatile state; incompatible call intervals and
+  wide/software arithmetic retain conservative stack storage. Calls, phi copies, constants, and x87 remainder use the
+  selected value location without changing floating-point evaluation order.
+
 - **Collection insertion hash reuse** — HashMap insertion, replacement and get-or-insert, and HashSet insertion reuse
   the lookup hash when placing a new entry. Growth recomputes the home under the new capacity with the same keyed seed.
 

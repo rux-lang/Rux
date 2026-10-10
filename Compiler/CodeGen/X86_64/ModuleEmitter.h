@@ -296,6 +296,10 @@ private:
     void StoreStack(LirReg dst, const TypeRef &t) const;
 
     void StoreA(LirReg dst, const TypeRef &t) const override {
+        if (const auto found = FramePlan().FloatRegisters().find(dst); found != FramePlan().FloatRegisters().end()) {
+            enc.MovXmm(found->second, 0);
+            return;
+        }
         const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         auto it = physicalRegisters.find(dst);
         if (it != physicalRegisters.end()) {

@@ -336,14 +336,20 @@ TEST_CASE("float32 and float64 remainders run the same exact fprem loop, not an 
             const bool float32 = type.kind == TypeRef::Kind::Float32;
             const LirFunc function = SingleInstruction(LirOpcode::Mod, {type, type}, type);
             const Frame frame(function, os);
-            // Machine floats live in frame slots, which `fld` and `fstp` address directly.
+            // Allocated SSE values pass through a scratch slot because x87 accepts only memory operands.
             REQUIRE_FALSE(frame.plan.PhysicalRegisters().contains(0));
             REQUIRE_FALSE(frame.plan.PhysicalRegisters().contains(2));
+            REQUIRE(frame.plan.FloatRegisters().contains(0));
+            REQUIRE(frame.plan.FloatRegisters().contains(1));
+            REQUIRE(frame.plan.FloatRegisters().contains(2));
             CHECK_GE(frame.plan.WideTemporarySize(), 8);
             Bytes expected;
             const X64Enc e(expected);
-            float32 ? e.FldDword(frame.Slot(1)) : e.FldQword(frame.Slot(1)); // divisor
-            float32 ? e.FldDword(frame.Slot(0)) : e.FldQword(frame.Slot(0)); // dividend
+            for (const auto reg : {1u, 0u}) { // Divisor, then dividend.
+                e.MovXmm(0, frame.plan.FloatRegisters().at(reg));
+                float32 ? e.MovssXmm0Store(frame.Spill()) : e.MovsdXmm0Store(frame.Spill());
+                float32 ? e.FldDword(frame.Spill()) : e.FldQword(frame.Spill());
+            }
             const std::uint32_t top = e.Size();
             e.Fprem();
             e.FnstswAx();
@@ -352,7 +358,9 @@ TEST_CASE("float32 and float64 remainders run the same exact fprem loop, not an 
             e.Jnz(patch);
             e.Patch32(patch, static_cast<std::int32_t>(top) - static_cast<std::int32_t>(patch + 4));
             e.FstpSt(1);
-            float32 ? e.FstpDword(frame.Slot(2)) : e.FstpQword(frame.Slot(2));
+            float32 ? e.FstpDword(frame.Spill()) : e.FstpQword(frame.Spill());
+            float32 ? e.MovssXmm0Load(frame.Spill()) : e.MovsdXmm0Load(frame.Spill());
+            e.MovXmm(frame.plan.FloatRegisters().at(2), 0);
             const Bytes text = TextOf(function, os);
             CHECK(Contains(text, expected));
             // Exact, so the control word is left alone; and nothing of the truncated-quotient formula remains.

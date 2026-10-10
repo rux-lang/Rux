@@ -29,6 +29,7 @@ public:
     [[nodiscard]] X86_64FramePlan Build() {
         PlanCalleeSaves();
         nextOffset = static_cast<std::int32_t>(plan.usedPhysicalRegisters.size() * 8);
+        PlanFloatRegisters();
         PlanHiddenReturn();
         PlanParameters();
         PlanInstructions();
@@ -173,6 +174,55 @@ private:
         RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegisters);
         plan.physicalRegisters = std::move(assignment.physRegs);
         plan.usedPhysicalRegisters = std::move(assignment.usedPhysRegs);
+    }
+
+    void PlanFloatRegisters() {
+        ParamTypeMap parameters;
+        for (const auto &parameter : func.params) {
+            parameters.emplace(parameter.reg, ParameterRegisterType(parameter.type));
+        }
+        const auto intervals = ComputeLiveIntervals(func, parameters);
+        // Wide/software arithmetic still has memory-only operand paths. Keep this first FP allocation phase out of
+        // such functions until those paths describe all their operand constraints.
+        if (std::ranges::any_of(intervals, [](const LiveInterval &interval) {
+                return IsSoftwareFloat(interval.type) || IsWideScalar(interval.type);
+            })) {
+            return;
+        }
+        std::vector<int> clobbers;
+        int position = 0;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                const auto convention = instruction.callConv == CallingConvention::Default
+                                          ? PlatformDefaultConvention(targetOs, Target::Arch::X86_64)
+                                          : ResolveCConvention(instruction.callConv, targetOs, Target::Arch::X86_64);
+                if (((instruction.op == LirOpcode::Call || instruction.op == LirOpcode::CallIndirect) &&
+                     convention != CallingConvention::Win64) ||
+                    instruction.op == LirOpcode::ThreadLocalAddr || instruction.op == LirOpcode::WriteStandardError) {
+                    clobbers.push_back(position);
+                }
+                ++position;
+            }
+            ++position;
+        }
+        std::vector<LiveInterval> candidates;
+        for (const auto &interval : intervals) {
+            if (!IsFloat(interval.type) || std::ranges::any_of(clobbers, [&](const int clobber) {
+                    return interval.start <= clobber && interval.end >= clobber;
+                })) {
+                continue;
+            }
+            candidates.push_back(interval);
+        }
+        const auto assignment = AllocateRegisters(candidates, 8);
+        for (const auto &[reg, index] : assignment.physRegs) {
+            plan.floatRegisters.emplace(reg, index + 8);
+        }
+        if (EffectiveConvention() == CallingConvention::Win64) {
+            for (const auto index : assignment.usedPhysRegs) {
+                plan.floatSaves.emplace_back(index + 8, AllocateRegion(16, 16));
+            }
+        }
     }
 
     void PlanHiddenReturn() {

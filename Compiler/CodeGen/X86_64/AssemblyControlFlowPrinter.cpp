@@ -534,10 +534,16 @@ private:
                 }
                 const std::string_view reg = kWin64IntArgRegs[index];
                 if (IsFloat(type)) {
-                    printer.Instruction(
-                        float32 ? "movss" : "movsd",
-                        std::format("{}, {}", kFltArgRegs[index],
-                                    AssemblyInstructionPrinter::Rbp(float32 ? "dword" : "qword", displacement)));
+                    if (const auto found = printer.FramePlan().FloatRegisters().find(argument);
+                        found != printer.FramePlan().FloatRegisters().end()) {
+                        printer.Instruction("movaps", std::format("{}, xmm{}", kFltArgRegs[index], found->second));
+                    }
+                    else {
+                        printer.Instruction(
+                            float32 ? "movss" : "movsd",
+                            std::format("{}, {}", kFltArgRegs[index],
+                                        AssemblyInstructionPrinter::Rbp(float32 ? "dword" : "qword", displacement)));
+                    }
                 }
                 else if (printer.IsWin64ByRefAggregate(type)) {
                     // A value wider than a register, or of an odd width, is passed by the address of its home.
@@ -566,10 +572,16 @@ private:
             if (IsFloat(type)) {
                 if (floatIndex < 8) {
                     const bool float32 = SizeOf(type) == 4;
-                    printer.Instruction(
-                        float32 ? "movss" : "movsd",
-                        std::format("{}, {}", kFltArgRegs[floatIndex],
-                                    AssemblyInstructionPrinter::Rbp(float32 ? "dword" : "qword", displacement)));
+                    if (const auto found = printer.FramePlan().FloatRegisters().find(argument);
+                        found != printer.FramePlan().FloatRegisters().end()) {
+                        printer.Instruction("movaps", std::format("{}, xmm{}", kFltArgRegs[floatIndex], found->second));
+                    }
+                    else {
+                        printer.Instruction(
+                            float32 ? "movss" : "movsd",
+                            std::format("{}, {}", kFltArgRegs[floatIndex],
+                                        AssemblyInstructionPrinter::Rbp(float32 ? "dword" : "qword", displacement)));
+                    }
                     ++floatIndex;
                 }
             }
@@ -612,7 +624,7 @@ private:
         }
         const LirReg source = instruction.srcs[0];
         if (instruction.strArg == "FloatBits64") {
-            printer.Instruction("movsd", "xmm0, " + AssemblyInstructionPrinter::Rbp("qword", printer.Disp(source)));
+            printer.LoadA(source, TypeRef::MakeFloat64());
             printer.Instruction("movq", "rax, xmm0");
         }
         else if (instruction.strArg == "FloatFromBits64") {
@@ -620,7 +632,7 @@ private:
             printer.Instruction("movq", "xmm0, rax");
         }
         else if (instruction.strArg == "FloatBits32") {
-            printer.Instruction("movss", "xmm0, " + AssemblyInstructionPrinter::Rbp("dword", printer.Disp(source)));
+            printer.LoadA(source, TypeRef::MakeFloat32());
             printer.Instruction("movd", "eax, xmm0");
         }
         else if (instruction.strArg == "FloatFromBits32") {
@@ -765,6 +777,9 @@ private:
     }
 
     void EmitEpilogue(const AssemblyInstructionPrinter &instructionPrinter) {
+        for (const auto &[reg, offset] : instructionPrinter.FramePlan().FloatSaves()) {
+            TI(std::format("movdqu  xmm{}, {}", reg, AssemblyInstructionPrinter::Rbp("oword", -offset)));
+        }
         const auto &usedPhysicalRegisters = instructionPrinter.FramePlan().UsedPhysicalRegisters();
         if (!usedPhysicalRegisters.empty()) {
             const std::int32_t remainingFrame = instructionPrinter.FramePlan().FrameSize() -

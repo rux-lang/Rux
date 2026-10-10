@@ -1,3 +1,4 @@
+#include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
 
 #include <cstdint>
@@ -25,6 +26,64 @@ namespace {
     return terminator;
 }
 } // namespace
+
+TEST_CASE("x86-64 float allocation respects nonvolatile widths and call clobbers") {
+    LirFunc function;
+    function.name = "FloatCalls";
+    function.params = {{0, TypeRef::MakeFloat64(), "input"}};
+    function.returnType = TypeRef::MakeFloat64();
+    LirInstr call;
+    call.op = LirOpcode::Call;
+    call.type = TypeRef::MakeOpaque();
+    call.strArg = "Observe";
+    LirInstr add;
+    add.op = LirOpcode::Add;
+    add.type = TypeRef::MakeFloat64();
+    add.dst = 1;
+    add.srcs = {0, 0};
+    LirBlock block;
+    block.instrs = {call, add};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 1;
+    block.term->retType = function.returnType;
+    function.blocks = {block};
+
+    const auto windows = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+    REQUIRE(windows.FloatRegisters().contains(0));
+    REQUIRE(windows.FloatRegisters().contains(1));
+    CHECK_NE(windows.FloatRegisters().at(0), windows.FloatRegisters().at(1));
+    CHECK_EQ(windows.FloatSaves().size(), 2);
+    for (const auto &[reg, offset] : windows.FloatSaves()) {
+        CHECK_GE(reg, 8);
+        CHECK_LE(reg, 15);
+        CHECK_EQ(offset % 16, 0);
+        CHECK_LE(offset, windows.FrameSize());
+        CHECK_GE(windows.SlotOffsets().at(0), offset + 8);
+    }
+    const auto linuxPlan = PlanX86_64Frame(function, {}, {}, Target::OS::Linux);
+    CHECK_FALSE(linuxPlan.FloatRegisters().contains(0)); // Parameter starts at the call's instruction index zero.
+    CHECK(linuxPlan.FloatRegisters().contains(1));
+    CHECK(linuxPlan.FloatSaves().empty());
+    function.blocks[0].instrs[0].callConv = CallingConvention::SysV;
+    const auto mixed = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+    CHECK_FALSE(mixed.FloatRegisters().contains(0));
+    CHECK(mixed.FloatRegisters().contains(1));
+}
+
+TEST_CASE("x86-64 XMM copies and saves encode high register numbers without losing upper bits") {
+    std::vector<std::uint8_t> bytes;
+    X64Enc encoder(bytes);
+    encoder.MovXmm(15, 8);
+    encoder.MovXmmSave(15, -32);
+    encoder.MovXmmRestore(15, -32);
+    encoder.MovFloatBits(10, 15, true);
+    encoder.MovFloatBits(0, 8, false);
+    const std::vector<std::uint8_t> expected{0x45, 0x0F, 0x28, 0xF8, 0xF3, 0x44, 0x0F, 0x7F, 0xBD, 0xE0, 0xFF,
+                                             0xFF, 0xFF, 0xF3, 0x44, 0x0F, 0x6F, 0xBD, 0xE0, 0xFF, 0xFF, 0xFF,
+                                             0x66, 0x4D, 0x0F, 0x7E, 0xFA, 0x66, 0x44, 0x0F, 0x7E, 0xC0};
+    CHECK_EQ(bytes, expected);
+}
 
 TEST_CASE("x86-64 frame plan owns hidden returns aggregate regions phi scratch and alignment") {
     const TypeRef triple = TypeRef::MakeNamed("Triple");
