@@ -54,10 +54,11 @@ TEST_CASE("CLI contract is the source of build option conflicts") {
         REQUIRE(FindOption(*build, right) != nullptr);
         if (left == "--all") {
             ++allConflicts;
-            CHECK((right == "--target" || right == "--debug" || right == "--release" || right == "--emit"));
+            CHECK((right == "--target" || right == "--debug" || right == "--release" || right == "--emit" ||
+                   right == "--disable-pass"));
         }
     }
-    CHECK(allConflicts == 4);
+    CHECK(allConflicts == 5);
 }
 
 TEST_CASE("CLI contract lists the documentation format and refuses to open a JSON snapshot") {

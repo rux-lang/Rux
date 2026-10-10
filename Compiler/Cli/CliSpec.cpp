@@ -29,11 +29,14 @@ constexpr std::array add_exs = {"Rux/Io"sv, "Rux/Io@^0.1.0"sv, "Json --path ../J
 // Build
 constexpr std::array build_usage = {"[options]"sv};
 constexpr std::array build_opts = {
-    OptionDoc{.flags = "--all"sv,
-              .desc =
-                  "Build all 16 target/profile cells; incompatible with --target, --debug, --release, and --emit"sv},
+    OptionDoc{
+        .flags = "--all"sv,
+        .desc =
+            "Build all 16 target/profile cells; incompatible with --target, --debug, --release, --emit, and --disable-pass"sv},
     OptionDoc{.flags = "--debug"sv, .desc = "Build with debug symbols (unoptimized output)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
+    OptionDoc{.flags = "--disable-pass <name>"sv,
+              .desc = "Disable an optional optimization pass for diagnosis; repeat for multiple passes"sv},
     OptionDoc{.flags = "--emit <kind[,kind...]>"sv,
               .desc = "Additionally emit tokens, ast, sema, hir, lir, asm, or rcu inspection output"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
@@ -47,6 +50,7 @@ constexpr std::array build_conflicts = {
     OptionConflict{.left = "--all"sv, .right = "--debug"sv},
     OptionConflict{.left = "--all"sv, .right = "--release"sv},
     OptionConflict{.left = "--all"sv, .right = "--emit"sv},
+    OptionConflict{.left = "--all"sv, .right = "--disable-pass"sv},
     OptionConflict{.left = "--debug"sv, .right = "--release"sv},
 };
 constexpr std::array build_exs = {

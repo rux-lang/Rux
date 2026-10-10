@@ -42,6 +42,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     bool dumpAsm = false;
     bool dumpRcu = false;
     bool showStats = false;
+    std::vector<std::string> disabledPasses;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
@@ -65,6 +66,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         }
         if (arg == "--stats") {
             showStats = true;
+            continue;
+        }
+        if (arg == "--disable-pass" && i + 1 < args.size()) {
+            disabledPasses.emplace_back(args[++i]);
             continue;
         }
         if (arg == "--emit" && i + 1 < args.size()) {
@@ -155,6 +160,8 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         const auto Configure = [&](CompileOptions &copts) {
             copts.manifestPath = packageManifestPath;
             copts.defines = defines;
+            copts.disabledOptimizationPasses = disabledPasses;
+            copts.collectOptimizationStatistics = showStats;
             copts.localPackageRoots = workspaceSources.packageRoots;
             copts.localNamespaces = workspaceSources.namespaces;
             ConfigureCompileDiagnostics(copts, diagnostics);

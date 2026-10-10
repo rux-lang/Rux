@@ -52,6 +52,8 @@ struct CompileOptions {
     bool dumpLir = false;
     bool dumpAsm = false;
     bool dumpRcu = false;
+    bool collectOptimizationStatistics = false;
+    std::vector<std::string> disabledOptimizationPasses;
 
     /// Optional presentation hook. The driver always retains diagnostics in CompileResult and supplies already-loaded
     /// source text to a callback so a CLI can render context without rereading files.

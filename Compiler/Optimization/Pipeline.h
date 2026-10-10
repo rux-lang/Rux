@@ -4,9 +4,13 @@
 #include "Optimization/Pass.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <memory>
+#include <span>
 #include <string_view>
+#include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -44,6 +48,11 @@ public:
         passes.push_back(std::move(pass));
     }
 
+    void Configure(const std::span<const std::string> disabled, const bool statistics) {
+        disabledPasses = std::unordered_set<std::string>(disabled.begin(), disabled.end());
+        collectStatistics = statistics;
+    }
+
     /// The configured passes in run order, for the `--stats` report.
     [[nodiscard]] std::vector<std::string_view> PassNames() const {
         std::vector<std::string_view> names;
@@ -67,13 +76,38 @@ public:
             return report;
         }
 
+        if (collectStatistics) {
+            for (const auto &pass : passes) {
+                report.passStatistics.push_back({.ir = irName,
+                                                 .name = std::string(pass->Name()),
+                                                 .disabled = disabledPasses.contains(std::string(pass->Name()))});
+            }
+        }
+
         report.reachedFixedPoint = false;
         for (std::size_t iteration = 0; iteration < fixedPointLimit; ++iteration) {
             PassChange iterationChange = PassChange::None;
             const PassContext context{profile, iteration, fixedPointLimit, &report.diagnostics, &report.lirPruning};
-            for (const auto &pass : passes) {
+            for (std::size_t passIndex = 0; passIndex < passes.size(); ++passIndex) {
+                const auto &pass = passes[passIndex];
+                if (!disabledPasses.empty() && disabledPasses.contains(std::string(pass->Name())))
+                    continue;
                 const std::size_t diagnosticStart = report.diagnostics.size();
-                if (pass->Run(ir, context) == PassChange::Changed) {
+                const auto before = collectStatistics ? InstructionCount(ir) : 0;
+                const auto start =
+                    collectStatistics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+                const auto change = pass->Run(ir, context);
+                if (collectStatistics) {
+                    const auto elapsed = std::chrono::steady_clock::now() - start;
+                    const auto after = InstructionCount(ir);
+                    auto &measurement = report.passStatistics[passIndex];
+                    ++measurement.runs;
+                    measurement.changes += change == PassChange::Changed;
+                    measurement.elapsed += std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+                    measurement.instructionsAdded += after > before ? after - before : 0;
+                    measurement.instructionsRemoved += before > after ? before - after : 0;
+                }
+                if (change == PassChange::Changed) {
                     iterationChange = PassChange::Changed;
                     report.change = PassChange::Changed;
                 }
@@ -108,6 +142,19 @@ private:
     std::size_t fixedPointLimit;
     std::string irName;
     std::vector<std::unique_ptr<Pass<Ir>>> passes;
+    std::unordered_set<std::string> disabledPasses;
+    bool collectStatistics = false;
+
+    [[nodiscard]] static std::size_t InstructionCount(const Ir &ir) {
+        std::size_t count = 0;
+        if constexpr (std::is_same_v<Ir, LirPackage>) {
+            for (const auto &module : ir.modules)
+                for (const auto &function : module.funcs)
+                    for (const auto &block : function.blocks)
+                        count += block.instrs.size();
+        }
+        return count;
+    }
 };
 
 using HirPassPipeline = PassPipeline<HirPackage>;
@@ -137,6 +184,8 @@ public:
     [[nodiscard]] std::vector<std::string_view> LirPassNames() const;
     [[nodiscard]] PassRunReport RunHir(HirPackage &package);
     [[nodiscard]] PassRunReport RunLir(LirPackage &package);
+    /// Validate diagnostic bisection options. Required normalization and verification cannot be disabled.
+    [[nodiscard]] std::vector<Diagnostic> Configure(std::span<const std::string> disabled, bool statistics);
 
 private:
     OptimizationPipeline(BuildProfile profile, std::size_t fixedPointLimit);

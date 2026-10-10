@@ -4,6 +4,7 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
+#include "Optimization/Statistics.h"
 
 #include <cstddef>
 #include <string>
@@ -68,6 +69,7 @@ struct PassRunReport {
     bool reachedFixedPoint = true;
     std::vector<Diagnostic> diagnostics;
     LirPruningStats lirPruning;
+    std::vector<PassStatistics> passStatistics;
 
     [[nodiscard]] bool HasErrors() const noexcept {
         for (const auto &diagnostic : diagnostics) {

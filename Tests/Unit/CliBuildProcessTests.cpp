@@ -139,6 +139,20 @@ Type = "Executable"
     CHECK(quiet.exitCode == 0);
     CHECK(quiet.output.empty());
 
+    const auto bisected = Run(std::array<std::string_view, 10>{"--manifest", manifest, "build", "--release", "--stats",
+                                                               "--disable-pass", "lir-leaf-inliner", "--disable-pass",
+                                                               "lir-loop-invariants", "--color=never"});
+    CAPTURE(bisected.output);
+    CHECK_EQ(bisected.exitCode, 0);
+    CHECK(bisected.output.contains("Optimization passes:"));
+    CHECK(bisected.output.contains("lir-leaf-inliner"));
+    CHECK(bisected.output.contains("disabled"));
+    CHECK(bisected.output.contains("instructions"));
+    const auto required = Run(std::array<std::string_view, 6>{"--manifest", manifest, "build", "--release",
+                                                              "--disable-pass", "lir-ssa-verifier"});
+    CHECK_NE(required.exitCode, 0);
+    CHECK(required.output.contains("cannot be disabled"));
+
     std::error_code error;
     std::filesystem::remove_all(root, error);
 }

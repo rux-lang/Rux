@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Optimizer pass diagnostics** — `build --stats` reports pass time, runs, changed runs and LIR instruction deltas.
+  Repeatable `build --disable-pass <name>` supports diagnostic bisection while keeping required verification and frame
+  normalization enabled. Unknown or inactive pass names are rejected.
+
 - **Portable target CPU baselines** — native and cross-target compilation both expose SSE2 for x86-64 and NEON for
   AArch64. Compiler-host build flags no longer authorize extra instructions in portable output; runtime detection
   remains a separate source of hardware availability.

@@ -171,7 +171,8 @@ void AppendOptionJson(std::string &output, const OptionSpec &option) {
     output += ",\"description\":";
     AppendJsonString(output, option.desc);
     output += std::format(",\"takesValue\":{},\"repeatable\":{}}}", OptionTakesValue(option),
-                          option.flags.starts_with("--define") || option.flags.starts_with("--emit"));
+                          option.flags.starts_with("--define") || option.flags.starts_with("--emit") ||
+                              option.flags.starts_with("--disable-pass"));
 }
 
 void AppendCommandJson(std::string &output, const CommandSpec &command) {

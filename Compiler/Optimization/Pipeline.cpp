@@ -68,4 +68,27 @@ PassRunReport OptimizationPipeline::RunHir(HirPackage &package) {
 PassRunReport OptimizationPipeline::RunLir(LirPackage &package) {
     return lir.Run(package);
 }
+
+std::vector<Diagnostic> OptimizationPipeline::Configure(const std::span<const std::string> disabled,
+                                                        const bool statistics) {
+    auto names = HirPassNames();
+    const auto lirNames = LirPassNames();
+    names.insert(names.end(), lirNames.begin(), lirNames.end());
+    std::vector<Diagnostic> diagnostics;
+    for (const auto &name : disabled) {
+        if (!std::ranges::contains(names, name)) {
+            diagnostics.push_back(
+                ErrorDiagnostic(std::format("optimization pass '{}' is not active in this profile", name)));
+        }
+        else if (name.ends_with("verifier") || name == "lir-frame-address-placement") {
+            diagnostics.push_back(
+                ErrorDiagnostic(std::format("required optimization pass '{}' cannot be disabled", name)));
+        }
+    }
+    if (diagnostics.empty()) {
+        hir.Configure(disabled, statistics);
+        lir.Configure(disabled, statistics);
+    }
+    return diagnostics;
+}
 } // namespace Rux::Optimization

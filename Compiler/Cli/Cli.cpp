@@ -79,7 +79,7 @@ std::optional<std::string_view> AttachedValue(const std::string_view argument) {
 
 /// Whether giving the option more than once is meaningful rather than a mistake, as it is for `--define`.
 bool IsRepeatable(const std::string_view option) {
-    return option == "--define" || option == "--emit";
+    return option == "--define" || option == "--emit" || option == "--disable-pass";
 }
 
 bool Contains(const std::vector<std::string_view> &values, const std::string_view value) {

@@ -279,6 +279,25 @@ std::string FormatBuildStats(const BuildReportInfo &info, const BuildStats &stat
                                   Reporting::TableRow{"Estimated IR nodes", irNodes}};
     output << Reporting::RenderSection("Optimization", optimization, style, Reporting::ValueAlign::Right) << '\n';
 
+    if (!stats.optimizationPasses.empty()) {
+        std::vector<std::pair<std::string, std::string>> cells;
+        cells.reserve(stats.optimizationPasses.size());
+        for (const auto &pass : stats.optimizationPasses) {
+            auto value = pass.disabled
+                           ? std::string("disabled")
+                           : std::format("{} ms; {} runs, {} changed", FormatDecimal(pass.elapsed.count() / 1000.0, 3),
+                                         pass.runs, pass.changes);
+            if (!pass.disabled && pass.ir == "LIR")
+                value += std::format("; +{} / -{} instructions", pass.instructionsAdded, pass.instructionsRemoved);
+            cells.emplace_back(pass.ir + " " + pass.name, std::move(value));
+        }
+        std::vector<Reporting::TableRow> rows;
+        rows.reserve(cells.size());
+        for (const auto &[label, value] : cells)
+            rows.push_back({label, value});
+        output << Reporting::RenderSection("Optimization passes", rows, style) << '\n';
+    }
+
     // Rate prefixes belong to the units, separated from the numbers by a space.
     // These four values carry different units, so right alignment would square up nothing.
     const std::string speed = FormatRate(compileSpeed, "LOC/s");

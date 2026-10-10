@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BuildInfo/BuildProfile.h"
+#include "Optimization/Statistics.h"
 #include "Target/TargetTriple.h"
 
 #include <chrono>
@@ -9,6 +10,7 @@
 #include <filesystem>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace Rux {
 struct Token;
@@ -40,6 +42,7 @@ struct BuildStats {
     std::size_t prunedVtables = 0;
     std::size_t prunedExternDeclarations = 0;
     std::size_t estimatedLirNodesEliminated = 0;
+    std::vector<Optimization::PassStatistics> optimizationPasses;
 };
 
 struct BuildCellReport {

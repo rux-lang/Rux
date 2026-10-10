@@ -102,6 +102,7 @@ The matrix fixes the target and profile of every cell, so `--all` is incompatibl
 | `--debug`                 | No           | The matrix already includes Debug           |
 | `--release`               | No           | The matrix already includes Release         |
 | `--emit <kind[,kind...]>` | No           | Inspection output is a single-build feature |
+| `--disable-pass <name>`  | No           | Bisection targets one optimization profile  |
 | `--define <name[=value]>` | Yes          | The same definition is applied to each cell |
 | `--stats`                 | Yes          | Adds per-cell and aggregate statistics      |
 | `--quiet`                 | Yes          | Suppresses reports, but not errors          |
@@ -135,7 +136,7 @@ Artifact paths are printed relative to the directory holding the manifest; an ou
 
 ## Build Statistics
 
-`--stats` follows a single build with four sections. It adds to the ordinary report rather than replacing it, so the progress and outcome lines are the same ones a plain `rux build` prints:
+`--stats` follows a single build with timing, source, optimization, per-pass and performance sections. It adds to the ordinary report rather than replacing it, so the progress and outcome lines are the same ones a plain `rux build` prints:
 
 ```text
 Compiling StringBuilder v0.1.0 (Debug, Windows x86-64)
@@ -170,6 +171,9 @@ Optimization:
   Declarations pruned:  0
   Estimated IR nodes:   0
 
+Optimization passes:
+  LIR lir-cfg-verifier: 0.012 ms; 1 runs, 0 changed; +0 / -0 instructions
+
 Performance:
   Compile speed:     77 kLOC/s
   Token throughput:  289.9 kTok/s
@@ -185,6 +189,27 @@ Every section is a title at column 0 over indented rows, with the label column s
 - **Phase names match `--verbose`.** Both come from the same list, so a phase named in a progress line or a diagnostic note is spelled the same way here.
 
 `--quiet` suppresses the entire report, statistics included, but never diagnostics.
+
+Per-pass measurements include invocation/change counts and accumulated elapsed time. LIR rows also count instructions
+added and removed across invocations; they do not estimate machine bytes, cycles, or runtime improvement. Counting runs
+outside each pass timer, but instrumentation still adds to total build time. Ordinary builds do not collect these
+measurements. Pass time is already included in the HIR/LIR phase totals, so it must not be added to them again.
+
+### Optimization Bisection
+
+Use a pass name from `--stats` to disable an optional transformation in a single Release build:
+
+```sh
+./Bin/rux --manifest Packages/App/Rux.toml build --release --stats --emit lir,asm --disable-pass lir-loop-invariants
+./Bin/rux --manifest Packages/App/Rux.toml build --release --stats --disable-pass lir-leaf-inliner --disable-pass lir-local-value-numbering
+```
+
+Compare the resulting output, LIR, assembly and timing against an otherwise identical build. The option is repeatable
+and disables every occurrence of that named pass. Unknown/inactive names are errors. CFG/SSA verification and required
+frame-address normalization cannot be disabled. The normal fixed-point limit remains in force; if excluding a pass
+prevents convergence, compilation reports an error. `--all` cannot be combined with pass bisection because its cells
+have different optimization profiles. This diagnostic option changes generated artifacts and is not a portable CPU
+selection or a guarantee that disabling an optimization improves performance.
 
 ## Cross-Compilation and Execution
 

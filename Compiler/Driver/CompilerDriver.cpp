@@ -540,8 +540,12 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         opts.isTest ? ArtifactKind::Executable : PackageArtifactKind(opts.manifest.package.type);
     auto optimizationPipeline =
         Optimization::OptimizationPipeline::ForProfile(compileTimeContext.profile, artifactKind);
+    if (EmitAll(optimizationPipeline.Configure(opts.disabledOptimizationPasses, opts.collectOptimizationStatistics))) {
+        return false;
+    }
     BeginPhase(CompilePhase::OptimizingHir, opts.manifest.package.name.Text());
     const auto hirOptimization = optimizationPipeline.RunHir(hirPackage);
+    stats.optimizationPasses = hirOptimization.passStatistics;
     if (EmitAll(hirOptimization.diagnostics) || !hirOptimization.reachedFixedPoint) {
         return false;
     }
@@ -557,6 +561,8 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     }
     BeginPhase(CompilePhase::OptimizingLir, opts.manifest.package.name.Text());
     const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
+    stats.optimizationPasses.insert(stats.optimizationPasses.end(), lirOptimization.passStatistics.begin(),
+                                    lirOptimization.passStatistics.end());
     if (EmitAll(lirOptimization.diagnostics)) {
         return false;
     }
