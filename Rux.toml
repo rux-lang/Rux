@@ -10,6 +10,7 @@ Packages = [
     "Packages/Collections",
     "Packages/Core",
     "Packages/Crypto",
+    "Packages/Encoding",
     "Packages/Entropy",
     "Packages/FileSystem",
     "Packages/Format",

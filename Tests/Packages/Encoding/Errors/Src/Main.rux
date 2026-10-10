@@ -1,0 +1,63 @@
+// A decode error says where it was found, or how much room was needed, and renders as a short description.
+
+import Core::Failed;
+import Encoding::{ DecodeError, HexDecode };
+import Text::{ BufferWriter, Debug, Display, FormatSpec, TextWriter };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Displayed(error: DecodeError, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = error;
+    if Failed(shown.WriteDisplay(sink, FormatSpec::Plain())) { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Inspected(error: DecodeError, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    let inspected: Debug = error;
+    if Failed(inspected.WriteDebug(sink, FormatSpec::Plain())) { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// Display and Debug write the same description.
+func Shown(error: DecodeError, expected: char8[..]) -> bool {
+    return Displayed(error, expected) && Inspected(error, expected);
+}
+
+func Main() -> int {
+    if (DecodeError::InvalidCharacter(5).Offset() ?? 99) != 5 { return 1; }
+    if (DecodeError::NonCanonical(0).Offset() ?? 99) != 0 { return 2; }
+    match DecodeError::InsufficientCapacity(12).Offset() {
+        .Some(_) => return 3,
+        none => {}
+    }
+    if !Shown(DecodeError::InvalidCharacter(5), "invalid character at 5") { return 4; }
+    if !Shown(DecodeError::InvalidLength(0), "invalid length at 0") { return 5; }
+    if !Shown(DecodeError::InvalidPadding(1234), "misplaced padding at 1234") { return 6; }
+    if !Shown(DecodeError::NonCanonical(7), "non-canonical trailing bits at 7") { return 7; }
+    if !Shown(DecodeError::InvalidEscape(3), "invalid percent escape at 3") { return 8; }
+    if !Shown(DecodeError::InsufficientCapacity(12), "destination too short, need 12 bytes") { return 9; }
+    if !Shown(DecodeError::InsufficientCapacity(1), "destination too short, need 1 byte") { return 10; }
+
+    // An error reaches a caller through propagation like any other failure.
+    var room: byte[1];
+    let reported = match HexDecode("zz", room[..]) {
+        .Failure(error) => error,
+        .Success(_) => return 11
+    };
+    if (reported.Offset() ?? 99) != 0 { return 12; }
+    return 0;
+}

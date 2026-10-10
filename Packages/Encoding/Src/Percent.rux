@@ -1,0 +1,187 @@
+// Percent-encoding, as RFC 3986 defines it for URIs and HTML defines it for submitted forms.
+// A byte that may not appear literally in some part of a URI is written as `%` and two upper-case hexadecimal
+// digits. Which bytes those are depends on the part, so the encoder takes a set: a single component such as one
+// query value or one path segment keeps only the unreserved characters, a whole path also keeps `/` and the
+// characters a path may carry, and a form keeps fewer still and writes a space as `+`.
+// Decoding turns every valid escape back into its byte and leaves every other character alone. Characters that an
+// encoder would have escaped are accepted as they are, because text arrives from many encoders and a decoder that
+// refused them would refuse most of the web; an escape that is malformed is refused, because guessing what it meant
+// is how two decoders come to disagree. Escapes may decode to bytes that are not UTF-8, so the result is bytes.
+// Both directions check the room they need before writing, so a refusal leaves the destination exactly as it was.
+
+import Text::FormatError;
+
+/// Which characters percent-encoding leaves as they are.
+/// Copy, carrying no payload. Every set leaves the unreserved characters of RFC 3986 alone, apart from `Form`, which
+/// escapes `~` as HTML requires.
+/// @see https://rux-lang.dev/docs/api/encoding/percent#percent-set
+pub enum PercentSet {
+    /// Only the unreserved characters: letters, digits, `-`, `.`, `_` and `~`. Right for a single query name or
+    /// value, a single path segment, or any value placed between delimiters, since every delimiter is escaped.
+    Component,
+    /// The unreserved characters, the sub-delimiters `!$&'()*+,;=`, and `:`, `@` and `/`. Right for a whole path
+    /// that is already split into segments the way it should be.
+    Path,
+    /// The `application/x-www-form-urlencoded` serialization: letters, digits, `*`, `-`, `.` and `_` stay, a space
+    /// becomes `+`, and everything else is escaped. Decoding in this set reads `+` as a space.
+    Form
+}
+
+// Whether a byte is written as itself in a set. A space in the form set is not; it becomes `+`, which the caller
+// handles.
+func IsLiteral(value: uint8, set: PercentSet) -> bool {
+    if (value >= 0x41 && value <= 0x5A) || (value >= 0x61 && value <= 0x7A) || (value >= 0x30 && value <= 0x39) {
+        return true;
+    }
+    if value == 0x2D || value == 0x2E || value == 0x5F {
+        return true;
+    }
+    return match set {
+        .Component => value == 0x7E,
+        .Path => value == 0x7E || value == 0x21 || value == 0x24 || (value >= 0x26 && value <= 0x2C) ||
+                 value == 0x3B || value == 0x3D || value == 0x3A || value == 0x40 || value == 0x2F,
+        .Form => value == 0x2A
+    };
+}
+
+/// How many characters the percent-encoded form of `bytes` occupies in `set`.
+/// Exact rather than a bound: one character for each byte the set leaves alone, or for a space in the form set,
+/// and three for every other byte. Runs in time linear in the length and allocates nothing.
+/// @param bytes the bytes to encode
+/// @param set which characters stay as they are
+/// @returns the number of characters `PercentEncode` writes
+/// @see https://rux-lang.dev/docs/api/encoding/percent#percent-encoded-length
+pub func PercentEncodedLength(bytes: byte[..], set: PercentSet = PercentSet::Component) -> uint {
+    var length: uint = 0;
+    var index: uint = 0;
+    while index < bytes.length {
+        let value = bytes[index];
+        if IsLiteral(value, set) || (set == PercentSet::Form && value == 0x20) {
+            length = length + 1;
+        }
+        else {
+            length = length + 3;
+        }
+        index = index + 1;
+    }
+    return length;
+}
+
+/// How many characters the percent-encoded form of the bytes of `text` occupies in `set`.
+/// The byte form, reached without the caller reinterpreting the text first: each UTF-8 code unit is one byte.
+/// @param text the text whose bytes to encode
+/// @param set which characters stay as they are
+/// @returns the number of characters `PercentEncode` writes
+/// @see https://rux-lang.dev/docs/api/encoding/percent#percent-encoded-length
+pub func PercentEncodedLength(text: char8[..], set: PercentSet = PercentSet::Component) -> uint {
+    return PercentEncodedLength(BytesOf(text), set);
+}
+
+/// Writes `bytes` percent-encoded for `set` into `into`.
+/// Escapes use upper-case digits, which RFC 3986 says producers should. Reports `InsufficientCapacity` when `into`
+/// is shorter than `PercentEncodedLength(bytes, set)`, leaving it exactly as it was; room past the encoded form is
+/// not touched.
+/// @param bytes the bytes to encode
+/// @param into the destination, at least `PercentEncodedLength(bytes, set)` characters
+/// @param set which characters stay as they are
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/percent#percent-encode
+pub func PercentEncode(bytes: byte[..], into: var char8[..],
+                       set: PercentSet = PercentSet::Component) -> uint ! FormatError {
+    let needed = PercentEncodedLength(bytes, set);
+    if into.length < needed { fail FormatError::InsufficientCapacity; }
+    var to: uint = 0;
+    var index: uint = 0;
+    while index < bytes.length {
+        let value = bytes[index];
+        if IsLiteral(value, set) {
+            into[to] = value as char8;
+            to = to + 1;
+        }
+        else if set == PercentSet::Form && value == 0x20 {
+            into[to] = '+';
+            to = to + 1;
+        }
+        else {
+            into[to] = '%';
+            into[to + 1] = HexDigit((value >> 4) as int32, true);
+            into[to + 2] = HexDigit((value & 15) as int32, true);
+            to = to + 3;
+        }
+        index = index + 1;
+    }
+    return needed;
+}
+
+/// Writes the bytes of `text` percent-encoded for `set` into `into`.
+/// The byte form, reached without the caller reinterpreting the text first: each UTF-8 code unit is one byte, so a
+/// character outside ASCII becomes one escape per byte of its UTF-8 form, as URIs require.
+/// The failure the byte form reports, with the same guarantee.
+/// @param text the text whose bytes to encode
+/// @param into the destination, at least `PercentEncodedLength(text, set)` characters
+/// @param set which characters stay as they are
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/percent#percent-encode
+pub func PercentEncode(text: char8[..], into: var char8[..],
+                       set: PercentSet = PercentSet::Component) -> uint ! FormatError {
+    return PercentEncode(BytesOf(text), into, set);
+}
+
+/// How many bytes percent-encoded text decodes to, after checking that every escape is well formed.
+/// Each `%` followed by two hexadecimal digits of either case counts as one byte, and every other character as one.
+/// Reports `InvalidEscape` at the first `%` that is not followed by two hexadecimal digits. Runs in time linear in
+/// the length and allocates nothing.
+/// @param text the percent-encoded text
+/// @returns the number of bytes `PercentDecode` writes for it
+/// @see https://rux-lang.dev/docs/api/encoding/percent#percent-decoded-length
+pub func PercentDecodedLength(text: char8[..]) -> uint ! DecodeError {
+    var length: uint = 0;
+    var index: uint = 0;
+    while index < text.length {
+        if text[index] == '%' {
+            if index + 2 >= text.length || HexValue(CharCode(text[index + 1])) < 0 ||
+               HexValue(CharCode(text[index + 2])) < 0 {
+                fail DecodeError::InvalidEscape(index);
+            }
+            index = index + 3;
+        }
+        else {
+            index = index + 1;
+        }
+        length = length + 1;
+    }
+    return length;
+}
+
+/// Reads percent-encoded text into `into`, turning each escape back into its byte.
+/// Characters outside an escape are copied as they are, except that `+` becomes a space when `set` is `Form`; the
+/// other sets give `+` no special meaning. Reports `InvalidEscape` at the first `%` that is not followed by two
+/// hexadecimal digits, and `InsufficientCapacity` with the length needed when `into` is too short; both leave `into`
+/// untouched, because the whole text is checked before anything is written.
+/// @param text the percent-encoded text to decode
+/// @param into the destination, at least `PercentDecodedLength(text)` bytes
+/// @param set the set the text was encoded for, which decides how `+` is read
+/// @returns the number of bytes written
+/// @see https://rux-lang.dev/docs/api/encoding/percent#percent-decode
+pub func PercentDecode(text: char8[..], into: var byte[..],
+                       set: PercentSet = PercentSet::Component) -> uint ! DecodeError {
+    let needed = PercentDecodedLength(text)?;
+    if into.length < needed { fail DecodeError::InsufficientCapacity(needed); }
+    var to: uint = 0;
+    var index: uint = 0;
+    while index < text.length {
+        let c = text[index];
+        if c == '%' {
+            let high = HexValue(CharCode(text[index + 1]));
+            let low = HexValue(CharCode(text[index + 2]));
+            into[to] = ((high << 4) | low) as byte;
+            index = index + 3;
+        }
+        else {
+            into[to] = set == PercentSet::Form && c == '+' ? 0x20 : c as uint8;
+            index = index + 1;
+        }
+        to = to + 1;
+    }
+    return needed;
+}

@@ -1,0 +1,205 @@
+// Base64 is checked against RFC 4648's vectors in all four variants, then exhaustively: every one of the 256
+// possible characters decodes the way a plain table of each alphabet says it should, which is what checks the
+// branchless arithmetic at the edges of its ranges. Round trips over every length up to a few groups cover the
+// partial final group in each variant.
+// The strictness cases are the point of a strict decoder: each is a text some other decoder accepts, refused here
+// with the reason and the offset, and with the destination left holding its sentinel.
+
+import Core::{ Failed, Panic };
+import Encoding::{ Base64Decode, Base64DecodedLength, Base64Encode, Base64EncodedLength, Base64Variant, DecodeError,
+                   ViewBase64 };
+import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Encoded(text: char8[..], form: Base64Variant, expected: char8[..]) -> bool {
+    var room: char8[64];
+    let written = Base64Encode(text, room[..], form) catch { else => return false };
+    return written == expected.length && written == Base64EncodedLength(text.length, form) &&
+           Same(room[..written], expected);
+}
+
+func Decoded(text: char8[..], form: Base64Variant, expected: char8[..]) -> bool {
+    var room: byte[64];
+    let written = Base64Decode(text, room[..], form) catch { else => return false };
+    if written != expected.length { return false; }
+    var index: uint = 0;
+    while index < written {
+        if room[index] != (expected[index] as uint8) { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Both directions of one RFC vector.
+func Vector(plain: char8[..], form: Base64Variant, encoded: char8[..]) -> bool {
+    return Encoded(plain, form, encoded) && Decoded(encoded, form, plain);
+}
+
+// The reason a decode was refused, as a small code: 1 character, 2 length, 3 padding, 4 non-canonical,
+// 6 capacity, and a negative code when the offset is wrong or the destination was touched.
+func Refusal(text: char8[..], form: Base64Variant, room: uint, at: uint) -> int {
+    var storage: byte[64] = [0x3F; 64];
+    let reported = match Base64Decode(text, storage[..room], form) {
+        .Failure(error) => error,
+        .Success(_) => return -1
+    };
+    for value in storage {
+        if value != 0x3F { return -2; }
+    }
+    return match reported {
+        .InvalidCharacter(offset) => offset == at ? 1 : -3,
+        .InvalidLength(offset) => offset == at ? 2 : -3,
+        .InvalidPadding(offset) => offset == at ? 3 : -3,
+        .NonCanonical(offset) => offset == at ? 4 : -3,
+        .InsufficientCapacity(needed) => needed == at ? 6 : -3,
+        else => 0
+    };
+}
+
+// What a plain table says a character is worth in one alphabet, or -1.
+func Reference(c: uint, urlSafe: bool) -> int {
+    let alphabet = urlSafe ? "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+                           : "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var index: uint = 0;
+    while index < 64 {
+        if (alphabet[index] as uint8 as uint) == c { return index as int; }
+        index = index + 1;
+    }
+    return -1;
+}
+
+// Every character in the first position of a four-character group, against the table. The other three are `A`,
+// which is worth zero, so the decoded first byte is the character's value shifted into its top six bits.
+func Exhaustive(form: Base64Variant, urlSafe: bool) -> bool {
+    var c: uint = 0;
+    while c < 256 {
+        var group: char8[4] = ['A'; 4];
+        group[0] = c as uint8 as char8;
+        var out: byte[3];
+        let expected = Reference(c, urlSafe);
+        let valid = match Base64Decode(group[..], out[..], form) {
+            .Success(_) => true,
+            .Failure(_) => false
+        };
+        if valid != (expected >= 0) { return false; }
+        if valid && out[0] != ((expected as uint) << 2) as byte { return false; }
+        c = c + 1;
+    }
+    // Encoding every six-bit value reproduces the table.
+    var value: uint = 0;
+    while value < 64 {
+        let one: byte[3] = [(value << 2) as byte, 0, 0];
+        var room: char8[4];
+        Base64Encode(one[..], room[..], form) catch { else => return false };
+        if Reference(room[0] as uint8 as uint, urlSafe) != value as int { return false; }
+        value = value + 1;
+    }
+    return true;
+}
+
+// Every length from zero to twenty, in one variant, survives a round trip.
+func RoundTrips(form: Base64Variant) -> bool {
+    var source: byte[20];
+    var index: uint = 0;
+    while index < 20 {
+        source[index] = (index * 37 + 11) as byte;
+        index = index + 1;
+    }
+    var length: uint = 0;
+    while length <= 20 {
+        var text: char8[32];
+        let written = Base64Encode(source[..length], text[..], form) catch { else => return false };
+        if written != Base64EncodedLength(length, form) { return false; }
+        var back: byte[20];
+        let read = Base64Decode(text[..written], back[..], form) catch { else => return false };
+        if read != length { return false; }
+        var at: uint = 0;
+        while at < length {
+            if back[at] != source[at] { return false; }
+            at = at + 1;
+        }
+        length = length + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
+    return spec;
+}
+
+func Shown(bytes: byte[..], form: Base64Variant, spec: char8[..], expected: char8[..]) -> bool {
+    var storage: char8[600];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = ViewBase64(bytes, form);
+    if Failed(shown.WriteDisplay(sink, Spec(spec))) { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Main() -> int {
+    // RFC 4648 section 10, padded and unpadded.
+    if !Vector("", Base64Variant::Standard, "") { return 1; }
+    if !Vector("f", Base64Variant::Standard, "Zg==") { return 2; }
+    if !Vector("fo", Base64Variant::Standard, "Zm8=") { return 3; }
+    if !Vector("foo", Base64Variant::Standard, "Zm9v") { return 4; }
+    if !Vector("foob", Base64Variant::Standard, "Zm9vYg==") { return 5; }
+    if !Vector("fooba", Base64Variant::Standard, "Zm9vYmE=") { return 6; }
+    if !Vector("foobar", Base64Variant::Standard, "Zm9vYmFy") { return 7; }
+    if !Vector("f", Base64Variant::StandardUnpadded, "Zg") || !Vector("fo", Base64Variant::UrlUnpadded, "Zm8") {
+        return 8;
+    }
+    if !Vector("fooba", Base64Variant::Url, "Zm9vYmE=") { return 9; }
+
+    // The two alphabets differ only in their last two characters.
+    let edge: byte[3] = [0xFB, 0xFF, 0xFE];
+    var room: char8[4];
+    Base64Encode(edge[..], room[..]) catch { else => return 10 };
+    if !Same(room[..], "+//+") { return 11; }
+    Base64Encode(edge[..], room[..], Base64Variant::Url) catch { else => return 12 };
+    if !Same(room[..], "-__-") { return 13; }
+
+    if !Exhaustive(Base64Variant::Standard, false) || !Exhaustive(Base64Variant::UrlUnpadded, true) { return 14; }
+    if !RoundTrips(Base64Variant::Standard) || !RoundTrips(Base64Variant::StandardUnpadded) { return 15; }
+    if !RoundTrips(Base64Variant::Url) || !RoundTrips(Base64Variant::UrlUnpadded) { return 16; }
+
+    // Strictness: each of these is accepted by some decoder somewhere.
+    if Refusal("Zg=", Base64Variant::Standard, 64, 3) != 2 { return 17; }
+    if Refusal("Zg", Base64Variant::Standard, 64, 2) != 2 { return 18; }
+    if Refusal("Zg=a", Base64Variant::Standard, 64, 2) != 3 { return 19; }
+    if Refusal("Z===", Base64Variant::Standard, 64, 1) != 3 { return 20; }
+    if Refusal("Zh==", Base64Variant::Standard, 64, 1) != 4 { return 21; }
+    if Refusal("Zm9=", Base64Variant::Standard, 64, 2) != 4 { return 22; }
+    if Refusal("Zm 9", Base64Variant::StandardUnpadded, 64, 2) != 1 { return 23; }
+    if Refusal("Zg==", Base64Variant::StandardUnpadded, 64, 2) != 3 { return 24; }
+    if Refusal("Zm9vY", Base64Variant::UrlUnpadded, 64, 5) != 2 { return 25; }
+    if Refusal("-__-", Base64Variant::Standard, 64, 0) != 1 { return 26; }
+    if Refusal("+//+", Base64Variant::Url, 64, 0) != 1 { return 27; }
+    if Refusal("Zm9vYmFy", Base64Variant::Standard, 5, 6) != 6 { return 28; }
+    match Base64DecodedLength("Zm9vYg==") {
+        .Success(length) => {
+            if length != 4 { return 29; }
+        },
+        .Failure(_) => return 30
+    }
+
+    // The view renders whole groups across its internal blocks, and pads to a width.
+    let foobar = "foobar";
+    let bytes = (foobar.data as *byte)[..6];
+    if !Shown(bytes[..1], Base64Variant::Standard, "", "Zg==") { return 31; }
+    if !Shown(bytes[..1], Base64Variant::UrlUnpadded, ">4", "  Zg") { return 32; }
+    var many: byte[150] = [0; 150];
+    var expected: char8[200] = ['A'; 200];
+    if !Shown(many[..], Base64Variant::Standard, "", expected[..]) { return 33; }
+    return 0;
+}

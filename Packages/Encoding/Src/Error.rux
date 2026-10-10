@@ -1,0 +1,120 @@
+// Why text could not be decoded, shared by every scheme in this package.
+// One error type for five schemes, because the ways decoding fails are the same everywhere: a character outside the
+// alphabet, a length the scheme cannot produce, padding in the wrong place, bits the encoder would never have set,
+// or a destination too short for what the text holds. A caller that accepts several encodings handles one type.
+// Every input failure carries the zero-based byte offset into the text it was given, so a caller can point at the
+// character rather than reject the whole string. The capacity failure carries the length the destination needed
+// instead, which is the number a caller sizing a buffer actually wants.
+
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteBytes };
+
+/// Why text could not be decoded.
+/// Failure-only: success is the other channel of `uint ! DecodeError`, so no case means that nothing went wrong.
+/// Copy, carrying one count and owning nothing. A decoder that reports any case except `InsufficientCapacity` has
+/// left its destination exactly as it was; see each decoder for what a capacity refusal leaves.
+/// @see https://rux-lang.dev/docs/api/encoding/decode-error
+pub variant DecodeError {
+    /// A character that is not in the scheme's alphabet. The offset is that character.
+    InvalidCharacter(uint),
+    /// The text has a length no encoder of this scheme produces, such as an odd number of hexadecimal digits. The
+    /// offset is the text's length, where the missing character would have gone.
+    InvalidLength(uint),
+    /// A padding character where padding is not allowed: in the middle of the text, too much of it, or any of it in
+    /// a scheme without padding. The offset is the first padding character that is out of place.
+    InvalidPadding(uint),
+    /// The last character carries bits the encoder would have left zero, so two different texts would decode to the
+    /// same bytes. The offset is that character. Refusing it keeps decoding one-to-one, which is what makes an
+    /// encoded value safe to compare as text.
+    NonCanonical(uint),
+    /// A percent sign that is not followed by two hexadecimal digits. The offset is the percent sign.
+    InvalidEscape(uint),
+    /// The destination is shorter than the decoded value. The count is the length it needed, in bytes.
+    InsufficientCapacity(uint)
+}
+
+extend DecodeError {
+    /// Where in the text the failure was found, or none for a destination that was too short.
+    /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    /// @returns the zero-based byte offset into the text, or none for `InsufficientCapacity`
+    /// @see https://rux-lang.dev/docs/api/encoding/decode-error#offset
+    pub func Offset(self: &DecodeError) -> uint? {
+        return match self {
+            .InvalidCharacter(at) => .Some(at),
+            .InvalidLength(at) => .Some(at),
+            .InvalidPadding(at) => .Some(at),
+            .NonCanonical(at) => .Some(at),
+            .InvalidEscape(at) => .Some(at),
+            .InsufficientCapacity(_) => none
+        };
+    }
+}
+
+// The fixed description of each case, without its count.
+func DescribeDecodeError(error: &DecodeError) -> char8[..] {
+    return match error {
+        .InvalidCharacter(_) => "invalid character",
+        .InvalidLength(_) => "invalid length",
+        .InvalidPadding(_) => "misplaced padding",
+        .NonCanonical(_) => "non-canonical trailing bits",
+        .InvalidEscape(_) => "invalid percent escape",
+        .InsufficientCapacity(_) => "destination too short"
+    };
+}
+
+extend DecodeError : Display {
+    /// Writes a short lower-case description, followed by the offset or the length needed.
+    /// The text is `invalid character at 5` for an input failure and `destination too short, need 12 bytes` for a
+    /// capacity failure. No style is understood. Reports whatever the writer reported, and `UnsupportedRequest` for
+    /// a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-display
+    pub func WriteDisplay(self: &DecodeError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        WriteBytes(writer, DescribeDecodeError(self))?;
+        var digits: char8[20];
+        var count: uint = 0;
+        var value: uint = 0;
+        match self {
+            .InsufficientCapacity(needed) => {
+                WriteBytes(writer, ", need ")?;
+                value = needed;
+            },
+            else => {
+                WriteBytes(writer, " at ")?;
+                value = self.Offset() ?? 0;
+            }
+        }
+        // Digits are produced least significant first and written back to front.
+        if value == 0 {
+            digits[19] = '0';
+            count = 1;
+        }
+        while value > 0 {
+            count = count + 1;
+            digits[20 - count] = (48 + (value % 10)) as char8;
+            value = value / 10;
+        }
+        WriteBytes(writer, digits[20 - count..])?;
+        match self {
+            .InsufficientCapacity(needed) => {
+                WriteBytes(writer, needed == 1 ? " byte" : " bytes")?;
+            },
+            else => {}
+        }
+        return;
+    }
+}
+
+extend DecodeError : Debug {
+    /// The same text as `Display`: the description already names the case and its count.
+    /// The failures `WriteDisplay` reports.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-debug
+    pub func WriteDebug(self: &DecodeError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        return self.WriteDisplay(writer, spec);
+    }
+}

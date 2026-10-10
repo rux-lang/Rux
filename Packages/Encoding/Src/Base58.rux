@@ -1,0 +1,192 @@
+// Base58 in the Bitcoin alphabet, which leaves out `0`, `O`, `I` and `l` so that no two characters look alike.
+// Unlike the power-of-two bases, Base58 does not split bytes into fixed groups of bits. The whole input is one big
+// number written in base 58, so every output digit depends on every input byte and the work grows with the square of
+// the length; the scheme is meant for short values such as keys, hashes and addresses. Each leading zero byte is
+// written as a leading `1`, because a number has no leading zeros to keep.
+// The conversion works in the destination itself, digit by digit, rather than in a separate buffer, so it needs no
+// allocation and no size limit. The cost is the capacity refusal: by the time the destination proves too short it
+// has been used as scratch space, so a refusal leaves it zeroed rather than untouched. Every other refusal is
+// found before anything is written. Base58 is not constant time and should not carry a secret whose timing matters.
+
+import Text::FormatError;
+
+// The Bitcoin alphabet, in digit order.
+const Base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+// The value of a Base58 character, or -1 for a character outside the alphabet.
+func Base58Value(c: char8) -> int32 {
+    var index: uint = 0;
+    while index < 58 {
+        if Base58Alphabet[index] == c { return index as int32; }
+        index = index + 1;
+    }
+    return -1;
+}
+
+// Overwrites a slice with zeros; how a capacity refusal leaves its scratch space.
+func ClearChars(into: var char8[..]) {
+    var index: uint = 0;
+    while index < into.length {
+        into[index] = '\0';
+        index = index + 1;
+    }
+}
+
+// Overwrites a byte slice with zeros.
+func ClearBytes(into: var byte[..]) {
+    var index: uint = 0;
+    while index < into.length {
+        into[index] = 0;
+        index = index + 1;
+    }
+}
+
+/// The most characters the Base58 form of `length` bytes can occupy.
+/// Each byte needs at most log 256 / log 58, about 1.366, digits, so this is a bound rather than the exact length,
+/// which depends on the value. A destination of this length is always enough. Cannot fail for any length a slice
+/// in memory can have; runs in constant time and allocates nothing.
+/// @param length the number of bytes to encode
+/// @returns an upper bound on the number of characters `Base58Encode` writes
+/// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encoded-max-length
+pub func Base58EncodedMaxLength(length: uint) -> uint {
+    return length * 138 / 100 + 1;
+}
+
+/// Writes `bytes` as Base58 into the front of `into`.
+/// Runs in time quadratic in the length of `bytes`, and not in constant time. Reports `InsufficientCapacity` when
+/// the encoded form does not fit `into`; `Base58EncodedMaxLength(bytes.length)` characters always fit. A refusal
+/// leaves `into` filled with zero bytes, because the conversion used it as scratch space. Room past the encoded form
+/// is not touched on success.
+/// @param bytes the bytes to encode
+/// @param into the destination
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encode
+pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint ! FormatError {
+    var zeros: uint = 0;
+    while zeros < bytes.length && bytes[zeros] == 0 {
+        zeros = zeros + 1;
+    }
+    if into.length < zeros {
+        ClearChars(into);
+        fail FormatError::InsufficientCapacity;
+    }
+    // The number accumulates as base-58 digit values after the leading `1`s, least significant first, so that a
+    // new byte is a multiply-and-add over the digits so far.
+    let digits = into[zeros..];
+    var size: uint = 0;
+    var index = zeros;
+    while index < bytes.length {
+        var carry = bytes[index] as uint;
+        var at: uint = 0;
+        while at < size {
+            carry = carry + 256 * (digits[at] as uint8 as uint);
+            digits[at] = (carry % 58) as char8;
+            carry = carry / 58;
+            at = at + 1;
+        }
+        while carry > 0 {
+            if size == digits.length {
+                ClearChars(into);
+                fail FormatError::InsufficientCapacity;
+            }
+            digits[size] = (carry % 58) as char8;
+            carry = carry / 58;
+            size = size + 1;
+        }
+        index = index + 1;
+    }
+    // Most significant digit first, then each value becomes its character.
+    var low: uint = 0;
+    while size > 0 && low < size - 1 - low {
+        let high = size - 1 - low;
+        let swap = digits[low];
+        digits[low] = digits[high];
+        digits[high] = swap;
+        low = low + 1;
+    }
+    index = 0;
+    while index < zeros {
+        into[index] = '1';
+        index = index + 1;
+    }
+    index = 0;
+    while index < size {
+        digits[index] = Base58Alphabet[digits[index] as uint8 as uint];
+        index = index + 1;
+    }
+    return zeros + size;
+}
+
+/// Writes the bytes of `text` as Base58 into the front of `into`.
+/// The byte form, reached without the caller reinterpreting the text first: each UTF-8 code unit is one byte.
+/// The failure the byte form reports, with the same guarantee.
+/// @param text the text whose bytes to encode
+/// @param into the destination
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encode
+pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint ! FormatError {
+    return Base58Encode(BytesOf(text), into);
+}
+
+/// Reads Base58 text in the Bitcoin alphabet into the front of `into`.
+/// Each leading `1` becomes a zero byte. Runs in time quadratic in the length of `text`, and not in constant time.
+/// Reports `InvalidCharacter` at the first character outside the alphabet, leaving `into` untouched, and
+/// `InsufficientCapacity` when the decoded value does not fit `into`, leaving it filled with zero bytes because the
+/// conversion used it as scratch space. The count carried by that refusal is a lower bound on the length needed,
+/// not the exact length; `text.length` bytes are always enough.
+/// @param text the Base58 text to decode
+/// @param into the destination
+/// @returns the number of bytes written
+/// @see https://rux-lang.dev/docs/api/encoding/base58#base58-decode
+pub func Base58Decode(text: char8[..], into: var byte[..]) -> uint ! DecodeError {
+    var index: uint = 0;
+    while index < text.length {
+        if Base58Value(text[index]) < 0 { fail DecodeError::InvalidCharacter(index); }
+        index = index + 1;
+    }
+    var zeros: uint = 0;
+    while zeros < text.length && text[zeros] == '1' {
+        zeros = zeros + 1;
+    }
+    if into.length < zeros {
+        ClearBytes(into);
+        fail DecodeError::InsufficientCapacity(zeros);
+    }
+    let digits = into[zeros..];
+    var size: uint = 0;
+    index = zeros;
+    while index < text.length {
+        var carry = Base58Value(text[index]) as uint;
+        var at: uint = 0;
+        while at < size {
+            carry = carry + 58 * (digits[at] as uint);
+            digits[at] = (carry & 255) as byte;
+            carry = carry >> 8;
+            at = at + 1;
+        }
+        while carry > 0 {
+            if size == digits.length {
+                ClearBytes(into);
+                fail DecodeError::InsufficientCapacity(zeros + size + 1);
+            }
+            digits[size] = (carry & 255) as byte;
+            carry = carry >> 8;
+            size = size + 1;
+        }
+        index = index + 1;
+    }
+    var low: uint = 0;
+    while size > 0 && low < size - 1 - low {
+        let high = size - 1 - low;
+        let swap = digits[low];
+        digits[low] = digits[high];
+        digits[high] = swap;
+        low = low + 1;
+    }
+    index = 0;
+    while index < zeros {
+        into[index] = 0;
+        index = index + 1;
+    }
+    return zeros + size;
+}
