@@ -17,6 +17,28 @@
 namespace Rux::HirToLirDetail {
 
 namespace {
+// Whether every value of the source is a valid character of the target, so the cast needs no check: one scalar width
+// to another, or a code unit or unsigned integer whose whole range fits the target and, for a scalar target, stays
+// below the surrogates.
+bool CharacterCastAlwaysValid(const TypeRef &source, const TypeRef &target) {
+    const bool scalarTarget = CharacterDomainOf(target.kind) == CharacterDomain::ScalarValue;
+    std::optional<std::uint64_t> sourceMaximum;
+    if (source.IsChar()) {
+        if (CharacterDomainOf(source.kind) == CharacterDomain::ScalarValue) {
+            return scalarTarget;
+        }
+        sourceMaximum = MaxCharacterValue(source.kind);
+    }
+    else if (source.IsInteger() && !source.IsSigned()) {
+        if (const auto bytes = source.SizeInBytes(); bytes && *bytes < 8) {
+            sourceMaximum = (std::uint64_t{1} << (*bytes * 8)) - 1;
+        }
+    }
+    const auto targetMaximum = MaxCharacterValue(target.kind);
+    return sourceMaximum && targetMaximum && *sourceMaximum <= *targetMaximum &&
+           (!scalarTarget || *sourceMaximum < 0xD800);
+}
+
 /// What the spelling of a divisor already settles: whether it is not zero, and whether it is minus one. Only a plain
 /// decimal literal of the operation's own type, possibly negated, is read; anything else is answered at run time,
 /// where a release build still folds a check whose operands became constant.
@@ -249,7 +271,7 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirCastExpr *>(&expr)) {
         const LirReg value = LowerExpr(*e->operand);
         const TypeRef &sourceType = e->operand->type;
-        if (e->type.IsChar()) {
+        if (e->type.IsChar() && !CharacterCastAlwaysValid(sourceType, e->type)) {
             // Check before narrowing, so discarded high bits and negative values cannot become valid characters.
             TypeRef checkType = TypeRef::MakeUInt64();
             switch (sourceType.IsFloat() ? 8 : sourceType.SizeInBytes().value_or(8)) {

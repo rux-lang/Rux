@@ -51,6 +51,11 @@ bool UnprefixedCharLiteralFits(const Expr &expression, const TypeRef &target) {
 }
 } // namespace
 
+TypeRef AnalysisContext::CheckedExpressionType(const Expr &expression) {
+    const auto checked = expressionTypes.find(&expression);
+    return checked != expressionTypes.end() ? checked->second : CheckExpr(expression);
+}
+
 bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
     if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
         return CanConstructNative(*construct, targetType);
@@ -88,7 +93,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             // writably only from a place that can be written.
             if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr)) {
                 for (const auto &element : array->elements) {
-                    const TypeRef elementType = CheckExpr(*element);
+                    const TypeRef elementType = CheckedExpressionType(*element);
                     if (!CanAssignExprTo(*element, elementType, *sliceElement)) {
                         return false;
                     }
@@ -96,7 +101,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
                 return true;
             }
             if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr)) {
-                const TypeRef elementType = CheckExpr(*repeat->value);
+                const TypeRef elementType = CheckedExpressionType(*repeat->value);
                 return CanAssignExprTo(*repeat->value, elementType, *sliceElement);
             }
             if (targetType.IsWritableSlice() && !PlaceIsWritable(expr, exprType)) {
@@ -116,7 +121,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             return false;
         }
         for (const auto &element : array->elements) {
-            const TypeRef elementType = CheckExpr(*element);
+            const TypeRef elementType = CheckedExpressionType(*element);
             if (!CanAssignExprTo(*element, elementType, targetType.inner[0])) {
                 return false;
             }
@@ -129,7 +134,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         if (exprType.kind != TypeRef::Kind::Array || exprType.arrayLength != targetType.arrayLength) {
             return false;
         }
-        const TypeRef elementType = CheckExpr(*repeat->value);
+        const TypeRef elementType = CheckedExpressionType(*repeat->value);
         return CanAssignExprTo(*repeat->value, elementType, targetType.inner[0]);
     }
 
@@ -160,8 +165,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             if (!bound) {
                 continue;
             }
-            const auto checked = expressionTypes.find(bound);
-            const TypeRef boundType = checked != expressionTypes.end() ? checked->second : CheckExpr(*bound);
+            const TypeRef boundType = CheckedExpressionType(*bound);
             if (!CanAssignExprTo(*bound, boundType, element)) {
                 return false;
             }

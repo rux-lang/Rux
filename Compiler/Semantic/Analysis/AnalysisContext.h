@@ -1063,6 +1063,9 @@ private:
     void CheckDecl(const Decl &declaration);
     [[nodiscard]] std::optional<std::uint64_t> EvalArrayLength(const Expr &expression) const;
     void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail = false);
+    /// The type an expression was already checked to have, checking it only when it has not been: asking twice must
+    /// not report its errors twice.
+    [[nodiscard]] TypeRef CheckedExpressionType(const Expr &expression);
     [[nodiscard]] bool CanAssignExprTo(const Expr &expression, const TypeRef &expressionType,
                                        const TypeRef &targetType);
     [[nodiscard]] std::string AssignmentErrorMessage(const Expr &expression, const TypeRef &targetType,

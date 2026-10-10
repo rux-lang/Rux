@@ -463,6 +463,30 @@ TEST_CASE("cast and type-test diagnostics name source and target types") {
     CHECK_EQ(diagnostics[5].message, "type test 'is Marker' is unavailable: interface checks are not implemented");
 }
 
+TEST_CASE("constant char casts are checked whatever the constant's spelling") {
+    const auto diagnostics = AnalyzeSource(R"(
+        const Negative: int32 = -1;
+        const M: char32 = -1i32 as char32;
+        const Table: char8[2] = [c8'a', -1i8 as char8];
+        const Wide: char128[1] = [-1i32 as char128];
+        func Main() {
+            let b = -(1i32) as char32;
+            let named = Negative as char16;
+            let surrogate = 0xDC00i64 as char32;
+            let views: char8[..] = [-2i16 as char8];
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 7);
+    CHECK_EQ(diagnostics[0].message, "constant cast from 'int32' to 'char32' is outside the target type's range");
+    CHECK_EQ(diagnostics[1].message, "constant cast from 'int8' to 'char8' is outside the target type's range");
+    CHECK_EQ(diagnostics[2].message, "constant cast from 'int32' to 'char128' is outside the target type's range");
+    CHECK_EQ(diagnostics[3].message, "constant cast from 'int32' to 'char32' is outside the target type's range");
+    CHECK_EQ(diagnostics[4].message, "constant cast from 'int32' to 'char16' is outside the target type's range");
+    CHECK_EQ(diagnostics[5].message, "cast from 'int64' to 'char32' uses invalid surrogate code point U+DC00");
+    CHECK_EQ(diagnostics[6].message, "constant cast from 'int16' to 'char8' is outside the target type's range");
+}
+
 TEST_CASE("function values cast to and from pointers but not to scalars") {
     const auto diagnostics = AnalyzeSource(R"(
         func Load(address: *opaque) {

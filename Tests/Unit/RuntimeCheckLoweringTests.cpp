@@ -612,6 +612,46 @@ TEST_CASE("runtime character casts reject values outside the target character do
     }
 }
 
+TEST_CASE("character casts every source value survives carry no check") {
+    const LirPackage package = CompileChecks(R"(func Byte(a: uint8) -> char32 {
+    return a as char32;
+}
+
+func Unit(a: char8) -> char16 {
+    return a as char16;
+}
+
+func Scalar(a: char32) -> char512 {
+    return a as char512;
+}
+
+func Same(a: char16) -> char16 {
+    return a as char16;
+}
+
+func Word(a: uint16) -> char32 {
+    return a as char32;
+}
+
+func Narrow(a: char32) -> char8 {
+    return a as char8;
+}
+
+func Surrogate(a: char16) -> char32 {
+    return a as char32;
+}
+)",
+                                             BuildProfile::Debug);
+    for (const std::string_view function : {"Byte", "Unit", "Scalar", "Same"}) {
+        CAPTURE(function);
+        CHECK(Traps(package, function, "invalid character cast").empty());
+    }
+    for (const std::string_view function : {"Word", "Narrow", "Surrogate"}) {
+        CAPTURE(function);
+        CHECK_EQ(Traps(package, function, "invalid character cast").size(), 1);
+    }
+}
+
 TEST_CASE("optimization preserves character casts whose result is discarded") {
     for (const std::string expression : {"((value as char128) as int) * 0", "((value as char128) as int) % 1"}) {
         const std::string source = "func Convert(value: uint128) -> int { return " + expression +

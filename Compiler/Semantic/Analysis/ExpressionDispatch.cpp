@@ -429,7 +429,7 @@ TypeRef AnalysisContext::LiteralType(const Token &tok) const {
 /// Reject a constant that the target character width cannot hold.
 ///
 /// The width's own rule decides: a code unit accepts everything that fits in it, a scalar value stops at U+10FFFF
-/// AnalysisContext::and refuses the surrogates. Every character width is covered, so a width gains this check by
+/// and refuses the surrogates. Every character width is covered, so a width gains this check by
 /// joining the catalog rather than by being listed here.
 void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
                                            const TypeRef &targetType) const {
@@ -441,16 +441,24 @@ void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const Typ
         EmitError(expression.location, std::format("constant cast from '{}' to '{}' is outside the target type's range",
                                                    operandType.ToString(), targetType.ToString()));
     };
-    if (const auto value = EvalConstInt(*expression.operand); value && *value < 0) {
-        outOfRange();
-        return;
+    // A constant folds whatever its spelling: a suffixed literal, a negated or parenthesized one, or a named constant.
+    // Constant data never reaches the run-time check, so a value the target cannot hold must be refused here.
+    std::optional<std::uint64_t> charValue;
+    if (const auto value = EvalConstInteger(*expression.operand)) {
+        if (*value < 0) {
+            outOfRange();
+            return;
+        }
+        charValue = static_cast<std::uint64_t>(*value);
     }
-    const auto constant = EvalConstCharCastValue(*expression.operand);
-    if (!constant) {
-        return;
+    else {
+        const auto constant = EvalConstCharCastValue(*expression.operand);
+        if (!constant) {
+            return;
+        }
+        // A wide integer constant can lie beyond a machine word, and so beyond every character width's maximum too.
+        charValue = constant->ToUnsigned();
     }
-    // A wide integer constant can lie beyond a machine word, and so beyond every character width's maximum too.
-    const std::optional<std::uint64_t> charValue = constant->ToUnsigned();
     if (!charValue || *charValue > *maximum) {
         outOfRange();
     }
