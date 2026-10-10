@@ -7,7 +7,7 @@
 /// The compiler drives iteration by shape rather than through this interface: a `for` loop accepts any type with a
 /// `func Next(self: &var Self) -> Item?`, which advances the cursor and reports either the next item or, with `none`,
 /// that the sequence has ended. The item type is whatever that optional carries, and it differs per iterator, so the
-/// method cannot be written here — an interface has no way to name a type its implementor chooses.
+/// method is not written here; the generic `Cursor<T>` names it for bounds, which is how the adaptors take an iterator.
 /// What this interface adds is the name. `extend MyCursor : Iterator` records that a type means to be an iterator
 /// and documents which of its methods carry the protocol, and a bound written `<T: Iterator>` says what a generic
 /// expects of its argument. Neither is required to iterate, and a bound on it grants no operations, so a generic that
