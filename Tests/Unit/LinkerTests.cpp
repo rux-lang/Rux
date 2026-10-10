@@ -1168,7 +1168,7 @@ TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     const auto gnuBytes = read(gnuFirst);
     CHECK(gnuBytes == read(gnuSecond));
     CHECK(gnuBytes.starts_with("!<arch>\n/"));
-    CHECK(read(bsd).starts_with("!<arch>\n__.SYMDEF SORTED"));
+    CHECK(read(bsd).starts_with("!<arch>\n#1/20           "));
     const auto coffBytes = read(coff);
     CHECK(coffBytes.starts_with("!<arch>\n/"));
     CHECK(read(importLibrary).find("__imp_Answer") != std::string::npos);
@@ -1176,6 +1176,56 @@ TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     for (const auto &path : {gnuFirst, gnuSecond, bsd, coff, importLibrary}) {
         std::filesystem::remove(path, ec);
     }
+}
+
+TEST_CASE("BSD archives name their members and symbol table the way Apple's ar does") {
+    NativeObject object;
+    object.name = "Library.o";
+    object.bytes = {0xCF, 0xFA, 0xED, 0xFE, 0x07};
+    object.publicSymbols = {"_Answer", "_Question"};
+    const auto path = std::filesystem::temp_directory_path() / "rux-archive-bsd-layout.a";
+    std::string error;
+    REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::MacOS, Target::Arch::AArch64, path, error));
+    std::ifstream stream(path, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    stream.close();
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+
+    const auto field = [&](const std::size_t at, const std::size_t width) {
+        std::string text = bytes.substr(at, width);
+        return text.substr(0, text.find_last_not_of(' ') + 1);
+    };
+    const auto little32 = [&](const std::size_t at) {
+        return static_cast<std::uint32_t>(static_cast<std::uint8_t>(bytes[at])) |
+               static_cast<std::uint32_t>(static_cast<std::uint8_t>(bytes[at + 1])) << 8U |
+               static_cast<std::uint32_t>(static_cast<std::uint8_t>(bytes[at + 2])) << 16U |
+               static_cast<std::uint32_t>(static_cast<std::uint8_t>(bytes[at + 3])) << 24U;
+    };
+    REQUIRE(bytes.starts_with("!<arch>\n"));
+
+    // The symbol table: a long name of twenty bytes, then the ranlib entries and their strings.
+    CHECK_EQ(field(8, 16), "#1/20");
+    const std::size_t tableSize = std::stoul(field(8 + 48, 10));
+    CHECK_EQ(bytes.substr(68, 20), std::string("__.SYMDEF SORTED\0\0\0\0", 20));
+    const std::size_t table = 88;
+    CHECK_EQ(little32(table), 16);
+    const std::size_t member = 8 + 60 + tableSize;
+    CHECK_EQ(member % 8, 0);
+    CHECK_EQ(little32(table + 8), member);
+    CHECK_EQ(little32(table + 16), member);
+    const std::size_t strings = table + 4 + 16 + 4;
+    CHECK_EQ(std::string(bytes.c_str() + strings + little32(table + 4)), "_Answer");
+    CHECK_EQ(std::string(bytes.c_str() + strings + little32(table + 12)), "_Question");
+
+    // The object: its name leads its data, which starts on an eight-byte boundary.
+    CHECK_EQ(field(member, 16), "#1/12");
+    const std::size_t memberSize = std::stoul(field(member + 48, 10));
+    CHECK_EQ(bytes.substr(member + 60, 12), std::string("Library.o\0\0\0", 12));
+    CHECK_EQ((member + 60 + 12) % 8, 0);
+    CHECK_EQ(bytes.substr(member + 72, 5), std::string("\xCF\xFA\xED\xFE\x07", 5));
+    CHECK_EQ((60 + memberSize) % 8, 0);
+    CHECK_EQ(member + 60 + memberSize, bytes.size());
 }
 
 TEST_CASE("ELF linker starts each object's sections on the alignment that object asked for") {

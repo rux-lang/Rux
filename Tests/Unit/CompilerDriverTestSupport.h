@@ -373,11 +373,21 @@ inline MachOArchiveContents InspectMacOSAArch64Archive(const std::filesystem::pa
         if (size.empty()) {
             break;
         }
-        const auto memberSize = static_cast<std::size_t>(std::stoul(size));
-        const std::size_t body = at + 60;
-        if (body + memberSize > archive.size()) {
+        const auto storedSize = static_cast<std::size_t>(std::stoul(size));
+        // A BSD `#1/<length>` name leads the member's data and counts in its size.
+        std::size_t nameLength = 0;
+        if (archive[at] == '#' && archive[at + 1] == '1' && archive[at + 2] == '/') {
+            std::string digits;
+            for (std::size_t i = 3; i < 16 && archive[at + i] != ' '; ++i) {
+                digits.push_back(static_cast<char>(archive[at + i]));
+            }
+            nameLength = digits.empty() ? 0 : static_cast<std::size_t>(std::stoul(digits));
+        }
+        if (nameLength > storedSize || at + 60 + storedSize > archive.size()) {
             break;
         }
+        const std::size_t body = at + 60 + nameLength;
+        const std::size_t memberSize = storedSize - nameLength;
         if (memberSize >= 32 && Read32(archive, body) == 0xFEED'FACF && Read32(archive, body + 4) == 0x0100'000C &&
             Read32(archive, body + 12) == 1) {
             ++contents.objects;
@@ -401,7 +411,7 @@ inline MachOArchiveContents InspectMacOSAArch64Archive(const std::filesystem::pa
                 command += commandSize;
             }
         }
-        at = body + memberSize + (memberSize & 1U);
+        at += 60 + storedSize + (storedSize & 1U);
     }
     return contents;
 }

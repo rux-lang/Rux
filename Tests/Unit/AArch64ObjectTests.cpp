@@ -331,12 +331,16 @@ public:
         return member;
     }
 
+    /// Where a member's contents start: after its header and, for a `#1/<length>` name, after the name it leads with.
     [[nodiscard]] std::size_t MemberData(const std::size_t index) const {
-        return Member(index) + 60;
+        return Member(index) + 60 + LongNameLength(Member(index));
     }
 
     [[nodiscard]] std::string MemberName(const std::size_t index) const {
         const auto member = Member(index);
+        if (const std::size_t length = LongNameLength(member); length != 0) {
+            return String(member + 60);
+        }
         return std::string(bytes.begin() + static_cast<std::ptrdiff_t>(member),
                            bytes.begin() + static_cast<std::ptrdiff_t>(member + 16));
     }
@@ -354,6 +358,17 @@ public:
     }
 
 private:
+    [[nodiscard]] std::size_t LongNameLength(const std::size_t member) const {
+        if (bytes.at(member) != '#' || bytes.at(member + 1) != '1' || bytes.at(member + 2) != '/') {
+            return 0;
+        }
+        const char *first = reinterpret_cast<const char *>(bytes.data() + member + 3);
+        std::size_t value = 0;
+        const auto result = std::from_chars(first, first + 13, value);
+        REQUIRE(result.ec == std::errc{});
+        return value;
+    }
+
     [[nodiscard]] std::size_t MemberSize(const std::size_t member) const {
         const char *first = reinterpret_cast<const char *>(bytes.data() + member + 48);
         std::size_t value = 0;
@@ -973,9 +988,13 @@ TEST_CASE("macOS ARM64 static archives carry deterministic BSD symbol indexes") 
     REQUIRE(WriteNativeArchive(objects, Target::OS::MacOS, Target::Arch::AArch64, secondPath, error));
     const BsdArchive archive(ReadBytes(firstPath));
     CHECK(archive.Bytes() == ReadBytes(secondPath));
-    CHECK(archive.MemberName(0).starts_with("__.SYMDEF SORTED"));
-    CHECK(archive.MemberName(1).starts_with("Zulu.o/"));
-    CHECK(archive.MemberName(2).starts_with("Alpha.o/"));
+    CHECK(archive.MemberName(0) == "__.SYMDEF SORTED");
+    CHECK(archive.MemberName(1) == "Zulu.o");
+    CHECK(archive.MemberName(2) == "Alpha.o");
+    for (std::size_t member = 0; member < 3; ++member) {
+        CHECK(archive.Member(member) % 8 == 0);
+        CHECK(archive.MemberData(member) % 8 == 0);
+    }
 
     const auto index = archive.MemberData(0);
     CHECK(archive.Word(index) == 16); // two eight-byte ranlib entries
@@ -983,7 +1002,7 @@ TEST_CASE("macOS ARM64 static archives carry deterministic BSD symbol indexes") 
     CHECK(archive.Word(index + 8) == archive.Member(2)); // _Alpha sorts first
     CHECK(archive.Word(index + 12) == 7);
     CHECK(archive.Word(index + 16) == archive.Member(1));
-    CHECK(archive.Word(index + 20) == 13);
+    CHECK(archive.Word(index + 20) == 16); // thirteen bytes of names, padded to keep the table eight-byte sized
     CHECK(archive.String(index + 24) == "_Alpha");
     CHECK(archive.String(index + 31) == "_Zulu");
     CHECK(archive.Word(archive.MemberData(1) + 4) == 0x0100000C);
