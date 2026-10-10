@@ -206,7 +206,9 @@ void AnalysisContext::CheckBlock(const Block &block) {
         currentBorrowStatement = statement.get();
         endedBorrowProvenance.clear();
         if (trackedFlowReachable) {
+            const auto mark = moveStates.Mark();
             CheckStatement(*statement);
+            moveStates.DiscardTemporariesSince(mark);
             ExpireDeadBorrowsAfter(*statement);
             endedBorrowProvenance.clear();
             continue;

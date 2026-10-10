@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Rux::SemanticDetail {
@@ -72,6 +73,11 @@ public:
     void Reset();
     void BeginScope();
     void EndScope();
+    /// Where the innermost scope ends now, to discard the temporaries declared after it later.
+    [[nodiscard]] std::pair<std::size_t, std::size_t> Mark() const noexcept;
+    /// Forgets the temporaries the innermost scope gained since `mark`. A statement's temporaries are consumed within
+    /// it, and keeping them would make every later snapshot of the function longer.
+    void DiscardTemporariesSince(std::pair<std::size_t, std::size_t> mark);
     void Declare(Identity identity, State state, SourceLocation location);
     [[nodiscard]] std::optional<Issue> Read(Identity identity) const;
     [[nodiscard]] std::optional<Issue> Move(Identity identity, SourceLocation location);
@@ -98,6 +104,9 @@ private:
     std::vector<std::vector<Identity>> scopes;
 
     [[nodiscard]] static std::optional<Issue> IssueFor(const Record &record);
+    /// Each identity's first entry in `snapshot`, which is the one a scan from the front would find.
+    [[nodiscard]] static std::unordered_map<Identity, const SnapshotEntry *, IdentityHash>
+    IndexEntries(const Snapshot &snapshot);
     [[nodiscard]] static State MergeStates(State left, State right);
     [[nodiscard]] static std::vector<std::string> MergeParts(const Record &left, const Record &right);
 };

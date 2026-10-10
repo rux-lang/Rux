@@ -68,6 +68,34 @@ TEST_CASE("straight-line move state records locals temporaries assignments and s
     CHECK(tracker.TryGet(temporaryIdentity) == nullptr);
 }
 
+TEST_CASE("a statement's temporaries are forgotten when it ends while its locals stay") {
+    MoveStateTracker tracker;
+    int before = 0;
+    int temporary = 0;
+    int declared = 0;
+    int later = 0;
+    tracker.Reset();
+    tracker.Declare(MoveStateTracker::Temporary(&before), MoveStateTracker::State::Initialized, {1, 1, 0});
+
+    const auto mark = tracker.Mark();
+    tracker.Declare(MoveStateTracker::Temporary(&temporary), MoveStateTracker::State::Initialized, {2, 1, 10});
+    tracker.Declare(MoveStateTracker::Local(&declared), MoveStateTracker::State::Initialized, {2, 5, 14});
+    tracker.Declare(MoveStateTracker::Temporary(&later), MoveStateTracker::State::Initialized, {2, 9, 18});
+    tracker.DiscardTemporariesSince(mark);
+
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&before)) != nullptr);
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&temporary)) == nullptr);
+    CHECK(tracker.TryGet(MoveStateTracker::Local(&declared)) != nullptr);
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&later)) == nullptr);
+    CHECK_EQ(tracker.Save().entries.size(), 2);
+
+    // A mark from another scope depth discards nothing.
+    tracker.BeginScope();
+    tracker.Declare(MoveStateTracker::Temporary(&temporary), MoveStateTracker::State::Initialized, {3, 1, 30});
+    tracker.DiscardTemporariesSince(mark);
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&temporary)) != nullptr);
+}
+
 TEST_CASE("semantic analysis diagnoses straight-line reads before initialization") {
     Lexer lexer(R"(
         func Main(parameter: int32) -> int32 {

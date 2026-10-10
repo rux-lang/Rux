@@ -37,6 +37,27 @@ void MoveStateTracker::EndScope() {
     scopes.pop_back();
 }
 
+std::pair<std::size_t, std::size_t> MoveStateTracker::Mark() const noexcept {
+    return {scopes.size(), scopes.empty() ? 0 : scopes.back().size()};
+}
+
+void MoveStateTracker::DiscardTemporariesSince(const std::pair<std::size_t, std::size_t> mark) {
+    // A statement leaves the scopes as it found them; one that did not is left alone.
+    if (scopes.size() != mark.first || scopes.back().size() <= mark.second) {
+        return;
+    }
+    auto &scope = scopes.back();
+    const auto kept = std::remove_if(scope.begin() + static_cast<std::ptrdiff_t>(mark.second), scope.end(),
+                                     [&](const Identity identity) {
+                                         if (identity.kind != IdentityKind::Temporary) {
+                                             return false;
+                                         }
+                                         records.erase(identity);
+                                         return true;
+                                     });
+    scope.erase(kept, scope.end());
+}
+
 void MoveStateTracker::Declare(const Identity identity, const State state, const SourceLocation location) {
     if (scopes.empty()) {
         Reset();
@@ -146,11 +167,19 @@ MoveStateTracker::Snapshot MoveStateTracker::Merge(const std::span<const Snapsho
         return {};
     }
 
+    // Every expression a function checks is tracked, so a snapshot grows with the function, and a function has a merge
+    // for each branch: finding entries by a scan would make checking it cubic in its length.
     Snapshot result = snapshots.front();
-    for (SnapshotEntry &entry : result.entries) {
-        for (const Snapshot &snapshot : snapshots.subspan(1)) {
-            const auto other = std::ranges::find(snapshot.entries, entry.identity, &SnapshotEntry::identity);
-            if (other == snapshot.entries.end()) {
+    for (const Snapshot &snapshot : snapshots.subspan(1)) {
+        const auto index = IndexEntries(snapshot);
+        for (SnapshotEntry &entry : result.entries) {
+            const auto found = index.find(entry.identity);
+            if (found == index.end()) {
+                continue;
+            }
+            const SnapshotEntry *other = found->second;
+            if (entry.record.state == State::Initialized && other->record.state == State::Initialized) {
+                // Both paths hold the whole value, so nothing about it changes.
                 continue;
             }
             const State merged = MergeStates(entry.record.state, other->record.state);
@@ -167,13 +196,23 @@ MoveStateTracker::Snapshot MoveStateTracker::Merge(const std::span<const Snapsho
 
 MoveStateTracker::Snapshot MoveStateTracker::Project(const Snapshot &source, const Snapshot &shape) {
     Snapshot result = shape;
+    const auto index = IndexEntries(source);
     for (SnapshotEntry &entry : result.entries) {
-        const auto record = std::ranges::find(source.entries, entry.identity, &SnapshotEntry::identity);
-        if (record != source.entries.end()) {
-            entry.record = record->record;
+        if (const auto record = index.find(entry.identity); record != index.end()) {
+            entry.record = record->second->record;
         }
     }
     return result;
+}
+
+std::unordered_map<MoveStateTracker::Identity, const MoveStateTracker::SnapshotEntry *, MoveStateTracker::IdentityHash>
+MoveStateTracker::IndexEntries(const Snapshot &snapshot) {
+    std::unordered_map<Identity, const SnapshotEntry *, IdentityHash> index;
+    index.reserve(snapshot.entries.size());
+    for (const SnapshotEntry &entry : snapshot.entries) {
+        index.try_emplace(entry.identity, &entry);
+    }
+    return index;
 }
 
 std::size_t MoveStateTracker::IdentityHash::operator()(const Identity identity) const noexcept {
