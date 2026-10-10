@@ -4,7 +4,9 @@
 // consuming anything: to another instruction (`Jump`), to two at once with the first preferred (`Split`), by recording
 // the position in a capture slot (`Save`), or by checking where in the text it is (`Assert`). `Match` ends a match.
 
-import Unicode::{ CategoryOf, Fold, IsAlphabetic, IsNumeric, IsWhiteSpace, ToLowerSimple, ToUpperSimple };
+import Unicode::{
+    CategoryOf, Fold, IsAlphabetic, IsNumeric, IsWhiteSpace, NextInCaseOrbit, ToLowerSimple, ToUpperSimple
+};
 
 // What an instruction does.
 enum Op: uint8 {
@@ -205,6 +207,15 @@ func ClassMatches(items: ClassItem[..], flags: uint8, c: uint32) -> bool {
         if !found {
             let lower = ToLowerSimple(c as char32) as uint32;
             found = lower != c && lower != folded && AnyHolds(items, lower);
+        }
+        // The other members of the character's case orbit, such as the Kelvin sign for `k` or `ς` for `σ`, which no
+        // simple mapping of `c` reaches. An orbit has at most four members, so the walk is bounded.
+        var other = NextInCaseOrbit(c as char32) as uint32;
+        var steps: uint = 0;
+        while !found && other != c && steps < 4u {
+            found = AnyHolds(items, other);
+            other = NextInCaseOrbit(other as char32) as uint32;
+            steps = steps + 1;
         }
     }
     return found != ((flags & ClassNegated) != 0u8);

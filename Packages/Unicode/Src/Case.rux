@@ -37,6 +37,26 @@ pub func ToTitleSimple(scalar: char32) -> char32 {
     return ToUpperSimple(scalar);
 }
 
+/// The next scalar value that case-insensitive comparison treats as `scalar`, going round the set of values with the
+/// same simple case folding: `k`, `K` and the Kelvin sign, or `σ`, `ς` and `Σ`. Calling it again on each answer
+/// visits every member of the set and comes back to `scalar`, so a caller asking whether a set of characters holds any
+/// form of a letter tests each answer until it returns.
+/// @param scalar the scalar value to start from
+/// @returns the next member of its set, or `scalar` itself when no other value folds with it
+/// @see https://rux-lang.dev/docs/api/unicode/case#next-in-case-orbit
+pub func NextInCaseOrbit(scalar: char32) -> char32 {
+    let point = scalar as uint32;
+    let listed = PairValue(CaseOrbitPairs[..], point);
+    if listed != point { return listed as char32; }
+    // Otherwise the set is a lowercase and an uppercase that map to each other. A mapping that does not map back,
+    // such as the dotted capital I's to `i`, leaves the value alone: the two do not fold together.
+    let lower = ToLowerSimple(scalar);
+    if lower != scalar && ToUpperSimple(lower) == scalar { return lower; }
+    let upper = ToUpperSimple(scalar);
+    if upper != scalar && ToLowerSimple(upper) == scalar { return upper; }
+    return scalar;
+}
+
 // Writes a mapping's expansion into `into`, falling back to `fallback` for a point with no entry. The longest full
 // mapping is three values, so a buffer of three always suffices.
 func WriteMapping(index: uint32[..], elements: uint32[..], scalar: char32, fallback: char32,

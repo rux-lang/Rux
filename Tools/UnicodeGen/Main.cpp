@@ -31,7 +31,9 @@ struct Sha256 {
     std::vector<std::uint8_t> buffer;
     std::uint64_t total = 0;
 
-    static std::uint32_t Rot(std::uint32_t value, int by) { return (value >> by) | (value << (32 - by)); }
+    static std::uint32_t Rot(std::uint32_t value, int by) {
+        return (value >> by) | (value << (32 - by));
+    }
 
     void Block(const std::uint8_t *p) {
         static constexpr std::uint32_t k[64] = {
@@ -123,7 +125,8 @@ std::vector<std::string> SplitFields(const std::string &line, const char separat
         if (ch == separator) {
             fields.push_back(field);
             field.clear();
-        } else {
+        }
+        else {
             field += ch;
         }
     }
@@ -181,7 +184,8 @@ std::vector<PropertyLine> ReadPropertyFile(const std::filesystem::path &path) {
         const std::size_t dots = range.find("..");
         if (dots == std::string::npos) {
             entry.first = entry.last = Hex(range);
-        } else {
+        }
+        else {
             entry.first = Hex(range.substr(0, dots));
             entry.last = Hex(range.substr(dots + 2));
         }
@@ -207,7 +211,8 @@ std::vector<ValueRange> Compress(const std::map<std::uint32_t, std::uint32_t> &v
     for (const auto &[cp, value] : values) {
         if (!out.empty() && out.back().last + 1 == cp && out.back().value == value) {
             out.back().last = cp;
-        } else {
+        }
+        else {
             out.push_back({cp, cp, value});
         }
     }
@@ -267,7 +272,8 @@ struct RuxWriter {
             }
             if (index % 12 == 11 || index + 1 == values.size()) {
                 text += "\n";
-            } else {
+            }
+            else {
                 text += " ";
             }
         }
@@ -313,6 +319,8 @@ struct Database {
     std::vector<PropertyLine> emoji;
     std::set<std::uint32_t> compositionExclusions;
     std::map<std::uint32_t, std::vector<std::uint32_t>> fullFold;
+    /// The simple case folding, C and S entries: what a point folds to when one point must stand for one point.
+    std::map<std::uint32_t, std::uint32_t> simpleFold;
     std::map<std::uint32_t, std::vector<std::uint32_t>> fullUpper;
     std::map<std::uint32_t, std::vector<std::uint32_t>> fullLower;
 };
@@ -406,6 +414,9 @@ void ReadCaseFolding(Database &db, const std::filesystem::path &path) {
         // C and F together are the full, locale-independent folding; S is the simple alternative to F and T the
         // Turkic special case, and taking either would change answers by locale, which folding exists to avoid.
         const std::string status = Trim(fields[1]);
+        if (status == "C" || status == "S") {
+            db.simpleFold[Hex(Trim(fields[0]))] = Hex(Trim(fields[2]));
+        }
         if (status != "C" && status != "F") {
             continue;
         }
@@ -444,9 +455,9 @@ void ReadSpecialCasing(Database &db, const std::filesystem::path &path) {
 // The general categories, numbered in a fixed order the Rux enum mirrors. Order is meaning here: the table stores
 // the ordinal, so the enum in `Category.rux` must list them identically.
 const std::vector<std::string> &CategoryNames() {
-    static const std::vector<std::string> names = {
-        "Cn", "Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd", "Nl", "No", "Pc", "Pd", "Ps",
-        "Pe", "Pi", "Pf", "Po", "Sm", "Sc", "Sk", "So", "Zs", "Zl", "Zp", "Cc", "Cf", "Cs", "Co"};
+    static const std::vector<std::string> names = {"Cn", "Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd",
+                                                   "Nl", "No", "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po", "Sm",
+                                                   "Sc", "Sk", "So", "Zs", "Zl", "Zp", "Cc", "Cf", "Cs", "Co"};
     return names;
 }
 
@@ -507,10 +518,8 @@ void EmitProperties(const Database &db, const std::filesystem::path &out,
     writer.Array("Canonical combining class ranges: first, last, class. A code point in no range has class zero, "
                  "which is nearly all of them.",
                  "CombiningClassRanges", FlattenRanges(Compress(combining), true));
-    writer.Array("White_Space ranges: first, last.", "WhiteSpaceRanges",
-                 FlattenRanges(CompressSet(whiteSpace), false));
-    writer.Array("Alphabetic ranges: first, last.", "AlphabeticRanges",
-                 FlattenRanges(CompressSet(alphabetic), false));
+    writer.Array("White_Space ranges: first, last.", "WhiteSpaceRanges", FlattenRanges(CompressSet(whiteSpace), false));
+    writer.Array("Alphabetic ranges: first, last.", "AlphabeticRanges", FlattenRanges(CompressSet(alphabetic), false));
     writer.Array("Numeric ranges -- the Nd, Nl and No categories: first, last.", "NumericRanges",
                  FlattenRanges(CompressSet(numeric), false));
     writer.Write(out);
@@ -554,14 +563,47 @@ void EmitCase(const Database &db, const std::filesystem::path &out,
     };
 
     RuxWriter writer;
-    writer.Header("The case tables: simple mappings, the unconditional full mappings, and full case folding.",
-                  hashes);
+    writer.Header("The case tables: simple mappings, the unconditional full mappings, and full case folding.", hashes);
     writer.Array("Simple uppercase pairs: code point, its uppercase. Sorted; absence means the point maps to "
                  "itself.",
                  "SimpleUpperPairs", pairs(upper));
     writer.Array("Simple lowercase pairs: code point, its lowercase.", "SimpleLowerPairs", pairs(lower));
     writer.Array("Simple titlecase pairs, for the points whose titlecase differs from their uppercase.",
                  "SimpleTitlePairs", pairs(title));
+
+    // The points that fold to one point form its orbit. Most orbits are a lowercase and an uppercase point, which
+    // the simple mappings already pair; the table lists only the others -- three or more points, such as k, K and the
+    // Kelvin sign, or two whose folded point does not map to the other, such as ß and ẞ -- with each point followed
+    // by the next point of its orbit, the largest followed by the smallest.
+    std::map<std::uint32_t, std::vector<std::uint32_t>> orbits;
+    for (const auto &[cp, folded] : db.simpleFold) {
+        auto &orbit = orbits[folded];
+        if (orbit.empty()) {
+            orbit.push_back(folded);
+        }
+        orbit.push_back(cp);
+    }
+    std::map<std::uint32_t, std::uint32_t> orbitNext;
+    for (auto &[folded, orbit] : orbits) {
+        std::ranges::sort(orbit);
+        const auto mapsTo = [&](const std::map<std::uint32_t, std::uint32_t> &mapping, const std::uint32_t from,
+                                const std::uint32_t to) {
+            const auto found = mapping.find(from);
+            return found != mapping.end() && found->second == to;
+        };
+        if (orbit.size() == 2) {
+            const std::uint32_t other = orbit[0] == folded ? orbit[1] : orbit[0];
+            if (mapsTo(upper, folded, other) || mapsTo(lower, folded, other)) {
+                continue;
+            }
+        }
+        for (std::size_t index = 0; index < orbit.size(); ++index) {
+            orbitNext[orbit[index]] = orbit[(index + 1) % orbit.size()];
+        }
+    }
+    writer.Array("Case orbits the simple mappings do not pair: code point, the next point that folds to the same "
+                 "point, the largest followed by the smallest. Sorted.",
+                 "CaseOrbitPairs", pairs(orbitNext));
 
     std::vector<std::uint32_t> foldIndex;
     const auto foldPool = pool(db.fullFold, foldIndex);
@@ -677,9 +719,9 @@ void EmitNormalization(const Database &db, const std::filesystem::path &out,
 void EmitGraphemes(const Database &db, const std::filesystem::path &out,
                    const std::vector<std::pair<std::string, std::string>> &hashes) {
     // The break classes, numbered in the order the Rux enum mirrors. `Any` is zero: a code point in no range.
-    const std::vector<std::string> classes = {"Any",  "CR",          "LF",     "Control", "Extend", "ZWJ",
-                                              "Regional_Indicator", "Prepend", "SpacingMark", "L",   "V",
-                                              "T",    "LV",          "LVT"};
+    const std::vector<std::string> classes = {
+        "Any",     "CR",          "LF", "Control", "Extend", "ZWJ", "Regional_Indicator",
+        "Prepend", "SpacingMark", "L",  "V",       "T",      "LV",  "LVT"};
     std::map<std::uint32_t, std::uint32_t> values;
     for (const auto &entry : db.graphemeBreaks) {
         std::uint32_t ordinal = 0;
@@ -716,9 +758,11 @@ void EmitGraphemes(const Database &db, const std::filesystem::path &out,
         for (std::uint32_t cp = entry.first; cp <= entry.last; ++cp) {
             if (entry.value == "Consonant") {
                 conjunctConsonants.insert(cp);
-            } else if (entry.value == "Linker") {
+            }
+            else if (entry.value == "Linker") {
                 conjunctLinkers.insert(cp);
-            } else if (entry.value == "Extend") {
+            }
+            else if (entry.value == "Extend") {
                 conjunctExtends.insert(cp);
             }
         }
@@ -747,8 +791,7 @@ void EmitGraphemes(const Database &db, const std::filesystem::path &out,
 // curated specific cases, Hangul and reordering among them -- and a stride through the exhaustive parts that still
 // crosses every algorithmic path a few hundred times.
 void EmitConformance(const std::filesystem::path &normalizationPath, const std::filesystem::path &graphemePath,
-                     const std::filesystem::path &out,
-                     const std::vector<std::pair<std::string, std::string>> &hashes) {
+                     const std::filesystem::path &out, const std::vector<std::pair<std::string, std::string>> &hashes) {
     std::vector<std::uint32_t> index;
     std::vector<std::uint32_t> elements;
     std::ifstream in(normalizationPath);
@@ -811,9 +854,11 @@ void EmitConformance(const std::filesystem::path &normalizationPath, const std::
         while (stream >> token) {
             if (token == "\xC3\xB7") {
                 breaks.push_back(1);
-            } else if (token == "\xC3\x97") {
+            }
+            else if (token == "\xC3\x97") {
                 breaks.push_back(0);
-            } else {
+            }
+            else {
                 points.push_back(Hex(token));
             }
         }
@@ -853,9 +898,7 @@ int main(int argc, char **argv) {
     const std::filesystem::path target = root / "Packages" / "Unicode" / "Src";
     std::filesystem::create_directories(target);
 
-    const auto hash = [&](const std::string &name) {
-        return std::pair{name, FileSha256(data / name)};
-    };
+    const auto hash = [&](const std::string &name) { return std::pair{name, FileSha256(data / name)}; };
 
     Database db;
     ReadUnicodeData(db, data / "UnicodeData.txt");
@@ -873,9 +916,9 @@ int main(int argc, char **argv) {
              {hash("UnicodeData.txt"), hash("CaseFolding.txt"), hash("SpecialCasing.txt")});
     EmitNormalization(db, target / "GeneratedNormalization.rux",
                       {hash("UnicodeData.txt"), hash("CompositionExclusions.txt")});
-    EmitGraphemes(db, target / "GeneratedGraphemes.rux",
-                  {hash("auxiliary/GraphemeBreakProperty.txt"), hash("emoji/emoji-data.txt"),
-                   hash("DerivedCoreProperties.txt")});
+    EmitGraphemes(
+        db, target / "GeneratedGraphemes.rux",
+        {hash("auxiliary/GraphemeBreakProperty.txt"), hash("emoji/emoji-data.txt"), hash("DerivedCoreProperties.txt")});
     EmitConformance(data / "NormalizationTest.txt", data / "auxiliary/GraphemeBreakTest.txt",
                     target / "GeneratedConformance.rux",
                     {hash("NormalizationTest.txt"), hash("auxiliary/GraphemeBreakTest.txt")});
