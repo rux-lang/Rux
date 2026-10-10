@@ -342,7 +342,7 @@ TEST_CASE("LIR propagation stops at conflicting joins and unsupported evaluation
     division.dst = 5;
     division.op = LirOpcode::Div;
     division.type = TypeRef::MakeInt32();
-    division.srcs = {1, 4};
+    division.srcs = {3, 4}; // The merged value dominates both paths into this block.
     function.blocks[3].instrs.push_back(std::move(division));
     function.blocks[3].term = ReturnValue(3, TypeRef::MakeInt32());
 

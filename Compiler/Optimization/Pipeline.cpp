@@ -6,9 +6,12 @@
 #include "Optimization/LirDeadCodeElimination.h"
 #include "Optimization/LirDeclarationPruner.h"
 #include "Optimization/LirInliner.h"
+#include "Optimization/LirLoopInvariants.h"
 #include "Optimization/LirMemoryPromotion.h"
 #include "Optimization/LirScalarCombines.h"
 #include "Optimization/LirScalarReplacement.h"
+#include "Optimization/LirSsaVerifier.h"
+#include "Optimization/LirValueNumbering.h"
 
 #include <memory>
 
@@ -23,15 +26,20 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
     pipeline.lir.Add(std::make_unique<LirCfgVerifier>());
     if (profile == BuildProfile::Release) {
         pipeline.hir.Add(std::make_unique<HirConstantFolder>());
+        pipeline.lir.Add(std::make_unique<LirFrameAddressPlacement>());
+        pipeline.lir.Add(std::make_unique<LirSsaVerifier>());
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
         pipeline.lir.Add(std::make_unique<LirScalarReplacement>());
         pipeline.lir.Add(std::make_unique<LirMemoryPromotion>());
         pipeline.lir.Add(std::make_unique<LirConstantPropagation>());
         pipeline.lir.Add(std::make_unique<LirInliner>());
         pipeline.lir.Add(std::make_unique<LirScalarCombines>());
+        pipeline.lir.Add(std::make_unique<LirValueNumbering>());
+        pipeline.lir.Add(std::make_unique<LirLoopInvariants>());
         pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
         pipeline.lir.Add(std::make_unique<LirCfgVerifier>());
+        pipeline.lir.Add(std::make_unique<LirSsaVerifier>());
     }
     return pipeline;
 }

@@ -13,6 +13,16 @@ bool Scalar(const TypeRef &type) {
             (type.inner[0].IsInteger() || type.inner[0].IsFloat() || type.inner[0].IsBool() || type.inner[0].IsChar()));
 }
 
+bool ArgumentMatches(const TypeRef &argument, const TypeRef &parameter) {
+    if (argument == parameter) {
+        return true;
+    }
+    // Lowering represents a borrow of a local scalar by its alloca's pointer. Both have the same scalar-address ABI;
+    // accepting this representation does not grant no-alias or lifetime assumptions to the cloned loads/stores.
+    return parameter.kind == TypeRef::Kind::Reference && Scalar(parameter) && argument.kind == TypeRef::Kind::Pointer &&
+           argument.inner == parameter.inner;
+}
+
 bool Eligible(const LirFunc &function) {
     if (function.isExtern || function.isAsm || function.isVariadic || function.blocks.size() != 1 ||
         !Scalar(function.returnType) ||
@@ -136,7 +146,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     if (valid) {
                         for (std::size_t i = 0; i < call.srcs.size(); ++i) {
                             valid = valid && types.contains(call.srcs[i]) &&
-                                    types.at(call.srcs[i]) == callee.params[i].type;
+                                    ArgumentMatches(types.at(call.srcs[i]), callee.params[i].type);
                         }
                     }
                     if (!valid) {

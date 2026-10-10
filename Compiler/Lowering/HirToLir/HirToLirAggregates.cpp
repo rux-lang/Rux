@@ -1040,6 +1040,7 @@ LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
     const std::uint32_t thenIdx = builder->CurrentBlock();
     const bool thenReaches = !IsTerminated();
     if (thenReaches) {
+        thenVal = EmitCastIfNeeded(thenVal, e.thenExpr->type, e.type);
         Jump(mergeBlock);
     }
     SetBlock(elseBlock);
@@ -1047,6 +1048,7 @@ LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
     const std::uint32_t elseIdx = builder->CurrentBlock();
     const bool elseReaches = !IsTerminated();
     if (elseReaches) {
+        elseVal = EmitCastIfNeeded(elseVal, e.elseExpr->type, e.type);
         Jump(mergeBlock);
     }
     SetBlock(mergeBlock);

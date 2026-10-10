@@ -10,6 +10,9 @@ rux_add_component(RuxOptimization
     LirMemoryPromotion.cpp
     LirInliner.cpp
     LirScalarCombines.cpp
+    LirValueNumbering.cpp
+    LirLoopInvariants.cpp
+    LirSsaVerifier.cpp
     LirScalarReplacement.cpp
     LirReachability.cpp
     Pipeline.cpp)

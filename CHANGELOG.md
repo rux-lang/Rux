@@ -12,6 +12,11 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **SSA verification and conservative loop optimization** — Release builds verify definition dominance and phi
+  types, reuse exact local expressions and scalar loads between memory barriers, and hoist nontrapping integer/address
+  invariants from natural loops with existing preheaders. Primitive borrow and function-pointer locals can be promoted.
+  Pattern address normalization preserves conditional payload access; ternary arms convert to their merged result type.
+
 - **Bounded scalar inlining and instruction selection** — Release optimization inlines small direct scalar leaf
   functions once within explicit growth budgets. Complementary constant shifts select native uint32/uint64 rotates;
   unsigned power-of-two division/remainder select shifts/masks. Both backends use immediate forms for constant shifts.

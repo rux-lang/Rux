@@ -86,3 +86,21 @@ TEST_CASE("Leaf inlining expansion runs once per optimization phase") {
     CHECK(inliner.Run(package, later) == Optimization::PassChange::None);
     CHECK_EQ(Calls(package), 1);
 }
+
+TEST_CASE("Scalar reference leaf inlining preserves updates through a lowered local address") {
+    auto package = CompileToLir(R"(
+        func Bump(value: &var uint64) -> uint64 { value += 1; return value; }
+        func Work(input: uint64) -> uint64 {
+            var state = input;
+            let result = Bump(state);
+            return state + result;
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    CHECK(promotion.Run(package, {}) == Optimization::PassChange::Changed);
+}

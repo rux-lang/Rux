@@ -44,7 +44,10 @@ void RewriteUses(LirFunc &function, const Copies &copies) {
 }
 
 bool Scalar(const TypeRef &type) {
-    return type.IsInteger() || type.IsChar() || type.IsBool() || type.IsFloat() || type.kind == TypeRef::Kind::Pointer;
+    return type.IsInteger() || type.IsChar() || type.IsBool() || type.IsFloat() ||
+           type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Func ||
+           (type.kind == TypeRef::Kind::Reference && type.inner.size() == 1 &&
+            (type.inner[0].IsInteger() || type.inner[0].IsChar() || type.inner[0].IsBool() || type.inner[0].IsFloat()));
 }
 
 bool Promote(LirFunc &function) {
