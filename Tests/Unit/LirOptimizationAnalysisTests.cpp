@@ -133,6 +133,108 @@ TEST_CASE("Local numbering reuses expressions and loads without crossing aliasin
     CHECK_EQ(Count(package, LirOpcode::Load), 2);
 }
 
+TEST_CASE("Dominator numbering reuses integer expressions across branches and memory effects") {
+    auto package = Promoted(R"(
+        func Choose(test: bool, pointer: *var int, a: int, b: int) -> int {
+            let first = a + b;
+            *pointer = first;
+            if test { return (a + b) * first; }
+            return (a + b) - first;
+        }
+    )");
+    REQUIRE_EQ(Count(package, LirOpcode::Add), 3);
+    Optimization::LirValueNumbering numbering;
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(package, LirOpcode::Add), 1);
+    CHECK_EQ(Count(package, LirOpcode::Store), 1);
+    CHECK(SsaErrors(package).empty());
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::None);
+
+    auto siblings = Promoted(R"(
+        func Choose(test: bool, a: int, b: int) -> int {
+            if test { return (a + b) * a; }
+            return (a + b) * b;
+        }
+    )");
+    static_cast<void>(numbering.Run(siblings, {}));
+    CHECK_EQ(Count(siblings, LirOpcode::Add), 2);
+    CHECK(SsaErrors(siblings).empty());
+
+    auto floating = Promoted(R"(
+        func Choose(test: bool, a: float64, b: float64) -> float64 {
+            let first = a + b;
+            if test { return (a + b) * first; }
+            return (a + b) - first;
+        }
+    )");
+    static_cast<void>(numbering.Run(floating, {}));
+    CHECK_EQ(Count(floating, LirOpcode::Add), 3);
+    CHECK(SsaErrors(floating).empty());
+}
+
+TEST_CASE("Exact typed store forwarding retains aliasing and volatile barriers") {
+    auto package = Promoted(R"(
+        func Read(pointer: *var int, value: int) -> int { *pointer = value; return *pointer; }
+    )");
+    REQUIRE_EQ(Count(package, LirOpcode::Load), 1);
+    Optimization::LirValueNumbering numbering;
+    auto volatileStore = package;
+    for (auto &block : volatileStore.modules[0].funcs[0].blocks)
+        for (auto &instruction : block.instrs)
+            if (instruction.op == LirOpcode::Store)
+                instruction.isVolatile = true;
+    static_cast<void>(numbering.Run(volatileStore, {}));
+    CHECK_EQ(Count(volatileStore, LirOpcode::Load), 1);
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(package, LirOpcode::Load), 0);
+    CHECK_EQ(Count(package, LirOpcode::Store), 1);
+    CHECK(SsaErrors(package).empty());
+
+    auto aliasing = Promoted(R"(
+        func Read(pointer: *var int, other: *var int, value: int) -> int {
+            *pointer = value; *other = 42; return *pointer;
+        }
+    )");
+    static_cast<void>(numbering.Run(aliasing, {}));
+    CHECK_EQ(Count(aliasing, LirOpcode::Load), 1);
+    CHECK(SsaErrors(aliasing).empty());
+}
+
+TEST_CASE("Repeated branch facts eliminate only dominated exact Boolean conditions") {
+    auto package = Promoted(R"(
+        func Choose(a: int, b: int) -> int {
+            if a < b { if a < b { return 7; } return 11; }
+            if a < b { return 13; }
+            return 17;
+        }
+    )");
+    const auto branches = [](const LirPackage &ir) {
+        std::size_t count = 0;
+        for (const auto &module : ir.modules)
+            for (const auto &function : module.funcs)
+                for (const auto &block : function.blocks)
+                    count += block.term && block.term->kind == LirTermKind::Branch;
+        return count;
+    };
+    REQUIRE_EQ(branches(package), 3);
+    Optimization::LirValueNumbering numbering;
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(branches(package), 1);
+    Optimization::LirCfgCleanup cleanup;
+    static_cast<void>(cleanup.Run(package, {}));
+    CHECK(SsaErrors(package).empty());
+
+    auto changed = Promoted(R"(
+        func Choose(pointer: *var int, a: int) -> int {
+            if *pointer < a { *pointer = a; if *pointer < a { return 7; } return 11; }
+            return 17;
+        }
+    )");
+    static_cast<void>(numbering.Run(changed, {}));
+    CHECK_EQ(branches(changed), 2);
+    CHECK(SsaErrors(changed).empty());
+}
+
 TEST_CASE("Pattern binding frame addresses dominate uses without moving initialization") {
     auto package = CompileToLir(R"(
         variant Item { Empty, Value(int) }

@@ -1,5 +1,7 @@
 #include "Optimization/LirValueNumbering.h"
 
+#include "Ir/Lir/Dominance.h"
+
 #include <unordered_map>
 #include <unordered_set>
 
@@ -48,13 +50,17 @@ std::string Key(const LirInstr &instruction) {
 
 bool Number(LirFunc &function) {
     std::unordered_set<LirReg> definitions;
+    std::unordered_map<LirReg, TypeRef> types;
     for (const auto &parameter : function.params) {
+        types.emplace(parameter.reg, parameter.type);
         if (!definitions.insert(parameter.reg).second) {
             return false;
         }
     }
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
+            if (instruction.dst != LirNoReg)
+                types.emplace(instruction.dst, instruction.type);
             if (instruction.dst != LirNoReg && !definitions.insert(instruction.dst).second) {
                 return false;
             }
@@ -72,8 +78,49 @@ bool Number(LirFunc &function) {
         return reg;
     };
     bool changed = false;
-    for (auto &block : function.blocks) {
-        // Available values are deliberately block-local, so every replacement dominates its use.
+    const LirControlFlow cfg(function);
+    const LirDominance dominance(cfg);
+    std::vector<std::vector<std::uint32_t>> children(function.blocks.size());
+    const auto &parents = dominance.ImmediateDominators();
+    for (std::uint32_t block = 1; block < parents.size(); ++block) {
+        if (parents[block] != LirDominance::Invalid)
+            children[parents[block]].push_back(block);
+    }
+
+    struct Visit {
+        std::uint32_t block;
+        bool exiting;
+        std::size_t checkpoint;
+    };
+
+    std::vector<Visit> visits;
+    // Unreachable blocks are separate roots: nothing from a reachable block dominates them.
+    for (std::uint32_t block = 0; block < parents.size(); ++block) {
+        if (block == 0 || parents[block] == LirDominance::Invalid)
+            visits.push_back({block, false, 0});
+    }
+    std::unordered_map<std::string, LirReg> dominating;
+    std::vector<std::string> scopedKeys;
+    const auto stableType = [](const TypeRef &type) {
+        return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer ||
+               type.kind == TypeRef::Kind::Reference;
+    };
+    while (!visits.empty()) {
+        const auto visit = visits.back();
+        visits.pop_back();
+        if (visit.exiting) {
+            while (scopedKeys.size() > visit.checkpoint) {
+                dominating.erase(scopedKeys.back());
+                scopedKeys.pop_back();
+            }
+            continue;
+        }
+        visits.push_back({visit.block, true, scopedKeys.size()});
+        for (const auto child : children[visit.block])
+            visits.push_back({child, false, 0});
+        auto &block = function.blocks[visit.block];
+        // Loads and floating operations stay block-local. Integer/address expressions may be reused along
+        // the dominator tree without speculating execution or depending on memory/FP environment state.
         std::unordered_map<std::string, LirReg> values, loads;
         std::vector<LirInstr> retained;
         for (auto instruction : block.instrs) {
@@ -86,14 +133,23 @@ bool Number(LirFunc &function) {
                 (instruction.type.IsInteger() || instruction.type.IsFloat() || instruction.type.IsBool() ||
                  instruction.type.IsChar() || instruction.type.kind == TypeRef::Kind::Pointer);
             const bool pure = Pure(instruction.op) && !instruction.isVolatile;
+            // Keep cheap constants local: consumers rematerialize immediates and CFG folding recognizes local
+            // constants. Sharing them globally needlessly lengthens allocation intervals and hides those forms.
+            const bool stable = pure && instruction.op != LirOpcode::Const && stableType(instruction.type) &&
+                                std::ranges::all_of(instruction.srcs, [&](const LirReg source) {
+                                    return types.contains(source) && stableType(types.at(source));
+                                });
             if (instruction.dst != LirNoReg && (pure || load)) {
-                auto &available = load ? loads : values;
-                const auto [entry, inserted] = available.emplace(Key(instruction), instruction.dst);
+                auto &available = load ? loads : stable ? dominating : values;
+                const auto key = Key(instruction);
+                const auto [entry, inserted] = available.emplace(key, instruction.dst);
                 if (!inserted) {
                     copies[instruction.dst] = entry->second;
                     changed = true;
                     continue;
                 }
+                if (stable)
+                    scopedKeys.push_back(key);
             }
             // No alias promise is made about pointers. Any possible write or ordering effect ends load reuse.
             // Reusing an already executed load never introduces a new speculative access or erases the first trap.
@@ -105,6 +161,17 @@ bool Number(LirFunc &function) {
             if (instruction.isVolatile) {
                 loads.clear();
                 values.clear();
+            }
+            // A typed store establishes one exact address/value pair. Every later possible write or ordering
+            // effect invalidates it. Do not forward aggregate bytes or values requiring storage conversion.
+            if (instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 && instruction.strArg.empty() &&
+                !instruction.isVolatile && stableType(instruction.type) && types.contains(instruction.srcs[0]) &&
+                types.at(instruction.srcs[0]) == instruction.type) {
+                LirInstr forwarded;
+                forwarded.op = LirOpcode::Load;
+                forwarded.type = instruction.type;
+                forwarded.srcs = {instruction.srcs[1]};
+                loads.emplace(Key(forwarded), instruction.srcs[0]);
             }
             retained.push_back(std::move(instruction));
         }
@@ -126,6 +193,61 @@ bool Number(LirFunc &function) {
                 block.term->retVal = resolve(*block.term->retVal);
             }
         }
+    }
+    // A uniquely entered successor records the exact SSA Boolean tested on its incoming edge. Reuse that fact
+    // only in its dominator subtree; sibling paths, joins and later loop iterations get no guessed range facts.
+    std::unordered_map<LirReg, bool> truths;
+
+    struct Fact {
+        LirReg condition;
+        std::optional<bool> previous;
+    };
+
+    std::vector<Fact> facts;
+    visits.clear();
+    if (!function.blocks.empty())
+        visits.push_back({0, false, 0});
+    while (!visits.empty()) {
+        const auto visit = visits.back();
+        visits.pop_back();
+        if (visit.exiting) {
+            while (facts.size() > visit.checkpoint) {
+                const auto fact = facts.back();
+                if (fact.previous)
+                    truths[fact.condition] = *fact.previous;
+                else
+                    truths.erase(fact.condition);
+                facts.pop_back();
+            }
+            continue;
+        }
+        visits.push_back({visit.block, true, facts.size()});
+        for (const auto child : children[visit.block])
+            visits.push_back({child, false, 0});
+        if (visit.block != 0 && cfg.predecessors[visit.block].size() == 1) {
+            const auto &incoming = function.blocks[cfg.predecessors[visit.block][0]].term;
+            if (incoming && incoming->kind == LirTermKind::Branch && incoming->trueTarget != incoming->falseTarget) {
+                const auto found = truths.find(incoming->cond);
+                facts.push_back({incoming->cond, found == truths.end() ? std::nullopt : std::optional{found->second}});
+                truths[incoming->cond] = incoming->trueTarget == visit.block;
+            }
+        }
+        auto &term = function.blocks[visit.block].term;
+        if (!term || term->kind != LirTermKind::Branch || term->trueTarget == term->falseTarget)
+            continue;
+        const auto known = truths.find(term->cond);
+        if (known == truths.end())
+            continue;
+        const auto discarded = known->second ? term->falseTarget : term->trueTarget;
+        term->trueTarget = known->second ? term->trueTarget : term->falseTarget;
+        term->kind = LirTermKind::Jump;
+        term->cond = LirNoReg;
+        term->falseTarget = 0;
+        for (auto &instruction : function.blocks[discarded].instrs) {
+            if (instruction.op == LirOpcode::Phi)
+                std::erase_if(instruction.phiPreds, [&](const auto &edge) { return edge.second == visit.block; });
+        }
+        changed = true;
     }
     return changed;
 }

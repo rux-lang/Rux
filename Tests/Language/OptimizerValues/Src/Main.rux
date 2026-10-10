@@ -1,0 +1,37 @@
+import Core::Assert;
+
+func Aliasing(first: *var int, second: *var int, input: int) -> int {
+    *first = input;
+    *second = 42;
+    return *first;
+}
+
+func Choose(test: bool, pointer: *var int, a: int, b: int) -> int {
+    let first = a + b;
+    *pointer = first;
+    if test { return (a + b) * first; }
+    return (a + b) - first;
+}
+
+func Main() -> int {
+    var first = 0;
+    var second = 0;
+    for input in -30..30 {
+        Assert(Aliasing(@first, @first, input) == 42, "an aliasing write invalidates forwarding");
+        Assert(Aliasing(@first, @second, input) == input, "independent writes preserve the source");
+        Assert(Choose(true, @first, input, 7) == (input + 7) * (input + 7), "dominated arithmetic");
+        Assert(first == input + 7, "stores are retained");
+        Assert(Choose(false, @first, input, 7) == 0, "sibling arithmetic");
+        Assert(Repeated(input, 0) == (input < 0 ? 7 : 17), "repeated branch facts follow each path");
+    }
+    return 0;
+}
+
+func Repeated(a: int, b: int) -> int {
+    if a < b {
+        if a < b { return 7; }
+        return 11;
+    }
+    if a < b { return 13; }
+    return 17;
+}

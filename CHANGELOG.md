@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Dominated scalar value reuse** — exact integer/address computations are reused across dominated blocks;
+  typed stores forward to same-address loads until a memory or ordering barrier. Repeated branches simplify only
+  when an incoming edge proves the exact Boolean value, preserving phi edges and conservative alias behavior.
+
 - **Direct x86 scalar register operations** — allocated 64-bit integer arithmetic/bitwise operations and scalar
   float32/float64 arithmetic use their physical register operands directly. A shared selection descriptor keeps
   assembly text and binary encoding aligned; narrow, spilled and fixed-register operations retain safe fallbacks.
