@@ -632,6 +632,17 @@ TEST_CASE("a generic interface bound deduces its type argument and chains throug
     CHECK(diagnostics.empty());
 }
 
+TEST_CASE("a public generic interface's type parameter is no type the program declares under that name") {
+    const auto diagnostics = AnalyzeSource(std::string(kCursorPrelude) + R"(
+        struct T { tag: int32; }
+        func Main() -> int {
+            let marker = T { tag: 1 };
+            return marker.tag;
+        }
+    )");
+    CHECK(diagnostics.empty());
+}
+
 TEST_CASE("a generic interface bound rejects a method whose types disagree with its arguments") {
     const auto diagnostics = AnalyzeSource(std::string(kCursorPrelude) + R"(
         func Main() -> int {

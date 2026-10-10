@@ -173,10 +173,17 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
         }
     }
     else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
+        // A generic interface's requirements name its type parameters, which are no type of the program's, however
+        // a type the program declares may be spelled.
+        const std::vector<std::string> savedTypeParameters = currentTypeParams;
+        for (const TypeParameter &parameter : interface->typeParams) {
+            currentTypeParams.push_back(parameter.name);
+        }
         for (const auto &method : interface->methods) {
             ValidatePublicFunction(*method,
                                    std::format("public interface requirement '{}.{}'", interface->name, method->name));
         }
+        currentTypeParams = savedTypeParameters;
     }
     else if (const auto *constant = dynamic_cast<const ConstDecl *>(&declaration)) {
         if (constant->type) {
