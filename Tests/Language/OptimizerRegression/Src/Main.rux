@@ -89,6 +89,7 @@ func VerifyWordOperations(limit: uint64) {
 }
 
 func Main() -> int {
+    VerifyBranchedInlining(30);
     Assert(CheckFloatPreservation() == 1, "Win64 preserves all 128 bits of every allocated XMM register");
     VerifyFloatRegisters(25);
     let outer = 1;
@@ -116,6 +117,26 @@ func Main() -> int {
     Assert(LoopRegisterValues(10, 7) == 370, "nested loop values and indirect calls");
     VerifyWordOperations(5000);
     return 0;
+}
+
+func SelectInline(value: int) -> int {
+    if value < 0 { return -value; }
+    if value < 10 { return value + 3; }
+    return value - 4;
+}
+
+func WrapInline(value: int) -> int {
+    return SelectInline(value) + SelectInline(-value);
+}
+
+func VerifyBranchedInlining(limit: int) {
+    var total = 0;
+    for index in 0..limit {
+        total += WrapInline(index);
+        if index == 4 { continue; }
+        total += SelectInline(index - 15);
+    }
+    Assert(total == 1047, "branched call chains preserve return values and loop edges");
 }
 
 func ManyFloats(a: float64, b: float64, c: float64, d: float64, e: float64,

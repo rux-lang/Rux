@@ -144,9 +144,13 @@ The AArch64 RCU emitter similarly selects procedure-call layout from the target 
 
 ## Host and Target Boundaries
 
-`LirInliner` snapshots eligible direct scalar leaf functions and expands them only in the first cleanup iteration.
-Its limits are 24 callee instructions, 2,048 inserted instructions per caller, and 50,000 per package. Recursive calls,
-arbitrary assembly, variadic calls, stack identity, and module-local data lookups remain opaque. `LirScalarCombines`
+`LirInliner` processes direct scalar callees before their callers and expands them only in the first cleanup iteration.
+Deterministic call-graph sink removal excludes recursive components and wrappers reaching them from the candidate set.
+Candidates have at most eight blocks and a cost of 48 (instructions plus blocks); growth budgets are 2,048 per caller
+and 50,000 per package, with a 4,096-block caller ceiling. Multiple returns join through a continuation phi; cloned
+edges and existing successor phis are remapped together. Same-type single-block returns substitute SSA values directly,
+including software numeric results. Assembly, indirect calls, variadic calls, stack identity, trapping arithmetic,
+runtime reports and module-local data lookups remain opaque. `LirScalarCombines`
 recognizes complementary nonzero constant shifts of the same unsigned 32/64-bit value and introduces `RotateRight`:
 one value operand and a constant count below the word width. The CFG verifier validates this contract; constant
 evaluation, dumps, DCE, both encoders, and the x86 assembly printer understand it. No CPU extension is required.

@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Bounded control-flow inlining** — small scalar helpers with branches, loops, multiple returns, and direct call
+  chains can be expanded in callee-first order. Recursive components and their wrappers remain callable; per-function
+  and package growth limits bound expansion. Return merging preserves SSA edges and avoids artificial numeric casts.
+
 - **Native x86 scalar floating-point registers** — float32/float64 intermediates can remain in XMM registers through
   control flow and compatible calls. Win64 preserves their complete nonvolatile state; incompatible call intervals and
   wide/software arithmetic retain conservative stack storage. Calls, phi copies, constants, and x87 remainder use the
