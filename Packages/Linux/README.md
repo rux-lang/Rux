@@ -26,6 +26,7 @@ rux add Rux/Linux
 | `Resolve` | `getaddrinfo`, `freeaddrinfo` and `AddressInfo`, linked from libc                         |
 | `Futex`   | `FutexWait` and `FutexWake`, the private `futex(2)` operations every lock in `Rux/Sync` sleeps on |
 | `Spawn`   | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill`, `fcntl` and `__errno_location`, linked from libc |
+| `Poll`    | `EpollCreate1`, `EpollControl` and `EpollWait` as system calls, the `EPOLL*` flags, the per-architecture `epoll_event` layout, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK` |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

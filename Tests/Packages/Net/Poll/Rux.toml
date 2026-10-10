@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Poll"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Net: non-blocking sockets report WouldBlock, and a Poller reports listeners with connections, streams with data, closed peers and UDP datagrams by their tokens."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Net = { Path = "../../../../Packages/Net" }
+Thread = { Path = "../../../../Packages/Thread" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Net"

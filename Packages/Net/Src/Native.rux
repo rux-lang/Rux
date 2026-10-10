@@ -10,24 +10,24 @@ import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
 
 when #target.os {
     .Linux => import Linux::{
-        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, GetPeerName, GetSocketName, Listen, MSG_NOSIGNAL,
-        ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo, SetSocketOption,
-        Shutdown, Socket
+        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, F_GETFL, F_SETFL, FcntlInt, GetPeerName, GetSocketName, Listen,
+        MSG_NOSIGNAL, O_NONBLOCK, ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo,
+        SetSocketOption, Shutdown, Socket
     },
     .FreeBSD => import FreeBSD::{
-        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, GetPeerName, GetSocketName, Listen, MSG_NOSIGNAL,
-        ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo, SetSocketOption,
-        Shutdown, Socket
+        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, F_GETFL, F_SETFL, FcntlInt, GetPeerName, GetSocketName, Listen,
+        MSG_NOSIGNAL, O_NONBLOCK, ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo,
+        SetSocketOption, Shutdown, Socket
     },
     .macOS => import macOS::{
-        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, GetPeerName, GetSocketName, Listen, ReceiveFrom,
-        F_SETFD, FD_CLOEXEC, SO_NOSIGPIPE, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOL_SOCKET, SendTo, SetSocketOption,
-        Shutdown, Socket, fcntl
+        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, F_GETFL, F_SETFL, FcntlInt, GetPeerName, GetSocketName, Listen,
+        O_NONBLOCK, ReceiveFrom, F_SETFD, FD_CLOEXEC, SO_NOSIGPIPE, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOL_SOCKET,
+        SendTo, SetSocketOption, Shutdown, Socket, fcntl
     },
     .Windows => import Windows::{
-        AF_INET, AF_INET6, HANDLE_FLAG_INHERIT, INVALID_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, SOL_SOCKET, SetHandleInformation,
-        WSAGetLastError, WSAStartup, WsaData, accept, bind, closesocket, connect, getpeername, getsockname, listen,
-        recvfrom, sendto, setsockopt, shutdown, socket
+        AF_INET, AF_INET6, FIONBIO, HANDLE_FLAG_INHERIT, INVALID_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, SOL_SOCKET,
+        SetHandleInformation, WSAGetLastError, WSAStartup, WsaData, accept, bind, closesocket, connect, getpeername,
+        getsockname, ioctlsocket, listen, recvfrom, sendto, setsockopt, shutdown, socket
     },
     else => #Error("Unsupported operating system")
 }
@@ -69,7 +69,8 @@ func FailureOf(code: int64) -> IoError {
         else if code == 10048 { kind = IoErrorKind::AddressInUse; }
         else if code == 10049 { kind = IoErrorKind::AddressUnavailable; }
         else if code == 10051 || code == 10065 { kind = IoErrorKind::Unreachable; }
-        else if code == 10060 || code == 10035 { kind = IoErrorKind::TimedOut; }
+        else if code == 10060 { kind = IoErrorKind::TimedOut; }
+        else if code == 10035 { kind = IoErrorKind::WouldBlock; }
         else if code == 10058 { kind = IoErrorKind::BrokenPipe; }
         else if code == 10004 { kind = IoErrorKind::Interrupted; }
         else if code == 10013 { kind = IoErrorKind::PermissionDenied; }
@@ -117,6 +118,37 @@ func LastFailure(result: int64) -> IoError {
     }
     else {
         return FailureOf(-result);
+    }
+}
+
+// The failure of a call on `handle` that could have waited. On the Unix systems `EAGAIN` means both that a blocking
+// socket's timeout ran out and that a non-blocking one was not ready, so the socket's mode says which it was.
+func SocketFailure(handle: uint64, failure: IoError) -> IoError {
+    when #target.os != .Windows {
+        if failure.kind == IoErrorKind::TimedOut && failure.raw != 110i32 && failure.raw != 60i32 {
+            let flags = FcntlInt(handle as int32, F_GETFL, 0);
+            if flags >= 0i64 && (flags & O_NONBLOCK as int64) != 0i64 {
+                return IoError { kind: IoErrorKind::WouldBlock, raw: failure.raw };
+            }
+        }
+    }
+    return failure;
+}
+
+// Makes calls on `handle` fail with `WouldBlock` rather than wait, or wait again.
+func SetSocketNonBlocking(handle: uint64, enabled: bool) -> ! IoError {
+    when #target.os == .Windows {
+        var mode: uint32 = enabled ? 1u32 : 0u32;
+        if ioctlsocket(handle, FIONBIO, @mode) != 0 { fail LastFailure(0); }
+    }
+    else {
+        let flags = FcntlInt(handle as int32, F_GETFL, 0);
+        if flags < 0i64 { fail LastFailure(flags); }
+        let updated = enabled ? (flags | O_NONBLOCK as int64) : (flags & ~(O_NONBLOCK as int64));
+        if updated != flags {
+            let result = FcntlInt(handle as int32, F_SETFL, updated);
+            if result < 0i64 { fail LastFailure(result); }
+        }
     }
 }
 
@@ -280,6 +312,7 @@ func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError 
         let accepted = accept(handle, (@raw.bytes[0]) as *var opaque, @length);
         if accepted == INVALID_SOCKET { fail LastFailure(0); }
         KeepFromChildren(accepted);
+        SetSocketNonBlocking(accepted, false) catch { else => {} };
         *peer = Decode(@raw.bytes[0]) ?? *peer;
         return accepted;
     }
@@ -290,20 +323,24 @@ func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError 
                 let result = Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, 0);
                 if result >= 0 {
                     KeepFromChildren(result as uint64);
+                    SetSocketNonBlocking(result as uint64, false) catch { else => {} };
                     *peer = Decode(@raw.bytes[0]) ?? *peer;
                     return result as uint64;
                 }
                 let failure = LastFailure(result);
-                if failure.kind != IoErrorKind::Interrupted { fail failure; }
+                if failure.kind != IoErrorKind::Interrupted { fail SocketFailure(handle, failure); }
             }
             else {
                 let result = Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, SOCK_CLOEXEC);
                 if result >= 0 {
+                    when #target.os == .FreeBSD {
+                        SetSocketNonBlocking(result as uint64, false) catch { else => {} };
+                    }
                     *peer = Decode(@raw.bytes[0]) ?? *peer;
                     return result as uint64;
                 }
                 let failure = LastFailure(result);
-                if failure.kind != IoErrorKind::Interrupted { fail failure; }
+                if failure.kind != IoErrorKind::Interrupted { fail SocketFailure(handle, failure); }
             }
         }
         fail IoError::Of(IoErrorKind::Other);
@@ -333,7 +370,7 @@ func SendSocket(handle: uint64, bytes: char8[..], target: SocketAddress?) -> uin
             let result = SendTo(handle as int32, bytes.data as *opaque, bytes.length, flags, address, raw.length);
             if result >= 0 { return result as uint; }
             let failure = LastFailure(result);
-            if failure.kind != IoErrorKind::Interrupted { fail failure; }
+            if failure.kind != IoErrorKind::Interrupted { fail SocketFailure(handle, failure); }
         }
         fail IoError::Of(IoErrorKind::Other);
     }
@@ -361,7 +398,7 @@ func ReceiveSocket(handle: uint64, into: var char8[..], source: *var SocketAddre
                 return result as uint;
             }
             let failure = LastFailure(result);
-            if failure.kind != IoErrorKind::Interrupted { fail failure; }
+            if failure.kind != IoErrorKind::Interrupted { fail SocketFailure(handle, failure); }
         }
         fail IoError::Of(IoErrorKind::Other);
     }

@@ -1,17 +1,18 @@
 // Finding the addresses of a host by name.
-// The system's resolver does the work: `getaddrinfo` reads the hosts file and asks the name servers the system is
-// configured with, so names resolve the way every other program on the machine resolves them. On the Unix systems
-// that resolver belongs to the C library, so a program that resolves names is linked against it. A host that is
-// already a numeric address is read directly, without asking anyone.
+// On FreeBSD, macOS and Windows the system's resolver does the work: `getaddrinfo` reads the hosts file and asks the
+// name servers the system is configured with, so names resolve the way every other program on the machine resolves
+// them. On Linux that resolver belongs to the C library, which a static binary does not have, so this package reads
+// the hosts file and asks the configured name servers itself. A host that is already a numeric address is read
+// directly, without asking anyone.
 
 import Allocator::Allocator;
 import Collections::Vector;
 import Core::{ #Error, #target };
 import Io::{ IoError, IoErrorKind };
-import Net::{ Decode, IpAddress, SocketAddress, StartNetworking };
+import Net::{ Decode, IpAddress, ResolveOnLinux, SocketAddress, StartNetworking };
 
 when #target.os {
-    .Linux => import Linux::{ AddressInfo, freeaddrinfo, getaddrinfo },
+    .Linux => {},
     .FreeBSD => import FreeBSD::{ AddressInfo, freeaddrinfo, getaddrinfo },
     .macOS => import macOS::{ AddressInfo, freeaddrinfo, getaddrinfo },
     .Windows => import Windows::{ AddressInfo, freeaddrinfo, getaddrinfo },
@@ -37,47 +38,61 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
         none => {}
     }
     if host.length == 0u { fail IoError::Of(IoErrorKind::InvalidInput); }
-    StartNetworking();
-    var name = Vector<char8>(allocator);
     var index: uint = 0;
     while index < host.length {
         if host[index] as uint8 == 0u8 { fail IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
-    name.PushSlice(host) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
-    name.Push(c8'\0') catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
-    let hints = AddressInfo {
-        flags: 0, family: 0, socketType: 1, protocol: 0, addressLength: 0, canonicalName: null, address: null,
-        next: null
-    };
-    var first: *var AddressInfo = null;
-    let code = getaddrinfo(name.AsSlice().data, null, @hints, @first);
-    if code != 0 { fail IoError { kind: IoErrorKind::NotFound, raw: code }; }
-    var node = first;
-    while node != null {
-        if node.address != null {
-            match Decode(node.address as *uint8) {
-                .Some(found) => {
-                    let address = SocketAddress { ip: found.ip, port: port };
-                    var seen = false;
-                    for earlier in addresses.AsSlice() {
-                        if earlier.Equals(address) { seen = true; }
-                    }
-                    if !seen {
-                        addresses.Push(address) catch {
-                            else => {
-                                freeaddrinfo(first);
-                                fail IoError::Of(IoErrorKind::LimitExceeded);
-                            }
-                        };
-                    }
-                },
-                none => {}
-            }
-        }
-        node = node.next;
+    when #target.os == .Linux {
+        return ResolveOnLinux(allocator, host, port)?;
     }
-    freeaddrinfo(first);
-    if addresses.Length() == 0u { fail IoError::Of(IoErrorKind::NotFound); }
-    return <-addresses;
+    else {
+        return ResolveWithSystem(allocator, host, port, <-addresses)?;
+    }
+}
+
+when #target.os != .Linux {
+    // Asks the system's resolver, `getaddrinfo`, for `host`'s addresses, adding each once to those in `addresses`.
+    func ResolveWithSystem(allocator: Allocator, host: char8[..], port: uint16, addresses: Vector<SocketAddress>)
+        -> Vector<SocketAddress> ! IoError {
+        var results <- addresses;
+        StartNetworking();
+        var name = Vector<char8>(allocator);
+        name.PushSlice(host) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        name.Push(c8'\0') catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        let hints = AddressInfo {
+            flags: 0, family: 0, socketType: 1, protocol: 0, addressLength: 0, canonicalName: null, address: null,
+            next: null
+        };
+        var first: *var AddressInfo = null;
+        let code = getaddrinfo(name.AsSlice().data, null, @hints, @first);
+        if code != 0 { fail IoError { kind: IoErrorKind::NotFound, raw: code }; }
+        var node = first;
+        while node != null {
+            if node.address != null {
+                match Decode(node.address as *uint8) {
+                    .Some(found) => {
+                        let address = SocketAddress { ip: found.ip, port: port };
+                        var seen = false;
+                        for earlier in results.AsSlice() {
+                            if earlier.Equals(address) { seen = true; }
+                        }
+                        if !seen {
+                            results.Push(address) catch {
+                                else => {
+                                    freeaddrinfo(first);
+                                    fail IoError::Of(IoErrorKind::LimitExceeded);
+                                }
+                            };
+                        }
+                    },
+                    none => {}
+                }
+            }
+            node = node.next;
+        }
+        freeaddrinfo(first);
+        if results.Length() == 0u { fail IoError::Of(IoErrorKind::NotFound); }
+        return <-results;
+    }
 }

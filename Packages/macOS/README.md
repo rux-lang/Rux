@@ -26,6 +26,7 @@ rux add Rux/macOS
 | `Ulock`     | `__ulock_wait`, `__ulock_wake` and their flags, the word operations every lock in `Rux/Sync` sleeps on |
 | `Spawn`     | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill` and `fcntl` |
 | `Socket`    | the BSD socket calls behind the same wrappers as Linux and FreeBSD, `SO_NOSIGPIPE`, and `getaddrinfo`, `freeaddrinfo` and `AddressInfo` |
+| `Poll`      | `Kqueue` and `KeventCall` over libSystem's `kqueue` and `kevent`, `Kevent`, the `EVFILT_*` and `EV_*` flags, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK` |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

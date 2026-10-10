@@ -1,0 +1,148 @@
+// Waiting on many descriptors at once, and descriptors that never wait: `epoll(7)` and the `O_NONBLOCK` flag.
+// An epoll instance is itself a descriptor. Descriptors are registered with it once, each with the events wanted and
+// a word the caller chooses, and a wait reports the descriptors that are ready with those words. The registrations
+// here are level-triggered: a descriptor is reported for as long as it is ready, not only when it becomes so.
+// `epoll_event` is packed to twelve bytes on x86-64 and laid out naturally in sixteen on AArch64, so it is handled as
+// bytes with the size and the offset of its word given per architecture.
+
+import Core::{ #Error, #target };
+import Linux::{ FileDescriptor, SignExtendFd, Syscall6 };
+
+when #target.arch {
+    .X86_64 => {
+        const SysFcntl: uint64 = 72;
+        const SysEpollCreate1: uint64 = 291;
+        const SysEpollControl: uint64 = 233;
+        const SysEpollWait: uint64 = 281;
+
+        /// The size of one `epoll_event` in bytes: its four-byte event mask and eight-byte word, packed.
+        /// @see https://rux-lang.dev/docs/api/linux/poll#epoll-event-bytes
+        pub const EpollEventBytes: uint = 12;
+
+        /// Where the caller's word starts in an `epoll_event`.
+        /// @see https://rux-lang.dev/docs/api/linux/poll#epoll-event-word-offset
+        pub const EpollEventWordOffset: uint = 4;
+    },
+    .AArch64 => {
+        const SysFcntl: uint64 = 25;
+        const SysEpollCreate1: uint64 = 20;
+        const SysEpollControl: uint64 = 21;
+        const SysEpollWait: uint64 = 22;
+
+        /// The size of one `epoll_event` in bytes: its four-byte event mask, padding, and eight-byte word.
+        /// @see https://rux-lang.dev/docs/api/linux/poll#epoll-event-bytes
+        pub const EpollEventBytes: uint = 16;
+
+        /// Where the caller's word starts in an `epoll_event`.
+        /// @see https://rux-lang.dev/docs/api/linux/poll#epoll-event-word-offset
+        pub const EpollEventWordOffset: uint = 8;
+    },
+    else => #Error("Unsupported architecture")
+}
+
+/// `F_GETFL`: the `fcntl` command that reads a descriptor's status flags.
+/// @see https://rux-lang.dev/docs/api/linux/poll#f-getfl
+#Allow("naming.const")
+pub const F_GETFL: int32 = 3;
+
+/// `F_SETFL`: the `fcntl` command that sets a descriptor's status flags.
+/// @see https://rux-lang.dev/docs/api/linux/poll#f-setfl
+#Allow("naming.const")
+pub const F_SETFL: int32 = 4;
+
+/// `O_NONBLOCK`: the status flag that makes a call fail with `EAGAIN` rather than wait.
+/// @see https://rux-lang.dev/docs/api/linux/poll#o-nonblock
+#Allow("naming.const")
+pub const O_NONBLOCK: int32 = 0x800;
+
+/// `EPOLL_CLOEXEC`: close the epoll descriptor when the process starts another program.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epoll-cloexec
+#Allow("naming.const")
+pub const EPOLL_CLOEXEC: int32 = 0x80000;
+
+/// `EPOLL_CTL_ADD`: register a descriptor.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epoll-ctl-add
+#Allow("naming.const")
+pub const EPOLL_CTL_ADD: int32 = 1;
+
+/// `EPOLL_CTL_DEL`: remove a descriptor's registration.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epoll-ctl-del
+#Allow("naming.const")
+pub const EPOLL_CTL_DEL: int32 = 2;
+
+/// `EPOLL_CTL_MOD`: change a registered descriptor's events and word.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epoll-ctl-mod
+#Allow("naming.const")
+pub const EPOLL_CTL_MOD: int32 = 3;
+
+/// `EPOLLIN`: there is something to read, or a connection to accept.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epollin
+#Allow("naming.const")
+pub const EPOLLIN: uint32 = 0x1;
+
+/// `EPOLLOUT`: a write would not wait.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epollout
+#Allow("naming.const")
+pub const EPOLLOUT: uint32 = 0x4;
+
+/// `EPOLLERR`: the descriptor has an error pending; always reported.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epollerr
+#Allow("naming.const")
+pub const EPOLLERR: uint32 = 0x8;
+
+/// `EPOLLHUP`: the peer has closed the connection; always reported.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epollhup
+#Allow("naming.const")
+pub const EPOLLHUP: uint32 = 0x10;
+
+/// `EPOLLRDHUP`: the peer has shut down its writing side.
+/// @see https://rux-lang.dev/docs/api/linux/poll#epollrdhup
+#Allow("naming.const")
+pub const EPOLLRDHUP: uint32 = 0x2000;
+
+/// Performs `command` on a descriptor with an integer argument.
+/// @param fd the descriptor
+/// @param command such as `F_GETFL` or `F_SETFL`
+/// @param argument the command's argument, or zero
+/// @returns the command's result, or a negative error number
+/// @see https://rux-lang.dev/docs/api/linux/poll#fcntl-int
+/// @see https://man7.org/linux/man-pages/man2/fcntl.2.html
+pub func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) -> int64 {
+    return Syscall6(SysFcntl, SignExtendFd(fd), command as int64 as uint64, argument as uint64, 0, 0, 0);
+}
+
+/// Opens an epoll instance.
+/// @param flags zero or `EPOLL_CLOEXEC`
+/// @returns the instance's descriptor, or a negative error number
+/// @see https://rux-lang.dev/docs/api/linux/poll#epoll-create1
+/// @see https://man7.org/linux/man-pages/man2/epoll_create1.2.html
+pub func EpollCreate1(flags: int32) -> int64 {
+    return Syscall6(SysEpollCreate1, flags as int64 as uint64, 0, 0, 0, 0, 0);
+}
+
+/// Adds, changes or removes the registration of `fd` with an epoll instance.
+/// @param epoll the instance
+/// @param operation `EPOLL_CTL_ADD`, `EPOLL_CTL_MOD` or `EPOLL_CTL_DEL`
+/// @param fd the descriptor registered
+/// @param event `EpollEventBytes` bytes: the event mask and, at `EpollEventWordOffset`, the word to report; ignored
+///   when removing
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/linux/poll#epoll-control
+/// @see https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
+pub func EpollControl(epoll: FileDescriptor, operation: int32, fd: FileDescriptor, event: *opaque) -> int64 {
+    return Syscall6(SysEpollControl, SignExtendFd(epoll), operation as int64 as uint64, SignExtendFd(fd),
+                    event as uint64, 0, 0);
+}
+
+/// Waits until a registered descriptor is ready or `timeout` milliseconds pass, filling `events` with what is ready.
+/// @param epoll the instance
+/// @param events room for `capacity` events of `EpollEventBytes` bytes each
+/// @param capacity how many events fit
+/// @param timeout milliseconds to wait, zero to only look, or -1 to wait without end
+/// @returns how many events were filled, zero after the timeout, or a negative error number
+/// @see https://rux-lang.dev/docs/api/linux/poll#epoll-wait
+/// @see https://man7.org/linux/man-pages/man2/epoll_wait.2.html
+pub func EpollWait(epoll: FileDescriptor, events: *var opaque, capacity: int32, timeout: int32) -> int64 {
+    return Syscall6(SysEpollWait, SignExtendFd(epoll), events as uint64, capacity as int64 as uint64,
+                    timeout as int64 as uint64, 0, 8);
+}

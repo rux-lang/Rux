@@ -4,8 +4,8 @@
 
 import Io::IoError;
 import Net::{
-    BindSocket, CloseSocket, ConnectSocket, IpAddress, Ipv4Address, NoSocket, OpenSocket, ReceiveSocket, SendSocket,
-    SetTimeout, SocketAddress, SocketName, Nanoseconds
+    BindSocket, CloseSocket, ConnectSocket, IpAddress, Ipv4Address, NoSocket, OpenSocket, PollSource, ReceiveSocket,
+    SendSocket, SetSocketNonBlocking, SetTimeout, SocketAddress, SocketName, Nanoseconds
 };
 import Time::Duration;
 
@@ -94,6 +94,22 @@ extend UdpSocket {
     /// @see https://rux-lang.dev/docs/api/net/udp#set-read-timeout
     pub func SetReadTimeout(self: &UdpSocket, timeout: Duration?) -> ! IoError {
         SetTimeout(self.handle, true, Nanoseconds(timeout))?;
+    }
+
+    /// Makes calls on the socket fail with `WouldBlock` when they would wait, or wait again.
+    /// A non-blocking socket is meant for a `Poller`, which says when a call would not wait.
+    /// @param enabled whether calls fail rather than wait
+    /// @returns success when the mode is set
+    /// @see https://rux-lang.dev/docs/api/net/udp-socket#set-non-blocking
+    pub func SetNonBlocking(self: &UdpSocket, enabled: bool) -> ! IoError {
+        SetSocketNonBlocking(self.handle, enabled)?;
+    }
+
+    /// The socket as a `Poller` watches it, valid while the socket is open.
+    /// @returns the source to register
+    /// @see https://rux-lang.dev/docs/api/net/udp-socket#poll-source
+    pub func PollSource(self: &UdpSocket) -> PollSource {
+        return PollSource { handle: self.handle };
     }
 
     func ~UdpSocket(self: &var UdpSocket) {

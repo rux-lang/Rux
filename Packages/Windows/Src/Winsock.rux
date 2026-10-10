@@ -98,6 +98,47 @@ pub const IPV6_V6ONLY: int32 = 27;
 #Allow("naming.const")
 pub const INVALID_SOCKET: uint64 = 0xFFFFFFFFFFFFFFFF;
 
+/// `FIONBIO`: the `ioctlsocket` command that turns a socket's non-blocking mode on or off.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#fionbio
+#Allow("naming.const")
+pub const FIONBIO: int32 = -2147195266;
+
+/// `POLLRDNORM`: `WSAPoll` reports a socket with data to read, or a connection to accept.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#pollrdnorm
+#Allow("naming.const")
+pub const POLLRDNORM: int16 = 0x100;
+
+/// `POLLWRNORM`: `WSAPoll` reports a socket a write would not wait on.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#pollwrnorm
+#Allow("naming.const")
+pub const POLLWRNORM: int16 = 0x10;
+
+/// `POLLERR`: the socket has an error pending; always reported.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#pollerr
+#Allow("naming.const")
+pub const POLLERR: int16 = 0x1;
+
+/// `POLLHUP`: the connection was closed; always reported.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#pollhup
+#Allow("naming.const")
+pub const POLLHUP: int16 = 0x2;
+
+/// `POLLNVAL`: the socket is not valid; always reported.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#pollnval
+#Allow("naming.const")
+pub const POLLNVAL: int16 = 0x4;
+
+/// `WSAPOLLFD`: one socket `WSAPoll` watches, the events wanted, and the events it reports.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-poll-fd
+pub struct WsaPollFd {
+    /// The socket.
+    pub socket: uint64;
+    /// The events wanted, such as `POLLRDNORM`.
+    pub events: int16;
+    /// The events that happened, filled by `WSAPoll`.
+    pub returned: int16;
+}
+
 #Link("Ws2_32.dll")
 pub extern {
     /// Starts Winsock for this process.
@@ -242,4 +283,22 @@ pub extern {
     /// @see https://rux-lang.dev/docs/api/windows/winsock#freeaddrinfo
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/nf-ws2tcpip-freeaddrinfo
     func freeaddrinfo(info: *var AddressInfo);
+
+    /// Sets a socket's mode, such as non-blocking with `FIONBIO`.
+    /// @param socket the socket
+    /// @param command the mode to set, such as `FIONBIO`
+    /// @param argument the mode's value: for `FIONBIO`, nonzero for non-blocking
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#ioctlsocket
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-ioctlsocket
+    func ioctlsocket(socket: uint64, command: int32, argument: *var uint32) -> int32;
+
+    /// Waits until one of `count` sockets is ready or `timeout` milliseconds pass, filling each one's `returned`.
+    /// @param sockets the sockets and the events wanted of each
+    /// @param count how many there are
+    /// @param timeout milliseconds to wait, zero to only look, or -1 to wait without end
+    /// @returns how many sockets have events, zero after the timeout, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-poll
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsapoll
+    func WSAPoll(sockets: *var WsaPollFd, count: uint32, timeout: int32) -> int32;
 }

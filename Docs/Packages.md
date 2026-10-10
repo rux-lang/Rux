@@ -33,7 +33,7 @@ The v0.1.0 release ships **39 packages**. This table is the target catalog: it i
 | `Math`        | Mathematical operations and numerical classification                 | Core                                                     |
 | `Memory`      | Untyped blocks, page mappings and byte-level operations              | Core, OS                                                 |
 | `NanoId`      | Nano ID generation, validation and textual form                      | Core, Entropy, Memory, Text                              |
-| `Net`         | IP and socket addresses, TCP and UDP sockets, and name resolution     | Core, Allocator, Collections, Text, Time, Io, OS          |
+| `Net`         | IP and socket addresses, TCP and UDP sockets, polling, and name resolution | Core, Allocator, Collections, Text, Time, Io, OS          |
 | `Path`        | Lossless native strings and lexical path operations                  | Core, Memory, Allocator, Text                            |
 | `Process`     | The running process and the child processes it starts                | Core, Memory, Allocator, Path, Io, Thread, OS            |
 | `Random`      | Seeded generators, distributions and sampling                        | Core, Math, Entropy                                      |

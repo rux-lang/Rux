@@ -1,0 +1,114 @@
+// A non-blocking listener and stream fail with `WouldBlock` rather than wait; a poller reports a listener with a
+// connection waiting, a stream with data, a stream whose peer has closed, and a UDP socket with a datagram, each by the
+// token it was registered with; a wait with nothing ready times out; and registrations are refused when doubled or
+// missing. Everything runs on one thread, on the loopback interface.
+
+import Allocator::SystemAllocator;
+import Core::{ Assert, Panic };
+import Io::{ IoErrorKind, Reader, WriteAll };
+import Net::{
+    Interest, IpAddress, Ipv4Address, PollEvent, Poller, SocketAddress, TcpListener, TcpStream, UdpSocket
+};
+import Time::Duration;
+
+func Loopback(port: uint16) -> SocketAddress {
+    return SocketAddress::New(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
+}
+
+// Waits up to a second for an event with `token`, and returns it.
+func WaitFor(poller: &var Poller, token: uint64) -> PollEvent {
+    var events: PollEvent[8] = [PollEvent::PollEvent(); 8];
+    var attempts: uint = 0;
+    while attempts < 20u {
+        let count = poller.Wait(events[..], Duration::FromMilliseconds(50)) catch { else => Panic("the wait works") };
+        var index: uint = 0;
+        while index < count {
+            if events[index].token == token { return events[index]; }
+            index = index + 1;
+        }
+        attempts = attempts + 1;
+    }
+    Panic("the socket was never reported ready");
+}
+
+// Takes the stream and drops it, which closes it.
+func Close(stream: TcpStream) {}
+
+func Main() -> int {
+    let listener = TcpListener::Bind(Loopback(0)) catch { else => Panic("the listener binds") };
+    let address = listener.LocalAddress() catch { else => Panic("it has an address") };
+    listener.SetNonBlocking(true) catch { else => Panic("the listener becomes non-blocking") };
+    match listener.Accept() {
+        .Success(_) => Panic("no connection is waiting yet"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "accept would block")
+    }
+
+    var poller = Poller::New(SystemAllocator()) catch { else => Panic("a poller is made") };
+    poller.Register(listener.PollSource(), 1, Interest::Readable()) catch { else => Panic("the listener registers") };
+    match poller.Register(listener.PollSource(), 9, Interest::Readable()) {
+        .Success(_) => Panic("a socket registers once"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::AlreadyExists, "a second registration is refused")
+    }
+    var events: PollEvent[4] = [PollEvent::PollEvent(); 4];
+    let quiet = poller.Wait(events[..], Duration::FromMilliseconds(20)) catch { else => Panic("the wait works") };
+    Assert(quiet == 0u, "nothing is ready before a connection");
+
+    var client = TcpStream::Connect(address) catch { else => Panic("the client connects") };
+    let incoming = WaitFor(poller, 1);
+    Assert(incoming.readable, "a listener with a connection waiting is readable");
+    var server = listener.Accept() catch { else => Panic("the connection is accepted") };
+
+    // The accepted stream blocks, whatever its listener does; made non-blocking, it has nothing to read yet.
+    server.SetNonBlocking(true) catch { else => Panic("the stream becomes non-blocking") };
+    var buffer: char8[16] = ['\0'; 16];
+    match server.Read(buffer[..]) {
+        .Success(_) => Panic("nothing was sent yet"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "a read would block")
+    }
+    poller.Register(server.PollSource(), 2, Interest::Readable()) catch { else => Panic("the stream registers") };
+    WriteAll(client, "ping") catch { else => Panic("the client writes") };
+    let data = WaitFor(poller, 2);
+    Assert(data.readable && !data.closed, "a stream with data is readable");
+    let count = server.Read(buffer[..]) catch { else => Panic("the data is read") };
+    Assert(count == 4u && buffer[0] == c8'p' && buffer[3] == c8'g', "the data arrives");
+
+    // A stream registered for writing is writable at once; changed back to reading, it is quiet again.
+    poller.Modify(server.PollSource(), 3, Interest::Writable()) catch { else => Panic("the registration changes") };
+    let room = WaitFor(poller, 3);
+    Assert(room.writable, "a stream with room is writable");
+    poller.Modify(server.PollSource(), 2, Interest::Readable()) catch { else => Panic("and changes back") };
+
+    // The peer closing is reported as readable, and the read then finds the end.
+    Close(<-client);
+    let ended = WaitFor(poller, 2);
+    Assert(ended.readable || ended.closed, "a closed peer is reported");
+    match server.Read(buffer[..]) {
+        .Success(_) => Panic("the peer sent nothing more"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::EndOfStream, "the read finds the end")
+    }
+    poller.Deregister(server.PollSource()) catch { else => Panic("the stream deregisters") };
+    match poller.Deregister(server.PollSource()) {
+        .Success(_) => Panic("a socket deregisters once"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a second deregistration is refused")
+    }
+
+    // A datagram makes a UDP socket readable.
+    let receiver = UdpSocket::Bind(Loopback(0)) catch { else => Panic("the receiver binds") };
+    let target = receiver.LocalAddress() catch { else => Panic("it has an address") };
+    receiver.SetNonBlocking(true) catch { else => Panic("the receiver becomes non-blocking") };
+    poller.Register(receiver.PollSource(), 4, Interest::Readable()) catch { else => Panic("the receiver registers") };
+    let sender = UdpSocket::Bind(Loopback(0)) catch { else => Panic("the sender binds") };
+    sender.SendTo("datagram", target) catch { else => Panic("the datagram is sent") };
+    let arrived = WaitFor(poller, 4);
+    Assert(arrived.readable, "a socket with a datagram is readable");
+    let datagram = receiver.ReceiveFrom(buffer[..]) catch { else => Panic("the datagram is received") };
+    Assert(datagram.length == 8u, "the whole datagram arrives");
+    match receiver.Receive(buffer[..]) {
+        .Success(_) => Panic("only one datagram was sent"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "the next receive would block")
+    }
+
+    poller.Deregister(receiver.PollSource()) catch { else => Panic("the receiver deregisters") };
+    poller.Deregister(listener.PollSource()) catch { else => Panic("the listener deregisters") };
+    return 0;
+}
