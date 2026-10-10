@@ -203,6 +203,11 @@ Other backends retain their existing allocation policy; splitting, eviction and 
 
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
+`BaselineCpuFeatures` supplies the portable output policy: SSE2 on x86-64, NEON on AArch64, and no capabilities for an
+unknown architecture. Both `CreateNative` and `TargetContextForTriple` use that policy. Compiler-process feature macros
+and runtime host detection remain separate and do not authorize additional instructions in a default output target.
+Explicit tuning, extension-specific capability selection and cached runtime dispatch require separate policies.
+
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
 
 Process launches are confined the same way, and for a stronger reason: Rux encodes its own machine code, links its own artifacts, and signs Mach-O images, so no stage may call out to an assembler, a C compiler, a linker, an archiver, or a signing tool. `Tests/Policy/NoExternalToolchain/Check.sh` is that guard. No file under `Compiler/` names such a program, and the only stages that launch anything at all are `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp`. `run` always builds and launches the host target; `test --target` launches output only when the target OS matches and the target architecture is executable directly by the compiler process or native OS.

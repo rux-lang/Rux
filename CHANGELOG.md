@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Portable target CPU baselines** — native and cross-target compilation both expose SSE2 for x86-64 and NEON for
+  AArch64. Compiler-host build flags no longer authorize extra instructions in portable output; runtime detection
+  remains a separate source of hardware availability.
+
 - **Explicit last-use register coalescing** — selected x86 scalar arithmetic can overwrite its dying left input,
   removing physical copies and reducing register demand. Live inputs, reassigned homes and phi-edge overlaps retain
   their interference constraints.

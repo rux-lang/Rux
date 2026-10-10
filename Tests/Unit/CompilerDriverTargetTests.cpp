@@ -497,6 +497,22 @@ TEST_CASE("every supported triple is one a back end can produce") {
     }
 }
 
+TEST_CASE("portable target features depend on output architecture rather than compiler host") {
+    for (const std::string_view os : {"freebsd", "linux", "macos", "windows"}) {
+        for (const std::string_view arch : {"x86_64", "aarch64"}) {
+            const auto triple = Target::TargetTriple::Parse(std::string(os) + "-" + std::string(arch));
+            REQUIRE(triple.has_value());
+            const auto target = TargetContextForTriple(*triple);
+            const auto expected = arch == "x86_64" ? Target::CpuFeature::SSE2 : Target::CpuFeature::NEON;
+            CHECK_EQ(target.cpu_features.mask, expected.mask);
+            CHECK_FALSE(target.cpu_features.Has(Target::CpuFeature::AVX2));
+            CHECK_FALSE(target.cpu_features.Has(Target::CpuFeature::SVE));
+        }
+    }
+    CHECK_EQ(TargetContext::CreateNative().cpu_features.mask, Target::BaselineCpuFeatures(Target::HostArch).mask);
+    CHECK_EQ(Target::BaselineCpuFeatures(Target::Arch::Unknown).mask, 0);
+}
+
 TEST_CASE("compiler driver builds an executable for linux-aarch64") {
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
