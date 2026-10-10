@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
+  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
+
 - **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
   directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
 
@@ -674,6 +677,9 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 ### Added
 
+- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
+  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
+
 - **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
   directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
 
@@ -770,6 +776,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 
 ### Added
 
+- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
+  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
+
 - **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
   directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
 
@@ -811,6 +820,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 Expands the compiler with control flow, composite types, modules, and a richer type system.
 
 ### Added
+
+- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
+  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
 
 - **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
   directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
@@ -864,6 +876,9 @@ func Main() -> int32 {
 ```
 
 ### Added
+
+- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
+  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
 
 - **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
   directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.

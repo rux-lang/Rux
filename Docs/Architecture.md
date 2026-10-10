@@ -340,3 +340,8 @@ Optimization pipelines accept optional read-only observers for the initial IR an
 `build --emit passes` installs HIR/LIR observers writing into a fresh invocation directory; iteration and pipeline slot
 identify repeated instances unambiguously. Disabled passes are skipped. Output failure aborts optimization and fails
 the build. Snapshot I/O is outside pass timers, and normal builds leave the observers unset.
+Reference promotion and inlining share a declaration snapshot identifying thin references to concrete structures.
+Unknown names and interface references are excluded. Private reference slots follow the same initialization, escape,
+volatile and type checks as other promoted scalar slots. Bounded void helpers clone return edges without manufacturing
+result values or phis; concrete borrowed parameters retain the caller's address identity. Existing expansion budgets,
+recursion exclusions, aggregate-by-value restrictions and required verifiers remain in force.

@@ -1,6 +1,7 @@
 #include "Optimization/LirMemoryPromotion.h"
 
 #include "Ir/Lir/ControlFlow.h"
+#include "Optimization/ReferenceTypes.h"
 
 #include <algorithm>
 #include <map>
@@ -50,7 +51,7 @@ bool Scalar(const TypeRef &type) {
             (type.inner[0].IsInteger() || type.inner[0].IsChar() || type.inner[0].IsBool() || type.inner[0].IsFloat()));
 }
 
-bool Promote(LirFunc &function) {
+bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
     if (function.isExtern || function.isAsm || function.blocks.empty()) {
         return false;
     }
@@ -77,7 +78,8 @@ bool Promote(LirFunc &function) {
                 return false; // Legacy non-SSA fixtures keep their memory behavior.
             }
             next = std::max(next, instruction.dst + 1);
-            if (instruction.op == LirOpcode::Alloca && instruction.strArg.empty() && Scalar(type)) {
+            if (instruction.op == LirOpcode::Alloca && instruction.strArg.empty() &&
+                (Scalar(type) || references.Contains(type))) {
                 slots.emplace(instruction.dst, type);
             }
         }
@@ -265,9 +267,10 @@ std::string_view LirMemoryPromotion::Name() const noexcept {
 
 PassChange LirMemoryPromotion::Run(LirPackage &package, const PassContext &) {
     bool changed = false;
+    const ConcreteReferenceTypes references(package);
     for (auto &module : package.modules) {
         for (auto &function : module.funcs) {
-            changed = Promote(function) || changed;
+            changed = Promote(function, references) || changed;
         }
     }
     return changed ? PassChange::Changed : PassChange::None;

@@ -246,3 +246,66 @@ TEST_CASE("Scalar reference leaf inlining preserves updates through a lowered lo
     CHECK_EQ(Calls(package), 0);
     CHECK(promotion.Run(package, {}) == Optimization::PassChange::Changed);
 }
+
+TEST_CASE("Bounded void helpers inline concrete borrowed structures and preserve return edges") {
+    auto package = CompileToLir(R"(
+        struct Pair { first: int; second: int; }
+        func Update(value: &var Pair, amount: int) {
+            if amount < 0 { value.first -= amount; return; }
+            value.second += amount;
+        }
+        func Work(value: &var Pair, amount: int) -> int {
+            Update(value, amount);
+            return value.first + value.second;
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    REQUIRE_EQ(Calls(package), 1);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    std::vector<Diagnostic> diagnostics;
+    Optimization::PassContext context;
+    context.diagnostics = &diagnostics;
+    Optimization::LirCfgVerifier cfg;
+    Optimization::LirSsaVerifier ssa;
+    static_cast<void>(cfg.Run(package, context));
+    static_cast<void>(ssa.Run(package, context));
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+        CHECK_FALSE(diagnostic.IsError());
+    }
+}
+
+TEST_CASE("Borrowed interface and unknown aggregate helpers retain their ABI boundary") {
+    for (const bool isInterface : {false, true}) {
+        const auto reference = TypeRef::MakeReference(TypeRef::MakeNamed("Unknown"));
+        LirFunc helper;
+        helper.name = "Helper";
+        helper.params = {{0, reference, "value"}};
+        helper.blocks.resize(1);
+        helper.blocks[0].term = ReturnValue();
+        LirFunc caller = helper;
+        caller.name = "Caller";
+        LirInstr call;
+        call.op = LirOpcode::Call;
+        call.strArg = helper.name;
+        call.srcs = {0};
+        caller.blocks[0].instrs = {call};
+        LirModule module;
+        module.funcs = {helper, caller};
+        if (isInterface) {
+            module.interfaceNames = {"Unknown"};
+            LirStructDecl collision;
+            collision.name = "Unknown";
+            module.structs.push_back(collision);
+        }
+        LirPackage package;
+        package.modules.push_back(module);
+        Optimization::LirInliner inliner;
+        CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
+        CHECK_EQ(Calls(package), 1);
+    }
+}

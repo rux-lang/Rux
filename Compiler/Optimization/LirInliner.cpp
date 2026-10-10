@@ -1,5 +1,7 @@
 #include "Optimization/LirInliner.h"
 
+#include "Optimization/ReferenceTypes.h"
+
 #include <algorithm>
 #include <functional>
 #include <iterator>
@@ -19,7 +21,7 @@ bool Scalar(const TypeRef &type) {
 }
 
 bool ArgumentMatches(const TypeRef &argument, const TypeRef &parameter) {
-    return argument == parameter || (parameter.kind == TypeRef::Kind::Reference && Scalar(parameter) &&
+    return argument == parameter || (parameter.kind == TypeRef::Kind::Reference &&
                                      argument.kind == TypeRef::Kind::Pointer && argument.inner == parameter.inner);
 }
 
@@ -58,10 +60,12 @@ std::size_t Cost(const LirFunc &function) {
     return cost;
 }
 
-bool Eligible(const LirFunc &function) {
+bool Eligible(const LirFunc &function, const ConcreteReferenceTypes &references) {
+    const auto parameterFits = [&](const TypeRef &type) { return Scalar(type) || references.Contains(type); };
     if (function.isExtern || function.isAsm || function.isVariadic || function.blocks.empty() ||
-        function.blocks.size() > 8 || Cost(function) > 48 || !Scalar(function.returnType) ||
-        !std::ranges::all_of(function.params, [](const auto &p) { return Scalar(p.type); })) {
+        function.blocks.size() > 8 || Cost(function) > 48 ||
+        (!Scalar(function.returnType) && !function.returnType.IsOpaque()) ||
+        !std::ranges::all_of(function.params, [&](const auto &p) { return parameterFits(p.type); })) {
         return false;
     }
     std::unordered_set<LirReg> definitions;
@@ -76,7 +80,8 @@ bool Eligible(const LirFunc &function) {
             return false;
         }
         if (block.term->kind == LirTermKind::Return) {
-            if (!block.term->retVal || block.term->retType != function.returnType) {
+            if (block.term->retVal.has_value() == function.returnType.IsOpaque() ||
+                block.term->retType != function.returnType) {
                 return false;
             }
             returns = true;
@@ -212,7 +217,7 @@ void Inline(LirFunc &caller, std::uint32_t &blockIndex, std::size_t &position, c
     }
     if (clones.size() == 1 && clones[0].term->kind == LirTermKind::Return) {
         auto &instructions = clones[0].instrs;
-        const auto returned = *clones[0].term->retVal;
+        const auto returned = clones[0].term->retVal.value_or(LirNoReg);
         if (call.dst != LirNoReg && types.at(returned) == call.type) {
             // A return is an SSA rename, not a numeric conversion. In particular, wide software values must not
             // acquire an artificial cast after the software-operation lowering stage has already run.
@@ -282,7 +287,7 @@ void Inline(LirFunc &caller, std::uint32_t &blockIndex, std::size_t &position, c
             }
         }
         if (block.term->kind == LirTermKind::Return) {
-            auto value = *block.term->retVal;
+            auto value = block.term->retVal.value_or(LirNoReg);
             if (call.dst != LirNoReg && types.at(value) != call.type) {
                 LirInstr conversion;
                 conversion.op = LirOpcode::Cast;
@@ -294,7 +299,8 @@ void Inline(LirFunc &caller, std::uint32_t &blockIndex, std::size_t &position, c
                 types[value] = call.type;
                 block.instrs.push_back(std::move(conversion));
             }
-            result.phiPreds.emplace_back(value, base + i);
+            if (call.dst != LirNoReg)
+                result.phiPreds.emplace_back(value, base + i);
             block.term = Jump(continuationIndex);
         }
         else {
@@ -329,6 +335,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
     std::vector<LirFunc *> functions;
     std::unordered_map<std::string, std::size_t> names;
     std::unordered_set<std::string> ambiguous;
+    const ConcreteReferenceTypes references(package);
     for (auto &module : package.modules) {
         for (auto &function : module.funcs) {
             if (!names.emplace(function.name, functions.size()).second) {
@@ -416,12 +423,13 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     continue;
                 }
                 const auto found = available.find(call.strArg);
-                bool valid = call.op == LirOpcode::Call && found != available.end() && !call.isCVariadic;
+                bool valid =
+                    call.op == LirOpcode::Call && found != available.end() && !call.isCVariadic && !call.isVolatile;
                 if (valid) {
                     const auto &callee = found->second;
                     valid = call.type == callee.returnType && call.srcs.size() == callee.params.size() &&
-                            Cost(callee) <= budget && Cost(callee) <= packageBudget &&
-                            function.blocks.size() + callee.blocks.size() + 1 <= 4096;
+                            (!callee.returnType.IsOpaque() || call.dst == LirNoReg) && Cost(callee) <= budget &&
+                            Cost(callee) <= packageBudget && function.blocks.size() + callee.blocks.size() + 1 <= 4096;
                     for (std::size_t i = 0; valid && i < call.srcs.size(); ++i) {
                         valid = types.contains(call.srcs[i]) &&
                                 ArgumentMatches(types.at(call.srcs[i]), callee.params[i].type);
@@ -438,7 +446,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 changed = true;
             }
         }
-        if (remaining[index] == 0 && !ambiguous.contains(function.name) && Eligible(function)) {
+        if (remaining[index] == 0 && !ambiguous.contains(function.name) && Eligible(function, references)) {
             available.emplace(function.name, function);
         }
     }

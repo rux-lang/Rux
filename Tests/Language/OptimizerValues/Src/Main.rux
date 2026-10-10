@@ -34,7 +34,25 @@ func Main() -> int {
     }
     Assert(!WideWrapped(18446744073709551615u64), "uint64 maximum wraps to zero");
     Assert(WideWrapped(0u64), "uint64 zero increments to one");
+    var pair = BorrowedPair { first: 0, second: 0 };
+    for amount in -20..21 { UpdatePair(pair, amount); }
+    Assert(pair.first == 210 && pair.second == 210, "inlined void helper retains early-return edges");
+    AliasPair(@pair, @pair);
+    Assert(pair.first == 42 && pair.second == 42, "borrowed aggregate helper preserves aliases");
     return 0;
+}
+
+struct BorrowedPair { first: int; second: int; }
+
+func UpdatePair(value: &var BorrowedPair, amount: int) {
+    if amount < 0 { value.first -= amount; return; }
+    value.second += amount;
+}
+
+func AliasPair(first: *var BorrowedPair, second: *var BorrowedPair) {
+    first.first = 7;
+    second.first = 42;
+    first.second = first.first;
 }
 
 func Masked(value: uint8) -> uint64 { return (value & 63u8) as uint64; }
