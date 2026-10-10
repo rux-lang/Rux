@@ -197,12 +197,33 @@ extend Table<K, V> {
         return none;
     }
 
+    // The hash is keyed with this table's seed, which remains unchanged when capacity changes.
+    // Keep the same owned key parameter as Find, including its ordinary copy/destruction behavior.
+    func FindHashed(self: &Table<K, V>, key: K, hashed: uint64, equals: func(K, K) -> bool) -> uint? {
+        if self.capacity == 0 || self.length == 0 { return none; }
+
+        var index = self.HomeOf(hashed);
+        var distance: uint = 0;
+        while distance < self.capacity {
+            let state = self.states[index];
+            if state == SlotEmpty { return none; }
+            let occupantDistance = (state as uint) - 1;
+            if occupantDistance < distance { return none; }
+            if equals(self.keys[index], key) { return .Some(index); }
+            index = self.NextOf(index);
+            distance = distance + 1;
+        }
+        return none;
+    }
+
     // Puts an entry into a table with room for it, displacing whatever is closer to home along the way.
     // Returns the slot the entry ended up in, or `none` when the probe ran further than a distance byte can hold.
     // The caller has already made room, so a refusal here means these keys collide badly enough that a larger table
     // would not help.
-    func Place(self: &var Table<K, V>, key: K, value: V, hash: func(K, uint64, uint64) -> uint64) -> uint? {
-        var index = self.HomeOf(hash(key, self.seed.low, self.seed.high));
+
+    // Recompute the home from the current capacity; a slot cached before EnsureRoom would be invalid after growth.
+    func PlaceHashed(self: &var Table<K, V>, key: K, value: V, hashed: uint64) -> uint? {
+        var index = self.HomeOf(hashed);
         var distance: uint = 0;
         var carriedKey <- key;
         var carriedValue <- value;
@@ -329,7 +350,8 @@ extend Table<K, V> {
         while index < oldCapacity {
             if oldStates[index] != SlotEmpty {
                 // Relocated rather than copied: each entry has exactly one home afterwards, in the new run.
-                self.Place(<-oldKeys[index], <-oldValues[index], hash);
+                let hashed = hash(oldKeys[index], self.seed.low, self.seed.high);
+                self.PlaceHashed(<-oldKeys[index], <-oldValues[index], hashed);
             }
             index++;
         }

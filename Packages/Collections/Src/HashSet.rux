@@ -101,10 +101,11 @@ extend HashSet<T> {
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#insert
     pub func Insert(self: &var HashSet<T>, value: T) -> bool ! CollectionError {
-        if self.table.Find(value, self.hash, self.equals) != none { return false; }
+        let hashed = self.hash(value, self.table.seed.low, self.table.seed.high);
+        if self.table.FindHashed(value, hashed, self.equals) != none { return false; }
 
         self.table.EnsureRoom(self.hash)?;
-        if self.table.Place(<-value, (), self.hash) == none { fail CollectionError::Unsupported; }
+        if self.table.PlaceHashed(<-value, (), hashed) == none { fail CollectionError::Unsupported; }
         return true;
     }
 

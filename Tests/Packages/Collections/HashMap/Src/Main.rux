@@ -1,6 +1,6 @@
 import Core::uint;
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, KeyValue, TableSeed };
+import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, HashSet, KeyValue, TableSeed };
 import Core::{ Assert, Panic };
 
 // A hash table is mostly interesting where it is full and where things have been removed from it, so what is checked
@@ -94,9 +94,80 @@ func Refusal<T, E>(outcome: T ! E) -> E {
     };
 }
 
+struct CountedKey {
+    value: int32;
+    hashes: *var int32;
+}
+
+func CountedHash(key: CountedKey, low: uint64, high: uint64) -> uint64 {
+    *key.hashes += 1;
+    // Deliberate collisions exercise displacement as well as growth with a cached hash.
+    return ((key.value % 4) as uint64) ^ low ^ high;
+}
+
+func CountedEquals(left: CountedKey, right: CountedKey) -> bool {
+    return left.value == right.value;
+}
+
+func VerifyEntryHashes(allocator: Allocator) {
+    var hashes: int32 = 0;
+    var map = HashMap::WithSeed<CountedKey, int32>(allocator, TableSeed::Of(17, 29), CountedHash, CountedEquals);
+    for value in 0i32..40i32 {
+        let capacity = map.Capacity();
+        let previousLength = map.Length();
+        hashes = 0;
+        var stored: *var int32 = null;
+        var inserted = false;
+        map.GetOrInsert(CountedKey { value: value, hashes: @hashes }, value * 3, @stored, @inserted)
+            catch { else => Panic("counted insertion succeeds") };
+        let expectedHashes = capacity == map.Capacity() ? 1 : (previousLength as int32) + 1;
+        Assert(hashes == expectedHashes, "hash the requested key once, plus existing entries when growing");
+        Assert(inserted && *stored == value * 3, "the returned slot survives displacement and growth");
+        hashes = 0;
+        map.GetOrInsert(CountedKey { value: value, hashes: @hashes }, 999, @stored, @inserted)
+            catch { else => Panic("counted lookup succeeds") };
+        Assert(hashes == 1 && !inserted && *stored == value * 3, "an existing key is hashed once");
+    }
+    for value in 0i32..40i32 {
+        Assert(map.Get(CountedKey { value: value, hashes: @hashes }) == .Some(value * 3),
+               "every colliding key remains findable after growth");
+    }
+    for value in 40i32..80i32 {
+        let capacity = map.Capacity();
+        let previousLength = map.Length();
+        hashes = 0;
+        if value % 2 == 0 {
+            map.Insert(CountedKey { value: value, hashes: @hashes }, value)
+                catch { else => Panic("counted Insert succeeds") };
+        } else {
+            let old = map.Replace(CountedKey { value: value, hashes: @hashes }, value)
+                catch { else => Panic("counted Replace succeeds") };
+            Assert(old == none, "replacing an absent key inserts it");
+        }
+        let expectedHashes = capacity == map.Capacity() ? 1 : (previousLength as int32) + 1;
+        Assert(hashes == expectedHashes, "Insert and Replace reuse the requested key hash across growth");
+        Assert(map.Get(CountedKey { value: value, hashes: @hashes }) == .Some(value), "new entries remain findable");
+    }
+    var set = HashSet::WithSeed<CountedKey>(allocator, TableSeed::Of(17, 29), CountedHash, CountedEquals);
+    for value in 0i32..40i32 {
+        let capacity = set.Capacity();
+        let previousLength = set.Length();
+        hashes = 0;
+        let inserted = set.Insert(CountedKey { value: value, hashes: @hashes })
+            catch { else => Panic("counted set insertion succeeds") };
+        let expectedHashes = capacity == set.Capacity() ? 1 : (previousLength as int32) + 1;
+        Assert(inserted && hashes == expectedHashes, "set insertion reuses the hash during collisions and growth");
+        hashes = 0;
+        let duplicate = set.Insert(CountedKey { value: value, hashes: @hashes })
+            catch { else => Panic("counted duplicate insertion succeeds") };
+        Assert(!duplicate && hashes == 1, "set duplicates hash once and leave the existing key in place");
+    }
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
+    VerifyEntryHashes(allocator);
 
     // A new map allocates nothing.
     var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);

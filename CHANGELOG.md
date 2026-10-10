@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Collection insertion hash reuse** — HashMap insertion, replacement and get-or-insert, and HashSet insertion reuse
+  the lookup hash when placing a new entry. Growth recomputes the home under the new capacity with the same keyed seed.
+
 - **SSA verification and conservative loop optimization** — Release builds verify definition dominance and phi
   types, reuse exact local expressions and scalar loads between memory barriers, and hoist nontrapping integer/address
   invariants from natural loops with existing preheaders. Primitive borrow and function-pointer locals can be promoted.

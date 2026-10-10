@@ -158,7 +158,8 @@ extend HashMap<K, V> {
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#insert
     pub func Insert(self: &var HashMap<K, V>, key: K, value: V) -> ! CollectionError {
-        match self.table.Find(key, self.hash, self.equals) {
+        let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
+        match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
                 // Reading the old value into a local destroys it when the local's life ends, which is what keeps a
                 // replaced value from being leaked.
@@ -170,7 +171,7 @@ extend HashMap<K, V> {
         }
 
         self.table.EnsureRoom(self.hash)?;
-        if self.table.Place(<-key, <-value, self.hash) == none {
+        if self.table.PlaceHashed(<-key, <-value, hashed) == none {
             // The table has room and the probe still ran past what a distance byte holds, so these keys collide
             // badly enough that a larger table would spread the same collisions over more slots.
             fail CollectionError::Unsupported;
@@ -264,7 +265,8 @@ extend HashMap<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#get-or-insert
     pub func GetOrInsert(self: &var HashMap<K, V>, key: K, value: V, existing: *var *var V,
                      inserted: *var bool) -> ! CollectionError {
-        match self.table.Find(key, self.hash, self.equals) {
+        let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
+        match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
                 if existing != null {
                     *existing = @self.table.values[slot];
@@ -278,7 +280,7 @@ extend HashMap<K, V> {
         }
 
         self.table.EnsureRoom(self.hash)?;
-        let placed = self.table.Place(<-key, <-value, self.hash) ?? fail CollectionError::Unsupported;
+        let placed = self.table.PlaceHashed(<-key, <-value, hashed) ?? fail CollectionError::Unsupported;
         if existing != null {
             *existing = @self.table.values[placed];
         }
@@ -298,7 +300,8 @@ extend HashMap<K, V> {
     /// @returns the value that was there, or `none` when the key was absent
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#replace
     pub func Replace(self: &var HashMap<K, V>, key: K, value: V) -> V? ! CollectionError {
-        match self.table.Find(key, self.hash, self.equals) {
+        let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
+        match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
                 let previous <- self.table.values[slot];
                 self.table.values[slot] <- value;
@@ -308,7 +311,7 @@ extend HashMap<K, V> {
         }
 
         self.table.EnsureRoom(self.hash)?;
-        if self.table.Place(<-key, <-value, self.hash) == none {
+        if self.table.PlaceHashed(<-key, <-value, hashed) == none {
             fail CollectionError::Unsupported;
         }
         return none;
