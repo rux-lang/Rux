@@ -19,6 +19,10 @@ rux add Rux/Collections
 | `HashSet<T>`    | Open-addressed set of distinct values     |               |
 | `TreeMap<K, V>` | Ordered red-black-tree map                |               |
 | `TreeSet<T>`    | Ordered red-black-tree set                |               |
+| `PriorityQueue<T>` | Max-heap that hands out the largest first | the heap   |
+| `BitSet`        | Growable set of small integers, a bit each |              |
+| `SmallVector<T>` | Vector holding 64 bytes of elements inline |             |
+| `LruCache<K, V>` | Bounded map evicting the least recently used |           |
 
 There is no `Stack` or `Queue` type. `Vector` already is the stack — `Push` and `TryPop` work at the end that costs nothing to reach — and `Deque` already is the queue, with `PushBack` and `TryPopFront`. Wrapper types would duplicate them to add no safety Rux can enforce. There is no `Dictionary` either: `HashMap` is the one associative name.
 

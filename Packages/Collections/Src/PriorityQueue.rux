@@ -1,0 +1,111 @@
+// A queue that always hands out its largest element first.
+// The elements live in a vector arranged as a binary max-heap, so a push and a pop each cost time logarithmic in the
+// length and the largest element is always at the front. The sifting moves elements rather than copying them, so a
+// queue can hold elements that own something. "Largest" is the element type's `<`: a queue that should hand out the
+// smallest first holds elements whose `<` is reversed, which keeps the order part of the type rather than a function
+// every queue has to carry.
+
+import Allocator::Allocator;
+
+/// A max-priority queue over a binary heap. Move-only: it owns its elements.
+/// @typeParam T the element type, which needs `<`
+/// @see https://rux-lang.dev/docs/api/collections/priority-queue
+pub struct PriorityQueue<T> {
+    /// The elements, in heap order.
+    items: Vector<T>;
+}
+
+extend PriorityQueue<T> {
+    func =(self: &var PriorityQueue<T>, other: &PriorityQueue<T>);
+
+    /// An empty queue that has not allocated anything.
+    /// @param allocator where the storage comes from
+    /// @returns the queue
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#new
+    pub func PriorityQueue(allocator: Allocator) -> PriorityQueue<T> {
+        return PriorityQueue<T> { items: Vector<T>(allocator) };
+    }
+
+    /// How many elements it holds.
+    /// @returns the count
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#length
+    pub func Length(self: &PriorityQueue<T>) -> uint {
+        return self.items.Length();
+    }
+
+    /// Whether it holds nothing.
+    /// @returns whether it is empty
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#is-empty
+    pub func IsEmpty(self: &PriorityQueue<T>) -> bool {
+        return self.items.IsEmpty();
+    }
+
+    /// Adds `value`, moving it in. Logarithmic time, amortized over the vector's growth.
+    /// @param value the element
+    /// @returns nothing, or why there was no room; the queue is unchanged on failure
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#push
+    pub func Push(self: &var PriorityQueue<T>, value: T) -> ! CollectionError {
+        self.items.Push(<-value)?;
+        let items = self.items.AsMutableSlice();
+        var index = items.length - 1;
+        while index > 0 {
+            let parent = (index - 1) / 2;
+            if !(items[parent] < items[index]) { break; }
+            SwapElements<T>(items, parent, index);
+            index = parent;
+        }
+    }
+
+    /// The largest element, without taking it out.
+    /// @returns a pointer to it, valid until the queue next changes, or `none` when the queue is empty
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#peek
+    pub func Peek(self: &PriorityQueue<T>) -> (*T)? {
+        return self.items.First();
+    }
+
+    /// Takes the largest element out. Logarithmic time.
+    /// @returns the element, or `none` when the queue is empty
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#pop
+    pub func Pop(self: &var PriorityQueue<T>) -> T? {
+        let count = self.items.Length();
+        if count == 0 { return none; }
+        let items = self.items.AsMutableSlice();
+        SwapElements<T>(items, 0, count - 1);
+        let last = count - 1;
+        var index: uint = 0;
+        while true {
+            let left = index * 2 + 1;
+            if left >= last { break; }
+            var largest = left;
+            let right = left + 1;
+            if right < last && items[left] < items[right] { largest = right; }
+            if !(items[index] < items[largest]) { break; }
+            SwapElements<T>(items, index, largest);
+            index = largest;
+        }
+        return self.items.RemoveAt(last);
+    }
+
+    /// Destroys every element, keeping the storage.
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#clear
+    pub func Clear(self: &var PriorityQueue<T>) {
+        self.items.Clear();
+    }
+
+    /// The elements in heap order: the largest first, the rest in no useful order.
+    /// @returns a view of them, valid until the queue next changes
+    /// @see https://rux-lang.dev/docs/api/collections/priority-queue#as-slice
+    pub func AsSlice(self: &PriorityQueue<T>) -> T[..] {
+        return self.items.AsSlice();
+    }
+}
+
+// Exchanges two elements by moving them, so that elements without copies can be exchanged. The moves go through the
+// raw pointer, whose places are written without destroying what they held, since each was just moved out.
+func SwapElements<T>(items: var T[..], left: uint, right: uint) {
+    if left == right { return; }
+    let data = items.data;
+    let held <- data[left];
+    data[left] <- data[right];
+    data[right] <- held;
+}
