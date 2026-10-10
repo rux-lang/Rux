@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Validated x86 CPU state detection** — runtime AVX2/AVX-512 availability now requires the corresponding CPU bits,
+  XSAVE/OSXSAVE and enabled XCR0 register state. Detection checks supported CPUID leaves before querying them.
+
 - **Private aggregate scalar replacement** — concrete structs and tuples with scalar fields, including closed
   whole-object copy chains, can be split into promotable locals. Copies snapshot their fields before later mutation;
   raw-byte access, escapes, overlapping representations and volatile operations preserve the original storage.
