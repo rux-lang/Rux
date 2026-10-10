@@ -176,7 +176,7 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     CHECK(linuxX86->osAbi == 0);
     CHECK(linuxX86->machine == 0x3E);
     CHECK(linuxX86->maximumLoadAlignment == 0x1000);
-    CHECK(linuxX86->freestandingExitSyscall == 60);
+    CHECK(linuxX86->freestandingExitSyscall == 231); // exit_group: exit (60) would end one thread
     CHECK(linuxX86->dynamicRelocations.jumpSlot == 7);
     CHECK(linuxX86->pltInstructionShape == Target::ElfPltInstructionShape::X86_64);
 
@@ -184,7 +184,7 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     REQUIRE(linuxAarch64.has_value());
     CHECK(linuxAarch64->machine == 0xB7);
     CHECK(linuxAarch64->maximumLoadAlignment == 0x10000);
-    CHECK(linuxAarch64->freestandingExitSyscall == 93);
+    CHECK(linuxAarch64->freestandingExitSyscall == 94); // exit_group: exit (93) would end one thread
     CHECK(linuxAarch64->dynamicRelocations.jumpSlot == 1026);
     CHECK_FALSE(linuxAarch64->definesElfAuxVector);
     CHECK(linuxAarch64->abiNoteName.empty()); // Linux keys nothing on a release note
@@ -582,8 +582,8 @@ TEST_CASE("ELF linker writes an AArch64 executable that exits through its entry 
     CHECK((branch & 0xFC000000U) == 0x94000000U);
     CHECK(entry + 12 + 4 * (branch & 0x03FFFFFFU) == entry + 24);
 
-    // mov x8, #93 (Linux exit) / svc #0, with Main's result already in X0.
-    CHECK(image.Word(entry + 16) == (0xD2800008U | 93U << 5U));
+    // mov x8, #94 (Linux exit_group, which ends every thread) / svc #0, with Main's result already in X0.
+    CHECK(image.Word(entry + 16) == (0xD2800008U | 94U << 5U));
     CHECK(image.Word(entry + 20) == 0xD4000001);
 
     CHECK(image.Word(entry + 24) == 0xD2800540);

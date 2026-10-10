@@ -3,18 +3,19 @@
 // protocol to be usable rather than merely callable, and a raw binding to them would be an invitation to get all
 // three wrong; that belongs above this package.
 
-import Linux::{ ProcessId, SysExit, SysGetPid, Syscall0, Syscall1 };
+import Linux::{ ProcessId, SysExitGroup, SysGetPid, Syscall0, Syscall1 };
 
 /// Ends the calling thread's process with `code`.
 /// `code` is read by value; only its low eight bits reach a waiting parent, which is the kernel's rule rather than
 /// this binding's. Does not return.
 /// Nothing is flushed, unwound, or destroyed on the way out: the kernel reclaims the address space and the
 /// descriptors, and anything the program was holding elsewhere is simply gone.
-/// This ends the whole process rather than one thread, which is `exit_group` in kernel terms.
+/// This ends the whole process rather than one thread: it is `exit_group`, not `exit`, which on Linux stops only the
+/// calling thread and would leave the others running.
 /// @param code the status to report to the parent
 /// @see https://rux-lang.dev/docs/api/linux/process#exit
 pub func Exit(code: int32) {
-    Syscall1(SysExit, (code as int64) as uint64);
+    Syscall1(SysExitGroup, (code as int64) as uint64);
 }
 
 /// The calling process's own identifier.

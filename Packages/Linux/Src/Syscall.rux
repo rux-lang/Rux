@@ -30,7 +30,7 @@ when #target.arch {
         /// `getpid(2)`'s system-call number.
         /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-get-pid
         pub const SysGetPid: uint64 = 39;
-        const SysExit: uint64 = 60;
+        const SysExitGroup: uint64 = 231;
         const SysClockGetTime: uint64 = 228;
         const SysOpenAt: uint64 = 257;
         const SysGetdents64: uint64 = 217;
@@ -70,7 +70,7 @@ when #target.arch {
         /// `getpid(2)`'s system-call number.
         /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-get-pid
         pub const SysGetPid: uint64 = 172;
-        const SysExit: uint64 = 93;
+        const SysExitGroup: uint64 = 94;
         const SysClockGetTime: uint64 = 113;
         const SysOpenAt: uint64 = 56;
         const SysGetdents64: uint64 = 61;

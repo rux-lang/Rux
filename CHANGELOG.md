@@ -472,6 +472,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 - **Extreme decimal literals** — parsing decimal values near the limits of `float512` uses bounded outward-rounded intervals, retaining exact rounding with an exact fallback when the interval is inconclusive.
 - **Extreme wide-float formatting** — exact decimal conversion uses Karatsuba multiplication for large balanced integers, making `float512::Max` and `MinPositive` practical to render. Golden tests check their shortest strings against an independently computed reference.
 - **Concurrent wide-scalar tests** — native execution tests reserve unique temporary directories so simultaneous test processes cannot overwrite one another's executables.
+- **Linux process exit** — `Linux::Exit` and the entry stub of a static Linux executable leave through `exit_group` (231 on x86-64, 94 on AArch64) rather than `exit`, which ends only the calling thread, so a process with more than one thread now ends as a whole.
+- **POSIX dynamic loading** — `dlopen`, `dlsym`, `dlclose` and `dlerror` are public in `Rux/Linux`, `Rux/FreeBSD` and `Rux/macOS`, as their READMEs document, instead of being private to each package.
 
 - **C variadic calling conventions** — narrow integers, booleans and characters receive C's default promotion to `int`, and `float32` promotes to `double`, on every target. Windows x64 floating-point tails no longer print garbage, and calls through function values preserve their variadic tails on Apple and Windows AArch64.
 - **x86-64 assembly output** — `--emit asm` matches object emission for Win64 wide arguments and hidden results, software-float constants and negation, NaN-aware comparisons, wide integers, System V calls, bit casts and `asm func` bodies.

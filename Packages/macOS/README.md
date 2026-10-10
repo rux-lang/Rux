@@ -21,7 +21,7 @@ rux add Rux/macOS
 | `Clock`     | `ClockGetTime`, `ClockGetResolution`, `GetTimeOfDay`, `Nanosleep`, and the clock identifiers |
 | `Entropy`   | `GetRandom`, which cannot fail and has no short count                                   |
 | `Process`   | `Exit` and `GetPid`                                                                     |
-| `Dynamic`   | the `RTLD_*` flags; the loader calls themselves are in `LibSystem`                      |
+| `Dynamic`   | the `RTLD_*` flags; `dlopen`, `dlsym`, `dlclose` and `dlerror` are in `LibSystem`        |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
