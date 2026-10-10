@@ -22,6 +22,7 @@ rux add Rux/Windows
 | `Shell`     | `CommandLineToArgvW`, which splits the command line into arguments the way the C runtime does |
 | `Synch`     | `WaitOnAddress`, `WakeByAddressSingle` and `WakeByAddressAll`, from the synchronization API set |
 | `ProcessControl` | `CreateProcessW` and its structures, `CreatePipe`, handle inheritance, `GetExitCodeProcess`, `TerminateProcess` and `SetEnvironmentVariableW` |
+| `TimeZone`  | `GetTimeZoneInformation`, `TimeZoneInformation` and `TimeZoneRuleDate`                 |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

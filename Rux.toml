@@ -33,6 +33,7 @@ Packages = [
     "Packages/Text",
     "Packages/Thread",
     "Packages/Time",
+    "Packages/TimeZone",
     "Packages/Toml",
     "Packages/Unicode",
     "Packages/Url",

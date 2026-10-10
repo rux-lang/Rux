@@ -1,0 +1,290 @@
+// A time zone: the offsets it has kept, the moments they changed, and the rule it keeps after the last change.
+// The history comes from a TZif file, RFC 8536, as the tz database distributes it; the rule from the file's footer or
+// from a POSIX `TZ` string. Asking what local time a moment is takes a binary search of the changes, or the rule after
+// them. Asking the reverse, which moment a local time is, can have two answers in the hour clocks fall back and none
+// in the hour they spring forward, so `Resolve` says which happened and gives both candidate moments.
+
+import Allocator::Allocator;
+import Collections::Vector;
+import Time::{ DateTime, OffsetDateTime, Timestamp, UtcOffset };
+import TimeZone::{ NoRule, ParseRule, Rule, RuleTypeAt, TimeZoneError, ZoneType };
+
+/// The local time a zone keeps at a moment: its offset, whether it is daylight time, and its abbreviation.
+/// `Copy`. The abbreviation is a view of the zone's own text, valid while the zone lives.
+/// @see https://rux-lang.dev/docs/api/timezone/zone#zone-state
+pub struct ZoneState {
+    /// The offset from UTC.
+    pub offset: UtcOffset;
+    /// Whether this is daylight-saving time.
+    pub daylight: bool;
+    /// The abbreviation, such as `CEST`, or a numeric one such as `+03`.
+    pub abbreviation: char8[..];
+}
+
+/// What a local date and time is in a zone. `Copy`.
+/// @see https://rux-lang.dev/docs/api/timezone/zone#local-time-kind
+pub enum LocalTimeKind: uint8 {
+    /// The local time happened once.
+    Unique = 0,
+    /// The local time happened twice, as clocks fell back over it.
+    Ambiguous = 1,
+    /// The local time never happened, as clocks sprang forward over it.
+    Skipped = 2
+}
+
+/// The moments a local date and time stands for in a zone. `Copy`.
+/// For a unique time both moments are the same. For an ambiguous one they are its first and second occurrence. For a
+/// skipped one they are what it would mean under the offset after the change and before it; `Later` is the one
+/// most programs want, as it keeps the wall-clock distance from the hour before.
+/// @see https://rux-lang.dev/docs/api/timezone/zone#local-time
+pub struct LocalTime {
+    /// What the local time is in the zone.
+    pub kind: LocalTimeKind;
+    /// The earlier candidate moment.
+    pub earlier: Timestamp;
+    /// The later candidate moment.
+    pub later: Timestamp;
+}
+
+/// A time zone, built from a TZif file, a POSIX rule, or the system's settings. Not copied.
+/// @see https://rux-lang.dev/docs/api/timezone/zone#time-zone
+pub struct TimeZone {
+    name: Vector<char8>;
+    names: Vector<char8>;
+    transitions: Vector<int64>;
+    transitionTypes: Vector<uint8>;
+    types: Vector<ZoneType>;
+    rule: Rule;
+}
+
+func Grow<T>(vector: &var Vector<T>, value: T) -> ! TimeZoneError {
+    vector.Push(value) catch { else => fail TimeZoneError::OutOfMemory };
+}
+
+func BigEndian(bytes: byte[..], at: uint, width: uint) -> int64 {
+    var value: uint64 = 0;
+    var index: uint = 0;
+    while index < width {
+        value = (value << 8u64) | bytes[at + index] as uint64;
+        index = index + 1;
+    }
+    if width == 4u { return (value as uint32 as int32) as int64; }
+    return value as int64;
+}
+
+extend TimeZone {
+    func =(self: &var TimeZone, other: &TimeZone);
+
+    // An empty zone named `name`, ready to be filled.
+    func Empty(allocator: Allocator, name: char8[..]) -> TimeZone ! TimeZoneError {
+        var zone = TimeZone {
+            name: Vector<char8>(allocator), names: Vector<char8>(allocator), transitions: Vector<int64>(allocator),
+            transitionTypes: Vector<uint8>(allocator), types: Vector<ZoneType>(allocator), rule: NoRule()
+        };
+        zone.name.PushSlice(name) catch { else => fail TimeZoneError::OutOfMemory };
+        return <-zone;
+    }
+
+    /// UTC, which has no offset and never changes.
+    /// @param allocator what the zone is kept in
+    /// @returns the zone, or fails when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#utc
+    pub func Utc(allocator: Allocator) -> TimeZone ! TimeZoneError {
+        return TimeZone::FromRule(allocator, "UTC", "UTC0")?;
+    }
+
+    /// A zone kept by the POSIX `TZ` rule `rule`, such as `EST5EDT,M3.2.0,M11.1.0`.
+    /// @param allocator what the zone is kept in
+    /// @param name what to call the zone
+    /// @param rule the rule
+    /// @returns the zone, or fails with `InvalidRule`
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#from-rule
+    pub func FromRule(allocator: Allocator, name: char8[..], rule: char8[..]) -> TimeZone ! TimeZoneError {
+        var zone = TimeZone::Empty(allocator, name)?;
+        zone.rule = ParseRule(rule, zone.names)?;
+        return <-zone;
+    }
+
+    /// A zone read from TZif data, the format of the files in a time-zone directory.
+    /// Versions 1 to 4 are read; from version 2 on, the 64-bit history and the footer rule are used. Leap-second
+    /// records are skipped, so a zone from the `right/` directories reads as its `posix/` twin.
+    /// @param allocator what the zone is kept in
+    /// @param name what to call the zone, such as `Europe/Kyiv`
+    /// @param data the TZif data
+    /// @returns the zone, or fails with `InvalidData`
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#from-tzif
+    pub func FromTzif(allocator: Allocator, name: char8[..], data: byte[..]) -> TimeZone ! TimeZoneError {
+        if data.length < 44u || data[0] != 0x54u8 || data[1] != 0x5Au8 || data[2] != 0x69u8 || data[3] != 0x66u8 {
+            fail TimeZoneError::InvalidData;
+        }
+        let version = data[4];
+        var at: uint = 0;
+        var width: uint = 4;
+        if version >= 0x32u8 {
+            // Skip the 32-bit section; the 64-bit one after it says the same for a wider range.
+            let size = SectionSize(data, 0, 4)?;
+            at = 44u + size;
+            width = 8;
+            if data.length < at + 44u || data[at] != 0x54u8 { fail TimeZoneError::InvalidData; }
+        }
+        // The leap-second and indicator records only take up room; `SectionSize` accounts for them.
+        let transitionCount = BigEndian(data, at + 32u, 4) as uint;
+        let typeCount = BigEndian(data, at + 36u, 4) as uint;
+        let characters = BigEndian(data, at + 40u, 4) as uint;
+        if typeCount == 0u || typeCount > 256u { fail TimeZoneError::InvalidData; }
+        let size = SectionSize(data, at, width)?;
+        var zone = TimeZone::Empty(allocator, name)?;
+        var cursor = at + 44u;
+        var index: uint = 0;
+        while index < transitionCount {
+            Grow(zone.transitions, BigEndian(data, cursor + index * width, width))?;
+            index = index + 1;
+        }
+        cursor = cursor + transitionCount * width;
+        index = 0;
+        while index < transitionCount {
+            let kind = data[cursor + index];
+            if kind as uint >= typeCount { fail TimeZoneError::InvalidData; }
+            Grow(zone.transitionTypes, kind)?;
+            index = index + 1;
+        }
+        cursor = cursor + transitionCount;
+        let typesAt = cursor;
+        cursor = cursor + typeCount * 6u;
+        let charactersAt = cursor;
+        index = 0;
+        while index < characters {
+            Grow(zone.names, data[charactersAt + index] as char8)?;
+            index = index + 1;
+        }
+        Grow(zone.names, c8'\0')?;
+        index = 0;
+        while index < typeCount {
+            let record = typesAt + index * 6u;
+            let abbreviation = data[record + 5u] as uint;
+            if abbreviation > characters { fail TimeZoneError::InvalidData; }
+            var end = abbreviation;
+            while end < characters && data[charactersAt + end] != 0u8 { end = end + 1; }
+            Grow(zone.types, ZoneType {
+                offset: BigEndian(data, record, 4) as int32, daylight: data[record + 4u] != 0u8,
+                abbreviation: abbreviation, abbreviationLength: end - abbreviation
+            })?;
+            index = index + 1;
+        }
+        let end = at + 44u + size;
+        // From version 2 on, a newline-framed rule for the times after the last change follows the data.
+        if width == 8u && end < data.length && data[end] == 0x0Au8 {
+            var close = end + 1u;
+            while close < data.length && data[close] != 0x0Au8 { close = close + 1; }
+            if close == data.length { fail TimeZoneError::InvalidData; }
+            if close > end + 1u {
+                let text = (data.data as *char8)[end + 1u..close];
+                zone.rule = ParseRule(text, zone.names) catch { else => fail TimeZoneError::InvalidData };
+            }
+        }
+        return <-zone;
+    }
+
+    /// The zone's name.
+    /// @returns the name it was given or loaded under
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#name
+    pub func Name(self: &TimeZone) -> char8[..] {
+        return self.name.AsSlice();
+    }
+
+    /// The local time the zone keeps at `moment`.
+    /// @param moment the moment
+    /// @returns its offset, whether it is daylight time, and its abbreviation
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#state-at
+    pub func StateAt(self: &TimeZone, moment: Timestamp) -> ZoneState {
+        let kind = self.TypeAt(moment.UnixSeconds());
+        let names = self.names.AsSlice();
+        return ZoneState {
+            offset: UtcOffset { seconds: kind.offset }, daylight: kind.daylight,
+            abbreviation: names[kind.abbreviation..kind.abbreviation + kind.abbreviationLength]
+        };
+    }
+
+    /// The zone's offset from UTC at `moment`.
+    /// @param moment the moment
+    /// @returns the offset
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#offset-at
+    pub func OffsetAt(self: &TimeZone, moment: Timestamp) -> UtcOffset {
+        return UtcOffset { seconds: self.TypeAt(moment.UnixSeconds()).offset };
+    }
+
+    /// The local date and time `moment` is in the zone, with its offset.
+    /// @param moment the moment
+    /// @returns the local date, time and offset
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#to-local
+    pub func ToLocal(self: &TimeZone, moment: Timestamp) -> OffsetDateTime {
+        let offset = self.OffsetAt(moment);
+        return OffsetDateTime { dateTime: DateTime::FromTimestamp(moment, offset), offset: offset };
+    }
+
+    /// The moments the local date and time `local` stands for in the zone.
+    /// @param local a date and time on the zone's clocks
+    /// @returns whether it happened once, twice or never, and the candidate moments
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#resolve
+    pub func Resolve(self: &TimeZone, local: DateTime) -> LocalTime {
+        let asUtc = local.ToTimestamp(UtcOffset::Utc());
+        let wall = asUtc.UnixSeconds();
+        let before = self.TypeAt(wall - 86400i64).offset as int64;
+        let after = self.TypeAt(wall + 86400i64).offset as int64;
+        let firstFits = self.TypeAt(wall - before).offset as int64 == before;
+        let secondFits = self.TypeAt(wall - after).offset as int64 == after;
+        let earlierSeconds = wall - (before > after ? before : after);
+        let laterSeconds = wall - (before > after ? after : before);
+        let nanoseconds = asUtc.SubsecondNanoseconds();
+        let earlier = WithNanoseconds(earlierSeconds, nanoseconds);
+        let later = WithNanoseconds(laterSeconds, nanoseconds);
+        if firstFits && secondFits && before != after {
+            return LocalTime { kind: LocalTimeKind::Ambiguous, earlier: earlier, later: later };
+        }
+        if firstFits || secondFits {
+            let only = WithNanoseconds(firstFits ? wall - before : wall - after, nanoseconds);
+            return LocalTime { kind: LocalTimeKind::Unique, earlier: only, later: only };
+        }
+        return LocalTime { kind: LocalTimeKind::Skipped, earlier: earlier, later: later };
+    }
+
+    // The kind of time at `seconds` after the epoch.
+    func TypeAt(self: &TimeZone, seconds: int64) -> ZoneType {
+        let transitions = self.transitions.AsSlice();
+        let count = transitions.length;
+        if count == 0u || seconds < transitions[0] {
+            if count == 0u && self.rule.present { return RuleTypeAt(self.rule, seconds); }
+            if self.types.Length() == 0u { return self.rule.standard; }
+            return self.types.AsSlice()[0];
+        }
+        // The last change at or before `seconds`.
+        var low: uint = 0;
+        var high = count;
+        while high - low > 1u {
+            let middle = low + (high - low) / 2u;
+            if transitions[middle] <= seconds { low = middle; } else { high = middle; }
+        }
+        if low == count - 1u && self.rule.present { return RuleTypeAt(self.rule, seconds); }
+        return self.types.AsSlice()[self.transitionTypes.AsSlice()[low] as uint];
+    }
+}
+
+// How many bytes a TZif data section with times `width` bytes wide takes, read from its header at `at`.
+func SectionSize(data: byte[..], at: uint, width: uint) -> uint ! TimeZoneError {
+    if data.length < at + 44u { fail TimeZoneError::InvalidData; }
+    let utcIndicators = BigEndian(data, at + 20u, 4) as uint;
+    let standardIndicators = BigEndian(data, at + 24u, 4) as uint;
+    let leaps = BigEndian(data, at + 28u, 4) as uint;
+    let transitions = BigEndian(data, at + 32u, 4) as uint;
+    let types = BigEndian(data, at + 36u, 4) as uint;
+    let characters = BigEndian(data, at + 40u, 4) as uint;
+    let size = transitions * width + transitions + types * 6u + characters + leaps * (width + 4u) +
+               standardIndicators + utcIndicators;
+    if data.length < at + 44u + size { fail TimeZoneError::InvalidData; }
+    return size;
+}
+
+// A timestamp of whole seconds and a fraction.
+func WithNanoseconds(seconds: int64, nanoseconds: uint32) -> Timestamp {
+    return Timestamp { seconds: seconds, nanoseconds: nanoseconds };
+}
