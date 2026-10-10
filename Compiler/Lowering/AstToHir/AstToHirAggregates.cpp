@@ -678,7 +678,8 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         std::vector<HirPartialDropAction> completed;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
             AppendFailureCleanup(lowered->failureCleanups, completed);
-            lowered->elements.push_back(LowerExprAs(*tuple->elements[i], targetType.inner[i]));
+            lowered->elements.push_back(
+                ConvertScalar(LowerExprAs(*tuple->elements[i], targetType.inner[i]), targetType.inner[i]));
             if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::TupleElement, targetType.inner[i], i, {},
                                               tuple->elements[i]->location)) {
                 completed.push_back(std::move(*cleanup));
@@ -870,7 +871,8 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             AppendFailureCleanup(lowered->failureCleanups, completed);
             HirStructInitField loweredField;
             loweredField.name = field.name;
-            loweredField.value = LowerExprAs(*field.value, fieldType);
+            // A field is stored at the width its value carries, so a narrower value is widened to the field's here.
+            loweredField.value = ConvertScalar(LowerExprAs(*field.value, fieldType), fieldType);
             lowered->fields.push_back(std::move(loweredField));
             if (auto cleanup =
                     PartialCleanup(HirPartialDropAction::Kind::Field, fieldType, index, field.name, field.location)) {

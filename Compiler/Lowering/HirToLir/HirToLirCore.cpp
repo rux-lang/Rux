@@ -1106,8 +1106,9 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
 }
 
 /// The scalars a constant that is not a sequence folds to, or nullopt when some part of its value has no layout the
-/// code generators know: an enum, an optional, a slice, a value no folding reaches. A constant with scalars is laid out
-/// in read-only data, and `@C` addresses those bytes rather than a fresh copy, so every `@C` is the same pointer.
+/// code generators know: an enum with payloads, an optional, a slice, a value no folding reaches. A constant with
+/// scalars is laid out in read-only data, and `@C` addresses those bytes rather than a fresh copy, so every `@C` is the
+/// same pointer.
 std::optional<std::vector<LirConstScalar>> HirToLirContext::ConstValueScalars(const HirConst &c) const {
     if (!c.value || c.type.IsUnknown() || IsViewType(c.type) || IsArrayType(c.type)) {
         return std::nullopt;
@@ -1143,6 +1144,15 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
         scalars.push_back({path, type, *literal});
         return true;
     }
+    // An enum without payloads is its tag, laid out as the integer the tag is stored as.
+    if (type.kind == TypeRef::Kind::Named && enumTagTypes.contains(type.name) && !IsAggregateEnumType(type)) {
+        const auto literal = PrintConstElement(value);
+        if (!literal) {
+            return false;
+        }
+        scalars.push_back({path, EnumTagType(type), *literal});
+        return true;
+    }
     // A constant initialized from another stands for that one's value.
     if (const auto *name = dynamic_cast<const HirVarExpr *>(&value)) {
         const auto it = globalConsts.find(name->name);
@@ -1163,8 +1173,7 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
     if (const auto *tuple = dynamic_cast<const HirTupleExpr *>(&value);
         tuple && type.kind == TypeRef::Kind::Tuple && tuple->elements.size() == type.inner.size()) {
         for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
-            if (!tuple->elements[index] ||
-                !member(*tuple->elements[index], tuple->elements[index]->type, std::to_string(index))) {
+            if (!tuple->elements[index] || !member(*tuple->elements[index], type.inner[index], std::to_string(index))) {
                 return false;
             }
         }

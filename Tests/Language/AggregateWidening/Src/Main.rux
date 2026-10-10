@@ -1,0 +1,87 @@
+struct Scale {
+    factor: int256;
+    tag: int32;
+}
+
+struct Outer {
+    inner: Scale;
+    extra: int128;
+}
+
+enum Color: uint8 {
+    Red,
+    Green,
+    Blue
+}
+
+enum Wide {
+    A,
+    B = 70000
+}
+
+struct Paint {
+    color: Color;
+    amount: uint64;
+}
+
+const Small: int64 = -5;
+const Tiny: int8 = -3;
+const W: Scale = Scale{factor: Small, tag: 7};
+const O: Outer = Outer{inner: Scale{factor: Tiny, tag: 1}, extra: Small};
+const T: (int128, int16) = (Small, Tiny);
+const C: Color = Color::Blue;
+const D: Wide = Wide::B;
+const P: Paint = Paint{color: Color::Green, amount: 9};
+
+func Widen(value: int64) -> Scale {
+    return Scale{factor: value, tag: 2};
+}
+
+func Main() -> int {
+    if W.factor != -5 || W.tag != 7 {
+        return 1;
+    }
+    let copied = W;
+    if copied.factor != -5 {
+        return 2;
+    }
+    if (*@W).factor != -5 {
+        return 3;
+    }
+    if O.inner.factor != -3 || O.extra != -5 {
+        return 4;
+    }
+    let outer = O;
+    if outer.inner.factor != -3 || outer.extra != -5 || (*@O).inner.factor != -3 {
+        return 5;
+    }
+    if T.0 != -5 || T.1 != -3 {
+        return 6;
+    }
+    let tuple = T;
+    if tuple.0 != -5 || tuple.1 != -3 || (*@T).0 != -5 {
+        return 7;
+    }
+    let small: int64 = -9;
+    let built = Scale{factor: small, tag: 3};
+    if built.factor != -9 {
+        return 8;
+    }
+    let pair: (int256, int64) = (small, small);
+    if pair.0 != -9 || pair.1 != -9 {
+        return 9;
+    }
+    if Widen(-11).factor != -11 {
+        return 10;
+    }
+    if @C != @C || *(@C) != Color::Blue {
+        return 11;
+    }
+    if @D != @D || *(@D) != Wide::B {
+        return 12;
+    }
+    if (*@P).color != Color::Green || (*@P).amount != 9 {
+        return 13;
+    }
+    return 0;
+}

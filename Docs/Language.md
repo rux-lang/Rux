@@ -263,7 +263,7 @@ func Consume(self: Buffer)
 
 A `const` initializer, at module level or inside a function, is computed by the compiler once: it may use literals, operators, casts, `sizeof` and `alignof`, compile-time intrinsics such as `#target`, other constants, and struct, array, tuple, and case values built from them. A call or a variable is a run-time value, so `const FromCall = Seven();` and `const C = v;` are rejected with `call to 'Seven' is not a compile-time value` and `'v' is not a compile-time constant`; use `let` for a value computed at run time. An integer constant is a compile-time integer wherever one is required, so `var flags: bool[Limit] = [false; Limit];` sizes and fills an array from `const Limit: uint = 100;`.
 
-Taking `@C` for a scalar module constant of type `T` produces a read-only `*T` pointing to its aligned, read-only module storage. Repeated address expressions identify the same object, including through a public import from another package, and dereferencing it yields the complete constant value.
+Taking `@C` for a module constant of type `T` whose value is made of scalars — a number, a bool, a character, an enum without payloads, or a struct, tuple, or array of them — produces a read-only `*T` pointing to its aligned, read-only module storage. Repeated address expressions identify the same object, including through a public import from another package, and dereferencing it yields the complete constant value.
 
 ### Module variables
 
