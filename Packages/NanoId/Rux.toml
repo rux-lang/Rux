@@ -1,0 +1,23 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "NanoId"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Short, URL-safe, unpredictable identifiers in the Nano ID format"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["NanoId", "Identifier", "Random", "Token", "UrlSafe"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/nanoid"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }
+Entropy = { Namespace = "Rux", Version = "0.1.0" }
+Memory = { Namespace = "Rux", Version = "0.1.0" }
+Text = { Namespace = "Rux", Version = "0.1.0" }

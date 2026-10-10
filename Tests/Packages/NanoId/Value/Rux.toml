@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Value"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for NanoId: the NanoId value, parsing and presentation."
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Entropy = { Path = "../../../../Packages/Entropy" }
+NanoId = { Path = "../../../../Packages/NanoId" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/NanoId"

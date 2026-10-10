@@ -1,0 +1,148 @@
+// A standard identifier as a value: twenty-one characters of the default alphabet, held inline.
+// Most programs want exactly one kind of identifier, and a value is easier to pass, store and compare than a buffer
+// and a length. The text is stored as it is written, so `Text` borrows it without any conversion and two equal
+// identifiers have equal bytes.
+// Parsing is strict about the form: exactly twenty-one characters, each from the default alphabet. An identifier
+// from a custom alphabet or of another length is a different kind of value and stays in a buffer.
+
+import Core::Ordering;
+import Entropy::EntropyError;
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter, WriteBytes };
+
+/// A Nano ID of the standard form: twenty-one characters from `NanoIdAlphabet`.
+/// Copy, holding its text inline and owning nothing. Equality and ordering compare the text byte by byte.
+/// @see https://rux-lang.dev/docs/api/nanoid/nano-id
+pub struct NanoId {
+    text: char8[21];
+}
+
+/// Why text could not be read as a standard Nano ID.
+/// Failure-only, carrying the zero-based byte offset where the problem was found. Copy, owning nothing.
+/// @see https://rux-lang.dev/docs/api/nanoid/nano-id#nano-id-parse-error
+pub variant NanoIdParseError {
+    /// The text is not twenty-one bytes long. The offset is the text's length when it is too short, and the first
+    /// byte past the form when it is too long.
+    WrongLength(uint),
+    /// A character that is not in the default alphabet. The offset is that character.
+    InvalidCharacter(uint)
+}
+
+extend NanoIdParseError : ParseFailure {
+    /// Where in the input the failure was found.
+    /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#nano-id-parse-error-offset
+    pub func Offset(self: &NanoIdParseError) -> uint {
+        return match self {
+            .WrongLength(at) => at,
+            .InvalidCharacter(at) => at
+        };
+    }
+}
+
+// Whether a byte is one of the sixty-four characters of the default alphabet.
+func InDefaultAlphabet(c: char8) -> bool {
+    let code = c as uint8;
+    return (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A) || (code >= 0x30 && code <= 0x39) ||
+           code == 0x5F || code == 0x2D;
+}
+
+extend NanoId {
+    /// A new identifier from the operating system's generator.
+    /// Costs twenty-one bytes of entropy and allocates nothing. Reports what the system reported when it could not
+    /// supply random bytes, and produces no identifier in that case.
+    /// @returns the identifier, or why none could be made
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#generate
+    pub func Generate() -> NanoId ! EntropyError {
+        var value = NanoId { text: ['A'; 21] };
+        GenerateNanoId(value.text[..])?;
+        return value;
+    }
+
+    /// Reads a standard identifier from its text.
+    /// Reports `WrongLength` unless the text is exactly twenty-one bytes, and `InvalidCharacter` at the first byte
+    /// outside the default alphabet. A refused parse produces no value. Runs in constant time for a text of the
+    /// right length and allocates nothing.
+    /// @param text the text to read
+    /// @returns the identifier, or why the text is not one
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#parse
+    pub func Parse(text: char8[..]) -> NanoId ! NanoIdParseError {
+        if text.length != NanoIdLength {
+            fail NanoIdParseError::WrongLength(text.length < NanoIdLength ? text.length : NanoIdLength);
+        }
+        var value = NanoId { text: ['A'; 21] };
+        var index: uint = 0;
+        while index < NanoIdLength {
+            if !InDefaultAlphabet(text[index]) { fail NanoIdParseError::InvalidCharacter(index); }
+            value.text[index] = text[index];
+            index = index + 1;
+        }
+        return value;
+    }
+
+    /// The identifier's twenty-one characters.
+    /// Borrows the value: the slice reads the value's own storage and must not outlive it. Cannot fail and
+    /// allocates nothing.
+    /// @returns the text, always `NanoIdLength` bytes of the default alphabet
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#text
+    pub func Text(self: &NanoId) -> char8[..] {
+        return (@self.text[0])[..NanoIdLength];
+    }
+
+    /// Whether two identifiers are the same.
+    /// Compares every byte whatever it finds, so the time taken does not reveal how much of a guessed identifier was
+    /// right. Cannot fail and allocates nothing.
+    /// @param other the identifier to compare against
+    /// @returns whether the two have the same text
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#equals
+    pub func Equals(self: &NanoId, other: &NanoId) -> bool {
+        var difference: uint8 = 0;
+        var index: uint = 0;
+        while index < NanoIdLength {
+            difference = difference | ((self.text[index] as uint8) ^ (other.text[index] as uint8));
+            index = index + 1;
+        }
+        return difference == 0;
+    }
+
+    /// The order of two identifiers' texts, byte by byte.
+    /// Identifiers are random, so this order means nothing beyond being total and stable, which is what a sorted
+    /// container needs. Cannot fail and allocates nothing.
+    /// @param other the identifier to compare against
+    /// @returns how this identifier orders against `other`
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#compare
+    pub func Compare(self: &NanoId, other: &NanoId) -> Ordering {
+        var index: uint = 0;
+        while index < NanoIdLength {
+            if self.text[index] < other.text[index] { return Ordering::Less; }
+            if self.text[index] > other.text[index] { return Ordering::Greater; }
+            index = index + 1;
+        }
+        return Ordering::Equal;
+    }
+}
+
+extend NanoId : Display {
+    /// Writes the identifier's twenty-one characters.
+    /// No style is understood. Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole identifier was accepted
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-display
+    pub func WriteDisplay(self: &NanoId, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        return WriteBytes(writer, self.Text());
+    }
+}
+
+extend NanoId : Debug {
+    /// The same text as `Display`: an identifier has one reading.
+    /// The failures `WriteDisplay` reports.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole identifier was accepted
+    /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-debug
+    pub func WriteDebug(self: &NanoId, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        return self.WriteDisplay(writer, spec);
+    }
+}

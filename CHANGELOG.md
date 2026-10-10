@@ -66,6 +66,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 #### Packages
 
+- **`Rux/NanoId`** — 21-character URL-safe identifiers in the Nano ID format as a `Copy` value with `Generate`, strict `Parse`, `Text`, constant-time `Equals`, `Compare` and `Display`, plus `GenerateNanoId` for buffers of any length and custom alphabets of 2–256 distinct ASCII characters. Characters are drawn by mask-and-reject so every character is equally likely; random bytes come from `Rux/Entropy` or any `EntropySource`, are zeroized after use, and a failure leaves the destination zeroized rather than holding a partial identifier.
 - **`Rux/Encoding`** — hexadecimal, Base64 (standard and URL-safe, padded and unpadded), Base32 (RFC 4648 and Crockford), Base58 (Bitcoin alphabet) and percent-encoding (component, path and form sets) into caller-provided buffers, with exact length functions and no allocation. Decoders are strict, so each value has one encoded form, and report a `DecodeError` carrying the offending byte offset; every refusal except a Base58 capacity refusal leaves the destination untouched. Hexadecimal, Base64 and RFC 4648 Base32 run in time that depends only on the length. `ViewHex` and `ViewBase64` render bytes through a format placeholder.
 - **Mutable collection iteration** — `MutableReferenceIterator<T>` walks a writable slice and yields `Option<*var T>`. Array and Vector expose `MutableReferences()` for in-place changes, including move-only elements, with documented storage lifetime and invalidation rules.
 
