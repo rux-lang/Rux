@@ -1,0 +1,495 @@
+// Compiled patterns and what can be asked of them: whether text matches, where, with which groups, every match in
+// turn, the text between matches, and the text with its matches replaced.
+// A search allocates the storage it works in from the regex's allocator, so a compiled pattern never changes and can
+// be searched from many threads at once. An iterator keeps its storage for every match it finds.
+
+import Allocator::Allocator;
+import Collections::Vector;
+import Core::Iterator;
+import Regex::{
+    ClassItem, DecodeAt, GroupName, Instruction, Node, NoPosition, Parser, Program, RegexError, RegexErrorKind, Scratch,
+    Filled
+};
+import Text::{ String, StringBuilder };
+
+/// Where a match is in the text searched: from byte `start` up to byte `end`. `Copy`.
+/// @see https://rux-lang.dev/docs/api/regex/regex#match
+pub struct Match {
+    /// The byte offset of the start of the match.
+    pub start: uint;
+    /// The byte offset just past the end of the match.
+    pub end: uint;
+}
+
+extend Match {
+    /// How many bytes the match spans.
+    /// @returns the length in bytes
+    /// @see https://rux-lang.dev/docs/api/regex/regex#match-length
+    pub func Length(self: &Match) -> uint {
+        return self.end - self.start;
+    }
+
+    /// The matched part of `text`, which must be the text that was searched.
+    /// @param text the text that was searched
+    /// @returns the bytes of the match
+    /// @see https://rux-lang.dev/docs/api/regex/regex#match-slice
+    pub func Slice(self: &Match, text: char8[..]) -> char8[..] {
+        return text[self.start..self.end];
+    }
+}
+
+/// A compiled pattern. Not copied.
+/// The syntax is RE2's: literals, `.`, classes such as `[a-z]`, `[^0-9]`, `[[:alpha:]]`, `\d`, `\w` and `\s`,
+/// Unicode general categories and properties such as `\p{L}`, `\p{Lu}` and `\p{White_Space}`, the anchors `^`, `$`,
+/// `\A`, `\z`, `\b` and `\B`, groups `(...)`, `(?:...)` and `(?<name>...)`, alternation `|`, the repetitions `*`,
+/// `+`, `?` and `{n,m}` with a lazy `?` form of each, and the flags `i`, `m`, `s` and `x` as `(?i)` or `(?i:...)`.
+/// Backreferences and lookaround are refused: without them every search takes time linear in the text.
+/// @see https://rux-lang.dev/docs/api/regex/regex#regex
+pub struct Regex {
+    allocator: Allocator;
+    instructions: Vector<Instruction>;
+    items: Vector<ClassItem>;
+    nameBytes: Vector<char8>;
+    names: Vector<GroupName>;
+    ascii: Vector<uint64>;
+    literal: Vector<char8>;
+    groupCount: uint32;
+    firstBytes: uint64[4];
+    skips: bool;
+    anchored: bool;
+}
+
+// The number of the group called `name` among `names`, whose bytes are in `bytes`.
+func FindName(bytes: char8[..], names: GroupName[..], name: char8[..]) -> uint32? {
+    for entry in names {
+        let start = entry.start as uint;
+        let stored = bytes[start..start + entry.length as uint];
+        if stored.length == name.length {
+            var index: uint = 0;
+            while index < name.length && stored[index] == name[index] { index = index + 1; }
+            if index == name.length { return entry.index; }
+        }
+    }
+    return none;
+}
+
+// Finds the matches of a program one after another, keeping the storage the search works in.
+struct Searcher {
+    program: Program;
+    scratch: Scratch;
+    slots: Vector<uint>;
+    text: char8[..];
+    at: uint;
+    lastEnd: uint;
+    done: bool;
+}
+
+extend Searcher {
+    func =(self: &var Searcher, other: &Searcher);
+
+    // Finds the next match into `slots`. An empty match right where the last match ended is skipped, so every
+    // position yields at most one match and the search always moves on.
+    func Advance(self: &var Searcher) -> bool {
+        while !self.done {
+            if self.at > self.text.length { break; }
+            let slots = self.slots.AsMutableSlice();
+            var slot: uint = 0;
+            while slot < slots.length {
+                slots[slot] = NoPosition;
+                slot = slot + 1;
+            }
+            if !self.scratch.Run(self.program, self.text, self.at, false, slots) { break; }
+            let start = slots[0];
+            let end = slots[1];
+            if start == end && end == self.lastEnd {
+                if self.at >= self.text.length { break; }
+                self.at = self.at + DecodeAt(self.text, self.at).length;
+                continue;
+            }
+            self.at = end;
+            self.lastEnd = end;
+            return true;
+        }
+        self.done = true;
+        return false;
+    }
+}
+
+/// The matches of a pattern in a text, one after another, leftmost first and never overlapping. Not copied.
+/// Borrows the regex and the text, which must outlive it.
+/// @see https://rux-lang.dev/docs/api/regex/regex#match-iterator
+pub struct MatchIterator {
+    searcher: Searcher;
+}
+
+extend MatchIterator : Iterator {
+    /// The next match, or `none` after the last.
+    /// @returns the match
+    /// @see https://rux-lang.dev/docs/api/regex/regex#match-iterator-next
+    pub func Next(self: &var MatchIterator) -> Match? {
+        if !self.searcher.Advance() { return none; }
+        let slots = self.searcher.slots.AsSlice();
+        return Match { start: slots[0], end: slots[1] };
+    }
+}
+
+/// The parts of a text between the matches of a pattern. Not copied.
+/// Borrows the regex and the text, which must outlive it.
+/// @see https://rux-lang.dev/docs/api/regex/regex#split-iterator
+pub struct SplitIterator {
+    searcher: Searcher;
+    last: uint;
+    finished: bool;
+}
+
+extend SplitIterator : Iterator {
+    /// The next part, or `none` after the last. There is always one more part than there are matches, so a match at
+    /// either end gives an empty part there.
+    /// @returns the part
+    /// @see https://rux-lang.dev/docs/api/regex/regex#split-iterator-next
+    pub func Next(self: &var SplitIterator) -> char8[..]? {
+        if self.finished { return none; }
+        let text = self.searcher.text;
+        if self.searcher.Advance() {
+            let slots = self.searcher.slots.AsSlice();
+            let part = text[self.last..slots[0]];
+            self.last = slots[1];
+            return part;
+        }
+        self.finished = true;
+        return text[self.last..text.length];
+    }
+}
+
+/// The groups of one match: where each matched, or that it did not. Not copied.
+/// Borrows the regex it came from for the group names, so it must not outlive the regex.
+/// @see https://rux-lang.dev/docs/api/regex/regex#captures
+pub struct Captures {
+    slots: Vector<uint>;
+    nameBytes: char8[..];
+    names: GroupName[..];
+}
+
+extend Captures {
+    func =(self: &var Captures, other: &Captures);
+
+    /// How many groups there are, counting the whole match as group 0.
+    /// @returns the count
+    /// @see https://rux-lang.dev/docs/api/regex/regex#captures-count
+    pub func Count(self: &Captures) -> uint {
+        return self.slots.Length() / 2;
+    }
+
+    /// Where group `index` matched: 0 is the whole match, and the groups count from 1 in the order their `(` appear.
+    /// @param index the group's number
+    /// @returns where it matched, or `none` when it did not take part in the match or there is no such group
+    /// @see https://rux-lang.dev/docs/api/regex/regex#captures-group
+    pub func Group(self: &Captures, index: uint) -> Match? {
+        if index >= self.Count() { return none; }
+        let slots = self.slots.AsSlice();
+        let start = slots[index * 2];
+        let end = slots[index * 2 + 1];
+        if start == NoPosition || end == NoPosition { return none; }
+        return Match { start: start, end: end };
+    }
+
+    /// Where the group called `name` matched.
+    /// @param name the group's name
+    /// @returns where it matched, or `none` when it did not take part in the match or there is no such group
+    /// @see https://rux-lang.dev/docs/api/regex/regex#captures-named
+    pub func Named(self: &Captures, name: char8[..]) -> Match? {
+        let index = FindName(self.nameBytes, self.names, name) ?? return none;
+        return self.Group(index as uint);
+    }
+}
+
+extend Regex {
+    func =(self: &var Regex, other: &Regex);
+
+    /// Compiles `pattern`.
+    /// @param allocator what the compiled pattern, and every search of it, takes storage from
+    /// @param pattern the pattern, in the syntax `Regex` describes
+    /// @returns the compiled pattern, or why it could not be compiled and where
+    /// @see https://rux-lang.dev/docs/api/regex/regex#new
+    pub func New(allocator: Allocator, pattern: char8[..]) -> Regex ! RegexError {
+        var regex = Regex {
+            allocator: allocator,
+            instructions: Vector<Instruction>(allocator),
+            items: Vector<ClassItem>(allocator),
+            nameBytes: Vector<char8>(allocator),
+            names: Vector<GroupName>(allocator),
+            ascii: Vector<uint64>(allocator),
+            literal: Vector<char8>(allocator),
+            groupCount: 0,
+            firstBytes: [0u64, 0u64, 0u64, 0u64],
+            skips: false,
+            anchored: false
+        };
+        var parser = Parser { pattern: pattern, at: 0, flags: 0, nodes: Vector<Node>(allocator) };
+        let root = parser.ParseAlternation(regex, 0)?;
+        if parser.at < pattern.length { fail RegexError::At(RegexErrorKind::UnopenedGroup, parser.at); }
+        regex.CompileProgram(parser.nodes.AsSlice(), root)?;
+        return <-regex;
+    }
+
+    func Program(self: &Regex) -> Program {
+        return Program {
+            instructions: self.instructions.AsSlice(),
+            items: self.items.AsSlice(),
+            ascii: self.ascii.AsSlice(),
+            slotCount: (self.groupCount as uint + 1) * 2,
+            literal: self.literal.AsSlice(),
+            firstBytes: self.firstBytes,
+            skips: self.skips,
+            anchored: self.anchored
+        };
+    }
+
+    func IndexOfName(self: &Regex, name: char8[..]) -> uint32? {
+        return FindName(self.nameBytes.AsSlice(), self.names.AsSlice(), name);
+    }
+
+    func Search(self: &Regex, text: char8[..], start: uint, slotCount: uint) -> Searcher ! RegexError {
+        let program = self.Program();
+        return Searcher {
+            program: program,
+            scratch: Scratch::New(self.allocator, program, slotCount)?,
+            slots: Filled(self.allocator, slotCount, NoPosition)?,
+            text: text,
+            at: start,
+            lastEnd: NoPosition,
+            done: start > text.length
+        };
+    }
+
+    /// How many capturing groups the pattern has, not counting the whole match.
+    /// @returns the count
+    /// @see https://rux-lang.dev/docs/api/regex/regex#group-count
+    pub func GroupCount(self: &Regex) -> uint {
+        return self.groupCount as uint;
+    }
+
+    /// The number of the group called `name`.
+    /// @param name the group's name
+    /// @returns its number, or `none` when no group has that name
+    /// @see https://rux-lang.dev/docs/api/regex/regex#group-index
+    pub func GroupIndex(self: &Regex, name: char8[..]) -> uint? {
+        let index = self.IndexOfName(name) ?? return none;
+        return index as uint;
+    }
+
+    /// Whether the pattern matches anywhere in `text`. Stops at the first match it sees.
+    /// @param text the text to search
+    /// @returns whether there is a match, or fails when the search's storage could not be allocated
+    /// @see https://rux-lang.dev/docs/api/regex/regex#is-match
+    pub func IsMatch(self: &Regex, text: char8[..]) -> bool ! RegexError {
+        let program = self.Program();
+        var scratch = Scratch::New(self.allocator, program, 2)?;
+        var found: uint[2] = [NoPosition, NoPosition];
+        return scratch.Run(program, text, 0, true, found[..]);
+    }
+
+    /// The leftmost match in `text`; among matches starting there, the one a backtracking matcher would choose.
+    /// @param text the text to search
+    /// @returns the match, or `none`
+    /// @see https://rux-lang.dev/docs/api/regex/regex#find
+    pub func Find(self: &Regex, text: char8[..]) -> Match? ! RegexError {
+        return self.FindAt(text, 0)?;
+    }
+
+    /// The leftmost match in `text` at or after byte `start`. Anchors and word boundaries still see the text before
+    /// `start`, so `^` does not match there unless `start` is where a line starts.
+    /// @param text the text to search
+    /// @param start the byte offset to search from, at a character boundary
+    /// @returns the match, or `none`
+    /// @see https://rux-lang.dev/docs/api/regex/regex#find-at
+    pub func FindAt(self: &Regex, text: char8[..], start: uint) -> Match? ! RegexError {
+        if start > text.length { return none; }
+        let program = self.Program();
+        var scratch = Scratch::New(self.allocator, program, 2)?;
+        var found: uint[2] = [NoPosition, NoPosition];
+        if !scratch.Run(program, text, start, false, found[..]) { return none; }
+        return Match { start: found[0], end: found[1] };
+    }
+
+    /// The leftmost match in `text`, with where each group matched.
+    /// @param text the text to search
+    /// @returns the groups, or `none` when there is no match
+    /// @see https://rux-lang.dev/docs/api/regex/regex#capture
+    pub func Capture(self: &Regex, text: char8[..]) -> Captures? ! RegexError {
+        return self.CaptureAt(text, 0)?;
+    }
+
+    /// The leftmost match in `text` at or after byte `start`, with where each group matched.
+    /// @param text the text to search
+    /// @param start the byte offset to search from, at a character boundary
+    /// @returns the groups, or `none` when there is no match
+    /// @see https://rux-lang.dev/docs/api/regex/regex#capture-at
+    pub func CaptureAt(self: &Regex, text: char8[..], start: uint) -> Captures? ! RegexError {
+        if start > text.length { return none; }
+        let program = self.Program();
+        var scratch = Scratch::New(self.allocator, program, program.slotCount)?;
+        var slots = Filled(self.allocator, program.slotCount, NoPosition)?;
+        if !scratch.Run(program, text, start, false, slots.AsMutableSlice()) { return none; }
+        return Captures { slots: <-slots, nameBytes: self.nameBytes.AsSlice(), names: self.names.AsSlice() };
+    }
+
+    /// Every match in `text`, leftmost first and never overlapping. An empty match right after another match is
+    /// skipped, so `a*` finds three matches in `baab`: before the `b`, `aa`, and at the end.
+    /// @param text the text to search, which must outlive the iterator
+    /// @returns the matches in turn
+    /// @see https://rux-lang.dev/docs/api/regex/regex#find-all
+    pub func FindAll(self: &Regex, text: char8[..]) -> MatchIterator ! RegexError {
+        return MatchIterator { searcher: self.Search(text, 0, 2)? };
+    }
+
+    /// The parts of `text` between the matches.
+    /// @param text the text to split, which must outlive the iterator
+    /// @returns the parts in turn
+    /// @see https://rux-lang.dev/docs/api/regex/regex#split
+    pub func Split(self: &Regex, text: char8[..]) -> SplitIterator ! RegexError {
+        return SplitIterator { searcher: self.Search(text, 0, 2)?, last: 0, finished: false };
+    }
+
+    /// `text` with every match replaced by `replacement`, in which `$1` or `${1}` stands for what group 1 matched,
+    /// `$name` or `${name}` for what the group called `name` matched, `$0` for the whole match, and `$$` for `$`. A
+    /// group that did not match, or does not exist, stands for nothing.
+    /// @param allocator what the result is kept in
+    /// @param text the text to search
+    /// @param replacement what each match becomes
+    /// @returns the new text
+    /// @see https://rux-lang.dev/docs/api/regex/regex#replace
+    pub func Replace(self: &Regex, allocator: Allocator, text: char8[..], replacement: char8[..])
+        -> String ! RegexError {
+        return self.ReplaceUpTo(allocator, text, replacement, 0)?;
+    }
+
+    /// `text` with its first match replaced by `replacement`, which is read as `Replace` reads it.
+    /// @param allocator what the result is kept in
+    /// @param text the text to search
+    /// @param replacement what the match becomes
+    /// @returns the new text
+    /// @see https://rux-lang.dev/docs/api/regex/regex#replace-first
+    pub func ReplaceFirst(self: &Regex, allocator: Allocator, text: char8[..], replacement: char8[..])
+        -> String ! RegexError {
+        return self.ReplaceUpTo(allocator, text, replacement, 1)?;
+    }
+
+    func ReplaceUpTo(self: &Regex, allocator: Allocator, text: char8[..], replacement: char8[..], limit: uint)
+        -> String ! RegexError {
+        var expands = false;
+        for byte in replacement {
+            if byte == c8'$' { expands = true; }
+        }
+        let slotCount = expands ? (self.groupCount as uint + 1) * 2 : 2u;
+        var searcher = self.Search(text, 0, slotCount)?;
+        var builder = StringBuilder(allocator);
+        var last: uint = 0;
+        var count: uint = 0;
+        while (limit == 0u || count < limit) && searcher.Advance() {
+            let slots = searcher.slots.AsSlice();
+            builder.Append(text[last..slots[0]]) catch { else => fail RegexError::OutOfMemory() };
+            if expands { self.Expand(builder, replacement, text, slots)?; }
+            else { builder.Append(replacement) catch { else => fail RegexError::OutOfMemory() }; }
+            last = slots[1];
+            count = count + 1;
+        }
+        builder.Append(text[last..text.length]) catch { else => fail RegexError::OutOfMemory() };
+        return builder.IntoString();
+    }
+
+    // Appends what group `index` matched, if it did.
+    func AppendGroup(self: &Regex, builder: &var StringBuilder, text: char8[..], slots: uint[..], index: uint)
+        -> ! RegexError {
+        if index > self.groupCount as uint || index * 2 + 1 >= slots.length { return; }
+        let start = slots[index * 2];
+        let end = slots[index * 2 + 1];
+        if start == NoPosition || end == NoPosition { return; }
+        builder.Append(text[start..end]) catch { else => fail RegexError::OutOfMemory() };
+    }
+
+    // Appends `replacement` with its `$` references filled in from `slots`.
+    func Expand(self: &Regex, builder: &var StringBuilder, replacement: char8[..], text: char8[..], slots: uint[..])
+        -> ! RegexError {
+        var at: uint = 0;
+        while at < replacement.length {
+            if replacement[at] != c8'$' {
+                let from = at;
+                while at < replacement.length && replacement[at] != c8'$' { at = at + 1; }
+                builder.Append(replacement[from..at]) catch { else => fail RegexError::OutOfMemory() };
+                continue;
+            }
+            var name = replacement[at..at];
+            var next = at + 1;
+            if next < replacement.length && replacement[next] == c8'$' {
+                builder.Append("$") catch { else => fail RegexError::OutOfMemory() };
+                at = next + 1;
+                continue;
+            }
+            if next < replacement.length && replacement[next] == c8'{' {
+                var close = next + 1;
+                while close < replacement.length && replacement[close] != c8'}' { close = close + 1; }
+                if close < replacement.length {
+                    name = replacement[next + 1..close];
+                    next = close + 1;
+                }
+            }
+            else {
+                var end = next;
+                while end < replacement.length && IsNameByte(replacement[end] as uint8) { end = end + 1; }
+                name = replacement[next..end];
+                next = end;
+            }
+            if name.length == 0u {
+                builder.Append("$") catch { else => fail RegexError::OutOfMemory() };
+                at = at + 1;
+                continue;
+            }
+            var number: uint = 0;
+            var numeric = true;
+            for byte in name {
+                if byte < c8'0' || byte > c8'9' || number > 0xFFFFFFFFu { numeric = false; }
+                else { number = number * 10 + (byte as uint - 0x30u); }
+            }
+            if numeric { self.AppendGroup(builder, text, slots, number)?; }
+            else {
+                match self.IndexOfName(name) {
+                    .Some(index) => self.AppendGroup(builder, text, slots, index as uint)?,
+                    none => {}
+                }
+            }
+            at = next;
+        }
+    }
+}
+
+// Whether `byte` can be part of a group name or number in a replacement.
+func IsNameByte(byte: uint8) -> bool {
+    return (byte >= 0x61u8 && byte <= 0x7Au8) || (byte >= 0x41u8 && byte <= 0x5Au8) ||
+           (byte >= 0x30u8 && byte <= 0x39u8) || byte == 0x5Fu8;
+}
+
+/// `text` with every character a pattern gives a meaning to escaped, so that the result, as a pattern, matches
+/// `text` and nothing else.
+/// @param allocator what the result is kept in
+/// @param text the text to escape
+/// @returns the pattern
+/// @see https://rux-lang.dev/docs/api/regex/regex#escape
+pub func Escape(allocator: Allocator, text: char8[..]) -> String ! RegexError {
+    var builder = StringBuilder(allocator);
+    var from: uint = 0;
+    var at: uint = 0;
+    while at < text.length {
+        let byte = text[at];
+        if byte == c8'\\' || byte == c8'.' || byte == c8'+' || byte == c8'*' || byte == c8'?' || byte == c8'(' ||
+           byte == c8')' || byte == c8'|' || byte == c8'[' || byte == c8']' || byte == c8'{' || byte == c8'}' ||
+           byte == c8'^' || byte == c8'$' || byte == c8'#' || byte == c8'-' {
+            builder.Append(text[from..at]) catch { else => fail RegexError::OutOfMemory() };
+            builder.Append("\\") catch { else => fail RegexError::OutOfMemory() };
+            from = at;
+        }
+        at = at + 1;
+    }
+    builder.Append(text[from..text.length]) catch { else => fail RegexError::OutOfMemory() };
+    return builder.IntoString();
+}

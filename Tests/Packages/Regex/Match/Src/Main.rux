@@ -1,0 +1,196 @@
+// Patterns find the leftmost-first match a backtracking matcher would, with Unicode classes and case folding;
+// groups capture by number and name; every match, the parts between them and replacements come out in order;
+// escaping makes any text a literal pattern; malformed and unsupported patterns are refused with where they went
+// wrong; and patterns that take a backtracking matcher exponential time take this one linear time.
+
+import Allocator::SystemAllocator;
+import Core::Assert;
+import Regex::{ Escape, Match, Regex, RegexErrorKind };
+
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Compiled(pattern: char8[..]) -> Regex {
+    match Regex::New(SystemAllocator(), pattern) {
+        .Success(regex) => return <-regex,
+        .Failure(_) => {}
+    }
+    Assert(false, "the pattern compiles");
+    return Compiled("");
+}
+
+func Finds(pattern: char8[..], text: char8[..], start: uint, end: uint) -> bool {
+    let regex = Compiled(pattern);
+    let found = regex.Find(text) catch { else => return false };
+    match found {
+        .Some(span) => return span.start == start && span.end == end,
+        none => return false
+    }
+}
+
+func FindsNothing(pattern: char8[..], text: char8[..]) -> bool {
+    let regex = Compiled(pattern);
+    let found = regex.Find(text) catch { else => return false };
+    match found {
+        .Some(_) => return false,
+        none => return true
+    }
+}
+
+func Refuses(pattern: char8[..], kind: RegexErrorKind, offset: uint) -> bool {
+    match Regex::New(SystemAllocator(), pattern) {
+        .Success(_) => return false,
+        .Failure(error) => return error.kind == kind && error.offset == offset
+    }
+}
+
+func Ended(part: char8[..]?) -> bool {
+    match part {
+        .Some(_) => return false,
+        none => return true
+    }
+}
+
+func GroupIs(span: Match?, start: uint, end: uint) -> bool {
+    match span {
+        .Some(found) => return found.start == start && found.end == end,
+        none => return false
+    }
+}
+
+func Replaced(pattern: char8[..], text: char8[..], replacement: char8[..], expected: char8[..]) -> bool {
+    let regex = Compiled(pattern);
+    let result = regex.Replace(SystemAllocator(), text, replacement) catch { else => return false };
+    return Same(result.Bytes(), expected);
+}
+
+func Main() -> int {
+    // Matching, against what Python's `re` finds for the same patterns.
+    Assert(Finds("abc", "xxabcxx", 2, 5), "a literal");
+    Assert(Finds("a+", "baaab", 1, 4), "a greedy repetition");
+    Assert(Finds("a*?", "aaa", 0, 0) && Finds("a+?", "aaa", 0, 1), "lazy repetitions");
+    Assert(Finds("(a|ab)(c|bcd)", "abcd", 0, 4), "alternatives in order of preference");
+    Assert(Finds("(foo|foobar)", "foobar", 0, 3) && Finds("(foobar|foo)", "foobar", 0, 6), "leftmost-first");
+    Assert(Finds("x*", "", 0, 0) && Finds("", "abc", 0, 0), "empty matches");
+    Assert(Finds("(?m)^b", "a\nb", 2, 3) && Finds("a$", "ba", 1, 2), "line and text anchors");
+    Assert(FindsNothing("^abc$", "abc\n") && FindsNothing("\\Aa", "ba"), "`$` is the end of the text");
+    Assert(Finds("\\bfoo\\b", "a foo b", 2, 5) && FindsNothing("\\bfoo\\b", "afoo"), "word boundaries");
+    Assert(Finds("\\Bb", "ab b", 1, 2), "not a word boundary");
+    Assert(Finds("[a-c]+", "xxbcaxx", 2, 5) && Finds("[^a-c]+", "abcxyz", 3, 6), "classes");
+    Assert(Finds("[[:digit:]]+", "ab12", 2, 4) && Finds("[]a]+", "x]a]", 1, 4), "POSIX classes and a leading `]`");
+    Assert(Finds("a{2,3}", "aaaa", 0, 3) && FindsNothing("a{2}", "a") && Finds("(a{2,}?)", "aaaa", 0, 2), "counts");
+    Assert(Finds("x(?:ab)*y", "xababy", 0, 6) && Finds("colou?r", "color", 0, 5), "groups and options");
+    Assert(FindsNothing(".", "\n") && Finds("(?s).", "\n", 0, 1), "`.` and `(?s)`");
+    Assert(Finds("\\.", "a.b", 1, 2) && Finds("\\s+", "a \t\nb", 1, 4), "escapes");
+    Assert(Finds("a|b|c", "zzc", 2, 3), "several alternatives");
+    Assert(Finds("\\x41\\u{263A}", "A\u{263A}", 0, 4), "hexadecimal escapes");
+    Assert(Finds("(?x) a b # a comment\n c", "abc", 0, 3), "`(?x)` skips spaces and comments");
+
+    // Unicode.
+    Assert(Finds("\\d+", "abc \u{0661}\u{0662}\u{0663} 42", 4, 10), "`\\d` holds every decimal digit");
+    Assert(Finds("\\w+", "h\u{E9}llo w\u{F6}rld", 0, 6), "`\\w` holds letters with accents");
+    Assert(Finds("\\p{Lu}+", "abc\u{C0}\u{C9}x", 3, 7) && Finds("\\P{L}+", "ab12cd", 2, 4), "general categories");
+    Assert(Finds("(?i)HELLO", "say hello", 4, 9) && Finds("(?i)[a-z]+", "ABC", 0, 3), "case-insensitive matching");
+    Assert(Finds("(?i)k", "\u{212A}", 0, 3) && Finds("(?i)\u{3C3}", "\u{3A3}", 0, 2), "simple case folding");
+    Assert(Finds("a(?i:b)c", "aBc", 0, 3) && FindsNothing("a(?i:b)c", "aBC"), "scoped flags");
+    Assert(Finds(".", "\u{1F600}", 0, 4), "`.` is one character, not one byte");
+
+    // Skipping ahead to where a match can start.
+    Assert(Finds("ab(c|d)", "xxabxabdxx", 5, 8) && Finds("\u{E9}+", "a\u{E9}\u{E9}", 1, 5), "literal prefixes");
+    Assert(Finds("(?i)k", "xy\u{212A}", 2, 5) && Finds("(?i)[q-s]x", "ab RX", 3, 5), "first bytes with case folding");
+    Assert(Finds("[\u{E9}a]x", "b\u{E9}x", 1, 4) && Finds("\\bend", "the end", 4, 7), "first bytes beyond ASCII");
+
+    // Captures.
+    let date = Compiled("(?<year>\\d{4})-(?P<month>\\d{2})-(\\d{2})");
+    Assert(date.GroupCount() == 3u && (date.GroupIndex("month") ?? 0u) == 2u && date.GroupIndex("day") == none, "groups");
+    let captured = date.Capture("date: 2026-10-10.") catch { else => return 10 };
+    match <-captured {
+        .Some(groups) => {
+            Assert(groups.Count() == 4u && GroupIs(groups.Group(0), 6, 16), "the whole match is group 0");
+            Assert(GroupIs(groups.Named("year"), 6, 10) && GroupIs(groups.Named("month"), 11, 13) &&
+                   GroupIs(groups.Group(3), 14, 16), "groups by name and number");
+            Assert(groups.Group(4) == none && groups.Named("day") == none, "groups that do not exist");
+        },
+        none => Assert(false, "the date matches")
+    }
+    let either = Compiled("(a)|(b)");
+    match either.Capture("b") catch { else => return 11 } {
+        .Some(groups) => Assert(groups.Group(1) == none && GroupIs(groups.Group(2), 0, 1), "a group not taken"),
+        none => Assert(false, "b matches")
+    }
+    let three = Compiled("(a|ab)(c|bcd)(d*)");
+    match three.Capture("abcd") catch { else => return 12 } {
+        .Some(groups) => Assert(GroupIs(groups.Group(1), 0, 1) && GroupIs(groups.Group(2), 1, 4) &&
+                                GroupIs(groups.Group(3), 4, 4), "groups as Python gives them"),
+        none => Assert(false, "abcd matches")
+    }
+
+    // Every match, and the parts between them.
+    let digits = Compiled("\\d+");
+    var all = digits.FindAll("a1b22c333") catch { else => return 13 };
+    Assert(GroupIs(all.Next(), 1, 2) && GroupIs(all.Next(), 3, 5) && GroupIs(all.Next(), 6, 9) && all.Next() == none,
+           "every match in turn");
+    let stars = Compiled("a*");
+    var empty = stars.FindAll("baaab") catch { else => return 14 };
+    Assert(GroupIs(empty.Next(), 0, 0) && GroupIs(empty.Next(), 1, 4) && GroupIs(empty.Next(), 5, 5) &&
+           empty.Next() == none, "no empty match right after a match");
+    let nothing = Compiled("");
+    var boundaries = nothing.FindAll("\u{E9}") catch { else => return 15 };
+    Assert(GroupIs(boundaries.Next(), 0, 0) && GroupIs(boundaries.Next(), 2, 2) && boundaries.Next() == none,
+           "empty matches fall between characters");
+    let commas = Compiled("\\s*,\\s*");
+    var parts = commas.Split("a , b,c ,d") catch { else => return 16 };
+    Assert(Same(parts.Next() ?? "", "a") && Same(parts.Next() ?? "", "b") && Same(parts.Next() ?? "", "c") &&
+           Same(parts.Next() ?? "", "d") && Ended(parts.Next()), "splitting");
+    let comma = Compiled(",");
+    var ends = comma.Split(",a,,") catch { else => return 17 };
+    Assert(Same(ends.Next() ?? "x", "") && Same(ends.Next() ?? "", "a") && Same(ends.Next() ?? "x", "") &&
+           Same(ends.Next() ?? "x", "") && Ended(ends.Next()), "separators at the ends give empty parts");
+
+    // Replacement.
+    Assert(Replaced("(\\w+)@(\\w+)", "x me@host y", "$2 at $1", "x host at me y"), "numbered references");
+    Assert(Replaced("(?<first>\\w+) (?<second>\\w+)", "hello world", "${second} ${first}", "world hello"),
+           "named references");
+    Assert(Replaced("a", "banana", "$$", "b$n$n$") && Replaced("x*", "abc", "-", "-a-b-c-"), "`$$` and empty matches");
+    Assert(Replaced("(a)", "a", "[$0|$2|$9]", "[a||]"), "missing groups stand for nothing");
+    let first = Compiled("a");
+    let once = first.ReplaceFirst(SystemAllocator(), "banana", "o") catch { else => return 18 };
+    Assert(Same(once.Bytes(), "bonana"), "only the first match");
+
+    // Escaping.
+    let escaped = Escape(SystemAllocator(), "1+1=2? (a.b)*[c]") catch { else => return 19 };
+    Assert(Same(escaped.Bytes(), "1\\+1=2\\? \\(a\\.b\\)\\*\\[c\\]"), "metacharacters are escaped");
+    Assert(Finds(escaped.Bytes(), "is 1+1=2? (a.b)*[c]", 3, 19), "an escaped pattern matches its text");
+
+    // Refusals.
+    Assert(Refuses("(abc", RegexErrorKind::UnclosedGroup, 0) && Refuses("abc)", RegexErrorKind::UnopenedGroup, 3),
+           "unbalanced groups");
+    Assert(Refuses("[abc", RegexErrorKind::UnclosedClass, 0) && Refuses("*a", RegexErrorKind::NothingToRepeat, 0),
+           "an open class and a repetition of nothing");
+    Assert(Refuses("a{3,2}", RegexErrorKind::InvalidCount, 1) && Refuses("a{1001}", RegexErrorKind::InvalidCount, 2),
+           "bad counts");
+    Assert(Refuses("[z-a]", RegexErrorKind::InvalidRange, 1) && Refuses("[\\d-z]", RegexErrorKind::InvalidRange, 1),
+           "bad ranges");
+    Assert(Refuses("\\p{Nope}", RegexErrorKind::UnknownProperty, 0) && Refuses("(?q)", RegexErrorKind::UnknownFlag, 2),
+           "unknown properties and flags");
+    Assert(Refuses("(?=a)", RegexErrorKind::Unsupported, 0) && Refuses("(a)\\1", RegexErrorKind::Unsupported, 3),
+           "lookaround and backreferences");
+    Assert(Refuses("(?<n>a)(?<n>b)", RegexErrorKind::DuplicateGroupName, 10) &&
+           Refuses("(?<1x>a)", RegexErrorKind::InvalidGroupName, 3), "group names");
+    Assert(Refuses("\\q", RegexErrorKind::InvalidEscape, 0) && Refuses("((a{100}){100}){100}", RegexErrorKind::TooLarge, 0),
+           "bad escapes and patterns too large");
+
+    // Linear time where backtracking takes exponential time.
+    Assert(FindsNothing("(a*)*b", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") &&
+           FindsNothing("(x+x+)+y", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"), "no catastrophic backtracking");
+    let quick = Compiled("foo");
+    Assert(quick.IsMatch("xxfooxx") catch { else => false }, "IsMatch");
+    return 0;
+}

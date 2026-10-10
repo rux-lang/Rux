@@ -30,6 +30,7 @@ Packages = [
     "Packages/Path",
     "Packages/Process",
     "Packages/Random",
+    "Packages/Regex",
     "Packages/Sync",
     "Packages/Text",
     "Packages/Thread",

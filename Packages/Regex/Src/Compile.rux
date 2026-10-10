@@ -1,0 +1,280 @@
+// Turning the parsed tree into instructions, by Thompson's construction.
+// Alternatives become `Split`s whose first branch is the earlier alternative, and repetitions become `Split`s whose
+// first branch repeats when the repetition is greedy and moves on when it is lazy, so the order of a thread's
+// branches is the order of preference that leftmost-first matching follows. Counted repetitions are written out in
+// full, which is what limits the size of a compiled pattern.
+
+import Collections::Vector;
+import Regex::{
+    ClassFold, ClassMatches, ClassNegated, FoldKey, Instruction, Node, NodeDotAll, NodeFold, NodeGreedy,
+    NodeKind, NodeNegated, NoCapture, NoNode, Op, Regex, RegexError, RegexErrorKind, StartText, Unbounded
+};
+
+// The most instructions a compiled pattern may have.
+const MaximumInstructions: uint = 100000;
+// The end of a list of instructions waiting for a target.
+const NoPatch: uint32 = 0xFFFFFFFF;
+
+extend Regex {
+    func Emit(self: &var Regex, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 ! RegexError {
+        let index = self.instructions.Length();
+        if index >= MaximumInstructions { fail RegexError::At(RegexErrorKind::TooLarge, 0); }
+        self.instructions.Push(Instruction { op: op, flags: flags, a: a, b: b, c: 0 }) catch {
+            else => fail RegexError::OutOfMemory()
+        };
+        return index as uint32;
+    }
+
+    func Next(self: &Regex) -> uint32 {
+        return self.instructions.Length() as uint32;
+    }
+
+    // Points every instruction on the list starting at `pending`, linked through `a`, or through `b` when
+    // `throughSecond`, at `target`.
+    func Patch(self: &var Regex, pending: uint32, target: uint32, throughSecond: bool) {
+        var at = pending;
+        let instructions = self.instructions.AsMutableSlice();
+        while at != NoPatch {
+            let index = at as uint;
+            if throughSecond {
+                at = instructions[index].b;
+                instructions[index].b = target;
+            }
+            else {
+                at = instructions[index].a;
+                instructions[index].a = target;
+            }
+        }
+    }
+
+    // Emits node `index` and what it holds.
+    func CompileNode(self: &var Regex, nodes: Node[..], index: uint32) -> ! RegexError {
+        let node = nodes[index as uint];
+        match node.kind {
+            NodeKind::Empty => {},
+            NodeKind::Literal => {
+                if (node.flags & NodeFold) != 0u8 { self.Emit(Op::CharFold, 0, FoldKey(node.value), 0)?; }
+                else { self.Emit(Op::Char, 0, node.value, 0)?; }
+            },
+            NodeKind::Class => {
+                var flags: uint8 = 0;
+                if (node.flags & NodeFold) != 0u8 { flags = flags | ClassFold; }
+                if (node.flags & NodeNegated) != 0u8 { flags = flags | ClassNegated; }
+                let first = node.value as uint;
+                let items = self.items.AsSlice()[first..first + node.low as uint];
+                var low: uint64 = 0;
+                var high: uint64 = 0;
+                var c: uint32 = 0;
+                while c < 128u32 {
+                    if ClassMatches(items, flags, c) {
+                        if c < 64u32 { low = low | (1u64 << c); }
+                        else { high = high | (1u64 << (c - 64u32)); }
+                    }
+                    c = c + 1u32;
+                }
+                let pair = self.ascii.Length() / 2;
+                self.ascii.Push(low) catch { else => fail RegexError::OutOfMemory() };
+                self.ascii.Push(high) catch { else => fail RegexError::OutOfMemory() };
+                let pc = self.Emit(Op::Class, flags, node.value, node.low)?;
+                self.instructions.AsMutableSlice()[pc as uint].c = pair as uint32;
+            },
+            NodeKind::Any => {
+                if (node.flags & NodeDotAll) != 0u8 { self.Emit(Op::Any, 0, 0, 0)?; }
+                else { self.Emit(Op::AnyNotNewline, 0, 0, 0)?; }
+            },
+            NodeKind::Assertion => {
+                self.Emit(Op::Assert, 0, node.value, 0)?;
+            },
+            NodeKind::Group => {
+                if node.value == NoCapture {
+                    self.CompileNode(nodes, node.child)?;
+                }
+                else {
+                    self.Emit(Op::Save, 0, node.value * 2u32, 0)?;
+                    self.CompileNode(nodes, node.child)?;
+                    self.Emit(Op::Save, 0, node.value * 2u32 + 1u32, 0)?;
+                }
+            },
+            NodeKind::Concat => {
+                var child = node.child;
+                while child != NoNode {
+                    self.CompileNode(nodes, child)?;
+                    child = nodes[child as uint].next;
+                }
+            },
+            NodeKind::Alternate => {
+                var child = node.child;
+                var jumps = NoPatch;
+                while nodes[child as uint].next != NoNode {
+                    let split = self.Emit(Op::Split, 0, self.Next() + 1u32, 0)?;
+                    self.CompileNode(nodes, child)?;
+                    jumps = self.Emit(Op::Jump, 0, jumps, 0)?;
+                    let after = self.Next();
+                    self.instructions.AsMutableSlice()[split as uint].b = after;
+                    child = nodes[child as uint].next;
+                }
+                self.CompileNode(nodes, child)?;
+                self.Patch(jumps, self.Next(), false);
+            },
+            NodeKind::Repeat => self.CompileRepeat(nodes, node)?
+        }
+    }
+
+    func CompileRepeat(self: &var Regex, nodes: Node[..], node: Node) -> ! RegexError {
+        let greedy = (node.flags & NodeGreedy) != 0u8;
+        let low = node.low;
+        let high = node.high;
+        if high == Unbounded {
+            if low == 0u32 {
+                // L: split body, end; body; jump L; end:
+                let head = self.Emit(Op::Split, 0, 0, 0)?;
+                self.CompileNode(nodes, node.child)?;
+                self.Emit(Op::Jump, 0, head, 0)?;
+                let end = self.Next();
+                let instructions = self.instructions.AsMutableSlice();
+                instructions[head as uint].a = greedy ? head + 1u32 : end;
+                instructions[head as uint].b = greedy ? end : head + 1u32;
+                return;
+            }
+            var count: uint32 = 1;
+            while count < low {
+                self.CompileNode(nodes, node.child)?;
+                count = count + 1u32;
+            }
+            // L: body; split L, end; end:
+            let body = self.Next();
+            self.CompileNode(nodes, node.child)?;
+            let after = self.Next() + 1u32;
+            self.Emit(Op::Split, 0, greedy ? body : after, greedy ? after : body)?;
+            return;
+        }
+        var count: uint32 = 0;
+        while count < low {
+            self.CompileNode(nodes, node.child)?;
+            count = count + 1u32;
+        }
+        // Each optional copy: split copy, end; copy. Every skip goes to the end of the last copy.
+        var pending = NoPatch;
+        while count < high {
+            let split = self.Next();
+            if greedy { self.Emit(Op::Split, 0, split + 1u32, pending)?; }
+            else { self.Emit(Op::Split, 0, pending, split + 1u32)?; }
+            pending = split;
+            self.CompileNode(nodes, node.child)?;
+            count = count + 1u32;
+        }
+        self.Patch(pending, self.Next(), greedy);
+    }
+
+    // Compiles the whole pattern from `root`, with the whole match as group 0, and works out how a search can skip
+    // ahead to where a match can start.
+    func CompileProgram(self: &var Regex, nodes: Node[..], root: uint32) -> ! RegexError {
+        self.Emit(Op::Save, 0, 0, 0)?;
+        self.CompileNode(nodes, root)?;
+        self.Emit(Op::Save, 0, 1, 0)?;
+        self.Emit(Op::Match, 0, 0, 0)?;
+        let instructions = self.instructions.AsSlice();
+        var at: uint = 0;
+        while instructions[at].op == Op::Save { at = at + 1; }
+        let first = instructions[at];
+        if first.op == Op::Assert && first.a == StartText { self.anchored = true; }
+        // The characters every match starts with.
+        while instructions[at].op == Op::Char || instructions[at].op == Op::Save {
+            if instructions[at].op == Op::Char {
+                var encoded: char8[4] = [c8'\0'; 4];
+                let length = Encode(instructions[at].a, encoded[..]);
+                self.literal.PushSlice(encoded[..length]) catch { else => fail RegexError::OutOfMemory() };
+            }
+            at = at + 1;
+        }
+        self.FindFirstBytes()?;
+    }
+
+    // Works out the bytes a match can start with, following every move from the start that reads no character. A
+    // match that can be empty, or can start with any character, leaves nothing to skip.
+    func FindFirstBytes(self: &var Regex) -> ! RegexError {
+        let instructions = self.instructions.AsSlice();
+        var seen = Vector<bool>(self.allocator);
+        var pending = Vector<uint32>(self.allocator);
+        var index: uint = 0;
+        while index < instructions.length {
+            seen.Push(false) catch { else => fail RegexError::OutOfMemory() };
+            index = index + 1;
+        }
+        pending.Push(0) catch { else => fail RegexError::OutOfMemory() };
+        var bytes: uint64[4] = [0u64, 0u64, 0u64, 0u64];
+        var nonAscii = false;
+        var popped: uint32 = 0;
+        while pending.TryPop(@popped) {
+            let pc = popped as uint;
+            if seen.AsSlice()[pc] { continue; }
+            seen.AsMutableSlice()[pc] = true;
+            let instruction = instructions[pc];
+            if instruction.op == Op::Jump {
+                pending.Push(instruction.a) catch { else => fail RegexError::OutOfMemory() };
+            }
+            else if instruction.op == Op::Split {
+                pending.Push(instruction.a) catch { else => fail RegexError::OutOfMemory() };
+                pending.Push(instruction.b) catch { else => fail RegexError::OutOfMemory() };
+            }
+            else if instruction.op == Op::Save || instruction.op == Op::Assert {
+                pending.Push(pc as uint32 + 1u32) catch { else => fail RegexError::OutOfMemory() };
+            }
+            else if instruction.op == Op::Char {
+                let scalar = instruction.a;
+                if scalar < 0x80u32 { bytes[(scalar >> 6) as uint] = bytes[(scalar >> 6) as uint] | (1u64 << (scalar & 63u32)); }
+                else { nonAscii = true; }
+            }
+            else if instruction.op == Op::CharFold || instruction.op == Op::Class {
+                var c: uint32 = 0;
+                while c < 128u32 {
+                    var matches = false;
+                    if instruction.op == Op::CharFold { matches = FoldKey(c) == instruction.a; }
+                    else {
+                        let pair = instruction.c as uint * 2;
+                        let word = self.ascii.AsSlice()[pair + (c >> 6) as uint];
+                        matches = (word & (1u64 << (c & 63u32))) != 0u64;
+                    }
+                    if matches { bytes[(c >> 6) as uint] = bytes[(c >> 6) as uint] | (1u64 << (c & 63u32)); }
+                    c = c + 1u32;
+                }
+                nonAscii = true;
+            }
+            else {
+                // `Match`, `Any` or `AnyNotNewline`: nothing to skip to.
+                self.skips = false;
+                return;
+            }
+        }
+        if nonAscii {
+            bytes[2] = 0xFFFFFFFFFFFFFFFFu64;
+            bytes[3] = 0xFFFFFFFFFFFFFFFFu64;
+        }
+        self.firstBytes = bytes;
+        self.skips = true;
+    }
+}
+
+// Writes `scalar` as UTF-8 into `into`, giving its length.
+func Encode(scalar: uint32, into: var char8[..]) -> uint {
+    if scalar < 0x80u32 {
+        into[0] = scalar as char8;
+        return 1;
+    }
+    if scalar < 0x800u32 {
+        into[0] = (0xC0u32 | (scalar >> 6)) as char8;
+        into[1] = (0x80u32 | (scalar & 0x3Fu32)) as char8;
+        return 2;
+    }
+    if scalar < 0x10000u32 {
+        into[0] = (0xE0u32 | (scalar >> 12)) as char8;
+        into[1] = (0x80u32 | ((scalar >> 6) & 0x3Fu32)) as char8;
+        into[2] = (0x80u32 | (scalar & 0x3Fu32)) as char8;
+        return 3;
+    }
+    into[0] = (0xF0u32 | (scalar >> 18)) as char8;
+    into[1] = (0x80u32 | ((scalar >> 12) & 0x3Fu32)) as char8;
+    into[2] = (0x80u32 | ((scalar >> 6) & 0x3Fu32)) as char8;
+    into[3] = (0x80u32 | (scalar & 0x3Fu32)) as char8;
+    return 4;
+}

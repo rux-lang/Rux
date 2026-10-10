@@ -1,0 +1,65 @@
+// Why a pattern could not be compiled, or a search could not run.
+
+/// What went wrong. `Copy`.
+/// @see https://rux-lang.dev/docs/api/regex/error#regex-error-kind
+pub enum RegexErrorKind: uint8 {
+    /// A `(` has no `)`.
+    UnclosedGroup = 1,
+    /// A `)` has no `(`.
+    UnopenedGroup = 2,
+    /// A `[` has no `]`.
+    UnclosedClass = 3,
+    /// A `\` is followed by something that is not an escape, or ends the pattern.
+    InvalidEscape = 4,
+    /// A `*`, `+`, `?` or `{n,m}` has nothing before it to repeat.
+    NothingToRepeat = 5,
+    /// A class range ends before it starts, as `z-a` does, or one end of it is a class such as `\d`.
+    InvalidRange = 6,
+    /// A repetition count is over 1000, or its maximum is below its minimum.
+    InvalidCount = 7,
+    /// A `\p{...}` names a property or category this package does not know.
+    UnknownProperty = 8,
+    /// A `(?...)` holds a flag other than `i`, `m`, `s` and `x`.
+    UnknownFlag = 9,
+    /// A group name is empty, or holds something other than letters, digits and `_`, or starts with a digit.
+    InvalidGroupName = 10,
+    /// Two groups have the same name.
+    DuplicateGroupName = 11,
+    /// The pattern uses lookaround, a backreference or something else that cannot be matched in linear time.
+    Unsupported = 12,
+    /// The pattern is not UTF-8 text.
+    InvalidText = 13,
+    /// The compiled pattern would be too large, usually from counted repetitions inside each other, or its groups
+    /// are nested too deeply.
+    TooLarge = 14,
+    /// The allocator could not supply the storage.
+    OutOfMemory = 15
+}
+
+/// Why a pattern could not be compiled, and where. `Copy`.
+/// @see https://rux-lang.dev/docs/api/regex/error#regex-error
+pub struct RegexError {
+    /// What went wrong.
+    pub kind: RegexErrorKind;
+    /// The byte offset in the pattern where it went wrong; zero for failures that have no place, such as running out
+    /// of memory.
+    pub offset: uint;
+}
+
+extend RegexError {
+    /// An error of `kind` at `offset`.
+    /// @param kind what went wrong
+    /// @param offset where in the pattern
+    /// @returns the error
+    /// @see https://rux-lang.dev/docs/api/regex/error#at
+    pub func At(kind: RegexErrorKind, offset: uint) -> RegexError {
+        return RegexError { kind: kind, offset: offset };
+    }
+
+    /// The error for storage the allocator could not supply.
+    /// @returns the error
+    /// @see https://rux-lang.dev/docs/api/regex/error#out-of-memory
+    pub func OutOfMemory() -> RegexError {
+        return RegexError { kind: RegexErrorKind::OutOfMemory, offset: 0 };
+    }
+}

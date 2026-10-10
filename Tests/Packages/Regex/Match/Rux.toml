@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Match"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Regex: matching, Unicode classes and case folding, captures, iteration, splitting, replacement, escaping and pattern errors."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Regex = { Path = "../../../../Packages/Regex" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Regex"

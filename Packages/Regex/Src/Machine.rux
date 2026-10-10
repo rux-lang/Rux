@@ -1,0 +1,296 @@
+// Running a compiled pattern over text with Pike's matcher.
+// Every thread of the match moves forward one character at a time, all together, so the text is read once and the
+// work per character is bounded by the size of the program: a search takes time proportional to the text times the
+// pattern, whatever either holds. Threads are kept in order of preference; when one matches, the threads after it
+// are dropped and those before it run on in case they match too, which gives leftmost-first matching, the answer a
+// backtracking matcher would give. Each list is a sparse set, so a thread already on it is never added twice and an
+// empty loop cannot go round forever.
+
+import Allocator::Allocator;
+import Collections::Vector;
+import Regex::{
+    ClassMatches, DecodeAt, EndLine, EndText, FoldKey, Instruction, IsWordCharacter, NotWordBoundary, Op, Program,
+    RegexError,
+    StartLine, StartText, WordBoundary
+};
+
+// A capture slot no thread has set.
+const NoPosition: uint = 0xFFFFFFFFFFFFFFFF;
+// The character past the end of the text.
+const NoCharacter: uint32 = 0xFFFFFFFF;
+
+// One entry of the stack that following a thread's moves works through.
+struct StackEntry {
+    // Puts `value` back in slot `index`, rather than following instruction `index`.
+    restore: bool;
+    index: uint32;
+    value: uint;
+}
+
+// The storage one search works in: two thread lists, each a sparse set with a copy of the capture slots of every
+// thread, and the stack for following moves. Not copied.
+struct Scratch {
+    sparse: Vector<uint32>;
+    dense: Vector<uint32>;
+    slots: Vector<uint>;
+    stack: Vector<StackEntry>;
+    working: Vector<uint>;
+    counts: uint[2];
+    slotCount: uint;
+}
+
+// A vector of `count` copies of `value`.
+func Filled<T>(allocator: Allocator, count: uint, value: T) -> Vector<T> ! RegexError {
+    var items = Vector<T>(allocator);
+    items.Reserve(count) catch { else => fail RegexError::OutOfMemory() };
+    var index: uint = 0;
+    while index < count {
+        items.Push(value) catch { else => fail RegexError::OutOfMemory() };
+        index = index + 1;
+    }
+    return <-items;
+}
+
+extend Scratch {
+    func =(self: &var Scratch, other: &Scratch);
+
+    // Storage for searching `program` with `slotCount` capture slots.
+    func New(allocator: Allocator, program: Program, slotCount: uint) -> Scratch ! RegexError {
+        let size = program.instructions.length;
+        return Scratch {
+            sparse: Filled(allocator, size * 2, 0u32)?,
+            dense: Filled(allocator, size * 2, 0u32)?,
+            slots: Filled(allocator, size * 2 * slotCount, NoPosition)?,
+            stack: Filled(allocator, size + 1, StackEntry { restore: false, index: 0, value: 0 })?,
+            working: Filled(allocator, slotCount, NoPosition)?,
+            counts: [0u, 0u],
+            slotCount: slotCount
+        };
+    }
+}
+
+// The character just before `at`.
+func PreviousCharacter(text: char8[..], at: uint) -> uint32 {
+    var start = at - 1;
+    while start > 0u && at - start < 4u && (text[start] as uint8 & 0xC0u8) == 0x80u8 { start = start - 1; }
+    let decoded = DecodeAt(text, start);
+    if start + decoded.length == at { return decoded.scalar; }
+    return 0xFFFDu32;
+}
+
+// Whether assertion `kind` holds at `at`.
+func Holds(kind: uint32, text: char8[..], at: uint) -> bool {
+    if kind == StartText { return at == 0u; }
+    if kind == EndText { return at == text.length; }
+    if kind == StartLine { return at == 0u || text[at - 1] == c8'\n'; }
+    if kind == EndLine { return at == text.length || text[at] == c8'\n'; }
+    let before = at > 0u && IsWordCharacter(PreviousCharacter(text, at));
+    let after = at < text.length && IsWordCharacter(DecodeAt(text, at).scalar);
+    if kind == WordBoundary { return before != after; }
+    if kind == NotWordBoundary { return before == after; }
+    return false;
+}
+
+// The working storage of one search as the matcher reads and writes it: views of a `Scratch`. `Copy`.
+struct Space {
+    sparse: var uint32[..];
+    dense: var uint32[..];
+    slots: var uint[..];
+    stack: var StackEntry[..];
+    working: var uint[..];
+    // How many threads each list holds.
+    counts: *var uint;
+    size: uint;
+    slotCount: uint;
+}
+
+// Adds the thread at `start` to list `list`, with every thread it reaches without reading a character, each with the
+// capture slots in `working` as its moves set them.
+func Follow(program: &Program, space: &Space, text: char8[..], list: uint, start: uint32, at: uint) {
+    let base = list * space.size;
+    let slotCount = space.slotCount;
+    var top: uint = 1;
+    space.stack[0] = StackEntry { restore: false, index: start, value: 0 };
+    while top > 0u {
+        top = top - 1;
+        let entry = space.stack[top];
+        if entry.restore {
+            space.working[entry.index as uint] = entry.value;
+            continue;
+        }
+        var pc = entry.index as uint;
+        while true {
+            let count = space.counts[list];
+            let position = space.sparse[base + pc] as uint;
+            if position < count && space.dense[base + position] as uint == pc { break; }
+            space.dense[base + count] = pc as uint32;
+            space.sparse[base + pc] = count as uint32;
+            space.counts[list] = count + 1;
+            let instruction = program.instructions[pc];
+            let op = instruction.op;
+            if op == Op::Jump {
+                pc = instruction.a as uint;
+            }
+            else if op == Op::Split {
+                space.stack[top] = StackEntry { restore: false, index: instruction.b, value: 0 };
+                top = top + 1;
+                pc = instruction.a as uint;
+            }
+            else if op == Op::Save {
+                let slot = instruction.a as uint;
+                if slot < slotCount {
+                    space.stack[top] = StackEntry { restore: true, index: instruction.a, value: space.working[slot] };
+                    top = top + 1;
+                    space.working[slot] = at;
+                }
+                pc = pc + 1;
+            }
+            else if op == Op::Assert {
+                if !Holds(instruction.a, text, at) { break; }
+                pc = pc + 1;
+            }
+            else {
+                let into = (base + pc) * slotCount;
+                var slot: uint = 0;
+                while slot < slotCount {
+                    space.slots[into + slot] = space.working[slot];
+                    slot = slot + 1;
+                }
+                break;
+            }
+        }
+    }
+}
+
+// Whether the consuming instruction `instruction` matches `character`.
+func Reads(program: &Program, instruction: Instruction, character: uint32) -> bool {
+    let op = instruction.op;
+    if op == Op::Char { return character == instruction.a; }
+    if op == Op::Class {
+        if character < 128u32 {
+            let word = program.ascii[instruction.c as uint * 2 + (character >> 6) as uint];
+            return (word & (1u64 << (character & 63u32))) != 0u64;
+        }
+        let first = instruction.a as uint;
+        return ClassMatches(program.items[first..first + instruction.b as uint], instruction.flags, character);
+    }
+    if op == Op::CharFold { return FoldKey(character) == instruction.a; }
+    if op == Op::Any { return true; }
+    if op == Op::AnyNotNewline { return character != 0x0Au32; }
+    return false;
+}
+
+// Where `literal` next occurs in `text` at or after `from`.
+func FindLiteral(text: char8[..], from: uint, literal: char8[..]) -> uint? {
+    if literal.length > text.length { return none; }
+    let last = text.length - literal.length;
+    let first = literal[0];
+    var at = from;
+    while at <= last {
+        if text[at] == first {
+            var index: uint = 1;
+            while index < literal.length && text[at + index] == literal[index] { index = index + 1; }
+            if index == literal.length { return at; }
+        }
+        at = at + 1;
+    }
+    return none;
+}
+
+extend Scratch {
+    // Searches `text` from `start` for the leftmost-first match of `program`, filling `found` with its capture slots.
+    // With `earliest`, stops at the first match seen, which is enough to know there is one.
+    func Run(self: &var Scratch, program: Program, text: char8[..], start: uint, earliest: bool,
+             found: var uint[..]) -> bool {
+        var counts: uint[2] = [0u, 0u];
+        let space = Space {
+            sparse: self.sparse.AsMutableSlice(),
+            dense: self.dense.AsMutableSlice(),
+            slots: self.slots.AsMutableSlice(),
+            stack: self.stack.AsMutableSlice(),
+            working: self.working.AsMutableSlice(),
+            counts: @counts[0],
+            size: program.instructions.length,
+            slotCount: self.slotCount
+        };
+        let size = space.size;
+        let slotCount = space.slotCount;
+        var matched = false;
+        var current: uint = 0;
+        var at = start;
+        while true {
+            if !matched && (!program.anchored || at == start) {
+                if counts[current] == 0u && !program.anchored {
+                    if program.literal.length > 0u {
+                        at = FindLiteral(text, at, program.literal) ?? break;
+                    }
+                    else if program.skips {
+                        while at < text.length {
+                            let byte = text[at] as uint8;
+                            if (program.firstBytes[(byte >> 6) as uint] & (1u64 << (byte & 63u8))) != 0u64 { break; }
+                            at = at + 1;
+                        }
+                        if at >= text.length { break; }
+                    }
+                }
+                var slot: uint = 0;
+                while slot < slotCount {
+                    space.working[slot] = NoPosition;
+                    slot = slot + 1;
+                }
+                Follow(program, space, text, current, 0, at);
+            }
+            if counts[current] == 0u {
+                if matched || program.anchored || at >= text.length { break; }
+                at = at + DecodeAt(text, at).length;
+                continue;
+            }
+            var character = NoCharacter;
+            var width: uint = 0;
+            if at < text.length {
+                let byte = text[at] as uint32;
+                if byte < 0x80u32 {
+                    character = byte;
+                    width = 1;
+                }
+                else {
+                    let decoded = DecodeAt(text, at);
+                    character = decoded.scalar;
+                    width = decoded.length;
+                }
+            }
+            let other = 1 - current;
+            counts[other] = 0;
+            let base = current * size;
+            var index: uint = 0;
+            while index < counts[current] {
+                let pc = space.dense[base + index] as uint;
+                let instruction = program.instructions[pc];
+                let from = (base + pc) * slotCount;
+                if instruction.op == Op::Match {
+                    var slot: uint = 0;
+                    while slot < slotCount && slot < found.length {
+                        found[slot] = space.slots[from + slot];
+                        slot = slot + 1;
+                    }
+                    matched = true;
+                    if earliest { return true; }
+                    break;
+                }
+                if character != NoCharacter && Reads(program, instruction, character) {
+                    var slot: uint = 0;
+                    while slot < slotCount {
+                        space.working[slot] = space.slots[from + slot];
+                        slot = slot + 1;
+                    }
+                    Follow(program, space, text, other, (pc + 1) as uint32, at + width);
+                }
+                index = index + 1;
+            }
+            current = other;
+            if at >= text.length { break; }
+            at = at + width;
+        }
+        return matched;
+    }
+}

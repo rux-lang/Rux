@@ -6,7 +6,7 @@ Core is an optional declaration provider. Every primitive type is built into the
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **36 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **37 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -36,6 +36,7 @@ The v0.1.0 release ships **36 packages**. This table is the target catalog: it i
 | `Path`        | Lossless native strings and lexical path operations                  | Core, Memory, Allocator, Text                            |
 | `Process`     | The running process and the child processes it starts                | Core, Memory, Allocator, Path, Io, Thread, OS            |
 | `Random`      | Seeded generators, distributions and sampling                        | Core, Math, Entropy                                      |
+| `Regex`       | Regular expressions matched in linear time                           | Core, Allocator, Collections, Text, Unicode              |
 | `Sync`        | Locks, conditions, once-only setup, counters and channels for threads | Core, Memory, Time, OS                                   |
 | `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator                                  |
 | `Thread`      | Starting, joining and detaching threads, and the current thread      | Core, Memory, OS                                         |
@@ -58,7 +59,7 @@ Layer 8  CommandLine, TimeZone
              |
 Layer 7  FileSystem, Json, Toml, Process, Compress, Net
              |
-Layer 6  Io, Uuid, Sync
+Layer 6  Io, Uuid, Sync, Regex
              |
 Layer 5  Format, Time, Path, Collections, Encoding, NanoId, Url
              |
@@ -78,7 +79,7 @@ Layer 0  Core, Windows
 
 ## Retired Identities
 
-The workspace matches the catalog above: 36 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
+The workspace matches the catalog above: 37 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
 | Former identity | What happened               | Status                                  |
 | --------------- | --------------------------- | --------------------------------------- |
