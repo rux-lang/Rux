@@ -1287,10 +1287,10 @@ pub const NormalizationVectorIndex: uint32[15300] = [
     15128, 4, 15132, 3, 15135, 2, 15137, 4, 15141, 2, 15143, 4
 ];
 
-/// The scalar values of every conformance vector, run together end to end.
-/// `NormalizationVectorIndex` says where each vector's five forms start. These come from the Unicode
-/// Consortium's own NormalizationTest file, so a passing run means agreement with the standard's own
-/// expected output rather than with this implementation's idea of it.
+/// The scalar values of every conformance vector, run together end to end. `NormalizationVectorIndex` says where
+/// each vector's five forms start. These come from the Unicode Consortium's own NormalizationTest file, so a
+/// passing run means agreement with the standard's own expected output rather than with this implementation's idea
+/// of it.
 /// @see https://rux-lang.dev/docs/api/unicode/tables#normalization-vector-elements
 pub const NormalizationVectorElements: uint32[15147] = [
     7690, 7690, 68, 775, 7690, 68, 775, 7692, 7692, 68, 803, 7692,

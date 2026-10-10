@@ -99,6 +99,11 @@ func Main() -> int {
     Assert(Finds("\\p{Lu}+", "abc\u{C0}\u{C9}x", 3, 7) && Finds("\\P{L}+", "ab12cd", 2, 4), "general categories");
     Assert(Finds("(?i)HELLO", "say hello", 4, 9) && Finds("(?i)[a-z]+", "ABC", 0, 3), "case-insensitive matching");
     Assert(Finds("(?i)k", "\u{212A}", 0, 3) && Finds("(?i)\u{3C3}", "\u{3A3}", 0, 2), "simple case folding");
+    Assert(Finds("\\p{Greek}+", "abc \u{3B1}\u{3B2}\u{3B3}", 4, 10) && Finds("\\P{Latin}", "ab1", 2, 3), "scripts");
+    Assert(Finds("\\p{sc=Cyrillic}", "a\u{416}", 1, 3) && Finds("[\\p{Script=Han}]", "x\u{4E2D}", 1, 4),
+           "scripts by property name");
+    Assert(Refuses("\\p{Klingon}", RegexErrorKind::UnknownProperty, 0) &&
+           Refuses("\\p{Block=Greek}", RegexErrorKind::UnknownProperty, 0), "unknown scripts and properties");
     Assert(Finds("(?i)[\u{212A}]", "k", 0, 1) && Finds("(?i)[\u{17F}]", "S", 0, 1), "classes match every case form");
     Assert(Finds("(?i)[\u{3C2}]", "\u{3A3}", 0, 2) && Finds("(?i)[\u{1E9E}]", "\u{DF}", 0, 2), "including sigmas and sharp s");
     Assert(Finds("(?i)[\u{1C5}]", "\u{1C6}", 0, 2) && Finds("(?i)[\u{3B8}]", "\u{3F4}", 0, 2), "titlecase and theta forms");

@@ -1,5 +1,13 @@
 import Core::Assert;
-import Unicode::{ CategoryOf, CombiningClassOf, GeneralCategory, IsAlphabetic, IsNumeric, IsWhiteSpace };
+import Unicode::{
+    CategoryOf, CombiningClassOf, GeneralCategory, IsAlphabetic, IsNumeric, IsWhiteSpace, Script, ScriptCount, ScriptOf
+};
+
+// Whether `scalar` is in the script called `name`.
+func InScript(scalar: uint32, name: char8[..]) -> bool {
+    let script = Script::FromName(name) ?? return false;
+    return ScriptOf(scalar as char32).Equals(script);
+}
 
 // Spot checks against facts a reader can verify in the code charts, chosen to land in different tables and
 // different corners of them: the ASCII range, the BMP's edges, the supplementary planes, and the points that are
@@ -50,6 +58,18 @@ func Main() -> int {
     Assert(IsNumeric(0xBDu32 as char32), "and the half fraction");
     Assert(IsNumeric(0x2167u32 as char32), "and the Roman numeral, from the other side");
     Assert(!IsNumeric(0x41u32 as char32), "a letter is not");
+
+    // Scripts.
+    Assert(InScript(0x61, "Latin") && InScript(0x3B1, "Greek") && InScript(0x416, "Cyrillic"), "letters have scripts");
+    Assert(InScript(0x4E2D, "Han") && InScript(0x10300, "Old_Italic"), "in the BMP and beyond");
+    Assert(InScript(0x31, "Common") && InScript(0x301, "Inherited"), "digits are common and marks inherit");
+    Assert(ScriptOf(0x378u32 as char32).Equals(Script::Unknown()), "an unassigned point is in no script");
+    Assert(InScript(0x10300, "old italic") && InScript(0x10300, "OLD-ITALIC"), "names match loosely");
+    Assert(Script::FromName("Klingon") == none, "a made-up script is not found");
+    var name: char8[32] = [c8'\0'; 32];
+    let written = ScriptOf(0x10300u32 as char32).WriteName(name[..]);
+    Assert(written == 10u && name[3] == c8'_', "a script writes its long name");
+    Assert(ScriptCount() > 150u, "every script of Unicode 17 is there");
 
     return 0;
 }

@@ -535,8 +535,8 @@ pub const CanonicalDecompositionIndex: uint32[6243] = [
 ];
 
 /// The scalar values every canonical decomposition expands to, run together end to end.
-/// `CanonicalDecompositionIndex` says where each point's run starts and how long it is; this holds the
-/// runs themselves, so a decomposition is a slice of it rather than a table lookup per value.
+/// `CanonicalDecompositionIndex` says where each point's run starts and how long it is; this holds the runs
+/// themselves, so a decomposition is a slice of it rather than a table lookup per value.
 /// @see https://rux-lang.dev/docs/api/unicode/tables#canonical-decomposition-elements
 pub const CanonicalDecompositionElements: uint32[3450] = [
     65, 768, 65, 769, 65, 770, 65, 771, 65, 776, 65, 778,

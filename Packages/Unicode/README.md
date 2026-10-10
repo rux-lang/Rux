@@ -14,6 +14,7 @@ rux add Rux/Unicode
 - **Case** — simple per-character mappings, the unconditional full mappings, locale-independent full case folding, and `NextInCaseOrbit`, which walks every value with the same simple folding, such as `k`, `K` and the Kelvin sign. The conditional mappings are deliberately absent: they depend on locale or context, and applying them silently is how `i` stops round-tripping in Turkish.
 - **Normalization** — canonical and compatibility decomposition (Hangul arithmetically), canonical ordering, and composition: all four normal forms, over scalar-value slices.
 - **Graphemes** — extended grapheme cluster boundaries by the UAX #29 rules, emoji sequences and regional-indicator pairs included.
+- **Scripts** — the Script property: `ScriptOf` gives the `Script` a scalar belongs to, such as Latin, Greek or Common, and `Script::FromName` finds one by its long name, matched loosely.
 
 The tables under `Src/Generated*.rux` are committed output of `Tools/UnicodeGen`, which records the SHA-256 of every input it read; regenerate with `Bin/Tools/rux-unicode-gen` after changing the data under `Tools/UnicodeGen/Data`.
 

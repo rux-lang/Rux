@@ -5,7 +5,7 @@
 // the position in a capture slot (`Save`), or by checking where in the text it is (`Assert`). `Match` ends a match.
 
 import Unicode::{
-    CategoryOf, Fold, IsAlphabetic, IsNumeric, IsWhiteSpace, NextInCaseOrbit, ToLowerSimple, ToUpperSimple
+    CategoryOf, Fold, IsAlphabetic, IsNumeric, IsWhiteSpace, NextInCaseOrbit, ScriptOf, ToLowerSimple, ToUpperSimple
 };
 
 // What an instruction does.
@@ -65,7 +65,9 @@ enum ItemKind: uint8 {
     // The characters whose general category is one of the bits of `low`.
     Categories = 1,
     // The characters with property `low`.
-    Property = 2
+    Property = 2,
+    // The characters of the script numbered `low`.
+    Script = 3
 }
 
 // One part of a character class; the class holds what any of its items holds.
@@ -178,6 +180,7 @@ func ItemHolds(item: ClassItem, c: uint32) -> bool {
     match item.kind {
         ItemKind::Range => holds = c >= item.low && c <= item.high,
         ItemKind::Categories => holds = (item.low & (1u32 << (CategoryOf(c as char32) as uint32))) != 0u32,
+        ItemKind::Script => holds = ScriptOf(c as char32).Number() == item.low,
         ItemKind::Property => {
             let property = item.low;
             if property == PropertyAny { holds = true; }

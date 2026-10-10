@@ -10,7 +10,7 @@ import Regex::{
     PosixWord, PosixXdigit, PropertyAlphabetic, PropertyAny, PropertyAscii, PropertyWhiteSpace, PropertyWord, Regex,
     RegexError, RegexErrorKind, StartLine, StartText, WordBoundary
 };
-import Unicode::{ ToLowerSimple, ToUpperSimple };
+import Unicode::{ Script, ToLowerSimple, ToUpperSimple };
 
 // No node: what a flag group such as `(?i)` gives, and the end of a list of children.
 const NoNode: uint32 = 0xFFFFFFFF;
@@ -178,8 +178,9 @@ func PropertyItem(property: uint32) -> ClassItem? {
     return ClassItem { kind: ItemKind::Property, negated: false, low: property, high: 0 };
 }
 
-// The class item a `\p{...}` name stands for: a general category or a group of them, by short or long name, or one
-// of the properties `Any`, `ASCII`, `Alphabetic` and `White_Space`.
+// The class item a `\p{...}` name stands for: a general category or a group of them, by short or long name, one of
+// the properties `Any`, `ASCII`, `Alphabetic` and `White_Space`, or a script by its long name, alone or as
+// `Script=Greek` or `sc=Greek`.
 func NamedItem(name: char8[..]) -> ClassItem? {
     if Loose(name, "L") || Loose(name, "Letter") { return CategoryItem(Bits(1, 5)); }
     if Loose(name, "LC") || Loose(name, "Cased_Letter") { return CategoryItem(Bits(1, 3)); }
@@ -225,7 +226,16 @@ func NamedItem(name: char8[..]) -> ClassItem? {
     if Loose(name, "White_Space") || Loose(name, "WSpace") || Loose(name, "Space") {
         return PropertyItem(PropertyWhiteSpace);
     }
-    return none;
+    var script = name;
+    var equals: uint = 0;
+    while equals < name.length && name[equals] != c8'=' { equals = equals + 1; }
+    if equals < name.length {
+        let key = name[..equals];
+        if !Loose(key, "Script") && !Loose(key, "sc") { return none; }
+        script = name[equals + 1..];
+    }
+    let found = Script::FromName(script) ?? return none;
+    return ClassItem { kind: ItemKind::Script, negated: false, low: found.Number(), high: 0 };
 }
 
 // The POSIX class a `[:name:]` names.
