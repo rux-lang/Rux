@@ -7,6 +7,8 @@ rux_add_component(RuxOptimization
     LirConstantPropagation.cpp
     LirDeclarationPruner.cpp
     LirDeadCodeElimination.cpp
+    LirMemoryPromotion.cpp
+    LirScalarReplacement.cpp
     LirReachability.cpp
     Pipeline.cpp)
 target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir)

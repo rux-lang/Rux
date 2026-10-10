@@ -142,6 +142,14 @@ The AArch64 RCU emitter similarly selects procedure-call layout from the target 
 
 ## Host and Target Boundaries
 
+Release optimization runs CFG cleanup before private range/slice field replacement and scalar memory promotion.
+Promotion admits only direct, type-identical, nonvolatile loads and stores of nonescaping scalar slots. Per-slot
+liveness and definite-initialization dataflow construct pruned SSA merges, including allocations inside loops;
+uninitialized, escaped, aliased, and mixed-width storage retains its memory behavior. Trivial phi nodes collapse before
+constant/copy propagation and dead-code cleanup. Field replacement initially handles only independent `start`/`end`
+range fields and `data`/`length` slice fields; whole-object uses keep the original representation. Analysis snapshots
+are local to each transformation and are rebuilt after changes. Debug does not run these transformations.
+
 Native register allocation uses a per-function control-flow snapshot from `Ir/Lir/ControlFlow.h`. Liveness propagates
 through all successor edges, with phi inputs read on predecessor edges. The conservative linear intervals include live
 block boundaries, so values needed by a later loop iteration cannot have their homes reused inside the loop. Phi

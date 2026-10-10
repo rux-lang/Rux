@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Scalar memory promotion** — Release builds replace eligible private scalar locals and independent range/slice
+  fields with SSA values, eliminating repeated local loads and stores through branches and nested loops. Escaped,
+  volatile, mixed-width and potentially uninitialized storage keeps its memory behavior.
+
 - **Register allocation through control flow** — native x86-64 and AArch64 code can retain scalar values in callee-saved
   registers across branches and loops. Shared CFG liveness covers back edges and predecessor-edge phi uses, and AArch64
   phi copies honor register homes. Software floating-point values retain conservative memory storage.

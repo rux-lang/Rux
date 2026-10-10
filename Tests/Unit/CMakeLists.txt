@@ -141,6 +141,7 @@ set(RUX_TEST_SOURCES
     VariadicWideningLoweringTests.cpp
     OptimizerTests.cpp
     LirOptimizationTests.cpp
+    LirOptimizationMemoryTests.cpp
     LirReachabilityTests.cpp
     OsTests.cpp
     PackageCacheTests.cpp

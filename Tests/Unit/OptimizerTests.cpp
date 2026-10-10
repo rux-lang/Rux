@@ -12,10 +12,13 @@ TEST_CASE("optimization pipelines are selected explicitly by profile") {
     CHECK(debug.HirPassNames().empty());
     CHECK(debug.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier"});
     CHECK(release.HirPassNames() == std::vector<std::string_view>{"hir-constant-folder"});
-    CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation",
+    CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier", "lir-cfg-cleanup",
+                                                                  "lir-scalar-replacement", "lir-memory-promotion",
+                                                                  "lir-constant-copy-propagation",
                                                                   "lir-dead-code-elimination", "lir-cfg-cleanup"});
     CHECK(artifactRelease.LirPassNames() ==
-          std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation",
+          std::vector<std::string_view>{"lir-cfg-verifier", "lir-cfg-cleanup", "lir-scalar-replacement",
+                                        "lir-memory-promotion", "lir-constant-copy-propagation",
                                         "lir-dead-code-elimination", "lir-cfg-cleanup", "lir-declaration-pruner"});
 }
 
