@@ -1,0 +1,158 @@
+// Measuring how long code takes: running it often enough to time it reliably, and reporting the time per iteration.
+// A benchmark runs its own loop over the iteration count it is given, so whatever it sets up before the loop is not
+// counted, and calling it costs nothing per iteration. The count grows from one until a run lasts long enough for the
+// clock to measure it well.
+
+import Allocator::SystemAllocator;
+import Collections::Vector;
+import Core::{ AtomicStore, MemoryOrder };
+import Io::PrintLine;
+import Process::{ Argument, ArgumentCount };
+import Text::String;
+import Time::{ Duration, Instant };
+
+/// A benchmark: its name, which the runner reports and filters on, and the function that repeats the measured work
+/// as many times as it is told. `Copy`.
+/// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-case
+pub struct BenchmarkCase {
+    /// The benchmark's name, such as `Parser::SmallDocument`.
+    pub name: char8[..];
+    /// Runs the measured work the given number of times.
+    pub run: func(uint64);
+}
+
+/// What a measurement found: how many iterations its final run made and how long that run took. `Copy`.
+/// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-result
+pub struct BenchmarkResult {
+    /// How many iterations the measured run made.
+    pub iterations: uint64;
+    /// How long the measured run took.
+    pub elapsed: Duration;
+}
+
+extend BenchmarkResult {
+    /// The average time one iteration took, in nanoseconds.
+    /// @returns the time per iteration, or zero for a run of no iterations
+    /// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-result-nanoseconds-per-iteration
+    pub func NanosecondsPerIteration(self: &BenchmarkResult) -> float64 {
+        if self.iterations == 0u64 { return 0.0; }
+        let nanoseconds = self.elapsed.TotalNanoseconds() ?? 0i64;
+        return nanoseconds as float64 / self.iterations as float64;
+    }
+}
+
+/// Which benchmarks a run chooses and how long each is measured. `Copy`.
+/// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-options
+pub struct BenchmarkOptions {
+    /// Run only benchmarks whose names hold this text, or every benchmark when it is empty.
+    pub filter: char8[..];
+    /// How long the measured run must last, at the least.
+    pub minimumTime: Duration;
+    /// The most iterations one run makes, which ends the growth for work too fast to reach `minimumTime`.
+    pub maximumIterations: uint64;
+}
+
+extend BenchmarkOptions {
+    /// Options that measure every benchmark for at least 200 milliseconds and at most a billion iterations.
+    /// @returns the options
+    /// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-options-new
+    pub func BenchmarkOptions() -> BenchmarkOptions {
+        return BenchmarkOptions { filter: "", minimumTime: Duration::FromMilliseconds(200),
+                                  maximumIterations: 1000000000u64 };
+    }
+}
+
+// Where `Consume` leaves what it is given, so the compiler must keep computing it.
+var Consumed: *opaque = null;
+
+/// Marks `value` as used, so the work that computed it is not removed as having no effect.
+/// It stores the value's address where the compiler cannot see it read, which costs one store.
+/// @typeParam T the value's type
+/// @param value the result to keep
+/// @see https://rux-lang.dev/docs/api/test/benchmark#consume
+pub func Consume<T>(value: *T) {
+    AtomicStore<*opaque>(@Consumed, value as *opaque, MemoryOrder::Relaxed);
+}
+
+/// Runs `run` with a growing iteration count until one run lasts at least `options.minimumTime` or reaches
+/// `options.maximumIterations`, and reports that run.
+/// Each next count aims a little past the minimum from the rate measured so far, growing at least twofold and at
+/// most a hundredfold, so a measurement makes few runs whatever the work costs.
+/// @param run the work, repeated as many times as it is told
+/// @param options how long to measure
+/// @returns the final run's iterations and time
+/// @see https://rux-lang.dev/docs/api/test/benchmark#measure
+pub func Measure(run: func(uint64), options: BenchmarkOptions) -> BenchmarkResult {
+    let target = options.minimumTime.TotalNanoseconds() ?? 0i64;
+    let limit = options.maximumIterations == 0u64 ? 1u64 : options.maximumIterations;
+    var iterations: uint64 = 1;
+    var result = BenchmarkResult { iterations: 0, elapsed: Duration::Zero() };
+    var measuring = true;
+    while measuring {
+        let before = Instant::Now();
+        run(iterations);
+        let elapsed = Instant::Now().Since(before) ?? Duration::Zero();
+        result = BenchmarkResult { iterations: iterations, elapsed: elapsed };
+        let spent = elapsed.TotalNanoseconds() ?? 0i64;
+        if spent >= target || iterations >= limit {
+            measuring = false;
+        }
+        else {
+            var next = iterations * 100u64;
+            if spent > 0i64 {
+                let estimate = (target as float64 * 1.2 / spent as float64 * iterations as float64) as uint64;
+                next = estimate < iterations * 2u64 ? iterations * 2u64 : (estimate < next ? estimate : next);
+            }
+            iterations = next < limit ? next : limit;
+        }
+    }
+    return result;
+}
+
+/// Measures the benchmarks that `options` choose, in order, and reports each as its time per iteration and the
+/// iterations it was measured over, then how many were measured.
+/// @param benchmarks the benchmarks
+/// @param options which to run and how long to measure each
+/// @returns 0
+/// @see https://rux-lang.dev/docs/api/test/benchmark#run-benchmarks-with
+pub func RunBenchmarksWith(benchmarks: BenchmarkCase[..], options: BenchmarkOptions) -> int {
+    var measured: uint = 0;
+    for benchmark in benchmarks {
+        if options.filter.length == 0u || Holds(benchmark.name, options.filter) {
+            measured = measured + 1;
+            let result = Measure(benchmark.run, options);
+            PrintLine("bench {} ... {:.1} ns/iter ({} iterations)", benchmark.name, result.NanosecondsPerIteration(),
+                      result.iterations);
+        }
+    }
+    PrintLine("\nresult: {} measured, {} filtered out", measured, benchmarks.length - measured);
+    return 0;
+}
+
+/// Measures the benchmarks the process's arguments choose. A plain argument is a filter that a benchmark's name must
+/// hold, and `--quick` measures each for 10 milliseconds rather than 200, for checking that benchmarks still run.
+/// @param benchmarks the benchmarks
+/// @returns 0, or 2 for arguments it does not understand
+/// @see https://rux-lang.dev/docs/api/test/benchmark#run-benchmarks
+pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
+    var options = BenchmarkOptions();
+    var texts = Vector<String>(SystemAllocator());
+    var index: uint = 1;
+    let count = ArgumentCount();
+    while index < count {
+        let view = Argument(index) ?? break;
+        let text = view.ToText(SystemAllocator()) catch { else => return 2 };
+        texts.Push(<-text) catch { else => return 2 };
+        index = index + 1;
+    }
+    for text in texts.AsSlice() {
+        let argument = text.Bytes();
+        if SameText(argument, "--quick") { options.minimumTime = Duration::FromMilliseconds(10); }
+        else if argument.length > 0u && argument[0] == c8'-' {
+            PrintLine("unknown option '{}'; the option is --quick", argument);
+            return 2;
+        }
+        else { options.filter = argument; }
+    }
+    return RunBenchmarksWith(benchmarks, options);
+}
