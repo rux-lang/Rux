@@ -502,6 +502,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Variadic method overloads link** — method overloads that differ only in their variadic parameter's element type used to share a symbol and fail to link with a duplicate definition; the variadic parameter is now part of a method's mangled signature, as it already was for functions.
 - **Overloads ranked by conversions first** — an overload whose arguments convert better now wins over one that merely matches the argument count: `E(1i32)` picks `E(x: int32, y: int32 = 0)` over `E(x: int64)`, and `F(1i32)` picks `F(values: int32...)` over `F(x: int64)`. Exact arity breaks ties only, and an empty variadic tail no longer counts as an exact fill, so `Def(a, b = 0)` against `Def(a, rest...)` is ambiguous rather than silently variadic. Method overloads, through a value or as `Type::Method`, are ranked the same way instead of by declaration order, and an ambiguous method call is reported.
 
 - **Unresolved method calls are reported** — a method call whose only candidate refuses an argument the bound-argument check would accept, such as a `char32` character literal for a `char8` parameter, is reported as `no matching overload for method` instead of leaving the call untyped without a diagnostic, after which `?` on it faulted the compiler in lowering. `Type::Method` calls report the same way.

@@ -90,8 +90,10 @@ std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const Type
     if (MethodIsOverloadedForIdentity(typeName, method.name)) {
         name += "__";
         bool first = true;
+        // A variadic parameter is part of the signature like any other, as a slice of its elements, so overloads that
+        // differ only in what they collect are two symbols.
         for (const auto &parameter : method.params) {
-            if (parameter.name == "self" || parameter.isVariadic) {
+            if (parameter.name == "self") {
                 continue;
             }
             if (!first) {
@@ -127,7 +129,7 @@ void AnalysisContext::RecordMethodIdentityRecipe(ResolvedCallableBinding &bindin
     binding.linkerNameHasOverloadSignature = MethodIsOverloadedForIdentity(typeName, method.name);
     if (binding.linkerNameHasOverloadSignature) {
         for (const auto &parameter : method.params) {
-            if (parameter.name != "self" && !parameter.isVariadic) {
+            if (parameter.name != "self") {
                 binding.linkerOverloadTypes.push_back(IdentityParameterType(parameter, binding.substitutions));
             }
         }
