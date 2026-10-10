@@ -274,6 +274,13 @@ void Verify(const LirFunc &function, const PassContext &context) {
         const auto &instructions = function.blocks[block].instrs;
         for (std::size_t index = 0; index < instructions.size(); ++index) {
             const auto &instruction = instructions[index];
+            if (instruction.op == LirOpcode::Sqrt &&
+                (instruction.dst == LirNoReg || instruction.srcs.size() != 1 ||
+                 (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64) ||
+                 (instruction.srcs.size() == 1 && definitions.contains(instruction.srcs[0]) &&
+                  definitions.at(instruction.srcs[0]).type != instruction.type))) {
+                report(instruction.dst, block, "sqrt requires one same-type float32/float64 operand and a result");
+            }
             for (const auto source : instruction.srcs) {
                 use(source, block, index);
             }

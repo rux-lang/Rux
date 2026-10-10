@@ -54,6 +54,7 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
         return InstructionEffect::Pure;
     case LirOpcode::Div:
     case LirOpcode::Mod:
+    case LirOpcode::Sqrt:
         return InstructionEffect::MayTrap;
     case LirOpcode::Load:
         return InstructionEffect::ReadsMemory;

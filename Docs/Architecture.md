@@ -318,3 +318,9 @@ changed runs and net LIR instruction additions/removals across the bounded pipel
 in the report. Normal compilation does not count instructions or read timers for individual passes. Public pipeline
 configuration validates diagnostic exclusions against the active profile and keeps verifiers and frame-address
 normalization mandatory. See [build diagnostics](Builds.md) for `--stats` and `--disable-pass`.
+
+The scalar inliner can also recognize an exact two-instruction native square-root wrapper: one correctly typed
+`sqrtss`/`sqrtsd` or `fsqrt` on the first FP argument/result register, followed by `ret`. Recognition uses the assembly
+body and ABI types rather than a user function's spelling. The resulting LIR `Sqrt` takes and returns the same
+float32/float64 type. It is not speculated, folded away or treated as exception-free; both backend memory fallbacks
+and allocated-register paths emit the same hardware operation. Other assembly bodies remain opaque.

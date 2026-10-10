@@ -44,6 +44,8 @@ enum class LirOpcode {
     Neg,
     Not,
     BitNot,
+    // Native IEEE square root of float32/float64. One same-type operand; FP exceptions remain observable.
+    Sqrt,
     // Comparisons (result: bool)
     CmpEq,
     CmpNe,
@@ -130,6 +132,8 @@ inline constexpr std::string_view kBacktraceFunctionName = "__rux_backtrace";
         return "not";
     case LirOpcode::BitNot:
         return "bitnot";
+    case LirOpcode::Sqrt:
+        return "sqrt";
     case LirOpcode::CmpEq:
         return "cmpeq";
     case LirOpcode::CmpNe:

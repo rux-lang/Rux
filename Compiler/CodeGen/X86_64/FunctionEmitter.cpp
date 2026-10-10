@@ -673,6 +673,17 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.StoreA(instruction.dst, type);
         return true;
     }
+    case LirOpcode::Sqrt:
+        if (instruction.srcs.size() != 1 || instruction.dst == LirNoReg ||
+            (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64))
+            return false;
+        hooks.LoadA(instruction.srcs[0], instruction.type);
+        encoder.Byte(instruction.type.kind == TypeRef::Kind::Float32 ? 0xF3 : 0xF2);
+        encoder.Byte(0x0F);
+        encoder.Byte(0x51);
+        encoder.Byte(0xC0); // sqrtss/sqrtsd xmm0, xmm0
+        hooks.StoreA(instruction.dst, instruction.type);
+        return true;
     case LirOpcode::Not:
         hooks.LoadA(instruction.srcs[0], instruction.type);
         encoder.TestRaxRax();

@@ -427,6 +427,18 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.StoreToSlot(out, instruction.dst, type);
         return true;
     }
+    case LirOpcode::Sqrt: {
+        const auto &type = instruction.type;
+        if (!IsFloat(type) || instruction.srcs.size() != 1 || instruction.dst == LirNoReg) {
+            Report("AArch64 square root requires one native floating operand");
+            return true;
+        }
+        const A64Reg value = hooks.ReadFloatOperand(instruction.srcs[0], FpReg(type, kFpTemp));
+        const A64Reg out = hooks.FloatResultRegister(instruction.dst, FpReg(type, kFpTemp));
+        Must(encoder.Fsqrt(out, value), "sqrt");
+        hooks.StoreFpToSlot(out, instruction.dst);
+        return true;
+    }
     case LirOpcode::Not: {
         const auto value = LoadUnaryOperand(instruction, instruction.type);
         if (!value) {

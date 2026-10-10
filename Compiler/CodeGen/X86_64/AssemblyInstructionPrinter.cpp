@@ -1480,6 +1480,14 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         StoreA(instruction.dst, type);
         return true;
     }
+    case LirOpcode::Sqrt:
+        if (instruction.srcs.size() != 1 || instruction.dst == LirNoReg ||
+            (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64))
+            return false;
+        LoadA(instruction.srcs[0], instruction.type);
+        Instruction(instruction.type.kind == TypeRef::Kind::Float32 ? "sqrtss" : "sqrtsd", "xmm0, xmm0");
+        StoreA(instruction.dst, instruction.type);
+        return true;
     case LirOpcode::Not:
         LoadA(instruction.srcs[0], instruction.type);
         Instruction("test", "rax, rax");

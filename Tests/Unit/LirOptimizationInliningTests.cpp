@@ -24,6 +24,69 @@ std::size_t Calls(const LirPackage &package) {
 }
 } // namespace
 
+TEST_CASE("Exact native square-root wrappers lower by semantics rather than function spelling") {
+    for (const auto arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {
+        for (const bool single : {false, true}) {
+            const auto type = single ? TypeRef::MakeFloat32() : TypeRef::MakeFloat64();
+            LirFunc root;
+            root.name = "ArbitraryName";
+            root.isAsm = true;
+            root.params = {{0, type, "input"}};
+            root.returnType = type;
+            AsmInstr operation;
+            operation.arch = arch;
+            operation.mnemonic = arch == Target::Arch::X86_64 ? (single ? "sqrtss" : "sqrtsd") : "fsqrt";
+            AsmOperand operand;
+            operand.kind = AsmOperand::Kind::Reg;
+            operand.name = arch == Target::Arch::X86_64 ? "xmm0" : single ? "s0" : "d0";
+            operation.operands = {operand, operand};
+            AsmInstr ret;
+            ret.arch = arch;
+            ret.mnemonic = "ret";
+            root.asmBody = {operation, ret};
+            LirFunc caller;
+            caller.name = "Caller";
+            caller.params = {{0, type, "input"}};
+            caller.returnType = type;
+            caller.blocks.resize(1);
+            LirInstr call;
+            call.op = LirOpcode::Call;
+            call.dst = 1;
+            call.srcs = {0};
+            call.strArg = root.name;
+            call.type = type;
+            caller.blocks[0].instrs = {call};
+            caller.blocks[0].term = ReturnValue(1, type);
+            LirModule module;
+            module.funcs = {root, caller};
+            LirPackage package;
+            package.modules = {module};
+            auto extraWork = package;
+            extraWork.modules[0].funcs[0].asmBody.push_back(ret);
+            Optimization::LirInliner inliner;
+            CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+            CHECK_EQ(Calls(package), 0);
+            CHECK(package.modules[0].funcs[1].blocks[0].instrs[0].op == LirOpcode::Sqrt);
+            CHECK(inliner.Run(extraWork, {}) == Optimization::PassChange::None);
+            CHECK_EQ(Calls(extraWork), 1);
+            auto &result = package.modules[0].funcs[1];
+            result.blocks[0].term = ReturnValue(0, type);
+            Optimization::LirDeadCodeElimination dead;
+            static_cast<void>(dead.Run(package, {}));
+            CHECK_EQ(result.blocks[0].instrs.size(), 1); // Keep possible FP exceptions even when unused.
+            std::vector<Diagnostic> diagnostics;
+            Optimization::PassContext context;
+            context.diagnostics = &diagnostics;
+            Optimization::LirSsaVerifier verifier;
+            static_cast<void>(verifier.Run(package, context));
+            CHECK(diagnostics.empty());
+            result.blocks[0].instrs[0].type = TypeRef::MakeInt64();
+            static_cast<void>(verifier.Run(package, context));
+            CHECK_FALSE(diagnostics.empty());
+        }
+    }
+}
+
 TEST_CASE("Bounded inlining clones branches returns and loop-edge phis") {
     auto package = CompileToLir(R"(
         func Select(value: int) -> int {

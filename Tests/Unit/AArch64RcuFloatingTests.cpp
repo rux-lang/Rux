@@ -19,6 +19,34 @@
 using namespace Rux;
 using namespace Rux::Testing;
 
+TEST_CASE("AArch64 RCU emitter selects native square root at both scalar widths") {
+    for (const auto &type : {TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
+        LirFunc function;
+        function.name = "Root";
+        function.isPublic = true;
+        function.returnType = type;
+        function.params = {{0, type, "value"}};
+        LirInstr instruction;
+        instruction.op = LirOpcode::Sqrt;
+        instruction.dst = 1;
+        instruction.type = type;
+        instruction.srcs = {0};
+        LirBlock block;
+        block.label = "entry";
+        block.instrs = {instruction};
+        block.term = ReturnTerm(1);
+        block.term->retType = type;
+        function.blocks = {block};
+        const auto package = PackageOf(function);
+        AArch64RcuEmitter emitter(package, "test");
+        const auto objects = emitter.Generate();
+        REQUIRE_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+        REQUIRE_FALSE(objects.empty());
+        const auto words = FunctionWords(objects.front(), "Root");
+        CHECK(HasFloatForm(words, type == TypeRef::MakeFloat32() ? 0x1E21C000U : 0x1E61C000U, 1));
+    }
+}
+
 TEST_CASE("AArch64 RCU emitter compares floats with conditions a NaN does not satisfy") {
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {

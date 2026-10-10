@@ -591,6 +591,30 @@ TEST_CASE("x86-64 assembly text lowers wide integers word by word") {
     }
 }
 
+TEST_CASE("x86-64 native square root agrees in allocated and memory fallback emission") {
+    for (const auto os : Systems) {
+        for (const auto &type : {TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
+            for (const bool fallback : {false, true}) {
+                auto function =
+                    Function("Root", {{0, type, "value"}}, {Instruction(LirOpcode::Sqrt, 1, type, {0})}, 1, type);
+                if (fallback)
+                    function.blocks[0].instrs.push_back(Instruction(LirOpcode::Const, 2, UInt128, {}, "1"));
+                const auto package = PackageOf({function});
+                const auto text = AssemblyPrinter(package, os).Generate();
+                const auto code = CodeOf(package, os);
+                const bool single = type == TypeRef::MakeFloat32();
+                std::vector<std::uint8_t> expected = {static_cast<std::uint8_t>(single ? 0xF3 : 0xF2)};
+                if (!fallback)
+                    expected.push_back(0x45);
+                expected.insert(expected.end(), {0x0F, 0x51, static_cast<std::uint8_t>(fallback ? 0xC0 : 0xC8)});
+                CHECK(std::ranges::search(code, expected).begin() != code.end());
+                CHECK(text.contains(
+                    std::format("{:<8}{}", single ? "sqrtss" : "sqrtsd", fallback ? "xmm0, xmm0" : "xmm9, xmm8")));
+            }
+        }
+    }
+}
+
 TEST_CASE("x86-64 indexed addresses select scaled LEA and retain odd-size multiplication") {
     const std::vector<TypeRef> elements = {TypeRef::MakeInt8(), TypeRef::MakeInt16(), TypeRef::MakeInt32(),
                                            TypeRef::MakeInt64(), TypeRef::MakeArray(TypeRef::MakeInt8(), 3)};

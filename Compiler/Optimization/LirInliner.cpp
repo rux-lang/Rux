@@ -23,6 +23,33 @@ bool ArgumentMatches(const TypeRef &argument, const TypeRef &parameter) {
                                      argument.kind == TypeRef::Kind::Pointer && argument.inner == parameter.inner);
 }
 
+// Recognize semantics from an exact assembly body, never from a function's spelling. Both supported ABIs pass and
+// return the first scalar FP value in register zero. Reject labels, extra work, non-native widths and variadic calls.
+bool NativeSquareRoot(const LirFunc &function) {
+    if (!function.isAsm || function.isExtern || function.isVariadic || function.isNoReturn ||
+        function.params.size() != 1 || function.params[0].type != function.returnType || function.asmBody.size() != 2)
+        return false;
+    const bool single = function.returnType.kind == TypeRef::Kind::Float32;
+    if (!single && function.returnType.kind != TypeRef::Kind::Float64)
+        return false;
+    const auto &operation = function.asmBody[0];
+    const auto &ret = function.asmBody[1];
+    if (!operation.labelDef.empty() || !ret.labelDef.empty() || ret.mnemonic != "ret" || !ret.operands.empty() ||
+        operation.operands.size() != 2 || operation.arch != ret.arch)
+        return false;
+    std::string_view reg;
+    if (operation.arch == Target::Arch::X86_64 && operation.mnemonic == (single ? "sqrtss" : "sqrtsd"))
+        reg = "xmm0";
+    else if (operation.arch == Target::Arch::AArch64 && operation.mnemonic == "fsqrt")
+        reg = single ? "s0" : "d0";
+    else
+        return false;
+    return std::ranges::all_of(operation.operands, [&](const AsmOperand &operand) {
+        return operand.kind == AsmOperand::Kind::Reg && operand.name == reg && operand.shift == AsmShiftKind::None &&
+               operand.extend == AsmExtendKind::None;
+    });
+}
+
 std::size_t Cost(const LirFunc &function) {
     std::size_t cost = function.blocks.size();
     for (const auto &block : function.blocks) {
@@ -78,6 +105,7 @@ bool Eligible(const LirFunc &function) {
             case LirOpcode::Neg:
             case LirOpcode::Not:
             case LirOpcode::BitNot:
+            case LirOpcode::Sqrt:
             case LirOpcode::CmpEq:
             case LirOpcode::CmpNe:
             case LirOpcode::CmpLt:
@@ -375,7 +403,18 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
         std::size_t budget = 2048;
         for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
             for (std::size_t position = 0; position < function.blocks[block].instrs.size();) {
-                const auto &call = function.blocks[block].instrs[position];
+                auto &call = function.blocks[block].instrs[position];
+                if (call.op == LirOpcode::Call && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
+                    names.contains(call.strArg) && NativeSquareRoot(*functions[names.at(call.strArg)]) &&
+                    call.srcs.size() == 1 && types.contains(call.srcs[0]) && types.at(call.srcs[0]) == call.type &&
+                    call.type == functions[names.at(call.strArg)]->returnType) {
+                    call.op = LirOpcode::Sqrt;
+                    call.strArg.clear();
+                    call.callConv = CallingConvention::Default;
+                    changed = true;
+                    ++position;
+                    continue;
+                }
                 const auto found = available.find(call.strArg);
                 bool valid = call.op == LirOpcode::Call && found != available.end() && !call.isCVariadic;
                 if (valid) {

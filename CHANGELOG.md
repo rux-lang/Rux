@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Native square-root lowering** — Release optimization recognizes exact scalar hardware square-root assembly
+  wrappers and emits a typed operation at the call site on x86-64 and AArch64. Arbitrary assembly and other widths
+  remain callable; unused square roots retain their possible floating-point exceptions.
+
 - **Optimizer pass diagnostics** — `build --stats` reports pass time, runs, changed runs and LIR instruction deltas.
   Repeatable `build --disable-pass <name>` supports diagnostic bisection while keeping required verification and frame
   normalization enabled. Unknown or inactive pass names are rejected.

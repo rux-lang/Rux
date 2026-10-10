@@ -31,6 +31,25 @@ struct X86ScalarMachineInstruction {
 /// and destructive right-operand overlaps continue through the established scratch-register emitter.
 [[nodiscard]] inline std::optional<X86ScalarMachineInstruction>
 SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePlan &plan) {
+    if (instruction.op == LirOpcode::Sqrt && instruction.srcs.size() == 1 && !instruction.isVolatile &&
+        (instruction.type.kind == TypeRef::Kind::Float32 || instruction.type.kind == TypeRef::Kind::Float64)) {
+        const auto &homes = plan.FloatRegisters();
+        const auto &types = plan.RegisterTypes();
+        if (homes.contains(instruction.dst) && homes.contains(instruction.srcs[0]) &&
+            types.contains(instruction.srcs[0]) && types.at(instruction.srcs[0]) == instruction.type) {
+            const bool single = instruction.type.kind == TypeRef::Kind::Float32;
+            const auto destination = homes.at(instruction.dst);
+            return X86ScalarMachineInstruction{single ? X86ScalarRegisterClass::Float32
+                                                      : X86ScalarRegisterClass::Float64,
+                                               destination,
+                                               destination,
+                                               homes.at(instruction.srcs[0]),
+                                               0x51,
+                                               true,
+                                               true,
+                                               single ? "sqrtss" : "sqrtsd"};
+        }
+    }
     if (instruction.srcs.size() != 2 || instruction.dst == LirNoReg || instruction.isVolatile)
         return std::nullopt;
     const bool single = instruction.type.kind == TypeRef::Kind::Float32;
