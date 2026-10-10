@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Explicit last-use register coalescing** — selected x86 scalar arithmetic can overwrite its dying left input,
+  removing physical copies and reducing register demand. Live inputs, reassigned homes and phi-edge overlaps retain
+  their interference constraints.
+
 - **Dominated scalar value reuse** — exact integer/address computations are reused across dominated blocks;
   typed stores forward to same-address loads until a memory or ordering barrier. Repeated branches simplify only
   when an incoming edge proves the exact Boolean value, preserving phi edges and conservative alias behavior.

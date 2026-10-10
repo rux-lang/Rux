@@ -6,7 +6,7 @@
 using namespace Rux;
 
 namespace {
-LirFunc Arithmetic(const TypeRef &type, const LirOpcode operation) {
+LirFunc Arithmetic(const TypeRef &type, const LirOpcode operation, const bool keepLeft = true) {
     LirFunc function;
     function.name = "Arithmetic";
     function.params = {{0, type, "left"}, {1, type, "right"}};
@@ -19,6 +19,14 @@ LirFunc Arithmetic(const TypeRef &type, const LirOpcode operation) {
     LirBlock block;
     block.label = "entry";
     block.instrs.push_back(instruction);
+    if (keepLeft) {
+        LirInstr use;
+        use.op = LirOpcode::Cast;
+        use.type = type;
+        use.dst = 3;
+        use.srcs = {0};
+        block.instrs.push_back(use);
+    }
     block.term.emplace();
     block.term->kind = LirTermKind::Return;
     block.term->retVal = 2;
@@ -78,9 +86,24 @@ TEST_CASE("Scalar machine selection retains narrow fixed-register and spilled fa
         CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan).has_value());
     }
     auto function = Arithmetic(TypeRef::MakeUInt64(), LirOpcode::Add);
-    for (LirReg reg = 3; reg < 9; ++reg)
+    for (LirReg reg = 4; reg < 10; ++reg)
         function.params.push_back({reg, TypeRef::MakeUInt64(), "extra"});
-    function.blocks[0].instrs[0].srcs[1] = 8;
+    function.blocks[0].instrs[0].srcs[1] = 9;
     const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
     CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan).has_value());
+}
+
+TEST_CASE("x86 scalar arithmetic coalesces a dying left input without a physical copy") {
+    for (const auto &type : {TypeRef::MakeUInt64(), TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
+        const auto function = Arithmetic(type, LirOpcode::Sub, false);
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan);
+        REQUIRE(selected.has_value());
+        CHECK_EQ(selected->destination, selected->left);
+        CHECK_NE(selected->destination, selected->right);
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(*selected);
+        CHECK_EQ(bytes.size(), type.IsFloat() ? 5 : 3);
+    }
 }

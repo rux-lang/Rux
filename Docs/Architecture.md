@@ -196,6 +196,11 @@ descriptor with architectural registers, tied inputs and opcode direction. Both 
 consume that selection, avoiding round trips through scratch registers. Narrow values, spills, integer division and
 destructive right-input overlaps retain their established lowering.
 
+The x86 selector can request a tied left input for same-width scalar arithmetic. Linear scan honors it only when the
+output starts at the defining instruction, the input dies at that exact point, and the input still owns the physical
+register. This removes two-address copies without weakening general interval endpoint or phi-edge interference.
+Other backends retain their existing allocation policy; splitting, eviction and caller-saved GPR allocation remain open.
+
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.

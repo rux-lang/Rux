@@ -71,7 +71,7 @@ TEST_CASE("x86-64 assembly instruction printing owns setup scalar and memory tex
     CHECK(output.find("    ; ── ScalarMemory ─\nScalarMemory:\n    push    rbp") != std::string::npos);
     CHECK(output.find(std::format("mov     qword [rbp - {}], rdi", framePlan.SlotOffsets().at(0))) !=
           std::string::npos);
-    CHECK(output.find("add     r13, r12") != std::string::npos);
+    CHECK(output.find("add     rbx, r12") != std::string::npos);
     CHECK(output.find("lea     rax, [rbp - ") != std::string::npos);
     CHECK(output.find("mov     qword [r11], rax") != std::string::npos);
     CHECK(output.find("cvtsi2sd xmm0, rax") != std::string::npos);

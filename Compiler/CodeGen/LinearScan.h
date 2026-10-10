@@ -169,16 +169,33 @@ struct RegisterAssignment {
 /// Nothing is evicted. An interval that finds every register busy keeps the stack slot the caller gave it, and the back
 /// end reads it there.
 [[nodiscard]] inline RegisterAssignment AllocateRegisters(const std::vector<LiveInterval> &candidates,
-                                                          const int poolSize) {
+                                                          const int poolSize,
+                                                          const std::unordered_map<LirReg, LirReg> &tiedInputs = {}) {
     RegisterAssignment assignment;
     std::vector<int> freeAfter(static_cast<std::size_t>(std::max(poolSize, 0)), -1);
+    std::vector<LirReg> occupants(freeAfter.size(), LirNoReg);
     for (const auto &interval : candidates) {
+        // A selector may explicitly permit its output to overwrite one input after its last read. The interval
+        // must open exactly at that read, and the input must still own the register. Never relax phi interference
+        // or general endpoint overlap merely because two intervals happen to meet.
+        if (const auto tied = tiedInputs.find(interval.reg); tied != tiedInputs.end()) {
+            if (const auto home = assignment.physRegs.find(tied->second); home != assignment.physRegs.end()) {
+                const auto index = static_cast<std::size_t>(home->second);
+                if (occupants[index] == tied->second && freeAfter[index] == interval.start) {
+                    assignment.physRegs[interval.reg] = home->second;
+                    occupants[index] = interval.reg;
+                    freeAfter[index] = interval.end;
+                    continue;
+                }
+            }
+        }
         for (std::size_t r = 0; r < freeAfter.size(); ++r) {
             if (freeAfter[r] >= interval.start) {
                 continue;
             }
             const auto index = static_cast<int>(r);
             assignment.physRegs[interval.reg] = index;
+            occupants[r] = interval.reg;
             freeAfter[r] = interval.end;
             if (std::find(assignment.usedPhysRegs.begin(), assignment.usedPhysRegs.end(), index) ==
                 assignment.usedPhysRegs.end()) {

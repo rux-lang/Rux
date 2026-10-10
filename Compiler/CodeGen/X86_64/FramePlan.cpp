@@ -32,6 +32,7 @@ public:
             parameters.emplace(parameter.reg, ParameterRegisterType(parameter.type));
         }
         const auto intervals = ComputeLiveIntervals(func, parameters);
+        PlanTiedInputs(intervals);
         PlanCalleeSaves(intervals);
         nextOffset = static_cast<std::int32_t>(plan.usedPhysicalRegisters.size() * 8);
         PlanFloatRegisters(intervals);
@@ -57,6 +58,36 @@ private:
     Target::OS targetOs;
     X86_64FramePlan plan;
     std::int32_t nextOffset = 0;
+    std::unordered_map<LirReg, LirReg> tiedInputs;
+
+    void PlanTiedInputs(const std::vector<LiveInterval> &intervals) {
+        std::unordered_map<LirReg, const LiveInterval *> spans;
+        for (const auto &interval : intervals)
+            spans.emplace(interval.reg, &interval);
+        int position = 0;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                const bool floating =
+                    instruction.type.kind == TypeRef::Kind::Float32 || instruction.type.kind == TypeRef::Kind::Float64;
+                const bool word =
+                    instruction.type.kind == TypeRef::Kind::Int64 || instruction.type.kind == TypeRef::Kind::UInt64 ||
+                    instruction.type.kind == TypeRef::Kind::Int || instruction.type.kind == TypeRef::Kind::UInt;
+                const bool arithmetic = instruction.op == LirOpcode::Add || instruction.op == LirOpcode::Sub ||
+                                        instruction.op == LirOpcode::Mul ||
+                                        (floating && instruction.op == LirOpcode::Div) ||
+                                        (word && (instruction.op == LirOpcode::And || instruction.op == LirOpcode::Or ||
+                                                  instruction.op == LirOpcode::Xor));
+                if ((floating || word) && arithmetic && !instruction.isVolatile && instruction.srcs.size() == 2 &&
+                    spans.contains(instruction.dst) && spans.contains(instruction.srcs[0]) &&
+                    spans.at(instruction.dst)->start == position && spans.at(instruction.srcs[0])->end == position &&
+                    spans.at(instruction.srcs[0])->type == instruction.type) {
+                    tiedInputs.emplace(instruction.dst, instruction.srcs[0]);
+                }
+                ++position;
+            }
+            ++position;
+        }
+    }
 
     [[nodiscard]] CallingConvention EffectiveConvention() const {
         if (func.callConv == CallingConvention::Default) {
@@ -172,7 +203,7 @@ private:
             candidates.push_back(interval);
         }
 
-        RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegisters);
+        RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegisters, tiedInputs);
         plan.physicalRegisters = std::move(assignment.physRegs);
         plan.usedPhysicalRegisters = std::move(assignment.usedPhysRegs);
     }
@@ -210,7 +241,7 @@ private:
             }
             candidates.push_back(interval);
         }
-        const auto assignment = AllocateRegisters(candidates, 8);
+        const auto assignment = AllocateRegisters(candidates, 8, tiedInputs);
         for (const auto &[reg, index] : assignment.physRegs) {
             plan.floatRegisters.emplace(reg, index + 8);
         }

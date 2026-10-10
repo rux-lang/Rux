@@ -209,6 +209,23 @@ TEST_CASE("Linear scan hands out nothing when the pool is empty") {
     CHECK(assignment.usedPhysRegs.empty());
 }
 
+TEST_CASE("Explicit tied inputs reuse only the current owner's last-use endpoint") {
+    const auto type = TypeRef::MakeInt64();
+    const std::vector<LiveInterval> chain = {{0, 0, 1, 2, type}, {1, 1, 2, 2, type}, {2, 2, 3, 2, type}};
+    const auto ordinary = AllocateRegisters(chain, 1);
+    CHECK_FALSE(ordinary.physRegs.contains(1));
+    const auto tied = AllocateRegisters(chain, 1, {{1, 0}, {2, 1}});
+    REQUIRE_EQ(tied.physRegs.size(), 3);
+    CHECK_EQ(tied.usedPhysRegs.size(), 1);
+    CHECK_EQ(tied.physRegs.at(0), tied.physRegs.at(2));
+
+    const std::vector<LiveInterval> liveInput = {{0, 0, 3, 2, type}, {1, 1, 2, 2, type}};
+    CHECK_FALSE(AllocateRegisters(liveInput, 1, {{1, 0}}).physRegs.contains(1));
+    const std::vector<LiveInterval> reusedHome = {{0, 0, 0, 2, type}, {1, 1, 2, 2, type}, {2, 2, 3, 2, type}};
+    CHECK_FALSE(AllocateRegisters(reusedHome, 1, {{2, 0}}).physRegs.contains(2));
+    CHECK(AllocateRegisters(chain, 0, {{1, 0}}).physRegs.empty());
+}
+
 namespace {
 LirTerminator Term(const LirTermKind kind, const std::uint32_t target = 0, const std::uint32_t other = 0,
                    const LirReg condition = LirNoReg, const LirReg result = LirNoReg) {

@@ -52,8 +52,8 @@ TEST_CASE("x86-64 float allocation respects nonvolatile widths and call clobbers
     const auto windows = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
     REQUIRE(windows.FloatRegisters().contains(0));
     REQUIRE(windows.FloatRegisters().contains(1));
-    CHECK_NE(windows.FloatRegisters().at(0), windows.FloatRegisters().at(1));
-    CHECK_EQ(windows.FloatSaves().size(), 2);
+    CHECK_EQ(windows.FloatRegisters().at(0), windows.FloatRegisters().at(1)); // Last-use tied input coalesces.
+    CHECK_EQ(windows.FloatSaves().size(), 1);
     for (const auto &[reg, offset] : windows.FloatSaves()) {
         CHECK_GE(reg, 8);
         CHECK_LE(reg, 15);
