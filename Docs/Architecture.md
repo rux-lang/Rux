@@ -324,3 +324,7 @@ The scalar inliner can also recognize an exact two-instruction native square-roo
 body and ABI types rather than a user function's spelling. The resulting LIR `Sqrt` takes and returns the same
 float32/float64 type. It is not speculated, folded away or treated as exception-free; both backend memory fallbacks
 and allocated-register paths emit the same hardware operation. Other assembly bodies remain opaque.
+
+Unsigned scalar expression ranges are bounded, memoized analysis local to a combine pass. Only proofs valid across
+all represented values may fold comparisons. Wrapping arithmetic and lossy casts revert to the full unsigned domain;
+these facts never authorize removing an operation that can trap.

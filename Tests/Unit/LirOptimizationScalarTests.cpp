@@ -29,6 +29,34 @@ LirPackage Promoted(const std::string &source) {
 }
 } // namespace
 
+TEST_CASE("Unsigned representation ranges remove only proven comparisons") {
+    const auto source = R"(
+        func Masked(value: uint32) -> bool { return ((value & 63u32) as uint64) < 64u64; }
+        func Remainder(value: uint64) -> bool { return value % 17u64 >= 17u64; }
+        func Add(value: uint8) -> bool { return ((value as uint64) + 5u64) <= 260u64; }
+        func Multiply(value: uint8) -> bool { return (value as uint64) * 2u64 < 511u64; }
+        func Wrap(value: uint64) -> bool { return value + 1u64 > 0u64; }
+        func Underflow(value: uint64) -> bool { return value - 1u64 < 18446744073709551615u64; }
+        func Signed(value: int64) -> bool { return value < 0i64; }
+        func Unknown(value: uint64, limit: uint64) -> bool { return value < limit; }
+        func Narrow(value: uint64) -> bool { return (value as uint8) < 255u8; }
+    )";
+    auto package = Promoted(source);
+    Optimization::LirScalarCombines combines;
+    CHECK(combines.Run(package, {}) == Optimization::PassChange::Changed);
+    for (const auto &function : package.modules[0].funcs) {
+        std::size_t comparisons = 0;
+        for (const auto &block : function.blocks)
+            for (const auto &instruction : block.instrs)
+                comparisons += instruction.op == LirOpcode::CmpLt || instruction.op == LirOpcode::CmpLe ||
+                               instruction.op == LirOpcode::CmpGt || instruction.op == LirOpcode::CmpGe;
+        CAPTURE(function.name);
+        const bool proven = function.name == "Masked" || function.name == "Remainder" || function.name == "Add" ||
+                            function.name == "Multiply";
+        CHECK_EQ(comparisons, proven ? 0 : 1);
+    }
+}
+
 TEST_CASE("Scalar combines recognize only same-value complementary unsigned shifts") {
     auto package = Promoted(R"(
         func Rotate(value: uint64) -> uint64 { return (value >> 19) | (value << 45); }

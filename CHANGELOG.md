@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
+  while retaining wrapping, signed and potentially trapping behavior.
+
 - **Native square-root lowering** — Release optimization recognizes exact scalar hardware square-root assembly
   wrappers and emits a typed operation at the call site on x86-64 and AArch64. Arbitrary assembly and other widths
   remain callable; unused square roots retain their possible floating-point exceptions.
@@ -659,6 +662,9 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 ### Added
 
+- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
+  while retaining wrapping, signed and potentially trapping behavior.
+
 #### Language
 
 - **Target attributes** — `@[Target(...)]` attributes to conditionally compile code per platform
@@ -740,6 +746,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 
 ### Added
 
+- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
+  while retaining wrapping, signed and potentially trapping behavior.
+
 #### CLI / Package Manager
 
 - `rux install [package][@version]` — install a package into the current project
@@ -766,6 +775,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 Expands the compiler with control flow, composite types, modules, and a richer type system.
 
 ### Added
+
+- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
+  while retaining wrapping, signed and potentially trapping behavior.
 
 #### Language
 
@@ -804,6 +816,9 @@ func Main() -> int32 {
 ```
 
 ### Added
+
+- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
+  while retaining wrapping, signed and potentially trapping behavior.
 
 #### Compiler Pipeline
 

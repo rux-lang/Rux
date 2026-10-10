@@ -24,8 +24,25 @@ func Main() -> int {
         Assert(Choose(false, @first, input, 7) == 0, "sibling arithmetic");
         Assert(Repeated(input, 0) == (input < 0 ? 7 : 17), "repeated branch facts follow each path");
     }
+    for value in 0u64..256u64 {
+        let narrow = value as uint8;
+        Assert(Masked(narrow) < 64u64, "masked values have a proven upper bound");
+        Assert(Wrapped(narrow) == (value != 255u64), "uint8 addition wraps before comparison");
+        Assert(Subtracted(narrow) == (value != 0u64), "uint8 subtraction wraps before comparison");
+        Assert(SmallProduct(narrow), "widened multiplication has no overflow");
+        Assert(Narrowed(value + 256u64) == (value != 255u64), "narrow casts retain modulo semantics");
+    }
+    Assert(!WideWrapped(18446744073709551615u64), "uint64 maximum wraps to zero");
+    Assert(WideWrapped(0u64), "uint64 zero increments to one");
     return 0;
 }
+
+func Masked(value: uint8) -> uint64 { return (value & 63u8) as uint64; }
+func Wrapped(value: uint8) -> bool { return value + 1u8 > 0u8; }
+func Subtracted(value: uint8) -> bool { return value - 1u8 < 255u8; }
+func SmallProduct(value: uint8) -> bool { return (value as uint64) * 2u64 < 511u64; }
+func Narrowed(value: uint64) -> bool { return (value as uint8) < 255u8; }
+func WideWrapped(value: uint64) -> bool { return value + 1u64 > 0u64; }
 
 func Repeated(a: int, b: int) -> int {
     if a < b {

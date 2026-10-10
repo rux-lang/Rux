@@ -8,11 +8,131 @@
 
 namespace Rux::Optimization {
 namespace {
+struct UnsignedRange {
+    std::uint64_t minimum;
+    std::uint64_t maximum;
+};
+
+std::optional<std::uint64_t> UnsignedMaximum(const TypeRef &type) {
+    switch (type.kind) {
+    case TypeRef::Kind::UInt8:
+        return UINT8_MAX;
+    case TypeRef::Kind::UInt16:
+        return UINT16_MAX;
+    case TypeRef::Kind::UInt32:
+        return UINT32_MAX;
+    case TypeRef::Kind::UInt64:
+    case TypeRef::Kind::UInt:
+        return UINT64_MAX;
+    default:
+        return std::nullopt;
+    }
+}
+
+// Facts describe a value's representation, independent of control flow. Unknown definitions, phis and overflowing
+// arithmetic retain their complete unsigned range. Bounded recursion prevents deep expression graphs consuming the
+// host stack; caching a conservative result is safe even if a later query could establish a tighter bound.
+std::optional<UnsignedRange> RangeOf(const LirReg reg, const std::unordered_map<LirReg, LirInstr> &definitions,
+                                     std::unordered_map<LirReg, UnsignedRange> &ranges, const unsigned depth = 0) {
+    if (const auto found = ranges.find(reg); found != ranges.end())
+        return found->second;
+    const auto found = definitions.find(reg);
+    if (found == definitions.end())
+        return std::nullopt;
+    const auto &instruction = found->second;
+    const auto maximum = UnsignedMaximum(instruction.type);
+    if (!maximum)
+        return std::nullopt;
+    UnsignedRange result{0, *maximum};
+    if (depth >= 48)
+        return result;
+    if (instruction.op == LirOpcode::Const) {
+        if (const auto value = ParseConstant(instruction.strArg, instruction.type))
+            result = {value->RawBits(), value->RawBits()};
+    }
+    else if (instruction.op == LirOpcode::Cast && instruction.srcs.size() == 1) {
+        if (const auto source = RangeOf(instruction.srcs[0], definitions, ranges, depth + 1);
+            source && source->maximum <= *maximum)
+            result = *source;
+    }
+    else if (instruction.srcs.size() == 2 && instruction.op != LirOpcode::Phi) {
+        const auto left = RangeOf(instruction.srcs[0], definitions, ranges, depth + 1);
+        const auto right = RangeOf(instruction.srcs[1], definitions, ranges, depth + 1);
+        if (left && right) {
+            switch (instruction.op) {
+            case LirOpcode::And:
+                result.maximum = std::min(left->maximum, right->maximum);
+                break;
+            case LirOpcode::Add:
+                if (left->maximum <= *maximum && right->maximum <= *maximum - left->maximum)
+                    result = {left->minimum + right->minimum, left->maximum + right->maximum};
+                break;
+            case LirOpcode::Sub:
+                if (left->minimum >= right->maximum && left->maximum <= *maximum)
+                    result = {left->minimum - right->maximum, left->maximum - right->minimum};
+                break;
+            case LirOpcode::Mul:
+                if (left->maximum == 0 || right->maximum <= *maximum / left->maximum)
+                    result = {left->minimum * right->minimum, left->maximum * right->maximum};
+                break;
+            case LirOpcode::Div:
+                if (right->minimum > 0)
+                    result = {left->minimum / right->maximum, left->maximum / right->minimum};
+                break;
+            case LirOpcode::Mod:
+                if (right->minimum > 0)
+                    result.maximum = std::min(left->maximum, right->maximum - 1);
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    // Hand-built mixed-width fixtures must not create facts outside the result's representation.
+    if (result.maximum > *maximum)
+        result = {0, *maximum};
+    ranges.emplace(reg, result);
+    return result;
+}
+
+std::optional<bool> CompareRanges(const LirOpcode opcode, const UnsignedRange left, const UnsignedRange right) {
+    switch (opcode) {
+    case LirOpcode::CmpEq:
+    case LirOpcode::CmpNe:
+        if (left.maximum < right.minimum || right.maximum < left.minimum)
+            return opcode == LirOpcode::CmpNe;
+        if (left.minimum == left.maximum && right.minimum == right.maximum)
+            return (left.minimum == right.minimum) == (opcode == LirOpcode::CmpEq);
+        break;
+    case LirOpcode::CmpLt:
+        if (left.maximum < right.minimum)
+            return true;
+        if (left.minimum >= right.maximum)
+            return false;
+        break;
+    case LirOpcode::CmpLe:
+        if (left.maximum <= right.minimum)
+            return true;
+        if (left.minimum > right.maximum)
+            return false;
+        break;
+    case LirOpcode::CmpGt:
+        return CompareRanges(LirOpcode::CmpLt, right, left);
+    case LirOpcode::CmpGe:
+        return CompareRanges(LirOpcode::CmpLe, right, left);
+    default:
+        break;
+    }
+    return std::nullopt;
+}
+
 bool Combine(LirFunc &function) {
     std::unordered_map<LirReg, LirInstr> definitions;
     LirReg next = 0;
     for (const auto &parameter : function.params) {
         definitions[parameter.reg] = {};
+        definitions[parameter.reg].op = LirOpcode::Phi; // Unknown runtime input, not a literal.
+        definitions[parameter.reg].type = parameter.type;
         next = std::max(next, parameter.reg + 1);
     }
     for (const auto &block : function.blocks) {
@@ -34,9 +154,24 @@ bool Combine(LirFunc &function) {
         return value && value->Width() <= 64 ? std::optional{value->RawBits()} : std::nullopt;
     };
     bool changed = false;
+    std::unordered_map<LirReg, UnsignedRange> ranges;
     for (auto &block : function.blocks) {
         std::vector<LirInstr> output;
         for (auto instruction : block.instrs) {
+            if (instruction.type == TypeRef::MakeBool() && instruction.srcs.size() == 2 && !instruction.isVolatile &&
+                definitions.contains(instruction.srcs[0]) && definitions.contains(instruction.srcs[1]) &&
+                definitions.at(instruction.srcs[0]).type == definitions.at(instruction.srcs[1]).type) {
+                const auto left = RangeOf(instruction.srcs[0], definitions, ranges);
+                const auto right = RangeOf(instruction.srcs[1], definitions, ranges);
+                if (left && right) {
+                    if (const auto result = CompareRanges(instruction.op, *left, *right)) {
+                        instruction.op = LirOpcode::Const;
+                        instruction.srcs.clear();
+                        instruction.strArg = *result ? "true" : "false";
+                        changed = true;
+                    }
+                }
+            }
             // Keep a deliberately narrow contract: no signed arithmetic, wide integers or floating identities.
             const bool word =
                 instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64;
