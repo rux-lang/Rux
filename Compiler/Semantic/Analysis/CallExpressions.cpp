@@ -509,6 +509,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
 
         std::unordered_map<std::string, TypeRef> methodSubstitutions;
+        const std::size_t diagnosticsBeforeLookup = diags.size();
         if (const FuncDecl *method =
                 LookupMethodCall(receiverType, field->field, *e, argTypes, 0, methodSubstitutions)) {
             bool callAccepted = true;
@@ -572,14 +573,17 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     EmitPrivacyError(field->location, *namedMethods->second.front(), "method", field->field);
                     return TypeRef::MakeUnknown();
                 }
-                // One candidate the arguments do not fit is reported for what does not fit it.
-                if (candidates.size() == 1) {
-                    static_cast<void>(
-                        checkBoundArguments(field->field, argTypes, *candidates.front(), true,
-                                            ResolveMethodParamTypes(receiverType, *candidates.front()),
-                                            ResolveMethodVariadicType(receiverType, *candidates.front())));
+                // One candidate the arguments do not fit is reported for what does not fit it. The bound-argument
+                // check accepts some arguments the lookup refused, such as a character literal of another width;
+                // the call is still unresolved, so it is reported as an overload mismatch rather than left with no
+                // type and no diagnostic, which lowering would later fault on.
+                if (candidates.size() == 1 &&
+                    !checkBoundArguments(field->field, argTypes, *candidates.front(), true,
+                                         ResolveMethodParamTypes(receiverType, *candidates.front()),
+                                         ResolveMethodVariadicType(receiverType, *candidates.front()))) {
+                    return TypeRef::MakeUnknown();
                 }
-                else {
+                if (diags.size() == diagnosticsBeforeLookup) {
                     emitOverloadError(field->field, argTypes, candidates, true, receiverType);
                 }
                 return TypeRef::MakeUnknown();
@@ -733,6 +737,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 const std::string &methodName = path->segments[1];
                 const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
                 std::unordered_map<std::string, TypeRef> methodSubstitutions;
+                const std::size_t diagnosticsBeforeLookup = diags.size();
                 // Written through its type, a method is the function its declaration spells out: the receiver is an
                 // ordinary first parameter, so `Pair::Get(pair)` passes `pair` as `self` and checks it like any other
                 // argument, borrowing and moving included.
@@ -770,13 +775,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                              methodName);
                             return TypeRef::MakeUnknown();
                         }
-                        if (candidates.size() == 1) {
-                            static_cast<void>(checkBoundArguments(
-                                callable, argTypes, *candidates.front(), false,
-                                ResolveMethodParamTypes(receiverType, *candidates.front(), {}, true),
-                                ResolveMethodVariadicType(receiverType, *candidates.front())));
+                        if (candidates.size() == 1 &&
+                            !checkBoundArguments(callable, argTypes, *candidates.front(), false,
+                                                 ResolveMethodParamTypes(receiverType, *candidates.front(), {}, true),
+                                                 ResolveMethodVariadicType(receiverType, *candidates.front()))) {
+                            return TypeRef::MakeUnknown();
                         }
-                        else {
+                        if (diags.size() == diagnosticsBeforeLookup) {
                             emitOverloadError(callable, argTypes, candidates, false, receiverType);
                         }
                         return TypeRef::MakeUnknown();

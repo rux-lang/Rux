@@ -722,3 +722,24 @@ TEST_CASE("a format parameter must be a UTF-8 string slice") {
     CHECK_EQ(diagnostics[0].message,
              "'#Format' parameter 'format' has type 'int32', but a format string must be 'char8[..]'");
 }
+
+TEST_CASE("a method call whose argument the method cannot take is reported, not left untyped") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Sink { count: uint; }
+        extend Sink {
+            func Push(self: &var Sink, value: char8) -> ! int32 { self.count = self.count + 1; }
+            func Take(value: char8) -> uint { return 1; }
+        }
+        func Append(sink: &var Sink) -> ! int32 {
+            if sink.count == 0 {
+                sink.Push('z')?;
+            }
+            let taken = Sink::Take('y');
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message,
+             "no matching overload for method 'Push' on type '&var Sink' with argument types (char32)");
+    CHECK(diagnostics[1].message.find("'Sink::Take'") != std::string::npos);
+}

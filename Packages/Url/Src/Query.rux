@@ -1,0 +1,142 @@
+// Reading a query as `name=value` pairs, building one, and decoding a percent-encoded component into text.
+// A query is read as HTML forms write it: pairs separated by `&`, a name and a value separated by the first `=`, and
+// `+` standing for a space. The pairs come out still encoded, so nothing allocates until a caller decodes one.
+
+import Allocator::Allocator;
+import Core::Iterator;
+import Text::String;
+import Url::{ Bytes, HexDigit, HexValue, IsAlpha, IsDigit, UrlError };
+
+/// One `name=value` pair of a query, both still percent-encoded. `Copy`.
+/// @see https://rux-lang.dev/docs/api/url/query#query-pair
+pub struct QueryPair {
+    /// The name, before the first `=`.
+    pub name: char8[..];
+    /// The value, after the first `=`, or empty when there is no `=`.
+    pub value: char8[..];
+}
+
+/// A walk over a query's pairs, in order, skipping empty ones. `Copy`.
+/// @see https://rux-lang.dev/docs/api/url/query#query-pairs
+pub struct QueryPairs {
+    rest: char8[..];
+}
+
+/// The pairs of `query`, a query without its `?`, such as the one `Url::Query` returns.
+/// @param query the query
+/// @returns a walk over its pairs
+/// @see https://rux-lang.dev/docs/api/url/query#pairs
+pub func Pairs(query: char8[..]) -> QueryPairs {
+    return QueryPairs { rest: query };
+}
+
+extend QueryPairs {
+    /// The walk itself, so that `for pair in Pairs(query)` reads every pair.
+    /// @returns a copy of this walk
+    /// @see https://rux-lang.dev/docs/api/url/query#query-pairs-iterate
+    pub func Iterate(self: &QueryPairs) -> QueryPairs {
+        return QueryPairs { rest: self.rest };
+    }
+}
+
+extend QueryPairs : Iterator {
+    /// The next pair, or none after the last.
+    /// @returns the pair
+    /// @see https://rux-lang.dev/docs/api/url/query#query-pairs-next
+    pub func Next(self: &var QueryPairs) -> QueryPair? {
+        while self.rest.length > 0 {
+            var end: uint = 0;
+            while end < self.rest.length && self.rest[end] != '&' { end = end + 1; }
+            let pair = self.rest[..end];
+            self.rest = end < self.rest.length ? self.rest[end + 1..] : self.rest[end..];
+            if pair.length == 0 { continue; }
+            var equals: uint = 0;
+            while equals < pair.length && pair[equals] != '=' { equals = equals + 1; }
+            let value = equals < pair.length ? pair[equals + 1..] : pair[equals..];
+            return QueryPair { name: pair[..equals], value: value };
+        }
+        return none;
+    }
+}
+
+/// Decodes a percent-encoded component into text. With `form`, a `+` is read as a space, as in a query.
+/// @param allocator what the text is kept in
+/// @param encoded the component, such as a path segment or a query value
+/// @param form whether `+` stands for a space
+/// @returns the text, or fails when an escape is malformed or the bytes are not UTF-8
+/// @see https://rux-lang.dev/docs/api/url/query#decode
+pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) -> String ! UrlError {
+    var out = Bytes(allocator);
+    var index: uint = 0;
+    while index < encoded.length {
+        let c = encoded[index];
+        if c == '%' {
+            if index + 2 >= encoded.length { fail UrlError::InvalidPercentEncoding; }
+            let high = HexValue(encoded[index + 1] as uint8) ?? fail UrlError::InvalidPercentEncoding;
+            let low = HexValue(encoded[index + 2] as uint8) ?? fail UrlError::InvalidPercentEncoding;
+            out.Push(((high << 4) | low) as char8)?;
+            index = index + 3;
+            continue;
+        }
+        out.Push(form && c == '+' ? c8' ' : c)?;
+        index = index + 1;
+    }
+    return String::FromBytes(allocator, out.View()) catch { else => fail UrlError::InvalidText };
+}
+
+/// Builds a query from `name=value` pairs, encoding each the way HTML forms do.
+/// Not copied.
+/// @see https://rux-lang.dev/docs/api/url/query#query-builder
+pub struct QueryBuilder {
+    bytes: Bytes;
+}
+
+extend QueryBuilder {
+    /// An empty query.
+    /// @param allocator what the query is kept in
+    /// @returns the builder
+    /// @see https://rux-lang.dev/docs/api/url/query#query-builder
+    pub func QueryBuilder(allocator: Allocator) -> QueryBuilder {
+        return QueryBuilder { bytes: Bytes(allocator) };
+    }
+
+    /// Appends a pair, encoding the name and the value: letters, digits, `*`, `-`, `.` and `_` stay, a space becomes
+    /// `+`, and every other byte is percent-encoded.
+    /// @param name the name, as text
+    /// @param value the value, as text
+    /// @returns nothing, or fails when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/url/query#append
+    pub func Append(self: &var QueryBuilder, name: char8[..], value: char8[..]) -> ! UrlError {
+        if self.bytes.length > 0 { self.bytes.Push(c8'&')?; }
+        AppendForm(self.bytes, name)?;
+        self.bytes.Push(c8'=')?;
+        AppendForm(self.bytes, value)?;
+    }
+
+    /// The query built so far, without a `?`, ready for `Url::SetQuery`.
+    /// @returns the query
+    /// @see https://rux-lang.dev/docs/api/url/query#query-builder-text
+    pub func Text(self: &QueryBuilder) -> char8[..] {
+        return self.bytes.View();
+    }
+}
+
+// Appends text in the form encoding.
+func AppendForm(out: &var Bytes, text: char8[..]) -> ! UrlError {
+    var index: uint = 0;
+    while index < text.length {
+        let c = text[index] as uint8;
+        if IsAlpha(c) || IsDigit(c) || c == 0x2Au8 || c == 0x2Du8 || c == 0x2Eu8 || c == 0x5Fu8 {
+            out.Push(c as char8)?;
+        }
+        else if c == 0x20u8 {
+            out.Push(c8'+')?;
+        }
+        else {
+            out.Push(c8'%')?;
+            out.Push(HexDigit(c >> 4))?;
+            out.Push(HexDigit(c & 0x0Fu8))?;
+        }
+        index = index + 1;
+    }
+}

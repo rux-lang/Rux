@@ -6,7 +6,7 @@ Core is an optional declaration provider. Every primitive type is built into the
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **32 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **33 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -40,6 +40,7 @@ The v0.1.0 release ships **32 packages**. This table is the target catalog: it i
 | `Time`        | Clock, duration, calendar and temporal text semantics                | Core, OS, Text                                           |
 | `Toml`        | TOML grammar, values and serialization                               | Core, Allocator, Collections, Text, Format, Math, Time   |
 | `Unicode`     | Unicode database properties and Unicode algorithms                   | Core                                                     |
+| `Url`         | URL parsing, normalization, resolution and queries                   | Core, Memory, Allocator, Text                            |
 | `Uuid`        | UUID representation, generation and textual forms                    | Core, Entropy, Time, Text                                |
 | `Windows`     | Windows ABI declarations and thin binding helpers                    | None                                                     |
 
@@ -56,7 +57,7 @@ Layer 7  FileSystem, Json, Toml, Process
              |
 Layer 6  Io, Uuid, Sync
              |
-Layer 5  Format, Time, Path, Collections, Encoding, NanoId
+Layer 5  Format, Time, Path, Collections, Encoding, NanoId, Url
              |
 Layer 4  Text, Random
              |
@@ -74,7 +75,7 @@ Layer 0  Core, Windows
 
 ## Retired Identities
 
-The workspace matches the catalog above: 32 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
+The workspace matches the catalog above: 33 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
 | Former identity | What happened               | Status                                  |
 | --------------- | --------------------------- | --------------------------------------- |
