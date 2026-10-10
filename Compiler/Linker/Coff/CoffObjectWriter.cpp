@@ -202,6 +202,9 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
             return false;
         }
     }
+    if (!ValidateSymbolSections(file, "COFF object writer", error)) {
+        return false;
+    }
     output.name = std::filesystem::path(file.sourcePath).stem().string();
     if (output.name.empty()) {
         output.name = "out";
@@ -254,8 +257,10 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
 
     for (std::size_t i = 0; i < sectionCount; ++i) {
         const auto &section = file.sections[i];
-        WriteName8(out, section.name.c_str());
         const bool zeroFill = section.type == RcuSecType::Bss && section.relocs.empty();
+        // A zero-fill section that carries relocations is written out with its bytes, so it is initialized data and
+        // is named so: a `.bss` holding initialized data makes link.exe warn (LNK4078) that it merges two kinds.
+        WriteName8(out, section.type == RcuSecType::Bss && !zeroFill ? ".data" : section.name.c_str());
         WriteU32(out, 0);
         WriteU32(out, 0);
         // COFF objects encode the allocation size here even without file bytes.
@@ -300,11 +305,10 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
             WriteU32(out, AddString(stringTable, symbol.name));
         }
         WriteU32(out, symbol.value);
-        const std::int16_t section =
-            symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
-            : symbol.sectionIdx == RCU_SEC_ABSOLUTE
-                ? -1
-                : static_cast<std::int16_t>(SymbolSectionIndex(file, symbol.sectionIdx).value_or(0) + 1);
+        const std::int16_t section = symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
+                                   : symbol.sectionIdx == RCU_SEC_ABSOLUTE
+                                       ? -1
+                                       : static_cast<std::int16_t>(*SymbolSectionIndex(file, symbol.sectionIdx) + 1);
         WriteU16(out, static_cast<std::uint16_t>(section));
         WriteU16(out, symbol.kind == RcuSymKind::Func ? 0x20 : 0);
         WriteU8(out, symbol.visibility == RcuSymVis::Local ? 3 : 2);

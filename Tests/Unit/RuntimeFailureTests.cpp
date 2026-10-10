@@ -13,6 +13,7 @@
 #include "Syntax/Parser/Parser.h"
 #include "System/Process.h"
 #include "Target/TargetTriple.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <chrono>
@@ -156,7 +157,7 @@ std::vector<std::uint8_t> LinkRuntimeFailures(const Target::OS os, const Target:
     }
 
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto output = std::filesystem::temp_directory_path() / ("rux-runtime-failure-" + std::to_string(nonce) +
+    const auto output = Rux::Testing::TestTemporaryDirectory() / ("rux-runtime-failure-" + std::to_string(nonce) +
                                                                   (os == Target::OS::Windows ? ".exe" : std::string{}));
     std::error_code fileError;
     std::filesystem::remove(output, fileError);
@@ -245,7 +246,7 @@ TEST_CASE("Windows runtime failures renew stack arguments between output writes"
         objects.push_back(StackArgumentClobberingWriter());
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
         const auto executable =
-            std::filesystem::temp_directory_path() / ("rux-runtime-stack-arguments-" + std::to_string(nonce) + ".exe");
+            Rux::Testing::TestTemporaryDirectory() / ("rux-runtime-stack-arguments-" + std::to_string(nonce) + ".exe");
         Linker linker(std::move(objects), "RuntimeFailureTest", {}, ArtifactKind::Executable, Target::OS::Windows,
                       Target::Arch::X86_64);
         REQUIRE(linker.Link(executable));

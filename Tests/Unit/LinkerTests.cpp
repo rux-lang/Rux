@@ -2,6 +2,7 @@
 #include "Linker/ArchiveWriter.h"
 #include "Linker/Linker.h"
 #include "Target/ElfProfile.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <array>
@@ -37,7 +38,7 @@ TEST_CASE("ELF linker preserves an extern library declared in another object") {
     declarations.symbols.push_back(
         {"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-    const auto output = std::filesystem::temp_directory_path() / "rux-elf-cross-object-import-test";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-elf-cross-object-import-test";
     std::error_code ec;
     std::filesystem::remove(output, ec);
 
@@ -88,7 +89,7 @@ TEST_CASE("ELF linker resolves local functions defined in another object") {
             {"PrivateHelper", "int", 0, helperSize, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
 
         const auto output =
-            std::filesystem::temp_directory_path() / ("rux-elf-cross-object-local-function-" + std::string(suffix));
+            Rux::Testing::TestTemporaryDirectory() / ("rux-elf-cross-object-local-function-" + std::string(suffix));
         std::error_code ec;
         std::filesystem::remove(output, ec);
         Linker linker({std::move(caller), std::move(definitions)}, "LinkerTest", {}, ArtifactKind::Executable,
@@ -141,7 +142,7 @@ TEST_CASE("ELF linker names the loader and C library of the target, not of the h
         caller.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         caller.symbols.push_back({"sqrt", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-        const auto output = std::filesystem::temp_directory_path() / "rux-elf-target-loader-test";
+        const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-elf-target-loader-test";
         std::error_code ec;
         std::filesystem::remove(output, ec);
         Linker linker({std::move(caller)}, "LinkerTest", {}, ArtifactKind::Executable, os, Target::Arch::X86_64);
@@ -215,7 +216,7 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
 TEST_CASE("ELF linker rejects a target without an explicit profile") {
     RcuFile object;
     object.arch = RcuArch::AArch64;
-    const auto output = std::filesystem::temp_directory_path() / "rux-elf-unsupported-profile-test";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-elf-unsupported-profile-test";
     std::error_code ec;
     std::filesystem::remove(output, ec);
 
@@ -249,7 +250,7 @@ TEST_CASE("ELF shared linker emits ET_DYN exports without an executable entry") 
     library.sections.push_back(std::move(data));
     library.symbols.push_back({"Answer", "int", 0, 6, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
-    const auto output = std::filesystem::temp_directory_path() / "librux-linker-test.so";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "librux-linker-test.so";
     std::error_code ec;
     std::filesystem::remove(output, ec);
 
@@ -284,7 +285,7 @@ TEST_CASE("Linker rejects an object built for another architecture") {
     foreign.sections.push_back(std::move(text));
     foreign.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
 
-    const auto output = std::filesystem::temp_directory_path() / "rux-linker-arch-mismatch-test";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-linker-arch-mismatch-test";
     std::error_code ec;
     std::filesystem::remove(output, ec);
 
@@ -331,7 +332,7 @@ TEST_CASE("link diagnostics name every image format artifact and corrupt RCU own
         object.sections.push_back(std::move(text));
 
         Linker linker({std::move(object)}, "Broken", {}, artifact, os, Target::Arch::X86_64);
-        CHECK_FALSE(linker.Link(std::filesystem::temp_directory_path() / "rux-broken-link-diagnostic"));
+        CHECK_FALSE(linker.Link(Rux::Testing::TestTemporaryDirectory() / "rux-broken-link-diagnostic"));
         REQUIRE(linker.Errors().size() == 1);
         CHECK(linker.Errors().front().message ==
               std::string(prefix) + "RCU object 'Broken.rcu' has invalid alignment for section '.text'");
@@ -413,7 +414,7 @@ constexpr std::string_view kAArch64Interpreter = "/lib/ld-linux-aarch64.so.1";
 } // namespace
 
 TEST_CASE("ELF linker fills every field of an AArch64 executable's header") {
-    const ElfImage image = LinkAArch64Executable(MakeAArch64Object(), std::filesystem::temp_directory_path() /
+    const ElfImage image = LinkAArch64Executable(MakeAArch64Object(), Rux::Testing::TestTemporaryDirectory() /
                                                                           "rux-elf-aarch64-header-test");
 
     // e_ident: the magic, ELFCLASS64, ELFDATA2LSB and EV_CURRENT. The byte
@@ -461,7 +462,7 @@ TEST_CASE("ELF linker fills every field of an AArch64 executable's header") {
 
 TEST_CASE("ELF linker gives an AArch64 executable one loadable segment per permission") {
     const ElfImage image = LinkAArch64Executable(MakeAArch64Object(),
-                                                 std::filesystem::temp_directory_path() / "rux-elf-aarch64-phdr-test");
+                                                 Rux::Testing::TestTemporaryDirectory() / "rux-elf-aarch64-phdr-test");
 
     const auto segments = image.Segments();
     std::vector<ElfImage::Segment> loads;
@@ -511,7 +512,7 @@ TEST_CASE("ELF linker points an AArch64 dynamic executable at its interpreter") 
     object.sections[RCU_TEXT_IDX].relocs.push_back({0, 3, RcuRelType::AArch64Call26, 0});
     object.symbols.push_back({"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-    const ElfImage image = LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() /
+    const ElfImage image = LinkAArch64Executable(std::move(object), Rux::Testing::TestTemporaryDirectory() /
                                                                         "rux-elf-aarch64-interp-test");
 
     // An image with imports is laid out differently: two segments rather than
@@ -565,7 +566,7 @@ TEST_CASE("ELF linker writes an AArch64 executable that exits through its entry 
     object.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
 
     const ElfImage image =
-        LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() / "rux-elf-aarch64-entry-test");
+        LinkAArch64Executable(std::move(object), Rux::Testing::TestTemporaryDirectory() / "rux-elf-aarch64-entry-test");
 
     CHECK(image.Machine() == 0xB7); // EM_AARCH64
     const uint64_t entry = image.Entry();
@@ -633,7 +634,7 @@ RcuFile MakeStartFrameReader(const uint8_t arch) {
 
 TEST_CASE("an AArch64 ELF entry stub keeps the initial stack pointer for a program that reads it") {
     const ElfImage image = LinkAArch64Executable(MakeStartFrameReader(RcuArch::AArch64),
-                                                 std::filesystem::temp_directory_path() / "rux-elf-aarch64-frame-test");
+                                                 Rux::Testing::TestTemporaryDirectory() / "rux-elf-aarch64-frame-test");
     const uint64_t entry = image.Entry();
     // mov x9, sp / adrp x10, frame / str x9, [x10, :lo12:frame], before the stack is aligned.
     CHECK(image.Word(entry) == 0x910003E9);
@@ -652,7 +653,7 @@ TEST_CASE("an AArch64 ELF entry stub keeps the initial stack pointer for a progr
 }
 
 TEST_CASE("an x86-64 ELF entry stub keeps the initial stack pointer for a program that reads it") {
-    const auto output = std::filesystem::temp_directory_path() / "rux-elf-x86-frame-test";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-elf-x86-frame-test";
     std::error_code ec;
     std::filesystem::remove(output, ec);
     Linker linker({MakeStartFrameReader(RcuArch::X86_64)}, "LinkerTest", {}, ArtifactKind::Executable,
@@ -690,7 +691,7 @@ TEST_CASE("an ELF executable that never reads its start frame keeps the plain en
     AppendWord(text.data, 0xD65F03C0); // ret
     object.sections.push_back(std::move(text));
     object.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
-    const ElfImage image = LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() /
+    const ElfImage image = LinkAArch64Executable(std::move(object), Rux::Testing::TestTemporaryDirectory() /
                                                                         "rux-elf-aarch64-no-frame-test");
     CHECK(image.Word(image.Entry() + 4) == 0x927CED29);
 }
@@ -737,7 +738,7 @@ TEST_CASE("ELF linker patches AArch64 relocations into instruction fields") {
     object.symbols.push_back({"Answer", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
 
     const ElfImage image =
-        LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() / "rux-elf-aarch64-reloc-test");
+        LinkAArch64Executable(std::move(object), Rux::Testing::TestTemporaryDirectory() / "rux-elf-aarch64-reloc-test");
 
     const uint64_t main = image.Entry() + 24;
     const uint64_t answer = image.WritableSegmentAddress();
@@ -789,7 +790,7 @@ TEST_CASE("ELF linker binds an AArch64 import through a PLT stub and its GOT slo
     object.symbols.push_back({"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
     const ElfImage image =
-        LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() / "rux-elf-aarch64-plt-test");
+        LinkAArch64Executable(std::move(object), Rux::Testing::TestTemporaryDirectory() / "rux-elf-aarch64-plt-test");
 
     CHECK(image.Machine() == 0xB7); // EM_AARCH64
     // Two segments may not share a page and carry different permissions, so an
@@ -890,7 +891,7 @@ TEST_CASE("ELF linker writes an AArch64 shared library whose pointers rebase the
     library.symbols.push_back({"Answer", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
 
     const ElfImage image =
-        LinkAArch64Image({std::move(library)}, std::filesystem::temp_directory_path() / "librux-linker-aarch64-test.so",
+        LinkAArch64Image({std::move(library)}, Rux::Testing::TestTemporaryDirectory() / "librux-linker-aarch64-test.so",
                          ArtifactKind::SharedLibrary);
 
     CHECK(image.Machine() == 0xB7);                        // EM_AARCH64
@@ -925,7 +926,7 @@ TEST_CASE("ELF linker leaves a pointer to an import in an AArch64 shared library
     library.symbols.push_back({"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
     const ElfImage image = LinkAArch64Image(
-        {std::move(library)}, std::filesystem::temp_directory_path() / "librux-linker-aarch64-globdat-test.so",
+        {std::move(library)}, Rux::Testing::TestTemporaryDirectory() / "librux-linker-aarch64-globdat-test.so",
         ArtifactKind::SharedLibrary);
 
     // A pointer to an import cannot be resolved to this image's own PLT stub —
@@ -1076,7 +1077,7 @@ TEST_CASE("ELF dynamic linker starts read-only and writable data on their record
         object.symbols.push_back(
             {"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-        const auto output = std::filesystem::temp_directory_path() / "rux-elf-dynamic-data-alignment-test";
+        const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-elf-dynamic-data-alignment-test";
         std::error_code ec;
         std::filesystem::remove(output, ec);
         Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
@@ -1142,7 +1143,7 @@ TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     object.bytes = {0x01, 0x02, 0x03, 0x04};
     object.publicSymbols = {"Answer"};
 
-    const auto directory = std::filesystem::temp_directory_path();
+    const auto directory = Rux::Testing::TestTemporaryDirectory();
     const auto gnuFirst = directory / "rux-archive-gnu-first.a";
     const auto gnuSecond = directory / "rux-archive-gnu-second.a";
     const auto bsd = directory / "rux-archive-bsd.a";
@@ -1183,7 +1184,7 @@ TEST_CASE("BSD archives name their members and symbol table the way Apple's ar d
     object.name = "Library.o";
     object.bytes = {0xCF, 0xFA, 0xED, 0xFE, 0x07};
     object.publicSymbols = {"_Answer", "_Question"};
-    const auto path = std::filesystem::temp_directory_path() / "rux-archive-bsd-layout.a";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-archive-bsd-layout.a";
     std::string error;
     REQUIRE(WriteNativeArchive({&object, 1}, Target::OS::MacOS, Target::Arch::AArch64, path, error));
     std::ifstream stream(path, std::ios::binary);
@@ -1270,7 +1271,7 @@ TEST_CASE("ELF linker starts each object's sections on the alignment that object
     // Linking at all is half the assertion: an unaligned constant is reported
     // rather than truncated, so this fails before it reads anything back.
     const ElfImage image = LinkAArch64Executable(std::move(objects),
-                                                 std::filesystem::temp_directory_path() / "rux-elf-aarch64-align-test");
+                                                 Rux::Testing::TestTemporaryDirectory() / "rux-elf-aarch64-align-test");
 
     // The second object's text follows the entry stub and the first object's
     // single instruction.
@@ -1345,7 +1346,7 @@ TEST_CASE("PE linker maps zero-fill storage and patches references to it") {
                              {}});
     file.symbols.push_back({"Main", "int", 0, 1, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     file.symbols.push_back({"Zero", "", 32, 64, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Local});
-    const auto output = std::filesystem::temp_directory_path() / "rux-pe-bss-test.exe";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-pe-bss-test.exe";
     Linker linker({file}, "BssTest", {}, ArtifactKind::Executable, Target::OS::Windows, Target::Arch::X86_64);
     REQUIRE(linker.Link(output));
     std::ifstream stream(output, std::ios::binary);
@@ -1373,7 +1374,7 @@ TEST_CASE("PE linker maps zero-fill storage and patches references to it") {
     REQUIRE(bssRva != 0);
     REQUIRE(dataOffset != 0);
     CHECK(bssRva % 32 == 0);
-    CHECK(image.Read32(optional + 12) == 96);
+    CHECK(image.Read32(optional + 12) == 512); // 96 bytes of zero fill, rounded to the file alignment as link.exe does
     CHECK(image.Read64(dataOffset) == image.Read64(optional + 24) + bssRva + 32);
 }
 
@@ -1398,6 +1399,9 @@ TEST_CASE("native object writers materialize relocations in zero-fill storage") 
             return value;
         };
         REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::Windows, arch, object, error), error);
+        // Written out with its bytes, the section is initialized data and is named so.
+        CHECK(std::string(reinterpret_cast<const char *>(object.bytes.data() + 20), 8) ==
+              std::string(".data\0\0\0", 8));
         CHECK(read(36, 4) == 16);
         CHECK((read(56, 4) & 0xE0U) == 0x40U);
         CHECK(read(static_cast<std::size_t>(read(40, 4)), 8) == 8);
@@ -1413,5 +1417,22 @@ TEST_CASE("native object writers materialize relocations in zero-fill storage") 
         CHECK(read(headers + 64 + 4, 4) == 1); // SHT_PROGBITS
         CHECK(read(headers + 64 + 32, 8) == 16);
         CHECK(read(headers + 128 + 4, 4) == 4); // SHT_RELA
+    }
+}
+
+TEST_CASE("native object writers refuse a symbol defined in a section the object lacks") {
+    for (const auto os : {Target::OS::Windows, Target::OS::MacOS, Target::OS::Linux}) {
+        RcuFile file;
+        file.arch = RcuArch::X86_64;
+        file.sourcePath = "Orphan.rux";
+        file.sections.push_back(
+            {".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Exec, 16, {0xC3}, {}});
+        file.symbols.push_back({"Stray", "", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+        NativeObject object;
+        std::string error;
+        CAPTURE(Target::ToString(os));
+        CHECK_FALSE(WriteNativeObject(file, os, Target::Arch::X86_64, object, error));
+        CHECK(error.starts_with("symbol 'Stray' is defined in section"));
+        CHECK(error.contains("which the object does not contain"));
     }
 }

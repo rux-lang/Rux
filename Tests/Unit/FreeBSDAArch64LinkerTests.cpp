@@ -1,5 +1,6 @@
 #include "ElfReader.h"
 #include "Linker/Linker.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -133,7 +134,7 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
                                           std::vector<std::uint8_t>(24)));
         object.symbols.push_back({"Zeroes", "int", 0, 24, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global});
 
-        const auto directory = std::filesystem::temp_directory_path();
+        const auto directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage first = LinkImage({object}, directory / "rux-freebsd-aarch64-static-first");
         const ElfImage second = LinkImage({std::move(object)}, directory / "rux-freebsd-aarch64-static-second");
         CHECK(first.bytes == second.bytes);
@@ -232,7 +233,7 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
                                {"State", "int", 0, 16, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global}};
 
         const ElfImage image = LinkImage({std::move(caller), std::move(definitions)},
-                                         std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-relocations");
+                                         Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-relocations");
         const std::uint64_t main = image.Entry() + 24;
         const std::uint64_t workerAddress = BranchTarget(image, main);
         CHECK(image.Word(workerAddress) == 0xD65F03C0);
@@ -266,7 +267,7 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
         object.sections.push_back(
             Section(".data", RcuSecType::Data, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 64));
         const ElfImage image = LinkImage({std::move(object)},
-                                         std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-empty-sections");
+                                         Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-empty-sections");
         const auto loads = LoadSegments(image);
         REQUIRE(loads.size() == 1);
         CHECK(loads.front().flags == 0x5);
@@ -274,7 +275,7 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
     }
 
     TEST_CASE("FreeBSD AArch64 freestanding executable diagnoses missing and duplicate Main") {
-        const auto output = std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-bad-main";
+        const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-bad-main";
         std::error_code ec;
         std::filesystem::remove(output, ec);
 
@@ -301,7 +302,7 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
     }
 
     TEST_CASE("FreeBSD AArch64 freestanding executable diagnoses relocation range alignment and bounds") {
-        const auto output = std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-bad-relocation";
+        const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-bad-relocation";
         const auto checkFailure = [&output](RcuFile object, const std::string &fragment) {
             std::error_code ec;
             std::filesystem::remove(output, ec);
@@ -342,7 +343,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
         // hardens the call classifier that prepares their argument registers.
         RcuFile main = ImportingMain({{"puts", ""}, {"printf", ""}, {"cos", "libm.so.5"}, {"sin", ""}});
         RcuFile declarations = ImportDeclarations({{"sin", "libm.so.5"}, {"puts", ""}});
-        const auto directory = std::filesystem::temp_directory_path();
+        const auto directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage image =
             LinkImage({std::move(main), std::move(declarations)}, directory / "rux-freebsd-aarch64-dynamic-metadata");
 
@@ -445,7 +446,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
 
     TEST_CASE("FreeBSD AArch64 dynamic PLT obeys the rtld resolver contract") {
         const ElfImage image = LinkImage({ImportingMain({{"printf", ""}, {"puts", ""}})},
-                                         std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-dynamic-plt");
+                                         Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-dynamic-plt");
         const std::uint64_t entry = image.Entry();
 
         // rtld_start.S passes ps_strings in X0. Stack normalization uses only
@@ -515,7 +516,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
 
     TEST_CASE("FreeBSD AArch64 dynamic imports and libraries are deduplicated deterministically") {
         const RcuFile object = ImportingMain({{"puts", ""}, {"puts", ""}, {"puts", ""}});
-        const auto directory = std::filesystem::temp_directory_path();
+        const auto directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage first = LinkImage({object}, directory / "rux-freebsd-aarch64-dynamic-repeat-first");
         const ElfImage second = LinkImage({object}, directory / "rux-freebsd-aarch64-dynamic-repeat-second");
         CHECK(first.bytes == second.bytes);
@@ -541,7 +542,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
         const RcuFile alpha = ImportDeclarations({{"alpha", "libzeta.so.1"}});
         const RcuFile beta = ImportDeclarations({{"beta", "libalpha.so.2"}});
         const RcuFile gamma = ImportDeclarations({{"gamma", "libzeta.so.1"}});
-        const auto directory = std::filesystem::temp_directory_path();
+        const auto directory = Rux::Testing::TestTemporaryDirectory();
 
         const ElfImage forward =
             LinkImage({main, alpha, beta, gamma}, directory / "rux-freebsd-aarch64-dynamic-libraries-forward");
@@ -574,7 +575,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
                                                          {"foxtrot", ""},
                                                          {"golf", ""},
                                                          {"hotel", ""}})},
-                                         std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-dynamic-hash");
+                                         Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-dynamic-hash");
         const auto symbols = image.DynamicSymbols();
         const std::size_t hash = image.OffsetOf(image.DynamicTag(4));
         const std::uint32_t bucketCount = image.Read32(hash);
@@ -602,7 +603,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
     TEST_CASE("FreeBSD AArch64 dynamic explicit exit library overrides the default libc") {
         const ElfImage image =
             LinkImage({ImportingMain({{"exit", "libtermination.so.1"}})},
-                      std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-dynamic-explicit-exit");
+                      Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-dynamic-explicit-exit");
         const std::vector<std::string> expectedLibraries{"libtermination.so.1"};
         CHECK(image.NeededLibraries() == expectedLibraries);
         CHECK(std::string(image.bytes.begin(), image.bytes.end()).find("libc.so.7") == std::string::npos);
@@ -619,7 +620,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
     }
 
     TEST_CASE("FreeBSD AArch64 dynamic executable diagnoses invalid imports and missing Main") {
-        const auto output = std::filesystem::temp_directory_path() / "rux-freebsd-aarch64-dynamic-error";
+        const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-freebsd-aarch64-dynamic-error";
         const auto checkFailure = [&output](std::vector<RcuFile> objects, const std::string &message) {
             std::error_code ec;
             std::filesystem::remove(output, ec);
@@ -673,7 +674,7 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
                            {"Zeroes", "int", 0, 16, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Exported}};
 
         const ElfImage image = LinkSharedImage({std::move(library)},
-                                               std::filesystem::temp_directory_path() / "libFreeBsdAArch64Answers.so");
+                                               Rux::Testing::TestTemporaryDirectory() / "libFreeBsdAArch64Answers.so");
 
         // A library declares the release too, as FreeBSD's own do.
         const auto notes = image.Notes();
@@ -760,7 +761,7 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
 
         const ElfImage image =
             LinkSharedImage({std::move(caller), std::move(definitions)},
-                            std::filesystem::temp_directory_path() / "libFreeBsdAArch64LocalBindings.so");
+                            Rux::Testing::TestTemporaryDirectory() / "libFreeBsdAArch64LocalBindings.so");
         CHECK(image.NeededLibraries().empty());
         CHECK(image.PltRelocations().empty());
 
@@ -805,7 +806,7 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
                            {"PutsSlot", "pointer", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported}};
 
         const ElfImage image = LinkSharedImage({std::move(library)},
-                                               std::filesystem::temp_directory_path() / "libFreeBsdAArch64Imports.so");
+                                               Rux::Testing::TestTemporaryDirectory() / "libFreeBsdAArch64Imports.so");
         const std::vector<std::string> expectedLibraries{"libc.so.7", "libz.so.6"};
         CHECK(image.NeededLibraries() == expectedLibraries);
         const auto symbols = image.DynamicSymbols();
@@ -841,14 +842,14 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
 
     TEST_CASE("FreeBSD AArch64 shared library output is deterministic") {
         const RcuFile library = ImportingMain({{"puts", ""}});
-        const auto directory = std::filesystem::temp_directory_path();
+        const auto directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage first = LinkSharedImage({library}, directory / "rux-shared-first" / "libDeterministic.so");
         const ElfImage second = LinkSharedImage({library}, directory / "rux-shared-second" / "libDeterministic.so");
         CHECK(first.bytes == second.bytes);
     }
 
     TEST_CASE("FreeBSD AArch64 shared library diagnoses invalid input before writing output") {
-        const auto output = std::filesystem::temp_directory_path() / "libFreeBsdAArch64Invalid.so";
+        const auto output = Rux::Testing::TestTemporaryDirectory() / "libFreeBsdAArch64Invalid.so";
         const auto checkFailure = [&output](std::vector<RcuFile> objects, const std::string &message) {
             std::error_code ec;
             std::filesystem::remove(output, ec);
@@ -906,7 +907,7 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
         const RcuFile alpha = ImportDeclarations({{"alpha", "libzeta.so.1"}});
         const RcuFile beta = ImportDeclarations({{"beta", "libalpha.so.2"}});
         const RcuFile gamma = ImportDeclarations({{"gamma", "libzeta.so.1"}});
-        const auto directory = std::filesystem::temp_directory_path();
+        const auto directory = Rux::Testing::TestTemporaryDirectory();
 
         const ElfImage forward = LinkSharedImage({calls, alpha, beta, gamma},
                                                  directory / "rux-shared-dependencies-forward" / "libImports.so");

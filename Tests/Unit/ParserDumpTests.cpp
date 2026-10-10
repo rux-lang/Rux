@@ -2,6 +2,7 @@
 
 #include "Lexer/Lexer.h"
 #include "Syntax/Parser/Parser.h"
+#include "TemporaryDirectory.h"
 
 #include <doctest.h>
 #include <filesystem>
@@ -77,7 +78,7 @@ asm func Raw() {
         REQUIRE(diagnostic.severity != Diagnostic::Severity::Error);
     }
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-declaration-dump.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-declaration-dump.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -154,7 +155,7 @@ func Transfer(source: Cell) -> Cell {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-ownership-dump.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-ownership-dump.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -183,7 +184,7 @@ func Spellings(bytes: uint8[..], text: var char8[..], pointers: (*int)[..], rows
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-slice-dump.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-slice-dump.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -213,7 +214,7 @@ extend Vect {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-indexer-dump.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-indexer-dump.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -241,7 +242,7 @@ func Main(value: int, pointer: *int) -> int {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-adjacent-stars.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-adjacent-stars.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -272,7 +273,7 @@ variant Result<Value, Error: Display> { Ok(Value), Fail(Error) }
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-generic-bounds.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-generic-bounds.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -355,7 +356,7 @@ enum State: uint8 {
     CHECK(state->form == EnumDecl::Form::Enumeration);
     CHECK_EQ(state->variants.size(), 2);
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-variant-dump.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-variant-dump.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -394,7 +395,7 @@ func Parse() {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-nested-variant.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-nested-variant.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -424,7 +425,7 @@ func Main() -> int {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-layout.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-layout.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -465,7 +466,7 @@ func Main() -> int {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-propagation.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-propagation.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -568,7 +569,7 @@ func Main() -> int {
         REQUIRE(diagnostic.severity != Diagnostic::Severity::Error);
     }
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-statement-dump.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-statement-dump.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
@@ -708,7 +709,7 @@ TEST_CASE("AST dumps keep the format attribute on its parameter") {
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-parser-format-dump.ast";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-format-dump.ast";
     REQUIRE(Parser::DumpAst(parsed, path));
     std::ifstream input(path);
     const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};

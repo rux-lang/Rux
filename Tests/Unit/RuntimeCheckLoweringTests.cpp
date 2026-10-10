@@ -15,6 +15,7 @@
 #include "Syntax/Parser/Parser.h"
 #include "System/Process.h"
 #include "Target/TargetTriple.h"
+#include "TemporaryDirectory.h"
 
 #include <chrono>
 #include <cstddef>
@@ -107,7 +108,7 @@ System::RunResult RunOnHost(const std::string_view source, const BuildProfile pr
 
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto executable =
-        std::filesystem::temp_directory_path() /
+        Rux::Testing::TestTemporaryDirectory() /
         ("rux-runtime-check-" + std::to_string(nonce) + (triple.Os() == Target::OS::Windows ? ".exe" : std::string{}));
     Linker linker(std::move(objects), "RuntimeCheckTest", {}, ArtifactKind::Executable, triple.Os(),
                   triple.Architecture());

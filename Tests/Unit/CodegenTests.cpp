@@ -14,6 +14,7 @@
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 #include "Target/Platform.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <array>
@@ -837,7 +838,7 @@ TEST_CASE("LIR dumps resolved convention and C variadic call metadata") {
     module.funcs.push_back(std::move(caller));
     package.modules.push_back(std::move(module));
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-call-metadata-lir.txt";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-call-metadata-lir.txt";
     REQUIRE(LirPrinter::Dump(package, path));
     std::ifstream input(path);
     REQUIRE(input.good());

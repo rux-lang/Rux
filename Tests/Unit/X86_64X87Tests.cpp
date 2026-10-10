@@ -13,6 +13,7 @@
 #include "System/Process.h"
 #include "Target/FloatLowering.h"
 #include "Target/Platform.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <atomic>
@@ -692,7 +693,7 @@ void CheckRuns(const LirFunc &main) {
 #if RUX_OS_WINDOWS && RUX_ARCH_X86_64
     static std::atomic_uint64_t sequence = 0;
     const std::filesystem::path output =
-        std::filesystem::temp_directory_path() / ("rux-x87-" + std::to_string(++sequence) + ".exe");
+        Rux::Testing::TestTemporaryDirectory() / ("rux-x87-" + std::to_string(++sequence) + ".exe");
     std::error_code error;
     std::filesystem::remove(output, error);
     Linker linker(std::move(objects), "X87", {}, ArtifactKind::Executable, Target::OS::Windows, Target::Arch::X86_64);

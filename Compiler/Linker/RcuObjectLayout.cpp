@@ -110,6 +110,11 @@ RcuObjectLayout RcuObjectLayout::Build(const std::span<const RcuFile> inputObjec
                 Pad(layout.data[Index(*merged)], section.alignment, padding[Index(*merged)]);
                 offsets[Index(*merged)] = layout.data[Index(*merged)].size();
             }
+            else {
+                // Every zero-fill section starts on its own alignment, not only the object's first one.
+                layout.bssSize = Align(layout.bssSize, section.alignment);
+                offsets[Index(*merged)] = layout.bssSize;
+            }
             objectPlacement.sections[sectionIndex] = RcuSectionPlacement{*merged, offsets[Index(*merged)]};
             if (*merged == RcuMergedSection::Bss) {
                 layout.bssSize += section.data.size();

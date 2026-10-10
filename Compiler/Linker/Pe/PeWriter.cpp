@@ -1084,7 +1084,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wU8(0);                                             // Linker version 14.0
     wU32(textFileSize);                                 // SizeOfCode
     wU32(rdataFileSize + dataFileSize + relocFileSize); // SizeOfInitializedData
-    wU32(bssVirtSize);                                  // SizeOfUninitializedData
+    wU32(AlignUp(bssVirtSize, kFileAlign));             // SizeOfUninitializedData, rounded as link.exe rounds it
     wU32(textRva);                                      // AddressOfEntryPoint (__rux_start at start of .text)
     wU32(textRva);                                      // BaseOfCode
     wU64(imageBase);

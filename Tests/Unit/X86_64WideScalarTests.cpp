@@ -11,6 +11,7 @@
 #include "Linker/Linker.h"
 #include "System/Process.h"
 #include "Target/Platform.h"
+#include "TemporaryDirectory.h"
 
 #include <atomic>
 #include <chrono>
@@ -360,7 +361,7 @@ void RunWideScalarPackage(const LirPackage &package) {
     bool reserved = false;
     for (unsigned attempt = 0; attempt < 100 && !reserved; ++attempt) {
         const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        directory = std::filesystem::temp_directory_path() /
+        directory = Rux::Testing::TestTemporaryDirectory() /
                     ("rux-wide-scalar-x86-64-" + std::to_string(stamp) + "-" + std::to_string(++sequence));
         reserved = std::filesystem::create_directory(directory, error);
         REQUIRE_FALSE(error);

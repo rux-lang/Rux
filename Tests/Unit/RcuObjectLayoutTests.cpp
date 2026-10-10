@@ -192,3 +192,16 @@ TEST_CASE("RCU layout materializes zero-fill relocation sites before linking") {
     CHECK(layout.Data(RcuMergedSection::Data).size() == 48);
     CHECK(layout.Alignment(RcuMergedSection::Data) == 32);
 }
+
+TEST_CASE("RCU object layout starts every zero-fill section on its own alignment") {
+    std::array<RcuFile, 1> objects;
+    objects[0].sections = {Section(RcuSecType::Bss, 1, {0}), Section(RcuSecType::Bss, 16, std::vector<std::uint8_t>(4)),
+                           Section(RcuSecType::Bss, 8, {0, 0})};
+    const RcuObjectLayout layout = RcuObjectLayout::Build(objects);
+
+    CHECK(layout.Section(0, 0) == (RcuSectionPlacement{RcuMergedSection::Bss, 0}));
+    CHECK(layout.Section(0, 1) == (RcuSectionPlacement{RcuMergedSection::Bss, 16}));
+    CHECK(layout.Section(0, 2) == (RcuSectionPlacement{RcuMergedSection::Bss, 24}));
+    CHECK(layout.BssSize() == 26);
+    CHECK(layout.Alignment(RcuMergedSection::Bss) == 16);
+}

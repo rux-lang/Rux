@@ -8,6 +8,7 @@
 #include "ElfReader.h"
 #include "Linker/Linker.h"
 #include "MachOReader.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -141,7 +142,7 @@ void AppendWord(std::vector<std::uint8_t> &data, const std::uint32_t word) {
 [[nodiscard]] std::vector<std::uint8_t> Link(RcuFile object, const Target::OS os, const Target::Arch arch,
                                              const std::string_view name, std::string &error,
                                              const ArtifactKind kind = ArtifactKind::Executable) {
-    const auto output = std::filesystem::temp_directory_path() / name;
+    const auto output = Rux::Testing::TestTemporaryDirectory() / name;
     std::error_code fileError;
     std::filesystem::remove(output, fileError);
     Linker linker({std::move(object)}, "ThreadLocalTest", {}, kind, os, arch);

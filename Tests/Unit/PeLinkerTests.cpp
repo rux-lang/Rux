@@ -1,4 +1,5 @@
 #include "Linker/Linker.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <chrono>
@@ -65,7 +66,7 @@ std::string ReadString(const std::vector<uint8_t> &image, size_t offset) {
 
 std::filesystem::path PeTestPath(const std::string_view extension = ".exe") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    return std::filesystem::temp_directory_path() /
+    return Rux::Testing::TestTemporaryDirectory() /
            ("rux-pe-baseline-" + std::to_string(nonce) + std::string(extension));
 }
 

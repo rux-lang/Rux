@@ -4,6 +4,7 @@
 #include "Linker/MachO/MachOLayout.h"
 #include "Linker/NativeObjectWriter.h"
 #include "MachOReader.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -164,7 +165,7 @@ TEST_CASE("Mach-O signed output is deterministic") {
     program.sections.push_back(TextSection({0x31, 0xC0, 0xC3}));
     program.symbols.push_back({"Main", "int", 0, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
 
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-deterministic-first");
     const std::vector<std::uint8_t> second =
@@ -199,7 +200,7 @@ TEST_CASE("Mach-O linker resolves local functions defined in another object") {
 
         const std::vector<std::uint8_t> bytes = LinkBytes(
             {std::move(caller), std::move(definitions)}, ArtifactKind::Executable,
-            std::filesystem::temp_directory_path() / ("rux-macho-cross-object-local-function-" + std::string(suffix)),
+            Rux::Testing::TestTemporaryDirectory() / ("rux-macho-cross-object-local-function-" + std::string(suffix)),
             targetArch);
         MachOImage image;
         std::string error;
@@ -235,7 +236,7 @@ TEST_CASE("Mach-O reader reports the freestanding x86-64 thread entry") {
 
     const MachOImage image =
         LinkAndRead(std::move(program), ArtifactKind::Executable,
-                    std::filesystem::temp_directory_path() / "rux-macho-reader-static-executable-test");
+                    Rux::Testing::TestTemporaryDirectory() / "rux-macho-reader-static-executable-test");
     CHECK(image.Architecture() == MachOArchitecture::X86_64);
     CHECK(image.fileType == 2); // MH_EXECUTE
     CHECK(image.HasCommand(0x05));
@@ -257,7 +258,7 @@ TEST_CASE("Mach-O reader reports the x86-64 executable structure") {
         {"getpid", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
     const MachOImage image = LinkAndRead(std::move(program), ArtifactKind::Executable,
-                                         std::filesystem::temp_directory_path() / "rux-macho-reader-executable-test");
+                                         Rux::Testing::TestTemporaryDirectory() / "rux-macho-reader-executable-test");
     CHECK(image.Architecture() == MachOArchitecture::X86_64);
     CHECK(image.cpuSubtype == 3);
     CHECK(image.fileType == 2); // MH_EXECUTE
@@ -319,7 +320,7 @@ TEST_CASE("Mach-O linker starts and declares each section on its recorded alignm
             {"getpid", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
         const MachOImage image = LinkAndRead(std::move(program), ArtifactKind::Executable,
-                                             std::filesystem::temp_directory_path() / "rux-macho-alignment-test");
+                                             Rux::Testing::TestTemporaryDirectory() / "rux-macho-alignment-test");
         const MachOSection *textSection = image.Section("__TEXT", "__text");
         const MachOSection *constSection = image.Section("__TEXT", "__const");
         const MachOSection *dataSection = image.Section("__DATA", "__data");
@@ -465,7 +466,7 @@ TEST_CASE("Mach-O freestanding x86-64 entry leaves Main a System V aligned stack
 
     const std::vector<std::uint8_t> bytes =
         LinkBytes(std::move(program), ArtifactKind::Executable,
-                  std::filesystem::temp_directory_path() / "rux-macho-static-entry-alignment-test");
+                  Rux::Testing::TestTemporaryDirectory() / "rux-macho-static-entry-alignment-test");
     MachOImage image;
     std::string error;
     REQUIRE(ReadMachO64(bytes, image, error));
@@ -493,7 +494,7 @@ TEST_CASE("Mach-O reader reports the x86-64 dylib structure") {
     library.symbols.push_back({"Value", "int", 0, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported});
 
     const MachOImage image = LinkAndRead(std::move(library), ArtifactKind::SharedLibrary,
-                                         std::filesystem::temp_directory_path() / "librux-macho-reader-test.dylib");
+                                         Rux::Testing::TestTemporaryDirectory() / "librux-macho-reader-test.dylib");
     CHECK(image.Architecture() == MachOArchitecture::X86_64);
     CHECK(image.fileType == 6); // MH_DYLIB
     CHECK(image.Segment("__PAGEZERO") == nullptr);
@@ -523,7 +524,7 @@ TEST_CASE("Mach-O architecture profile diagnoses invalid relocation patches") {
         program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
                       Target::Arch::X86_64);
-        CHECK_FALSE(linker.Link(std::filesystem::temp_directory_path() / "rux-macho-invalid-relocation-test"));
+        CHECK_FALSE(linker.Link(Rux::Testing::TestTemporaryDirectory() / "rux-macho-invalid-relocation-test"));
         REQUIRE(linker.Errors().size() == 1);
         return linker.Errors().front().message;
     };
@@ -610,7 +611,7 @@ TEST_CASE("Mach-O links deterministic signed position-independent AArch64 execut
     program.symbols.push_back({"Helper", "", 32, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     program.symbols.push_back({"Value", "", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
 
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-first", Target::Arch::AArch64);
     const std::vector<std::uint8_t> second =
@@ -750,7 +751,7 @@ TEST_CASE("Mach-O preserves AArch64 section alignment between input objects") {
     program.symbols.push_back({"Main", "int", 0, 16, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     program.symbols.push_back({"__f64_0", "", 0, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
 
-    const auto output = std::filesystem::temp_directory_path() / "rux-macho-aarch64-object-alignment";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-macho-aarch64-object-alignment";
     const std::vector<std::uint8_t> bytes = LinkBytes({std::move(prefixObject), std::move(program)},
                                                       ArtifactKind::Executable, output, Target::Arch::AArch64);
 
@@ -784,7 +785,7 @@ TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
     program.symbols.push_back(
         {"strlen", "/opt/Rux/libExample.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first = LinkBytes(
         program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-import-first", Target::Arch::AArch64);
     const std::vector<std::uint8_t> second = LinkBytes(
@@ -935,7 +936,7 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
     helperObject.symbols.push_back({"Helper", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
     const std::vector<RcuFile> objects{publicObject, helperObject};
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(objects, ArtifactKind::SharedLibrary, temporary / "rux-macho-dylib-first" / "libAnswers.dylib",
                   Target::Arch::AArch64);
@@ -1048,7 +1049,7 @@ TEST_CASE("Mach-O AArch64 dylib diagnostics reject duplicate and unresolved defi
         Linker linker(std::move(objects), "MachOTest", {}, ArtifactKind::SharedLibrary, Target::OS::MacOS,
                       Target::Arch::AArch64);
         CHECK_FALSE(
-            linker.Link(std::filesystem::temp_directory_path() / ("rux-macho-aarch64-dylib-" + std::string(suffix))));
+            linker.Link(Rux::Testing::TestTemporaryDirectory() / ("rux-macho-aarch64-dylib-" + std::string(suffix))));
         REQUIRE_FALSE(linker.Errors().empty());
         return linker.Errors().front().message;
     };
@@ -1080,7 +1081,7 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
                       Target::Arch::AArch64);
         CHECK_FALSE(
-            linker.Link(std::filesystem::temp_directory_path() / ("rux-macho-aarch64-error-" + std::string(suffix))));
+            linker.Link(Rux::Testing::TestTemporaryDirectory() / ("rux-macho-aarch64-error-" + std::string(suffix))));
         REQUIRE_FALSE(linker.Errors().empty());
         return linker.Errors().front().message;
     };

@@ -8,6 +8,7 @@
 #include "Linker/ArchiveWriter.h"
 #include "Linker/Linker.h"
 #include "Linker/NativeObjectWriter.h"
+#include "TemporaryDirectory.h"
 
 #include <array>
 #include <charconv>
@@ -663,7 +664,7 @@ TEST_CASE("FreeBSD AArch64 static archives index deterministic ELF members") {
     };
     const auto objects = [&] { return std::vector{makeObject("Zulu.rux", "Zulu"), makeObject("Alpha.rux", "Alpha")}; };
 
-    const auto directory = std::filesystem::temp_directory_path();
+    const auto directory = Rux::Testing::TestTemporaryDirectory();
     const auto firstPath = directory / "rux-freebsd-aarch64-static-first.a";
     const auto secondPath = directory / "rux-freebsd-aarch64-static-second.a";
     std::error_code filesystemError;
@@ -976,7 +977,7 @@ TEST_CASE("macOS ARM64 static archives carry deterministic BSD symbol indexes") 
     };
     const std::array objects = {makeObject("Zulu.rux", "Zulu"), makeObject("Alpha.rux", "Alpha")};
 
-    const auto directory = std::filesystem::temp_directory_path();
+    const auto directory = Rux::Testing::TestTemporaryDirectory();
     const auto firstPath = directory / "rux-arm64-macho-static-first.a";
     const auto secondPath = directory / "rux-arm64-macho-static-second.a";
     std::error_code filesystemError;
@@ -1158,7 +1159,7 @@ TEST_CASE("Windows ARM64 static and import libraries carry deterministic COFF in
     file.symbols.push_back({"Answer", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     const NativeObject object = WriteAArch64Coff(file);
 
-    const auto directory = std::filesystem::temp_directory_path();
+    const auto directory = Rux::Testing::TestTemporaryDirectory();
     const auto firstPath = directory / "rux-arm64-static-first.lib";
     const auto secondPath = directory / "rux-arm64-static-second.lib";
     const auto importPath = directory / "rux-arm64-import.lib";

@@ -6,6 +6,7 @@
 #include "Semantic/Analysis/ProgramIndex.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
+#include "TemporaryDirectory.h"
 
 #include <doctest.h>
 #include <filesystem>
@@ -59,7 +60,7 @@ const CallExpr &RequireReturnedCall(const FuncDecl &function) {
 }
 
 std::string DumpHir(const HirPackage &package, const std::string &stem) {
-    const auto path = std::filesystem::temp_directory_path() / (stem + ".hir");
+    const auto path = Rux::Testing::TestTemporaryDirectory() / (stem + ".hir");
     REQUIRE(HirPrinter::Dump(package, path));
     std::ifstream input(path);
     REQUIRE(input.good());
@@ -71,7 +72,7 @@ std::string DumpHir(const HirPackage &package, const std::string &stem) {
 }
 
 std::string DumpLir(const LirPackage &package, const std::string &stem) {
-    const auto path = std::filesystem::temp_directory_path() / (stem + ".lir");
+    const auto path = Rux::Testing::TestTemporaryDirectory() / (stem + ".lir");
     REQUIRE(LirPrinter::Dump(package, path));
     std::ifstream input(path);
     REQUIRE(input.good());

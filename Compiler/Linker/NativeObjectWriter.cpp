@@ -31,6 +31,20 @@ bool WriteNativeObject(const RcuFile &file, const Target::OS targetOs, const Tar
     return WriteElfObject(file, targetOs, targetArch, output, error);
 }
 
+bool ValidateSymbolSections(const RcuFile &file, const std::string_view writer, std::string &error) {
+    for (const auto &symbol : file.symbols) {
+        if (symbol.sectionIdx == RCU_SEC_EXTERNAL || symbol.sectionIdx == RCU_SEC_ABSOLUTE ||
+            SymbolSectionIndex(file, symbol.sectionIdx)) {
+            continue;
+        }
+        error = std::format("symbol '{}' is defined in section {}, which the object does not contain, so the {} "
+                            "cannot place it",
+                            symbol.name, symbol.sectionIdx, writer);
+        return false;
+    }
+    return true;
+}
+
 std::optional<std::size_t> SymbolSectionIndex(const RcuFile &file, const std::uint16_t sectionIdx) {
     std::uint32_t type = RcuSecType::Null;
     switch (sectionIdx) {

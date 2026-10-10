@@ -513,6 +513,9 @@ bool SerializeMachOObject(const RcuFile &file, const Target::Arch targetArch, Na
 } // namespace
 
 bool WriteMachOObject(const RcuFile &file, const Target::Arch targetArch, NativeObject &output, std::string &error) {
+    if (!ValidateSymbolSections(file, "Mach-O object writer", error)) {
+        return false;
+    }
     for (const auto &section : file.sections) {
         for (const auto &relocation : section.relocs) {
             const bool writable = targetArch == Target::Arch::AArch64 ? IsAArch64MachORelocation(relocation.type)

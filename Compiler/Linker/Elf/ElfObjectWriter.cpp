@@ -359,7 +359,7 @@ bool Serialize(const RcuFile &file, const Target::Elf64Profile &profile, NativeO
             symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
             : symbol.sectionIdx == RCU_SEC_ABSOLUTE
                 ? 0xfff1
-                : static_cast<std::uint16_t>(SymbolSectionIndex(file, symbol.sectionIdx).value_or(0) + 1);
+                : static_cast<std::uint16_t>(*SymbolSectionIndex(file, symbol.sectionIdx) + 1);
         symbols.U16(sectionIndex);
         symbols.U64(symbol.value);
         symbols.U64(symbol.size);
@@ -486,6 +486,9 @@ bool WriteElfObject(const RcuFile &file, const Target::OS targetOs, const Target
                 return false;
             }
         }
+    }
+    if (!ValidateSymbolSections(file, "ELF object writer", error)) {
+        return false;
     }
     output.name = std::filesystem::path(file.sourcePath).stem().string();
     if (output.name.empty()) {
