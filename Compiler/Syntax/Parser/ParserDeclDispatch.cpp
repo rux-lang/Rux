@@ -135,6 +135,15 @@ DeclPtr Parser::ParseDecl() {
     if (Check(TokenKind::VarKeyword)) {
         return AttachDocumentation(ApplyAttrs(ParseGlobalDecl(isPublic), attrs));
     }
+    // `thread` is a word only before `var`, so it remains an ordinary identifier everywhere else.
+    if (Check(TokenKind::Ident) && Peek().text == "thread" && Peek(1).Is(TokenKind::VarKeyword)) {
+        Advance(); // 'thread'
+        auto global = ParseGlobalDecl(isPublic);
+        if (global) {
+            global->isThreadLocal = true;
+        }
+        return AttachDocumentation(ApplyAttrs(std::move(global), attrs));
+    }
     if (Check(TokenKind::LetKeyword)) {
         EmitError(CurrentLocation(), "'let' is not allowed at module scope",
                   "use 'const' for a value that never changes, or 'var' for a module variable");

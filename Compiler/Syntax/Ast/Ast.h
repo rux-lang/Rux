@@ -877,6 +877,8 @@ struct GlobalDecl : Decl {
     std::string name;
     TypeExprPtr type;
     ExprPtr value;
+    /// `thread var`: every thread has its own copy, each starting as the initial value.
+    bool isThreadLocal = false;
 };
 
 // type Name = Type;

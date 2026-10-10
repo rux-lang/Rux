@@ -62,8 +62,9 @@ enum class LirOpcode {
     // SSA join
     Phi, // %dst = phi <type> [%val, bb], ...
     // Global address
-    GlobalAddr, // %dst = globaladdr <name> — address of a named global symbol
-    StringAddr, // %dst = stringaddr <value> — address of static literal storage
+    GlobalAddr,      // %dst = globaladdr <name> — address of a named global symbol
+    ThreadLocalAddr, // %dst = threadlocaladdr <name> — this thread's copy of a thread-local variable
+    StringAddr,      // %dst = stringaddr <value> — address of static literal storage
     // Atomic memory operations, each carrying its memory order. The value type is `type` throughout.
     AtomicLoad,     // %dst = atomic_load <type> %ptr
     AtomicStore,    // atomic_store <type> %val, %ptr
@@ -148,6 +149,8 @@ enum class LirOpcode {
         return "phi";
     case LirOpcode::GlobalAddr:
         return "globaladdr";
+    case LirOpcode::ThreadLocalAddr:
+        return "threadlocaladdr";
     case LirOpcode::StringAddr:
         return "stringaddr";
     case LirOpcode::AtomicLoad:
@@ -367,6 +370,8 @@ struct LirGlobal {
     bool isExported = false;
     TypeRef type;
     std::vector<LirConstScalar> scalars;
+    /// One copy per thread, in the image's thread-local template rather than its ordinary data.
+    bool isThreadLocal = false;
 };
 
 struct LirTypeAlias {

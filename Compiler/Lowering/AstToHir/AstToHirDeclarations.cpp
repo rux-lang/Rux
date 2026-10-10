@@ -558,6 +558,7 @@ HirGlobal AstToHirContext::LowerGlobal(const GlobalDecl &d) {
     global.isExported = global.isPublic && model.IsExported(d);
     global.type = ResolveType(*d.type);
     global.value = LowerExprAs(*d.value, global.type);
+    global.isThreadLocal = d.isThreadLocal;
     global.location = d.location;
     return global;
 }

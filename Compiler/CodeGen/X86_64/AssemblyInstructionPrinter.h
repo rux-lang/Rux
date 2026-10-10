@@ -31,6 +31,7 @@ public:
     [[nodiscard]] bool EmitArithmetic(const LirInstr &instruction);
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
     [[nodiscard]] bool EmitAtomic(const LirInstr &instruction);
+    [[nodiscard]] bool EmitThreadLocal(const LirInstr &instruction);
 
     /// Operand operations shared with call and control-flow text. They remain the single owner of virtual-register and
     /// stack-slot spelling.

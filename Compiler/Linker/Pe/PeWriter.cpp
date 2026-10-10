@@ -8,8 +8,10 @@
 #include "System/OutputFile.h"
 
 #include <algorithm>
+#include <bit>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -23,6 +25,8 @@ namespace Rux {
 [[maybe_unused]] static constexpr uint64_t kImageBase = 0x1'4000'0000ULL;
 [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
 [[maybe_unused]] static constexpr uint32_t kFileAlign = 0x200; // 512 B file alignment
+// IMAGE_TLS_DIRECTORY64: four addresses, the zero-fill size and the characteristics.
+static constexpr uint32_t kTlsDirectorySize = 40;
 [[maybe_unused]] static constexpr uint16_t kMagicPE32P = 0x020B;
 [[maybe_unused]] static constexpr uint16_t kSubsystemCUI = 3; // console
 
@@ -744,14 +748,43 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
     }
 
+    // 4b. Thread-local storage. The loader gives the image a slot in every thread's block array and fills it with a
+    // copy of the template, so the image carries the template, an IMAGE_TLS_DIRECTORY64 naming it and the word the
+    // loader writes the slot's index to, and an empty callback list. The template lives in .rdata: the loader only
+    // reads it, and the relocations into it are patched in a separate buffer and copied over it afterwards.
+    Buf tlsBuf = layout.Data(RcuMergedSection::Tls);
+    const bool hasTls = !tlsBuf.empty();
+    const uint32_t tlsAlign = std::max<uint32_t>(layout.Alignment(RcuMergedSection::Tls), 1);
+    uint32_t tlsTemplateOff = 0;
+    uint32_t tlsCallbacksOff = 0;
+    uint32_t tlsDirectoryOff = 0;
+    if (hasTls) {
+        if (isDll) {
+            Error("thread-local variables are not supported in a DLL yet");
+            return false;
+        }
+        PadTo(rdataBuf, std::max<uint32_t>(tlsAlign, 8));
+        tlsTemplateOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, tlsBuf.size());
+        PadTo(rdataBuf, 8);
+        tlsCallbacksOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, 8);
+        tlsDirectoryOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, kTlsDirectorySize);
+    }
+
     // 5. Compute section layout (RVAs and file offsets)
     // Every Abs64 fixup becomes an IMAGE_REL_BASED_DIR64 entry, so the .reloc
     // section exists exactly when the merged objects contain one.
-    const bool hasAbsoluteFixups = std::ranges::any_of(graph->References(), [&](const RcuLinkReference &reference) {
-        const RcuReloc &relocation =
-            objects[reference.objectIndex].sections[reference.sectionIndex].relocs[reference.relocationIndex];
-        return relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
-    });
+    const bool hasAbsoluteFixups =
+        std::ranges::any_of(
+            graph->References(),
+            [&](const RcuLinkReference &reference) {
+                const RcuReloc &relocation =
+                    objects[reference.objectIndex].sections[reference.sectionIndex].relocs[reference.relocationIndex];
+                return relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
+            }) ||
+        hasTls;
     const auto bssVirtSize = static_cast<uint32_t>(layout.BssSize());
     const uint32_t numSections =
         (dataBuf.empty() ? 2u : 3u) + (bssVirtSize == 0 ? 0u : 1u) + (hasAbsoluteFixups ? 1u : 0u);
@@ -805,6 +838,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         .rodata = imageBase + rdataRva,
         .data = imageBase + dataRva,
         .bss = imageBase + bssRva,
+        .tls = imageBase + rdataRva + tlsTemplateOff,
     };
     const auto symbolAddress = [&](const RcuSymbolLocation location) -> std::optional<uint64_t> {
         const auto placement = layout.Symbol(location);
@@ -876,12 +910,45 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         case RcuMergedSection::Data:
             buffer = &dataBuf;
             break;
+        case RcuMergedSection::Tls:
+            buffer = &tlsBuf;
+            break;
         case RcuMergedSection::Bss:
             continue;
         }
 
         if (relocation.type == RcuRelType::Abs64) {
             baseRelocationRvas.push_back(static_cast<uint32_t>(*siteAddress - imageBase));
+        }
+
+        if (relocation.type == RcuRelType::TlsOffset32 || relocation.type == RcuRelType::AArch64TlsHi12 ||
+            relocation.type == RcuRelType::AArch64TlsLo12Nc) {
+            // A thread-local variable is addressed by its offset in the thread's block, the template's own layout.
+            const auto target = reference.definition ? layout.Symbol(*reference.definition) : std::nullopt;
+            std::string relocationError;
+            if (!target || target->section != RcuMergedSection::Tls) {
+                relocationError = std::format(
+                    "thread-local relocation to '{}' names a variable that is not thread-local", symbol.name);
+            }
+            else if (relocation.type == RcuRelType::TlsOffset32) {
+                const auto offset = static_cast<int64_t>(target->offset) + relocation.addend;
+                if (offset < 0 || offset > std::numeric_limits<int32_t>::max()) {
+                    relocationError = std::format("thread-local variable '{}' is out of range", symbol.name);
+                }
+                else {
+                    Patch32(*buffer, static_cast<size_t>(sitePlacement->offset), static_cast<uint32_t>(offset));
+                }
+            }
+            else {
+                (void)ApplyAArch64Relocation(*buffer, static_cast<size_t>(sitePlacement->offset), relocation.type,
+                                             target->offset, relocation.addend, *siteAddress, symbol.name,
+                                             "PE32+ writer", relocationError);
+            }
+            if (!relocationError.empty()) {
+                auto notes = RelocationNotes(reference, relocationError);
+                Error(std::move(relocationError), std::move(notes));
+            }
+            continue;
         }
 
         std::optional<uint64_t> targetAddress;
@@ -912,6 +979,27 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
     if (!errors.empty()) {
         return false;
+    }
+
+    if (hasTls) {
+        std::ranges::copy(tlsBuf, rdataBuf.begin() + tlsTemplateOff);
+        const auto indexLocation = graph->FindDefinition(std::string(kTlsIndexSymbol));
+        const auto indexAddress = indexLocation ? symbolAddress(*indexLocation) : std::nullopt;
+        if (!indexAddress) {
+            Error("internal: the thread-local index word was not linked");
+            return false;
+        }
+        const uint64_t templateAddress = imageBase + rdataRva + tlsTemplateOff;
+        Patch64(rdataBuf, tlsDirectoryOff + 0, templateAddress);                         // StartAddressOfRawData
+        Patch64(rdataBuf, tlsDirectoryOff + 8, templateAddress + tlsBuf.size());         // EndAddressOfRawData
+        Patch64(rdataBuf, tlsDirectoryOff + 16, *indexAddress);                          // AddressOfIndex
+        Patch64(rdataBuf, tlsDirectoryOff + 24, imageBase + rdataRva + tlsCallbacksOff); // AddressOfCallBacks
+        Patch32(rdataBuf, tlsDirectoryOff + 32, 0);                                      // SizeOfZeroFill
+        // Characteristics holds the template's alignment as an IMAGE_SCN_ALIGN value.
+        Patch32(rdataBuf, tlsDirectoryOff + 36, static_cast<uint32_t>(std::bit_width(tlsAlign)) << 20U);
+        for (uint32_t field = 0; field < 4; ++field) {
+            baseRelocationRvas.push_back(rdataRva + tlsDirectoryOff + field * 8);
+        }
     }
 
     // 10. Build the base-relocation table: one block per 4 KB page holding an
@@ -1030,11 +1118,11 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wDir(0, 0);                                           // [2..4]
     wDir(relocBuf.empty() ? 0 : relocRva, relocVirtSize); // [5] Base relocation
     wDir(0, 0);
-    wDir(0, 0); // [6..7]
+    wDir(0, 0);                                                                    // [6..7]
+    wDir(0, 0);                                                                    // [8] Global pointer
+    wDir(hasTls ? rdataRva + tlsDirectoryOff : 0, hasTls ? kTlsDirectorySize : 0); // [9] TLS
     wDir(0, 0);
-    wDir(0, 0);
-    wDir(0, 0);
-    wDir(0, 0);                                          // [8..11]
+    wDir(0, 0);                                          // [10..11]
     wDir(iatSize == 0 ? 0 : rdataRva + iatOff, iatSize); // [12] IAT
     wDir(0, 0);
     wDir(0, 0);

@@ -709,6 +709,8 @@ struct HirGlobal {
     TypeRef type;
     /// The compile-time initial value, lowered as the declared type.
     HirExprPtr value;
+    /// Every thread has its own copy, reached through the thread's own storage rather than one address.
+    bool isThreadLocal = false;
     SourceLocation location;
 };
 

@@ -13,7 +13,7 @@ RcuFile AArch64ModuleEmitter::Generate() {
 void AArch64ModuleEmitter::GenInstr(AArch64FunctionEmitter &functionEmitter, AArch64CallEmitter &callEmitter,
                                     AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr) {
     if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr) ||
-        functionEmitter.EmitAtomic(instr) || callEmitter.Emit(instr)) {
+        functionEmitter.EmitAtomic(instr) || functionEmitter.EmitThreadLocal(instr) || callEmitter.Emit(instr)) {
         return;
     }
     switch (instr.op) {

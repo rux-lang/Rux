@@ -328,6 +328,15 @@ private:
         AddTextReloc(sectionOffset, symbol, RcuRelType::AArch64Call26);
     }
 
+    void AddTypedTextRelocation(const std::uint32_t sectionOffset, const std::uint32_t symbol,
+                                const std::uint16_t type) override {
+        AddTextReloc(sectionOffset, symbol, type);
+    }
+
+    [[nodiscard]] Target::OS TargetOs() const override {
+        return targetOs;
+    }
+
     [[nodiscard]] std::uint32_t ResolveCallSymbol(const std::string &name) override {
         if (const auto it = funcSyms.find(name); it != funcSyms.end()) {
             return it->second;

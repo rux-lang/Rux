@@ -243,6 +243,15 @@ private:
         AddTextReloc(sectionOffset, symbol);
     }
 
+    void AddTypedTextRelocation(const std::uint32_t sectionOffset, const std::uint32_t symbol,
+                                const std::uint16_t type) override {
+        (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, sectionOffset, symbol, type);
+    }
+
+    [[nodiscard]] Target::OS TargetOs() const override {
+        return targetOs;
+    }
+
     void EmitCallArguments(const std::vector<LirReg> &arguments) override {
         activeCallEmitter->EmitArguments(arguments);
     }

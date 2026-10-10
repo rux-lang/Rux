@@ -180,7 +180,20 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // buffered stdio is flushed — a raw exit syscall would discard it — so we
     // pull in exit() as an implicit import (mirroring the PE writer's use of
     // ExitProcess for its entry stub).
-    const bool dynamic = isShared || !importLib.empty();
+    // Thread-local variables are reached at fixed offsets from the thread pointer, so the image describes their
+    // template in PT_TLS and the dynamic loader builds every thread's block from it, the main thread's included. That
+    // is why a program with thread-local variables is linked against libc, as a program that starts threads is anyway.
+    // A shared library would need the dynamic TLS models, which are not implemented yet.
+    const bool hasTls = std::ranges::any_of(objects, [](const RcuFile &object) {
+        return std::ranges::any_of(object.sections, [](const RcuSection &section) {
+            return section.type == RcuSecType::Tls && !section.data.empty();
+        });
+    });
+    if (hasTls && isShared) {
+        Error("thread-local variables are not supported in an ELF shared library yet");
+        return false;
+    }
+    const bool dynamic = isShared || !importLib.empty() || hasTls;
     const Target::ElfDynamicRelocations dynRelocs = profile.dynamicRelocations;
     if (dynamic && !isShared) {
         importLib.try_emplace("exit", profile.defaultLibc);
@@ -260,6 +273,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     RcuLayoutPrefixes prefixes;
     prefixes.text = textPre;
     const RcuObjectLayout layout = RcuObjectLayout::Build(objects, prefixes);
+    Buf tlsBuf = layout.Data(RcuMergedSection::Tls);
+    const uint64_t tlsAlign = std::max<uint64_t>(layout.Alignment(RcuMergedSection::Tls), 1);
     Buf textBuf = layout.Data(RcuMergedSection::Text);
     Buf rodataBuf = layout.Data(RcuMergedSection::RoData);
     Buf dataBuf = layout.Data(RcuMergedSection::Data);
@@ -378,6 +393,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             case RcuMergedSection::Data:
                 buffer = &dat;
                 break;
+            case RcuMergedSection::Tls:
+                buffer = &tlsBuf;
+                break;
             case RcuMergedSection::Bss:
                 continue;
             }
@@ -400,6 +418,32 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
 
             const size_t patchAt = static_cast<size_t>(sitePlacement->offset);
+            if (relocation.type == RcuRelType::TlsOffset32 || relocation.type == RcuRelType::AArch64TlsHi12 ||
+                relocation.type == RcuRelType::AArch64TlsLo12Nc) {
+                // A thread-local variable's offset from the thread pointer. x86-64 puts the program's block just
+                // below the thread pointer (TLS variant II), so the offset is negative; AArch64 puts it after a
+                // sixteen-byte control block above the thread pointer (variant I).
+                const auto target = reference.definition ? layout.Symbol(*reference.definition) : std::nullopt;
+                if (!target || target->section != RcuMergedSection::Tls) {
+                    const std::string error = std::format(
+                        "thread-local relocation to '{}' names a variable that is not thread-local", symbol.name);
+                    Error(error, RelocationNotes(reference, error));
+                    continue;
+                }
+                if (!aarch64) {
+                    const auto offset = static_cast<int64_t>(target->offset) + relocation.addend -
+                                        static_cast<int64_t>(alignUp(tlsBuf.size(), tlsAlign));
+                    Patch32(*buffer, patchAt, static_cast<uint32_t>(static_cast<int32_t>(offset)));
+                    continue;
+                }
+                std::string error;
+                if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, alignUp(16, tlsAlign) + target->offset,
+                                            relocation.addend, *siteAddress, symbol.name, "ELF writer", error)) {
+                    auto notes = RelocationNotes(reference, error);
+                    Error(std::move(error), std::move(notes));
+                }
+                continue;
+            }
             if (!aarch64 && relocation.type == RcuRelType::Rel32) {
                 uint64_t value = 0;
                 int64_t displacement = 0;
@@ -797,7 +841,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // 5. Assign file offsets; every section's VA is imageBase + its file offset.
     constexpr uint64_t phoff = 64;
-    const auto phnum = static_cast<uint16_t>((isShared ? 4 : 5) + (hasAbiNote ? 1 : 0));
+    const auto phnum = static_cast<uint16_t>((isShared ? 4 : 5) + (hasAbiNote ? 1 : 0) + (hasTls ? 1 : 0));
     uint64_t off = 64 + static_cast<uint64_t>(phnum) * 56;
 
     const uint64_t noteOff = off;
@@ -833,11 +877,19 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     off = dynamicOff + dynSz;
     const uint64_t gotOff = alignUp(off, 8);
     off = gotOff + gotSz;
+    // The thread-local template sits at the start of its own alignment, so its first byte is aligned in every thread's
+    // block the loader copies it to.
+    const uint64_t tlsOff = alignUp(off, tlsAlign);
+    if (hasTls) {
+        off = tlsOff + tlsBuf.size();
+    }
     const uint64_t dataOff = alignUp(off, sectionAlignment(RcuMergedSection::Data, 8));
     // The RW segment's file size must not claim bytes past the last one we
     // actually write (an empty .data would leave the trailing alignment gap
     // unwritten).
-    const uint64_t rwFileEnd = dataBuf.empty() ? (gotOff + gotSz) : (dataOff + dataBuf.size());
+    const uint64_t rwFileEnd = !dataBuf.empty() ? (dataOff + dataBuf.size())
+                             : hasTls           ? (tlsOff + tlsBuf.size())
+                                                : (gotOff + gotSz);
     const uint64_t bssOff = alignUp(dataOff + dataBuf.size(), layout.Alignment(RcuMergedSection::Bss));
     const uint64_t rwMemoryEnd = bssOff + layout.BssSize();
 
@@ -854,7 +906,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const uint64_t gotVA = imageBase + gotOff;
     const uint64_t dataVA = imageBase + dataOff;
     const uint64_t bssVA = imageBase + bssOff;
-    const RcuSectionBases sectionBases{.text = textVA, .rodata = rodataVA, .data = dataVA, .bss = bssVA};
+    const RcuSectionBases sectionBases{
+        .text = textVA, .rodata = rodataVA, .data = dataVA, .bss = bssVA, .tls = imageBase + tlsOff};
 
     for (const auto &symbol : exportedDataSymbols) {
         Patch64(dynsym, symbol.dynsymValueOffset, dataVA + symbol.dataOffset);
@@ -1053,6 +1106,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     if (hasAbiNote) {
         writePhdr(phdrs, kPtNote, kPfR, noteOff, imageBase + noteOff, abiNote.size(), abiNote.size(), 4); // PT_NOTE
     }
+    if (hasTls) {
+        static constexpr uint32_t kPtTls = 7;
+        writePhdr(phdrs, kPtTls, kPfR, tlsOff, imageBase + tlsOff, tlsBuf.size(), tlsBuf.size(), tlsAlign); // PT_TLS
+    }
 
     return emitFile(phnum, phdrs,
                     {{noteOff, &abiNote},
@@ -1067,6 +1124,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                      {rodataOff, &rodataBuf},
                      {dynamicOff, &dyn},
                      {gotOff, &got},
+                     {tlsOff, &tlsBuf},
                      {dataOff, &dataBuf}},
                     isShared ? 0 : textVA, phoff);
 }

@@ -184,3 +184,52 @@ TEST_CASE("a public module variable cannot expose a private type") {
     }
     CHECK(reported);
 }
+
+TEST_CASE("'thread var' declares a thread-local module variable") {
+    auto parsed = ParseSource(R"(
+        thread var Depth: int64 = 0;
+        pub thread var Seed: uint32 = 7;
+        var Shared: int64 = 1;
+    )");
+    REQUIRE_FALSE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.module.items.size(), 3);
+    const auto *depth = dynamic_cast<const GlobalDecl *>(parsed.module.items[0].get());
+    const auto *seed = dynamic_cast<const GlobalDecl *>(parsed.module.items[1].get());
+    const auto *shared = dynamic_cast<const GlobalDecl *>(parsed.module.items[2].get());
+    REQUIRE(depth != nullptr);
+    REQUIRE(seed != nullptr);
+    REQUIRE(shared != nullptr);
+    CHECK(depth->isThreadLocal);
+    CHECK_FALSE(depth->isPublic);
+    CHECK(seed->isThreadLocal);
+    CHECK(seed->isPublic);
+    CHECK_FALSE(shared->isThreadLocal);
+}
+
+TEST_CASE("'thread' stays an ordinary name everywhere but before a module 'var'") {
+    const auto diagnostics = AnalyzeSource(R"(
+        var thread: int = 1;
+        thread var Count: int = 0;
+        func Main() -> int {
+            let thread: int = 2;
+            Count = Count + thread;
+            return Count;
+        }
+    )");
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("a thread-local variable follows the rules of a module variable") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Handle { value: int; }
+        extend Handle {
+            func ~Handle(self: &var Handle) {}
+        }
+        func Seed() -> int { return 1; }
+        thread var Open: Handle = Handle { value: 1 };
+        thread var First: int = Seed();
+        func Main() -> int { return First; }
+    )");
+    CHECK(HasMessage(diagnostics, "module variable 'Open' has type 'Handle', which needs destruction"));
+    CHECK(HasMessage(diagnostics, "call to 'Seed' is not a compile-time value"));
+}

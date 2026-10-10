@@ -1,0 +1,95 @@
+// A thread-local variable is one storage location per thread: every function running on a thread that names it, in
+// this package or another, reads and writes that thread's bytes, which start as the initializer and keep their address
+// for the thread's life. Zero and non-zero initializers, wide scalars, arrays and structs are covered, because each
+// is copied from the template the loader builds every thread's block from. Separate threads are exercised by the
+// Thread package's tests.
+
+import Core::Assert;
+import ThreadVarProvider::{ Depth, DepthAddress, Enter, Marker, NextHidden };
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+thread var Count: int = 0;
+thread var Big: int128 = (1i128 << 100u32) + 5i128;
+thread var Wide: uint256 = 3u256;
+thread var Buffer: byte[256] = [0; 256];
+thread var Bytes: byte[3] = [7, 8, 9];
+thread var Origin: Point = Point { x: 3, y: -4 };
+thread var Ratio: float64 = 0.25;
+pub thread var Flag: bool = true;
+
+module Scope {
+    pub thread var Level: int32 = 5;
+
+    pub func Raise() {
+        Level = Level + 1;
+    }
+}
+
+func Add(amount: int) {
+    Count = Count + amount;
+}
+
+func Main() -> int {
+    // Writes in one function are seen by another on the same thread.
+    Assert(Count == 0, "a zero-initialized thread-local variable starts at zero");
+    Add(4);
+    Add(6);
+    Count += 2;
+    Count++;
+    Assert(Count == 13, "writes in one function are visible in another");
+
+    // Wide scalars, floats and booleans keep every byte.
+    Assert(Big == (1i128 << 100u32) + 5i128, "int128 starts as its initializer");
+    Big = Big - 5i128;
+    Assert(Big == 1i128 << 100u32, "int128 writes keep every byte");
+    Assert(Wide == 3u256, "uint256 starts as its initializer");
+    Wide = (Wide << 200u32) | 1u256;
+    Assert((Wide >> 200u32) == 3u256 && (Wide & 1u256) == 1u256, "uint256 writes keep every byte");
+    Assert(Ratio == 0.25, "float64 starts as its initializer");
+    Ratio = Ratio * 4.0;
+    Assert(Ratio == 1.0, "float64 writes");
+    Assert(Flag, "bool starts as its initializer");
+    Flag = false;
+    Assert(!Flag, "bool writes");
+
+    // Arrays and structs.
+    var sum: uint = 0;
+    for value in Buffer {
+        sum = sum + value as uint;
+    }
+    Assert(sum == 0u, "a zero array reads as zero");
+    Buffer[255] = 0x5A;
+    Assert(Buffer[255] == 0x5A && Buffer[0] == 0, "array elements are writable");
+    Assert(Bytes[0] == 7 && Bytes[1] == 8 && Bytes[2] == 9, "a byte array starts as its initializer");
+    Assert(Origin.x == 3 && Origin.y == -4, "a struct starts as its initializer");
+    Origin.y = 12;
+    Assert(Origin.x == 3 && Origin.y == 12, "struct fields are writable");
+
+    // A stable address within the thread.
+    let first: *var int = @Count;
+    let second: *var int = @Count;
+    Assert(first == second, "every address of a thread-local variable is the same within a thread");
+    Assert(first as uint % alignof(int) == 0u, "a thread-local variable is aligned");
+    *first = 100;
+    Assert(Count == 100, "a write through the address writes the variable");
+
+    // Nested modules.
+    Assert(Scope::Level == 5, "a thread-local variable in a module starts as its initializer");
+    Scope::Raise();
+    Scope::Level += 10;
+    Assert(Scope::Level == 16, "a module's thread-local variable is shared by its functions");
+
+    // Another package's thread-local variables.
+    Assert(Depth == 0 && Marker == 0xC0FFEE, "another package's variables start as their initializers");
+    Assert(Enter() == 1 && Enter() == 2, "another package's functions write its variables");
+    Assert(Depth == 2, "this package reads the writes another package made");
+    Depth = 40;
+    Assert(Enter() == 41, "another package reads the writes this package made");
+    Assert(DepthAddress() == @Depth, "both packages see one address");
+    Assert(NextHidden() == 42 && NextHidden() == 44, "a private thread-local variable keeps its value");
+    return 0;
+}

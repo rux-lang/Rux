@@ -3,6 +3,7 @@
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "Ir/Lir/Lir.h"
+#include "Target/Target.h"
 
 #include <cstdint>
 #include <string>
@@ -29,6 +30,10 @@ public:
     [[nodiscard]] virtual std::uint32_t ResolveNamedDataSymbol(const std::string &name) = 0;
     [[nodiscard]] virtual std::uint32_t ResolveGlobalSymbol(const std::string &name) = 0;
     virtual void AddTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol) = 0;
+    /// A text relocation of a kind other than the RIP-relative one `AddTextRelocation` adds.
+    virtual void AddTypedTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol, std::uint16_t type) = 0;
+    /// The operating system the module is built for, which decides how a thread reaches its thread-local block.
+    [[nodiscard]] virtual Target::OS TargetOs() const = 0;
     virtual void EmitCallArguments(const std::vector<LirReg> &arguments) = 0;
 };
 
@@ -50,6 +55,9 @@ public:
     /// Returns true exactly when the instruction is an atomic memory operation, a fence or a spin hint and was emitted
     /// here.
     [[nodiscard]] bool EmitAtomic(const LirInstr &instruction);
+
+    /// Returns true exactly when the instruction is the address of a thread-local variable and was emitted here.
+    [[nodiscard]] bool EmitThreadLocal(const LirInstr &instruction);
 
 private:
     X64Enc &encoder;

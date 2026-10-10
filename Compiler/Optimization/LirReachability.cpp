@@ -180,7 +180,7 @@ private:
                 if (instruction.op == LirOpcode::Call) {
                     Add(index.functions, instruction.strArg);
                 }
-                else if (instruction.op == LirOpcode::GlobalAddr) {
+                else if (instruction.op == LirOpcode::GlobalAddr || instruction.op == LirOpcode::ThreadLocalAddr) {
                     Add(index.all, instruction.strArg);
                 }
                 else if (instruction.op == LirOpcode::Load && instruction.srcs.empty()) {

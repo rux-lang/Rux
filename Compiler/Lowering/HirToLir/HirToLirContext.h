@@ -156,7 +156,8 @@ private:
     [[nodiscard]] static bool IsPointerArithmetic(const TypeRef &type);
     [[nodiscard]] LirReg EmitPointerOffset(LirReg base, LirReg index, const TypeRef &pointerType);
     [[nodiscard]] LirReg EmitPointerStep(LirReg base, const TypeRef &pointerType, bool forward);
-    [[nodiscard]] LirReg EmitGlobalAddr(std::string label, TypeRef pointee = TypeRef::MakeOpaque());
+    [[nodiscard]] LirReg EmitThreadLocalAddr(std::string label, TypeRef pointee);
+    LirReg EmitGlobalAddr(std::string label, TypeRef pointee = TypeRef::MakeOpaque());
     [[nodiscard]] LirReg EmitStringAddr(std::string value, const TypeRef &elementType);
 
     [[nodiscard]] bool IsInterfaceType(const TypeRef &type) const;
@@ -271,6 +272,7 @@ private:
     LirReg LowerCopy(const HirCopyExpr &expression);
     LirReg LowerMove(const HirMoveExpr &expression);
     LirReg LowerInterfaceCall(const HirInterfaceCallExpr &expression);
+    LirReg GlobalStorageAddr(const HirGlobal &global);
     LirReg LowerAtomicBuiltin(const HirCallExpr &e, std::string_view operation);
     LirReg LowerCall(const HirCallExpr &expression);
     LirReg LowerArgument(const HirExpr &argument);

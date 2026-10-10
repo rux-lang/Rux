@@ -26,6 +26,8 @@ namespace {
         return ".data";
     case RcuModuleSection::Bss:
         return ".bss";
+    case RcuModuleSection::Tls:
+        return ".tls";
     }
     return "<invalid>";
 }
@@ -37,6 +39,12 @@ namespace {
         return 8;
     case RcuRelType::Abs32:
     case RcuRelType::Rel32:
+    case RcuRelType::TlsOffset32:
+    case RcuRelType::TlvDescriptorRel32:
+    case RcuRelType::AArch64TlsHi12:
+    case RcuRelType::AArch64TlsLo12Nc:
+    case RcuRelType::AArch64TlvDescriptorPage21:
+    case RcuRelType::AArch64TlvDescriptorPageOff12:
     case RcuRelType::AArch64Call26:
     case RcuRelType::AArch64Jump26:
     case RcuRelType::AArch64CondBr19:
@@ -56,7 +64,7 @@ namespace {
 }
 
 [[nodiscard]] constexpr bool IsAArch64InstructionRelocation(const std::uint16_t type) noexcept {
-    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64MovwUabsG3;
+    return IsAArch64InstructionRelocationType(type);
 }
 
 /// The alignment a section starts with before any value asks for more: code at a cache-friendly sixteen, data at the
@@ -93,6 +101,11 @@ namespace {
         section.name = ".bss";
         section.type = RcuSecType::Bss;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        break;
+    case RcuModuleSection::Tls:
+        section.name = ".tls";
+        section.type = RcuSecType::Tls;
+        section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write | RcuSecFlag::Tls;
         break;
     }
     section.alignment = std::max(BaseAlignment(id), alignment);
@@ -426,16 +439,21 @@ RcuModuleBuildResult RcuModuleBuilder::Finalize() {
     file.ruxVersion = description.ruxVersion;
     file.compilerFlags = description.compilerFlags;
     file.sourceHash = description.sourceHash;
-    file.sections.reserve(4);
+    file.sections.reserve(5);
     file.sections.push_back(MakeSection(RcuModuleSection::Text, std::move(sectionData[0]),
                                         std::move(sectionRelocations[0]), sectionAlignments[0]));
     file.sections.push_back(MakeSection(RcuModuleSection::RoData, std::move(sectionData[1]),
                                         std::move(sectionRelocations[1]), sectionAlignments[1]));
     file.sections.push_back(MakeSection(RcuModuleSection::Data, std::move(sectionData[2]),
                                         std::move(sectionRelocations[2]), sectionAlignments[2]));
-    if (!sectionData[3].empty()) {
+    // Sections are found by their fixed index, so a thread-local template keeps an empty zero-fill section before it.
+    if (!sectionData[3].empty() || !sectionData[4].empty()) {
         file.sections.push_back(MakeSection(RcuModuleSection::Bss, std::move(sectionData[3]),
                                             std::move(sectionRelocations[3]), sectionAlignments[3]));
+    }
+    if (!sectionData[4].empty()) {
+        file.sections.push_back(MakeSection(RcuModuleSection::Tls, std::move(sectionData[4]),
+                                            std::move(sectionRelocations[4]), sectionAlignments[4]));
     }
     file.symbols = std::move(symbols);
     result.file = std::move(file);

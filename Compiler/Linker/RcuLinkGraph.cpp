@@ -49,6 +49,12 @@ namespace {
         return 8;
     case RcuRelType::Abs32:
     case RcuRelType::Rel32:
+    case RcuRelType::TlsOffset32:
+    case RcuRelType::TlvDescriptorRel32:
+    case RcuRelType::AArch64TlsHi12:
+    case RcuRelType::AArch64TlsLo12Nc:
+    case RcuRelType::AArch64TlvDescriptorPage21:
+    case RcuRelType::AArch64TlvDescriptorPageOff12:
     case RcuRelType::AArch64Call26:
     case RcuRelType::AArch64Jump26:
     case RcuRelType::AArch64CondBr19:
@@ -77,6 +83,8 @@ namespace {
         return RcuSecType::Data;
     case RCU_BSS_IDX:
         return RcuSecType::Bss;
+    case RCU_TLS_IDX:
+        return RcuSecType::Tls;
     default:
         return std::nullopt;
     }
@@ -84,11 +92,11 @@ namespace {
 
 [[nodiscard]] constexpr bool IsLinkableSectionType(const std::uint32_t type) noexcept {
     return type == RcuSecType::Text || type == RcuSecType::RoData || type == RcuSecType::Data ||
-           type == RcuSecType::Bss;
+           type == RcuSecType::Bss || type == RcuSecType::Tls;
 }
 
 [[nodiscard]] constexpr bool IsAArch64Relocation(const std::uint16_t type) noexcept {
-    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64Prel64;
+    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64TlvDescriptorPageOff12;
 }
 
 void InvalidObject(std::vector<RcuLinkDiagnostic> &diagnostics, std::string message,
@@ -181,8 +189,7 @@ void ValidateObject(const RcuFile &object, const std::string_view packageName, c
                                 RcuRelTypeName(relocation.type), symbol),
                     {std::format("source section: '{}'; offset: {}", section.name, relocation.sectionOffset)});
             }
-            if (IsAArch64Relocation(relocation.type) && relocation.type <= RcuRelType::AArch64MovwUabsG3 &&
-                section.type != RcuSecType::Text) {
+            if (IsAArch64InstructionRelocationType(relocation.type) && section.type != RcuSecType::Text) {
                 InvalidObject(diagnostics,
                               std::format("RCU object '{}' uses instruction relocation '{}' outside a text section",
                                           objectName, RcuRelTypeName(relocation.type)),

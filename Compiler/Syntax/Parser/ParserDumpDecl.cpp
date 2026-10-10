@@ -552,7 +552,8 @@ void DeclarationPrinter::PrintGlobalDecl(const GlobalDecl &decl) {
     if (decl.isPublic) {
         out << "pub ";
     }
-    out << "GlobalDecl '" << decl.name << "' : " << TypeString(decl.type.get()) << '\n';
+    out << (decl.isThreadLocal ? "ThreadLocal " : "") << "GlobalDecl '" << decl.name
+        << "' : " << TypeString(decl.type.get()) << '\n';
     ++indent;
     if (decl.value) {
         printExpression(*decl.value);

@@ -18,6 +18,7 @@ rux_add_component(RuxCodeGenX86_64
     FramePlan.cpp
     FunctionEmitter.cpp
     AtomicEmitter.cpp
+    ThreadLocalEmitter.cpp
     WideIntegerEmitter.cpp
     ModuleData.cpp
     ModuleValues.cpp

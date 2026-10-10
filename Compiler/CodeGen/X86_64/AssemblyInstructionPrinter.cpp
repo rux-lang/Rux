@@ -1842,4 +1842,30 @@ bool AssemblyInstructionPrinter::EmitAtomic(const LirInstr &instruction) {
         return false;
     }
 }
+
+// ---- thread-local addresses (ThreadLocalEmitter.cpp, EmitThreadLocal) ---------------------------------------------
+
+bool AssemblyInstructionPrinter::EmitThreadLocal(const LirInstr &instruction) {
+    if (instruction.op != LirOpcode::ThreadLocalAddr) {
+        return false;
+    }
+    switch (targetOs) {
+    case Target::OS::Windows:
+        Instruction("mov", "r11, qword gs:[0x58]");
+        Instruction("mov", "r10d, dword [rel _tls_index]");
+        Instruction("mov", "r11, qword [r11 + r10 * 8]");
+        Instruction("lea", std::format("rax, [r11 + {} wrt ..secrel]", instruction.strArg));
+        break;
+    case Target::OS::MacOS:
+        Instruction("lea", std::format("rdi, [rel {} wrt ..tlvp]", instruction.strArg));
+        Instruction("call", "qword [rdi]");
+        break;
+    default:
+        Instruction("mov", "rax, qword fs:[0]");
+        Instruction("lea", std::format("rax, [rax + {} wrt ..tpoff]", instruction.strArg));
+        break;
+    }
+    StoreA(instruction.dst, instruction.type);
+    return true;
+}
 } // namespace Rux

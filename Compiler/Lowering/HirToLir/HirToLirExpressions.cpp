@@ -113,7 +113,7 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
             return EmitCastIfNeeded(value, it->second->value->type, it->second->type);
         }
         if (const auto it = globalVars.find(e->name); it != globalVars.end()) {
-            return EmitLoad(EmitGlobalAddr(it->second->name, it->second->type), e->type);
+            return EmitLoad(GlobalStorageAddr(*it->second), e->type);
         }
         // The word the entry stub fills, which the linker defines rather than any module.
         if (e->name == kProcessStartFrameSymbol) {
@@ -766,6 +766,13 @@ LirReg HirToLirContext::LowerArgument(const HirExpr &argument) {
 
 // An atomic builtin is one LIR instruction. Its operands are evaluated left to right like any call's, the address
 // first, and the value type is the instruction's type whether or not it produces a result.
+// Where a module variable's storage is for the running thread: its one address, or this thread's copy of a
+// thread-local one.
+LirReg HirToLirContext::GlobalStorageAddr(const HirGlobal &global) {
+    return global.isThreadLocal ? EmitThreadLocalAddr(global.name, global.type)
+                                : EmitGlobalAddr(global.name, global.type);
+}
+
 LirReg HirToLirContext::LowerAtomicBuiltin(const HirCallExpr &e, const std::string_view operation) {
     static const std::unordered_map<std::string_view, LirOpcode> opcodes = {
         {"AtomicLoad", LirOpcode::AtomicLoad},
@@ -1064,7 +1071,7 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         }
         // A module variable is its storage: reading, writing and `@` all start from the one address.
         if (const auto global = globalVars.find(e->name); global != globalVars.end()) {
-            return EmitGlobalAddr(global->second->name, global->second->type);
+            return GlobalStorageAddr(*global->second);
         }
         // A slice-typed constant lives in read-only data under its own
         // name, so indexing or reading .length works off that address. A

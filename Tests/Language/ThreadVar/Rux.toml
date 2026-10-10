@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ThreadVar"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Thread-local variables start as their initializer in each thread and keep one address within a thread."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+ThreadVarProvider = { Path = "../../Fixtures/ThreadVar" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

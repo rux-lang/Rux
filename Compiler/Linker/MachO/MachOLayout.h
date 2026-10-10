@@ -39,6 +39,11 @@ struct ImageLayoutRequest {
     std::uint64_t constantDataSize = 0;
     std::uint64_t importPointerSize = 0;
     std::uint64_t writableDataSize = 0;
+    /// The thread-local variable descriptors and the template every thread's copy of the variables is made from. Both
+    /// sit after the writable data, in sections of their own types, which is how dyld finds them.
+    std::uint64_t threadVariableSize = 0;
+    std::uint64_t threadDataSize = 0;
+    std::uint64_t threadDataAlignment = 1;
     std::size_t importCount = 0;
     bool dynamic = false;
     bool shared = false;
@@ -54,11 +59,14 @@ struct ImageLayout {
     std::uint64_t constantDataOffset = 0;
     std::uint64_t importPointerOffset = 0;
     std::uint64_t writableDataOffset = 0;
+    std::uint64_t threadVariableOffset = 0;
+    std::uint64_t threadDataOffset = 0;
     std::uint64_t linkEditOffset = 0;
     std::uint64_t textAddress = 0;
     std::uint64_t stubAddress = 0;
     std::uint64_t constantDataAddress = 0;
     std::uint64_t importPointerAddress = 0;
+    std::uint64_t threadVariableAddress = 0;
     std::uint64_t constantSegmentAddress = 0;
     std::uint64_t dataSegmentAddress = 0;
     std::uint64_t linkEditAddress = 0;

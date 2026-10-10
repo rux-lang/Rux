@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -285,6 +286,17 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         return false;
     }
 
+    // Thread-local variables are reached through descriptors dyld sets up, so an image with any is dyld-linked, and the
+    // descriptors start out bound to libdyld's bootstrap function.
+    const bool hasTls = std::ranges::any_of(objects, [](const RcuFile &object) {
+        return std::ranges::any_of(object.sections, [](const RcuSection &section) {
+            return section.type == RcuSecType::Tls && !section.data.empty();
+        });
+    });
+    if (hasTls) {
+        importLib.try_emplace(std::string(MachO::kTlvBootstrapSymbol), kDefaultLib);
+    }
+
     // An arm64 executable cannot be static, so it is dyld-linked even when it
     // imports nothing. Its image is then slid at load time, which makes every
     // absolute pointer the compiler built into constant or writable data a
@@ -383,6 +395,24 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     Buf textBuffer = layout.Data(RcuMergedSection::Text);
     Buf rodataBuffer = layout.Data(RcuMergedSection::RoData);
     Buf dataBuffer = layout.Data(RcuMergedSection::Data);
+    Buf threadDataBuffer = layout.Data(RcuMergedSection::Tls);
+
+    // One descriptor per thread-local variable: a function returning this thread's copy, a key dyld fills in, and the
+    // variable's offset in the template.
+    static constexpr uint64_t kDescriptorSize = 24;
+    std::map<uint64_t, uint64_t> descriptorByOffset;
+    for (size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
+        for (size_t symbolIndex = 0; symbolIndex < objects[objectIndex].symbols.size(); ++symbolIndex) {
+            const auto placement = layout.Symbol({.objectIndex = objectIndex, .symbolIndex = symbolIndex});
+            if (placement && placement->section == RcuMergedSection::Tls) {
+                descriptorByOffset.try_emplace(placement->offset, descriptorByOffset.size());
+            }
+        }
+    }
+    Buf threadVariables(descriptorByOffset.size() * kDescriptorSize, 0);
+    for (const auto &[offset, descriptor] : descriptorByOffset) {
+        Patch64(threadVariables, descriptor * kDescriptorSize + 16, offset);
+    }
 
     // The architecture owns the instruction sequence and its fixed size. An
     // x86-64 stub jumps through a RIP-relative pointer. An Apple ARM64 stub uses
@@ -435,6 +465,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         .constantDataSize = rodataBuffer.size(),
         .importPointerSize = importPointers.size(),
         .writableDataSize = dataBuffer.size(),
+        .threadVariableSize = threadVariables.size(),
+        .threadDataSize = threadDataBuffer.size(),
+        .threadDataAlignment = std::max<uint64_t>(layout.Alignment(RcuMergedSection::Tls), 1),
         .importCount = importNames.size(),
         .dynamic = dynamic,
         .shared = isShared,
@@ -457,6 +490,11 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                  : std::nullopt;
     };
 
+    std::vector<uint64_t> descriptorSlots;
+    for (uint64_t descriptor = 0; descriptor < descriptorByOffset.size(); ++descriptor) {
+        descriptorSlots.push_back(imageLayout.threadVariableAddress + descriptor * kDescriptorSize -
+                                  imageLayout.dataSegmentAddress);
+    }
     const MachO::LinkEditLayout linkEdit = MachO::LinkEditBuilder::Build({
         .graph = *graph,
         .objects = objects,
@@ -475,6 +513,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                 .dataSegmentIndex = imageLayout.dataSegmentIndex,
             },
         .codeSignatureIdentifier = packageName,
+        .threadVariableDescriptors = descriptorSlots,
         .dynamic = dynamic,
         .shared = isShared,
         .slid = slidImage,
@@ -587,7 +626,39 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         case RcuMergedSection::Data:
             buffer = &dataBuffer;
             break;
+        case RcuMergedSection::Tls:
+            buffer = &threadDataBuffer;
+            break;
         case RcuMergedSection::Bss:
+            continue;
+        }
+
+        // Code reaches a thread-local variable through its descriptor, so these relocations name the variable and are
+        // resolved against the descriptor the linker made for it.
+        uint16_t relocationType = relocation.type;
+        if (relocationType == RcuRelType::TlvDescriptorRel32 ||
+            relocationType == RcuRelType::AArch64TlvDescriptorPage21 ||
+            relocationType == RcuRelType::AArch64TlvDescriptorPageOff12) {
+            const auto variable = reference.definition ? layout.Symbol(*reference.definition) : std::nullopt;
+            const auto descriptor = variable && variable->section == RcuMergedSection::Tls
+                                      ? descriptorByOffset.find(variable->offset)
+                                      : descriptorByOffset.end();
+            if (descriptor == descriptorByOffset.end()) {
+                const std::string error =
+                    "thread-local relocation to '" + symbol.name + "' names a variable that is not thread-local";
+                Error(error, RelocationNotes(reference, error));
+                continue;
+            }
+            relocationType = relocationType == RcuRelType::TlvDescriptorRel32         ? RcuRelType::Rel32
+                           : relocationType == RcuRelType::AArch64TlvDescriptorPage21 ? RcuRelType::AArch64AdrPrelPgHi21
+                                                                                      : RcuRelType::AArch64AddAbsLo12Nc;
+            std::string relocationError;
+            if (!ApplyMachORelocation(*architecture, *buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
+                                      imageLayout.threadVariableAddress + descriptor->second * kDescriptorSize,
+                                      relocation.addend, relocationType, symbol.name, relocationError)) {
+                auto notes = RelocationNotes(reference, relocationError);
+                Error(std::move(relocationError), std::move(notes));
+            }
             continue;
         }
 
@@ -642,6 +713,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     appendAt(imageLayout.constantDataOffset, rodataBuffer);
     appendAt(imageLayout.importPointerOffset, importPointers);
     appendAt(imageLayout.writableDataOffset, dataBuffer);
+    if (hasTls) {
+        appendAt(imageLayout.threadVariableOffset, threadVariables);
+        appendAt(imageLayout.threadDataOffset, threadDataBuffer);
+    }
     appendAt(imageLayout.linkEditOffset, linkEdit.contents);
     image.resize(static_cast<std::size_t>(linkEdit.codeSignatureOffset), 0);
 

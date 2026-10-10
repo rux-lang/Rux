@@ -5,6 +5,7 @@
 #include "CodeGen/Layout.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"
+#include "Target/Target.h"
 
 #include <cstdint>
 #include <optional>
@@ -38,6 +39,10 @@ public:
     [[nodiscard]] virtual std::uint32_t InternStringLiteral(const std::string &value) = 0;
     [[nodiscard]] virtual std::uint32_t ResolveGlobalSymbol(const std::string &name) = 0;
     virtual void LoadSymbolAddress(A64Reg destination, std::uint32_t symbol) = 0;
+    /// A text relocation of any kind, at a byte offset in the function's section.
+    virtual void AddTypedTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol, std::uint16_t type) = 0;
+    /// The operating system the module is built for, which decides how a thread reaches its thread-local block.
+    [[nodiscard]] virtual Target::OS TargetOs() const = 0;
     virtual void LoadNamedDataSymbol(A64Reg destination, const std::string &name) = 0;
     virtual void LoadFloatConstant(A64Reg destination, const TypeRef &type, const std::string &literal) = 0;
     virtual void ReportFunctionDiagnostic(std::string message) = 0;
@@ -64,6 +69,9 @@ public:
     /// Returns true exactly when the instruction is an atomic memory operation, a fence or a spin hint and was emitted
     /// here.
     [[nodiscard]] bool EmitAtomic(const LirInstr &instruction);
+
+    /// Returns true exactly when the instruction is the address of a thread-local variable and was emitted here.
+    [[nodiscard]] bool EmitThreadLocal(const LirInstr &instruction);
 
 private:
     struct BinaryOperands {

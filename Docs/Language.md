@@ -282,6 +282,21 @@ The initial value follows the `const` initializer rules: it is computed by the c
 
 Module storage is never destroyed, so a module variable cannot have a type that needs destruction, and it cannot hold a slice, which would borrow storage it does not own. Nothing moves out of a module variable, since every function shares it and it must always hold a value; `<-Name` is rejected with `cannot move out of module variable 'Name'`, and a copy or a fresh assignment is the way to take its value. Module variables are named in PascalCase, like other module-level declarations. A `pub var` written inside a function body is rejected: a local is declared with `var` and no `pub`.
 
+### Thread-local variables
+
+`thread var Name: Type = value;` declares a thread-local variable: a module variable of which every thread has its own copy. Each thread's copy starts as the initial value, whether the thread is the main one or one started later, and keeps its address for the thread's life; `@Name` on two threads gives two addresses. Everything else follows the module-variable rules above: the type and a compile-time initial value are written out, `pub thread var` publishes it, a module's variable is reached through its path, a type that needs destruction or a slice is rejected, and nothing moves out of it. `thread` is not a keyword: it means this only before a module-level `var`, and stays an ordinary name everywhere else.
+
+```rux
+thread var Depth: int32 = 0;
+
+func Enter() -> int32 {
+    Depth += 1;
+    return Depth;
+}
+```
+
+A thread-local variable costs one or two instructions more than a module variable to reach. On Linux and FreeBSD the program's thread-local block sits at a fixed offset from the thread pointer, which the dynamic loader sets up, so a program with thread-local variables is linked against the C library. On Windows the image carries a TLS directory and the loader gives each thread a copy of the template; on macOS each variable has a descriptor dyld binds, and reading one calls through it. A shared library or a static library with thread-local variables is rejected for now.
+
 The removed `var value: T` parameter form is an error. A function that needs mutable local storage moves the parameter into a local with `var local <- value`; a function that mutates caller-owned storage instead accepts `value: &var T`.
 
 A parameter's default value is evaluated where the call is written, in the caller's scope, each time the argument is omitted. It therefore cannot read any parameter of its own function, `self` included: `func C(x: int, y: int = x)` is an error. An overload that passes the value, `func C(x: int) -> int { return C(x, x); }`, gives the same call.

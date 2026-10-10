@@ -30,7 +30,10 @@ struct PlacedGlobal {
     const std::vector<std::uint8_t> bytes = ValueBytes(global.type, global.scalars, layouts, interfaceNames);
     const bool zero = std::ranges::all_of(bytes, [](const std::uint8_t byte) { return byte == 0; });
     PlacedGlobal placed;
-    placed.section = zero ? RcuModuleSection::Bss : RcuModuleSection::Data;
+    // A thread-local variable's bytes are the template every thread's copy starts from, zero or not.
+    placed.section = global.isThreadLocal ? RcuModuleSection::Tls
+                   : zero                 ? RcuModuleSection::Bss
+                                          : RcuModuleSection::Data;
     placed.offset = builder.AlignSection(
         placed.section, static_cast<std::uint16_t>(ValueAlignment(global.type, layouts, interfaceNames)));
     (void)builder.Append(placed.section, std::span<const std::uint8_t>(bytes));

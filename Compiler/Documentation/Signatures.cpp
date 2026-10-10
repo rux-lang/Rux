@@ -226,7 +226,8 @@ std::string DeclSignature(const Decl &decl) {
         return std::string(value->isPublic ? "pub " : "") + "const " + value->name +
                (value->type ? ": " + TypeText(value->type->get()) : "");
     if (const auto *value = dynamic_cast<const GlobalDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "var " + value->name + ": " + TypeText(value->type.get());
+        return std::string(value->isPublic ? "pub " : "") + (value->isThreadLocal ? "thread var " : "var ") +
+               value->name + ": " + TypeText(value->type.get());
     if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "type " + value->name + " = " + TypeText(value->type.get());
     if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))

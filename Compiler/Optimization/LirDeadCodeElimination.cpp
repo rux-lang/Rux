@@ -48,6 +48,7 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::IndexPtr:
     case LirOpcode::Phi:
     case LirOpcode::GlobalAddr:
+    case LirOpcode::ThreadLocalAddr:
     case LirOpcode::StringAddr:
         return InstructionEffect::Pure;
     case LirOpcode::Div:

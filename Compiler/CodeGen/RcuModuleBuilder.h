@@ -24,6 +24,8 @@ enum class RcuModuleSection : std::uint16_t {
     /// Zero-fill storage. Its bytes are carried as zeros and written only when the section is non-empty, so a module
     /// with no zero-initialized variables keeps exactly three sections.
     Bss = RCU_BSS_IDX,
+    /// The thread-local template, written only when a module has thread-local variables.
+    Tls = RCU_TLS_IDX,
 };
 
 struct RcuModuleDescription {
@@ -105,9 +107,9 @@ private:
     };
 
     RcuModuleDescription description;
-    std::array<std::vector<std::uint8_t>, 4> sectionData;
-    std::array<std::vector<RcuReloc>, 4> sectionRelocations;
-    std::array<std::uint16_t, 4> sectionAlignments = {1, 1, 1, 1};
+    std::array<std::vector<std::uint8_t>, 5> sectionData;
+    std::array<std::vector<RcuReloc>, 5> sectionRelocations;
+    std::array<std::uint16_t, 5> sectionAlignments = {1, 1, 1, 1, 1};
     std::vector<RcuSymbol> symbols;
     std::vector<SymbolState> symbolStates;
     std::vector<Diagnostic> diagnostics;

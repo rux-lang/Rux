@@ -21,6 +21,8 @@ constexpr uint32_t Data = 2;
 constexpr uint32_t RoData = 3;
 constexpr uint32_t Bss = 4;
 constexpr uint32_t Meta = 5;
+/// The thread-local template: every thread's copy of the thread-local variables starts as these bytes.
+constexpr uint32_t Tls = 6;
 } // namespace RcuSecType
 
 namespace RcuSecFlag {
@@ -30,6 +32,7 @@ constexpr uint32_t Read = 0x04;
 constexpr uint32_t Write = 0x08;
 constexpr uint32_t Merge = 0x10;
 constexpr uint32_t Strings = 0x20;
+constexpr uint32_t Tls = 0x40;
 } // namespace RcuSecFlag
 
 namespace RcuSymKind {
@@ -80,6 +83,13 @@ constexpr uint16_t None = 0;
 constexpr uint16_t Abs64 = 1;
 constexpr uint16_t Abs32 = 2;
 constexpr uint16_t Rel32 = 3;
+/// A 32-bit field holding a thread-local variable's offset in the form its target reaches the variable with: from the
+/// thread pointer on ELF, and from the start of the thread's block (`SECREL`) on PE.
+constexpr uint16_t TlsOffset32 = 4;
+/// A 32-bit PC-relative field addressing a thread-local variable's Mach-O descriptor rather than the variable itself.
+/// The linker makes one descriptor per variable, so the relocation names the variable and the linker finds its
+/// descriptor.
+constexpr uint16_t TlvDescriptorRel32 = 5;
 
 constexpr uint16_t AArch64Call26 = 16;
 constexpr uint16_t AArch64Jump26 = 17;
@@ -94,6 +104,14 @@ constexpr uint16_t AArch64MovwUabsG2 = 25;
 constexpr uint16_t AArch64MovwUabsG3 = 26;
 constexpr uint16_t AArch64Prel32 = 27;
 constexpr uint16_t AArch64Prel64 = 28;
+/// The high and low twelve bits of a thread-local offset, in the immediate of an `add`: R_AARCH64_TLSLE_ADD_TPREL_HI12
+/// and _LO12_NC on ELF, and the section-relative pair on PE.
+constexpr uint16_t AArch64TlsHi12 = 29;
+constexpr uint16_t AArch64TlsLo12Nc = 30;
+/// The page and page offset of a thread-local variable's Mach-O descriptor, in an `adrp` and an `add` that build its
+/// address; ARM64_RELOC_TLVP_LOAD_PAGE21 and _PAGEOFF12 name the same fields.
+constexpr uint16_t AArch64TlvDescriptorPage21 = 31;
+constexpr uint16_t AArch64TlvDescriptorPageOff12 = 32;
 } // namespace RcuRelType
 
 /// The architecture byte an object built for `arch` carries, or RcuArch::Unknown when RCU has no encoding for that
@@ -133,6 +151,10 @@ constexpr uint16_t AArch64Prel64 = 28;
         return "ABS_32";
     case RcuRelType::Rel32:
         return "REL_32";
+    case RcuRelType::TlsOffset32:
+        return "TLS_OFFSET_32";
+    case RcuRelType::TlvDescriptorRel32:
+        return "TLV_DESCRIPTOR_REL_32";
     case RcuRelType::AArch64Call26:
         return "AARCH64_CALL26";
     case RcuRelType::AArch64Jump26:
@@ -159,6 +181,14 @@ constexpr uint16_t AArch64Prel64 = 28;
         return "AARCH64_PREL32";
     case RcuRelType::AArch64Prel64:
         return "AARCH64_PREL64";
+    case RcuRelType::AArch64TlsHi12:
+        return "AARCH64_TLSLE_ADD_TPREL_HI12";
+    case RcuRelType::AArch64TlsLo12Nc:
+        return "AARCH64_TLSLE_ADD_TPREL_LO12_NC";
+    case RcuRelType::AArch64TlvDescriptorPage21:
+        return "AARCH64_TLVP_PAGE21";
+    case RcuRelType::AArch64TlvDescriptorPageOff12:
+        return "AARCH64_TLVP_PAGEOFF12";
     default:
         return "?";
     }
@@ -168,6 +198,16 @@ constexpr uint16_t AArch64Prel64 = 28;
 /// every ELF executable, and `Core::ProcessStartFrame` reads it.
 constexpr std::string_view kProcessStartFrameSymbol = "__rux_start_frame";
 
+/// The word a PE image's thread-local storage directory names, which the loader fills with the image's TLS slot. The
+/// linker defines it for every PE image with thread-local variables.
+constexpr std::string_view kTlsIndexSymbol = "_tls_index";
+
+/// Whether a relocation is an AArch64 instruction-field kind, whose immediate is split across an instruction word.
+[[nodiscard]] constexpr bool IsAArch64InstructionRelocationType(const uint16_t type) noexcept {
+    return (type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64MovwUabsG3) ||
+           (type >= RcuRelType::AArch64TlsHi12 && type <= RcuRelType::AArch64TlvDescriptorPageOff12);
+}
+
 constexpr uint16_t RCU_SEC_EXTERNAL = 0xFFFF;
 constexpr uint16_t RCU_SEC_ABSOLUTE = 0xFFFE;
 
@@ -176,6 +216,7 @@ constexpr uint16_t RCU_TEXT_IDX = 0;
 constexpr uint16_t RCU_RODATA_IDX = 1;
 constexpr uint16_t RCU_DATA_IDX = 2;
 constexpr uint16_t RCU_BSS_IDX = 3;
+constexpr uint16_t RCU_TLS_IDX = 4;
 
 // In-memory structures
 

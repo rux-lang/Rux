@@ -792,6 +792,18 @@ LirReg HirToLirContext::EmitGlobalAddr(std::string label, TypeRef pointee) {
     return r;
 }
 
+/// The current thread's copy of a thread-local variable: the same symbol, reached relative to the thread's own storage.
+LirReg HirToLirContext::EmitThreadLocalAddr(std::string label, TypeRef pointee) {
+    LirReg r = NewReg();
+    LirInstr i;
+    i.dst = r;
+    i.op = LirOpcode::ThreadLocalAddr;
+    i.type = TypeRef::MakePointer(std::move(pointee));
+    i.strArg = std::move(label);
+    Emit(std::move(i));
+    return r;
+}
+
 LirReg HirToLirContext::EmitStringAddr(std::string value, const TypeRef &elemType) {
     LirReg r = NewReg();
     LirInstr i;
@@ -958,6 +970,7 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         lg.isPublic = global.isPublic;
         lg.isExported = global.isExported;
         lg.type = global.type;
+        lg.isThreadLocal = global.isThreadLocal;
         std::vector<LirConstMember> path;
         if (!global.value || !CollectConstValueScalars(*global.value, global.type, path, lg.scalars)) {
             // Laying the storage out as zeros would start the program with a value nobody wrote.
