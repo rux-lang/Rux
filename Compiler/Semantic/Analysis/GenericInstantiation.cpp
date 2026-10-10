@@ -51,6 +51,48 @@ void AnalysisContext::QueueGenericInstantiation(const FuncDecl &decl,
     pendingGenericInstantiations.push_back({&decl, substitutions, recordedSite});
 }
 
+// A generic function has no one address until its type arguments are known, and a call learns them from its
+// arguments. A name used as a value has no arguments, so the function type it is assigned to supplies them instead:
+// `let start: func(*var Packet<T, R>) -> *var opaque = Start;` instantiates `Start` for this `T` and `R`.
+std::optional<TypeRef> AnalysisContext::InstantiateFunctionReference(const IdentExpr &identifier,
+                                                                     const Symbol &symbol) {
+    const auto expected = expectedExpressionTypes.find(&identifier);
+    if (expected == expectedExpressionTypes.end() || expected->second.kind != TypeRef::Kind::Func) {
+        return std::nullopt;
+    }
+    const TypeRef &target = expected->second;
+    for (const FuncDecl *candidate : symbol.funcOverloads) {
+        if (candidate->typeParams.empty() || candidate->params.size() + 1 != target.inner.size() ||
+            std::ranges::any_of(candidate->params, [](const Param &parameter) { return parameter.isVariadic; })) {
+            continue;
+        }
+        std::unordered_set<std::string> names;
+        for (const TypeParameter &parameter : candidate->typeParams) {
+            names.insert(parameter.name);
+        }
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const TypeRef generic = FunctionType(*candidate);
+        if (!DeduceTypeArgument(generic, target, names, substitutions) ||
+            substitutions.size() != candidate->typeParams.size() ||
+            !TypeArgumentsSatisfyBounds(candidate->typeParams, substitutions)) {
+            continue;
+        }
+        const TypeRef instantiated = MakeFuncTypeWithSubstitution(
+            candidate->params, candidate->returnType, substitutions, TypeParameterNames(candidate->typeParams));
+        if (!(instantiated == target)) {
+            continue;
+        }
+        ResolvedCallableBinding binding;
+        binding.dispatch = ResolvedCallableBinding::DispatchKind::Direct;
+        binding.selectedDeclaration = candidate;
+        binding.substitutions = substitutions;
+        functionReferenceBindings.insert_or_assign(&identifier, std::move(binding));
+        QueueGenericInstantiation(*candidate, substitutions, identifier.location);
+        return instantiated;
+    }
+    return std::nullopt;
+}
+
 std::string AnalysisContext::InstantiationNote(const FuncDecl &declaration,
                                                const std::unordered_map<std::string, TypeRef> &substitutions) const {
     std::vector<std::string> names;

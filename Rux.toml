@@ -29,6 +29,7 @@ Packages = [
     "Packages/Process",
     "Packages/Random",
     "Packages/Text",
+    "Packages/Thread",
     "Packages/Time",
     "Packages/Toml",
     "Packages/Unicode",

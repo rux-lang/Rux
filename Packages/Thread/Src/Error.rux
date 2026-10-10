@@ -1,0 +1,13 @@
+// Why a thread could not be started.
+
+/// Why `Spawn` could not start a thread. `Copy`.
+/// Once a thread is running nothing about it can fail this way: joining and detaching a started thread always work.
+/// @see https://rux-lang.dev/docs/api/thread/error#thread-error
+pub enum ThreadError: uint8 {
+    /// The system had no memory, or no thread, to spare.
+    Exhausted = 1,
+    /// The system refused the requested stack size, usually because it is below its minimum.
+    InvalidStackSize = 2,
+    /// The system reported a failure this package has no name for.
+    Failed = 3
+}

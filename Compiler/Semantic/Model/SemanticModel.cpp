@@ -261,6 +261,12 @@ const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallEx
     return binding == facts.callableBindings.end() ? nullptr : &binding->second;
 }
 
+const ResolvedCallableBinding *
+SemanticModel::TryGetFunctionReferenceBinding(const IdentExpr &identifier) const noexcept {
+    const auto binding = facts.functionReferenceBindings.find(&identifier);
+    return binding == facts.functionReferenceBindings.end() ? nullptr : &binding->second;
+}
+
 const ResolvedDefaultConstructor *SemanticModel::TryGetDefaultConstructor(const LetStmt &statement) const noexcept {
     const auto constructor = facts.defaultConstructors.find(&statement);
     return constructor == facts.defaultConstructors.end() ? nullptr : &constructor->second;

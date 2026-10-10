@@ -22,6 +22,7 @@ rux add Rux/macOS
 | `Entropy`   | `GetRandom`, which cannot fail and has no short count                                   |
 | `Process`   | `Exit` and `GetPid`                                                                     |
 | `Dynamic`   | the `RTLD_*` flags; `dlopen`, `dlsym`, `dlclose` and `dlerror` are in `LibSystem`        |
+| `Thread`    | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `pthread_threadid_np`, linked from libSystem |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

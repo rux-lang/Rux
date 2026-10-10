@@ -216,6 +216,12 @@ void AstToHirContext::EnsureBoundFunctionInstance(const FuncDecl &declaration, c
     if (declaration.typeParams.empty()) {
         return;
     }
+    // A call inside a generic body names its callee's instance in terms of the body's own parameters; only an
+    // instance whose arguments are all types has a body to emit, as for a method.
+    if (std::ranges::any_of(binding.substitutions,
+                            [this](const auto &argument) { return !TypeIsConcrete(argument.second); })) {
+        return;
+    }
     assert(!binding.linkerName.empty() && "generic call binding is missing its linker name");
     if (generatedMonomorphizedFuncNames.insert(binding.linkerName).second) {
         monomorphizedFuncs.push_back(LowerFunc(declaration, false, binding.substitutions, binding.linkerName));

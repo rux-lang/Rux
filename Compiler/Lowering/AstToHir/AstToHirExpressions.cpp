@@ -123,7 +123,13 @@ TypeRef AstToHirContext::SubstituteCurrentType(TypeRef type) const {
 /// among the functions it emitted, found nothing when two packages made the name ambiguous, and fell through to
 /// loading a global that does not exist: a function pointer built out of whatever the address held, which faults
 /// when it is called. A name that resolves to anything else, a local above all, is left exactly as written.
-const std::string &AstToHirContext::FunctionReferenceName(const IdentExpr &identifier) {
+std::string AstToHirContext::FunctionReferenceName(const IdentExpr &identifier) {
+    // A generic function named as a value is the instance its destination asked for, emitted here like a call's.
+    if (const ResolvedCallableBinding *binding = model.TryGetFunctionReferenceBinding(identifier)) {
+        const ResolvedCallableBinding concrete = binding->Instantiate(currentSubstitutions);
+        EnsureBoundFunctionInstance(static_cast<const FuncDecl &>(*concrete.selectedDeclaration), concrete);
+        return concrete.linkerName;
+    }
     const HirSymbol *symbol = currentScope->Lookup(identifier.name);
     if (!symbol || symbol->kind != HirSymbol::Kind::Func || symbol->funcOverloads.empty()) {
         return identifier.name;

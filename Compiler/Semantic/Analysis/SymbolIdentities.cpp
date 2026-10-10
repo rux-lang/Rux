@@ -245,6 +245,19 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         vtableIdentities.insert_or_assign(implementation, std::move(identity));
     }
 
+    for (auto &[reference, binding] : functionReferenceBindings) {
+        (void)reference;
+        const auto &function = static_cast<const FuncDecl &>(*binding.selectedDeclaration);
+        binding.linkerNameBase = qualifyFunctionName(function, function.name);
+        binding.linkerNameHasOverloadSignature = FunctionIsOverloadedInModule(function);
+        if (binding.linkerNameHasOverloadSignature) {
+            for (const auto &parameter : function.params) {
+                binding.linkerOverloadTypes.push_back(IdentityParameterType(parameter, binding.substitutions));
+            }
+        }
+        binding.linkerSpecializationParameters = TypeParameterNames(function.typeParams);
+        binding.linkerName = binding.LinkerNameFor(binding.substitutions);
+    }
     for (auto &[call, binding] : callableBindings) {
         (void)call;
         if (!binding.selectedDeclaration || binding.dispatch == ResolvedCallableBinding::DispatchKind::Interface ||

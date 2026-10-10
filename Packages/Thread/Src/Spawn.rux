@@ -1,0 +1,203 @@
+// Starting a thread, and the handle that joins it or lets it go.
+// A thread runs a function on a context value the caller moves in, and leaves the function's result for whoever joins
+// it. Rux has no closures, so the function and its context travel separately and meet on the new thread.
+// The thread and its handle share one block: a header, the function, the context the thread takes, and the result it
+// leaves. Both own the block, and the header counts them. Whichever lets go last releases it, and destroys a result
+// nobody took, so a handle dropped while its thread still runs is safe: the thread finishes, finds itself last, and
+// cleans up. Joining takes the result first, then lets go.
+
+import Core::{ AtomicFetchSub, AtomicStore, MemoryOrder, Panic };
+import Memory::{ AlignUp, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
+import Thread::{ NativeDetach, NativeJoin, NativeStart, ThreadError };
+
+// What both owners of a block need without knowing the thread's types. It starts the block, so the handle reaches it
+// knowing only the result's type.
+struct PacketHeader {
+    // How many of the thread and its handle still hold the block.
+    owners: uint32;
+    // The block's length, to release it.
+    length: uint;
+    // Where the result sits, for the handle, which knows the result's type but not the context's.
+    resultOffset: uint;
+}
+
+// The start of a block as the new thread sees it. The context and the result follow, each aligned for its type.
+struct Packet<T, R> {
+    header: PacketHeader;
+    entry: func(T) -> R;
+}
+
+/// How a thread is started: its stack size, for now. `Copy`.
+/// @see https://rux-lang.dev/docs/api/thread/spawn#thread-options
+pub struct ThreadOptions {
+    stackSize: uint;
+}
+
+extend ThreadOptions {
+    /// The defaults: the system's own stack size.
+    /// @returns the default options
+    /// @see https://rux-lang.dev/docs/api/thread/spawn#thread-options
+    pub func ThreadOptions() -> ThreadOptions {
+        return ThreadOptions { stackSize: 0 };
+    }
+
+    /// These options with a stack of `size` bytes. Zero asks for the system's default.
+    /// The system rounds the size up to its page size, and refuses one below its minimum.
+    /// @param size the stack size in bytes
+    /// @returns the changed options
+    /// @see https://rux-lang.dev/docs/api/thread/spawn#with-stack-size
+    pub func WithStackSize(self: &ThreadOptions, size: uint) -> ThreadOptions {
+        return ThreadOptions { stackSize: size };
+    }
+
+    /// The stack size these options ask for, or zero for the system's default.
+    /// @returns the stack size in bytes
+    /// @see https://rux-lang.dev/docs/api/thread/spawn#stack-size
+    pub func StackSize(self: &ThreadOptions) -> uint {
+        return self.stackSize;
+    }
+}
+
+/// A started thread, and the result it will leave.
+/// Joining waits for the thread and hands back what its function returned. Dropping the handle without joining lets
+/// the thread run on and clean up after itself; nothing can then wait for it. A handle is not copied.
+/// @typeParam R the type of the thread's result
+/// @see https://rux-lang.dev/docs/api/thread/spawn#join-handle
+pub struct JoinHandle<R> {
+    thread: uint64;
+    block: *var opaque;
+}
+
+extend JoinHandle<R> {
+    func =(self: &var JoinHandle<R>, other: &JoinHandle<R>);
+
+    /// Waits for the thread to finish and returns what its function returned.
+    /// Joining a handle that was already joined or detached is a program error and panics.
+    /// @returns the thread's result
+    /// @see https://rux-lang.dev/docs/api/thread/spawn#join
+    pub func Join(self: &var JoinHandle<R>) -> R {
+        if self.block == null { Panic("the thread was already joined or detached"); }
+        let block = self.block;
+        self.block = null;
+        NativeJoin(self.thread);
+        let header = block as *var PacketHeader;
+        let result <- (((block as uint) + header.resultOffset) as *var R)[0];
+        // The thread let go before it finished, so this is the last owner.
+        Release(block);
+        return result;
+    }
+
+    /// Lets the thread run on without anyone waiting for it. It releases itself, and its result, when it finishes.
+    /// Detaching a handle that was already joined or detached does nothing.
+    /// @see https://rux-lang.dev/docs/api/thread/spawn#detach
+    pub func Detach(self: &var JoinHandle<R>) {
+        if self.block == null { return; }
+        let block = self.block;
+        self.block = null;
+        NativeDetach(self.thread);
+        if LetGo(block) {
+            let header = block as *var PacketHeader;
+            DiscardSlot<R>(((block as uint) + header.resultOffset) as *var R);
+            Release(block);
+        }
+    }
+
+    /// Whether the handle can still be joined.
+    /// @returns false once it was joined or detached
+    /// @see https://rux-lang.dev/docs/api/thread/spawn#is-joinable
+    pub func IsJoinable(self: &JoinHandle<R>) -> bool {
+        return self.block != null;
+    }
+
+    func ~JoinHandle(self: &var JoinHandle<R>) {
+        self.Detach();
+    }
+}
+
+/// Starts a thread running `entry(context)` with the system's default stack size.
+/// The context moves to the new thread. Whatever `entry` returns waits in the handle until it is joined.
+/// A panic on any thread ends the whole process, as it does on the main one.
+/// @typeParam T the type of the context
+/// @typeParam R the type of the thread's result
+/// @param entry the function the thread runs
+/// @param context the value the function is called with
+/// @returns a handle to join the thread with
+/// @see https://rux-lang.dev/docs/api/thread/spawn#spawn
+pub func Spawn<T, R>(entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
+    return SpawnWith<T, R>(ThreadOptions(), entry, <-context);
+}
+
+/// Starts a thread running `entry(context)` as `options` say.
+/// @typeParam T the type of the context
+/// @typeParam R the type of the thread's result
+/// @param options how to start the thread
+/// @param entry the function the thread runs
+/// @param context the value the function is called with
+/// @returns a handle to join the thread with
+/// @see https://rux-lang.dev/docs/api/thread/spawn#spawn-with
+pub func SpawnWith<T, R>(options: ThreadOptions, entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
+    let contextOffset = ContextOffset<T, R>();
+    let resultOffset = ResultOffset<T, R>();
+    let length = PageAlign(resultOffset + sizeof(R));
+    let block = PageAllocate(length, PageRead | PageWrite) catch { else => fail ThreadError::Exhausted };
+    let packet = block as *var Packet<T, R>;
+    packet.header.length = length;
+    packet.header.resultOffset = resultOffset;
+    packet.entry = entry;
+    AtomicStore(@packet.header.owners, 2u32, MemoryOrder::Release);
+    (((block as uint) + contextOffset) as *var T)[0] <- context;
+    let start: func(*var Packet<T, R>) -> *var opaque = Start;
+    match NativeStart(start as *opaque, block, options.stackSize) {
+        .Success(thread) => {
+            return JoinHandle<R> { thread: thread, block: block };
+        },
+        .Failure(error) => {
+            // The thread never ran, so the context is still here to destroy.
+            DiscardSlot<T>(((block as uint) + contextOffset) as *var T);
+            Release(block);
+            fail error;
+        }
+    }
+}
+
+// Where the context and the result sit in a block, each aligned for its type.
+func ContextOffset<T, R>() -> uint {
+    return AlignUp(sizeof(Packet<T, R>), alignof(T));
+}
+
+func ResultOffset<T, R>() -> uint {
+    return AlignUp(ContextOffset<T, R>() + sizeof(T), alignof(R));
+}
+
+// The new thread's first function: it takes the context out of the block, runs the entry on it, leaves the result in
+// the block and lets go of it. Its shape is the one every system calls a thread's entry with.
+func Start<T, R>(packet: *var Packet<T, R>) -> *var opaque {
+    let block = packet as *var opaque;
+    let entry = packet.entry;
+    let context <- (((block as uint) + ContextOffset<T, R>()) as *var T)[0];
+    let result = ((block as uint) + ResultOffset<T, R>()) as *var R;
+    result[0] <- entry(<-context);
+    if LetGo(block) {
+        // The handle was dropped while this thread ran, so nobody will take the result.
+        DiscardSlot<R>(result);
+        Release(block);
+    }
+    return null;
+}
+
+// Gives up one owner's hold on a block, and says whether that was the last one.
+func LetGo(block: *var opaque) -> bool {
+    let header = block as *var PacketHeader;
+    return AtomicFetchSub(@header.owners, 1u32, MemoryOrder::AcquireRelease) == 1u32;
+}
+
+// Returns a block nobody holds to the system.
+func Release(block: *var opaque) {
+    let header = block as *var PacketHeader;
+    PageRelease(block, header.length) catch { else => {} };
+}
+
+// Destroys the value in a slot by moving it out.
+func DiscardSlot<T>(slot: *var T) {
+    let taken <- slot[0];
+}

@@ -1,0 +1,28 @@
+// What a thread can ask about itself and the machine it runs on.
+
+import Thread::{ NativeCurrentId, NativeProcessorCount, NativeYield };
+
+/// The calling thread's system-wide identifier.
+/// No two live threads share one, but the system may give a finished thread's identifier to a new thread.
+/// @returns the identifier
+/// @see https://rux-lang.dev/docs/api/thread/current#current-id
+pub func CurrentId() -> uint64 {
+    return NativeCurrentId();
+}
+
+/// Offers the processor to another thread that is ready to run, and returns when this one is scheduled again.
+/// A hint for code that waits on another thread, not a way to order threads.
+/// @see https://rux-lang.dev/docs/api/thread/current#yield
+pub func Yield() {
+    NativeYield();
+}
+
+/// How many threads can usefully run at once: the number of processors online, and at least one.
+/// The answer can change while a program runs, as processors go online or offline.
+/// @returns the number of processors, never zero
+/// @see https://rux-lang.dev/docs/api/thread/current#available-parallelism
+pub func AvailableParallelism() -> uint {
+    let count = NativeProcessorCount();
+    if count == 0 { return 1; }
+    return count;
+}

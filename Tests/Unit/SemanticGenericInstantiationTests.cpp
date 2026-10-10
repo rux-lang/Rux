@@ -270,3 +270,36 @@ func Main() -> int {
                             "in 'Larger' instantiated with T = P by the call at 'instantiation.rux':10:13") !=
           diagnostics[0].notes.end());
 }
+
+TEST_CASE("a generic function named as a value takes its type arguments from the destination") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Box<T> { value: T; }
+        func Double<T>(value: T) -> T { return value + value; }
+        func Unwrap<V>(box: *Box<V>) -> V { return box.value; }
+        func Reader<U>() -> func(*Box<U>) -> U {
+            let read: func(*Box<U>) -> U = Unwrap;
+            return read;
+        }
+        func Main() -> int {
+            let wide: func(int64) -> int64 = Double;
+            let box = Box<int64> { value: 3 };
+            return (wide(Reader<int64>()(@box))) as int;
+        }
+    )");
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+    }
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("a generic function named as a value with nothing to instantiate it is an error") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Double<T>(value: T) -> T { return value + value; }
+        func Main() -> int {
+            let f = Double;
+            return 0;
+        }
+    )");
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(diagnostics.front().message == "generic function 'Double' has no type arguments here");
+}

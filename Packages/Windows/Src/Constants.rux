@@ -307,3 +307,19 @@ pub enum CreationDisposition: uint32 {
     /// Open the file and truncate it, failing if it is not there. Needs write access.
     TruncateExisting = 5
 }
+
+/// `ALL_PROCESSOR_GROUPS`: asks `GetActiveProcessorCount` about every processor group at once.
+/// @see https://rux-lang.dev/docs/api/windows/process#all-processor-groups
+#Allow("naming.const")
+pub const ALL_PROCESSOR_GROUPS: uint16 = 0xFFFF;
+
+/// `STACK_SIZE_PARAM_IS_A_RESERVATION`: `CreateThread` takes its stack size as the space to reserve rather than to
+/// commit, which is what a stack size usually means.
+/// @see https://rux-lang.dev/docs/api/windows/process#stack-size-param-is-a-reservation
+#Allow("naming.const")
+pub const STACK_SIZE_PARAM_IS_A_RESERVATION: uint32 = 0x00010000;
+
+/// `INFINITE`: a wait with no time-out.
+/// @see https://rux-lang.dev/docs/api/windows/process#infinite
+#Allow("naming.const")
+pub const INFINITE: uint32 = 0xFFFFFFFF;

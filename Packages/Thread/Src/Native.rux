@@ -1,0 +1,119 @@
+// How each system starts, joins and detaches a thread, and what it says about the current one.
+// Linux, FreeBSD and macOS start threads through the C library's `pthread_create`, which gives the thread its stack and
+// its thread-local block; a thread the kernel started directly would have neither. Windows starts them with
+// `CreateThread`, whose handle is joined by waiting on it. Both kinds are kept in one word, so the rest of the package
+// never asks which system it runs on.
+
+import Core::{ #Error, #target };
+import Thread::ThreadError;
+
+when #target.os {
+    .Linux => import Linux::{
+        EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, gettid, pthread_attr_destroy,
+        pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach, pthread_join, sched_yield,
+        sysconf
+    },
+    .FreeBSD => import FreeBSD::{
+        EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy,
+        pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach, pthread_getthreadid_np,
+        pthread_join, sched_yield, sysconf
+    },
+    .macOS => import macOS::{
+        EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy, pthread_attr_init,
+        pthread_attr_setstacksize, pthread_create, pthread_detach, pthread_join, pthread_threadid_np, sched_yield,
+        sysconf
+    },
+    .Windows => import Windows::{
+        ALL_PROCESSOR_GROUPS, CloseHandle, CreateThread, GetActiveProcessorCount, GetCurrentThreadId, INFINITE,
+        STACK_SIZE_PARAM_IS_A_RESERVATION, SwitchToThread, WaitForSingleObject
+    },
+    else => #Error("Unsupported operating system")
+}
+
+// Starts `start(argument)` on a new thread with `stackSize` bytes of stack, or the system's default for zero, and
+// returns the system's name for the thread.
+func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint64 ! ThreadError {
+    when #target.os == .Windows {
+        var flags: uint32 = 0;
+        if stackSize != 0 { flags = STACK_SIZE_PARAM_IS_A_RESERVATION; }
+        let handle = CreateThread(null, stackSize as uint64, start, argument as *opaque, flags, null);
+        if handle == null { fail ThreadError::Exhausted; }
+        return handle as uint64;
+    }
+    else {
+        var attributes = PThreadAttributes();
+        if pthread_attr_init(@attributes) != 0 { fail ThreadError::Exhausted; }
+        if stackSize != 0 && pthread_attr_setstacksize(@attributes, stackSize) != 0 {
+            pthread_attr_destroy(@attributes);
+            fail ThreadError::InvalidStackSize;
+        }
+        var thread: PThread = 0;
+        let status = pthread_create(@thread, @attributes, start, argument);
+        pthread_attr_destroy(@attributes);
+        if status == EAGAIN { fail ThreadError::Exhausted; }
+        if status == EINVAL { fail ThreadError::InvalidStackSize; }
+        if status != 0 { fail ThreadError::Failed; }
+        return thread;
+    }
+}
+
+// Waits for a thread to finish and releases it.
+func NativeJoin(thread: uint64) {
+    when #target.os == .Windows {
+        WaitForSingleObject(thread as *opaque, INFINITE);
+        CloseHandle(thread as *opaque);
+    }
+    else {
+        pthread_join(thread, null);
+    }
+}
+
+// Lets a thread release itself when it finishes.
+func NativeDetach(thread: uint64) {
+    when #target.os == .Windows {
+        CloseHandle(thread as *opaque);
+    }
+    else {
+        pthread_detach(thread);
+    }
+}
+
+// The calling thread's system-wide identifier.
+func NativeCurrentId() -> uint64 {
+    when #target.os == .Windows {
+        return GetCurrentThreadId() as uint64;
+    }
+    else when #target.os == .Linux {
+        return gettid() as uint64;
+    }
+    else when #target.os == .FreeBSD {
+        return pthread_getthreadid_np() as uint64;
+    }
+    else {
+        var id: uint64 = 0;
+        pthread_threadid_np(0, @id);
+        return id;
+    }
+}
+
+// Offers the processor to another ready thread.
+func NativeYield() {
+    when #target.os == .Windows {
+        SwitchToThread();
+    }
+    else {
+        sched_yield();
+    }
+}
+
+// The number of processors online, or zero when the system will not say.
+func NativeProcessorCount() -> uint {
+    when #target.os == .Windows {
+        return GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) as uint;
+    }
+    else {
+        let count = sysconf(SC_NPROCESSORS_ONLN);
+        if count < 1 { return 0; }
+        return count as uint;
+    }
+}

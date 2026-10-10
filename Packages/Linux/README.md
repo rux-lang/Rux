@@ -21,6 +21,7 @@ rux add Rux/Linux
 | `Process` | `Exit` and `GetPid`                                                                      |
 | `Entropy` | `GetRandom`, the only source here fit for a key or a token                                |
 | `Dynamic` | `dlopen`, `dlsym`, `dlclose`, `dlerror`, and the `RTLD_*` flags                          |
+| `Thread`  | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `gettid`, linked from libc |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

@@ -273,6 +273,11 @@ private:
     [[nodiscard]] static std::optional<std::vector<TypeRef>>
     BoundParameterTypes(const FuncDecl &declaration, bool isMethod, const std::vector<TypeRef> &fixedTypes,
                         const std::optional<TypeRef> &variadicElement, std::size_t argumentCount, const CallExpr *call);
+    /// The type of a generic function named as a value, instantiated with the type arguments the function type it
+    /// is assigned to supplies, with the instantiation recorded and queued. None when the name is not a generic
+    /// function or nothing says what it is instantiated with.
+    [[nodiscard]] std::optional<TypeRef> InstantiateFunctionReference(const IdentExpr &identifier,
+                                                                      const Symbol &symbol);
     bool DeduceTypeArgument(const TypeRef &paramType, const TypeRef &argType,
                             const std::unordered_set<std::string> &typeParamNames,
                             std::unordered_map<std::string, TypeRef> &substitutions);
@@ -646,6 +651,7 @@ private:
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
+    std::unordered_map<const IdentExpr *, ResolvedCallableBinding> &functionReferenceBindings;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;

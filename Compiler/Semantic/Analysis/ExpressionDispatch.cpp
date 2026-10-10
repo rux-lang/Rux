@@ -41,6 +41,19 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                      global && sym->kind == Symbol::Kind::Var) {
                 globalReferences[e] = global;
             }
+            else if (sym->kind == Symbol::Kind::Func) {
+                if (std::optional<TypeRef> instantiated = InstantiateFunctionReference(*e, *sym)) {
+                    return *instantiated;
+                }
+                if (!sym->funcOverloads.empty() &&
+                    std::ranges::all_of(sym->funcOverloads,
+                                        [](const FuncDecl *overload) { return !overload->typeParams.empty(); })) {
+                    EmitError(e->location, std::format("generic function '{}' has no type arguments here", e->name), {},
+                              std::format("give the value a function type, as in 'let f: func(int64) -> int64 = {};'",
+                                          e->name));
+                    return TypeRef::MakeUnknown();
+                }
+            }
             return ReadTrackedSymbol(*sym, e->location);
         }
         EmitUndefinedName(e->location, e->name);

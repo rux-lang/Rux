@@ -183,6 +183,13 @@ pub extern {
     /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocessid
     func GetCurrentProcessId() -> uint32;
 
+    /// Retrieves the number of active processors in a processor group, or in all of them.
+    /// @param groupNumber the processor group, or `ALL_PROCESSOR_GROUPS` for the whole system
+    /// @returns the number of active processors, or zero on failure
+    /// @see https://rux-lang.dev/docs/api/windows/process#get-active-processor-count
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getactiveprocessorcount
+    func GetActiveProcessorCount(groupNumber: uint16) -> uint32;
+
     /// Retrieves the thread identifier of the calling thread.
     /// @returns the calling thread's identifier
     /// @see https://rux-lang.dev/docs/api/windows/process#get-current-thread-id
