@@ -165,7 +165,7 @@ TEST_CASE("Mach-O signed output is deterministic") {
     program.sections.push_back(TextSection({0x31, 0xC0, 0xC3}));
     program.symbols.push_back({"Main", "int", 0, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
 
-    const auto temporary = Rux::Testing::TestTemporaryDirectory();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-deterministic-first");
     const std::vector<std::uint8_t> second =
@@ -611,7 +611,7 @@ TEST_CASE("Mach-O links deterministic signed position-independent AArch64 execut
     program.symbols.push_back({"Helper", "", 32, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     program.symbols.push_back({"Value", "", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
 
-    const auto temporary = Rux::Testing::TestTemporaryDirectory();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-first", Target::Arch::AArch64);
     const std::vector<std::uint8_t> second =
@@ -785,7 +785,7 @@ TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
     program.symbols.push_back(
         {"strlen", "/opt/Rux/libExample.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-    const auto temporary = Rux::Testing::TestTemporaryDirectory();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first = LinkBytes(
         program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-import-first", Target::Arch::AArch64);
     const std::vector<std::uint8_t> second = LinkBytes(
@@ -936,7 +936,7 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
     helperObject.symbols.push_back({"Helper", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
     const std::vector<RcuFile> objects{publicObject, helperObject};
-    const auto temporary = Rux::Testing::TestTemporaryDirectory();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(objects, ArtifactKind::SharedLibrary, temporary / "rux-macho-dylib-first" / "libAnswers.dylib",
                   Target::Arch::AArch64);

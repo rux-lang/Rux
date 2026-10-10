@@ -1143,7 +1143,7 @@ TEST_CASE("native archive writers emit deterministic target-specific indexes") {
     object.bytes = {0x01, 0x02, 0x03, 0x04};
     object.publicSymbols = {"Answer"};
 
-    const auto directory = Rux::Testing::TestTemporaryDirectory();
+    const auto &directory = Rux::Testing::TestTemporaryDirectory();
     const auto gnuFirst = directory / "rux-archive-gnu-first.a";
     const auto gnuSecond = directory / "rux-archive-gnu-second.a";
     const auto bsd = directory / "rux-archive-bsd.a";

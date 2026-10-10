@@ -41,6 +41,7 @@ inline const std::filesystem::path &TestTemporaryDirectory() {
             std::filesystem::remove_all(path, error);
         }
     };
+
     static const Reserved reserved;
     return reserved.path;
 }

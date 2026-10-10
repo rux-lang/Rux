@@ -134,7 +134,7 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
                                           std::vector<std::uint8_t>(24)));
         object.symbols.push_back({"Zeroes", "int", 0, 24, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global});
 
-        const auto directory = Rux::Testing::TestTemporaryDirectory();
+        const auto &directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage first = LinkImage({object}, directory / "rux-freebsd-aarch64-static-first");
         const ElfImage second = LinkImage({std::move(object)}, directory / "rux-freebsd-aarch64-static-second");
         CHECK(first.bytes == second.bytes);
@@ -343,7 +343,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
         // hardens the call classifier that prepares their argument registers.
         RcuFile main = ImportingMain({{"puts", ""}, {"printf", ""}, {"cos", "libm.so.5"}, {"sin", ""}});
         RcuFile declarations = ImportDeclarations({{"sin", "libm.so.5"}, {"puts", ""}});
-        const auto directory = Rux::Testing::TestTemporaryDirectory();
+        const auto &directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage image =
             LinkImage({std::move(main), std::move(declarations)}, directory / "rux-freebsd-aarch64-dynamic-metadata");
 
@@ -516,7 +516,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
 
     TEST_CASE("FreeBSD AArch64 dynamic imports and libraries are deduplicated deterministically") {
         const RcuFile object = ImportingMain({{"puts", ""}, {"puts", ""}, {"puts", ""}});
-        const auto directory = Rux::Testing::TestTemporaryDirectory();
+        const auto &directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage first = LinkImage({object}, directory / "rux-freebsd-aarch64-dynamic-repeat-first");
         const ElfImage second = LinkImage({object}, directory / "rux-freebsd-aarch64-dynamic-repeat-second");
         CHECK(first.bytes == second.bytes);
@@ -542,7 +542,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
         const RcuFile alpha = ImportDeclarations({{"alpha", "libzeta.so.1"}});
         const RcuFile beta = ImportDeclarations({{"beta", "libalpha.so.2"}});
         const RcuFile gamma = ImportDeclarations({{"gamma", "libzeta.so.1"}});
-        const auto directory = Rux::Testing::TestTemporaryDirectory();
+        const auto &directory = Rux::Testing::TestTemporaryDirectory();
 
         const ElfImage forward =
             LinkImage({main, alpha, beta, gamma}, directory / "rux-freebsd-aarch64-dynamic-libraries-forward");
@@ -842,7 +842,7 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
 
     TEST_CASE("FreeBSD AArch64 shared library output is deterministic") {
         const RcuFile library = ImportingMain({{"puts", ""}});
-        const auto directory = Rux::Testing::TestTemporaryDirectory();
+        const auto &directory = Rux::Testing::TestTemporaryDirectory();
         const ElfImage first = LinkSharedImage({library}, directory / "rux-shared-first" / "libDeterministic.so");
         const ElfImage second = LinkSharedImage({library}, directory / "rux-shared-second" / "libDeterministic.so");
         CHECK(first.bytes == second.bytes);
@@ -907,7 +907,7 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
         const RcuFile alpha = ImportDeclarations({{"alpha", "libzeta.so.1"}});
         const RcuFile beta = ImportDeclarations({{"beta", "libalpha.so.2"}});
         const RcuFile gamma = ImportDeclarations({{"gamma", "libzeta.so.1"}});
-        const auto directory = Rux::Testing::TestTemporaryDirectory();
+        const auto &directory = Rux::Testing::TestTemporaryDirectory();
 
         const ElfImage forward = LinkSharedImage({calls, alpha, beta, gamma},
                                                  directory / "rux-shared-dependencies-forward" / "libImports.so");
