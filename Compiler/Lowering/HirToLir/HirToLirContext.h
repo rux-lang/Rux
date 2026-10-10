@@ -271,6 +271,7 @@ private:
     LirReg LowerCopy(const HirCopyExpr &expression);
     LirReg LowerMove(const HirMoveExpr &expression);
     LirReg LowerInterfaceCall(const HirInterfaceCallExpr &expression);
+    LirReg LowerAtomicBuiltin(const HirCallExpr &e, std::string_view operation);
     LirReg LowerCall(const HirCallExpr &expression);
     LirReg LowerArgument(const HirExpr &argument);
     IndexedStorage LowerIndexedStorage(const HirExpr &object, const TypeRef &elementType);

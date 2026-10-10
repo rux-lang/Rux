@@ -180,6 +180,7 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
 
         const PendingGenericInstantiation *savedInstantiation = std::exchange(activeInstantiation, &instantiation);
         ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
+        ValidateDeferredAtomicChecks(*instantiation.decl, instantiation.substitutions);
         ValidateDeferredPatternChecks(*instantiation.decl, instantiation.substitutions);
         activeInstantiation = savedInstantiation;
         if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {

@@ -210,6 +210,26 @@ const TypeRef View = TypeRef::MakeSlice(TypeRef::MakeInt32());
 
 /// The placeholder `Const 0` lowering gives an expression with no value of its own, at aggregate types of 24 and 16
 /// bytes, and an int64 to return.
+/// Every atomic instruction on one 32-bit value, including the compare-exchange loop the bitwise operations use.
+[[nodiscard]] LirFunc Atomics() {
+    const TypeRef int32 = TypeRef::MakeInt32();
+    const auto ordered = [](LirInstr instruction, const std::uint8_t order) {
+        instruction.memoryOrder = order;
+        return instruction;
+    };
+    std::vector<LirInstr> instructions;
+    instructions.push_back(ordered(Instruction(LirOpcode::AtomicLoad, 2, int32, {0}), 1));
+    instructions.push_back(ordered(Instruction(LirOpcode::AtomicStore, LirNoReg, int32, {1, 0}), 4));
+    instructions.push_back(ordered(Instruction(LirOpcode::AtomicExchange, 3, int32, {0, 1}), 3));
+    instructions.push_back(ordered(Instruction(LirOpcode::AtomicFetchSub, 4, int32, {0, 1}), 0));
+    instructions.push_back(ordered(Instruction(LirOpcode::AtomicCmpXchg, 5, int32, {0, 1, 2}), 4));
+    instructions.push_back(ordered(Instruction(LirOpcode::AtomicFetchXor, 6, int32, {0, 1}), 2));
+    instructions.push_back(ordered(Instruction(LirOpcode::Fence, LirNoReg, TypeRef::MakeOpaque()), 4));
+    instructions.push_back(Instruction(LirOpcode::SpinHint, LirNoReg, TypeRef::MakeOpaque()));
+    return Function("Atomics", {{0, TypeRef::MakePointer(int32), "address"}, {1, int32, "value"}},
+                    std::move(instructions), 6, int32);
+}
+
 [[nodiscard]] LirFunc Placeholders() {
     return Function("Placeholders", {},
                     {Instruction(LirOpcode::Const, 0, Triple, {}, "0"), Instruction(LirOpcode::Const, 1, View, {}, "0"),
@@ -335,7 +355,8 @@ TEST_CASE("x86-64 assembly text and object code use the same frame addresses in 
                                       WideIntegers("Signed256", Int256),
                                       WideBoolAndChar(),
                                       WidePhi(),
-                                      Placeholders()};
+                                      Placeholders(),
+                                      Atomics()};
     for (LirFunc &function : ManyArguments()) {
         functions.push_back(std::move(function));
     }

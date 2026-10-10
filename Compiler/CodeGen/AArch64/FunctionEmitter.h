@@ -61,6 +61,10 @@ public:
     void EmitAggregateConstant(const LirInstr &instruction);
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
+    /// Returns true exactly when the instruction is an atomic memory operation, a fence or a spin hint and was emitted
+    /// here.
+    [[nodiscard]] bool EmitAtomic(const LirInstr &instruction);
+
 private:
     struct BinaryOperands {
         A64Reg lhs;
@@ -108,5 +112,6 @@ private:
     void Report(std::string message);
     void NotImplemented(std::string what);
     void Must(A64Status status, std::string_view what);
+    void ExtendOldValue(const TypeRef &type, int size);
 };
 } // namespace Rux

@@ -380,6 +380,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 CheckFormatArguments(*e, *decl, false);
             }
             RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct, substitutions);
+            if (callAccepted && IsAtomicIntrinsic(decl->intrinsicName)) {
+                CheckAtomicCall(*e, *decl, substitutions);
+            }
             return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
         }
 

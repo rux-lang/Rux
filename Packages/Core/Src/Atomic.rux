@@ -1,0 +1,143 @@
+// Memory operations that other threads observe whole, and the orderings that say what they observe around them.
+// An ordinary load or store may be split, reordered or removed by the compiler and the processor, which is harmless
+// while one thread owns the memory and wrong the moment two share it. These intrinsics are compiled to the instructions
+// each architecture provides for shared memory: on x86-64 a plain `mov` for loads and weaker stores and `lock`-prefixed
+// instructions for the rest, and on AArch64 acquire and release forms with exclusive-access loops, so no part of an
+// atomic operation is ever seen half done.
+// They act on one value of 8, 16, 32 or 64 bits: an integer, a `bool` or a pointer. The ordering is always written at
+// the call, as a `MemoryOrder` case, so the compiler knows it while compiling; it says which other memory operations
+// may move across this one. `Rux/Atomic` wraps these in a type; they are here because only the compiler can emit them.
+
+/// Which other memory operations may be reordered across an atomic one.
+/// The weakest ordering that makes a program correct is also the fastest, and a stronger one is never wrong. When in
+/// doubt, `SequentiallyConsistent` gives every thread one agreed order of all such operations.
+/// @see https://rux-lang.dev/docs/api/core/atomic#memory-order
+pub enum MemoryOrder: uint8 {
+    /// No ordering: the operation itself is atomic, and nothing around it is held back. Right for counters whose value
+    /// no other memory depends on.
+    Relaxed = 0,
+    /// Later operations of this thread are not moved before this load, so whatever a releasing thread wrote before its
+    /// release is visible after this acquire. For loads and the read half of read-modify-write operations.
+    Acquire = 1,
+    /// Earlier operations of this thread are not moved after this store, so they are visible to a thread that acquires
+    /// what it stores. For stores and the write half of read-modify-write operations.
+    Release = 2,
+    /// Both `Acquire` and `Release`, for a read-modify-write operation that does both.
+    AcquireRelease = 3,
+    /// `AcquireRelease`, and also a single order of every sequentially consistent operation that all threads agree on.
+    SequentiallyConsistent = 4
+}
+
+/// Reads the value at `address` atomically.
+/// `order` must be `Relaxed`, `Acquire` or `SequentiallyConsistent`, written at the call. `address` must be aligned to
+/// the size of `T` and point at memory every thread that touches it reaches only through atomic operations. Runs in
+/// constant time and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits, `bool`, or a pointer
+/// @param address the value to read
+/// @param order which other operations may move across this one
+/// @returns the value read
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-load
+pub intrinsic func AtomicLoad<T>(address: *T, order: MemoryOrder) -> T;
+
+/// Writes `value` to `address` atomically.
+/// `order` must be `Relaxed`, `Release` or `SequentiallyConsistent`, written at the call. `address` must be aligned to
+/// the size of `T`. Runs in constant time and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits, `bool`, or a pointer
+/// @param address where to write
+/// @param value what to write
+/// @param order which other operations may move across this one
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-store
+pub intrinsic func AtomicStore<T>(address: *var T, value: T, order: MemoryOrder);
+
+/// Writes `value` to `address` and returns what was there, as one atomic step.
+/// Any ordering is allowed. `address` must be aligned to the size of `T`. Runs in constant time and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits, `bool`, or a pointer
+/// @param address where to write
+/// @param value what to write
+/// @param order which other operations may move across this one
+/// @returns the value that was replaced
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-exchange
+pub intrinsic func AtomicExchange<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+
+/// Writes `desired` to `address` if it holds `expected`, and returns what it held, as one atomic step.
+/// The write happened exactly when the returned value equals `expected`. `success` orders the operation when it writes,
+/// and `failure` when it only reads; `failure` may not be `Release` or `AcquireRelease`, nor acquire more than
+/// `success` does. `address` must be aligned to the size of `T`. Never fails spuriously. Runs in constant time apart
+/// from contention and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits, `bool`, or a pointer
+/// @param address the value to compare and replace
+/// @param expected the value `address` must hold for the write to happen
+/// @param desired the value to write
+/// @param success the ordering when the write happens
+/// @param failure the ordering when it does not
+/// @returns the value `address` held before the operation
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-compare-exchange
+pub intrinsic func AtomicCompareExchange<T>(address: *var T, expected: T, desired: T, success: MemoryOrder,
+                                            failure: MemoryOrder) -> T;
+
+/// Adds `value` to the integer at `address` and returns what was there, as one atomic step.
+/// The sum wraps on overflow, as two's complement arithmetic does. Any ordering is allowed. Runs in constant time apart
+/// from contention and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits
+/// @param address the integer to add to
+/// @param value what to add
+/// @param order which other operations may move across this one
+/// @returns the value before the addition
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-add
+pub intrinsic func AtomicFetchAdd<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+
+/// Subtracts `value` from the integer at `address` and returns what was there, as one atomic step.
+/// The difference wraps on overflow. Any ordering is allowed. Runs in constant time apart from contention and
+/// allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits
+/// @param address the integer to subtract from
+/// @param value what to subtract
+/// @param order which other operations may move across this one
+/// @returns the value before the subtraction
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-sub
+pub intrinsic func AtomicFetchSub<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+
+/// Combines the value at `address` with `value` by bitwise and, and returns what was there, as one atomic step.
+/// Any ordering is allowed. Runs in constant time apart from contention and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits, or `bool`
+/// @param address the value to combine
+/// @param value the bits to keep
+/// @param order which other operations may move across this one
+/// @returns the value before the operation
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-and
+pub intrinsic func AtomicFetchAnd<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+
+/// Combines the value at `address` with `value` by bitwise or, and returns what was there, as one atomic step.
+/// Any ordering is allowed. Runs in constant time apart from contention and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits, or `bool`
+/// @param address the value to combine
+/// @param value the bits to set
+/// @param order which other operations may move across this one
+/// @returns the value before the operation
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-or
+pub intrinsic func AtomicFetchOr<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+
+/// Combines the value at `address` with `value` by bitwise exclusive or, and returns what was there, as one atomic
+/// step.
+/// Any ordering is allowed. Runs in constant time apart from contention and allocates nothing.
+/// @typeParam T an integer of 8 to 64 bits, or `bool`
+/// @param address the value to combine
+/// @param value the bits to flip
+/// @param order which other operations may move across this one
+/// @returns the value before the operation
+/// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-xor
+pub intrinsic func AtomicFetchXor<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+
+/// Orders this thread's memory operations without touching memory.
+/// `order` must not be `Relaxed`, which would order nothing. An `Acquire` fence keeps later operations after earlier
+/// loads, a `Release` fence keeps earlier operations before later stores, and `SequentiallyConsistent` does both and
+/// takes part in the single order of sequentially consistent operations. Runs in constant time and allocates nothing.
+/// @param order what the fence holds back
+/// @see https://rux-lang.dev/docs/api/core/atomic#fence
+pub intrinsic func Fence(order: MemoryOrder);
+
+/// Tells the processor that the thread is waiting in a loop for another thread.
+/// It saves power and lets a sibling hardware thread run, and has no effect on memory. A loop that waits long should
+/// sleep instead. Runs in constant time and allocates nothing.
+/// @see https://rux-lang.dev/docs/api/core/atomic#spin-hint
+pub intrinsic func SpinHint();

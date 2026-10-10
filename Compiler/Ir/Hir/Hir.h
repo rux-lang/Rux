@@ -340,6 +340,10 @@ struct HirCallExpr : HirExpr {
     std::string sourceFunction;
     std::uint32_t sourceLine = 0;
     std::uint32_t sourceColumn = 0;
+    /// The memory orders of an atomic builtin, as `MemoryOrderKind` values: the order, or the success and failure
+    /// orders of a compare-exchange.
+    std::uint8_t memoryOrder = 0;
+    std::uint8_t failureOrder = 0;
 };
 
 /// Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}.

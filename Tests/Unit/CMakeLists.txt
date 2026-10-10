@@ -32,6 +32,7 @@ set(RUX_TEST_SOURCES
     AArch64WideIntegerTests.cpp
     AArch64WideScalarTests.cpp
     AllocationMathTests.cpp
+    AtomicIntrinsicTests.cpp
     ArtifactTests.cpp
     BackendDiagnosticTests.cpp
     AsmParserTests.cpp

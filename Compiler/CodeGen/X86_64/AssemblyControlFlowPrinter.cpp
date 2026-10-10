@@ -251,7 +251,8 @@ private:
     }
 
     void GenInstruction(const LirInstr &instruction, AssemblyInstructionPrinter &instructionPrinter) {
-        if (instructionPrinter.EmitArithmetic(instruction) || instructionPrinter.EmitMemory(instruction)) {
+        if (instructionPrinter.EmitArithmetic(instruction) || instructionPrinter.EmitMemory(instruction) ||
+            instructionPrinter.EmitAtomic(instruction)) {
             return;
         }
 

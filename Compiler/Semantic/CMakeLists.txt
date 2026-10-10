@@ -28,6 +28,7 @@ rux_add_component(RuxSemantic
     Analysis/AggregateExpressions.cpp
     Analysis/AllocationMath.cpp
     Analysis/Zeroization.cpp
+    Analysis/Atomics.cpp
     Analysis/BasicExpressions.cpp
     Analysis/BorrowState.cpp
     Analysis/CallExpressions.cpp

@@ -30,6 +30,7 @@ public:
     /// Return true exactly when this printer owns and emitted the instruction.
     [[nodiscard]] bool EmitArithmetic(const LirInstr &instruction);
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
+    [[nodiscard]] bool EmitAtomic(const LirInstr &instruction);
 
     /// Operand operations shared with call and control-flow text. They remain the single owner of virtual-register and
     /// stack-slot spelling.
@@ -70,6 +71,8 @@ private:
     Target::OS targetOs;
 
     void LoadB(LirReg reg, const TypeRef &type);
+    void LoadAtomicAddress(LirReg pointer);
+    void ExtendAccumulator(const TypeRef &type, int size);
     void EmitStackAllocation(std::int32_t bytes) const;
     void LoadChunkFromR10(std::int32_t offset, int size) const;
     void StoreChunkToR11(std::int32_t offset, int size) const;

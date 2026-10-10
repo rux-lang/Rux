@@ -62,6 +62,20 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::Assert:
     case LirOpcode::Panic:
         return InstructionEffect::Observable;
+    // Another thread can see an atomic operation and a fence, and an atomic load orders the memory around it even
+    // when nothing reads its result, so none of them is ever removed.
+    case LirOpcode::AtomicLoad:
+    case LirOpcode::AtomicStore:
+    case LirOpcode::AtomicExchange:
+    case LirOpcode::AtomicCmpXchg:
+    case LirOpcode::AtomicFetchAdd:
+    case LirOpcode::AtomicFetchSub:
+    case LirOpcode::AtomicFetchAnd:
+    case LirOpcode::AtomicFetchOr:
+    case LirOpcode::AtomicFetchXor:
+    case LirOpcode::Fence:
+    case LirOpcode::SpinHint:
+        return InstructionEffect::Observable;
     }
     return InstructionEffect::Observable;
 }

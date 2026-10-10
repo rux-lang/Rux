@@ -462,6 +462,13 @@ private:
     [[nodiscard]] TypeRef CheckTypeQueryExpression(const TypeQueryExpr &expression);
     [[nodiscard]] static bool IsCheckedArithmeticIntrinsic(std::string_view intrinsicName);
     void ValidateCheckedArithmeticIntrinsic(const FuncDecl &declaration);
+    [[nodiscard]] static bool IsAtomicIntrinsic(std::string_view intrinsicName);
+    /// Holds a call of an atomic intrinsic to a value type the instructions move and to orders they define.
+    void CheckAtomicCall(const CallExpr &call, const FuncDecl &declaration,
+                         const std::unordered_map<std::string, TypeRef> &substitutions);
+    void CheckAtomicValueType(const TypeRef &type, std::string_view operation, SourceLocation location);
+    void ValidateDeferredAtomicChecks(const FuncDecl &declaration,
+                                      const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] static bool IsZeroizeIntrinsic(std::string_view intrinsicName);
     void ValidateZeroizeIntrinsic(const FuncDecl &declaration);
     /// Rejects an intrinsic function the compiler does not implement, and holds a diagnostic intrinsic (`Assert`,
@@ -842,6 +849,12 @@ private:
         SourceLocation location;
     };
 
+    struct DeferredAtomicCheck {
+        TypeRef value;
+        std::string operation;
+        SourceLocation location;
+    };
+
     struct DeferredScalarRead {
         TypeRef reference;
         SourceLocation location;
@@ -865,6 +878,7 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredAtomicCheck>> deferredAtomicChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredScalarRead>> deferredScalarReads;
     std::unordered_map<const FuncDecl *, std::vector<DeferredOutcomeCheck>> deferredOutcomeChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;

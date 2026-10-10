@@ -64,6 +64,18 @@ enum class LirOpcode {
     // Global address
     GlobalAddr, // %dst = globaladdr <name> — address of a named global symbol
     StringAddr, // %dst = stringaddr <value> — address of static literal storage
+    // Atomic memory operations, each carrying its memory order. The value type is `type` throughout.
+    AtomicLoad,     // %dst = atomic_load <type> %ptr
+    AtomicStore,    // atomic_store <type> %val, %ptr
+    AtomicExchange, // %dst = atomic_xchg <type> %ptr, %val
+    AtomicCmpXchg,  // %dst = atomic_cmpxchg <type> %ptr, %expected, %desired — the previous value
+    AtomicFetchAdd, // %dst = atomic_add <type> %ptr, %val — the previous value
+    AtomicFetchSub, // %dst = atomic_sub <type> %ptr, %val
+    AtomicFetchAnd, // %dst = atomic_and <type> %ptr, %val
+    AtomicFetchOr,  // %dst = atomic_or <type> %ptr, %val
+    AtomicFetchXor, // %dst = atomic_xor <type> %ptr, %val
+    Fence,          // fence <order>
+    SpinHint,       // spin_hint
 };
 
 /// The spelling of an opcode, as a dump writes it and as a diagnostic names it. One name serves both, so a back end
@@ -138,6 +150,28 @@ enum class LirOpcode {
         return "globaladdr";
     case LirOpcode::StringAddr:
         return "stringaddr";
+    case LirOpcode::AtomicLoad:
+        return "atomic_load";
+    case LirOpcode::AtomicStore:
+        return "atomic_store";
+    case LirOpcode::AtomicExchange:
+        return "atomic_xchg";
+    case LirOpcode::AtomicCmpXchg:
+        return "atomic_cmpxchg";
+    case LirOpcode::AtomicFetchAdd:
+        return "atomic_add";
+    case LirOpcode::AtomicFetchSub:
+        return "atomic_sub";
+    case LirOpcode::AtomicFetchAnd:
+        return "atomic_and";
+    case LirOpcode::AtomicFetchOr:
+        return "atomic_or";
+    case LirOpcode::AtomicFetchXor:
+        return "atomic_xor";
+    case LirOpcode::Fence:
+        return "fence";
+    case LirOpcode::SpinHint:
+        return "spin_hint";
     }
     return "?";
 }
@@ -155,6 +189,10 @@ struct LirInstr {
     /// A store whose only purpose is that it happens. Zeroizing a secret writes memory nothing reads afterwards, which
     /// is exactly the shape dead-store elimination removes, so the write says so about itself.
     bool isVolatile = false;
+    /// The memory order of an atomic instruction or fence, and the failure order of a compare-exchange, as
+    /// `MemoryOrderKind` values: 0 relaxed, 1 acquire, 2 release, 3 acquire-release, 4 sequentially consistent.
+    std::uint8_t memoryOrder = 0;
+    std::uint8_t failureOrder = 0;
     /// Present only with isCVariadic. AArch64 platform variants need the declaration boundary to promote and/or place
     /// anonymous arguments correctly. It counts arguments only: a CallIndirect's callee in srcs[0] is not one of them.
     std::optional<std::uint32_t> cVariadicFixedParamCount;

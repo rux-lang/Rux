@@ -47,6 +47,31 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
     case LirOpcode::Alloca:
         out << std::format("{} = alloca {}\n", RegStr(i.dst), i.type.ToString());
         return;
+    case LirOpcode::AtomicLoad:
+    case LirOpcode::AtomicStore:
+    case LirOpcode::AtomicExchange:
+    case LirOpcode::AtomicCmpXchg:
+    case LirOpcode::AtomicFetchAdd:
+    case LirOpcode::AtomicFetchSub:
+    case LirOpcode::AtomicFetchAnd:
+    case LirOpcode::AtomicFetchOr:
+    case LirOpcode::AtomicFetchXor:
+    case LirOpcode::Fence:
+    case LirOpcode::SpinHint: {
+        // Every operand, then the order: an atomic instruction is read for what it orders as much as for what it does.
+        std::string operands;
+        for (const LirReg source : i.srcs) {
+            operands += (operands.empty() ? " " : ", ") + RegStr(source);
+        }
+        const std::string result = i.dst == LirNoReg ? std::string() : RegStr(i.dst) + " = ";
+        out << std::format("{}{} {}{} order {}", result, LirOpcodeName(i.op), i.type.ToString(), operands,
+                           i.memoryOrder);
+        if (i.op == LirOpcode::AtomicCmpXchg) {
+            out << std::format(" failure {}", i.failureOrder);
+        }
+        out << '\n';
+        return;
+    }
     case LirOpcode::Load:
         if (!i.srcs.empty()) {
             out << std::format("{} = load {} {}\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]));

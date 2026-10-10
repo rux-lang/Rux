@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace Rux::HirToLirDetail {
@@ -763,10 +764,61 @@ LirReg HirToLirContext::LowerArgument(const HirExpr &argument) {
     return LowerExpr(argument);
 }
 
+// An atomic builtin is one LIR instruction. Its operands are evaluated left to right like any call's, the address
+// first, and the value type is the instruction's type whether or not it produces a result.
+LirReg HirToLirContext::LowerAtomicBuiltin(const HirCallExpr &e, const std::string_view operation) {
+    static const std::unordered_map<std::string_view, LirOpcode> opcodes = {
+        {"AtomicLoad", LirOpcode::AtomicLoad},
+        {"AtomicStore", LirOpcode::AtomicStore},
+        {"AtomicExchange", LirOpcode::AtomicExchange},
+        {"AtomicCompareExchange", LirOpcode::AtomicCmpXchg},
+        {"AtomicFetchAdd", LirOpcode::AtomicFetchAdd},
+        {"AtomicFetchSub", LirOpcode::AtomicFetchSub},
+        {"AtomicFetchAnd", LirOpcode::AtomicFetchAnd},
+        {"AtomicFetchOr", LirOpcode::AtomicFetchOr},
+        {"AtomicFetchXor", LirOpcode::AtomicFetchXor},
+        {"Fence", LirOpcode::Fence},
+        {"SpinHint", LirOpcode::SpinHint}};
+    const auto found = opcodes.find(operation);
+    if (found == opcodes.end()) {
+        BuilderFailure(std::format("unknown atomic builtin '{}'", operation));
+        return LirNoReg;
+    }
+    std::vector<LirReg> operands;
+    operands.reserve(e.args.size());
+    for (const auto &argument : e.args) {
+        operands.push_back(LowerExpr(*argument));
+    }
+    LirInstr instruction;
+    instruction.op = found->second;
+    instruction.memoryOrder = e.memoryOrder;
+    instruction.failureOrder = e.failureOrder;
+    const bool producesValue = instruction.op != LirOpcode::AtomicStore && instruction.op != LirOpcode::Fence &&
+                               instruction.op != LirOpcode::SpinHint;
+    if (instruction.op == LirOpcode::AtomicStore) {
+        // A store's operands read like an ordinary store's: the value, then the address.
+        instruction.type = e.args.size() == 2 ? e.args[1]->type : TypeRef::MakeOpaque();
+        instruction.srcs = operands.size() == 2 ? std::vector<LirReg>{operands[1], operands[0]} : operands;
+    }
+    else {
+        instruction.type = producesValue ? e.type : TypeRef::MakeOpaque();
+        instruction.srcs = std::move(operands);
+    }
+    if (producesValue) {
+        instruction.dst = NewReg();
+    }
+    const LirReg result = instruction.dst;
+    Emit(std::move(instruction));
+    return result;
+}
+
 LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
     if (const auto *callee = dynamic_cast<const HirVarExpr *>(e.callee.get())) {
         if (callee->name == "__builtin_debug_assert_disabled") {
             return LirNoReg;
+        }
+        if (callee->name.starts_with("__builtin_atomic_")) {
+            return LowerAtomicBuiltin(e, std::string_view(callee->name).substr(17));
         }
         if (callee->name == "__builtin_assert") {
             if (e.args.size() != 2) {

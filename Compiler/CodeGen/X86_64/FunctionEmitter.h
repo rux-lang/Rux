@@ -47,6 +47,10 @@ public:
     /// address and was emitted here.
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
+    /// Returns true exactly when the instruction is an atomic memory operation, a fence or a spin hint and was emitted
+    /// here.
+    [[nodiscard]] bool EmitAtomic(const LirInstr &instruction);
+
 private:
     X64Enc &encoder;
     const X86_64FramePlan &framePlan;
@@ -76,5 +80,7 @@ private:
     void StoreChunkToR11(std::int32_t offset, int size) const;
     void CopyAggregateFromR10ToStack(std::int32_t destinationDisp, int size) const;
     void CopyAggregateFromR10ToR11(int size) const;
+    void LoadAddressIntoR11(LirReg pointer) const;
+    void ExtendRax(const TypeRef &type, int size) const;
 };
 } // namespace Rux

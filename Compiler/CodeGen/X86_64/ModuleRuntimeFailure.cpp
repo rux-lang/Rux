@@ -5,7 +5,8 @@ namespace Rux::X86_64Detail {
 // Instruction code generation
 void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_64CallEmitter &callEmitter,
                                    const LirInstr &instr) {
-    if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr) || callEmitter.Emit(instr)) {
+    if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr) ||
+        functionEmitter.EmitAtomic(instr) || callEmitter.Emit(instr)) {
         return;
     }
     switch (instr.op) {

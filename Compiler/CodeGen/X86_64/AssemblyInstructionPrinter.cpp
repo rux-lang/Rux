@@ -1706,4 +1706,140 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         return false;
     }
 }
+
+// ---- atomics (AtomicEmitter.cpp, EmitAtomic) ----------------------------------------------------------------------
+
+namespace {
+/// The register of `bytes` width numbered like RCX, for the and/or/xor loop.
+std::string_view Counter(const int bytes) {
+    switch (bytes) {
+    case 8:
+        return "rcx";
+    case 4:
+        return "ecx";
+    case 2:
+        return "cx";
+    default:
+        return "cl";
+    }
+}
+
+/// R10 at `bytes` width.
+std::string_view Scratch(const int bytes) {
+    switch (bytes) {
+    case 8:
+        return "r10";
+    case 4:
+        return "r10d";
+    case 2:
+        return "r10w";
+    default:
+        return "r10b";
+    }
+}
+} // namespace
+
+void AssemblyInstructionPrinter::LoadAtomicAddress(const LirReg pointer) {
+    const auto &physicalRegisters = framePlan.PhysicalRegisters();
+    if (const auto physical = physicalRegisters.find(pointer); physical != physicalRegisters.end()) {
+        Instruction("mov", std::format("r11, {}", PhysicalRegisterName(physical->second)));
+    }
+    else {
+        Instruction("mov", "r11, " + Rbp("qword", Disp(pointer)));
+    }
+}
+
+void AssemblyInstructionPrinter::ExtendAccumulator(const TypeRef &type, const int size) {
+    const bool sign = type.IsSigned();
+    if (size == 1 || size == 2) {
+        Instruction(sign ? "movsx" : "movzx", std::format("rax, {}", Accumulator(size)));
+    }
+    else if (size == 4) {
+        Instruction(sign ? "movsxd" : "mov", sign ? "rax, eax" : "eax, eax");
+    }
+}
+
+bool AssemblyInstructionPrinter::EmitAtomic(const LirInstr &instruction) {
+    const TypeRef &type = instruction.type;
+    const int size = SizeOfRuntime(type);
+    const std::string memory = std::format("{} [r11]", Width(size));
+    switch (instruction.op) {
+    case LirOpcode::Fence:
+        if (instruction.memoryOrder == 4) {
+            Instruction("mfence");
+        }
+        return true;
+    case LirOpcode::SpinHint:
+        Instruction("pause");
+        return true;
+    case LirOpcode::AtomicLoad:
+        LoadAtomicAddress(instruction.srcs[0]);
+        if (size == 8 || size == 4) {
+            Instruction("mov", std::format("{}, {}", Accumulator(size), memory));
+        }
+        else {
+            Instruction("movzx", std::format("rax, {}", memory));
+        }
+        ExtendAccumulator(type, size);
+        StoreA(instruction.dst, type);
+        return true;
+    case LirOpcode::AtomicStore:
+        LoadA(instruction.srcs[0], type);
+        LoadAtomicAddress(instruction.srcs[1]);
+        Instruction(instruction.memoryOrder == 4 ? "xchg" : "mov", std::format("{}, {}", memory, Accumulator(size)));
+        return true;
+    case LirOpcode::AtomicExchange:
+        LoadA(instruction.srcs[1], type);
+        LoadAtomicAddress(instruction.srcs[0]);
+        Instruction("xchg", std::format("{}, {}", memory, Accumulator(size)));
+        ExtendAccumulator(type, size);
+        StoreA(instruction.dst, type);
+        return true;
+    case LirOpcode::AtomicFetchAdd:
+    case LirOpcode::AtomicFetchSub:
+        LoadA(instruction.srcs[1], type);
+        if (instruction.op == LirOpcode::AtomicFetchSub) {
+            Instruction("neg", "rax");
+        }
+        LoadAtomicAddress(instruction.srcs[0]);
+        Instruction("lock xadd", std::format("{}, {}", memory, Accumulator(size)));
+        ExtendAccumulator(type, size);
+        StoreA(instruction.dst, type);
+        return true;
+    case LirOpcode::AtomicCmpXchg:
+        LoadA(instruction.srcs[1], type);
+        LoadB(instruction.srcs[2], type);
+        LoadAtomicAddress(instruction.srcs[0]);
+        Instruction("lock cmpxchg", std::format("{}, {}", memory, Scratch(size)));
+        ExtendAccumulator(type, size);
+        StoreA(instruction.dst, type);
+        return true;
+    case LirOpcode::AtomicFetchAnd:
+    case LirOpcode::AtomicFetchOr:
+    case LirOpcode::AtomicFetchXor: {
+        LoadB(instruction.srcs[1], type);
+        LoadAtomicAddress(instruction.srcs[0]);
+        if (size == 8 || size == 4) {
+            Instruction("mov", std::format("{}, {}", Accumulator(size), memory));
+        }
+        else {
+            Instruction("movzx", std::format("eax, {}", memory));
+        }
+        const std::string loop = Label("atomic_retry");
+        modulePrinter.TextLabel(loop);
+        Instruction("mov", "rcx, rax");
+        Instruction(instruction.op == LirOpcode::AtomicFetchAnd  ? "and"
+                    : instruction.op == LirOpcode::AtomicFetchOr ? "or"
+                                                                 : "xor",
+                    "rcx, r10");
+        Instruction("lock cmpxchg", std::format("{}, {}", memory, Counter(size)));
+        Instruction("jne", loop);
+        ExtendAccumulator(type, size);
+        StoreA(instruction.dst, type);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
 } // namespace Rux

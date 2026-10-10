@@ -3,6 +3,7 @@
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 #include "Object/Rcu/Rcu.h"
+#include "Syntax/Ast/MemoryOrder.h"
 
 #include <algorithm>
 #include <cassert>
@@ -448,6 +449,10 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
     const bool isPanic = calleeSymbol && calleeSymbol->intrinsicName == "Panic";
     // A checked operation is emitted where it is called, so it never becomes a call at all.
     if (calleeSymbol && !calleeSymbol->intrinsicName.empty()) {
+        if (calleeSymbol->intrinsicName.starts_with("Atomic") || calleeSymbol->intrinsicName == "Fence" ||
+            calleeSymbol->intrinsicName == "SpinHint") {
+            return LowerAtomicCall(call, calleeSymbol->intrinsicName);
+        }
         if (HirExprPtr checked = LowerCheckedArithmeticCall(calleeSymbol->intrinsicName, call)) {
             return checked;
         }
@@ -532,6 +537,47 @@ HirExprPtr AstToHirContext::LowerProcessStartFrame(const CallExpr &call) {
     null->type = pointerType;
     null->value = "0";
     return null;
+}
+
+// An atomic intrinsic becomes a call of a builtin the LIR lowering turns into one instruction or one exclusive-access
+// loop. The value operands are lowered as the type argument, and the memory orders, which semantic analysis held to
+// cases written at the call, travel on the call rather than as values.
+HirExprPtr AstToHirContext::LowerAtomicCall(const CallExpr &call, const std::string &operation) {
+    auto lowered = std::make_unique<HirCallExpr>();
+    lowered->location = call.location;
+    TypeRef value = TypeRef::MakeOpaque();
+    if (operation != "Fence" && operation != "SpinHint") {
+        const ResolvedCallableBinding binding = ResolvedCall(call);
+        if (const auto found = binding.substitutions.find("T"); found != binding.substitutions.end()) {
+            value = found->second;
+        }
+    }
+    const bool returnsValue = operation != "AtomicStore" && operation != "Fence" && operation != "SpinHint";
+    lowered->type = returnsValue ? value : TypeRef::MakeOpaque();
+
+    auto callee = std::make_unique<HirVarExpr>();
+    callee->location = call.callee->location;
+    callee->type = TypeRef::MakeOpaque();
+    callee->name = "__builtin_atomic_" + operation;
+    lowered->callee = std::move(callee);
+
+    // The address comes first, then the values, then the orders.
+    std::size_t orderIndex = 0;
+    for (std::size_t index = 0; index < call.args.size(); ++index) {
+        if (const auto order = MemoryOrderOf(*call.args[index])) {
+            if (orderIndex == 0) {
+                lowered->memoryOrder = static_cast<std::uint8_t>(*order);
+            }
+            else {
+                lowered->failureOrder = static_cast<std::uint8_t>(*order);
+            }
+            ++orderIndex;
+            continue;
+        }
+        const bool address = index == 0 && operation != "Fence" && operation != "SpinHint";
+        lowered->args.push_back(LowerArgumentAs(*call.args[index], address ? TypeRef::MakePointer(value) : value));
+    }
+    return lowered;
 }
 
 } // namespace Rux::AstToHirDetail
