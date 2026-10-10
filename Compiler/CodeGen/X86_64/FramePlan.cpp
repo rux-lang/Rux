@@ -161,13 +161,11 @@ private:
         }
 
         std::vector<LiveInterval> candidates;
-        if (func.blocks.size() == 1) {
-            for (const auto &interval : ComputeLiveIntervals(func, parameterTypes)) {
-                if (IsFloat(interval.type) || IsAggregate(interval.type) || RuntimeSize(interval.type) > 8) {
-                    continue;
-                }
-                candidates.push_back(interval);
+        for (const auto &interval : ComputeLiveIntervals(func, parameterTypes)) {
+            if (interval.type.IsFloat() || IsAggregate(interval.type) || RuntimeSize(interval.type) > 8) {
+                continue;
             }
+            candidates.push_back(interval);
         }
 
         RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegisters);

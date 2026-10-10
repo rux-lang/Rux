@@ -213,37 +213,31 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function comparing and bran
 
     CheckFunctionImage(objects.front(), "Clamp",
                        {
-                           0xA9BC7BFD, // stp  x29, x30, [sp, #-64]!
-                           0x910003FD, // mov  x29, sp
-                           0xF9000BA0, // str  x0, [x29, #16]
-                           0x910083A9, // add  x9, x29, #32
-                           0xF9000FA9, // str  x9, [x29, #24]
-                           0xF9400FAA, // ldr  x10, [x29, #24]
-                           0xF9400BA9, // ldr  x9, [x29, #16]
-                           0xF9000149, // str  x9, [x10]        — the slot of `n`
-                           0xF9400FAA, // ldr  x10, [x29, #24]
-                           0xF9400149, // ldr  x9, [x10]
-                           0xF90017A9, // str  x9, [x29, #40]
-                           0xD2800149, // mov  x9, #10
-                           0xF9001BA9, // str  x9, [x29, #48]
-                           0xF94017A9, // ldr  x9, [x29, #40]
-                           0xF9401BAC, // ldr  x12, [x29, #48]
-                           0xEB0C013F, // cmp  x9, x12
-                           0x9A9FD7E9, // cset x9, gt
-                           0x3900E3A9, // strb w9, [x29, #56]
-                           0x3940E3A9, // ldrb w9, [x29, #56]
-                           0xB4000049, // cbz  x9, +8           — over the branch below
-                           0x14000007, // b    +28              — the `if` body
-                           0xF9400FAA, // ldr  x10, [x29, #24]
-                           0xF9400149, // ldr  x9, [x10]
-                           0xF90017A9, // str  x9, [x29, #40]
-                           0xF94017A0, // ldr  x0, [x29, #40]
-                           0xA8C47BFD, // ldp  x29, x30, [sp], #64
+                           0xA9BA7BFD, // stp x29, x30, [sp, #-96]!
+                           0x910003FD, // mov x29, sp
+                           0xA90153B3, // stp x19, x20, [x29, #16]
+                           0xA9025BB5, // stp x21, x22, [x29, #32]
+                           0xAA0003F3, // mov x19, x0
+                           0x910103B4, // add x20, x29, #64 — local n
+                           0xF9000293, // str x19, [x20]
+                           0xF9400293, // ldr x19, [x20]
+                           0xD2800155, // mov x21, #10
+                           0xEB15027F, // cmp x19, x21
+                           0x9A9FD7F6, // cset x22, gt
+                           0x53001EC9, // uxtb w9, w22
+                           0xB4000049, // cbz x9, +8
+                           0x14000007, // b +28
+                           0xF9400293, // ldr x19, [x20]
+                           0xAA1303E0, // mov x0, x19
+                           0xA94153B3, // ldp x19, x20, [x29, #16]
+                           0xA9425BB5, // ldp x21, x22, [x29, #32]
+                           0xA8C67BFD, // ldp x29, x30, [sp], #96
                            0xD65F03C0, // ret
-                           0xD2800149, // mov  x9, #10
-                           0xF90017A9, // str  x9, [x29, #40]
-                           0xF94017A0, // ldr  x0, [x29, #40]
-                           0xA8C47BFD, // ldp  x29, x30, [sp], #64
+                           0xD2800153, // mov x19, #10
+                           0xAA1303E0, // mov x0, x19
+                           0xA94153B3, // ldp x19, x20, [x29, #16]
+                           0xA9425BB5, // ldp x21, x22, [x29, #32]
+                           0xA8C67BFD, // ldp x29, x30, [sp], #96
                            0xD65F03C0, // ret
                        });
 }

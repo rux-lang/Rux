@@ -109,7 +109,7 @@ TEST_CASE("x86-64 assembly control-flow printing owns calls phi edges and termin
     CHECK(output.find("jz      .Control_false") != std::string::npos);
     CHECK(output.find("jmp     .Control_join") != std::string::npos);
     CHECK(output.find("cmp     rax, 10\n    je      .Control_return") != std::string::npos);
-    CHECK(output.find("leave\n    ret") != std::string::npos);
+    CHECK(output.find("pop     rbp\n    ret") != std::string::npos);
     CHECK(output.find(".Control_unreachable:\n    ud2") != std::string::npos);
     CHECK(output.find("unsupported LIR opcode") == std::string::npos);
 }

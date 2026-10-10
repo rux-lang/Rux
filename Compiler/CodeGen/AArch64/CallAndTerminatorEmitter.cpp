@@ -522,12 +522,39 @@ void AArch64TerminatorEmitter::EmitPhiMoves(const std::uint32_t from, const std:
         return;
     }
     for (const auto &step : ResolvePhiMoves(moves->second)) {
-        if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-            hooks.CopyFrameValue(framePlan.PhiTemporaryOffset(), hooks.Disp(step.dst), step.type);
+        const bool save = step.kind == PhiMoveStep::Kind::SaveDestination;
+        if (hooks.IsAggregate(step.type)) {
+            if (save) {
+                hooks.CopyFrameValue(framePlan.PhiTemporaryOffset(), hooks.Disp(step.dst), step.type);
+            }
+            else {
+                hooks.CopyFrameValue(hooks.Disp(step.dst),
+                                     step.sourceIsTemporary ? framePlan.PhiTemporaryOffset() : hooks.Disp(step.src),
+                                     step.type);
+            }
             continue;
         }
-        hooks.CopyFrameValue(hooks.Disp(step.dst),
-                             step.sourceIsTemporary ? framePlan.PhiTemporaryOffset() : hooks.Disp(step.src), step.type);
+        const bool floating = IsFloat(step.type);
+        const A64Reg value = floating ? FloatRegister(step.type, kFpTemp) : A64::Xn(kTemp);
+        const unsigned width = AccessWidth(hooks.RuntimeSize(step.type));
+        if (!save && step.sourceIsTemporary) {
+            hooks.LoadScalar(value, A64::Fp, framePlan.PhiTemporaryOffset(), width, step.type.IsSigned());
+        }
+        else if (floating) {
+            hooks.LoadFpFromSlot(value, save ? step.dst : step.src);
+        }
+        else {
+            hooks.LoadFromSlot(value, save ? step.dst : step.src, step.type);
+        }
+        if (save) {
+            hooks.StoreScalar(value, A64::Fp, framePlan.PhiTemporaryOffset(), width);
+        }
+        else if (floating) {
+            hooks.StoreFpToSlot(value, step.dst);
+        }
+        else {
+            hooks.StoreToSlot(value, step.dst, step.type);
+        }
     }
 }
 

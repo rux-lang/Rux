@@ -74,7 +74,8 @@ TEST_CASE("x86-64 frame plans follow Win64 software-float aggregate rules") {
     const TypeRef float8 = Float(TypeRef::Kind::Float8);
     const X86_64FramePlan tiny = PlanX86_64Frame(Identity("Tiny", float8), {}, {}, Target::OS::Windows);
     CHECK_EQ(tiny.HiddenReturnOffset(), 0);
-    CHECK(tiny.PhysicalRegisters().contains(0));
+    // Software-float emission uses memory operands even at narrow widths; it must not read a stale register home.
+    CHECK_FALSE(tiny.PhysicalRegisters().contains(0));
 }
 
 TEST_CASE("x86-64 frame plans follow SysV software-float aggregate rules") {

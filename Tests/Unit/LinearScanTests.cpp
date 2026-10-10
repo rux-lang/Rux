@@ -208,3 +208,75 @@ TEST_CASE("Linear scan hands out nothing when the pool is empty") {
     CHECK(assignment.physRegs.empty());
     CHECK(assignment.usedPhysRegs.empty());
 }
+
+namespace {
+LirTerminator Term(const LirTermKind kind, const std::uint32_t target = 0, const std::uint32_t other = 0,
+                   const LirReg condition = LirNoReg, const LirReg result = LirNoReg) {
+    LirTerminator term;
+    term.kind = kind;
+    term.trueTarget = target;
+    term.falseTarget = other;
+    term.cond = condition;
+    if (result != LirNoReg) {
+        term.retVal = result;
+    }
+    return term;
+}
+
+LirInstr Join(const LirReg destination, const LirReg source) {
+    LirInstr instruction;
+    instruction.dst = destination;
+    instruction.type = TypeRef::MakeInt64();
+    instruction.op = LirOpcode::Phi;
+    instruction.phiPreds = {{source, 0}};
+    return instruction;
+}
+} // namespace
+
+TEST_CASE("CFG allocation keeps a header-only value alive through a back edge") {
+    LirFunc function = FuncOf({Define(0, {})}, 0);
+    function.blocks.resize(4);
+    function.blocks[0].term = Term(LirTermKind::Jump, 1);
+    function.blocks[1].instrs = {Define(1, {0})};
+    function.blocks[1].term = Term(LirTermKind::Branch, 2, 3, 1);
+    function.blocks[2].instrs = {Define(2, {})};
+    function.blocks[2].term = Term(LirTermKind::Jump, 1);
+    function.blocks[3].term = Term(LirTermKind::Return);
+    const auto intervals = ComputeLiveIntervals(function, {});
+    CHECK_GE(IntervalOf(intervals, 0)->end, IntervalOf(intervals, 2)->end);
+    const auto homes = AllocateRegisters(intervals, 8);
+    CHECK_NE(AssignedTo(homes, 0), AssignedTo(homes, 2));
+}
+
+TEST_CASE("CFG allocation protects edge sources and destinations from physical phi cycles") {
+    LirFunc function = FuncOf({Define(0, {}), Define(1, {})}, 0);
+    function.blocks.resize(2);
+    function.blocks[0].term = Term(LirTermKind::Jump, 1);
+    function.blocks[1].instrs = {Join(2, 1), Join(3, 0), Define(4, {2, 3})};
+    function.blocks[1].term = Term(LirTermKind::Return, 0, 0, LirNoReg, 4);
+    const auto intervals = ComputeLiveIntervals(function, {});
+    const auto homes = AllocateRegisters(intervals, 8);
+    for (LirReg first = 0; first < 4; ++first) {
+        for (LirReg second = first + 1; second < 4; ++second) {
+            CHECK_NE(AssignedTo(homes, first), AssignedTo(homes, second));
+        }
+    }
+}
+
+TEST_CASE("CFG allocation discovers types before uses in reversed block layout") {
+    LirFunc function;
+    function.blocks.resize(3);
+    function.blocks[0].term = Term(LirTermKind::Jump, 2);
+    function.blocks[1].term = Term(LirTermKind::Return, 0, 0, LirNoReg, 7);
+    auto constant = Define(7, {});
+    constant.op = LirOpcode::Const;
+    constant.type = TypeRef::MakeFloat64();
+    constant.strArg = "1.0";
+    function.blocks[2].instrs = {constant};
+    function.blocks[2].term = Term(LirTermKind::Jump, 1);
+    const auto intervals = ComputeLiveIntervals(function, {});
+    REQUIRE(IntervalOf(intervals, 7));
+    CHECK(IntervalOf(intervals, 7)->type == TypeRef::MakeFloat64());
+    CHECK_EQ(IntervalOf(intervals, 7)->start, 1);
+    CHECK_EQ(IntervalOf(intervals, 7)->end, 3);
+}

@@ -32,6 +32,27 @@ func UnusedPrivateCode(value: int) -> int {
     return value * 101;
 }
 
+func LoopRegisterValues(limit: int, seed: int) -> int {
+    var total = seed;
+    var first = 3;
+    var second = 5;
+    var floating = 1.0;
+    for i in 0..limit {
+        let old = first;
+        first = second;
+        second = old;
+        for j in 0..3 {
+            total += Apply(Increment, first + second + j);
+            floating += 0.5;
+        }
+        if i == 4 { continue; }
+        total += seed;
+    }
+    Assert(floating == 16.0, "floating values survive nested back edges and calls");
+    Assert(first == 3 && second == 5, "simultaneous loop-carried values survive calls");
+    return total;
+}
+
 func Main() -> int {
     let outer = 1;
     if true {
@@ -55,5 +76,6 @@ func Main() -> int {
     let source: ValueSource = stored;
     Assert(source.Value() == 42, "interface vtable dispatch remains reachable");
     Assert(CrossModule(41) == 42, "cross-module private dependency remains reachable");
+    Assert(LoopRegisterValues(10, 7) == 370, "nested loop values and indirect calls");
     return 0;
 }

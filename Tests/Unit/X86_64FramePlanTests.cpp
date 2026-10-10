@@ -63,15 +63,17 @@ TEST_CASE("x86-64 frame plan owns hidden returns aggregate regions phi scratch a
 
     const X86_64FramePlan plan = PlanX86_64Frame(function, layouts, {}, Target::OS::Linux);
 
-    CHECK_EQ(plan.HiddenReturnOffset(), 8);
-    CHECK_EQ(plan.SlotOffsets().at(0), 32);
-    CHECK_EQ(plan.SlotOffsets().at(1), 40);
-    CHECK_EQ(plan.AllocaDataOffsets().at(1), 64);
+    const auto savedBytes = static_cast<int>(plan.UsedPhysicalRegisters().size() * 8);
+    CHECK_GT(savedBytes, 0);
+    CHECK_EQ(plan.HiddenReturnOffset(), savedBytes + 8);
+    CHECK_EQ(plan.SlotOffsets().at(0), savedBytes + 32);
+    CHECK_EQ(plan.SlotOffsets().at(1), savedBytes + 40);
+    CHECK_EQ(plan.AllocaDataOffsets().at(1), savedBytes + 64);
     CHECK_EQ(plan.RegisterTypes().at(1).kind, TypeRef::Kind::Pointer);
     CHECK_EQ(plan.PhiMoves().at(1).at(1).size(), 2);
     CHECK_EQ(plan.PhiTemporarySize(), 8);
-    CHECK_EQ(plan.PhiTemporaryOffset(), 104);
-    CHECK_EQ(plan.FrameSize(), 112);
+    CHECK_EQ(plan.PhiTemporaryOffset(), savedBytes + 104);
+    CHECK_EQ(plan.FrameSize(), (savedBytes + 104 + 15) / 16 * 16);
     CHECK_EQ(plan.FrameSize() % 16, 0);
     CHECK_LE(plan.PhiTemporaryOffset(), plan.FrameSize());
 }

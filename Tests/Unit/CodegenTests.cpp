@@ -412,16 +412,19 @@ TEST_CASE("assembly phi lowering breaks a swap cycle with a stack temporary") {
     package.modules.push_back(std::move(module));
 
     const std::string output = AssemblyPrinter(std::move(package), Target::OS::Linux).Generate();
-    const auto &slots = plan.SlotOffsets();
-    const std::string expected = std::format("mov     rax, qword [rbp - {}]\n"
-                                             "    mov     qword [rbp - {}], rax\n"
-                                             "    mov     rax, qword [rbp - {}]\n"
-                                             "    mov     qword [rbp - {}], rax\n"
-                                             "    mov     rax, qword [rbp - {}]\n"
-                                             "    mov     qword [rbp - {}], rax",
-                                             slots.at(3), plan.PhiTemporaryOffset(), slots.at(4), slots.at(3),
-                                             plan.PhiTemporaryOffset(), slots.at(4));
-    CHECK(output.find(std::format("sub     rsp, {}", plan.FrameSize())) != std::string::npos);
+    constexpr std::array names = {"rbx", "r12", "r13", "r14", "r15"};
+    const auto firstHome = names.at(plan.PhysicalRegisters().at(3));
+    const auto secondHome = names.at(plan.PhysicalRegisters().at(4));
+    const std::string expected =
+        std::format("mov     rax, {}\n"
+                    "    mov     qword [rbp - {}], rax\n"
+                    "    mov     rax, {}\n"
+                    "    mov     {}, rax\n"
+                    "    mov     rax, qword [rbp - {}]\n"
+                    "    mov     {}, rax",
+                    firstHome, plan.PhiTemporaryOffset(), secondHome, firstHome, plan.PhiTemporaryOffset(), secondHome);
+    CHECK(output.find(std::format("sub     rsp, {}", plan.FrameSize() - plan.UsedPhysicalRegisters().size() * 8)) !=
+          std::string::npos);
     CHECK(output.find(expected) != std::string::npos);
 }
 

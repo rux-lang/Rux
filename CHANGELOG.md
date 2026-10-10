@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Register allocation through control flow** — native x86-64 and AArch64 code can retain scalar values in callee-saved
+  registers across branches and loops. Shared CFG liveness covers back edges and predecessor-edge phi uses, and AArch64
+  phi copies honor register homes. Software floating-point values retain conservative memory storage.
+
 #### Language
 
 - **Generic interfaces as bounds** — `interface Source<T> { func Next(self: &var Self) -> T?; }` names the types its operations use, and a bound passes them on: inside `func Map<I: Source<T>, T, U>(...)`, `source.Next()` is a `T?`. A type satisfies the bound when its methods have the required names and return the types the bound's arguments fix, and a type parameter named only in a bound is deduced from the bounded argument's methods, so generic adaptors chain without type arguments. `extend Counter : Source<int32>` names the arguments. A generic interface cannot be the type of a value, has no vtable, and its parameters take no bounds; the wrong number of type arguments is reported at the bound and at the extension.

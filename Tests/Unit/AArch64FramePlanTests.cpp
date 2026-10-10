@@ -64,15 +64,17 @@ TEST_CASE("AArch64 frame plan owns hidden results aggregate regions phi scratch 
     const AArch64FramePlan plan = PlanAArch64Frame(function, layouts, {}, {}, Target::OS::Linux);
 
     CHECK_EQ(plan.IndirectResultOffset(), 16);
-    CHECK_EQ(plan.CalleeSaveOffset(), 0);
-    CHECK_EQ(plan.SlotOffsets().at(0), 24);
-    CHECK_EQ(plan.SlotOffsets().at(1), 48);
-    CHECK_EQ(plan.AllocaDataOffsets().at(1), 56);
+    const auto savedBytes = static_cast<int>(plan.SavedGeneralRegisters().size() * 8);
+    CHECK_GT(savedBytes, 0);
+    CHECK_EQ(plan.CalleeSaveOffset(), 24);
+    CHECK_EQ(plan.SlotOffsets().at(0), savedBytes + 24);
+    CHECK_EQ(plan.SlotOffsets().at(1), savedBytes + 48);
+    CHECK_EQ(plan.AllocaDataOffsets().at(1), savedBytes + 56);
     CHECK_EQ(plan.RegisterTypes().at(1).kind, TypeRef::Kind::Pointer);
     CHECK_EQ(plan.PhiMoves().at(1).at(1).size(), 2);
     CHECK_EQ(plan.PhiTemporarySize(), 8);
-    CHECK_EQ(plan.PhiTemporaryOffset(), 112);
-    CHECK_EQ(plan.FrameSize(), 128);
+    CHECK_EQ(plan.PhiTemporaryOffset(), savedBytes + 112);
+    CHECK_EQ(plan.FrameSize(), (savedBytes + 120 + 15) / 16 * 16);
     CHECK_EQ(plan.FrameSize() % 16, 0);
 }
 

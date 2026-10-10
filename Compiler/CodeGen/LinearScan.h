@@ -16,7 +16,7 @@
 // belongs to none of them — and how many registers the pool it is allocating
 // from holds.
 
-#include "Ir/Lir/Lir.h"
+#include "Ir/Lir/ControlFlow.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -52,10 +52,8 @@ struct RegisterAssignment {
 /// Number every instruction and terminator of the function in the order they are emitted, and report the interval each
 /// virtual register is live over.
 ///
-/// A mention is a definition or a use, and both ends move: the first mention opens the interval and every later one
-/// extends it. A phi's incoming values count as mentions at the phi itself, which is later than the edge that carries
-/// them — deliberately, since a longer interval can only make the allocation more conservative, and the edge is not a
-/// point in this numbering.
+/// Extend textual mentions over live block boundaries, including back edges. Phi destinations overlap every source,
+/// destination and live-out value on their predecessor edges, so virtual parallel copies remain valid after allocation.
 ///
 /// The intervals come back sorted by where they open, and by register number where two open together, so a function
 /// allocates the same way every time it is compiled.
@@ -63,6 +61,18 @@ struct RegisterAssignment {
                                                                     const ParamTypeMap &paramTypes) {
     std::unordered_map<LirReg, TypeRef> regTypes;
     std::unordered_map<LirReg, LiveInterval> intervals;
+    std::vector<int> starts, ends;
+    int position = 0;
+    for (const auto &block : func.blocks) {
+        starts.push_back(position);
+        for (const auto &instr : block.instrs) {
+            if (instr.dst != LirNoReg) {
+                regTypes[instr.dst] = instr.op == LirOpcode::Alloca ? TypeRef::MakePointer(instr.type) : instr.type;
+            }
+            ++position;
+        }
+        ends.push_back(position++);
+    }
 
     /// A register mentioned before anything gave it a type is an integer, which is what a back end assumes of one as
     /// well.
@@ -71,12 +81,16 @@ struct RegisterAssignment {
         return it != regTypes.end() ? it->second : TypeRef::MakeInt64();
     };
     const auto mention = [&](const LirReg reg, const int index) {
+        if (reg == LirNoReg) {
+            return;
+        }
         const auto it = intervals.find(reg);
         if (it == intervals.end()) {
             intervals.emplace(reg, LiveInterval{reg, index, index, 1, typeOf(reg)});
             return;
         }
-        it->second.end = index;
+        it->second.start = std::min(it->second.start, index);
+        it->second.end = std::max(it->second.end, index);
         ++it->second.mentions;
     };
 
@@ -91,10 +105,6 @@ struct RegisterAssignment {
     int index = 0;
     for (const auto &block : func.blocks) {
         for (const auto &instr : block.instrs) {
-            /// An alloca's register holds the address of what it reserved rather than a value of the type it names.
-            if (instr.dst != LirNoReg) {
-                regTypes[instr.dst] = instr.op == LirOpcode::Alloca ? TypeRef::MakePointer(instr.type) : instr.type;
-            }
             for (const LirReg src : instr.srcs) {
                 mention(src, index);
             }
@@ -103,7 +113,10 @@ struct RegisterAssignment {
             }
             if (instr.op == LirOpcode::Phi) {
                 for (const auto &[src, pred] : instr.phiPreds) {
-                    mention(src, index);
+                    if (pred < ends.size()) {
+                        mention(src, ends[pred]);
+                        mention(instr.dst, ends[pred]);
+                    }
                 }
             }
             ++index;
@@ -115,7 +128,24 @@ struct RegisterAssignment {
             if (block.term->retVal && *block.term->retVal != LirNoReg) {
                 mention(*block.term->retVal, index);
             }
-            ++index;
+        }
+        ++index;
+    }
+
+    const LirControlFlow cfg(func);
+    const LirLiveness liveness(func, cfg);
+    const auto extend = [&](const LirReg reg, const int point) {
+        if (const auto found = intervals.find(reg); found != intervals.end()) {
+            found->second.start = std::min(found->second.start, point);
+            found->second.end = std::max(found->second.end, point);
+        }
+    };
+    for (std::size_t block = 0; block < func.blocks.size(); ++block) {
+        for (const auto reg : liveness.liveIn[block]) {
+            extend(reg, starts[block]);
+        }
+        for (const auto reg : liveness.liveOut[block]) {
+            extend(reg, ends[block]);
         }
     }
 

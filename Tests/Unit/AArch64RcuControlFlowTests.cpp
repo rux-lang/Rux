@@ -40,7 +40,7 @@ TEST_CASE("AArch64 RCU emitter branches on a boolean and patches both edges") {
     REQUIRE_MESSAGE(branch != words.end(), "cbz x9, #imm");
     const auto index = static_cast<std::size_t>(branch - words.begin());
     REQUIRE_LT(index + 1, words.size());
-    CHECK_EQ(HexWord(words[index - 1] & 0xFFC003FFU), HexWord(0x394003A9U)); // ldrb w9, [x29, #imm]
+    CHECK_EQ(HexWord(words[index - 1] & 0xFFFFFC1FU), HexWord(0x53001C09U)); // uxtb w9, a register home
     CHECK_EQ(HexWord(words[index + 1] & 0xFC000000U), HexWord(0x14000000U)); // b
 
     // Both displacements were filled in once the blocks they name had offsets,
@@ -49,8 +49,8 @@ TEST_CASE("AArch64 RCU emitter branches on a boolean and patches both edges") {
     const auto whenTrue = index + 1 + static_cast<std::size_t>(BranchDisplacement(words[index + 1]));
     REQUIRE_LT(whenFalse, words.size());
     REQUIRE_LT(whenTrue, words.size());
-    CHECK_EQ(HexWord(words[whenTrue]), HexWord(0xD28000E9U));  // mov x9, #7
-    CHECK_EQ(HexWord(words[whenFalse]), HexWord(0xD2800129U)); // mov x9, #9
+    CHECK_EQ(HexWord(words[whenTrue] & ~31U), HexWord(0xD28000E0U));  // mov x9, #7
+    CHECK_EQ(HexWord(words[whenFalse] & ~31U), HexWord(0xD2800120U)); // mov x9, #9
 }
 
 TEST_CASE("AArch64 RCU emitter closes a loop with a backward branch") {
@@ -85,8 +85,13 @@ TEST_CASE("AArch64 RCU emitter closes a loop with a backward branch") {
     REQUIRE_LT(target, test);
     const std::vector<std::uint32_t> condition(words.begin() + static_cast<std::ptrdiff_t>(target),
                                                words.begin() + static_cast<std::ptrdiff_t>(test));
-    CHECK_MESSAGE(std::ranges::find(condition, 0xEB0C013FU) != condition.end(), "cmp x9, x12");
-    CHECK_MESSAGE(std::ranges::find(condition, 0x9A9FA7E9U) != condition.end(), "cset x9, lt");
+    CHECK_MESSAGE(
+        std::ranges::find_if(condition, [](const auto word) { return (word & 0xFFE0FC1FU) == 0xEB00001FU; }) !=
+            condition.end(),
+        "cmp between allocated registers");
+    CHECK_MESSAGE(std::ranges::find_if(condition, [](const auto word) { return (word & ~31U) == 0x9A9FA7E0U; }) !=
+                      condition.end(),
+                  "cset a register home, lt");
 }
 
 TEST_CASE("AArch64 RCU emitter widens a conditional branch that cannot reach its block") {
@@ -95,8 +100,8 @@ TEST_CASE("AArch64 RCU emitter widens a conditional branch that cannot reach its
     // a block further away than that, and this is what a program that does gets:
     // enough instructions between the branch and the block it skips to that the
     // short form has no encoding at all. The filler values are never read, so they
-    // share one frame slot and each costs two instructions.
-    constexpr std::uint32_t kFiller = 150000;
+    // use one register home and each costs one instruction.
+    constexpr std::uint32_t kFiller = 300000;
     LirFunc func;
     func.name = "Main";
     func.isPublic = true;
@@ -154,7 +159,7 @@ TEST_CASE("AArch64 RCU emitter widens a conditional branch that cannot reach its
     CHECK_EQ(BranchDisplacement(words[index + 2]), 1);
     const auto whenFalse = index + 1 + static_cast<std::size_t>(BranchDisplacement(words[index + 1]));
     REQUIRE_LT(whenFalse, words.size());
-    CHECK_EQ(HexWord(words[whenFalse]), HexWord(0xD28000E9U)); // mov x9, #7
+    CHECK_EQ(HexWord(words[whenFalse] & ~31U), HexWord(0xD28000E0U)); // mov x9, #7
 }
 
 TEST_CASE("AArch64 RCU emitter breaks a cycle of phi copies through a frame slot") {
@@ -224,13 +229,21 @@ TEST_CASE("AArch64 RCU emitter breaks a cycle of phi copies through a frame slot
     const auto index = static_cast<std::size_t>(over - words.begin());
     REQUIRE_EQ(BranchDisplacement(words[index]), 10); // eight words of copies and two branches
 
-    // Four load-and-store pairs where three copies were asked for: the one the
-    // cycle does not touch, then the save, then the two that read it.
+    // Four read/write pairs, now using register homes as well as the cycle's temporary stack slot.
+    const auto location = [](const std::uint32_t word, const bool write) -> std::optional<std::uint32_t> {
+        if (const auto slot = SlotDisplacement(word, write)) {
+            return slot;
+        }
+        if ((word & 0xFFE0FFE0U) == 0xAA0003E0U) { // mov Xd, Xm
+            return 0x80000000U | (write ? word & 31U : (word >> 16U) & 31U);
+        }
+        return std::nullopt;
+    };
     std::vector<std::uint32_t> reads;
     std::vector<std::uint32_t> writes;
     for (std::size_t i = index + 1; i < index + 9; i += 2) {
-        const auto read = SlotDisplacement(words[i], false);
-        const auto write = SlotDisplacement(words[i + 1], true);
+        const auto read = location(words[i], false);
+        const auto write = location(words[i + 1], true);
         REQUIRE_MESSAGE(read.has_value(), HexWord(words[i]));
         REQUIRE_MESSAGE(write.has_value(), HexWord(words[i + 1]));
         reads.push_back(*read);
@@ -243,7 +256,8 @@ TEST_CASE("AArch64 RCU emitter breaks a cycle of phi copies through a frame slot
     const std::uint32_t temporary = writes[1];
     CHECK_EQ(reads[3], temporary);
     const std::vector<std::uint32_t> slots = {reads[0], reads[1], reads[2], writes[0], writes[2], writes[3]};
-    CHECK_GT(temporary, std::ranges::max(slots));
+    CHECK(std::ranges::find(slots, temporary) == slots.end());
+    CHECK_LT(temporary, 0x80000000U);
     CHECK_EQ(reads[1], writes[2]); // saved, then overwritten by the other value
     CHECK_EQ(reads[2], writes[3]); // and that value's own slot takes the saved one
     CHECK_EQ(std::ranges::count(writes, temporary), 1);
@@ -314,8 +328,8 @@ TEST_CASE("AArch64 RCU emitter lowers a switch to a compare chain and traps wher
     const auto whenSecond = secondArm + static_cast<std::size_t>(BranchDisplacement(words[secondArm]));
     REQUIRE_LT(whenFirst, words.size());
     REQUIRE_LT(whenSecond, words.size());
-    CHECK_EQ(HexWord(words[whenFirst]), HexWord(0xD2800149U));  // mov x9, #10
-    CHECK_EQ(HexWord(words[whenSecond]), HexWord(0xD2800289U)); // mov x9, #20
+    CHECK_EQ(HexWord(words[whenFirst] & ~31U), HexWord(0xD2800140U));  // mov x9, #10
+    CHECK_EQ(HexWord(words[whenSecond] & ~31U), HexWord(0xD2800280U)); // mov x9, #20
 
     // The default block traps: a program that arrives where nothing can arrive
     // stops at the instruction rather than wherever falling through led.
@@ -425,7 +439,7 @@ TEST_CASE("AArch64 RCU emitter never allocates the platform register") {
     }
 }
 
-TEST_CASE("AArch64 RCU emitter keeps every value in the frame where control branches") {
+TEST_CASE("AArch64 RCU emitter allocates and preserves register homes where control branches") {
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {
             var a: int = 1;
@@ -442,11 +456,8 @@ TEST_CASE("AArch64 RCU emitter keeps every value in the frame where control bran
     CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
     const auto words = FunctionWords(objects.front(), "Main");
 
-    // A value in a register would have to be correct at every edge, and a phi
-    // lowers to copies between slots here, so a function of more than one block
-    // allocates nothing at all — and preserves nothing, which is how a prologue
-    // says so.
+    // CFG liveness permits callee-saved homes through both arms of the branch.
     const auto saved = SavedRegisters(words);
-    CHECK(saved.general.empty());
+    CHECK_FALSE(saved.general.empty());
     CHECK(saved.vector.empty());
 }

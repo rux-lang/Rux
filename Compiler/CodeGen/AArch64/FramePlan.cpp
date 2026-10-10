@@ -196,10 +196,6 @@ private:
     }
 
     void PlanRegisterHomes() {
-        if (func.blocks.size() != 1) {
-            return;
-        }
-
         ParamTypeMap parameterTypes;
         for (const auto &parameter : func.params) {
             parameterTypes[parameter.reg] = parameter.type;
@@ -212,7 +208,7 @@ private:
             if (IsFloat(interval.type)) {
                 vector.push_back(interval);
             }
-            else if (IsRegisterValue(interval.type) && size > 0 && size <= 8) {
+            else if (!interval.type.IsFloat() && IsRegisterValue(interval.type) && size > 0 && size <= 8) {
                 general.push_back(interval);
             }
         }

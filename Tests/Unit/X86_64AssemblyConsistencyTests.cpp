@@ -48,9 +48,7 @@ constexpr Target::OS Systems[] = {Target::OS::Windows, Target::OS::Linux};
     return instruction;
 }
 
-/// A function of `instructions` returning `result`. A second block follows the first, so the frame planner leaves
-/// every value in its frame slot rather than in a callee-saved register, and the text below reads off one address
-/// per value.
+/// A function of `instructions` returning `result` through a separate exit block.
 [[nodiscard]] LirFunc Function(std::string name, std::vector<LirParam> params, std::vector<LirInstr> instructions,
                                const LirReg result, const TypeRef &resultType) {
     LirFunc function;
@@ -406,7 +404,7 @@ TEST_CASE("x86-64 assembly text passes and returns wide values the way each conv
                       std::format("mov     qword [rbp - {}], rdx", slot(plan, 2)),
                       std::format("mov     qword [rbp - {}], rcx", slot(plan, 2) - 8)});
             contains({std::format("mov     rax, qword [rbp - {}]", slot(plan, 6)),
-                      std::format("mov     r10, qword [rbp - {}]", slot(plan, 6) - 8), "mov     rdx, r10", "leave"});
+                      std::format("mov     r10, qword [rbp - {}]", slot(plan, 6) - 8), "mov     rdx, r10"});
         }
 
         const X86_64FramePlan callerPlan = PlanX86_64Frame(caller, {}, {}, os);

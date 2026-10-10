@@ -142,6 +142,16 @@ The AArch64 RCU emitter similarly selects procedure-call layout from the target 
 
 ## Host and Target Boundaries
 
+Native register allocation uses a per-function control-flow snapshot from `Ir/Lir/ControlFlow.h`. Liveness propagates
+through all successor edges, with phi inputs read on predecessor edges. The conservative linear intervals include live
+block boundaries, so values needed by a later loop iteration cannot have their homes reused inside the loop. Phi
+destinations overlap incoming values, other destinations, and values live at the predecessor terminator; the existing
+virtual parallel-copy schedule therefore cannot acquire a new cycle from physical register reuse. Both native backends
+allocate their existing callee-saved pools across multiple blocks. AArch64 scalar phi moves read and write canonical
+register homes, using stack storage only for spills, aggregates, and cycle temporaries. Software floating-point values
+keep memory homes until their specialized emitters support register locations consistently. This allocation remains
+conservative: it does not yet split intervals, allocate caller-saved registers, or allocate x86 scalar FP registers.
+
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
 Operating-system APIs are confined to `Compiler/System`; the CI isolation guard is `Tests/Policy/PlatformIsolation/Check.sh`. New uses of `getenv`, `<windows.h>`, `fork`, or similar APIs belong behind a `System` interface.
