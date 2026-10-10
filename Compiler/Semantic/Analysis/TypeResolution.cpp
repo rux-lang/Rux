@@ -589,6 +589,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                                                             const std::vector<TypeRef> &argTypes,
                                                             const bool requireAccessible, const CallExpr *call,
                                                             const bool receiverIsArgument) {
+    ambiguousOverloads.clear();
     const std::string typeName = NamedBaseTypeName(receiverType);
     if (typeName.empty()) {
         return nullptr;
@@ -640,13 +641,22 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         }
         return true;
     };
-    for (const bool exactArity : {true, false}) {
-        const auto selected =
-            std::ranges::find_if(overloads, [&](const FuncDecl *decl) { return accepts(*decl, exactArity); });
-        if (selected != overloads.end()) {
-            return *selected;
+    if (overloads.size() == 1) {
+        return accepts(*overloads.front(), false) ? overloads.front() : nullptr;
+    }
+    // Several overloads are ranked as a function's are: by how well each argument converts, then by whether the
+    // arguments fill the overload exactly, so declaration order never decides the call.
+    ambiguousOverloads.clear();
+    std::vector<OverloadMatch> matches;
+    for (const FuncDecl *decl : overloads) {
+        const std::vector<TypeRef> fixedTypes = ResolveMethodParamTypes(receiverType, *decl, {}, receiverIsArgument);
+        const std::optional<TypeRef> variadicElement = ResolveMethodVariadicType(receiverType, *decl);
+        const auto paramTypes =
+            BoundParameterTypes(*decl, !receiverIsArgument, fixedTypes, variadicElement, argTypes.size(), call);
+        if (paramTypes && ArgumentsReachOverload(argTypes, *paramTypes)) {
+            matches.push_back({decl, *paramTypes});
         }
     }
-    return nullptr;
+    return SelectOverload(matches, argTypes);
 }
 } // namespace Rux::SemanticDetail

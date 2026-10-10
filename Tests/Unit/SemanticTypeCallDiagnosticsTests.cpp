@@ -743,3 +743,57 @@ TEST_CASE("a method call whose argument the method cannot take is reported, not 
              "no matching overload for method 'Push' on type '&var Sink' with argument types (char32)");
     CHECK(diagnostics[1].message.find("'Sink::Take'") != std::string::npos);
 }
+
+// Overload ranking: conversions decide first, exact arity only breaks ties, and methods follow the same rule.
+TEST_CASE("an overload whose arguments convert better wins over one that only matches the arity") {
+    const auto errors = AnalyzeErrors(R"(
+        func E(x: int64) -> bool { return true; }
+        func E(x: int32, y: int32 = 0) -> int8 { return 1; }
+        func F(x: int64) -> bool { return true; }
+        func F(values: int32...) -> int8 { return 1; }
+        func D(x: int32) -> int8 { return 1; }
+        func D(x: int32, y: int32 = 1) -> bool { return true; }
+        func Main() -> int {
+            let fromDefault: int8 = E(1i32);
+            let fromVariadic: int8 = F(1i32);
+            let exact: int8 = D(2i32);
+            return 0;
+        }
+    )");
+    CHECK(errors.empty());
+}
+
+TEST_CASE("overloads tied on conversions and neither filled exactly are ambiguous") {
+    const auto errors = AnalyzeErrors(R"(
+        func Def(a: int32, b: int32 = 0) -> int { return 0; }
+        func Def(a: int32, rest: int32...) -> int { return 1; }
+        func Main() -> int { return Def(1i32); }
+    )");
+    REQUIRE_EQ(errors.size(), 1);
+    CHECK(errors[0].message.contains("call to 'Def' is ambiguous"));
+}
+
+TEST_CASE("method overloads are ranked as function overloads are, whatever their order") {
+    const auto errors = AnalyzeErrors(R"(
+        struct S { value: int32; }
+        extend S {
+            func E(self: &S, x: int64) -> bool { return true; }
+            func E(self: &S, x: int32, y: int32 = 0) -> int8 { return 1; }
+            func Wide(self: &S, x: int128) -> int { return 0; }
+            func Wide(self: &S, x: int64) -> int { return 1; }
+            func Narrow(self: &S, x: int64) -> int { return 1; }
+            func Narrow(self: &S, x: int128) -> int { return 0; }
+        }
+        func Main() -> int {
+            let s = S { value: 0 };
+            let picked: int8 = s.E(1i32);
+            let associated: int8 = S::E(s, 1i32);
+            let first = s.Wide(1i32);
+            let second = s.Narrow(1i32);
+            return 0;
+        }
+    )");
+    REQUIRE_EQ(errors.size(), 2);
+    CHECK(errors[0].message.contains("call to method 'Wide' is ambiguous"));
+    CHECK(errors[1].message.contains("call to method 'Narrow' is ambiguous"));
+}

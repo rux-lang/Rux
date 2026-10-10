@@ -963,6 +963,10 @@ private:
         std::vector<TypeRef> parameterTypes;
     };
 
+    /// Whether every argument reaches its parameter: exactly, through a borrow, a scalar read, an interface view or an
+    /// assignable conversion, or as an unsuffixed literal.
+    [[nodiscard]] bool ArgumentsReachOverload(const std::vector<TypeRef> &argTypes,
+                                              const std::vector<TypeRef> &parameterTypes);
     const FuncDecl *SelectOverload(const std::vector<OverloadMatch> &matches,
                                    const std::vector<TypeRef> &argumentTypes);
     /// The overloads the last `LookupFunctionOverload` found equally good, when it selected none for that reason.

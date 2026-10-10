@@ -348,77 +348,62 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
         }
         return decl;
     }
-    for (const bool exactArity : {true, false}) {
-        for (const bool exactOnly : {true, false}) {
-            // Every overload this pass accepts is collected, so that declaration order never decides the call.
-            std::vector<OverloadMatch> matches;
-            for (const auto *decl : sym.funcOverloads) {
-                if (!typeArgs.empty() && typeArgs.size() != decl->typeParams.size()) {
-                    continue;
-                }
-                std::unordered_map<std::string, TypeRef> substitutions;
-                const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
-                for (std::size_t i = 0; i < count; ++i) {
-                    substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
-                }
-                if (substitutions.size() < decl->typeParams.size()) {
-                    DeduceTypeArguments(*decl, argTypes, substitutions, call);
-                }
-                if (!TypeArgumentsSatisfyBounds(decl->typeParams, substitutions)) {
-                    continue;
-                }
-                TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
-                                                                TypeParameterNames(decl->typeParams));
-                if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
-                    continue;
-                }
-                const std::size_t paramCount = funcType.inner.size() - 1;
-                const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                if (exactArity && (isVariadic || argTypes.size() != paramCount)) {
-                    continue;
-                }
-                const std::vector<TypeRef> fixedTypes(funcType.inner.begin(), funcType.inner.end() - 1);
-                const auto boundTypes = BoundParameterTypes(
-                    *decl, false, fixedTypes, ResolveVariadicElementType(*decl, substitutions), argTypes.size(), call);
-                if (!boundTypes) {
-                    continue;
-                }
-                bool match = true;
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    const TypeRef &paramType = (*boundTypes)[i];
-                    if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
-                        continue;
-                    }
-                    // An unsuffixed integer literal carries the default `int`, which is assignable to no other
-                    // integer width. The single-overload path above lets one reach any integer parameter anyway;
-                    // without the same allowance here, giving a name a second overload stopped every call that
-                    // passed a bare literal from resolving at all. Only the coercing pass grants it, so an exact
-                    // match still wins, and only `int` widens, so an explicitly typed argument is never silently
-                    // narrowed to a different width.
-                    const bool literalToInteger = (argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger()) ||
-                                                  DefaultLiteralReachesNative(argTypes[i], paramType);
-                    const bool assignable = argTypes[i].IsAssignableTo(paramType) ||
-                                            argTypes[i].CanReadScalarTo(paramType) ||
-                                            argTypes[i].CanImplicitlyBorrowTo(paramType) ||
-                                            CanConvertToInterface(argTypes[i], paramType) || literalToInteger;
-                    if (exactOnly ? !(argTypes[i] == paramType) : !assignable) {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match) {
-                    matches.push_back({decl, *boundTypes});
-                }
-            }
-            if (const FuncDecl *selected = SelectOverload(matches, argTypes)) {
-                return selected;
-            }
-            if (!matches.empty()) {
-                return nullptr;
-            }
+    // Every overload that accepts the call is collected in one pass and ranked by how well the arguments convert, so
+    // neither declaration order nor arity decides between overloads that convert differently.
+    std::vector<OverloadMatch> matches;
+    for (const auto *decl : sym.funcOverloads) {
+        if (!typeArgs.empty() && typeArgs.size() != decl->typeParams.size()) {
+            continue;
+        }
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
+        }
+        if (substitutions.size() < decl->typeParams.size()) {
+            DeduceTypeArguments(*decl, argTypes, substitutions, call);
+        }
+        if (!TypeArgumentsSatisfyBounds(decl->typeParams, substitutions)) {
+            continue;
+        }
+        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                        TypeParameterNames(decl->typeParams));
+        if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
+            continue;
+        }
+        const std::vector<TypeRef> fixedTypes(funcType.inner.begin(), funcType.inner.end() - 1);
+        const auto boundTypes = BoundParameterTypes(
+            *decl, false, fixedTypes, ResolveVariadicElementType(*decl, substitutions), argTypes.size(), call);
+        if (!boundTypes) {
+            continue;
+        }
+        if (ArgumentsReachOverload(argTypes, *boundTypes)) {
+            matches.push_back({decl, *boundTypes});
         }
     }
-    return nullptr;
+    return SelectOverload(matches, argTypes);
+}
+
+bool AnalysisContext::ArgumentsReachOverload(const std::vector<TypeRef> &argTypes,
+                                             const std::vector<TypeRef> &parameterTypes) {
+    for (std::size_t i = 0; i < argTypes.size() && i < parameterTypes.size(); ++i) {
+        const TypeRef &paramType = parameterTypes[i];
+        if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
+            continue;
+        }
+        // An unsuffixed integer literal carries the default `int`, which is assignable to no other integer width, so
+        // it is let reach any integer parameter; an explicitly typed argument is never silently narrowed to another
+        // width.
+        const bool literalToInteger = (argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger()) ||
+                                      DefaultLiteralReachesNative(argTypes[i], paramType);
+        const bool assignable = argTypes[i].IsAssignableTo(paramType) || argTypes[i].CanReadScalarTo(paramType) ||
+                                argTypes[i].CanImplicitlyBorrowTo(paramType) ||
+                                CanConvertToInterface(argTypes[i], paramType) || literalToInteger;
+        if (!assignable) {
+            return false;
+        }
+    }
+    return true;
 }
 
 const FuncDecl *AnalysisContext::SelectOverload(const std::vector<OverloadMatch> &matches,
@@ -484,20 +469,24 @@ const FuncDecl *AnalysisContext::SelectOverload(const std::vector<OverloadMatch>
     if (tied.size() == 1) {
         return tied.front();
     }
-    // Among overloads that accept the call equally well, the one the arguments fill without a default value wins, so
-    // `D(2)` calls `D(x)` rather than `D(x, y = 1)`; then a function that is not generic wins over one that is.
-    const auto needsDefault = [&](const FuncDecl *decl) {
+    // Among overloads that accept the call equally well, the one the arguments fill exactly — every fixed parameter
+    // given, no default value, no variadic tail — wins, so `D(2)` calls `D(x)` rather than `D(x, y = 1)` or
+    // `D(x, rest...)`; then a function that is not generic wins over one that is.
+    const auto fillsExactly = [&](const FuncDecl *decl) {
         std::size_t fixed = 0;
         for (const Param &parameter : decl->params) {
-            if (!parameter.isVariadic && !parameter.IsReceiver()) {
+            if (parameter.isVariadic) {
+                return false;
+            }
+            if (!parameter.IsReceiver()) {
                 ++fixed;
             }
         }
-        return fixed > argumentCount;
+        return fixed == argumentCount;
     };
     std::vector<const FuncDecl *> preferred;
     for (const FuncDecl *decl : tied) {
-        if (!needsDefault(decl)) {
+        if (fillsExactly(decl)) {
             preferred.push_back(decl);
         }
     }
