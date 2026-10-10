@@ -112,26 +112,34 @@ std::string AnalysisContext::InstantiationNote(const FuncDecl &declaration,
     return note;
 }
 
+void AnalysisContext::QueueDropMethodInstantiation(const TypeRef &type) {
+    if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
+        return;
+    }
+    const std::string destructorName = "~" + UnqualifiedNominalName(NamedBaseTypeName(type));
+    const FuncDecl *destructor = LookupMethod(type, destructorName, {}, false);
+    if (destructor == nullptr) {
+        return;
+    }
+    QueueGenericInstantiation(*destructor, MethodTypeSubstitutions(type));
+}
+
+void AnalysisContext::NoteGenericBodyType(const TypeRef &type) {
+    if (currentFunctionDecl == nullptr || type.IsUnknown() || !MentionsTypeParameter(type)) {
+        return;
+    }
+    genericBodyTypes[currentFunctionDecl].try_emplace(type.ToString(), type);
+}
+
 void AnalysisContext::QueueDropMethodInstantiations() {
-    const auto queue = [&](const TypeRef &type) {
-        if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
-            return;
-        }
-        const std::string destructorName = "~" + UnqualifiedNominalName(NamedBaseTypeName(type));
-        const FuncDecl *destructor = LookupMethod(type, destructorName, {}, false);
-        if (destructor == nullptr) {
-            return;
-        }
-        QueueGenericInstantiation(*destructor, MethodTypeSubstitutions(type));
-    };
     for (const auto &[expression, type] : expressionTypes) {
-        queue(type);
+        QueueDropMethodInstantiation(type);
     }
     for (const auto &[node, type] : typeNodeTypes) {
-        queue(type);
+        QueueDropMethodInstantiation(type);
     }
     for (const auto &[pattern, type] : patternTypes) {
-        queue(type);
+        QueueDropMethodInstantiation(type);
     }
 }
 
@@ -217,6 +225,20 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
                     arguments.push_back(SubstituteTypeParameters(argument, instantiation.substitutions));
                 }
                 instantiatedTypes.push_back(EnumType(*deferred.decl, arguments));
+            }
+        }
+
+        // What the body holds once its parameters are known. Only an instantiation spells these types, so this is
+        // where their drop glue and destructors are asked for.
+        if (const auto it = genericBodyTypes.find(instantiation.decl); it != genericBodyTypes.end()) {
+            for (const auto &[spelling, type] : it->second) {
+                TypeRef substituted = SubstituteTypeParameters(type, instantiation.substitutions);
+                if (MentionsTypeParameter(substituted) || !ClassifyTypeProperties(substituted).IsDroppable()) {
+                    continue;
+                }
+                LayoutOfTypeRef(substituted);
+                QueueDropMethodInstantiation(substituted);
+                instantiatedTypes.push_back(std::move(substituted));
             }
         }
 

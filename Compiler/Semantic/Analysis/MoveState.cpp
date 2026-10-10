@@ -691,6 +691,7 @@ void AnalysisContext::RecordCheckedExpression(const Expr &expression, const Type
         return;
     }
     expressionTypes.insert_or_assign(&expression, type);
+    NoteGenericBodyType(type);
     if (!loopCheckedExpressions.empty()) {
         loopCheckedExpressions.back().push_back(&expression);
     }

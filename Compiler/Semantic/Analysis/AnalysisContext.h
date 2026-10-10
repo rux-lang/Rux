@@ -677,6 +677,10 @@ private:
     /// composing `Option<V>` mentions no such type until `V` is decided, so the walks over what the program wrote
     /// never reach it and it would have neither a layout nor a destructor.
     std::vector<TypeRef> instantiatedTypes;
+    /// The types a generic function's body was checked with that still name its type parameters, by spelling. A
+    /// body is checked once, generically, so each instantiation substitutes these to learn what it holds by value:
+    /// a type only an instantiation spells, such as a `Block<Tracked>` built inside `Make<T>`, needs drop glue too.
+    std::unordered_map<const FuncDecl *, std::unordered_map<std::string, TypeRef>> genericBodyTypes;
     /// One entry per (bound, concrete type) pair a use site proved, so lowering can call the satisfying method directly
     /// in each instantiation instead of dispatching through the interface.
     std::unordered_map<std::string, ResolvedConstraintWitness> &constraintWitnesses;
@@ -1089,6 +1093,10 @@ private:
     /// reachable no other way is lowered having never been analyzed, and anything it deferred until its type
     /// arguments were known is never answered.
     void QueueDropMethodInstantiations();
+    /// Queues the destructor instantiation a droppable `type` needs, if its destructor is generic.
+    void QueueDropMethodInstantiation(const TypeRef &type);
+    /// Records a type the body of the function being checked holds, when it names a type parameter.
+    void NoteGenericBodyType(const TypeRef &type);
 
     void ValidatePendingGenericInstantiations();
     void RecordResolvedTypeLayouts();

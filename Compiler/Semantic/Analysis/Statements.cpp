@@ -761,6 +761,7 @@ void AnalysisContext::ExitLoopLabel(const std::string &label) {
 void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &type, const bool isMutable) {
     if (!type.IsUnknown()) {
         patternTypes.insert_or_assign(&pattern, type);
+        NoteGenericBodyType(type);
     }
     if (const auto *identifierPattern = dynamic_cast<const IdentPattern *>(&pattern)) {
         CheckFreeBindingName(identifierPattern->name, identifierPattern->location, type);
@@ -878,6 +879,7 @@ std::vector<TypeRef> AnalysisContext::CheckStructPatternShape(const StructPatter
 void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjectType) {
     if (!subjectType.IsUnknown()) {
         patternTypes.insert_or_assign(&pattern, subjectType);
+        NoteGenericBodyType(subjectType);
         NoteDeferredNativeType(subjectType);
     }
     if (const auto *typedPattern = dynamic_cast<const TypedPattern *>(&pattern)) {
@@ -933,6 +935,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
             const TypeRef memberType = subjectType.inner[*member];
             CheckPattern(pattern, memberType);
             patternTypes.insert_or_assign(&pattern, subjectType);
+            NoteGenericBodyType(subjectType);
             sumMemberPatterns.insert_or_assign(&pattern, memberType);
         }
         else {

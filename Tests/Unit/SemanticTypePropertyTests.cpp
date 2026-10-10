@@ -480,6 +480,65 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
     CHECK_EQ(loweredPair->steps.size(), pair.steps.size());
 }
 
+TEST_CASE("drop glue covers a generic type spelled only inside an instantiated generic body") {
+    Lexer lexer(R"(
+        struct Leaf { value: int32; }
+        extend Leaf {
+            func =(self: &var Leaf, other: &Leaf);
+            func ~Leaf(self: &var Leaf) {}
+        }
+
+        struct Pair<T> {
+            first: T;
+            second: T;
+        }
+
+        struct Holder<T> { pair: *var Pair<T>; }
+        extend Holder<T> {
+            func ~Holder(self: &var Holder<T>) { Take<T>(self.pair); }
+        }
+
+        func Make<T>(first: T, second: T) {
+            let pair = Pair<T> { first: <-first, second: <-second };
+        }
+
+        func Take<T>(pair: *var Pair<T>) {
+            let taken <- pair[0];
+        }
+
+        struct Triple<T> { value: T; }
+
+        func Keep<T>(value: T) {
+            let triple = Triple<T> { value: <-value };
+        }
+
+        func Main() -> int {
+            Make<Leaf>(Leaf { value: 1 }, Leaf { value: 2 });
+            let holder = Holder<int32> { pair: null };
+            return 0;
+        }
+    )",
+                "generic_drop_glue.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "generic_drop_glue.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    CAPTURE(model.diagnostics.empty() ? std::string{} : model.diagnostics.front().message);
+    REQUIRE_FALSE(model.HasErrors());
+
+    // Nothing outside `Make` spells `Pair<Leaf>`, yet its instantiation holds one by value.
+    const DropGluePlan *pair = model.TryGetDropGlue(TypeRef::MakeNamed("Pair<Leaf>"));
+    REQUIRE(pair != nullptr);
+    CHECK_EQ(pair->steps.size(), 2);
+    // A body that is never instantiated with a droppable argument asks for nothing.
+    CHECK(model.TryGetDropGlue(TypeRef::MakeNamed("Triple<Leaf>")) == nullptr);
+    CHECK(model.TryGetDropGlue(TypeRef::MakeNamed("Pair<int32>")) == nullptr);
+}
+
 TEST_CASE("scalar enums stay trivial while variants combine every payload ownership property") {
     Lexer lexer(R"(
         enum Status: uint8 { Ready = 1, Busy = 2 }

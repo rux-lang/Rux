@@ -228,6 +228,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
         if (accepted) {
             expressionTypes.insert_or_assign(&expr, targetType);
+            NoteGenericBodyType(targetType);
             nativeConversions.erase(&expr);
             return true;
         }
@@ -464,6 +465,7 @@ TypeRef AnalysisContext::ResolveType(const TypeExpr &expr) {
     TypeRef type = ResolveTypeImpl(expr);
     if (!type.IsUnknown()) {
         typeNodeTypes.insert_or_assign(&expr, type);
+        NoteGenericBodyType(type);
     }
     return type;
 }
