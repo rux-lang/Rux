@@ -3,6 +3,7 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarMachine.h"
 
 #include <algorithm>
 #include <limits>
@@ -520,6 +521,10 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
 bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     if (framePlan.BranchComparisons().contains(instruction.dst)) {
         return true; // The sole consuming branch selects the comparison directly into flags.
+    }
+    if (const auto selected = SelectScalarMachineInstruction(instruction, framePlan)) {
+        encoder.EmitScalarMachineInstruction(*selected);
+        return true;
     }
     // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
     // paths below, and neither must a float32 or float64 remainder.

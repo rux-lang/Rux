@@ -190,7 +190,11 @@ register. Intervals touching a call that may clobber those registers retain stac
 Windows target; thread-local lookup and stderr helpers are also conservative barriers. Functions using wide or
 software scalar arithmetic retain their previous FP memory policy. Calls, constants, phi moves, returns, bit
 reinterpretations, and x87 remainders all honor the selected FP home. Stack slots remain reserved until all consumers
-can safely tolerate absent homes; direct instruction operands and cost-aware splitting remain future work.
+can safely tolerate absent homes; cost-aware splitting remains future work. `X86_64/ScalarMachine.h` selects fully
+allocated 64-bit integer arithmetic/bitwise operations and scalar float32/float64 arithmetic into a shared two-address
+descriptor with architectural registers, tied inputs and opcode direction. Both the encoder and assembly printer
+consume that selection, avoiding round trips through scratch registers. Narrow values, spills, integer division and
+destructive right-input overlaps retain their established lowering.
 
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 

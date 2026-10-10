@@ -4,6 +4,8 @@
 
 #include "CodeGen/X86_64/Encoder.h"
 
+#include "CodeGen/X86_64/ScalarMachine.h"
+
 namespace Rux {
 
 uint32_t X64Enc::Size() const {
@@ -509,6 +511,37 @@ void X64Enc::LeaRaxRaxR10(const unsigned shift) const {
     Byte(0x8D);
     Byte(0x04);                                           // rax destination, SIB addressing, no displacement
     Byte(static_cast<std::uint8_t>((shift << 6) | 0x10)); // index r10, base rax
+}
+
+void X64Enc::EmitScalarMachineInstruction(const X86ScalarMachineInstruction &instruction) const {
+    const bool floating = instruction.registerClass != X86ScalarRegisterClass::Integer64;
+    const auto rex = [&](const int reg, const int rm, const bool wide) {
+        const auto prefix = static_cast<std::uint8_t>(0x40 | (wide ? 8 : 0) | (reg >= 8 ? 4 : 0) | (rm >= 8 ? 1 : 0));
+        if (prefix != 0x40)
+            Byte(prefix);
+    };
+    const auto modrm = [&](const int reg, const int rm) {
+        Byte(static_cast<std::uint8_t>(0xC0 | ((reg & 7) << 3) | (rm & 7)));
+    };
+    if (instruction.destination != instruction.left) {
+        if (floating) {
+            MovXmm(instruction.destination, instruction.left);
+        }
+        else {
+            rex(instruction.left, instruction.destination, true);
+            Byte(0x89);
+            modrm(instruction.left, instruction.destination);
+        }
+    }
+    const auto reg = instruction.destinationInRegField ? instruction.destination : instruction.right;
+    const auto rm = instruction.destinationInRegField ? instruction.right : instruction.destination;
+    if (floating)
+        Byte(instruction.registerClass == X86ScalarRegisterClass::Float32 ? 0xF3 : 0xF2);
+    rex(reg, rm, !floating);
+    if (instruction.twoByteOpcode)
+        Byte(0x0F);
+    Byte(instruction.opcode);
+    modrm(reg, rm);
 }
 
 void X64Enc::PopRbp() const {

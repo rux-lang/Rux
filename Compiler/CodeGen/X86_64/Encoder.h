@@ -6,6 +6,8 @@
 #include <vector>
 
 namespace Rux {
+struct X86ScalarMachineInstruction;
+
 /// x86-64 binary encoder.
 ///
 /// All accesses to stack slots use [rbp + disp] where disp is negative. disp = -slotMap[vreg]  (i.e., pass negative
@@ -358,6 +360,7 @@ public:
     void LeaRaxRaxDisp(int32_t v) const;
     /// rax = rax + r10 * 2^shift; shift must be in 0..3.
     void LeaRaxRaxR10(unsigned shift) const;
+    void EmitScalarMachineInstruction(const X86ScalarMachineInstruction &instruction) const;
 
     void PopRbp() const;
 

@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Direct x86 scalar register operations** — allocated 64-bit integer arithmetic/bitwise operations and scalar
+  float32/float64 arithmetic use their physical register operands directly. A shared selection descriptor keeps
+  assembly text and binary encoding aligned; narrow, spilled and fixed-register operations retain safe fallbacks.
+
 - **Native x86 address and branch selection** — indexed 1/2/4/8-byte elements use scaled LEA; single-use integer
   comparisons immediately feeding a branch use condition flags directly. Fall-through edges omit redundant jumps,
   preserving edge-specific phi copies. General and floating register planning share one liveness computation.

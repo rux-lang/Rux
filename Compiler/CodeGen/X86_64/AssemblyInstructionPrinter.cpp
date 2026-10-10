@@ -9,6 +9,7 @@
 
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
+#include "CodeGen/X86_64/ScalarMachine.h"
 #include "Numeric/FloatFormat.h"
 #include "Numeric/FloatParsing.h"
 #include "Target/FloatLowering.h"
@@ -1324,6 +1325,15 @@ bool AssemblyInstructionPrinter::EmitWideArithmetic(const LirInstr &instruction)
 
 bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     if (framePlan.BranchComparisons().contains(instruction.dst)) {
+        return true;
+    }
+    if (const auto selected = SelectScalarMachineInstruction(instruction, framePlan)) {
+        const auto destination = ScalarMachineRegister(*selected, selected->destination);
+        if (selected->destination != selected->left) {
+            Instruction(selected->registerClass == X86ScalarRegisterClass::Integer64 ? "mov" : "movaps",
+                        destination + ", " + ScalarMachineRegister(*selected, selected->left));
+        }
+        Instruction(selected->mnemonic, destination + ", " + ScalarMachineRegister(*selected, selected->right));
         return true;
     }
     // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
