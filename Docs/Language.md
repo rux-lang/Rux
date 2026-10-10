@@ -20,7 +20,7 @@ Struct literals can appear inside parenthesized expressions and call arguments w
 
 ## Integer Division
 
-Integer and character `/` and `%`, and the compound `/=` and `%=`, stop the program when the divisor is zero, on every target and in every build profile. The report has the shape a `Panic` call prints — `Panic: division by zero` followed by the function, file, line, and column of the operator — and nothing is unwound. A signed division whose quotient does not fit its type, the type's minimum divided by `-1`, stops the same way with `Panic: division overflow`; the matching `%` is held to the same rule, because the machine instruction that computes it fails on the same operands. A divisor written as a nonzero literal needs no zero check, a release build removes a check whose operands it knows to pass, and constant folding never folds a division by zero away.
+Integer and character `/` and `%`, and the compound `/=` and `%=`, stop the program when the divisor is zero, on every target and in every build profile. The report has the shape a `Panic` call prints — `Panic: division by zero` followed by the function, file, line, and column of the operator, then one `  from Name` line for each function that led to it, innermost first — and nothing is unwound. A signed division whose quotient does not fit its type, the type's minimum divided by `-1`, stops the same way with `Panic: division overflow`; the matching `%` is held to the same rule, because the machine instruction that computes it fails on the same operands. A divisor written as a nonzero literal needs no zero check, a release build removes a check whose operands it knows to pass, and constant folding never folds a division by zero away.
 
 ## Character Casts and Patterns
 

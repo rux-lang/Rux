@@ -29,6 +29,8 @@ public:
         , targetOs(targetOs) {
     }
 
+    bool tracesPanics = false;
+
     void EmitFunction(const LirFunc &function) {
         currentFunction = function.name;
         if (function.isAsm) {
@@ -310,6 +312,9 @@ private:
                 TI("mov     r8, qword [r10 + 8]");
                 TI("call    WriteFile");
                 writeStatic(layout.location);
+                if (tracesPanics) {
+                    TI("call    __rux_backtrace");
+                }
             }
             else {
                 const int syscallNumber = targetOs == Target::OS::Linux ? 1
@@ -335,6 +340,9 @@ private:
                 TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
                 TI("syscall");
                 writeStatic(layout.location);
+                if (tracesPanics) {
+                    TI("call    __rux_backtrace");
+                }
             }
 
             TI("ud2");
@@ -343,6 +351,41 @@ private:
             }
             break;
         }
+        case LirOpcode::FramePointer:
+            TI("mov     rax, rbp");
+            instructionPrinter.StoreA(instruction.dst, instruction.type);
+            break;
+        case LirOpcode::WriteStandardError:
+            if (targetOs == Target::OS::Windows) {
+                NeedExtern("GetStdHandle");
+                NeedExtern("WriteFile");
+                TI("sub     rsp, 48");
+                TI("mov     eax, -12");
+                TI("mov     rcx, rax");
+                TI("call    GetStdHandle");
+                TI("mov     rcx, rax");
+                TI("lea     r9, [rsp + 40]");
+                TI("mov     qword [rsp + 32], 0");
+                instructionPrinter.LoadA(instruction.srcs[0], TypeRef::MakePointer(TypeRef::MakeChar8()));
+                TI("mov     rdx, rax");
+                instructionPrinter.LoadA(instruction.srcs[1], TypeRef::MakeUInt64());
+                TI("mov     r8, rax");
+                TI("call    WriteFile");
+                TI("add     rsp, 48");
+            }
+            else {
+                const int syscallNumber = targetOs == Target::OS::Linux ? 1
+                                        : targetOs == Target::OS::MacOS ? 0x0200'0004
+                                                                        : 4;
+                instructionPrinter.LoadA(instruction.srcs[0], TypeRef::MakePointer(TypeRef::MakeChar8()));
+                TI("mov     rsi, rax");
+                instructionPrinter.LoadA(instruction.srcs[1], TypeRef::MakeUInt64());
+                TI("mov     rdx, rax");
+                TI("mov     edi, 2");
+                TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
+                TI("syscall");
+            }
+            break;
         case LirOpcode::Call:
             if (!EmitBitCast(instruction, instructionPrinter)) {
                 EmitPreparedCall(instruction, instruction.srcs, false, instructionPrinter);
@@ -755,6 +798,7 @@ AssemblyControlFlowPrinter::AssemblyControlFlowPrinter(AssemblyModulePrinter &mo
 
 void AssemblyControlFlowPrinter::EmitFunction(const LirFunc &function) {
     FunctionAssemblyPrinter printer(modulePrinter, layouts, interfaceNames, targetOs);
+    printer.tracesPanics = tracesPanics;
     printer.EmitFunction(function);
 }
 } // namespace Rux

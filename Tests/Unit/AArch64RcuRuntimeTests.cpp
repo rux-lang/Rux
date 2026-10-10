@@ -105,13 +105,16 @@ TEST_CASE("AArch64 RCU emitter writes a failed assertion's three parts and traps
 
     const auto trap = TrapIndex(words);
     REQUIRE_MESSAGE(trap.has_value(), "no brk in the body");
-    REQUIRE(*trap >= 19);
+    REQUIRE(*trap >= 20);
 
-    // Read backwards from the trap: the location, the message and the prefix,
+    // The stack-trace printer is called just before the trap.
+    CHECK_EQ(words[*trap - 1] & 0xFC000000U, 0x94000000U);
+
+    // Read backwards from that call: the location, the message and the prefix,
     // each of them one write, and each write ending in the same three words.
-    const std::size_t location = *trap - 6;
-    const std::size_t message = *trap - 11;
-    const std::size_t prefix = *trap - 17;
+    const std::size_t location = *trap - 7;
+    const std::size_t message = *trap - 12;
+    const std::size_t prefix = *trap - 18;
     for (const std::size_t write : {prefix, message, location}) {
         const std::size_t end = write == message ? message + 2 : write + 3;
         CHECK_EQ(HexWord(words[end]), HexWord(kMovX0StdErr));
@@ -137,7 +140,7 @@ TEST_CASE("AArch64 RCU emitter writes a failed assertion's three parts and traps
 
     // A condition that held branches over the whole of it, landing on the
     // instruction after the trap.
-    const std::size_t condition = *trap - 18;
+    const std::size_t condition = *trap - 19;
     CHECK_EQ(words[condition] & 0xFF00001FU, 0xB5000009U); // cbnz x9, <after the trap>
     CHECK_EQ(BranchDisplacement(words[condition]), static_cast<std::int32_t>(*trap + 1 - condition));
 
@@ -267,11 +270,12 @@ TEST_CASE("FreeBSD AArch64 assertions and panics write every fragment through sy
 
         // Static prefix/location writes materialize X1 and X2 separately; the
         // dynamic slice moves both with one LDP. All three complete before the
-        // diagnostic BRK, which is immediately after the final SVC.
+        // call to the stack-trace printer, which comes immediately before the BRK.
         CHECK_EQ(std::ranges::count(words, kAdrpX1), 2);
         CHECK_EQ(std::ranges::count(words, kAddX1Lo12), 2);
         CHECK_EQ(std::ranges::count(words, kLdpX1X2), 1);
-        CHECK_EQ(writes.back() + 1, *trap);
+        CHECK_EQ(writes.back() + 2, *trap);
+        CHECK_EQ(words[*trap - 1] & 0xFC000000U, 0x94000000U);
         CHECK_EQ(std::ranges::count(words, kMovX8FreeBsdWrite), 3);
         CHECK_EQ(std::ranges::count(words, kMovX8Write), 0);
         CHECK_EQ(std::ranges::count(words, 0xD2800090U), 0); // Darwin's mov x16, #4

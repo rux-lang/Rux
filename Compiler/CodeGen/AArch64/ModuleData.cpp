@@ -161,8 +161,76 @@ void AArch64ModuleEmitter::GenModule() {
         EmitGlobal(global);
     }
     EmitVtables();
+    PredeclareFunctionTables();
     for (const auto &func : mod.funcs) {
+        const auto start = static_cast<std::uint32_t>(enc.Size());
         GenFunc(func);
+        const auto end = static_cast<std::uint32_t>(enc.Size());
+        if (backtrace.enabled && !func.isExtern && end > start) {
+            if (const auto symbol = funcSyms.find(func.name); symbol != funcSyms.end()) {
+                functionRanges.push_back(
+                    {symbol->second, end - start, func.displayName.empty() ? func.name : func.displayName});
+            }
+        }
     }
+    EmitFunctionTables();
+}
+
+void AArch64ModuleEmitter::PredeclareFunctionTables() {
+    if (!backtrace.enabled) {
+        return;
+    }
+    const std::string table = FunctionTableSymbol(backtrace.moduleIndex);
+    dataSyms[table] = DeclareSymbol(table, {}, RcuSymKind::Const, RcuSymVis::Global);
+    if (backtrace.IsLast()) {
+        const std::string tables(kFunctionTablesSymbol);
+        dataSyms[tables] = DeclareSymbol(tables, {}, RcuSymKind::Const, RcuSymVis::Global);
+    }
+}
+
+// Each entry is the function's address, its length in bytes, and its name as an address and a length; a count leads.
+void AArch64ModuleEmitter::EmitFunctionTables() {
+    if (!backtrace.enabled) {
+        return;
+    }
+    const auto pushWord = [&](const std::uint64_t value) {
+        for (int index = 0; index < 8; ++index) {
+            RodataData().push_back(static_cast<std::uint8_t>(value >> (index * 8)));
+        }
+    };
+    std::vector<std::uint32_t> names;
+    names.reserve(functionRanges.size());
+    for (const FunctionRange &range : functionRanges) {
+        names.push_back(InternStringLiteral(range.name));
+    }
+    const std::uint32_t tableOff = AlignRodata(8);
+    pushWord(functionRanges.size());
+    for (std::size_t index = 0; index < functionRanges.size(); ++index) {
+        const auto slot = static_cast<std::uint32_t>(RodataData().size());
+        pushWord(0);
+        AddRodataReloc(slot, functionRanges[index].symbol, RcuRelType::Abs64);
+        pushWord(functionRanges[index].size);
+        const auto nameSlot = static_cast<std::uint32_t>(RodataData().size());
+        pushWord(0);
+        AddRodataReloc(nameSlot, names[index], RcuRelType::Abs64);
+        pushWord(functionRanges[index].name.size());
+    }
+    (void)moduleBuilder.DefineSymbol(dataSyms.at(FunctionTableSymbol(backtrace.moduleIndex)), RcuModuleSection::RoData,
+                                     tableOff, static_cast<std::uint32_t>(RodataData().size()) - tableOff);
+    if (!backtrace.IsLast()) {
+        return;
+    }
+    const std::uint32_t tablesOff = AlignRodata(8);
+    pushWord(backtrace.moduleCount);
+    for (std::size_t index = 0; index < backtrace.moduleCount; ++index) {
+        const std::string name = FunctionTableSymbol(index);
+        const auto slot = static_cast<std::uint32_t>(RodataData().size());
+        pushWord(0);
+        const auto known = dataSyms.find(name);
+        AddRodataReloc(slot, known != dataSyms.end() ? known->second : GetOrAddExtern(name, RcuSymKind::ExternData),
+                       RcuRelType::Abs64);
+    }
+    (void)moduleBuilder.DefineSymbol(dataSyms.at(std::string(kFunctionTablesSymbol)), RcuModuleSection::RoData,
+                                     tablesOff, static_cast<std::uint32_t>(RodataData().size()) - tablesOff);
 }
 } // namespace Rux::AArch64Detail

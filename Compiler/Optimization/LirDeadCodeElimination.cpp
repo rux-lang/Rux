@@ -76,7 +76,11 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::AtomicFetchXor:
     case LirOpcode::Fence:
     case LirOpcode::SpinHint:
+    case LirOpcode::WriteStandardError:
         return InstructionEffect::Observable;
+    // The frame pointer changes only on entry, so reading it twice reads the same value.
+    case LirOpcode::FramePointer:
+        return InstructionEffect::Pure;
     }
     return InstructionEffect::Observable;
 }

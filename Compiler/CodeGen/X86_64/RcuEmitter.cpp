@@ -1,5 +1,7 @@
 #include "CodeGen/X86_64/ModuleEmitter.h"
 
+#include <algorithm>
+
 namespace Rux::X86_64Detail {
 
 // X86_64ModuleEmitter::Generate
@@ -287,8 +289,10 @@ using X86_64Detail::X86_64ModuleEmitter;
 
 RcuFile GenerateRcuModule(const LirModule &mod, const std::vector<LirStructDecl> &structDecls,
                           const std::vector<std::string> &interfaceNames, const std::string &packageName,
-                          const Target::OS targetOs, const BuildInfo &buildInfo, std::vector<Diagnostic> &diagnostics) {
+                          const Target::OS targetOs, const BuildInfo &buildInfo, std::vector<Diagnostic> &diagnostics,
+                          const BacktraceTables &backtrace) {
     X86_64ModuleEmitter gen(mod, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics);
+    gen.SetBacktrace(backtrace);
     return gen.Generate();
 }
 
@@ -309,9 +313,14 @@ std::vector<RcuFile> RcuEmitter::Generate() const {
         structDecls.insert(structDecls.end(), module.structs.begin(), module.structs.end());
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
-    for (const auto &module : lir.modules) {
-        result.push_back(
-            GenerateRcuModule(module, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics));
+    const bool tracesPanics = std::ranges::any_of(lir.modules, [](const LirModule &module) {
+        return std::ranges::any_of(module.funcs,
+                                   [](const LirFunc &function) { return function.name == kBacktraceFunctionName; });
+    });
+    for (std::size_t index = 0; index < lir.modules.size(); ++index) {
+        const BacktraceTables backtrace{tracesPanics, index, lir.modules.size()};
+        result.push_back(GenerateRcuModule(lir.modules[index], structDecls, interfaceNames, packageName, targetOs,
+                                           buildInfo, diagnostics, backtrace));
     }
     return result;
 }

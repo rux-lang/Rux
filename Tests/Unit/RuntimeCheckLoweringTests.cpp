@@ -127,12 +127,30 @@ std::string Report(const std::string_view message, const std::string_view functi
     return BuildRuntimeFailureLayout(RuntimeFailureKind::Panic, function, kLogicalPath, line, column).Join(message);
 }
 
+/// Whether `output` is `expected` followed by nothing but stack-trace lines. Which callers appear depends on what the
+/// build inlined, so a release build may name fewer than a debug one.
+bool IsReportWithTrace(const std::string_view output, const std::string_view expected) {
+    if (!output.starts_with(expected)) {
+        return false;
+    }
+    std::string_view rest = output.substr(expected.size());
+    while (!rest.empty()) {
+        const std::size_t end = rest.find('\n');
+        if (end == std::string_view::npos || !rest.starts_with("  from ")) {
+            return false;
+        }
+        rest.remove_prefix(end + 1);
+    }
+    return true;
+}
+
 void CheckTrapsOnHost(const std::string_view source, const std::string_view expected) {
     for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
         const std::string profileName = profile == BuildProfile::Debug ? "debug" : "release";
         CAPTURE(profileName);
         const auto result = RunOnHost(source, profile);
-        CHECK_EQ(result.output, expected);
+        CAPTURE(result.output);
+        CHECK(IsReportWithTrace(result.output, expected));
         CHECK_NE(result.exitCode, 0);
     }
 }
@@ -147,6 +165,24 @@ void CheckRunsOnHost(const std::string_view source, const int exitCode) {
     }
 }
 } // namespace
+
+TEST_CASE("a panic names the functions that called the one that failed") {
+    const auto result = RunOnHost(R"(func Divide(a: int32, b: int32) -> int32 {
+    return a / b;
+}
+
+func Halve(value: int32) -> int32 {
+    return Divide(value, value - value);
+}
+
+func Main() -> int {
+    return Halve(8) as int;
+}
+)",
+                                  BuildProfile::Debug);
+    CHECK_EQ(result.output, Report("division by zero", "Divide", 2, 14) + "  from Halve\n  from Main\n");
+    CHECK_NE(result.exitCode, 0);
+}
 
 TEST_CASE("integer division by zero stops the program with a panic") {
     CheckTrapsOnHost(R"(func Divide(a: int32, b: int32) -> int32 {

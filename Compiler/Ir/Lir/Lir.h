@@ -77,7 +77,14 @@ enum class LirOpcode {
     AtomicFetchXor, // %dst = atomic_xor <type> %ptr, %val
     Fence,          // fence <order>
     SpinHint,       // spin_hint
+    // Stack traces
+    FramePointer,       // %dst = frame_pointer *uint64 — this function's frame record: the caller's frame and return
+    WriteStandardError, // write_stderr %ptr, %length — writes bytes to standard error, ignoring any failure
 };
+
+/// The function every panic and failed assertion calls to print the frames that led to it, synthesized once for a
+/// program that can fail that way.
+inline constexpr std::string_view kBacktraceFunctionName = "__rux_backtrace";
 
 /// The spelling of an opcode, as a dump writes it and as a diagnostic names it. One name serves both, so a back end
 /// reporting an opcode it cannot lower yet names the same thing the LIR dump beside it does.
@@ -175,6 +182,10 @@ enum class LirOpcode {
         return "fence";
     case LirOpcode::SpinHint:
         return "spin_hint";
+    case LirOpcode::FramePointer:
+        return "frame_pointer";
+    case LirOpcode::WriteStandardError:
+        return "write_stderr";
     }
     return "?";
 }
@@ -264,6 +275,8 @@ struct LirParam {
 
 struct LirFunc {
     std::string name;
+    /// The name a stack trace prints, as the source spells it; the linker name when the source gave none.
+    std::string displayName;
     std::string dll; // non-empty for extern declarations
     bool isPublic = false;
     /// Public and owned by the package being compiled: a library artifact exports it and keeps it reachable.

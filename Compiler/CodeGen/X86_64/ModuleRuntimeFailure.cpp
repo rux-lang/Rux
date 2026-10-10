@@ -76,6 +76,7 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
             AddTextReloc(messageWriteReloc, writeFile);
 
             writeStatic(layout.location);
+            EmitBacktraceCall();
         }
         else {
             const int syscallNumber = targetOs == Target::OS::Linux ? 1
@@ -102,6 +103,7 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
             enc.MovEaxImm32(syscallNumber);
             enc.Syscall();
             writeStatic(layout.location);
+            EmitBacktraceCall();
         }
 
         enc.Ud2();
@@ -111,6 +113,15 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
         }
         break;
     }
+    case LirOpcode::FramePointer:
+        enc.Byte(0x48);
+        enc.Byte(0x89);
+        enc.Byte(0xE8); // mov rax, rbp
+        StoreA(instr.dst, instr.type);
+        break;
+    case LirOpcode::WriteStandardError:
+        EmitWriteStandardError(instr);
+        break;
     case LirOpcode::Phi:
         // The predecessor's terminator has already copied the selected
         // incoming value into this register's home.
@@ -119,5 +130,53 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
         Report(UnsupportedLirDiagnostic(instr.op, targetOs, Target::Arch::X86_64, currentFunc));
         break;
     }
+}
+
+// The stack-trace printer names the frames that led here; the program stops right after it returns.
+void X86_64ModuleEmitter::EmitBacktraceCall() {
+    if (!backtrace.enabled) {
+        return;
+    }
+    uint32_t relocation;
+    enc.Call(relocation);
+    AddTextReloc(relocation, ResolveCallSymbol(std::string(kBacktraceFunctionName)));
+}
+
+// Writes the bytes at the first operand, as many as the second says, to standard error. Unlike the failure path this
+// returns, so the Windows call area is given back.
+void X86_64ModuleEmitter::EmitWriteStandardError(const LirInstr &instr) {
+    const TypeRef bytes = TypeRef::MakePointer(TypeRef::MakeChar8());
+    if (targetOs == Target::OS::Windows) {
+        const uint32_t getStdHandle = GetOrAddExtern("GetStdHandle", RcuSymKind::ExternFunc, "KERNEL32.DLL");
+        const uint32_t writeFile = GetOrAddExtern("WriteFile", RcuSymKind::ExternFunc, "KERNEL32.DLL");
+        enc.SubRspImm32(48);
+        enc.MovEaxImm32(-12); // STD_ERROR_HANDLE
+        enc.MovArgWin64Rax(0);
+        uint32_t getHandleReloc;
+        enc.Call(getHandleReloc);
+        AddTextReloc(getHandleReloc, getStdHandle);
+        enc.MovArgWin64Rax(0);
+        enc.LeaR9Rsp(40);
+        enc.MovQwordRspImm32(32, 0);
+        LoadA(instr.srcs[0], bytes);
+        enc.MovArgWin64Rax(1);
+        LoadA(instr.srcs[1], TypeRef::MakeUInt64());
+        enc.MovArgWin64Rax(2);
+        uint32_t writeReloc;
+        enc.Call(writeReloc);
+        AddTextReloc(writeReloc, writeFile);
+        enc.AddRspImm32(48);
+        return;
+    }
+    const int syscallNumber = targetOs == Target::OS::Linux ? 1 : targetOs == Target::OS::MacOS ? 0x0200'0004 : 4;
+    LoadA(instr.srcs[0], bytes);
+    enc.MovRsiRax();
+    LoadA(instr.srcs[1], TypeRef::MakeUInt64());
+    enc.Byte(0x48);
+    enc.Byte(0x89);
+    enc.Byte(0xC2); // mov rdx, rax
+    enc.MovEdiImm32(2);
+    enc.MovEaxImm32(syscallNumber);
+    enc.Syscall();
 }
 } // namespace Rux::X86_64Detail

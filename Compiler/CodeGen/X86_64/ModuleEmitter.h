@@ -256,6 +256,27 @@ private:
         activeCallEmitter->EmitArguments(arguments);
     }
 
+public:
+    /// Makes this module contribute to the program's stack traces.
+    void SetBacktrace(const BacktraceTables &tables) {
+        backtrace = tables;
+    }
+
+private:
+    // One function this module emitted, for its stack-trace table.
+    struct FunctionRange {
+        std::uint32_t symbol = 0;
+        std::uint32_t size = 0;
+        std::string name;
+    };
+
+    BacktraceTables backtrace;
+    std::vector<FunctionRange> functionRanges;
+    void PredeclareFunctionTables();
+    void EmitFunctionTables();
+    void EmitBacktraceCall();
+    void EmitWriteStandardError(const LirInstr &instr);
+
     [[nodiscard]] std::uint32_t ResolveCallSymbol(const std::string &name) override {
         if (const auto function = funcSyms.find(name); function != funcSyms.end()) {
             return function->second;

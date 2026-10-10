@@ -18,6 +18,9 @@ public:
 
     void EmitFunction(const LirFunc &function);
 
+    /// Whether the package has the stack-trace printer, which every panic and failed assertion then calls.
+    bool tracesPanics = false;
+
 private:
     AssemblyModulePrinter &modulePrinter;
     const Layout::LayoutMap &layouts;

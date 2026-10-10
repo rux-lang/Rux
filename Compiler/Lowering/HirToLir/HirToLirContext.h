@@ -17,6 +17,9 @@
 
 namespace Rux::HirToLirDetail {
 
+/// The stack-trace printer every panic and failed assertion calls, built once for a program that has any.
+[[nodiscard]] LirFunc SynthesizeBacktrace(std::vector<Diagnostic> &diagnostics);
+
 /// Private state for lowering one HIR package. Function-local state is reset by LowerFunc and is shared only by the
 /// focused statement, expression, and aggregate lowering implementations.
 class HirToLirContext {
@@ -96,6 +99,9 @@ private:
     std::string currentSourceFunction;
     /// Helpers the rewritten software-float operations call, synthesized once every module is lowered.
     SoftFloatHelperRegistry softFloatHelpers;
+    /// Whether any function lowered so far can panic or fail an assertion, which is what calls for the stack-trace
+    /// printer.
+    bool emittedRuntimeFailure = false;
     SoftFloatPolicy softFloatPolicy;
     /// The kind of value each register of the function being lowered holds, which tells a comparison what it compares.
     std::vector<TypeRef::Kind> registerKinds;

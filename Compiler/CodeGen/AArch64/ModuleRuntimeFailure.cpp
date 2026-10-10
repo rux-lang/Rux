@@ -88,9 +88,46 @@ void AArch64ModuleEmitter::GenAssert(AArch64TerminatorEmitter &terminatorEmitter
         EmitWriteStatic(*syscall, layout.location);
     }
 
+    EmitBacktraceCall();
     Must(enc.Brk(1), "an assertion trap");
     if (isAssertion) {
         terminatorEmitter.PatchBranchOver(heldBranch);
     }
+}
+
+// The stack-trace printer names the frames that led here; the program stops right after it returns.
+void AArch64ModuleEmitter::EmitBacktraceCall() {
+    if (!backtrace.enabled) {
+        return;
+    }
+    const std::uint32_t site = enc.Size();
+    Must(enc.Bl(0), "a call to the stack-trace printer");
+    AddTextReloc(site, ResolveCallSymbol(std::string(kBacktraceFunctionName)), RcuRelType::AArch64Call26);
+}
+
+// Writes the bytes at the first operand, as many as the second says, to standard error. Unlike the failure path this
+// returns, so the Windows write area is given back.
+void AArch64ModuleEmitter::EmitWriteStandardError(const LirInstr &instr) {
+    if (targetOs == Target::OS::Windows) {
+        const std::uint32_t getStdHandle =
+            GetOrAddExtern("GetStdHandle", RcuSymKind::ExternFunc, std::string(kKernel32));
+        const std::uint32_t writeFile = GetOrAddExtern("WriteFile", RcuSymKind::ExternFunc, std::string(kKernel32));
+        Must(enc.FrameAdjust(-16), "the write area");
+        PrepareWindowsWrite(getStdHandle);
+        LoadPointer(A64::Xn(1), instr.srcs[0]);
+        LoadFromSlot(A64::Xn(2), instr.srcs[1], TypeRef::MakeUInt64());
+        EmitWindowsCall(writeFile, "a call to WriteFile");
+        Must(enc.FrameAdjust(16), "the write area");
+        return;
+    }
+    const auto syscall = WriteSyscallFor(targetOs);
+    if (!syscall) {
+        NotImplemented("writing to standard error on this operating system");
+        return;
+    }
+    LoadPointer(A64::Xn(1), instr.srcs[0]);
+    LoadFromSlot(A64::Xn(2), instr.srcs[1], TypeRef::MakeUInt64());
+    Must(enc.LoadImm64(A64::Xn(0), kStandardError), "the standard error descriptor");
+    EmitWriteSyscall(*syscall);
 }
 } // namespace Rux::AArch64Detail

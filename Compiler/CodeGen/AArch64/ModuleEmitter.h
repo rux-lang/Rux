@@ -753,6 +753,27 @@ private:
 
     void GenAssert(AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr);
 
+public:
+    /// Makes this module contribute to the program's stack traces.
+    void SetBacktrace(const BacktraceTables &tables) {
+        backtrace = tables;
+    }
+
+private:
+    // One function this module emitted, for its stack-trace table.
+    struct FunctionRange {
+        std::uint32_t symbol = 0;
+        std::uint32_t size = 0;
+        std::string name;
+    };
+
+    BacktraceTables backtrace;
+    std::vector<FunctionRange> functionRanges;
+    void PredeclareFunctionTables();
+    void EmitFunctionTables();
+    void EmitBacktraceCall();
+    void EmitWriteStandardError(const LirInstr &instr);
+
     void GenInstr(AArch64FunctionEmitter &functionEmitter, AArch64CallEmitter &callEmitter,
                   AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr);
 

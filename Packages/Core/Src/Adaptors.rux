@@ -1,7 +1,7 @@
 // Lazy adaptors: cursors that wrap another cursor and change what it yields, one item at a time.
 // Each adaptor holds the cursor it wraps and asks it for an item only when it is asked for one, so nothing is computed
-// ahead and nothing is stored. They take any value with a `Next` returning `T?` -- a container's iterator, a `Walk`
-// over a slice, or another adaptor -- through the `Cursor<T>` bound, and their item types are deduced from what
+// ahead and nothing is stored. They take any value with a `Next` returning `T?` — a container's iterator, a `Walk`
+// over a slice, or another adaptor — through the `Cursor<T>` bound, and their item types are deduced from what
 // that `Next` returns, so a chain reads without type arguments:
 // `for value in Take(Filter(Map(Walk(numbers), Square), IsEven), 3) { ... }`.
 // An adaptor owns the cursor it was given; give it a copy, or move the cursor in, as with any argument.
@@ -13,6 +13,7 @@
 pub interface Cursor<T> {
     /// The next item, or `none` once there are no more.
     /// @returns the item
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#cursor-next
     func Next(self: &var Self) -> T?;
 }
 

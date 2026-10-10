@@ -278,6 +278,7 @@ TEST_CASE("Windows assembly supplies the overlapped argument for every runtime f
             begin = call + 1;
             ++writes;
         }
-        CHECK(writes == 3);
+        // Three for the report, and three more in the stack-trace printer: a frame's prefix, its name and the line end.
+        CHECK(writes == 6);
     }
 }

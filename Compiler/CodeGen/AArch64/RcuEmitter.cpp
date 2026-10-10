@@ -1,5 +1,7 @@
 #include "CodeGen/AArch64/ModuleEmitter.h"
 
+#include <algorithm>
+
 namespace Rux::AArch64Detail {
 
 RcuFile AArch64ModuleEmitter::Generate() {
@@ -20,6 +22,12 @@ void AArch64ModuleEmitter::GenInstr(AArch64FunctionEmitter &functionEmitter, AAr
     case LirOpcode::Assert:
     case LirOpcode::Panic:
         GenAssert(terminatorEmitter, instr);
+        break;
+    case LirOpcode::FramePointer:
+        StoreToSlot(A64::Fp, instr.dst, instr.type);
+        break;
+    case LirOpcode::WriteStandardError:
+        EmitWriteStandardError(instr);
         break;
     case LirOpcode::Phi:
         // Nothing: the value arrived in this register's slot along the edge
@@ -172,8 +180,14 @@ std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
         structDecls.insert(structDecls.end(), module.structs.begin(), module.structs.end());
         interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
     }
-    for (const auto &module : lir.modules) {
-        AArch64ModuleEmitter gen(module, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics);
+    const bool tracesPanics = std::ranges::any_of(lir.modules, [](const LirModule &module) {
+        return std::ranges::any_of(module.funcs,
+                                   [](const LirFunc &function) { return function.name == kBacktraceFunctionName; });
+    });
+    for (std::size_t index = 0; index < lir.modules.size(); ++index) {
+        AArch64ModuleEmitter gen(lir.modules[index], structDecls, interfaceNames, packageName, targetOs, buildInfo,
+                                 diagnostics);
+        gen.SetBacktrace({tracesPanics, index, lir.modules.size()});
         result.push_back(gen.Generate());
     }
     return result;

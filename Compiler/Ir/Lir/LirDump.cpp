@@ -56,6 +56,12 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
     case LirOpcode::AtomicFetchAnd:
     case LirOpcode::AtomicFetchOr:
     case LirOpcode::AtomicFetchXor:
+    case LirOpcode::FramePointer:
+        out << std::format("{} = frame_pointer {}\n", RegStr(i.dst), i.type.ToString());
+        return;
+    case LirOpcode::WriteStandardError:
+        out << std::format("write_stderr {}, {}\n", RegStr(i.srcs.at(0)), RegStr(i.srcs.at(1)));
+        return;
     case LirOpcode::Fence:
     case LirOpcode::SpinHint: {
         // Every operand, then the order: an atomic instruction is read for what it orders as much as for what it does.

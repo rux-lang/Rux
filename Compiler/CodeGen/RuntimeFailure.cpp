@@ -23,4 +23,8 @@ RuntimeFailureLayout BuildRuntimeFailureLayout(const RuntimeFailureKind kind, co
             .location = std::format("\n  at {} ({}:{}:{})\n", stableFunction, stableFile, line, column)};
 }
 
+std::string FunctionTableSymbol(const std::size_t moduleIndex) {
+    return std::format("__rux_function_table_{}", moduleIndex);
+}
+
 } // namespace Rux

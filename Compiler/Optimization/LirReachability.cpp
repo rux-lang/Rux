@@ -180,6 +180,10 @@ private:
                 if (instruction.op == LirOpcode::Call) {
                     Add(index.functions, instruction.strArg);
                 }
+                // Code generation calls the stack-trace printer from every panic and failed assertion.
+                else if (instruction.op == LirOpcode::Panic || instruction.op == LirOpcode::Assert) {
+                    Add(index.functions, std::string(kBacktraceFunctionName));
+                }
                 else if (instruction.op == LirOpcode::GlobalAddr || instruction.op == LirOpcode::ThreadLocalAddr) {
                     Add(index.all, instruction.strArg);
                 }

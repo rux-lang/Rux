@@ -181,6 +181,10 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
         for (LirFunc &helper : softFloatHelpers.SynthesizePending(diagnostics)) {
             pkg.modules.back().funcs.push_back(std::move(helper));
         }
+        // A program that can panic gets the stack-trace printer its failure paths call, once, in the same module.
+        if (emittedRuntimeFailure) {
+            pkg.modules.back().funcs.push_back(SynthesizeBacktrace(diagnostics));
+        }
     }
     VerifySoftFloatLowering(pkg, softFloatPolicy, diagnostics);
     return pkg;
@@ -308,6 +312,9 @@ void HirToLirContext::SetBlock(const std::uint32_t idx) {
 void HirToLirContext::Emit(LirInstr i) {
     if (EmitSoftFloatReplacement(i)) {
         return;
+    }
+    if (i.op == LirOpcode::Panic || i.op == LirOpcode::Assert) {
+        emittedRuntimeFailure = true;
     }
     RecordRegisterKind(i);
     if (!builder->Insert(std::move(i))) {
@@ -1193,6 +1200,7 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     partialCleanupFrames.clear();
     LirFunc lf;
     lf.name = nameOverride.empty() ? hf.name : std::string(nameOverride);
+    lf.displayName = currentSourceFunction;
     lf.isPublic = hf.isPublic;
     lf.isExported = hf.isExported;
     lf.isExtern = false;
