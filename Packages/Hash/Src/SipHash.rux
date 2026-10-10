@@ -79,28 +79,39 @@ extend SipState {
     /// @param count how many rounds to run
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#sip-state-round
     pub func Round(self: &var SipState, count: uint) {
+        if count == 0 { return; }
+        // Round has no callbacks or observable intermediate states. Keep its four words local across rounds and
+        // write the completed state once, allowing scalar promotion without aliasing the borrowed state fields.
+        var first = self.first;
+        var second = self.second;
+        var third = self.third;
+        var fourth = self.fourth;
         var remaining = count;
         while remaining > 0 {
-            self.first = self.first + self.second;
-            self.second = RotateLeft<uint64>(self.second, 13);
-            self.second = self.second ^ self.first;
-            self.first = RotateLeft<uint64>(self.first, 32);
+            first = first + second;
+            second = RotateLeft<uint64>(second, 13);
+            second = second ^ first;
+            first = RotateLeft<uint64>(first, 32);
 
-            self.third = self.third + self.fourth;
-            self.fourth = RotateLeft<uint64>(self.fourth, 16);
-            self.fourth = self.fourth ^ self.third;
+            third = third + fourth;
+            fourth = RotateLeft<uint64>(fourth, 16);
+            fourth = fourth ^ third;
 
-            self.first = self.first + self.fourth;
-            self.fourth = RotateLeft<uint64>(self.fourth, 21);
-            self.fourth = self.fourth ^ self.first;
+            first = first + fourth;
+            fourth = RotateLeft<uint64>(fourth, 21);
+            fourth = fourth ^ first;
 
-            self.third = self.third + self.second;
-            self.second = RotateLeft<uint64>(self.second, 17);
-            self.second = self.second ^ self.third;
-            self.third = RotateLeft<uint64>(self.third, 32);
+            third = third + second;
+            second = RotateLeft<uint64>(second, 17);
+            second = second ^ third;
+            third = RotateLeft<uint64>(third, 32);
 
             remaining = remaining - 1;
         }
+        self.first = first;
+        self.second = second;
+        self.third = third;
+        self.fourth = fourth;
     }
 
     // One eight-byte word of input, mixed in and compressed.
@@ -285,7 +296,23 @@ pub func SipWord(bytes: *byte) -> uint64 {
 /// @returns their keyed hash
 /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#sip-hash24-of
 pub func SipHash24Of(bytes: *byte, length: uint, low: uint64, high: uint64) -> uint64 {
-    var hasher = SipHash24::WithKey(low, high);
-    hasher.Write(bytes, length);
-    return hasher.Finish();
+    // One-shot input needs no streaming buffer, key copy or buffered-byte bookkeeping. Read only complete words,
+    // then assemble the exact tail directly; an empty input never dereferences its possibly null pointer.
+    var state = SipState::FromKey(low, high);
+    var offset: uint = 0;
+    while length - offset >= 8 {
+        state.Absorb(SipWord(bytes + offset));
+        offset += 8;
+    }
+    var last: uint64 = ((length as uint64) & 0xFFu64) << 56;
+    var index: uint = 0;
+    while offset < length {
+        last |= (*(bytes + offset) as uint64) << ((index * 8) as uint64);
+        offset++;
+        index++;
+    }
+    state.Absorb(last);
+    state.third ^= 0xFFu64;
+    state.Round(SipFinalizationRounds);
+    return state.first ^ state.second ^ state.third ^ state.fourth;
 }

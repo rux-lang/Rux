@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
+  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
+
 - **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
   complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
 
@@ -668,6 +671,9 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 ### Added
 
+- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
+  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
+
 - **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
   complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
 
@@ -758,6 +764,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 
 ### Added
 
+- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
+  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
+
 - **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
   complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
 
@@ -793,6 +802,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 Expands the compiler with control flow, composite types, modules, and a richer type system.
 
 ### Added
+
+- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
+  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
 
 - **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
   complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
@@ -840,6 +852,9 @@ func Main() -> int32 {
 ```
 
 ### Added
+
+- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
+  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
 
 - **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
   complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
