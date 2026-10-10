@@ -3,6 +3,7 @@
 #include "CodeGen/FrameSlotSharing.h"
 #include "CodeGen/LinearScan.h"
 #include "CodeGen/ScalarImmediates.h"
+#include "CodeGen/SpillWeights.h"
 #include "Target/CallingConvention.h"
 
 #include <algorithm>
@@ -28,6 +29,7 @@ public:
             parameters.emplace(parameter.reg, ParameterRegisterType(parameter.type));
         }
         const auto intervals = ComputeLiveIntervals(func, parameters);
+        priorities = ComputeSpillPriorities(func, intervals);
         PlanTiedInputs(intervals);
         PlanCalleeSaves(intervals);
         nextOffset = static_cast<std::int32_t>(plan.usedPhysicalRegisters.size() * 8);
@@ -55,6 +57,7 @@ private:
     X86_64FramePlan plan;
     std::int32_t nextOffset = 0;
     std::unordered_map<LirReg, LirReg> tiedInputs;
+    std::unordered_map<LirReg, double> priorities;
 
     void PlanTiedInputs(const std::vector<LiveInterval> &intervals) {
         std::unordered_map<LirReg, const LiveInterval *> spans;
@@ -213,7 +216,7 @@ private:
                 }
             }
         }
-        RegisterAssignment assignment = AllocateRegisters(candidates, extendedWin64 ? 7 : 5, tiedInputs);
+        RegisterAssignment assignment = AllocateRegisters(candidates, extendedWin64 ? 7 : 5, tiedInputs, priorities);
         plan.physicalRegisters = std::move(assignment.physRegs);
         plan.usedPhysicalRegisters = std::move(assignment.usedPhysRegs);
     }
@@ -251,7 +254,7 @@ private:
             }
             candidates.push_back(interval);
         }
-        const auto assignment = AllocateRegisters(candidates, 8, tiedInputs);
+        const auto assignment = AllocateRegisters(candidates, 8, tiedInputs, priorities);
         for (const auto &[reg, index] : assignment.physRegs) {
             plan.floatRegisters.emplace(reg, index + 8);
         }

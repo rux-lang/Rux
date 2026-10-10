@@ -331,3 +331,8 @@ these facts never authorize removing an operation that can trap.
 The x86 scalar integer pool adds RSI/RDI for Win64 functions whose calls all preserve those registers. A different
 function/call convention or implicit runtime-call operation retains the five-register pool. Encoders, text emission
 and direct scalar selection share one mapping from allocator indices to architectural register numbers.
+The x86 allocator ranks complete intervals by use density weighted toward natural loops. Eviction changes only the
+pre-emission assignment: the evicted value uses its canonical stack home everywhere. A prior tied endpoint remains an
+interference constraint even if its successor is evicted. Loop membership is an immutable CFG/dominance snapshot;
+clients must rebuild after CFG changes and check its bounded-analysis completion flag. Large/incomplete allocation
+analyses use unweighted counts, and LICM skips an incomplete loop analysis.

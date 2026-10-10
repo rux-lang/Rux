@@ -8,6 +8,7 @@
 // source program says nothing about that directly.
 
 #include "CodeGen/LinearScan.h"
+#include "CodeGen/SpillWeights.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -296,4 +297,78 @@ TEST_CASE("CFG allocation discovers types before uses in reversed block layout")
     CHECK(IntervalOf(intervals, 7)->type == TypeRef::MakeFloat64());
     CHECK_EQ(IntervalOf(intervals, 7)->start, 1);
     CHECK_EQ(IntervalOf(intervals, 7)->end, 3);
+}
+
+TEST_CASE("Weighted allocation spills whole colder intervals before emission") {
+    const auto type = TypeRef::MakeInt64();
+    const std::vector<LiveInterval> intervals = {{0, 0, 100, 2, type}, {1, 1, 5, 8, type}, {2, 6, 9, 4, type}};
+    const auto homes = AllocateRegisters(intervals, 1, {}, {{0, 1.0}, {1, 10.0}, {2, 4.0}});
+    CHECK_FALSE(homes.physRegs.contains(0));
+    CHECK_EQ(homes.physRegs.at(1), 0);
+    CHECK_EQ(homes.physRegs.at(2), 0);
+    CHECK_EQ(homes.usedPhysRegs.size(), 1);
+    CHECK_EQ(AllocateRegisters(intervals, 1).physRegs.size(), 1); // Default behavior remains conservative.
+    CHECK(AllocateRegisters(intervals, 0, {}, {{1, 10.0}}).physRegs.empty());
+}
+
+TEST_CASE("Weighted eviction retains interference with an earlier tied input") {
+    const auto type = TypeRef::MakeInt64();
+    const std::vector<LiveInterval> intervals = {
+        {0, 0, 2, 2, type}, {1, 2, 6, 2, type}, {2, 2, 5, 5, type}, {3, 3, 4, 8, type}};
+    const auto homes = AllocateRegisters(intervals, 1, {{1, 0}}, {{0, 1.0}, {1, 2.0}, {2, 100.0}, {3, 200.0}});
+    CHECK(homes.physRegs.contains(0));
+    CHECK_FALSE(homes.physRegs.contains(1));
+    CHECK_FALSE(homes.physRegs.contains(2));
+    CHECK(homes.physRegs.contains(3));
+}
+
+TEST_CASE("Weighted assignments never overlap unrelated live intervals") {
+    const auto type = TypeRef::MakeInt64();
+    std::uint32_t state = 127;
+    for (unsigned sample = 0; sample < 64; ++sample) {
+        std::vector<LiveInterval> intervals;
+        std::unordered_map<LirReg, double> priorities;
+        for (LirReg reg = 0; reg < 24; ++reg) {
+            state = state * 1664525U + 1013904223U;
+            const int start = static_cast<int>(reg / 3);
+            intervals.push_back({reg, start, start + static_cast<int>(state % 9), 1, type});
+            priorities.emplace(reg, static_cast<double>((state >> 8) % 101));
+        }
+        const auto homes = AllocateRegisters(intervals, 3, {}, priorities);
+        for (std::size_t first = 0; first < intervals.size(); ++first) {
+            for (std::size_t second = first + 1; second < intervals.size(); ++second) {
+                const auto left = homes.physRegs.find(intervals[first].reg);
+                const auto right = homes.physRegs.find(intervals[second].reg);
+                if (left != homes.physRegs.end() && right != homes.physRegs.end() && left->second == right->second)
+                    CHECK((intervals[first].end < intervals[second].start ||
+                           intervals[second].end < intervals[first].start));
+            }
+        }
+    }
+}
+
+TEST_CASE("Natural loops and spill priorities distinguish nesting and respect work limits") {
+    auto function = FuncOf({Define(10, {}), Define(11, {})}, 10);
+    function.blocks.resize(6);
+    function.blocks[0].term = Term(LirTermKind::Jump, 1);
+    function.blocks[1].term = Term(LirTermKind::Branch, 2, 5, 0);
+    function.blocks[2].term = Term(LirTermKind::Branch, 3, 4, 1);
+    function.blocks[3].instrs = {Define(12, {10})};
+    function.blocks[3].term = Term(LirTermKind::Jump, 2);
+    function.blocks[4].instrs = {Define(13, {11})};
+    function.blocks[4].term = Term(LirTermKind::Jump, 1);
+    function.blocks[5].term = Term(LirTermKind::Return);
+    const LirControlFlow cfg(function);
+    const LirDominance dominance(cfg);
+    const LirNaturalLoops loops(cfg, dominance);
+    REQUIRE(loops.complete);
+    REQUIRE_EQ(loops.members.size(), 2);
+    CHECK(loops.members.at(1) == std::unordered_set<std::uint32_t>{1, 2, 3, 4});
+    CHECK(loops.members.at(2) == std::unordered_set<std::uint32_t>{2, 3});
+    const LirNaturalLoops limited(cfg, dominance, 0);
+    CHECK_FALSE(limited.complete);
+    CHECK(limited.members.empty());
+    const auto type = TypeRef::MakeInt64();
+    const auto priorities = ComputeSpillPriorities(function, {{10, 0, 100, 2, type}, {11, 0, 100, 2, type}});
+    CHECK_GT(priorities.at(10), priorities.at(11) * 7);
 }

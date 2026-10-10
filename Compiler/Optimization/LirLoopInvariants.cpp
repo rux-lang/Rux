@@ -1,8 +1,7 @@
 #include "Optimization/LirLoopInvariants.h"
 
-#include "Ir/Lir/Dominance.h"
+#include "Ir/Lir/NaturalLoops.h"
 
-#include <map>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -69,32 +68,12 @@ bool Hoist(LirFunc &function) {
             }
         }
     }
-    std::map<std::uint32_t, std::unordered_set<std::uint32_t>> loops;
-    for (std::uint32_t latch = 0; latch < function.blocks.size(); ++latch) {
-        for (const auto header : cfg.successors[latch]) {
-            if (!dominance.Dominates(header, latch)) {
-                continue;
-            }
-            auto &members = loops[header];
-            members.insert(header);
-            std::vector<std::uint32_t> work{latch};
-            while (!work.empty()) {
-                const auto block = work.back();
-                work.pop_back();
-                if (!members.insert(block).second) {
-                    continue;
-                }
-                for (const auto predecessor : cfg.predecessors[block]) {
-                    if (cfg.reachable[predecessor]) {
-                        work.push_back(predecessor);
-                    }
-                }
-            }
-        }
-    }
+    const LirNaturalLoops loops(cfg, dominance);
+    if (!loops.complete)
+        return false;
     bool changed = false;
     std::size_t budget = 512;
-    for (const auto &[header, members] : loops) {
+    for (const auto &[header, members] : loops.members) {
         auto preheader = LirDominance::Invalid;
         bool unique = true;
         for (const auto predecessor : cfg.predecessors[header]) {

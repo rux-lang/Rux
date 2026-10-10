@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
+  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
+
 - **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
   reducing stack traffic while retaining conservative pools across incompatible calls.
 
@@ -665,6 +668,9 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 ### Added
 
+- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
+  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
+
 - **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
   reducing stack traffic while retaining conservative pools across incompatible calls.
 
@@ -752,6 +758,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 
 ### Added
 
+- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
+  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
+
 - **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
   reducing stack traffic while retaining conservative pools across incompatible calls.
 
@@ -784,6 +793,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 Expands the compiler with control flow, composite types, modules, and a richer type system.
 
 ### Added
+
+- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
+  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
 
 - **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
   reducing stack traffic while retaining conservative pools across incompatible calls.
@@ -828,6 +840,9 @@ func Main() -> int32 {
 ```
 
 ### Added
+
+- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
+  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
 
 - **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
   reducing stack traffic while retaining conservative pools across incompatible calls.

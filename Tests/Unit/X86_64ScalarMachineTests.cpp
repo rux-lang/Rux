@@ -90,6 +90,15 @@ TEST_CASE("Scalar machine selection retains narrow fixed-register and spilled fa
         function.params.push_back({reg, TypeRef::MakeUInt64(), "extra"});
     function.blocks[0].instrs[0].srcs[1] = 9;
     const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+    // Allocation priorities may preserve the last parameter. Select an actual stack-home parameter instead of
+    // relying on a particular allocation order to make register 9 spill.
+    LirReg spilled = LirNoReg;
+    for (const auto &parameter : function.params)
+        if (!plan.PhysicalRegisters().contains(parameter.reg))
+            spilled = parameter.reg;
+    REQUIRE_NE(spilled, LirNoReg);
+    REQUIRE(plan.SlotOffsets().contains(spilled));
+    function.blocks[0].instrs[0].srcs[1] = spilled;
     CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan).has_value());
 }
 

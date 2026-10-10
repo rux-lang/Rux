@@ -4,11 +4,10 @@
 // it: where each virtual register is live, and which of them are worth keeping
 // in a machine register rather than reading out of the frame at every mention.
 //
-// The allocation is linear scan over a numbering of the instructions, without
-// eviction: an interval that finds no free register simply keeps its stack
-// slot, which every back end still gives it. That is what makes the pass safe
-// to run ahead of instruction selection — nothing it decides can fail later,
-// and a register it did not hand out costs a load rather than a wrong answer.
+// Allocation runs before emission. Without priorities a full pool leaves the
+// incoming value in memory; optional priorities can instead spill an entire
+// lower-priority interval. Every backend still provides those memory homes.
+// There are no split intervals or halfway changes to an emitted value's home.
 //
 // Two things are the caller's rather than this pass's, because they are
 // properties of a machine and not of a program: which intervals are candidates
@@ -166,14 +165,20 @@ struct RegisterAssignment {
 /// Preferring the lowest free index rather than the least recently freed is what keeps a function that needs two
 /// registers to two: the pool is saved and restored by the prologue, so an index never handed out costs nothing at all.
 ///
-/// Nothing is evicted. An interval that finds every register busy keeps the stack slot the caller gave it, and the back
-/// end reads it there.
+/// Optional priorities permit whole-interval eviction. Removing a home before emission makes every definition and use
+/// of the evicted value follow the existing stack path. Previously tied endpoints still interfere with newcomers.
 [[nodiscard]] inline RegisterAssignment AllocateRegisters(const std::vector<LiveInterval> &candidates,
                                                           const int poolSize,
-                                                          const std::unordered_map<LirReg, LirReg> &tiedInputs = {}) {
+                                                          const std::unordered_map<LirReg, LirReg> &tiedInputs = {},
+                                                          const std::unordered_map<LirReg, double> &priorities = {}) {
     RegisterAssignment assignment;
     std::vector<int> freeAfter(static_cast<std::size_t>(std::max(poolSize, 0)), -1);
     std::vector<LirReg> occupants(freeAfter.size(), LirNoReg);
+    std::vector<int> previousEnd(freeAfter.size(), -1);
+    const auto priority = [&](const LirReg reg) {
+        const auto found = priorities.find(reg);
+        return found == priorities.end() ? 0.0 : found->second;
+    };
     for (const auto &interval : candidates) {
         // A selector may explicitly permit its output to overwrite one input after its last read. The interval
         // must open exactly at that read, and the input must still own the register. Never relax phi interference
@@ -183,6 +188,7 @@ struct RegisterAssignment {
                 const auto index = static_cast<std::size_t>(home->second);
                 if (occupants[index] == tied->second && freeAfter[index] == interval.start) {
                     assignment.physRegs[interval.reg] = home->second;
+                    previousEnd[index] = freeAfter[index];
                     occupants[index] = interval.reg;
                     freeAfter[index] = interval.end;
                     continue;
@@ -195,6 +201,7 @@ struct RegisterAssignment {
             }
             const auto index = static_cast<int>(r);
             assignment.physRegs[interval.reg] = index;
+            previousEnd[r] = freeAfter[r];
             occupants[r] = interval.reg;
             freeAfter[r] = interval.end;
             if (std::find(assignment.usedPhysRegs.begin(), assignment.usedPhysRegs.end(), index) ==
@@ -202,6 +209,25 @@ struct RegisterAssignment {
                 assignment.usedPhysRegs.push_back(index);
             }
             break;
+        }
+        if (!priorities.empty() && !assignment.physRegs.contains(interval.reg)) {
+            std::size_t victim = freeAfter.size();
+            double lowest = priority(interval.reg);
+            for (std::size_t r = 0; r < freeAfter.size(); ++r) {
+                const double value = priority(occupants[r]);
+                // A tied predecessor may still be read at this point. Spilling only its successor cannot permit an
+                // unrelated definition to overwrite that predecessor's physical value.
+                if (previousEnd[r] < interval.start && value < lowest) {
+                    victim = r;
+                    lowest = value;
+                }
+            }
+            if (victim != freeAfter.size()) {
+                assignment.physRegs.erase(occupants[victim]);
+                assignment.physRegs[interval.reg] = static_cast<int>(victim);
+                occupants[victim] = interval.reg;
+                freeAfter[victim] = interval.end;
+            }
         }
     }
     std::sort(assignment.usedPhysRegs.begin(), assignment.usedPhysRegs.end());
