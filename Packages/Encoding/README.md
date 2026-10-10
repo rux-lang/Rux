@@ -17,6 +17,7 @@ rux add Rux/Encoding
 | `Base32`  | `Base32Encode`, `Base32Decode`, their length functions, and the RFC 4648 and Crockford `Base32Variant`s   |
 | `Base58`  | `Base58Encode`, `Base58Decode` and `Base58EncodedMaxLength`, in the Bitcoin alphabet                      |
 | `Percent` | `PercentEncode`, `PercentDecode`, their length functions, and the `Component`, `Path` and `Form` sets      |
+| `Stream`  | `EncodingWriter` and `DecodingReader`, which encode and decode hexadecimal, Base64 and Base32 through `Io` streams |
 | `Error`   | `DecodeError`, shared by every decoder                                                                   |
 
 The module names describe where each declaration comes from; they are not part of an import path.
@@ -45,6 +46,10 @@ A destination that is too short is refused rather than filled with what fits, be
 Decoding is strict, so that each value has one encoded form and two systems cannot read the same text differently. Hexadecimal and Base32 accept either case and nothing else: no prefix, no separators, no whitespace. Base64 accepts only its variant's alphabet, padding only where the variant puts it, and a last character whose unused bits are zero. The exceptions are deliberate: Crockford's Base32 reads `I` and `L` as `1`, `O` as `0` and skips hyphens because its specification asks readers to, and percent-decoding passes through characters an encoder would have escaped because text arrives from many encoders.
 
 Each `DecodeError` carries where it was found: the byte offset of the character that is wrong, or the end of the text when the length is.
+
+## Streams
+
+`EncodingWriter` encodes what is written to it onto another `Io::Writer`, and `DecodingReader` decodes text from another `Io::Reader`, for hexadecimal, Base64 and Base32 in every form a `StreamCodec` names. Both work a group at a time through the slice functions, so the text a stream writes is exactly the text encoding the whole input would give. A writer holds back the bytes of an incomplete group until `Finish` ends the text with its last group and padding. A reader decodes the text it has read in whole groups and fails with `InvalidInput` when it reaches text the decoder refuses. Base58 has no streaming form, since every one of its characters depends on the whole input.
 
 ## Timing
 

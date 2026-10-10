@@ -1,0 +1,134 @@
+import Core::Assert;
+import Encoding::{
+    Base32Encode, Base32Variant, Base64Encode, Base64Variant, DecodingReader, EncodingWriter, HexCase, HexEncode,
+    StreamCodec
+};
+import Io::{ ByteReader, IoError, IoErrorKind, ReadExact, WriteAll, Writer };
+
+// Writing through an encoding stream in any chunking gives exactly the text the slice encoder gives for the whole
+// input, and reading that text back through a decoding stream gives the bytes, however the reads are cut.
+
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Room for the text a test writes. A writer keeps its own copy of its sink, so the sink writes through a pointer.
+struct Capture {
+    bytes: char8[512];
+    length: uint;
+}
+
+struct CaptureSink {
+    capture: *var Capture;
+}
+
+extend CaptureSink : Writer {
+    func Write(self: &var CaptureSink, bytes: char8[..]) -> uint ! IoError {
+        let capture = self.capture;
+        var index: uint = 0;
+        while index < bytes.length {
+            capture.bytes[capture.length] = bytes[index];
+            capture.length = capture.length + 1;
+            index = index + 1;
+        }
+        return bytes.length;
+    }
+
+    func Flush(self: &var CaptureSink) -> ! IoError {}
+}
+
+// Encodes `data` written `chunk` bytes at a time.
+func Streamed(codec: StreamCodec, data: char8[..], chunk: uint, into: *var Capture) -> bool {
+    var writer = EncodingWriter::New(CaptureSink { capture: into }, codec);
+    var at: uint = 0;
+    while at < data.length {
+        let end = at + chunk < data.length ? at + chunk : data.length;
+        WriteAll(writer, data[at..end]) catch { else => return false };
+        at = end;
+    }
+    writer.Finish() catch { else => return false };
+    return true;
+}
+
+// Decodes `text` reading `chunk` bytes at a time, and checks the bytes are `expected`.
+func Decodes(codec: StreamCodec, text: char8[..], chunk: uint, expected: char8[..]) -> bool {
+    var reader = DecodingReader::New(ByteReader::New(text), codec);
+    var out: char8[400] = [c8' '; 400];
+    var length: uint = 0;
+    while true {
+        let room = out.length - length;
+        let wanted = chunk < room ? chunk : room;
+        match reader.Read(out[length..length + wanted]) {
+            .Success(count) => length = length + count,
+            .Failure(error) => {
+                if error.kind != IoErrorKind::EndOfStream { return false; }
+                break;
+            }
+        }
+    }
+    return Same(out[..length], expected);
+}
+
+func Main() -> int {
+    var data: char8[200] = [c8' '; 200];
+    var index: uint = 0;
+    while index < 200u {
+        data[index] = ((index * 37 + 11) % 256) as char8;
+        index = index + 1;
+    }
+    let bytes = (data[..].data as *byte)[..200];
+    var expected: char8[400] = [c8' '; 400];
+
+    let codecs = [
+        StreamCodec::Hex(HexCase::Upper), StreamCodec::Base64(Base64Variant::Standard),
+        StreamCodec::Base64(Base64Variant::UrlUnpadded), StreamCodec::Base32(Base32Variant::Standard),
+        StreamCodec::Base32(Base32Variant::StandardUnpadded)
+    ];
+    let lengths: uint[5] = [0, 1, 7, 64, 200];
+    let chunks: uint[4] = [1, 2, 5, 97];
+    for codec in codecs[..] {
+        for length in lengths[..] {
+            var whole: uint = 0;
+            match codec {
+                StreamCodec::Hex(letterCase) => whole = HexEncode(bytes[..length], expected[..], letterCase) catch { else => return 1 },
+                StreamCodec::Base64(form) => whole = Base64Encode(bytes[..length], expected[..], form) catch { else => return 2 },
+                StreamCodec::Base32(form) => whole = Base32Encode(bytes[..length], expected[..], form) catch { else => return 3 }
+            }
+            for chunk in chunks[..] {
+                var capture = Capture { bytes: [c8' '; 512], length: 0 };
+                Assert(Streamed(codec, data[..length], chunk, @capture), "the stream writes");
+                Assert(Same(capture.bytes[..capture.length], expected[..whole]), "streamed text matches the slice encoder");
+                Assert(Decodes(codec, expected[..whole], chunk, data[..length]), "streamed decoding gives the bytes back");
+            }
+        }
+    }
+
+    // Text that is not in the form fails when the reader reaches it.
+    var bad = DecodingReader::New(ByteReader::New("QUJD!!!!"), StreamCodec::Base64(Base64Variant::Standard));
+    var out: char8[8] = [c8' '; 8];
+    var reads: uint = 0;
+    while true {
+        match bad.Read(out[..]) {
+            .Success(count) => {
+                Assert(count == 3u && out[0] == c8'A', "the valid group before it decodes");
+                reads = reads + 1;
+            },
+            .Failure(error) => {
+                Assert(error.kind == IoErrorKind::InvalidInput && reads == 1u, "invalid text is InvalidInput");
+                break;
+            }
+        }
+    }
+    // Crockford Base32 skips hyphens.
+    var crockford = DecodingReader::New(ByteReader::New("91JP-RV3F"), StreamCodec::Base32(Base32Variant::Crockford));
+    var hello: char8[5] = [c8' '; 5];
+    ReadExact(crockford, hello[..]) catch { else => return 4 };
+    Assert(Same(hello[..], "Hello"), "Crockford with a hyphen");
+    return 0;
+}

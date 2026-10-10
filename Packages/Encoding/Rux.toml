@@ -17,4 +17,5 @@ Homepage = "https://rux-lang.dev/docs/api/encoding"
 ReadmeFile = "README.md"
 
 [Dependencies]
+Io = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }

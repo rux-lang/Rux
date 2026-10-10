@@ -19,7 +19,7 @@ The v0.1.0 release ships **39 packages**. This table is the target catalog: it i
 | `Compress`    | Deflate compression in the raw, zlib and gzip formats                | Core, Memory, Allocator, Hash, Io, Collections           |
 | `Core`        | Optional intrinsic declarations and fundamental value protocols      | None                                                     |
 | `Crypto`      | Cryptographic digest, MAC, KDF and secret-buffer operations          | Core                                                     |
-| `Encoding`    | Byte-to-text encodings: hexadecimal, Base64, Base32, Base58, percent | Text                                                     |
+| `Encoding`    | Byte-to-text encodings: hexadecimal, Base64, Base32, Base58, percent | Text, Io                                                 |
 | `Entropy`     | OS entropy acquisition and failure handling                          | Core, Memory, OS                                         |
 | `FileSystem`  | Files, directories, metadata and filesystem transactions             | Core, Allocator, Text, Path, Io, Time, Entropy, OS       |
 | `Format`      | Placeholder rendering and primitive text conversion                  | Core, Allocator, Text                                    |
@@ -59,11 +59,11 @@ Arrows point toward dependencies. This is a dependency ordering, not a requireme
 ```text
 Layer 8  CommandLine, TimeZone, Test
              |
-Layer 7  FileSystem, Json, Toml, Process, Compress, Net, Log
+Layer 7  FileSystem, Json, Toml, Process, Compress, Net, Log, Encoding
              |
 Layer 6  Io, Uuid, Sync, Regex
              |
-Layer 5  Format, Time, Path, Collections, Encoding, NanoId, Url
+Layer 5  Format, Time, Path, Collections, NanoId, Url
              |
 Layer 4  Text, Random
              |
