@@ -139,6 +139,16 @@ extend StringView {
         return front.TrimEnd();
     }
 
+    /// A walk over the lines of this view, each without its line break.
+    /// A line ends at `\n` or `\r\n`; a break at the very end does not start another, empty line, so `"a\nb\n"`
+    /// has two lines and empty text has none. A lone `\r` is part of its line.
+    /// `self` is borrowed and must outlive the walk.
+    /// @returns a cursor over the lines
+    /// @see https://rux-lang.dev/docs/api/text/string-view#lines
+    pub func Lines(self: &StringView) -> LineIterator {
+        return LineIterator { rest: self.bytes, finished: self.bytes.length == 0 };
+    }
+
     /// A walk over the parts of this view between occurrences of `separator`.
     /// `self` is borrowed and must outlive the walk, as must `separator`.
     /// @param separator the text that separates the pieces
@@ -201,5 +211,36 @@ extend SplitIterator : Iterator {
         let after = at + self.separator.bytes.length;
         self.rest = self.rest.Part(after, self.rest.bytes.length) ?? StringView();
         return part;
+    }
+}
+
+/// A walk over the lines of a view, each without its line break.
+/// Every line is a borrow of the original, so walking allocates nothing.
+/// @see https://rux-lang.dev/docs/api/text/string-view#line-iterator
+pub struct LineIterator {
+    /// What is left to walk.
+    rest: char8[..];
+    /// Whether the walk is over.
+    finished: bool;
+}
+
+extend LineIterator : Iterator {
+    /// The next line, without its `\n` or `\r\n`, or `none` after the last.
+    /// @returns the next line, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/text/string-view#line-iterator-next
+    pub func Next(self: &var LineIterator) -> StringView? {
+        if self.finished { return none; }
+        var at: uint = 0;
+        while at < self.rest.length && self.rest[at] != c8'\n' { at = at + 1; }
+        if at >= self.rest.length {
+            self.finished = true;
+            return StringView::FromValidated(self.rest);
+        }
+        var end = at;
+        if end > 0 && self.rest[end - 1] == c8'\r' { end = end - 1; }
+        let line = self.rest[0..end];
+        self.rest = self.rest[at + 1..self.rest.length];
+        if self.rest.length == 0 { self.finished = true; }
+        return StringView::FromValidated(line);
     }
 }

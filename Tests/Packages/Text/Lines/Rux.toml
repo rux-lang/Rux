@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Lines"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Text: Join, Lines, and upper, lower and folded case by the Unicode mappings."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Text"

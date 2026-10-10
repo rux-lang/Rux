@@ -2,12 +2,101 @@
 // Everything here allocates, because everything here produces text that did not exist before: joining two runs,
 // repeating one, replacing part of one, changing the case of one. That is what separates these from `Search`, whose
 // answers are all borrows of what was already there.
-// The case operations are ASCII-only and say so in their names. Case in Unicode is not a per-character mapping: it
-// depends on the locale (a Turkish dotless i), on neighbours (a Greek final sigma), and it changes the length (a
-// German sharp s becomes two letters). Every one of those needs the tables, and a `ToUpper` that quietly did the
-// ASCII thing to text that was not ASCII would be wrong in a way nobody notices until the text is not English.
+// Case comes in two kinds. The ASCII operations say so in their names and never change a byte above 0x7F. The
+// Unicode operations apply the full, unconditional mappings from `Rux/Unicode`, so the German sharp s becomes two
+// letters and the length may change. What they leave out is what depends on the locale (the Turkish dotless i) or
+// on neighbouring characters (the Greek final sigma): those mappings are conditional, and applying them silently is
+// how text stops round-tripping.
 
 import Allocator::Allocator;
+import Unicode::{ Fold, ToLowerFull, ToUpperFull };
+
+/// The text of every part of `parts` in order, with `separator` between each two.
+/// No parts give empty text and one part gives that part, so the separator count is always one less than the parts.
+/// @param allocator where the storage comes from
+/// @param parts the pieces to join
+/// @param separator what goes between them
+/// @returns the joined text, or why it could not be made
+/// @see https://rux-lang.dev/docs/api/text/transform#join
+pub func Join(allocator: Allocator, parts: StringView[..], separator: StringView) -> String ! TextError {
+    var builder = StringBuilder(allocator);
+    var total: uint = 0;
+    for part in parts { total = total + part.bytes.length; }
+    if parts.length > 1u { total = total + separator.bytes.length * (parts.length - 1); }
+    builder.Reserve(total)?;
+    var index: uint = 0;
+    while index < parts.length {
+        if index > 0 { builder.Append(separator)?; }
+        builder.Append(parts[index])?;
+        index = index + 1;
+    }
+    return builder.IntoString();
+}
+
+// Which full case mapping `MapCase` applies.
+enum CaseMapping: uint8 {
+    Upper = 0,
+    Lower = 1,
+    Folded = 2
+}
+
+// Copies `view`, replacing every scalar value by its full mapping of the given kind.
+func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> String ! TextError {
+    var builder = StringBuilder(allocator);
+    builder.Reserve(view.bytes.length)?;
+    var scalars = view.Scalars();
+    var mapped: char32[3] = [0u32 as char32; 3];
+    while true {
+        let scalar = scalars.Next() ?? break;
+        var written: uint = 0;
+        var known = false;
+        match mapping {
+            CaseMapping::Upper => known = ToUpperFull(scalar, mapped[..], @written),
+            CaseMapping::Lower => known = ToLowerFull(scalar, mapped[..], @written),
+            CaseMapping::Folded => known = Fold(scalar, mapped[..], @written)
+        }
+        if !known || written == 0u {
+            builder.AppendScalar(scalar)?;
+            continue;
+        }
+        var index: uint = 0;
+        while index < written {
+            builder.AppendScalar(mapped[index])?;
+            index = index + 1;
+        }
+    }
+    return builder.IntoString();
+}
+
+/// The text of `view` in upper case by Unicode's full, unconditional mappings, so `ß` becomes `SS` and `ŉ` becomes
+/// `ʼN`. The length may change.
+/// @param allocator where the storage comes from
+/// @param view the borrowed text to act on
+/// @returns the text in upper case, or why it could not be made
+/// @see https://rux-lang.dev/docs/api/text/transform#to-upper
+pub func ToUpper(allocator: Allocator, view: StringView) -> String ! TextError {
+    return MapCase(allocator, view, CaseMapping::Upper);
+}
+
+/// The text of `view` in lower case by Unicode's full, unconditional mappings. A capital sigma always becomes `σ`,
+/// never the final `ς`, since which one is right depends on the letters around it.
+/// @param allocator where the storage comes from
+/// @param view the borrowed text to act on
+/// @returns the text in lower case, or why it could not be made
+/// @see https://rux-lang.dev/docs/api/text/transform#to-lower
+pub func ToLower(allocator: Allocator, view: StringView) -> String ! TextError {
+    return MapCase(allocator, view, CaseMapping::Lower);
+}
+
+/// The text of `view` case-folded by Unicode's full folding, the form for comparing text without regard to case:
+/// two texts that differ only in case fold to the same bytes, `Straße` and `STRASSE` included.
+/// @param allocator where the storage comes from
+/// @param view the borrowed text to act on
+/// @returns the folded text, or why it could not be made
+/// @see https://rux-lang.dev/docs/api/text/transform#fold-case
+pub func FoldCase(allocator: Allocator, view: StringView) -> String ! TextError {
+    return MapCase(allocator, view, CaseMapping::Folded);
+}
 
 /// The text of `left` followed by the text of `right`.
 /// Fails with what went wrong; no partial text comes back.

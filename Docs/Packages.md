@@ -40,7 +40,7 @@ The v0.1.0 release ships **39 packages**. This table is the target catalog: it i
 | `Regex`       | Regular expressions matched in linear time                           | Core, Allocator, Collections, Text, Unicode              |
 | `Sync`        | Locks, conditions, once-only setup, counters and channels for threads | Core, Memory, Time, OS                                   |
 | `Test`        | Unit-test checks, failures and the runner `#Test()` functions use    | Core, Allocator, Collections, Format, Io, Process, Text, Time |
-| `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator                                  |
+| `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator, Unicode                         |
 | `Thread`      | Starting, joining and detaching threads, and the current thread      | Core, Memory, OS                                         |
 | `Time`        | Clock, duration, calendar and temporal text semantics                | Core, OS, Text                                           |
 | `TimeZone`    | Time zones from the tz database and POSIX rules, and local resolution | Core, Allocator, Collections, Time, Path, Io, FileSystem, Process, OS |
