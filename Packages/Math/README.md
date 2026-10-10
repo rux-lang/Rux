@@ -90,6 +90,10 @@ The integer APIs are generic over signed and unsigned integer widths:
 
 Checked operations follow the same convention as checked arithmetic in `Rux/Core`: they return `true` when the mathematical result is not representable. Their raw output pointers must be non-null, correctly aligned, and writable for one value for the duration of the call.
 
+### Complex numbers
+
+`Complex` over `float64` and `Complex32` over `float32` have `+`, `-`, `*` and `/`, `Abs`, `Arg`, `Norm`, `Conjugate`, `Negate`, `Scale`, `FromPolar`, and `Exp`, `Log`, `Sqrt` and `Pow` on the principal branch. Division uses Smith's method and the magnitude goes through `Hypot`, so neither overflows for parts far from one.
+
 ## Numerical behavior
 
 - **IEEE 754 special values are part of each contract.** Signed zeros, infinities, NaNs, subnormals, and domain errors are handled deliberately rather than left to host-library behavior.
