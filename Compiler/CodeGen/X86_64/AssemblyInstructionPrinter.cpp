@@ -1367,6 +1367,15 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     case LirOpcode::Lshr: {
         const TypeRef &type = instruction.type;
         LoadA(instruction.srcs[0], instruction.op == LirOpcode::Lshr ? UnsignedIntegerType(type) : type);
+        if (const auto immediate = framePlan.ImmediateValues().find(instruction.srcs[1]);
+            immediate != framePlan.ImmediateValues().end()) {
+            const auto operation = instruction.op == LirOpcode::Shl
+                                     ? "shl"
+                                     : (type.IsSigned() && instruction.op != LirOpcode::Lshr ? "sar" : "shr");
+            Instruction(operation, std::format("rax, {}", immediate->second & 63U));
+            StoreA(instruction.dst, type);
+            return true;
+        }
         if (const auto physical = framePlan.PhysicalRegisters().find(instruction.srcs[1]);
             physical != framePlan.PhysicalRegisters().end()) {
             Instruction("mov", std::format("r11, {}", PhysicalRegisterName(physical->second)));
@@ -1388,6 +1397,12 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         StoreA(instruction.dst, type);
         return true;
     }
+    case LirOpcode::RotateRight:
+        LoadA(instruction.srcs[0], instruction.type);
+        Instruction("ror", std::format("{}, {}", instruction.type.kind == TypeRef::Kind::UInt64 ? "rax" : "eax",
+                                       instruction.strArg));
+        StoreA(instruction.dst, instruction.type);
+        return true;
     case LirOpcode::Neg: {
         const TypeRef &type = instruction.type;
         LoadA(instruction.srcs[0], type);

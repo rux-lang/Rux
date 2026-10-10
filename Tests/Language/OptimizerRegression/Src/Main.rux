@@ -53,6 +53,41 @@ func LoopRegisterValues(limit: int, seed: int) -> int {
     return total;
 }
 
+func Rotate64(value: uint64) -> uint64 {
+    return (value >> 19) | (value << 45);
+}
+
+func Rotate32(value: uint32) -> uint32 {
+    return (value << 7) | (value >> 25);
+}
+
+func DynamicDivide(value: uint64, divisor: uint64) -> uint64 {
+    return value / divisor;
+}
+
+func DynamicRemainder(value: uint64, divisor: uint64) -> uint64 {
+    return value % divisor;
+}
+
+func VerifyWordOperations(limit: uint64) {
+    for bit in 0u64..64u64 {
+        let value = 1u64 << bit;
+        let expected = bit < 19 ? 1u64 << (bit + 45) : 1u64 << (bit - 19);
+        Assert(Rotate64(value) == expected, "uint64 rotation preserves every bit");
+    }
+    for bit in 0u32..32u32 {
+        let value = 1u32 << bit;
+        let expected = bit < 25 ? 1u32 << (bit + 7) : 1u32 << (bit - 25);
+        Assert(Rotate32(value) == expected, "uint32 rotation wraps at bit 32");
+    }
+    var state = 0x8000000000000000u64;
+    for i in 0u64..limit {
+        state = state * 6364136223846793005u64 + i + 1;
+        Assert(state / 8 == DynamicDivide(state, 8), "unsigned division matches hardware division");
+        Assert(state % 16 == DynamicRemainder(state, 16), "unsigned remainder matches hardware division");
+    }
+}
+
 func Main() -> int {
     let outer = 1;
     if true {
@@ -77,5 +112,6 @@ func Main() -> int {
     Assert(source.Value() == 42, "interface vtable dispatch remains reachable");
     Assert(CrossModule(41) == 42, "cross-module private dependency remains reachable");
     Assert(LoopRegisterValues(10, 7) == 370, "nested loop values and indirect calls");
+    VerifyWordOperations(5000);
     return 0;
 }

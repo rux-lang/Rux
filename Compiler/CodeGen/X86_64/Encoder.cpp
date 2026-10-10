@@ -237,6 +237,22 @@ void X64Enc::ShlRaxCl() const {
     Byte(0xE0);
 }
 
+void X64Enc::ShiftRaxImmediate(const unsigned operation, const std::uint8_t amount) const {
+    Byte(0x48);
+    Byte(0xC1);
+    Byte(static_cast<std::uint8_t>(0xC0 | (operation << 3)));
+    Byte(amount);
+}
+
+void X64Enc::RotateRaxImmediate(const bool word64, const std::uint8_t amount) const {
+    if (word64) {
+        Byte(0x48);
+    }
+    Byte(0xC1);
+    Byte(0xC8);
+    Byte(amount);
+}
+
 void X64Enc::ShrRaxCl() const {
     Byte(0x48);
     Byte(0xD3);

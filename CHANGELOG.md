@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Bounded scalar inlining and instruction selection** — Release optimization inlines small direct scalar leaf
+  functions once within explicit growth budgets. Complementary constant shifts select native uint32/uint64 rotates;
+  unsigned power-of-two division/remainder select shifts/masks. Both backends use immediate forms for constant shifts.
+
 - **Scalar memory promotion** — Release builds replace eligible private scalar locals and independent range/slice
   fields with SSA values, eliminating repeated local loads and stores through branches and nested loops. Escaped,
   volatile, mixed-width and potentially uninitialized storage keeps its memory behavior.

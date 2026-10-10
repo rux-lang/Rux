@@ -3,6 +3,7 @@
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
@@ -256,6 +257,19 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
             return std::nullopt;
         }
         return joined;
+    }
+    if (instruction.op == LirOpcode::RotateRight && instruction.srcs.size() == 1) {
+        const KnownValue operand = Resolve(values, instruction.srcs[0]);
+        const auto amount = ParseConstant(instruction.strArg, TypeRef::MakeUInt32());
+        if (operand.constant && amount && amount->RawBits() < operand.constant->Width() &&
+            (instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64)) {
+            const auto bits = instruction.type.kind == TypeRef::Kind::UInt32
+                                ? std::rotr(static_cast<std::uint32_t>(operand.constant->RawBits()),
+                                            static_cast<int>(amount->RawBits()))
+                                : std::rotr(operand.constant->RawBits(), static_cast<int>(amount->RawBits()));
+            return KnownValue{ParseConstant(std::to_string(bits), instruction.type), std::nullopt};
+        }
+        return std::nullopt;
     }
     if (const auto token = UnaryToken(instruction.op); token && instruction.srcs.size() == 1) {
         const KnownValue operand = Resolve(values, instruction.srcs[0]);

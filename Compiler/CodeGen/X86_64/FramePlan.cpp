@@ -2,6 +2,7 @@
 
 #include "CodeGen/FrameSlotSharing.h"
 #include "CodeGen/LinearScan.h"
+#include "CodeGen/ScalarImmediates.h"
 #include "Target/CallingConvention.h"
 
 #include <algorithm>
@@ -38,6 +39,7 @@ public:
         if (plan.frameSize == 0) {
             plan.frameSize = 16;
         }
+        plan.immediateValues = ScalarImmediates(func);
         return std::move(plan);
     }
 

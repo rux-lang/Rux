@@ -3,6 +3,7 @@
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <format>
 #include <optional>
@@ -97,6 +98,20 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
     for (BlockIndex blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
         const auto &actualPredecessors = predecessors[blockIndex];
         for (const auto &instruction : function.blocks[blockIndex].instrs) {
+            if (instruction.op == LirOpcode::RotateRight) {
+                unsigned amount = 64;
+                const auto parsed = std::from_chars(instruction.strArg.data(),
+                                                    instruction.strArg.data() + instruction.strArg.size(), amount);
+                const bool word =
+                    instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64;
+                const unsigned width = instruction.type.kind == TypeRef::Kind::UInt32 ? 32 : 64;
+                if (!word || instruction.srcs.size() != 1 || instruction.dst == LirNoReg || parsed.ec != std::errc{} ||
+                    parsed.ptr != instruction.strArg.data() + instruction.strArg.size() || amount >= width) {
+                    Report(context, function, blockIndex,
+                           "rotr requires uint32/uint64, one value and a count below its width");
+                    valid = false;
+                }
+            }
             if (instruction.op != LirOpcode::Phi) {
                 continue;
             }

@@ -2,6 +2,7 @@
 
 #include "CodeGen/FrameSlotSharing.h"
 #include "CodeGen/LinearScan.h"
+#include "CodeGen/ScalarImmediates.h"
 
 #include <algorithm>
 #include <charconv>
@@ -41,6 +42,7 @@ public:
         PlanWideTemporaries();
         PlanPhiTemporary();
         plan.frameSize = AlignUp(nextOffset, 16);
+        plan.immediateValues = ScalarImmediates(func);
         return std::move(plan);
     }
 

@@ -139,7 +139,8 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
         return;
 
     case LirOpcode::FieldPtr:
-        out << std::format("{} = fieldptr {} {}, {}\n", RegStr(i.dst), i.type.ToString(),
+    case LirOpcode::RotateRight:
+        out << std::format("{} = {} {} {}, {}\n", RegStr(i.dst), LirOpcodeName(i.op), i.type.ToString(),
                            i.srcs.empty() ? "?" : RegStr(i.srcs[0]), i.strArg);
         return;
 

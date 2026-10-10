@@ -359,6 +359,20 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             return true;
         }
         const bool logical = instruction.op == LirOpcode::Lshr;
+        if (const auto immediate = framePlan.ImmediateValues().find(instruction.srcs[1]);
+            immediate != framePlan.ImmediateValues().end()) {
+            const auto value =
+                hooks.ReadOperand(instruction.srcs[0], logical ? UnsignedIntegerType(type) : type, A64::Xn(kTemp));
+            const auto out = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+            const auto amount = static_cast<unsigned>(immediate->second & 63U);
+            const auto status =
+                instruction.op == LirOpcode::Shl
+                    ? encoder.Lsl(out, value, amount)
+                    : (logical || !type.IsSigned() ? encoder.Lsr(out, value, amount) : encoder.Asr(out, value, amount));
+            Must(status, LirOpcodeName(instruction.op));
+            hooks.StoreToSlot(out, instruction.dst, type);
+            return true;
+        }
         const auto operands =
             LoadBinaryOperands(instruction, logical ? UnsignedIntegerType(type) : type, TypeOfReg(instruction.srcs[1]));
         if (!operands) {
@@ -377,6 +391,17 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         }
         Must(status, LirOpcodeName(instruction.op));
         hooks.StoreToSlot(out, instruction.dst, type);
+        return true;
+    }
+    case LirOpcode::RotateRight: {
+        const bool word64 = instruction.type.kind == TypeRef::Kind::UInt64;
+        const auto value = hooks.ReadOperand(instruction.srcs[0], instruction.type, A64::Xn(kTemp));
+        const auto out = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        Must(encoder.Ror(word64 ? A64::Xn(out.code) : A64::Wn(out.code),
+                         word64 ? A64::Xn(value.code) : A64::Wn(value.code),
+                         static_cast<unsigned>(ParseIntegerLiteralBits(instruction.strArg).value())),
+             "rotr");
+        hooks.StoreToSlot(out, instruction.dst, instruction.type);
         return true;
     }
     case LirOpcode::Neg: {

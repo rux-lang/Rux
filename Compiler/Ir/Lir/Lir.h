@@ -38,6 +38,8 @@ enum class LirOpcode {
     Shl,
     Shr,
     Lshr,
+    // Constant right rotation of uint32/uint64. One value operand; strArg is a decimal count in [0,width).
+    RotateRight,
     // Unary
     Neg,
     Not,
@@ -120,6 +122,8 @@ inline constexpr std::string_view kBacktraceFunctionName = "__rux_backtrace";
         return "shr";
     case LirOpcode::Lshr:
         return "lshr";
+    case LirOpcode::RotateRight:
+        return "rotr";
     case LirOpcode::Neg:
         return "neg";
     case LirOpcode::Not:

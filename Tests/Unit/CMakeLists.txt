@@ -142,6 +142,8 @@ set(RUX_TEST_SOURCES
     OptimizerTests.cpp
     LirOptimizationTests.cpp
     LirOptimizationMemoryTests.cpp
+    LirOptimizationInliningTests.cpp
+    LirOptimizationScalarTests.cpp
     LirReachabilityTests.cpp
     OsTests.cpp
     PackageCacheTests.cpp

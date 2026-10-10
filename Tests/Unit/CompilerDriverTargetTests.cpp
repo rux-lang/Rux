@@ -214,6 +214,16 @@ TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a sign
 TEST_CASE("compiler driver builds macOS AArch64 static libraries with relocatable object members") {
     DependencyFixture fixture;
     fixture.ConfigureMacOSTargetDependencies();
+    // A constant leaf can now inline completely. Keep an actual inter-function relocation in this archive fixture.
+    fixture.SetDependencySource(R"(
+pub module Api {
+    pub func Answer() -> int {
+        var result = 0;
+        for value in 0..10 { result += value; }
+        return result;
+    }
+}
+)");
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);

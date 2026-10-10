@@ -34,6 +34,7 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::Shl:
     case LirOpcode::Shr:
     case LirOpcode::Lshr:
+    case LirOpcode::RotateRight:
     case LirOpcode::Neg:
     case LirOpcode::Not:
     case LirOpcode::BitNot:

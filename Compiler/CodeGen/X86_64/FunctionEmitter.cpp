@@ -613,6 +613,15 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     case LirOpcode::Lshr: {
         const TypeRef &type = instruction.type;
         hooks.LoadA(instruction.srcs[0], instruction.op == LirOpcode::Lshr ? UnsignedIntegerType(type) : type);
+        if (const auto immediate = framePlan.ImmediateValues().find(instruction.srcs[1]);
+            immediate != framePlan.ImmediateValues().end()) {
+            const unsigned operation = instruction.op == LirOpcode::Shl
+                                         ? 4U
+                                         : (type.IsSigned() && instruction.op != LirOpcode::Lshr ? 7U : 5U);
+            encoder.ShiftRaxImmediate(operation, static_cast<std::uint8_t>(immediate->second & 63U));
+            hooks.StoreA(instruction.dst, type);
+            return true;
+        }
         if (const auto physical = physicalRegisters.find(instruction.srcs[1]); physical != physicalRegisters.end()) {
             encoder.MovR11PhysReg(physical->second);
         }
@@ -633,6 +642,12 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.StoreA(instruction.dst, type);
         return true;
     }
+    case LirOpcode::RotateRight:
+        hooks.LoadA(instruction.srcs[0], instruction.type);
+        encoder.RotateRaxImmediate(instruction.type.kind == TypeRef::Kind::UInt64,
+                                   static_cast<std::uint8_t>(ParseIntegerLiteralBits(instruction.strArg).value()));
+        hooks.StoreA(instruction.dst, instruction.type);
+        return true;
     case LirOpcode::Neg: {
         const TypeRef &type = instruction.type;
         hooks.LoadA(instruction.srcs[0], type);

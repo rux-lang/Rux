@@ -142,6 +142,15 @@ The AArch64 RCU emitter similarly selects procedure-call layout from the target 
 
 ## Host and Target Boundaries
 
+`LirInliner` snapshots eligible direct scalar leaf functions and expands them only in the first cleanup iteration.
+Its limits are 24 callee instructions, 2,048 inserted instructions per caller, and 50,000 per package. Recursive calls,
+arbitrary assembly, variadic calls, stack identity, and module-local data lookups remain opaque. `LirScalarCombines`
+recognizes complementary nonzero constant shifts of the same unsigned 32/64-bit value and introduces `RotateRight`:
+one value operand and a constant count below the word width. The CFG verifier validates this contract; constant
+evaluation, dumps, DCE, both encoders, and the x86 assembly printer understand it. No CPU extension is required.
+Unsigned 32/64-bit power-of-two division and remainder use logical shifts and masks. Signed arithmetic and zero
+divisors retain their original paths. Frame plans retain unique integer constants for immediate shift selection.
+
 Release optimization runs CFG cleanup before private range/slice field replacement and scalar memory promotion.
 Promotion admits only direct, type-identical, nonvolatile loads and stores of nonescaping scalar slots. Per-slot
 liveness and definite-initialization dataflow construct pruned SSA merges, including allocations inside loops;

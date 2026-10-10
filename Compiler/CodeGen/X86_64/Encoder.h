@@ -227,6 +227,8 @@ public:
 
     // Shifts
     void ShlRaxCl() const;
+    void ShiftRaxImmediate(unsigned operation, std::uint8_t amount) const;
+    void RotateRaxImmediate(bool word64, std::uint8_t amount) const;
 
     void ShrRaxCl() const;
 

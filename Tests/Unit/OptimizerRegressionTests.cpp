@@ -48,6 +48,8 @@ pub func PublicApi(value: int) -> int {
 }
 
 func PrivateLibraryHelper(value: int) -> int {
+    // Keep a runtime branch so the bounded leaf inliner leaves a real private dependency.
+    if value < 0 { return value - 1; }
     return value + 1;
 }
 
@@ -69,6 +71,7 @@ module OptimizerFixture::Support {
     }
 
     func PrivateCrossModule(value: int) -> int {
+        if value < 0 { return value - 1; }
         return value + 1;
     }
 
