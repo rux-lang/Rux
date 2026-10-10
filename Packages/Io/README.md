@@ -30,6 +30,10 @@ Both line readers hold the same contract: a line feed ends a line, a carriage re
 
 Every stream operation that can fail returns a native fallible with an `IoError` failure: `Read` succeeds with the number of bytes read, `Write` with the number taken, `Seek` with the new position, and `Flush`, `ReadExact`, `WriteAll`, and the line readers with `()`. The end of a stream is the `EndOfStream` failure, which `IsEnd` recognizes, and `IsTransient` names the interruptions worth retrying.
 
+## Streams in memory
+
+`ByteReader` reads a slice of bytes the caller holds and `ByteWriter` gathers what is written into a block that grows as needed, so code written against `Reader` and `Writer` can run without a file or a socket. Both seek within what they hold: a seek back in a `ByteWriter` overwrites in place, and a seek past the end is refused with `InvalidInput`. A `ByteReader` ends with `EndOfStream` like any other stream.
+
 ## Text and streams
 
 `Display` writes into a `TextWriter` and a stream takes bytes, so something has to stand between them. `ConsoleWriter` is that adapter over standard output and `StreamWriter` is it over any `Writer` — a file, a buffered writer, a pipe — which is what lets a value describe itself anywhere other than standard output or memory:

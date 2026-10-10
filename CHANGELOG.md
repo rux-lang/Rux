@@ -71,6 +71,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 #### Packages
 
+- **Streams in memory in `Rux/Io`** — `ByteReader`, a `Reader` and `Seeker` over a slice of bytes, and `ByteWriter`, a `Writer` and `Seeker` that keeps what is written in a block it grows by doubling, with `Bytes`, `Length`, `Clear` and `Release`.
 - **Joining, lines and Unicode case in `Rux/Text`** — `Join` puts a separator between parts, `StringView.Lines` walks lines without their `\n` or `\r\n` and adds no empty line after a final break, and `ToUpper`, `ToLower` and `FoldCase` apply Unicode's full, unconditional mappings, so `Straße` becomes `STRASSE` and folds equal to it. `Rux/Text` now depends on `Rux/Unicode`.
 - **`Math::Complex`** — `Complex` over `float64` and `Complex32` over `float32`, with `+`, `-`, `*` and `/` (by Smith's method, so a divisor far from one keeps its precision), `Abs` through `Hypot`, `Arg`, `Norm`, `Conjugate`, `Negate`, `Scale`, `FromPolar`, and `Exp`, `Log`, `Sqrt` and `Pow` on the principal branch.
 - **`Algorithms::Numeric`** — `PartialSum`, `InclusiveScan` and `ExclusiveScan` write running totals into a destination that may be the input itself, `Iota` fills a counting sequence with any step, and `Midpoint` gives the midpoint of two `int32`, `int64`, `uint32`, `uint64` or `float64` values without overflow, rounding integers toward the first.
