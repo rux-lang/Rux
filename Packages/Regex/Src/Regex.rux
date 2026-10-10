@@ -7,9 +7,29 @@ import Allocator::Allocator;
 import Collections::Vector;
 import Core::Iterator;
 import Regex::{
-    ClassItem, DecodeAt, GroupName, Instruction, Node, NoPosition, Parser, Program, RegexError, RegexErrorKind, Scratch,
-    Filled
+    ClassItem, DecodeAt, Dfa, GroupName, Instruction, NoEnd, Node, NoPosition, NoReverse, Parser, Program, RegexError,
+    RegexErrorKind, Scratch, Filled
 };
+
+// Texts shorter than this are searched with the Pike matcher alone, since building DFA states costs more than the
+// DFA could save on them.
+const DfaMinimumLength: uint = 64;
+
+// Finds the leftmost-first match from `start` with the DFAs, filling the whole-match slots of `found` and, when it has
+// more, the groups with the Pike matcher run over just that match. Returns whether there is a match.
+func FindWithDfa(forward: &var Dfa, backward: &var Dfa, scratch: &var Scratch, program: Program, text: char8[..],
+                 start: uint, found: var uint[..]) -> bool ! RegexError {
+    let end = forward.FindEnd(text, start, false)?;
+    if end == NoEnd { return false; }
+    let begin = backward.FindStart(text, end, start)?;
+    if begin == NoEnd { return scratch.Run(program, text, start, false, false, found); }
+    if found.length <= 2u {
+        found[0] = begin;
+        found[1] = end;
+        return true;
+    }
+    return scratch.Run(program, text, begin, false, true, found);
+}
 import Text::{ String, StringBuilder };
 
 /// Where a match is in the text searched: from byte `start` up to byte `end`. `Copy`.
@@ -57,6 +77,10 @@ pub struct Regex {
     firstBytes: uint64[4];
     skips: bool;
     anchored: bool;
+    // How many instructions the forward program has; the reversed pattern follows them.
+    forwardLength: uint;
+    // Where the reversed pattern starts, or `NoReverse` when it was too large to compile.
+    reverseStart: uint32;
 }
 
 // The number of the group called `name` among `names`, whose bytes are in `bytes`.
@@ -77,6 +101,10 @@ func FindName(bytes: char8[..], names: GroupName[..], name: char8[..]) -> uint32
 struct Searcher {
     program: Program;
     scratch: Scratch;
+    forward: Dfa;
+    backward: Dfa;
+    // Whether the DFAs search, rather than the Pike matcher alone.
+    useDfa: bool;
     slots: Vector<uint>;
     text: char8[..];
     at: uint;
@@ -98,7 +126,17 @@ extend Searcher {
                 slots[slot] = NoPosition;
                 slot = slot + 1;
             }
-            if !self.scratch.Run(self.program, self.text, self.at, false, slots) { break; }
+            var matched = false;
+            if self.useDfa && self.text.length - self.at >= DfaMinimumLength {
+                match FindWithDfa(self.forward, self.backward, self.scratch, self.program, self.text, self.at, slots) {
+                    .Success(result) => matched = result,
+                    .Failure(_) => matched = self.scratch.Run(self.program, self.text, self.at, false, false, slots)
+                }
+            }
+            else {
+                matched = self.scratch.Run(self.program, self.text, self.at, false, false, slots);
+            }
+            if !matched { break; }
             let start = slots[0];
             let end = slots[1];
             if start == end && end == self.lastEnd {
@@ -223,7 +261,9 @@ extend Regex {
             groupCount: 0,
             firstBytes: [0u64, 0u64, 0u64, 0u64],
             skips: false,
-            anchored: false
+            anchored: false,
+            forwardLength: 0,
+            reverseStart: NoReverse
         };
         var parser = Parser { pattern: pattern, at: 0, flags: 0, nodes: Vector<Node>(allocator) };
         let root = parser.ParseAlternation(regex, 0)?;
@@ -234,7 +274,9 @@ extend Regex {
 
     func Program(self: &Regex) -> Program {
         return Program {
-            instructions: self.instructions.AsSlice(),
+            instructions: self.instructions.AsSlice()[..self.forwardLength],
+            all: self.instructions.AsSlice(),
+            reverseStart: self.reverseStart,
             items: self.items.AsSlice(),
             ascii: self.ascii.AsSlice(),
             slotCount: (self.groupCount as uint + 1) * 2,
@@ -249,11 +291,25 @@ extend Regex {
         return FindName(self.nameBytes.AsSlice(), self.names.AsSlice(), name);
     }
 
+    // The DFA that finds where leftmost-first matches end.
+    func ForwardDfa(self: &Regex, program: Program) -> Dfa {
+        return Dfa::New(self.allocator, program, 0, true, !program.anchored);
+    }
+
+    // The DFA that finds where a match starts once its end is known, over the reversed pattern.
+    func BackwardDfa(self: &Regex, program: Program) -> Dfa {
+        let start = program.reverseStart == NoReverse ? 0u32 : program.reverseStart;
+        return Dfa::New(self.allocator, program, start, false, false);
+    }
+
     func Search(self: &Regex, text: char8[..], start: uint, slotCount: uint) -> Searcher ! RegexError {
         let program = self.Program();
         return Searcher {
             program: program,
             scratch: Scratch::New(self.allocator, program, slotCount)?,
+            forward: self.ForwardDfa(program),
+            backward: self.BackwardDfa(program),
+            useDfa: program.reverseStart != NoReverse,
             slots: Filled(self.allocator, slotCount, NoPosition)?,
             text: text,
             at: start,
@@ -284,9 +340,13 @@ extend Regex {
     /// @see https://rux-lang.dev/docs/api/regex/regex#is-match
     pub func IsMatch(self: &Regex, text: char8[..]) -> bool ! RegexError {
         let program = self.Program();
+        if text.length >= DfaMinimumLength {
+            var forward = self.ForwardDfa(program);
+            return forward.FindEnd(text, 0, true)? != NoEnd;
+        }
         var scratch = Scratch::New(self.allocator, program, 2)?;
         var found: uint[2] = [NoPosition, NoPosition];
-        return scratch.Run(program, text, 0, true, found[..]);
+        return scratch.Run(program, text, 0, true, false, found[..]);
     }
 
     /// The leftmost match in `text`; among matches starting there, the one a backtracking matcher would choose.
@@ -305,11 +365,10 @@ extend Regex {
     /// @see https://rux-lang.dev/docs/api/regex/regex#find-at
     pub func FindAt(self: &Regex, text: char8[..], start: uint) -> Match? ! RegexError {
         if start > text.length { return none; }
-        let program = self.Program();
-        var scratch = Scratch::New(self.allocator, program, 2)?;
-        var found: uint[2] = [NoPosition, NoPosition];
-        if !scratch.Run(program, text, start, false, found[..]) { return none; }
-        return Match { start: found[0], end: found[1] };
+        var searcher = self.Search(text, start, 2)?;
+        if !searcher.Advance() { return none; }
+        let slots = searcher.slots.AsSlice();
+        return Match { start: slots[0], end: slots[1] };
     }
 
     /// The leftmost match in `text`, with where each group matched.
@@ -330,7 +389,16 @@ extend Regex {
         let program = self.Program();
         var scratch = Scratch::New(self.allocator, program, program.slotCount)?;
         var slots = Filled(self.allocator, program.slotCount, NoPosition)?;
-        if !scratch.Run(program, text, start, false, slots.AsMutableSlice()) { return none; }
+        var matched = false;
+        if program.reverseStart != NoReverse && text.length - start >= DfaMinimumLength {
+            var forward = self.ForwardDfa(program);
+            var backward = self.BackwardDfa(program);
+            matched = FindWithDfa(forward, backward, scratch, program, text, start, slots.AsMutableSlice())?;
+        }
+        else {
+            matched = scratch.Run(program, text, start, false, false, slots.AsMutableSlice());
+        }
+        if !matched { return none; }
         return Captures { slots: <-slots, nameBytes: self.nameBytes.AsSlice(), names: self.names.AsSlice() };
     }
 

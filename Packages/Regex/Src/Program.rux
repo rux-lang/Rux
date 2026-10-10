@@ -37,6 +37,9 @@ const ClassNegated: uint8 = 1;
 // The class also matches the other cases of what it holds.
 const ClassFold: uint8 = 2;
 
+// The reversed pattern was too large to compile alongside the forward one.
+const NoReverse: uint32 = 0xFFFFFFFF;
+
 // The places an `Assert` checks for.
 const StartText: uint32 = 0;
 const EndText: uint32 = 1;
@@ -100,7 +103,12 @@ const DigitCategories: uint32 = 0x200;
 
 // A compiled pattern as the matcher reads it: views of the storage a `Regex` owns. `Copy`.
 struct Program {
+    // The forward program, which the Pike matcher runs.
     instructions: Instruction[..];
+    // Every instruction: the forward program, then the reversed pattern when there is one.
+    all: Instruction[..];
+    // Where the reversed pattern starts in `all`, or `NoReverse`.
+    reverseStart: uint32;
     items: ClassItem[..];
     // Two words of bitmap per class: the ASCII characters it matches.
     ascii: uint64[..];

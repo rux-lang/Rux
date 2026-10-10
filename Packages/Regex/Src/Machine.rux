@@ -199,8 +199,9 @@ func FindLiteral(text: char8[..], from: uint, literal: char8[..]) -> uint? {
 
 extend Scratch {
     // Searches `text` from `start` for the leftmost-first match of `program`, filling `found` with its capture slots.
-    // With `earliest`, stops at the first match seen, which is enough to know there is one.
-    func Run(self: &var Scratch, program: Program, text: char8[..], start: uint, earliest: bool,
+    // With `earliest`, stops at the first match seen, which is enough to know there is one. With `here`, a match must
+    // start at `start`, as one the DFA has found does.
+    func Run(self: &var Scratch, program: Program, text: char8[..], start: uint, earliest: bool, here: bool,
              found: var uint[..]) -> bool {
         var counts: uint[2] = [0u, 0u];
         let space = Space {
@@ -218,9 +219,10 @@ extend Scratch {
         var matched = false;
         var current: uint = 0;
         var at = start;
+        let anchored = program.anchored || here;
         while true {
-            if !matched && (!program.anchored || at == start) {
-                if counts[current] == 0u && !program.anchored {
+            if !matched && (!anchored || at == start) {
+                if counts[current] == 0u && !anchored {
                     if program.literal.length > 0u {
                         at = FindLiteral(text, at, program.literal) ?? break;
                     }
@@ -241,7 +243,7 @@ extend Scratch {
                 Follow(program, space, text, current, 0, at);
             }
             if counts[current] == 0u {
-                if matched || program.anchored || at >= text.length { break; }
+                if matched || anchored || at >= text.length { break; }
                 at = at + DecodeAt(text, at).length;
                 continue;
             }

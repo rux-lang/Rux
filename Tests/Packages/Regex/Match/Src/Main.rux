@@ -196,5 +196,40 @@ func Main() -> int {
            FindsNothing("(x+x+)+y", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"), "no catastrophic backtracking");
     let quick = Compiled("foo");
     Assert(quick.IsMatch("xxfooxx") catch { else => false }, "IsMatch");
+
+    // A text of 64 bytes or more is searched by the DFAs: forwards for where the match ends, backwards for where it
+    // starts, and the Pike matcher only over the match when groups are wanted. The answers are the same.
+    let pad = "................................................................................";
+    Assert(Finds("foo|foobar", "................................................................................foobar", 80, 83),
+           "leftmost-first through the DFA");
+    Assert(Finds("(a|ab)(c|bcd)(d*)", "................................................................................abcd", 80, 84),
+           "a match's end found forwards and its start backwards");
+    Assert(Finds("\\bab\\b", "................................................................................xab ab", 84, 86),
+           "word boundaries on both sides of a long search");
+    Assert(Finds("(?m)^b", "................................................................................a\nb", 82, 83) &&
+           Finds("(?m)a$", "................................................................................a\nb", 80, 81),
+           "line anchors through the DFA");
+    Assert(FindsNothing("\\Ax", pad) && Finds("\\.\\z", pad, 79, 80), "text anchors through the DFA");
+    Assert(Finds("\\w+\\d", "................................................................................ab9 cd", 80, 83) &&
+           FindsNothing("\\w+\\d", pad), "classes through the DFA");
+    Assert(Finds("(?i)[\\u{212A}]x", "................................................................................kx", 80, 82),
+           "case orbits through the DFA");
+    Assert(Finds("x*", pad, 0, 0) && Finds("\\.*?", pad, 0, 0), "empty matches through the DFA");
+    let long = Compiled("(?<word>[a-z]+)(?<digits>[0-9]+)");
+    let groups = long.Capture("................................................................................abc123.") catch {
+        else => none
+    };
+    let found = (<-groups) ?? return 1;
+    let wordMatch = found.Named("word") ?? return 2;
+    let digitMatch = found.Named("digits") ?? return 3;
+    Assert(wordMatch.start == 80u && wordMatch.end == 83u && digitMatch.start == 83u && digitMatch.end == 86u,
+           "found by the Pike matcher over just the match");
+    var every = long.FindAll("................................................................................a1 b22 c333") catch {
+        else => return 4
+    };
+    var count: uint = 0;
+    while every.Next() != none { count = count + 1; }
+    Assert(count == 3u, "every match of a long text");
+    Assert(!(Compiled("zz").IsMatch(pad) catch { else => true }), "IsMatch through the DFA");
     return 0;
 }
