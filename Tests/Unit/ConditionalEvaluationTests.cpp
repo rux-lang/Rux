@@ -619,6 +619,31 @@ TEST_CASE("compile-time float literals and arithmetic do not round through doubl
     CHECK(std::get<bool>(*result.value));
 }
 
+TEST_CASE("conditional float constants read unsuffixed literals at their declared width") {
+    auto parsed = ParseSource(R"(
+        const Single: float32 = 1.5;
+        const Tenth: float32 = -0.1;
+        const Quad: float128 = 2.5;
+        const Product: float16 = (1.5 * 2.0);
+        when Single > 1.0f32 && Tenth == -0.1f32 && Quad == 2.5f128 && Product == 3.0f16 { func Chosen() {} }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    for (const auto &[name, bits] : {std::pair{"Single", 32}, {"Tenth", 32}, {"Quad", 128}, {"Product", 16}}) {
+        CAPTURE(name);
+        const auto constant = evaluator.EvaluateConstant(name);
+        REQUIRE(constant.value.has_value());
+        CHECK_EQ(std::get<CompileTimeFloat>(*constant.value).value.Format().valueBits, bits);
+    }
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items.back().get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    CAPTURE(result.diagnostics.empty() ? std::string{} : result.diagnostics.front().message);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
 TEST_CASE("conditional float constants preserve their legal declared widening") {
     auto parsed = ParseSource(R"(
         const Wide: float64 = 16777216.0f32;

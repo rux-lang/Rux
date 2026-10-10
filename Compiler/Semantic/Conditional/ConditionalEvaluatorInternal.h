@@ -80,6 +80,8 @@ private:
     std::unordered_map<std::string, std::uint32_t> constSignedIntegerWidths;
     std::unordered_map<std::string, std::uint32_t> constUnsignedIntegerWidths;
     std::unordered_map<std::string, std::uint32_t> constFloatWidths;
+    /// The width of the float constant whose initializer is being evaluated, which its unsuffixed literals take.
+    std::optional<std::uint32_t> unsuffixedFloatBits;
     std::unordered_map<std::string, std::vector<std::string>> enumVariants;
     std::unordered_set<std::string> constsInProgress;
     std::unordered_set<std::string> builtinEnumNames;

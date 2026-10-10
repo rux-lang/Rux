@@ -245,9 +245,11 @@ std::optional<Value> ParseIntLiteral(std::string_view text) {
     return Value{value};
 }
 
-std::optional<CompileTimeFloat> ParseFloatValue(const std::string_view text) {
+// An unsuffixed literal is read at `unsuffixedBits`, the width of the constant whose initializer holds it, so a
+// `float32` constant written `1.5` is exactly the `float32` nearest 1.5 rather than a `float64` it cannot hold.
+std::optional<CompileTimeFloat> ParseFloatValue(const std::string_view text, const std::uint32_t unsuffixedBits) {
     const auto *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(text));
-    const auto *format = FindFloatFormat(suffix && suffix->isFloat ? suffix->bits : 64);
+    const auto *format = FindFloatFormat(suffix && suffix->isFloat ? suffix->bits : unsuffixedBits);
     const auto value = ParseFloatEncoding(text, *format);
     return value ? std::optional{CompileTimeFloat{*value}} : std::nullopt;
 }
@@ -884,7 +886,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             }
             return std::nullopt;
         case TokenKind::FloatLiteral:
-            if (const auto value = ParseFloatValue(e->token.text)) {
+            if (const auto value = ParseFloatValue(e->token.text, unsuffixedFloatBits.value_or(64))) {
                 return Value{*value};
             }
             return std::nullopt;

@@ -216,7 +216,11 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalConstantReferenc
         reportedError = true;
         return std::nullopt;
     }
+    const auto floatWidth = constFloatWidths.find(expr.name);
+    const auto enclosingFloatBits = std::exchange(
+        unsuffixedFloatBits, floatWidth != constFloatWidths.end() ? std::optional{floatWidth->second} : std::nullopt);
     auto value = Eval(*declaration->second);
+    unsuffixedFloatBits = enclosingFloatBits;
     constsInProgress.erase(expr.name);
     if (!value) {
         return std::nullopt;
