@@ -32,7 +32,7 @@ The v0.1.0 release ships **32 packages**. This table is the target catalog: it i
 | `Memory`      | Untyped blocks, page mappings and byte-level operations              | Core, OS                                                 |
 | `NanoId`      | Nano ID generation, validation and textual form                      | Core, Entropy, Memory, Text                              |
 | `Path`        | Lossless native strings and lexical path operations                  | Core, Memory, Allocator, Text                            |
-| `Process`     | The running process: arguments, environment, identifier and exit     | Core, Path, OS                                           |
+| `Process`     | The running process and the child processes it starts                | Core, Memory, Allocator, Path, Io, Thread, OS            |
 | `Random`      | Seeded generators, distributions and sampling                        | Core, Math, Entropy                                      |
 | `Sync`        | Locks, conditions, once-only setup, counters and channels for threads | Core, Memory, Time, OS                                   |
 | `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator                                  |
@@ -50,9 +50,11 @@ The v0.1.0 release ships **32 packages**. This table is the target catalog: it i
 Arrows point toward dependencies. This is a dependency ordering, not a requirement that every package depend on every lower layer.
 
 ```text
-Layer 7  FileSystem, Json, Toml, CommandLine
+Layer 8  CommandLine
              |
-Layer 6  Io, Uuid, Process, Sync
+Layer 7  FileSystem, Json, Toml, Process
+             |
+Layer 6  Io, Uuid, Sync
              |
 Layer 5  Format, Time, Path, Collections, Encoding, NanoId
              |

@@ -84,7 +84,7 @@ extend JoinHandle<R> {
         let result <- (((block as uint) + header.resultOffset) as *var R)[0];
         // The thread let go before it finished, so this is the last owner.
         Release(block);
-        return result;
+        return <-result;
     }
 
     /// Lets the thread run on without anyone waiting for it. It releases itself, and its result, when it finishes.

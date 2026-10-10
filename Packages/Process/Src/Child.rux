@@ -1,0 +1,335 @@
+// A started child process, how it finished, and the pipes to its standard streams.
+// The pipes are ordinary streams: a `PipeWriter` is an `Io::Writer` into the child's standard input, and a `PipeReader`
+// an `Io::Reader` from its standard output or error. Each owns its end of the pipe and closes it when dropped, which
+// is how a child reading its input learns that no more will come.
+
+import Core::{ #Error, #target };
+import Io::{ IoError, IoErrorKind, Reader, Writer };
+import Process::FailureOf;
+
+when #target.os {
+    .Linux => import Linux::{ Close, IsError, Read, SIGKILL, WNOHANG, Write, __errno_location, kill, waitpid },
+    .FreeBSD => import FreeBSD::{ Close, IsError, Read, SIGKILL, WNOHANG, Write, __error, kill, waitpid },
+    .macOS => import macOS::{ Close, CurrentErrno, IsError, Read, SIGKILL, WNOHANG, Write, kill, waitpid },
+    .Windows => import Windows::{
+        CloseHandle, ERROR_BROKEN_PIPE, GetExitCodeProcess, GetLastError, INFINITE, ReadFile, TerminateProcess,
+        WAIT_TIMEOUT, WaitForSingleObject, WriteFile
+    },
+    else => #Error("Unsupported operating system")
+}
+
+// A pipe end as the system names it: a handle on Windows and a descriptor elsewhere, kept in one word so the rest of
+// the package never asks which. `NoPipe` is the end that is not there.
+const NoPipe: uint64 = 0xFFFFFFFFFFFFFFFF;
+
+// The calling thread's last error code.
+func LastError() -> int64 {
+    when #target.os == .Windows {
+        return GetLastError() as int64;
+    }
+    else when #target.os == .Linux {
+        return *__errno_location() as int64;
+    }
+    else when #target.os == .FreeBSD {
+        return *__error() as int64;
+    }
+    else {
+        return CurrentErrno();
+    }
+}
+
+// Closes a pipe end, if there is one.
+func ClosePipe(pipe: uint64) {
+    if pipe == NoPipe { return; }
+    when #target.os == .Windows {
+        CloseHandle(pipe as *opaque);
+    }
+    else {
+        Close(pipe as int32);
+    }
+}
+
+/// How a child process finished. `Copy`.
+/// @see https://rux-lang.dev/docs/api/process/child#exit-status
+pub struct ExitStatus {
+    code: int32;
+    signal: int32;
+}
+
+extend ExitStatus {
+    /// Whether the child exited with code zero.
+    /// @returns true for a clean exit
+    /// @see https://rux-lang.dev/docs/api/process/child#success
+    pub func Success(self: &ExitStatus) -> bool {
+        return self.signal == 0 && self.code == 0;
+    }
+
+    /// The code the child exited with, or none when a signal ended it.
+    /// @returns the exit code
+    /// @see https://rux-lang.dev/docs/api/process/child#code
+    pub func Code(self: &ExitStatus) -> int32? {
+        if self.signal != 0 { return none; }
+        return self.code;
+    }
+
+    /// The signal that ended the child on a Unix system, or none when it exited. Never present on Windows.
+    /// @returns the signal number
+    /// @see https://rux-lang.dev/docs/api/process/child#signal
+    pub func Signal(self: &ExitStatus) -> int32? {
+        if self.signal == 0 { return none; }
+        return self.signal;
+    }
+}
+
+// The status a Unix `waitpid` reports, decoded the way every system this package supports encodes it.
+func DecodeStatus(status: int32) -> ExitStatus {
+    let low = status & 0x7F;
+    if low == 0 { return ExitStatus { code: (status >> 8) & 0xFF, signal: 0 }; }
+    return ExitStatus { code: 0, signal: low };
+}
+
+/// The writing end of a pipe into a child's standard input. Closing it, by dropping it, ends the child's input.
+/// A pipe end is not copied.
+/// @see https://rux-lang.dev/docs/api/process/child#pipe-writer
+pub struct PipeWriter {
+    pipe: uint64;
+}
+
+/// The reading end of a pipe from a child's standard output or error. A read past what the child wrote, once it has
+/// closed its end, fails with `EndOfStream`. A pipe end is not copied.
+/// @see https://rux-lang.dev/docs/api/process/child#pipe-reader
+pub struct PipeReader {
+    pipe: uint64;
+}
+
+extend PipeWriter {
+    func =(self: &var PipeWriter, other: &PipeWriter);
+
+    /// Closes the pipe now rather than when the writer is dropped. Closing it twice does nothing.
+    /// @see https://rux-lang.dev/docs/api/process/child#pipe-writer-close
+    pub func Close(self: &var PipeWriter) {
+        ClosePipe(self.pipe);
+        self.pipe = NoPipe;
+    }
+
+    func ~PipeWriter(self: &var PipeWriter) {
+        self.Close();
+    }
+}
+
+extend PipeWriter : Writer {
+    /// Writes some of `bytes` into the pipe, waiting while it is full.
+    /// @param bytes the bytes to write
+    /// @returns how many were written, or fails, with a broken pipe once the child closed its end
+    /// @see https://rux-lang.dev/docs/api/process/child#pipe-writer-write
+    pub func Write(self: &var PipeWriter, bytes: char8[..]) -> uint ! IoError {
+        if self.pipe == NoPipe { fail IoError::Of(IoErrorKind::InvalidHandle); }
+        if bytes.length == 0 { return 0; }
+        when #target.os == .Windows {
+            let count = bytes.length > 0x40000000u ? 0x40000000u32 : bytes.length as uint32;
+            var written: uint32 = 0;
+            if WriteFile(self.pipe as *opaque, bytes.data as *opaque, count, @written, null) == 0 {
+                fail FailureOf(GetLastError() as int64);
+            }
+            return written as uint;
+        }
+        else {
+            let result = Write(self.pipe as int32, bytes.data as *opaque, bytes.length);
+            if IsError(result) { fail FailureOf(-result); }
+            return result as uint;
+        }
+    }
+
+    /// Does nothing: a pipe keeps no buffer of its own.
+    /// @returns nothing
+    /// @see https://rux-lang.dev/docs/api/process/child#pipe-writer-flush
+    pub func Flush(self: &var PipeWriter) -> ! IoError {
+        if self.pipe == NoPipe { fail IoError::Of(IoErrorKind::InvalidHandle); }
+    }
+}
+
+extend PipeReader {
+    func =(self: &var PipeReader, other: &PipeReader);
+
+    /// Closes the pipe now rather than when the reader is dropped. Closing it twice does nothing.
+    /// @see https://rux-lang.dev/docs/api/process/child#pipe-reader-close
+    pub func Close(self: &var PipeReader) {
+        ClosePipe(self.pipe);
+        self.pipe = NoPipe;
+    }
+
+    func ~PipeReader(self: &var PipeReader) {
+        self.Close();
+    }
+}
+
+extend PipeReader : Reader {
+    /// Reads what the child has written so far into `into`, waiting while it has written nothing.
+    /// @param into where to put the bytes
+    /// @returns how many were read, or fails with `EndOfStream` once the child closed its end and all was read
+    /// @see https://rux-lang.dev/docs/api/process/child#pipe-reader-read
+    pub func Read(self: &var PipeReader, into: var char8[..]) -> uint ! IoError {
+        if self.pipe == NoPipe { fail IoError::Of(IoErrorKind::InvalidHandle); }
+        if into.length == 0 { return 0; }
+        when #target.os == .Windows {
+            let count = into.length > 0x40000000u ? 0x40000000u32 : into.length as uint32;
+            var read: uint32 = 0;
+            if ReadFile(self.pipe as *opaque, into.data as *opaque, count, @read, null) == 0 {
+                let error = GetLastError();
+                if error == ERROR_BROKEN_PIPE { fail IoError::Of(IoErrorKind::EndOfStream); }
+                fail FailureOf(error as int64);
+            }
+            if read == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return read as uint;
+        }
+        else {
+            let result = Read(self.pipe as int32, into.data as *var opaque, into.length);
+            if IsError(result) { fail FailureOf(-result); }
+            if result == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return result as uint;
+        }
+    }
+}
+
+/// A child process this one started.
+/// Wait for it to learn how it finished. Dropping a child that was not waited for neither waits for nor stops it; on
+/// the Unix systems its exit status then stays with the system until this process ends. A child is not copied.
+/// @see https://rux-lang.dev/docs/api/process/child#child
+pub struct Child {
+    id: uint32;
+    // The process handle on Windows; the process identifier elsewhere.
+    process: uint64;
+    input: uint64;
+    output: uint64;
+    error: uint64;
+    finished: bool;
+    status: ExitStatus;
+}
+
+extend Child {
+    func =(self: &var Child, other: &Child);
+
+    /// The child's process identifier.
+    /// @returns the identifier
+    /// @see https://rux-lang.dev/docs/api/process/child#id
+    pub func Id(self: &Child) -> uint32 {
+        return self.id;
+    }
+
+    /// The pipe into the child's standard input, when it was started with `Stdio::Pipe` there and the pipe was not
+    /// taken before.
+    /// @returns the writer, which the caller now owns
+    /// @see https://rux-lang.dev/docs/api/process/child#take-input
+    pub func TakeInput(self: &var Child) -> PipeWriter? {
+        if self.input == NoPipe { return none; }
+        let pipe = self.input;
+        self.input = NoPipe;
+        return PipeWriter { pipe: pipe };
+    }
+
+    /// The pipe from the child's standard output, when it was started with `Stdio::Pipe` there and the pipe was not
+    /// taken before.
+    /// @returns the reader, which the caller now owns
+    /// @see https://rux-lang.dev/docs/api/process/child#take-output
+    pub func TakeOutput(self: &var Child) -> PipeReader? {
+        if self.output == NoPipe { return none; }
+        let pipe = self.output;
+        self.output = NoPipe;
+        return PipeReader { pipe: pipe };
+    }
+
+    /// The pipe from the child's standard error, when it was started with `Stdio::Pipe` there and the pipe was not
+    /// taken before.
+    /// @returns the reader, which the caller now owns
+    /// @see https://rux-lang.dev/docs/api/process/child#take-error
+    pub func TakeError(self: &var Child) -> PipeReader? {
+        if self.error == NoPipe { return none; }
+        let pipe = self.error;
+        self.error = NoPipe;
+        return PipeReader { pipe: pipe };
+    }
+
+    /// Waits for the child to finish and returns how it did. The pipe into its input, if still held, is closed first,
+    /// so a child reading its input to the end is not left waiting for more. Waiting again returns the same status.
+    /// @returns how the child finished
+    /// @see https://rux-lang.dev/docs/api/process/child#wait
+    pub func Wait(self: &var Child) -> ExitStatus ! IoError {
+        if self.finished { return self.status; }
+        ClosePipe(self.input);
+        self.input = NoPipe;
+        when #target.os == .Windows {
+            WaitForSingleObject(self.process as *opaque, INFINITE);
+            self.Collect()?;
+        }
+        else {
+            var status: int32 = 0;
+            while waitpid(self.process as int32, @status, 0) < 0 {
+                let error = LastError();
+                if FailureOf(error).kind != IoErrorKind::Interrupted { fail FailureOf(error); }
+            }
+            self.status = DecodeStatus(status);
+            self.finished = true;
+        }
+        return self.status;
+    }
+
+    /// How the child finished, or none while it still runs, without waiting.
+    /// @returns the status once the child has finished
+    /// @see https://rux-lang.dev/docs/api/process/child#try-wait
+    pub func TryWait(self: &var Child) -> ExitStatus? ! IoError {
+        if self.finished { return self.status; }
+        when #target.os == .Windows {
+            if WaitForSingleObject(self.process as *opaque, 0) == WAIT_TIMEOUT { return none; }
+            self.Collect()?;
+        }
+        else {
+            var status: int32 = 0;
+            let result = waitpid(self.process as int32, @status, WNOHANG);
+            if result < 0 { fail FailureOf(LastError()); }
+            if result == 0 { return none; }
+            self.status = DecodeStatus(status);
+            self.finished = true;
+        }
+        return self.status;
+    }
+
+    /// Ends the child at once: with `SIGKILL` on the Unix systems, and with exit code 1 on Windows. Killing a child
+    /// that has already finished does nothing. Wait for it afterwards to learn its status.
+    /// @returns nothing, or fails when the system refused
+    /// @see https://rux-lang.dev/docs/api/process/child#kill
+    pub func Kill(self: &var Child) -> ! IoError {
+        if self.finished { return; }
+        when #target.os == .Windows {
+            if TerminateProcess(self.process as *opaque, 1) == 0 {
+                let error = GetLastError();
+                // A process that has already ended refuses with access denied.
+                if error != 5 { fail FailureOf(error as int64); }
+            }
+        }
+        else {
+            if kill(self.process as int32, SIGKILL) < 0 {
+                let error = LastError();
+                if FailureOf(error).kind != IoErrorKind::NotFound { fail FailureOf(error); }
+            }
+        }
+    }
+
+    // Reads a finished Windows child's exit code.
+    func Collect(self: &var Child) -> ! IoError {
+        when #target.os == .Windows {
+            var code: uint32 = 0;
+            if GetExitCodeProcess(self.process as *opaque, @code) == 0 { fail FailureOf(GetLastError() as int64); }
+            self.status = ExitStatus { code: code as int32, signal: 0 };
+            self.finished = true;
+        }
+    }
+
+    func ~Child(self: &var Child) {
+        ClosePipe(self.input);
+        ClosePipe(self.output);
+        ClosePipe(self.error);
+        when #target.os == .Windows {
+            CloseHandle(self.process as *opaque);
+        }
+    }
+}

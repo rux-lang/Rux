@@ -1,0 +1,128 @@
+// Starting another program, waiting for it, and stopping it.
+// A new process is started with the C library's `posix_spawnp`, which runs the setup a child needs between its creation
+// and the start of the new program — duplicating descriptors, opening files, changing directory — from a list of
+// actions the parent builds, and reports a failure to start as an error number rather than a child that exits. That
+// is why this module links a library, and why a program that starts processes is linked dynamically.
+
+import macOS::{ FileMode, SystemLib };
+
+
+/// Room for a `posix_spawn_file_actions_t`, which each C library sizes its own way and none larger than this.
+/// Only ever passed by address to the `posix_spawn_file_actions_*` calls, which initialize and read it.
+/// @see https://rux-lang.dev/docs/api/macos/spawn#spawn-file-actions
+pub struct SpawnFileActions {
+    storage: uint64[16];
+}
+
+extend SpawnFileActions {
+    /// Zeroed storage for `posix_spawn_file_actions_init` to initialize.
+    /// @returns the storage
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#spawn-file-actions
+    pub func SpawnFileActions() -> SpawnFileActions {
+        return SpawnFileActions { storage: [0u64; 16] };
+    }
+}
+
+/// `F_SETFD`: the `fcntl` command that sets a descriptor's flags.
+/// @see https://rux-lang.dev/docs/api/macos/spawn#f-setfd
+#Allow("naming.const")
+pub const F_SETFD: int32 = 2;
+
+/// `FD_CLOEXEC`: close the descriptor when the process starts another program.
+/// @see https://rux-lang.dev/docs/api/macos/spawn#fd-cloexec
+#Allow("naming.const")
+pub const FD_CLOEXEC: int32 = 1;
+
+/// `WNOHANG`: have `waitpid` return at once when the child has not finished.
+/// @see https://rux-lang.dev/docs/api/macos/spawn#wnohang
+#Allow("naming.const")
+pub const WNOHANG: int32 = 1;
+
+/// `SIGKILL`: the signal that ends a process at once and cannot be caught.
+/// @see https://rux-lang.dev/docs/api/macos/spawn#sigkill
+#Allow("naming.const")
+pub const SIGKILL: int32 = 9;
+
+#Link(SystemLib)
+extern {
+    /// Starts `file`, found through `PATH` when it has no slash, as a child process.
+    /// @param pid receives the child's process identifier
+    /// @param file the program, NUL-terminated
+    /// @param fileActions the descriptor and directory setup to run in the child first, or null
+    /// @param attributes spawn attributes, or null for the defaults
+    /// @param arguments the argument vector, its first entry the program's name, ended by null
+    /// @param environment the environment, `NAME=VALUE` entries ended by null
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#posix-spawnp
+    /// @see https://keith.github.io/xcode-man-pages/posix_spawn.3.html
+    pub func posix_spawnp(pid: *var int32, file: *char8, fileActions: *SpawnFileActions, attributes: *opaque,
+                          arguments: **char8, environment: **char8) -> int32;
+
+    /// Initializes an empty list of file actions.
+    /// @param actions the storage to initialize
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#posix-spawn-file-actions-init
+    /// @see https://keith.github.io/xcode-man-pages/posix_spawn_file_actions_init.3.html
+    pub func posix_spawn_file_actions_init(actions: *var SpawnFileActions) -> int32;
+
+    /// Releases what `posix_spawn_file_actions_init` and the actions added since set up.
+    /// @param actions initialized file actions
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#posix-spawn-file-actions-destroy
+    /// @see https://keith.github.io/xcode-man-pages/posix_spawn_file_actions_destroy.3.html
+    pub func posix_spawn_file_actions_destroy(actions: *var SpawnFileActions) -> int32;
+
+    /// Adds an action duplicating `fd` onto `newFd` in the child.
+    /// @param actions initialized file actions
+    /// @param fd the descriptor to duplicate
+    /// @param newFd the descriptor it becomes
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#posix-spawn-file-actions-adddup2
+    /// @see https://keith.github.io/xcode-man-pages/posix_spawn_file_actions_adddup2.3.html
+    pub func posix_spawn_file_actions_adddup2(actions: *var SpawnFileActions, fd: int32, newFd: int32) -> int32;
+
+    /// Adds an action opening `path` as `fd` in the child.
+    /// @param actions initialized file actions
+    /// @param fd the descriptor the file becomes
+    /// @param path the file, NUL-terminated
+    /// @param flags the open flags
+    /// @param mode the permissions of a file the open creates
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#posix-spawn-file-actions-addopen
+    /// @see https://keith.github.io/xcode-man-pages/posix_spawn_file_actions_addopen.3.html
+    pub func posix_spawn_file_actions_addopen(actions: *var SpawnFileActions, fd: int32, path: *char8, flags: int32,
+                                              mode: FileMode) -> int32;
+
+    /// Adds an action changing the child's working directory to `path`.
+    /// @param actions initialized file actions
+    /// @param path the directory, NUL-terminated
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#posix-spawn-file-actions-addchdir-np
+    /// @see https://keith.github.io/xcode-man-pages/posix_spawn_file_actions_addchdir_np.3.html
+    pub func posix_spawn_file_actions_addchdir_np(actions: *var SpawnFileActions, path: *char8) -> int32;
+
+    /// Waits for a child to change state, and reports how it finished.
+    /// @param pid the child's process identifier
+    /// @param status receives the encoded status
+    /// @param options zero to wait, or `WNOHANG` to return at once when the child is still running
+    /// @returns the child's identifier, zero with `WNOHANG` when it is still running, or -1 with the reason in errno
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#waitpid
+    /// @see https://keith.github.io/xcode-man-pages/waitpid.2.html
+    pub func waitpid(pid: int32, status: *var int32, options: int32) -> int32;
+
+    /// Sends a signal to a process.
+    /// @param pid the process
+    /// @param signal the signal number, such as `SIGKILL`
+    /// @returns zero, or -1 with the reason in errno
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#kill
+    /// @see https://keith.github.io/xcode-man-pages/kill.2.html
+    pub func kill(pid: int32, signal: int32) -> int32;
+
+    /// Performs a control operation on a descriptor, such as setting its flags with `F_SETFD`.
+    /// @param fd the descriptor
+    /// @param command the operation
+    /// @returns the operation's result, or -1 with the reason in errno
+    /// @see https://rux-lang.dev/docs/api/macos/spawn#fcntl
+    /// @see https://keith.github.io/xcode-man-pages/fcntl.2.html
+    pub func fcntl(fd: int32, command: int32, ...) -> int32;
+}

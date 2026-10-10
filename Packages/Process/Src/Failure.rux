@@ -1,0 +1,74 @@
+// What a failed system call means, as an `IoError`, and text turned into native units for a command line.
+// The raw code rides along in every error, so a caller who needs the system's own reason still has it.
+
+import Core::{ #Error, #target };
+import Io::{ IoError, IoErrorKind };
+import Path::OsUnit;
+import Process::{ Buffer, NextScalar };
+
+when #target.os {
+    .Linux => import Linux::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
+    .FreeBSD => import FreeBSD::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
+    .macOS => import macOS::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
+    .Windows => {},
+    else => #Error("Unsupported operating system")
+}
+
+// The meaning of a system's error code: an errno on the Unix systems, a `GetLastError` code on Windows.
+func FailureOf(code: int64) -> IoError {
+    var kind = IoErrorKind::Other;
+    when #target.os == .Windows {
+        if code == 2 || code == 3 { kind = IoErrorKind::NotFound; }
+        else if code == 5 { kind = IoErrorKind::PermissionDenied; }
+        else if code == 8 || code == 14 { kind = IoErrorKind::LimitExceeded; }
+        else if code == 87 || code == 123 || code == 193 { kind = IoErrorKind::InvalidInput; }
+    }
+    else {
+        if code == ENOENT || code == ESRCH { kind = IoErrorKind::NotFound; }
+        else if code == EACCES || code == EPERM { kind = IoErrorKind::PermissionDenied; }
+        else if code == ENOMEM || code == EAGAIN { kind = IoErrorKind::LimitExceeded; }
+        else if code == EINVAL { kind = IoErrorKind::InvalidInput; }
+        else if code == ENOTDIR { kind = IoErrorKind::NotDirectory; }
+        else if code == EINTR { kind = IoErrorKind::Interrupted; }
+    }
+    return IoError { kind: kind, raw: code as int32 };
+}
+
+// Appends UTF-8 `text` as native units: UTF-16 on Windows, the bytes themselves elsewhere. A NUL cannot pass to the
+// system inside a string, and on Windows malformed UTF-8 has no UTF-16 form, so both are refused.
+func AppendText(buffer: &var Buffer<OsUnit>, text: char8[..]) -> ! IoError {
+    when #target.os == .Windows {
+        var at: uint = 0;
+        while at < text.length {
+            let scalar = NextScalar(text, @at) ?? 0xFFFFFFFFu32;
+            if scalar == 0xFFFFFFFFu32 { fail IoError::Of(IoErrorKind::InvalidText); }
+            if scalar == 0u32 { fail IoError::Of(IoErrorKind::InvalidInput); }
+            if scalar > 0xFFFFu32 {
+                let offset = scalar - 0x10000u32;
+                buffer.Push((0xD800u32 + (offset >> 10)) as uint16)?;
+                buffer.Push((0xDC00u32 + (offset & 0x3FFu32)) as uint16)?;
+            }
+            else {
+                buffer.Push(scalar as uint16)?;
+            }
+        }
+    }
+    else {
+        var index: uint = 0;
+        while index < text.length {
+            if text[index] as uint8 == 0u8 { fail IoError::Of(IoErrorKind::InvalidInput); }
+            index = index + 1;
+        }
+        buffer.PushAll(text)?;
+    }
+}
+
+// Appends native units, refusing a NUL inside them.
+func AppendUnits(buffer: &var Buffer<OsUnit>, units: OsUnit[..]) -> ! IoError {
+    var index: uint = 0;
+    while index < units.length {
+        if units[index] == (0 as OsUnit) { fail IoError::Of(IoErrorKind::InvalidInput); }
+        index = index + 1;
+    }
+    buffer.PushAll(units)?;
+}

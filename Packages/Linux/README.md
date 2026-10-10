@@ -23,6 +23,7 @@ rux add Rux/Linux
 | `Dynamic` | `dlopen`, `dlsym`, `dlclose`, `dlerror`, and the `RTLD_*` flags                          |
 | `Thread`  | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `gettid`, linked from libc |
 | `Futex`   | `FutexWait` and `FutexWake`, the private `futex(2)` operations every lock in `Rux/Sync` sleeps on |
+| `Spawn`   | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill`, `fcntl` and `__errno_location`, linked from libc |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

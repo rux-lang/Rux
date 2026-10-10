@@ -1,0 +1,212 @@
+// The test starts its own executable as the child, so it runs the same on every system: given a mode as its first
+// argument, the child exits with a code, echoes its input, writes large amounts to both streams, reports environment
+// variables, or waits until it is killed. The parent checks statuses, pipes, captured output, the environment changes
+// a child sees, a program that does not exist, and killing.
+
+import Allocator::SystemAllocator;
+import Core::Assert;
+import Io::{ IoErrorKind, Reader, StandardError, StandardIn, StandardOut, WriteAll, Writer };
+import Path::OsStringView;
+import Process::{
+    Argument, ArgumentCount, Command, Environment, RemoveVariable, SetVariable, Stdio, Variable
+};
+
+// Whether a native string is the ASCII text `text`.
+func Is(view: OsStringView, text: char8[..]) -> bool {
+    let units = view.Units();
+    if units.length != text.length { return false; }
+    var index: uint = 0;
+    while index < text.length {
+        if units[index] as uint32 != text[index] as uint8 as uint32 { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Present(value: OsStringView?) -> bool {
+    match value {
+        .Some(_) => return true,
+        none => return false
+    }
+}
+
+func ModeIs(text: char8[..]) -> bool {
+    return Is(Argument(1) ?? OsStringView(), text);
+}
+
+// The child's side: what each mode does.
+func RunChild() -> int {
+    var output = StandardOut::Acquire();
+    var error = StandardError::Acquire();
+    if ModeIs("exit") { return 7; }
+    if ModeIs("echo") {
+        // Copies its input to its output, upper-casing ASCII letters, until the input ends.
+        var input = StandardIn::Acquire();
+        var chunk: char8[256] = ['\0'; 256];
+        while true {
+            match input.Read(chunk[..]) {
+                .Success(count) => {
+                    var index: uint = 0;
+                    while index < count {
+                        let byte = chunk[index] as uint8;
+                        if byte >= 0x61u8 && byte <= 0x7Au8 { chunk[index] = (byte - 32u8) as char8; }
+                        index = index + 1;
+                    }
+                    WriteAll(output, chunk[..count]) catch { else => return 2 };
+                },
+                .Failure(_) => return 0
+            }
+        }
+    }
+    if ModeIs("flood") {
+        // Far more than a pipe holds, on both streams, so a parent reading one to the end first would deadlock.
+        var line: char8[64] = ['x'; 64];
+        line[63] = '\n';
+        var count: uint = 0;
+        while count < 4000u {
+            WriteAll(error, line[..]) catch { else => return 3 };
+            WriteAll(output, line[..]) catch { else => return 3 };
+            count = count + 1;
+        }
+        return 0;
+    }
+    if ModeIs("environment") {
+        // Reports `A`, `B` and whether `GONE` is present, as three letters.
+        let a = Variable("RUX_SPAWN_A");
+        let b = Variable("RUX_SPAWN_B");
+        let gone = Variable("RUX_SPAWN_GONE");
+        var report: char8[3] = ['-', '-', '-'];
+        if Present(a) && Is(a ?? OsStringView(), "one") { report[0] = 'A'; }
+        if Present(b) && Is(b ?? OsStringView(), "two") { report[1] = 'B'; }
+        if !Present(gone) { report[2] = 'G'; }
+        WriteAll(output, report[..]) catch { else => return 4 };
+        return 0;
+    }
+    if ModeIs("argument") {
+        // Writes its second argument back, to show quoting keeps it whole.
+        let argument = Argument(2) ?? OsStringView();
+        let units = argument.Units();
+        var index: uint = 0;
+        while index < units.length {
+            var byte: char8[1] = [units[index] as uint8 as char8];
+            WriteAll(output, byte[..]) catch { else => return 5 };
+            index = index + 1;
+        }
+        return 0;
+    }
+    if ModeIs("wait") {
+        // Waits for input that never comes, until it is killed.
+        var input = StandardIn::Acquire();
+        var chunk: char8[16] = ['\0'; 16];
+        input.Read(chunk[..]) catch { else => 0u };
+        return 0;
+    }
+    return 99;
+}
+
+// A command that starts this executable again in `mode`.
+func NewSelf(program: OsStringView, mode: char8[..]) -> Command {
+    var command = Command::FromNative(SystemAllocator(), program);
+    command.Argument(mode);
+    return <-command;
+}
+
+// Whether bytes a child wrote are the text `text`.
+func Same(bytes: char8[..], text: char8[..]) -> bool {
+    if bytes.length != text.length { return false; }
+    var index: uint = 0;
+    while index < text.length {
+        if bytes[index] != text[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Main() -> int {
+    if ArgumentCount() > 1u { return RunChild(); }
+    let program = Argument(0) ?? OsStringView();
+    let allocator = SystemAllocator();
+
+    // An exit code comes back.
+    let exit = NewSelf(program, "exit");
+    let status = exit.Run() catch { else => return 10 };
+    Assert(!status.Success() && status.Code() == 7, "a child's exit code comes back");
+    Assert(status.Signal() == none, "an exit is not a signal");
+
+    // A pipe carries input to the child and its output back.
+    var echo = NewSelf(program, "echo");
+    echo.StandardInput(Stdio::Pipe);
+    echo.StandardOutput(Stdio::Pipe);
+    var child = echo.Spawn() catch { else => return 11 };
+    var input = child.TakeInput() ?? return 12;
+    var output = child.TakeOutput() ?? return 13;
+    WriteAll(input, "hello, child") catch { else => return 14 };
+    input.Close();
+    var received: char8[64] = ['\0'; 64];
+    var length: uint = 0;
+    while true {
+        match output.Read(received[length..]) {
+            .Success(count) => length = length + count,
+            .Failure(error) => {
+                Assert(error.kind == IoErrorKind::EndOfStream, "the output ends cleanly");
+                break;
+            }
+        }
+    }
+    Assert(Same(received[..length], "HELLO, CHILD"), "the child echoed its input");
+    Assert((child.Wait() catch { else => return 15 }).Success(), "the echoing child exits cleanly");
+
+    // Captured output keeps both streams whole, however much the child writes to each.
+    let flood = NewSelf(program, "flood");
+    let captured = flood.Capture(allocator) catch { else => return 16 };
+    Assert(captured.Status().Success(), "the flooding child exits cleanly");
+    Assert(captured.Output().length == 4000u * 64u, "all of the output is captured");
+    Assert(captured.Error().length == 4000u * 64u, "all of the error is captured");
+
+    // A child sees this process's environment changes and the command's own.
+    SetVariable("RUX_SPAWN_A", "one") catch { else => return 17 };
+    SetVariable("RUX_SPAWN_GONE", "here") catch { else => return 18 };
+    Assert(Is(Variable("RUX_SPAWN_A") ?? OsStringView(), "one"), "a variable set here reads back");
+    var environment = NewSelf(program, "environment");
+    environment.SetVariable("RUX_SPAWN_B", "two");
+    environment.RemoveVariable("RUX_SPAWN_GONE");
+    let report = environment.Capture(allocator) catch { else => return 19 };
+    Assert(Same(report.Output(), "ABG"), "the child sees every environment change");
+    RemoveVariable("RUX_SPAWN_A") catch { else => return 20 };
+    Assert(!Present(Variable("RUX_SPAWN_A")), "a removed variable is gone");
+    var seen = false;
+    for variable in Environment() {
+        if Is(variable.name, "RUX_SPAWN_GONE") { seen = true; }
+        Assert(!Is(variable.name, "RUX_SPAWN_A"), "a removed variable is not walked");
+    }
+    Assert(seen, "a variable set here is walked");
+    match SetVariable("BAD=NAME", "x") {
+        .Success(_) => Assert(false, "a name with an equals sign is refused"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a name with an equals sign is refused")
+    }
+
+    // An argument with spaces, quotes and backslashes arrives whole.
+    var quoting = NewSelf(program, "argument");
+    let awkward = "a \"quoted\" arg\\ with \\\\ slashes\\";
+    quoting.Argument(awkward);
+    let echoed = quoting.Capture(allocator) catch { else => return 21 };
+    Assert(Same(echoed.Output(), awkward), "an awkward argument arrives whole");
+
+    // A program that does not exist is reported as not found.
+    var missing = Command(allocator, "rux-no-such-program-anywhere");
+    match missing.Spawn() {
+        .Success(_) => Assert(false, "a missing program cannot start"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a missing program is not found")
+    }
+
+    // A child can be killed while it waits.
+    var waiting = NewSelf(program, "wait");
+    waiting.StandardInput(Stdio::Pipe);
+    var sleeper = waiting.Spawn() catch { else => return 22 };
+    let keep = sleeper.TakeInput();
+    sleeper.Kill() catch { else => return 23 };
+    let killed = sleeper.Wait() catch { else => return 24 };
+    Assert(!killed.Success(), "a killed child did not succeed");
+    Assert((sleeper.TryWait() catch { else => return 25 }) != none, "a finished child reports its status");
+    return 0;
+}

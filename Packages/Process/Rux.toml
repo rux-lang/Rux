@@ -17,9 +17,13 @@ Homepage = "https://rux-lang.dev/docs/api/process"
 ReadmeFile = "README.md"
 
 [Dependencies]
+Allocator = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
 FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }
+Io = { Namespace = "Rux", Version = "0.1.0" }
 Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }
 macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
+Memory = { Namespace = "Rux", Version = "0.1.0" }
 Path = { Namespace = "Rux", Version = "0.1.0" }
+Thread = { Namespace = "Rux", Version = "0.1.0" }
 Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }

@@ -1,0 +1,103 @@
+// Running a program to completion and keeping everything it wrote.
+// A child blocks once a pipe it writes to is full, so reading its output to the end and only then its error would
+// leave a child that fills its error pipe first waiting forever. The error is therefore read on a second thread while
+// this one reads the output, and both finish when the child closes its ends.
+
+import Allocator::Allocator;
+import Io::{ IoError, IoErrorKind, Reader };
+import Process::{ Buffer, Command, ExitStatus, PipeReader, Stdio };
+import Thread::Spawn;
+
+/// What a program wrote to its standard output and error, and how it finished.
+/// The bytes are kept as the program wrote them, which is usually but not always UTF-8. Not copied.
+/// @see https://rux-lang.dev/docs/api/process/capture#captured-output
+pub struct CapturedOutput {
+    status: ExitStatus;
+    output: Buffer<char8>;
+    error: Buffer<char8>;
+}
+
+extend CapturedOutput {
+    func =(self: &var CapturedOutput, other: &CapturedOutput);
+
+    /// How the program finished.
+    /// @returns its exit status
+    /// @see https://rux-lang.dev/docs/api/process/capture#status
+    pub func Status(self: &CapturedOutput) -> ExitStatus {
+        return self.status;
+    }
+
+    /// Everything the program wrote to its standard output.
+    /// @returns the bytes, valid while the captured output lives
+    /// @see https://rux-lang.dev/docs/api/process/capture#output
+    pub func Output(self: &CapturedOutput) -> char8[..] {
+        return self.output.View();
+    }
+
+    /// Everything the program wrote to its standard error.
+    /// @returns the bytes, valid while the captured output lives
+    /// @see https://rux-lang.dev/docs/api/process/capture#error
+    pub func Error(self: &CapturedOutput) -> char8[..] {
+        return self.error.View();
+    }
+}
+
+// What the second thread is given: the pipe to read and what to keep its bytes in.
+struct Drain {
+    reader: PipeReader;
+    allocator: Allocator;
+}
+
+// Reads a pipe to its end, and gives back its bytes, or none when reading failed.
+func DrainPipe(drain: Drain) -> Buffer<char8>? {
+    var source <- drain;
+    var bytes = Buffer<char8>(source.allocator);
+    let read = ReadAll(source.reader, bytes);
+    source.reader.Close();
+    if !read { return none; }
+    return <-bytes;
+}
+
+// Reads `reader` to its end into `bytes`, and says whether that worked.
+func ReadAll(reader: &var PipeReader, bytes: &var Buffer<char8>) -> bool {
+    var chunk: char8[4096] = ['\0'; 4096];
+    while true {
+        match reader.Read(chunk[..]) {
+            .Success(count) => {
+                bytes.PushAll(chunk[..count]) catch { else => return false };
+            },
+            .Failure(error) => {
+                return error.kind == IoErrorKind::EndOfStream;
+            }
+        }
+    }
+    return true;
+}
+
+extend Command {
+    /// Starts the program with its output and error piped, keeps everything it writes, and waits for it to finish.
+    /// Its input is what the command says, which is this process's own unless changed.
+    /// @param allocator what the captured bytes are kept in
+    /// @returns the output, the error and how the program finished
+    /// @see https://rux-lang.dev/docs/api/process/capture#capture
+    pub func Capture(self: &Command, allocator: Allocator) -> CapturedOutput ! IoError {
+        if self.failure != none { fail self.failure ?? IoError::Of(IoErrorKind::Other); }
+        var child = self.Launch(self.input, Stdio::Pipe, Stdio::Pipe)?;
+        var output = child.TakeOutput() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
+        let error = child.TakeError() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
+        var reader = Spawn(DrainPipe, Drain { reader: <-error, allocator: allocator })
+            catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        var outputBytes = Buffer<char8>(allocator);
+        let outputRead = ReadAll(output, outputBytes);
+        output.Close();
+        var drained = reader.Join();
+        let status = child.Wait()?;
+        if !outputRead { fail IoError::Of(IoErrorKind::Other); }
+        match <-drained {
+            .Some(errorBytes) => {
+                return CapturedOutput { status: status, output: <-outputBytes, error: <-errorBytes };
+            },
+            none => fail IoError::Of(IoErrorKind::Other)
+        }
+    }
+}
