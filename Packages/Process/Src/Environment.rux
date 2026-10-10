@@ -1,0 +1,154 @@
+// The environment the process was started with: `name=value` pairs, read as the system holds them.
+// Names and values are native text, so they are views of native units rather than `String`. A name is matched exactly
+// on the Unix systems and without regard to ASCII case on Windows, which is each system's own rule. The environment
+// is the one the process started with: this package does not change it, and a change made through another interface
+// after the first read is not seen here.
+
+import Core::{ #target, Iterator };
+import Path::{ OsStringView, OsUnit };
+
+/// One environment variable: its name and its value.
+/// `Copy`. Both views borrow storage the process owns for its whole life.
+/// @see https://rux-lang.dev/docs/api/process/environment#environment-variable
+pub struct EnvironmentVariable {
+    /// The name, the units before the first `=`.
+    pub name: OsStringView;
+    /// The value, every unit after the first `=`, which may itself contain `=` and may be empty.
+    pub value: OsStringView;
+}
+
+// Splits `name=value` at its first `=`. An entry with no `=` is all name with an empty value.
+func SplitEntry(entry: OsStringView) -> EnvironmentVariable {
+    let units = entry.Units();
+    var at: uint = 0;
+    while at < units.length && units[at] != (0x3D as OsUnit) {
+        at = at + 1;
+    }
+    let name = at == 0 ? OsStringView() : OsStringView::FromUnits(units[..at]);
+    let value = at + 1 >= units.length ? OsStringView() : OsStringView::FromUnits(units[at + 1..]);
+    return EnvironmentVariable { name: name, value: value };
+}
+
+/// A walk over the environment variables in the order the system holds them.
+/// `Copy`, holding only a position, so it allocates nothing.
+/// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator
+pub struct EnvironmentIterator {
+    next: uint;
+}
+
+/// Every environment variable the process was started with.
+/// Cannot fail and allocates nothing.
+/// @returns a walk over the environment
+/// @see https://rux-lang.dev/docs/api/process/environment#environment
+pub func Environment() -> EnvironmentIterator {
+    return EnvironmentIterator { next: 0 };
+}
+
+extend EnvironmentIterator {
+    /// The walk itself, so that `for variable in Environment()` reads every variable.
+    /// @returns a copy of this walk from its current position
+    /// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator-iterate
+    pub func Iterate(self: &EnvironmentIterator) -> EnvironmentIterator {
+        return EnvironmentIterator { next: self.next };
+    }
+}
+
+extend EnvironmentIterator : Iterator {
+    /// The next variable, or none after the last.
+    /// @returns the variable's name and value
+    /// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator-next
+    pub func Next(self: &var EnvironmentIterator) -> EnvironmentVariable? {
+        let entry = NativeEnvironmentEntry(self.next)?;
+        self.next = self.next + 1;
+        return SplitEntry(entry);
+    }
+}
+
+// The next Unicode scalar of UTF-8 `text` at `at`, advancing `at`, or none for a malformed sequence.
+func NextScalar(text: char8[..], at: *var uint) -> uint32? {
+    let first = text[*at] as uint8 as uint32;
+    var count: uint = 1;
+    var scalar = first;
+    if first >= 0xF0 {
+        count = 4;
+        scalar = first & 0x07;
+    }
+    else if first >= 0xE0 {
+        count = 3;
+        scalar = first & 0x0F;
+    }
+    else if first >= 0xC0 {
+        count = 2;
+        scalar = first & 0x1F;
+    }
+    else if first >= 0x80 {
+        return none;
+    }
+    if *at + count > text.length { return none; }
+    var index: uint = 1;
+    while index < count {
+        let next = text[*at + index] as uint8 as uint32;
+        if (next & 0xC0) != 0x80 { return none; }
+        scalar = (scalar << 6) | (next & 0x3F);
+        index = index + 1;
+    }
+    *at = *at + count;
+    return scalar;
+}
+
+// An ASCII letter in upper case, and every other unit as it is.
+func FoldAscii(unit: uint32) -> uint32 {
+    return unit >= 0x61 && unit <= 0x7A ? unit - 32 : unit;
+}
+
+// Whether a native name is `name`, under the system's rule for comparing names.
+func NameMatches(native: OsStringView, name: char8[..]) -> bool {
+    let units = native.Units();
+    when #target.os == .Windows {
+        // UTF-16 on one side and UTF-8 on the other, so the comparison goes scalar by scalar, through surrogate
+        // pairs where a scalar needs two units.
+        var unitAt: uint = 0;
+        var byteAt: uint = 0;
+        while byteAt < name.length {
+            let scalar = NextScalar(name, @byteAt) ?? 0xFFFFFFFF;
+            if scalar == 0xFFFFFFFF { return false; }
+            if scalar > 0xFFFF {
+                let offset = scalar - 0x10000;
+                if unitAt + 2 > units.length { return false; }
+                if units[unitAt] as uint32 != 0xD800 + (offset >> 10) { return false; }
+                if units[unitAt + 1] as uint32 != 0xDC00 + (offset & 0x3FF) { return false; }
+                unitAt = unitAt + 2;
+            }
+            else {
+                if unitAt >= units.length || FoldAscii(units[unitAt] as uint32) != FoldAscii(scalar) { return false; }
+                unitAt = unitAt + 1;
+            }
+        }
+        return unitAt == units.length;
+    }
+    else {
+        if units.length != name.length { return false; }
+        var index: uint = 0;
+        while index < name.length {
+            if units[index] != name[index] { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+}
+
+/// The value of the environment variable `name`, or none when it is not set.
+/// `name` is UTF-8 text. It is matched exactly on the Unix systems and without regard to ASCII case on Windows, which
+/// is how each system matches names. When a name appears twice, the first is the one returned, as the C library's
+/// `getenv` returns it. A variable set to the empty string is present, with an empty value. The view borrows storage
+/// the process owns for its whole life. Runs in time linear in the size of the environment and allocates nothing.
+/// @param name the variable's name
+/// @returns the variable's value, or none when no variable has that name
+/// @see https://rux-lang.dev/docs/api/process/environment#variable
+pub func Variable(name: char8[..]) -> OsStringView? {
+    if name.length == 0 { return none; }
+    for variable in Environment() {
+        if NameMatches(variable.name, name) { return variable.value; }
+    }
+    return none;
+}

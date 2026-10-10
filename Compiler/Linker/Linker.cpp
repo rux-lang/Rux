@@ -73,6 +73,50 @@ namespace {
 }
 } // namespace
 
+namespace {
+/// An object holding nothing but the word an ELF entry stub stores the kernel's initial stack pointer in. It is an
+/// ordinary data definition, so code that reads the word reaches it through the usual symbol resolution.
+[[nodiscard]] RcuFile StartFrameObject(const Target::Arch arch) {
+    RcuFile object;
+    object.arch = arch == Target::Arch::AArch64 ? RcuArch::AArch64 : RcuArch::X86_64;
+    object.sourcePath = "<process start frame>";
+    const auto section = [](std::string name, const std::uint32_t type, const std::uint32_t flags,
+                            const std::uint16_t alignment, std::size_t size) {
+        RcuSection result;
+        result.name = std::move(name);
+        result.type = type;
+        result.flags = flags;
+        result.alignment = alignment;
+        result.data.assign(size, 0);
+        return result;
+    };
+    object.sections.push_back(
+        section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read, 16, 0));
+    object.sections.push_back(section(".rodata", RcuSecType::RoData, RcuSecFlag::Alloc | RcuSecFlag::Read, 8, 0));
+    object.sections.push_back(
+        section(".data", RcuSecType::Data, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8, 8));
+    RcuSymbol frame;
+    frame.name = std::string(kProcessStartFrameSymbol);
+    frame.typeName = "*uint";
+    frame.value = 0;
+    frame.size = 8;
+    frame.sectionIdx = RCU_DATA_IDX;
+    frame.kind = RcuSymKind::Data;
+    frame.visibility = RcuSymVis::Global;
+    object.symbols.push_back(std::move(frame));
+    return object;
+}
+
+/// Whether any object refers to the start-frame word, which only a call to `Core::ProcessStartFrame` produces.
+[[nodiscard]] bool ReferencesStartFrame(const std::vector<RcuFile> &objects) {
+    return std::ranges::any_of(objects, [](const RcuFile &object) {
+        return std::ranges::any_of(object.symbols, [](const RcuSymbol &symbol) {
+            return symbol.sectionIdx == RCU_SEC_EXTERNAL && symbol.name == kProcessStartFrameSymbol;
+        });
+    });
+}
+} // namespace
+
 void Linker::Error(std::string msg, std::vector<std::string> notes) {
     errors.push_back(
         {std::format("cannot link {} {} '{}': {}", FormatName(targetOs), ArtifactName(artifactKind), packageName, msg),
@@ -153,6 +197,12 @@ bool Linker::Link(const std::filesystem::path &outputPath) {
     // missing executable entry) for an OS that has no complete image writer.
     if (targetOs == Target::OS::Unknown) {
         return LinkElf64(outputPath);
+    }
+    // An ELF executable that reads its start frame gets the word its entry stub keeps the initial stack pointer in.
+    // Only a program that refers to the word pays for it, so every other image is laid out exactly as before.
+    if (artifactKind == ArtifactKind::Executable &&
+        (targetOs == Target::OS::Linux || targetOs == Target::OS::FreeBSD) && ReferencesStartFrame(objects)) {
+        objects.push_back(StartFrameObject(targetArch));
     }
     if (!BuildGraph()) {
         return false;

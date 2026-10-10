@@ -2,6 +2,7 @@
 // compile-time values a call site can be handed.
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Object/Rcu/Rcu.h"
 
 #include <algorithm>
 #include <cassert>
@@ -450,6 +451,9 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         if (HirExprPtr checked = LowerCheckedArithmeticCall(calleeSymbol->intrinsicName, call)) {
             return checked;
         }
+        if (calleeSymbol->intrinsicName == "ProcessStartFrame") {
+            return LowerProcessStartFrame(call);
+        }
         if (calleeSymbol->intrinsicName == "Zeroize") {
             if (HirExprPtr cleared = LowerZeroizeCall(call)) {
                 return cleared;
@@ -509,4 +513,25 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
     }
     std::abort();
 }
+
+// The initial stack address is a word the ELF entry stub stores under a symbol the linker defines for every executable,
+// so the call is a load of that symbol. Elsewhere there is nothing to read: Windows and macOS supply the command line
+// through system calls, and a shared library is never started by the kernel.
+HirExprPtr AstToHirContext::LowerProcessStartFrame(const CallExpr &call) {
+    const TypeRef pointerType = TypeRef::MakePointer(TypeRef::MakeUInt());
+    const bool elf = context.target.os == Target::OS::Linux || context.target.os == Target::OS::FreeBSD;
+    if (elf && context.outputKind != OutputKind::SharedLibrary) {
+        auto frame = std::make_unique<HirVarExpr>();
+        frame->location = call.location;
+        frame->type = pointerType;
+        frame->name = std::string(kProcessStartFrameSymbol);
+        return frame;
+    }
+    auto null = std::make_unique<HirLiteralExpr>();
+    null->location = call.location;
+    null->type = pointerType;
+    null->value = "0";
+    return null;
+}
+
 } // namespace Rux::AstToHirDetail

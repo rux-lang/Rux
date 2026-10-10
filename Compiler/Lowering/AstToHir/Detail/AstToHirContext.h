@@ -326,6 +326,7 @@ private:
     [[nodiscard]] HirConst LowerConst(const ConstDecl &decl);
     [[nodiscard]] HirExternFunc LowerExternFunc(const ExternFuncDecl &decl);
     [[nodiscard]] HirGlobal LowerGlobal(const GlobalDecl &decl);
+    [[nodiscard]] HirExprPtr LowerProcessStartFrame(const CallExpr &call);
     [[nodiscard]] HirExternVar LowerExternVar(const ExternVarDecl &decl);
     [[nodiscard]] HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl);
     [[nodiscard]] HirExprPtr LowerExpr(const Expr &expression);

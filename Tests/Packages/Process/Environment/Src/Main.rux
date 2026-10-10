@@ -1,0 +1,38 @@
+// Every process the test runner starts has a search path in its environment, so `PATH` is a variable this test can
+// rely on. The rest is consistency: every variable the walk finds has a name, the first variable of each name is the
+// one `Variable` answers with, an empty or absent name is not found, and Windows matches names without regard to case.
+
+import Core::#target;
+import Path::OsStringView;
+import Process::{ Environment, Variable };
+
+func Main() -> int {
+    let path = Variable("PATH") ?? OsStringView();
+    if path.IsEmpty() { return 1; }
+    when #target.os == .Windows {
+        let lower = Variable("path") ?? OsStringView();
+        if !lower.Equals(path) { return 2; }
+    }
+
+    var count: uint = 0;
+    for variable in Environment() {
+        if variable.name.IsEmpty() { return 3; }
+        count = count + 1;
+    }
+    if count == 0 { return 4; }
+
+    match Variable("") {
+        .Some(_) => return 5,
+        none => {}
+    }
+    match Variable("RUX_SURELY_NOT_A_VARIABLE_8F3A") {
+        .Some(_) => return 6,
+        none => {}
+    }
+    // A name that is a prefix of a real name is a different name.
+    match Variable("PAT") {
+        .Some(_) => return 7,
+        none => {}
+    }
+    return 0;
+}

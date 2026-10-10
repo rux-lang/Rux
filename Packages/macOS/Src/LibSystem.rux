@@ -169,6 +169,30 @@ extern {
     // https://keith.github.io/xcode-man-pages/arc4random.3.html
     func arc4random_buf(buffer: *var opaque, length: uint);
 
+    /// The address of the process's argument count.
+    /// dyld fills it before the program starts, from the stack the kernel built. The count belongs to the process for
+    /// its whole life and must not be written.
+    /// @returns the address of the argument count, which is never null
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-argc
+    /// @see https://keith.github.io/xcode-man-pages/environ.7.html
+    pub func _NSGetArgc() -> *int32;
+
+    /// The address of the process's argument vector.
+    /// The vector holds the argument count's worth of NUL-terminated byte strings followed by a null, all owned by the
+    /// process for its whole life.
+    /// @returns the address of the argument vector, which is never null
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-argv
+    /// @see https://keith.github.io/xcode-man-pages/environ.7.html
+    pub func _NSGetArgv() -> ***char8;
+
+    /// The address of the process's environment vector.
+    /// The vector holds NUL-terminated `name=value` byte strings ended by a null. It is the C library's own `environ`,
+    /// so a call that changes the environment may replace the vector it points to.
+    /// @returns the address of the environment vector, which is never null
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-environ
+    /// @see https://keith.github.io/xcode-man-pages/environ.7.html
+    pub func _NSGetEnviron() -> ***char8;
+
     /// Loads a shared object and returns a handle to it, or null on failure.
     /// A name without a slash is resolved by the loader's own search rules, and one with a slash as a path. A second
     /// call for an object already loaded returns the same handle and raises its reference count rather than loading

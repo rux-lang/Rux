@@ -1,0 +1,11 @@
+// `Exit` ends the process with the status it is given, so a program that exits with zero before reaching its failing
+// return passes, and one whose `Exit` returned would fail with the code after it.
+
+import Process::{ CurrentId, Exit };
+
+func Main() -> int {
+    if CurrentId() == 0 { return 1; }
+    if CurrentId() != CurrentId() { return 2; }
+    Exit(0);
+    return 3;
+}

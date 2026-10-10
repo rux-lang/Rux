@@ -164,6 +164,10 @@ constexpr uint16_t AArch64Prel64 = 28;
     }
 }
 
+/// The word an ELF executable's entry stub stores the kernel's initial stack address in. The linker defines it for
+/// every ELF executable, and `Core::ProcessStartFrame` reads it.
+constexpr std::string_view kProcessStartFrameSymbol = "__rux_start_frame";
+
 constexpr uint16_t RCU_SEC_EXTERNAL = 0xFFFF;
 constexpr uint16_t RCU_SEC_ABSOLUTE = 0xFFFE;
 

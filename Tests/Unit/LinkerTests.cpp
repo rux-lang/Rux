@@ -590,6 +590,111 @@ TEST_CASE("ELF linker writes an AArch64 executable that exits through its entry 
     CHECK(image.Word(entry + 28) == 0xD65F03C0);
 }
 
+namespace {
+// The address an ADRP at `site` and the scaled twelve-bit offset of the 64-bit load or store after it reach together.
+uint64_t AArch64PageOffsetTarget(const ElfImage &image, const uint64_t site) {
+    const uint32_t adrp = image.Word(site);
+    const uint64_t immediate = ((adrp >> 29U) & 3U) | (static_cast<uint64_t>((adrp >> 5U) & 0x7FFFFU) << 2U);
+    const int64_t pages = static_cast<int64_t>(immediate << 43U) >> 43;
+    const uint64_t page = (site & ~uint64_t{0xFFF}) + static_cast<uint64_t>(pages * 4096);
+    const uint32_t access = image.Word(site + 4);
+    return page + ((access >> 10U) & 0xFFFU) * 8;
+}
+
+// An object whose Main reads the process start frame, as a call to `Core::ProcessStartFrame` compiles to.
+RcuFile MakeStartFrameReader(const uint8_t arch) {
+    RcuFile object;
+    object.arch = arch;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 4;
+    if (arch == RcuArch::AArch64) {
+        AppendWord(text.data, 0x90000000); // adrp x0, frame
+        AppendWord(text.data, 0xF9400000); // ldr x0, [x0, :lo12:frame]
+        AppendWord(text.data, 0xD65F03C0); // ret
+        text.relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});
+        text.relocs.push_back({4, 1, RcuRelType::AArch64LdstAbsLo12Nc, 0});
+    }
+    else {
+        text.data = {0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, // mov rax, [rip+frame]
+                     0xC3};                                    // ret
+        text.relocs.push_back({3, 1, RcuRelType::Rel32, 0});
+    }
+    const auto size = static_cast<uint32_t>(text.data.size());
+    object.sections.push_back(std::move(text));
+    object.symbols.push_back({"Main", "int", 0, size, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    object.symbols.push_back(
+        {std::string(kProcessStartFrameSymbol), "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+    return object;
+}
+} // namespace
+
+TEST_CASE("an AArch64 ELF entry stub keeps the initial stack pointer for a program that reads it") {
+    const ElfImage image = LinkAArch64Executable(MakeStartFrameReader(RcuArch::AArch64),
+                                                 std::filesystem::temp_directory_path() / "rux-elf-aarch64-frame-test");
+    const uint64_t entry = image.Entry();
+    // mov x9, sp / adrp x10, frame / str x9, [x10, :lo12:frame], before the stack is aligned.
+    CHECK(image.Word(entry) == 0x910003E9);
+    CHECK((image.Word(entry + 4) & 0x9F00001FU) == 0x9000000AU);
+    CHECK((image.Word(entry + 8) & 0xFFC003FFU) == 0xF9000149U);
+    CHECK(image.Word(entry + 12) == 0x927CED29);
+    CHECK(image.Word(entry + 16) == 0x9100013F);
+    // The stub stores to the same word Main loads from, and that word is writable data.
+    const uint32_t branch = image.Word(entry + 20);
+    REQUIRE((branch & 0xFC000000U) == 0x94000000U);
+    const uint64_t main = entry + 20 + 4 * (branch & 0x03FFFFFFU);
+    const uint64_t stored = AArch64PageOffsetTarget(image, entry + 4);
+    CHECK(stored == AArch64PageOffsetTarget(image, main));
+    CHECK(stored % 8 == 0);
+    CHECK(image.Giant(stored) == 0);
+}
+
+TEST_CASE("an x86-64 ELF entry stub keeps the initial stack pointer for a program that reads it") {
+    const auto output = std::filesystem::temp_directory_path() / "rux-elf-x86-frame-test";
+    std::error_code ec;
+    std::filesystem::remove(output, ec);
+    Linker linker({MakeStartFrameReader(RcuArch::X86_64)}, "LinkerTest", {}, ArtifactKind::Executable,
+                  Target::OS::Linux, Target::Arch::X86_64);
+    REQUIRE(linker.Link(output));
+    std::ifstream stream(output, std::ios::binary);
+    REQUIRE(stream.is_open());
+    const ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+    stream.close();
+    std::filesystem::remove(output, ec);
+
+    const uint64_t entry = image.Entry();
+    // mov [rip+frame], rsp, then and rsp, -16 and call Main.
+    CHECK((image.Word(entry) & 0xFFFFFFU) == 0x258948U);
+    const auto storeDisplacement = static_cast<int32_t>(image.Word(entry + 3));
+    const uint64_t stored = entry + 7 + static_cast<uint64_t>(static_cast<int64_t>(storeDisplacement));
+    CHECK(image.Word(entry + 7) == 0xF0E48348U);
+    CHECK((image.Word(entry + 11) & 0xFFU) == 0xE8U);
+    const auto callDisplacement = static_cast<int32_t>(image.Word(entry + 12));
+    const uint64_t main = entry + 16 + static_cast<uint64_t>(static_cast<int64_t>(callDisplacement));
+    const auto loadDisplacement = static_cast<int32_t>(image.Word(main + 3));
+    CHECK(stored == main + 7 + static_cast<uint64_t>(static_cast<int64_t>(loadDisplacement)));
+    CHECK(stored % 8 == 0);
+}
+
+TEST_CASE("an ELF executable that never reads its start frame keeps the plain entry stub") {
+    RcuFile object;
+    object.arch = RcuArch::AArch64;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 4;
+    AppendWord(text.data, 0xD2800540); // mov x0, #42
+    AppendWord(text.data, 0xD65F03C0); // ret
+    object.sections.push_back(std::move(text));
+    object.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    const ElfImage image = LinkAArch64Executable(std::move(object), std::filesystem::temp_directory_path() /
+                                                                        "rux-elf-aarch64-no-frame-test");
+    CHECK(image.Word(image.Entry() + 4) == 0x927CED29);
+}
+
 TEST_CASE("ELF linker patches AArch64 relocations into instruction fields") {
     RcuFile object;
     object.arch = RcuArch::AArch64;

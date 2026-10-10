@@ -1,0 +1,49 @@
+// The test runner starts this program with no arguments of its own, so what can be checked here is the shape: the
+// program's own name is argument zero, the count agrees with every way of walking the arguments, and asking past the
+// end answers none. The values of real arguments are checked by starting a program with some.
+
+import Path::OsStringView;
+import Process::{ Argument, ArgumentCount, Arguments };
+
+func Main() -> int {
+    let count = ArgumentCount();
+    if count < 1 { return 1; }
+    let program = Argument(0) ?? OsStringView();
+    if program.IsEmpty() { return 2; }
+    match Argument(count) {
+        .Some(_) => return 3,
+        none => {}
+    }
+
+    var walked: uint = 0;
+    for argument in Arguments() {
+        let same = Argument(walked) ?? OsStringView();
+        if !argument.Equals(same) { return 4; }
+        walked = walked + 1;
+    }
+    if walked != count { return 5; }
+
+    var skipped: uint = 0;
+    var rest = Arguments();
+    for argument in rest.Skip(1) {
+        if argument.Equals(program) && count == 1 { return 6; }
+        skipped = skipped + 1;
+    }
+    if skipped != count - 1 { return 7; }
+
+    // The program's name names this test's executable.
+    let units = program.Units();
+    var found = false;
+    let name = "Arguments";
+    var start: uint = 0;
+    while start + name.length <= units.length && !found {
+        var index: uint = 0;
+        while index < name.length && units[start + index] as uint32 == name[index] as uint8 as uint32 {
+            index = index + 1;
+        }
+        found = index == name.length;
+        start = start + 1;
+    }
+    if !found { return 8; }
+    return 0;
+}

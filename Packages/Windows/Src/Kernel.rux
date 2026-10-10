@@ -152,6 +152,14 @@ pub extern {
     /// @see https://learn.microsoft.com/en-us/windows/console/getconsolemode
     func GetConsoleMode(consoleHandle: *opaque, mode: *uint32) -> bool32;
 
+    /// Retrieves the command line the process was started with, as one string.
+    /// The string belongs to the process for its whole life and must not be written or freed. It is the command line
+    /// exactly as the parent passed it, quotes and all; `CommandLineToArgvW` splits it into arguments.
+    /// @returns the NUL-terminated UTF-16 command line, which is never null
+    /// @see https://rux-lang.dev/docs/api/windows/process#get-command-line-w
+    /// @see https://learn.microsoft.com/windows/win32/api/processenv/nf-processenv-getcommandlinew
+    func GetCommandLineW() -> *uint16;
+
     /// Retrieves the current directory.
     /// @param bufferLength how many units `buffer` holds
     /// @param buffer the bytes
@@ -159,6 +167,15 @@ pub extern {
     /// @see https://rux-lang.dev/docs/api/windows/file-system#get-current-directory-a
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
     func GetCurrentDirectoryA(bufferLength: uint32, buffer: *char8) -> uint32;
+
+    /// Copies the calling process's environment block.
+    /// The block is a sequence of NUL-terminated `name=value` UTF-16 strings ended by an empty one. It is a copy owned
+    /// by the caller, released with `FreeEnvironmentStringsW`; changes made to the environment after the call do not
+    /// appear in it.
+    /// @returns the environment block, or null on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process#get-environment-strings-w
+    /// @see https://learn.microsoft.com/windows/win32/api/processenv/nf-processenv-getenvironmentstringsw
+    func GetEnvironmentStringsW() -> *uint16;
 
     /// Retrieves the process identifier of the calling process.
     /// @returns the calling process's identifier

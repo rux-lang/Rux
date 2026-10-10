@@ -170,8 +170,9 @@ struct IntrinsicFunction {
     std::string_view signature;
 };
 
-constexpr std::array<IntrinsicFunction, 13> kIntrinsicFunctions{{
+constexpr std::array<IntrinsicFunction, 14> kIntrinsicFunctions{{
     {"CheckedAdd", false, {}, 0, {}},
+    {"ProcessStartFrame", false, {}, 0, {}},
     {"CheckedSub", false, {}, 0, {}},
     {"CheckedMul", false, {}, 0, {}},
     {"Zeroize", false, {}, 0, {}},

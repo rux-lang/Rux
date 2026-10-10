@@ -19,6 +19,7 @@ rux add Rux/Windows
 | `Memory`    | `VirtualAlloc`, `VirtualFree`, `VirtualProtect`, `VirtualLock`, and the state and protection flags |
 | `Entropy`   | `BCryptGenRandom` behind a `GetRandom` that either fills the buffer or fails            |
 | `Clock`     | `QueryPerformanceCounter`, `QueryPerformanceFrequency`, the precise wall clock, and the epoch conversion |
+| `Shell`     | `CommandLineToArgvW`, which splits the command line into arguments the way the C runtime does |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

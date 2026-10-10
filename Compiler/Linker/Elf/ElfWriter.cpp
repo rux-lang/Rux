@@ -29,10 +29,12 @@ namespace Rux {
 
 // The machine code of an AArch64 entry stub. Written as words rather than
 // assembled, because the linker owns no code generator: the sequence is
-// mov x9, sp / and x9, x9, #-16 / mov sp, x9 / bl Main, closed by either
-// mov x8, #nr / svc #0 or bl exit / brk #0.
+// mov x9, sp / adrp x10, frame / str x9, [x10, :lo12:frame] / and x9, x9, #-16 /
+// mov sp, x9 / bl Main, closed by either mov x8, #nr / svc #0 or bl exit / brk #0.
 namespace A64Entry {
 constexpr uint32_t MovX9Sp = 0x910003E9;
+constexpr uint32_t AdrpX10 = 0x9000000A;
+constexpr uint32_t StrX9X10 = 0xF9000149;
 constexpr uint32_t AndX9Neg16 = 0x927CED29;
 constexpr uint32_t MovSpX9 = 0x9100013F;
 constexpr uint32_t Bl = 0x94000000;
@@ -195,9 +197,16 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     //    from, so the value never moves. Both offsets below name the call
     //    instruction itself rather than a field inside it, since an AArch64
     //    relocation rewrites a whole word.
+    //    Before anything else, a program that reads its start frame keeps the
+    //    stack pointer the kernel started it with, which addresses the
+    //    argument count, the argument and environment pointers and the
+    //    auxiliary vector, in the word the linker defines for
+    //    `Core::ProcessStartFrame` to read.
+    const bool keepsStartFrame = !isShared && graph->FindDefinition(kProcessStartFrameSymbol).has_value();
     Buf textPre;
     size_t callMainOffset = 0;
     size_t callExitOffset = 0;
+    size_t storeFrameOffset = 0;
     if (!isShared) {
         if (aarch64) {
             // The kernel enters a fresh process with SP already 16-byte
@@ -206,6 +215,11 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             // stub establishes the invariant rather than inheriting it. AND
             // cannot read SP, hence the round trip through X9.
             WriteU32(textPre, A64Entry::MovX9Sp);
+            if (keepsStartFrame) {
+                storeFrameOffset = textPre.size();
+                WriteU32(textPre, A64Entry::AdrpX10);  // adrp x10, frame
+                WriteU32(textPre, A64Entry::StrX9X10); // str x9, [x10, :lo12:frame]
+            }
             WriteU32(textPre, A64Entry::AndX9Neg16);
             WriteU32(textPre, A64Entry::MovSpX9);
             callMainOffset = textPre.size();
@@ -221,6 +235,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
         }
         else {
+            if (keepsStartFrame) {
+                storeFrameOffset = textPre.size();
+                textPre.insert(textPre.end(), {0x48, 0x89, 0x25, 0x00, 0x00, 0x00, 0x00}); // mov [rip+frame], rsp
+            }
             textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
             callMainOffset = textPre.size();
             textPre.insert(textPre.end(), {0xE8, 0x00, 0x00, 0x00, 0x00}); // call Main
@@ -307,6 +325,33 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                                    const RcuSectionBases &bases) -> std::optional<uint64_t> {
         const auto placement = layout.Symbol(location);
         return placement ? RcuObjectLayout::Address(*placement, bases) : std::nullopt;
+    };
+
+    // Points the stub's store of the initial stack pointer at the start-frame
+    // word: a RIP-relative displacement on x86-64, and an ADRP page with a
+    // scaled low-twelve offset on AArch64.
+    const auto patchStartFrameStore = [&](const uint64_t textVA, const RcuSectionBases &bases) {
+        const auto frame = graph->FindDefinition(kProcessStartFrameSymbol);
+        const auto frameVA = frame ? symbolAddress(*frame, bases) : std::nullopt;
+        if (!frameVA) {
+            Error("internal: the process start frame word was not placed");
+            return false;
+        }
+        const uint64_t siteVA = textVA + storeFrameOffset;
+        if (!aarch64) {
+            Patch32(textBuf, storeFrameOffset + 3, static_cast<uint32_t>(*frameVA - (siteVA + 7)));
+            return true;
+        }
+        const std::string name(kProcessStartFrameSymbol);
+        std::string error;
+        if (!ApplyAArch64Relocation(textBuf, storeFrameOffset, RcuRelType::AArch64AdrPrelPgHi21, *frameVA, 0, siteVA,
+                                    name, "ELF writer", error) ||
+            !ApplyAArch64Relocation(textBuf, storeFrameOffset + 4, RcuRelType::AArch64LdstAbsLo12Nc, *frameVA, 0,
+                                    siteVA + 4, name, "ELF writer", error)) {
+            Error(std::move(error));
+            return false;
+        }
+        return true;
     };
 
     // Apply graph references to their typed merged-section placements.
@@ -543,6 +588,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             return false;
         }
         if (!patchEntryCall(callMainOffset, textVA, *entryAddress, "Main")) {
+            return false;
+        }
+        if (keepsStartFrame && !patchStartFrameStore(textVA, sectionBases)) {
             return false;
         }
 
@@ -963,6 +1011,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             return false;
         }
         if (!patchEntryCall(callMainOffset, textVA, *entryAddress, "Main")) {
+            return false;
+        }
+        if (keepsStartFrame && !patchStartFrameStore(textVA, sectionBases)) {
             return false;
         }
 

@@ -1,6 +1,7 @@
 // Scalar, lvalue, and call expression lowering.
 
 #include "Lowering/HirToLir/HirToLirContext.h"
+#include "Object/Rcu/Rcu.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
@@ -112,6 +113,10 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         if (const auto it = globalVars.find(e->name); it != globalVars.end()) {
             return EmitLoad(EmitGlobalAddr(it->second->name, it->second->type), e->type);
+        }
+        // The word the entry stub fills, which the linker defines rather than any module.
+        if (e->name == kProcessStartFrameSymbol) {
+            return EmitLoad(EmitGlobalAddr(e->name, e->type), e->type);
         }
         auto it = locals.find(e->name);
         if (it != locals.end()) {

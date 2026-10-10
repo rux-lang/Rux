@@ -15,7 +15,7 @@ rux add Rux/macOS
 | ----------- | ------------------------------------------------------------------------------------- |
 | `Types`     | the Darwin ABI's own types: `ProcessId`, `FileDescriptor`, `FileMode`, `UserId`, `Timespec`, `Timeval` |
 | `Errors`    | the errno numbers, `CurrentErrno`, and the `Normalize` / `IsError` / `Errno` fold      |
-| `LibSystem` | every libSystem entry point this package binds, under the symbol it exports            |
+| `LibSystem` | every libSystem entry point this package binds, under the symbol it exports, including `_NSGetArgc`, `_NSGetArgv` and `_NSGetEnviron` |
 | `File`      | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Dup2`, `Pipe`, the open flags, and the three standard descriptors |
 | `Memory`    | `Mmap`, `Munmap`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags |
 | `Clock`     | `ClockGetTime`, `ClockGetResolution`, `GetTimeOfDay`, `Nanosleep`, and the clock identifiers |

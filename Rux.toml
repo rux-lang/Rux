@@ -24,6 +24,7 @@ Packages = [
     "Packages/Memory",
     "Packages/NanoId",
     "Packages/Path",
+    "Packages/Process",
     "Packages/Random",
     "Packages/Text",
     "Packages/Time",
