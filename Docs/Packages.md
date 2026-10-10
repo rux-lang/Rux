@@ -28,7 +28,7 @@ The v0.1.0 release ships **39 packages**. This table is the target catalog: it i
 | `Io`          | Stream contracts, buffering and console I/O                          | Core, Memory, Allocator, Text, Format, OS                |
 | `Json`        | JSON grammar, values and serialization                               | Core, Allocator, Collections, Text, Format, Io           |
 | `Linux`       | Linux ABI declarations and thin binding helpers                      | Core                                                     |
-| `Log`         | Leveled, structured records in text or JSON lines, and the process-wide log | Core, Allocator, Format, Io, Sync, Text, Time    |
+| `Log`         | Leveled, structured records in text or JSON lines, the process-wide log, and rotating files | Core, Allocator, Format, Io, Sync, Text, Time, Path, FileSystem |
 | `macOS`       | Darwin/libSystem ABI declarations and thin binding helpers           | Core                                                     |
 | `Math`        | Mathematical operations and numerical classification                 | Core                                                     |
 | `Memory`      | Untyped blocks, page mappings and byte-level operations              | Core, OS                                                 |
@@ -57,9 +57,9 @@ The v0.1.0 release ships **39 packages**. This table is the target catalog: it i
 Arrows point toward dependencies. This is a dependency ordering, not a requirement that every package depend on every lower layer.
 
 ```text
-Layer 8  CommandLine, TimeZone, Test
+Layer 8  CommandLine, TimeZone, Test, Log
              |
-Layer 7  FileSystem, Json, Toml, Process, Compress, Net, Log, Encoding
+Layer 7  FileSystem, Json, Toml, Process, Compress, Net, Encoding
              |
 Layer 6  Io, Uuid, Sync, Regex
              |

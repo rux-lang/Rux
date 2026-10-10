@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Rotation"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Log: a rotating log file moves itself aside before a record would take it past its limit, keeps the configured number of older files, and never splits a record."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+FileSystem = { Path = "../../../../Packages/FileSystem" }
+Io = { Path = "../../../../Packages/Io" }
+Log = { Path = "../../../../Packages/Log" }
+Path = { Path = "../../../../Packages/Path" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Log"

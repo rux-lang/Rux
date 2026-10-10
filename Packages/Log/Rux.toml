@@ -7,7 +7,7 @@ Namespace = "Rux"
 Name = "Log"
 Version = "0.1.0"
 Type = "SourceLibrary"
-Description = "Structured logging: levels, typed fields, text and JSON-lines records, and a process-wide log for every thread"
+Description = "Structured logging: levels, typed fields, text and JSON-lines records, a process-wide log for every thread, and log files that rotate by size"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
 Keywords = ["Log", "Logging", "Structured", "Json", "Diagnostics"]
 License = "MIT"
@@ -19,8 +19,10 @@ ReadmeFile = "README.md"
 [Dependencies]
 Allocator = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
+FileSystem = { Namespace = "Rux", Version = "0.1.0" }
 Format = { Namespace = "Rux", Version = "0.1.0" }
 Io = { Namespace = "Rux", Version = "0.1.0" }
+Path = { Namespace = "Rux", Version = "0.1.0" }
 Sync = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }
 Time = { Namespace = "Rux", Version = "0.1.0" }

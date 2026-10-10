@@ -1,0 +1,190 @@
+// A log file that is moved aside for a fresh one before it grows past a size, keeping a few of the older files.
+// The file is a `Writer`, so a `Logger` writes to it like any other destination; `RotatingFile::Stream` is the
+// stored form a `Logger` keeps, as `File::Stream` is for a plain file.
+
+import Allocator::Allocator;
+import FileSystem::{ File, OpenOptions, Rename };
+import Io::{ IoError, IoErrorKind, Writer };
+import Path::{ OsStringView, OsUnit, Path, PathBuffer };
+
+// The longest path a rotated name is built in: the file's own path, a dot, and the twenty digits of a `uint64`.
+const MaxRotatedUnits: uint = 4096;
+const MaxSuffixUnits: uint = 21;
+
+/// A log file that starts afresh before a write would take it past a size.
+/// The current file keeps the path it was opened at. Moving it aside renames it to `path.1`, after renaming an
+/// older `path.1` to `path.2` and so on up to `path.<keep>`, whose previous contents are replaced; with `keep` zero
+/// the current file is emptied instead. The file is moved aside only before a write, never during one, and a
+/// `Logger` hands each record over in one write, so a record never spans two files: one larger than the limit goes
+/// whole into a file of its own.
+/// Move-only: the file closes exactly once, through `Close` or the destructor.
+/// @see https://rux-lang.dev/docs/api/log/rotating-file
+pub struct RotatingFile {
+    /// The current file, open for appending.
+    file: File;
+    /// Where the current file lives; the older files share it with a numbered suffix.
+    path: PathBuffer;
+    /// The size a write may not take the current file past.
+    limit: uint64;
+    /// How many older files are kept.
+    keep: uint;
+    /// How many bytes the current file holds.
+    size: uint64;
+    /// Where the path storage came from, and where reopening the file asks for its own.
+    allocator: Allocator;
+}
+
+extend RotatingFile {
+    /// The owned file cannot be duplicated.
+    func =(self: &var RotatingFile, other: &RotatingFile);
+
+    /// Opens `path` for appending, creating it if missing, to be moved aside before it grows past `limit` bytes.
+    /// @param allocator where the storage comes from
+    /// @param path the current log file's path
+    /// @param limit the size in bytes a write may not take the current file past; at least one
+    /// @param keep how many older files to keep, as `path.1` to `path.<keep>`
+    /// @returns the open file, or why it could not be opened; `InvalidInput` for a zero limit or an overlong path
+    /// @see https://rux-lang.dev/docs/api/log/rotating-file#open
+    pub func Open(allocator: Allocator, path: Path, limit: uint64, keep: uint) -> RotatingFile ! IoError {
+        if limit == 0 || path.Length() + MaxSuffixUnits > MaxRotatedUnits {
+            fail IoError::Of(IoErrorKind::InvalidInput);
+        }
+        var owned = PathBuffer::FromPath(allocator, path) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        var file = File::Open(allocator, owned.AsPath(), OpenOptions::Appending())?;
+        let size = file.Size()?;
+        return RotatingFile { file: <-file, path: <-owned, limit: limit, keep: keep, size: size, allocator: allocator };
+    }
+
+    /// How many bytes the current file holds.
+    /// @returns its size, counting what this value wrote
+    /// @see https://rux-lang.dev/docs/api/log/rotating-file#size
+    pub func Size(self: &RotatingFile) -> uint64 {
+        return self.size;
+    }
+
+    /// Moves the current file aside now and starts an empty one, whatever its size.
+    /// The file is closed first, because Windows renames no open file. A failure leaves the current file closed,
+    /// and every later write fails with `InvalidHandle` until a rotation succeeds.
+    /// @returns success when an empty current file is open
+    /// @see https://rux-lang.dev/docs/api/log/rotating-file#rotate
+    pub func Rotate(self: &var RotatingFile) -> ! IoError {
+        self.file.Close()?;
+        var index = self.keep;
+        while index > 1 {
+            MoveAside(self.allocator, self.path.AsPath(), index - 1, index)?;
+            index = index - 1;
+        }
+        if self.keep > 0 {
+            MoveAside(self.allocator, self.path.AsPath(), 0, 1)?;
+        }
+        var reopened = File::Open(self.allocator, self.path.AsPath(), OpenOptions::Writing())?;
+        self.file <- reopened;
+        self.size = 0;
+    }
+
+    /// Closes the current file, reporting what closing it said.
+    /// @returns success when the file is closed
+    /// @see https://rux-lang.dev/docs/api/log/rotating-file#close
+    pub func Close(self: &var RotatingFile) -> ! IoError {
+        return self.file.Close();
+    }
+
+    /// A stored borrow of this file for a `Logger`, which keeps its destination.
+    /// The file must outlive the stream and must not be moved while one exists; nothing tracks either.
+    /// @returns a stream writing through this file
+    /// @see https://rux-lang.dev/docs/api/log/rotating-file#stream
+    pub func Stream(self: *var RotatingFile) -> RotatingStream {
+        return RotatingStream { target: self };
+    }
+}
+
+extend RotatingFile : Writer {
+    /// Writes `bytes`, moving the current file aside first when they would take it past the limit.
+    /// An empty current file is never moved aside, so a write larger than the limit lands whole in a fresh file.
+    /// @param bytes the bytes to write
+    /// @returns how many bytes were taken
+    /// @see https://rux-lang.dev/docs/api/log/rotating-file#write
+    pub func Write(self: &var RotatingFile, bytes: char8[..]) -> uint ! IoError {
+        if self.size > 0 && self.size + (bytes.length as uint64) > self.limit {
+            self.Rotate()?;
+        }
+        let written = self.file.Write(bytes)?;
+        self.size = self.size + (written as uint64);
+        return written;
+    }
+
+    /// Flushes the current file, which holds nothing back.
+    /// @returns success when everything written reached the system
+    /// @see https://rux-lang.dev/docs/api/log/rotating-file#flush
+    pub func Flush(self: &var RotatingFile) -> ! IoError {
+        return self.file.Flush();
+    }
+}
+
+/// A stored borrow of a `RotatingFile` that speaks `Writer`, for a `Logger` to keep.
+/// The address is private, and `RotatingFile::Stream` is the only way to obtain one.
+/// @see https://rux-lang.dev/docs/api/log/rotating-stream
+pub struct RotatingStream {
+    /// The file being borrowed.
+    target: *var RotatingFile;
+}
+
+extend RotatingStream : Writer {
+    /// Writes through the borrowed file, which may move its current file aside first.
+    /// @param bytes the bytes to write
+    /// @returns how many bytes were taken
+    /// @see https://rux-lang.dev/docs/api/log/rotating-stream#write
+    pub func Write(self: &var RotatingStream, bytes: char8[..]) -> uint ! IoError {
+        return (*self.target).Write(bytes);
+    }
+
+    /// Flushes the borrowed file.
+    /// @returns success when everything written reached the system
+    /// @see https://rux-lang.dev/docs/api/log/rotating-stream#flush
+    pub func Flush(self: &var RotatingStream) -> ! IoError {
+        return (*self.target).Flush();
+    }
+}
+
+// Renames the file numbered `from` to the number `to`, where number zero is the current file. A missing file is
+// fine: fewer files have been moved aside yet than are kept.
+func MoveAside(allocator: Allocator, base: Path, from: uint, to: uint) -> ! IoError {
+    var fromUnits: OsUnit[MaxRotatedUnits];
+    var toUnits: OsUnit[MaxRotatedUnits];
+    let source = NumberedPath(base, from, fromUnits[..]);
+    let target = NumberedPath(base, to, toUnits[..]);
+    match Rename(allocator, source, target) {
+        .Success(_) => {},
+        .Failure(error) => {
+            if error.kind != IoErrorKind::NotFound { fail error; }
+        }
+    }
+}
+
+// `base` itself for number zero, and `base` followed by a dot and the number otherwise, built in `units`.
+func NumberedPath(base: Path, number: uint, units: var OsUnit[..]) -> Path {
+    let source = base.AsView().Units();
+    var length: uint = 0;
+    while length < source.length {
+        units[length] = source[length];
+        length = length + 1;
+    }
+    if number != 0 {
+        units[length] = c8'.' as OsUnit;
+        length = length + 1;
+        var digits: uint8[20];
+        var count: uint = 0;
+        var rest = number;
+        while rest != 0 {
+            digits[count] = (rest % 10) as uint8;
+            rest = rest / 10;
+            count = count + 1;
+        }
+        while count > 0 {
+            count = count - 1;
+            units[length] = (48u8 + digits[count]) as OsUnit;
+            length = length + 1;
+        }
+    }
+    return Path::FromView(OsStringView::FromUnits(units[..length]));
+}
