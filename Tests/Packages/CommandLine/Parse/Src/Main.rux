@@ -1,0 +1,249 @@
+// Parsing is checked against the conventions a person typing a command relies on: long and short forms, a value
+// after `=`, as the next argument or glued to a short letter, clusters of short flags, `--` ending options, `-` as an
+// ordinary argument, the last value of a repeated option winning, and subcommands owning everything after their name.
+// Every mismatch is checked for the case it reports, and asking for help or the version is checked to succeed even
+// when required arguments are missing.
+
+import CommandLine::{ Command, CommandLineError, CommandSpec, Flag, OptionSpec, Optional, Parse, Parsed,
+                      PositionalSpec, Remaining, Required, ValueOption };
+import Core::Panic;
+import Path::{ OsStringView, OsUnit };
+
+// Arguments built from ASCII text into native units, so the same test reads the same on every system.
+struct Line {
+    units: OsUnit[512];
+    views: OsStringView[16];
+    used: uint;
+    count: uint;
+}
+
+func NewLine() -> Line {
+    return Line { units: [0 as OsUnit; 512], views: [OsStringView(); 16], used: 0, count: 0 };
+}
+
+extend Line {
+    func Add(self: &var Line, text: char8[..]) {
+        let start = self.used;
+        for byte in text {
+            self.units[self.used] = byte as uint8 as OsUnit;
+            self.used = self.used + 1;
+        }
+        self.views[self.count] = start == self.used ? OsStringView() : OsStringView::FromUnits(self.units[start..self.used]);
+        self.count = self.count + 1;
+    }
+
+    func Arguments(self: &Line) -> OsStringView[..] {
+        return self.views[..self.count];
+    }
+}
+
+func Is(view: OsStringView?, text: char8[..]) -> bool {
+    let units = (view ?? return false).Units();
+    if units.length != text.length { return false; }
+    var index: uint = 0;
+    while index < text.length {
+        if units[index] as uint32 != text[index] as uint8 as uint32 { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Absent(view: OsStringView?) -> bool {
+    return match view {
+        .Some(_) => false,
+        none => true
+    };
+}
+
+// Which case a failed parse reports, as a small code.
+func Code(error: &CommandLineError) -> int {
+    return match error {
+        .UnknownOption(_) => 1,
+        .MissingValue(_) => 2,
+        .UnexpectedValue(_) => 3,
+        .UnknownCommand(_) => 4,
+        .MissingCommand => 5,
+        .MissingPositional(_) => 6,
+        .UnexpectedArgument(_) => 7,
+        .InvalidValue(_, _) => 8
+    };
+}
+
+func Fails(spec: *CommandSpec, line: &Line, code: int) -> bool {
+    return match Parse(spec, line.Arguments()) {
+        .Success(_) => false,
+        .Failure(error) => Code(error) == code
+    };
+}
+
+func Must(spec: *CommandSpec, line: &Line) -> Parsed {
+    return Parse(spec, line.Arguments()) catch { else => Panic("the arguments parse") };
+}
+
+func Main() -> int {
+    let options: OptionSpec[4] = [
+        Flag("verbose", 'v', "Say more"),
+        ValueOption("output", 'o', "FILE", "Where to write"),
+        ValueOption("jobs", 'j', "N", "How many at once"),
+        Flag("dry-run", '\0', "Do nothing")
+    ];
+    let positionals: PositionalSpec[2] = [Required("input", "What to read"), Remaining("files", "More to read")];
+    let tool = Command("tool", "Does things").WithVersion("1.2.3").WithOptions(options[..]).WithPositionals(positionals[..]);
+
+    // The plainest call.
+    var plain = NewLine();
+    plain.Add("in.txt");
+    let first = Must(@tool, plain);
+    if !Is(first.Positional("input"), "in.txt") || first.Has("verbose") || !Absent(first.Value("output")) { return 1; }
+    if !Absent(first.Positional("files")) { return 2; }
+
+    // Long and short forms, a counted flag, an `=` value, a value as the next argument and remaining positionals.
+    var rich = NewLine();
+    rich.Add("-vvv");
+    rich.Add("--output=a.txt");
+    rich.Add("-j");
+    rich.Add("4");
+    rich.Add("in");
+    rich.Add("x");
+    rich.Add("--dry-run");
+    rich.Add("y");
+    let second = Must(@tool, rich);
+    if second.Count("verbose") != 3 || !second.Has("dry-run") { return 3; }
+    if !Is(second.Value("output"), "a.txt") || !Is(second.Positional("input"), "in") { return 4; }
+    let jobs = second.Integer("jobs") catch { else => return 5 };
+    if (jobs ?? 0) != 4 { return 6; }
+    var files: uint = 0;
+    for file in second.Positionals("files") {
+        if files == 0 && !Is(.Some(file), "x") { return 7; }
+        if files == 1 && !Is(.Some(file), "y") { return 8; }
+        files = files + 1;
+    }
+    if files != 2 { return 9; }
+
+    // A repeated option: the last value wins, and every value is there in order.
+    var repeated = NewLine();
+    repeated.Add("-o");
+    repeated.Add("first");
+    repeated.Add("-ofinal");
+    repeated.Add("in");
+    let third = Must(@tool, repeated);
+    if !Is(third.Value("output"), "final") { return 10; }
+    var seen: uint = 0;
+    for value in third.Values("output") {
+        if seen == 0 && !Is(.Some(value), "first") { return 11; }
+        if seen == 1 && !Is(.Some(value), "final") { return 12; }
+        seen = seen + 1;
+    }
+    if seen != 2 { return 13; }
+
+    // A short flag clustered with one that takes the next argument as its value.
+    var cluster = NewLine();
+    cluster.Add("-vo");
+    cluster.Add("out");
+    cluster.Add("in");
+    let fourth = Must(@tool, cluster);
+    if fourth.Count("verbose") != 1 || !Is(fourth.Value("output"), "out") || !Is(fourth.Positional("input"), "in") {
+        return 14;
+    }
+
+    // `--` ends options, and `-` alone is an argument.
+    var ended = NewLine();
+    ended.Add("--");
+    ended.Add("-not-an-option");
+    ended.Add("-");
+    let fifth = Must(@tool, ended);
+    if !Is(fifth.Positional("input"), "-not-an-option") || !Is(fifth.Positional("files"), "-") { return 15; }
+
+    // Help and the version are complete requests on their own.
+    var help = NewLine();
+    help.Add("--help");
+    if !Must(@tool, help).HelpRequested() { return 16; }
+    var version = NewLine();
+    version.Add("-V");
+    if !Must(@tool, version).VersionRequested() { return 17; }
+
+    // Mismatches, each with its own case.
+    var unknownLong = NewLine();
+    unknownLong.Add("--frob");
+    if !Fails(@tool, unknownLong, 1) { return 18; }
+    var unknownShort = NewLine();
+    unknownShort.Add("-vx");
+    if !Fails(@tool, unknownShort, 1) { return 19; }
+    var missingValue = NewLine();
+    missingValue.Add("in");
+    missingValue.Add("--output");
+    if !Fails(@tool, missingValue, 2) { return 20; }
+    var unexpectedValue = NewLine();
+    unexpectedValue.Add("--verbose=yes");
+    unexpectedValue.Add("in");
+    if !Fails(@tool, unexpectedValue, 3) { return 21; }
+    var nothing = NewLine();
+    if !Fails(@tool, nothing, 6) { return 22; }
+    var plainCommand = Command("plain", "No arguments");
+    var extra = NewLine();
+    extra.Add("surplus");
+    if !Fails(@plainCommand, extra, 7) { return 23; }
+
+    // Typed values: the full range of int64, and nothing outside it.
+    var low = NewLine();
+    low.Add("--jobs=-9223372036854775808");
+    low.Add("in");
+    let lowest = Must(@tool, low).Integer("jobs") catch { else => return 24 };
+    if (lowest ?? 0) != -9223372036854775807 - 1 { return 25; }
+    var high = NewLine();
+    high.Add("--jobs=9223372036854775808");
+    high.Add("in");
+    match Must(@tool, high).Integer("jobs") {
+        .Success(_) => return 26,
+        .Failure(error) => {
+            if Code(error) != 8 { return 27; }
+        }
+    }
+    var word = NewLine();
+    word.Add("-jabc");
+    word.Add("in");
+    match Must(@tool, word).Integer("jobs") {
+        .Success(_) => return 28,
+        .Failure(_) => {}
+    }
+
+    // Subcommands own everything after their name; options before it are the parent's.
+    let buildOptions: OptionSpec[1] = [Flag("release", 'r', "Optimize")];
+    let buildPositionals: PositionalSpec[1] = [Optional("target", "What to build")];
+    let commands: CommandSpec[2] = [
+        Command("build", "Compile").WithOptions(buildOptions[..]).WithPositionals(buildPositionals[..]),
+        Command("clean", "Remove outputs")
+    ];
+    let rootOptions: OptionSpec[1] = [ValueOption("directory", 'C', "DIR", "Run elsewhere")];
+    let git = Command("git", "Version control").WithOptions(rootOptions[..]).WithCommands(commands[..]);
+
+    var building = NewLine();
+    building.Add("-C");
+    building.Add("repo");
+    building.Add("build");
+    building.Add("--release");
+    building.Add("app");
+    let top = Must(@git, building);
+    if !Is(top.Value("directory"), "repo") { return 29; }
+    let name = top.CommandName() ?? "";
+    if name.length != 5 { return 30; }
+    let sub = top.Subcommand() ?? Panic("the subcommand parses");
+    if !sub.Has("release") || !Is(sub.Positional("target"), "app") { return 31; }
+
+    var noCommand = NewLine();
+    if !Fails(@git, noCommand, 5) { return 32; }
+    var wrongCommand = NewLine();
+    wrongCommand.Add("frob");
+    if !Fails(@git, wrongCommand, 4) { return 33; }
+    var nestedUnknown = NewLine();
+    nestedUnknown.Add("clean");
+    nestedUnknown.Add("--release");
+    if !Fails(@git, nestedUnknown, 1) { return 34; }
+    var nestedHelp = NewLine();
+    nestedHelp.Add("build");
+    nestedHelp.Add("-h");
+    let helped = Must(@git, nestedHelp);
+    let helpedSub = helped.Subcommand() ?? Panic("the subcommand parses");
+    if !helpedSub.HelpRequested() || helped.HelpRequested() { return 35; }
+    return 0;
+}

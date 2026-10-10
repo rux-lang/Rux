@@ -1,0 +1,23 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "CommandLine"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Declarative command-line parsing: options, positional arguments, subcommands and generated help"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["CommandLine", "Arguments", "Options", "Cli", "Parser"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/commandline"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }
+Path = { Namespace = "Rux", Version = "0.1.0" }
+Process = { Namespace = "Rux", Version = "0.1.0" }
+Text = { Namespace = "Rux", Version = "0.1.0" }

@@ -1,0 +1,336 @@
+// Arguments checked against a command, and the questions a program asks of them.
+// A parse holds the command, where the arguments come from and which of them belong to it, and nothing else. Each
+// question walks those arguments again with the scanner that validated them, so asking costs time proportional to the
+// number of arguments and no storage at all. Every view a question returns borrows the arguments, which outlive the
+// parse.
+// When a command has subcommands, the parse covers the arguments up to the subcommand's name and `Subcommand` gives
+// the parse of the rest, which was validated with the first.
+
+import Path::{ OsStringView, OsUnit };
+import Core::Iterator;
+
+/// Arguments that matched a command.
+/// `Copy`, owning nothing: it borrows the specification and the arguments, both of which must outlive it.
+/// @see https://rux-lang.dev/docs/api/commandline/parsed
+pub struct Parsed {
+    spec: *CommandSpec;
+    parent: *CommandSpec;
+    source: ArgumentSource;
+    start: uint;
+    end: uint;
+    // The subcommand chosen, and the argument that named it, when the command has subcommands.
+    command: uint;
+    commandAt: uint;
+    help: bool;
+    version: bool;
+}
+
+// The sentinel for no subcommand.
+const NoCommand: uint = 0xFFFFFFFF;
+
+// Validates `source[start..]` against `spec`, and the subcommand's arguments with it.
+func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource, start: uint) -> Parsed ! CommandLineError {
+    let end = source.Count();
+    var parsed = Parsed {
+        spec: spec,
+        parent: parent,
+        source: source,
+        start: start,
+        end: end,
+        command: NoCommand,
+        commandAt: 0,
+        help: false,
+        version: false
+    };
+    var seen: uint = 0;
+    var scanner = Scan(spec, source, start, end);
+    while true {
+        let item = scanner.Next()? ?? break;
+        match item {
+            .Option(option, _, _) => {
+                if option == HelpOption { parsed.help = true; }
+                if option == VersionOption { parsed.version = true; }
+            },
+            .Positional(_, _, _) => {
+                seen = seen + 1;
+            },
+            .Command(command, at) => {
+                parsed.command = command;
+                parsed.commandAt = at;
+                parsed.end = at;
+            }
+        }
+    }
+    // Asking for help or the version is a complete request on its own, whatever else is missing.
+    if parsed.help || parsed.version { return parsed; }
+    if parsed.command != NoCommand {
+        ParseLevel(@spec.commands[parsed.command], spec, source, parsed.commandAt + 1)?;
+        return parsed;
+    }
+    if spec.commands.length > 0 { fail CommandLineError::MissingCommand; }
+    var index: uint = 0;
+    while index < spec.positionals.length {
+        if spec.positionals[index].kind == PositionalKind::Required && index >= seen {
+            fail CommandLineError::MissingPositional(spec.positionals[index].name);
+        }
+        index = index + 1;
+    }
+    return parsed;
+}
+
+/// Checks `arguments` against `spec`.
+/// `arguments` are the arguments after the program's name. Reports the first mismatch: an unknown option, an option
+/// missing its value or given one it does not take, an unknown or missing subcommand, a missing required positional,
+/// or an argument beyond what the command accepts. Asking for `--help` or `--version` succeeds whatever else is
+/// missing, and `HelpRequested` or `VersionRequested` then says so. Allocates nothing; both `spec` and `arguments`
+/// must outlive the result.
+/// @param spec the command the arguments are for
+/// @param arguments the arguments, without the program's name
+/// @returns the parse, or why the arguments do not match
+/// @see https://rux-lang.dev/docs/api/commandline/parsed#parse
+pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed ! CommandLineError {
+    return ParseLevel(spec, null, ArgumentSource::Given(arguments), 0);
+}
+
+/// Checks the process's own arguments against `spec`.
+/// The same checks as `Parse`, over every argument after the program's name. The arguments last as long as the
+/// process; `spec` must outlive the result.
+/// @param spec the command the arguments are for
+/// @returns the parse, or why the arguments do not match
+/// @see https://rux-lang.dev/docs/api/commandline/parsed#parse-process
+pub func ParseProcess(spec: *CommandSpec) -> Parsed ! CommandLineError {
+    return ParseLevel(spec, null, ArgumentSource::ProcessArguments, 0);
+}
+
+// The index of the option with long name `name`, or none.
+func OptionIndex(spec: &CommandSpec, name: char8[..]) -> uint? {
+    var index: uint = 0;
+    while index < spec.options.length {
+        let declared = spec.options[index].name;
+        if declared.length == name.length {
+            var at: uint = 0;
+            while at < name.length && declared[at] == name[at] {
+                at = at + 1;
+            }
+            if at == name.length { return index; }
+        }
+        index = index + 1;
+    }
+    return none;
+}
+
+// The index of the positional named `name`, or none.
+func PositionalIndex(spec: &CommandSpec, name: char8[..]) -> uint? {
+    var index: uint = 0;
+    while index < spec.positionals.length {
+        let declared = spec.positionals[index].name;
+        if declared.length == name.length {
+            var at: uint = 0;
+            while at < name.length && declared[at] == name[at] {
+                at = at + 1;
+            }
+            if at == name.length { return index; }
+        }
+        index = index + 1;
+    }
+    return none;
+}
+
+/// A walk over the values one option or positional was given, in the order they were given.
+/// `Copy`, holding a position in the arguments and nothing else.
+/// @see https://rux-lang.dev/docs/api/commandline/parsed#value-iterator
+pub struct ValueIterator {
+    scanner: Scanner;
+    // The option or positional being collected, and which of the two it is.
+    target: uint;
+    positional: bool;
+}
+
+extend ValueIterator {
+    /// The walk itself, so that a `for` loop reads every value.
+    /// @returns a copy of this walk from its current position
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#value-iterator-iterate
+    pub func Iterate(self: &ValueIterator) -> ValueIterator {
+        return ValueIterator { scanner: self.scanner.Copy(), target: self.target, positional: self.positional };
+    }
+}
+
+extend ValueIterator : Iterator {
+    /// The next value, or none after the last.
+    /// @returns the value as typed, borrowing the arguments
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#value-iterator-next
+    pub func Next(self: &var ValueIterator) -> OsStringView? {
+        while true {
+            // The arguments were validated, so the walk cannot fail; a failure ends it like the end of the arguments.
+            let step = self.scanner.Next() catch { else => return none };
+            let item = step ?? return none;
+            match item {
+                .Option(option, value, _) => {
+                    if !self.positional && option == self.target {
+                        return value ?? OsStringView();
+                    }
+                },
+                .Positional(slot, value, _) => {
+                    if self.positional && slot == self.target { return value; }
+                },
+                .Command(_, _) => return none
+            }
+        }
+        return none;
+    }
+}
+
+extend Parsed {
+    // A fresh walk over this level's arguments.
+    func Walk(self: &Parsed) -> Scanner {
+        return Scan(self.spec, self.source, self.start, self.end);
+    }
+
+    /// Whether `--help` or `-h` was given.
+    /// A program usually writes the help text and exits successfully when this is true. Cannot fail.
+    /// @returns whether help was asked for
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#help-requested
+    pub func HelpRequested(self: &Parsed) -> bool {
+        return self.help;
+    }
+
+    /// Whether `--version` or `-V` was given, which a command only understands when it has a version.
+    /// Cannot fail.
+    /// @returns whether the version was asked for
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#version-requested
+    pub func VersionRequested(self: &Parsed) -> bool {
+        return self.version;
+    }
+
+    /// How many times the option with long name `name` was given.
+    /// Counting is how `-vvv` means more than `-v`. An option the command does not declare was given zero times.
+    /// Runs in time linear in the number of arguments and allocates nothing.
+    /// @param name the option's long name without its dashes
+    /// @returns the number of times it was given
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#count
+    pub func Count(self: &Parsed, name: char8[..]) -> uint {
+        let option = OptionIndex(*self.spec, name) ?? return 0;
+        var count: uint = 0;
+        var values = ValueIterator { scanner: self.Walk(), target: option, positional: false };
+        while true {
+            values.Next() ?? break;
+            count = count + 1;
+        }
+        return count;
+    }
+
+    /// Whether the option with long name `name` was given at least once.
+    /// @param name the option's long name without its dashes
+    /// @returns whether it was given
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#has
+    pub func Has(self: &Parsed, name: char8[..]) -> bool {
+        return self.Count(name) > 0;
+    }
+
+    /// The value of the option with long name `name`, the last one given when it was given more than once.
+    /// The last value wins so that a later argument can override an earlier one, as a script adding to a fixed command
+    /// line expects. Runs in time linear in the number of arguments and allocates nothing.
+    /// @param name the option's long name without its dashes
+    /// @returns the value as typed, or none when the option was not given or takes no value
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#value
+    pub func Value(self: &Parsed, name: char8[..]) -> OsStringView? {
+        let option = OptionIndex(*self.spec, name) ?? return none;
+        if !TakesValue(*self.spec, option) { return none; }
+        var last: OsStringView? = none;
+        var values = ValueIterator { scanner: self.Walk(), target: option, positional: false };
+        while true {
+            let value = values.Next() ?? break;
+            last = value;
+        }
+        return last;
+    }
+
+    /// Every value the option with long name `name` was given, in order.
+    /// @param name the option's long name without its dashes
+    /// @returns a walk over the values, empty when the option was not given
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#values
+    pub func Values(self: &Parsed, name: char8[..]) -> ValueIterator {
+        let option = OptionIndex(*self.spec, name) ?? NoCommand;
+        var empty = self.Walk();
+        if option == NoCommand {
+            empty.index = empty.end;
+        }
+        return ValueIterator { scanner: empty, target: option, positional: false };
+    }
+
+    /// The positional argument named `name`, the first one when it takes the remaining arguments.
+    /// @param name the positional's name
+    /// @returns the argument as typed, or none when it was not given
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#positional
+    pub func Positional(self: &Parsed, name: char8[..]) -> OsStringView? {
+        var values = self.Positionals(name);
+        return values.Next();
+    }
+
+    /// Every argument the positional named `name` was given, which is more than one only for a `Remaining`
+    /// positional.
+    /// @param name the positional's name
+    /// @returns a walk over the arguments, empty when none was given
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#positionals
+    pub func Positionals(self: &Parsed, name: char8[..]) -> ValueIterator {
+        let slot = PositionalIndex(*self.spec, name) ?? NoCommand;
+        var walk = self.Walk();
+        if slot == NoCommand {
+            walk.index = walk.end;
+        }
+        return ValueIterator { scanner: walk, target: slot, positional: true };
+    }
+
+    /// The name of the subcommand that was given, for a command that has subcommands.
+    /// @returns the subcommand's name as its specification spells it, or none
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#command-name
+    pub func CommandName(self: &Parsed) -> char8[..]? {
+        if self.command == NoCommand { return none; }
+        return self.spec.commands[self.command].name;
+    }
+
+    /// The parse of the subcommand's own arguments, everything after its name.
+    /// Those arguments were validated with this parse, so this cannot fail.
+    /// @returns the subcommand's parse, or none when no subcommand was given
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#subcommand
+    pub func Subcommand(self: &Parsed) -> Parsed? {
+        if self.command == NoCommand { return none; }
+        let parsed = ParseLevel(@self.spec.commands[self.command], self.spec, self.source, self.commandAt + 1) catch {
+            else => return none
+        };
+        return parsed;
+    }
+
+    /// The value of the option or positional named `name` read as a decimal integer, or none when it was not given.
+    /// An optional leading `-` or `+` is accepted, then one or more decimal digits and nothing else. Reports
+    /// `InvalidValue` for any other text and for a number outside the range of `int64`. Allocates nothing.
+    /// @param name an option's long name, or a positional's name
+    /// @returns the number, none when the value was not given, or why it is not a number
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#integer
+    pub func Integer(self: &Parsed, name: char8[..]) -> int64? ! CommandLineError {
+        let text = self.Value(name) ?? self.Positional(name) ?? return .Success(none);
+        let units = text.Units();
+        var index: uint = 0;
+        var negative = false;
+        if units.length > 0 && (UnitAt(units, 0) == 0x2D || UnitAt(units, 0) == 0x2B) {
+            negative = UnitAt(units, 0) == 0x2D;
+            index = 1;
+        }
+        if index >= units.length { fail CommandLineError::InvalidValue(name, text); }
+        // Accumulated as a negative number, whose range includes the most negative int64.
+        var total: int64 = 0;
+        while index < units.length {
+            let unit = UnitAt(units, index);
+            if unit < 0x30 || unit > 0x39 { fail CommandLineError::InvalidValue(name, text); }
+            let digit = (unit - 0x30) as int64;
+            if total < (-9223372036854775807 - 1 + digit) / 10 { fail CommandLineError::InvalidValue(name, text); }
+            total = total * 10 - digit;
+            index = index + 1;
+        }
+        if !negative {
+            if total == -9223372036854775807 - 1 { fail CommandLineError::InvalidValue(name, text); }
+            total = -total;
+        }
+        return .Success(.Some(total));
+    }
+}

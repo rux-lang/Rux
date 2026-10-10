@@ -1,0 +1,59 @@
+// Each mismatch describes itself in the words of the command line, naming the argument as it was typed or the option
+// or positional by the name its specification gives, so a program can print one without the arguments at hand.
+
+import CommandLine::CommandLineError;
+import Core::{ #target, Failed };
+import Path::{ OsStringView, OsUnit };
+import Text::{ BufferWriter, Display, FormatSpec, TextWriter };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Shown(error: CommandLineError, expected: char8[..]) -> bool {
+    var storage: char8[256];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = error;
+    if Failed(shown.WriteDisplay(sink, FormatSpec::Plain())) { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Main() -> int {
+    var units: OsUnit[8] = [0 as OsUnit; 8];
+    let text = "--frob";
+    var index: uint = 0;
+    while index < text.length {
+        units[index] = text[index] as uint8 as OsUnit;
+        index = index + 1;
+    }
+    let frob = OsStringView::FromUnits(units[..6]);
+    let word = OsStringView::FromUnits(units[2..6]);
+
+    if !Shown(CommandLineError::UnknownOption(frob), "unknown option '--frob'") { return 1; }
+    if !Shown(CommandLineError::MissingValue("output"), "option '--output' needs a value") { return 2; }
+    if !Shown(CommandLineError::UnexpectedValue("verbose"), "option '--verbose' takes no value") { return 3; }
+    if !Shown(CommandLineError::UnknownCommand(word), "unknown command 'frob'") { return 4; }
+    if !Shown(CommandLineError::MissingCommand, "a command is required") { return 5; }
+    if !Shown(CommandLineError::MissingPositional("input"), "missing argument <input>") { return 6; }
+    if !Shown(CommandLineError::UnexpectedArgument(word), "unexpected argument 'frob'") { return 7; }
+    if !Shown(CommandLineError::InvalidValue("jobs", word), "invalid value 'frob' for 'jobs'") { return 8; }
+
+    // A malformed argument still prints, with a replacement character where it cannot be read.
+    var broken: OsUnit[2] = [0 as OsUnit; 2];
+    broken[0] = 0x61 as OsUnit;
+    broken[1] = 0xFF as OsUnit;
+    when #target.os == .Windows {
+        broken[1] = 0xD800 as OsUnit;
+    }
+    if !Shown(CommandLineError::UnexpectedArgument(OsStringView::FromUnits(broken[..])), "unexpected argument 'a\u{FFFD}'") {
+        return 9;
+    }
+    return 0;
+}

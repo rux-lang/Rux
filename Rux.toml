@@ -8,6 +8,7 @@ Packages = [
     "Packages/Allocator",
     "Packages/C",
     "Packages/Collections",
+    "Packages/CommandLine",
     "Packages/Core",
     "Packages/Crypto",
     "Packages/Encoding",

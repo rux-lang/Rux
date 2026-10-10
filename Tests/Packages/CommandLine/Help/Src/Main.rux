@@ -1,0 +1,91 @@
+// The help text is compared whole, because its value is in the layout: descriptions aligned in a column, the built-in
+// options listed after the declared ones, an option without a short form indented to line up with those that have
+// one, and a subcommand's usage naming the command it belongs to.
+
+import CommandLine::{ Command, CommandSpec, Flag, OptionSpec, Optional, Parse, PositionalSpec, Remaining, Required,
+                      ValueOption, WriteHelp, WriteUsage, WriteVersion };
+import Core::{ #target, Failed, Panic };
+import Path::OsStringView;
+import Text::{ BufferWriter, TextWriter };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func HelpIs(spec: &CommandSpec, expected: char8[..]) -> bool {
+    var storage: char8[2048];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    if Failed(WriteHelp(spec, sink)) { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Main() -> int {
+    let options: OptionSpec[3] = [
+        Flag("verbose", 'v', "Say more"),
+        ValueOption("output", 'o', "FILE", "Where to write"),
+        Flag("dry-run", '\0', "Do nothing")
+    ];
+    let positionals: PositionalSpec[2] = [Required("input", "What to read"), Remaining("files", "More to read")];
+    let tool = Command("tool", "Does things").WithVersion("1.2.3").WithOptions(options[..]).WithPositionals(positionals[..]);
+    let toolHelp = "Does things\n\nUsage: tool [options] <input> [files...]\n\nArguments:\n  <input>     What to read\n  [files...]  More to read\n\nOptions:\n  -v, --verbose        Say more\n  -o, --output <FILE>  Where to write\n      --dry-run        Do nothing\n  -h, --help           Print this help\n  -V, --version        Print the version\n";
+    if !HelpIs(tool, toolHelp) { return 1; }
+
+    var storage: char8[256];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    if Failed(WriteVersion(tool, sink)) { return 2; }
+    if !Same(writer.Written(), "tool 1.2.3\n") { return 3; }
+
+    var usageStorage: char8[256];
+    var usageWriter = BufferWriter(usageStorage[..]);
+    let usageSink: &var TextWriter = usageWriter;
+    if Failed(WriteUsage(tool, usageSink)) { return 4; }
+    if !Same(usageWriter.Written(), "Usage: tool [options] <input> [files...]\n") { return 5; }
+
+    // A command with subcommands, and no version, so no `--version` is listed.
+    let buildOptions: OptionSpec[1] = [Flag("release", 'r', "Optimize")];
+    let buildPositionals: PositionalSpec[1] = [Optional("target", "What to build")];
+    let commands: CommandSpec[2] = [
+        Command("build", "Compile").WithOptions(buildOptions[..]).WithPositionals(buildPositionals[..]),
+        Command("clean", "Remove outputs")
+    ];
+    let rootOptions: OptionSpec[1] = [ValueOption("directory", 'C', "DIR", "Run elsewhere")];
+    let git = Command("git", "Version control").WithOptions(rootOptions[..]).WithCommands(commands[..]);
+    let gitHelp = "Version control\n\nUsage: git [options] <command>\n\nOptions:\n  -C, --directory <DIR>  Run elsewhere\n  -h, --help             Print this help\n\nCommands:\n  build  Compile\n  clean  Remove outputs\n";
+    if !HelpIs(git, gitHelp) { return 6; }
+
+    // A subcommand's help names its parent, through the parse that reached it.
+    let units: char8[8] = ['b', 'u', 'i', 'l', 'd', '-', '-', 'h'];
+    var arguments: OsStringView[2] = [OsStringView(), OsStringView()];
+    var wideStorage: uint16[8] = [0; 8];
+    when #target.os == .Windows {
+        var index: uint = 0;
+        while index < 8 {
+            wideStorage[index] = units[index] as uint8 as uint16;
+            index = index + 1;
+        }
+        arguments[0] = OsStringView::FromUnits(wideStorage[..5]);
+        arguments[1] = OsStringView::FromUnits(wideStorage[6..8]);
+    }
+    else {
+        arguments[0] = OsStringView::FromUnits(units[..5]);
+        arguments[1] = OsStringView::FromUnits(units[6..8]);
+    }
+    let parsed = Parse(@git, arguments[..]) catch { else => Panic("the arguments parse") };
+    let sub = parsed.Subcommand() ?? Panic("the subcommand parses");
+    if !sub.HelpRequested() { return 7; }
+    var subStorage: char8[512];
+    var subWriter = BufferWriter(subStorage[..]);
+    let subSink: &var TextWriter = subWriter;
+    if Failed(sub.WriteHelp(subSink)) { return 8; }
+    let buildHelp = "Compile\n\nUsage: git build [options] [target]\n\nArguments:\n  [target]  What to build\n\nOptions:\n  -r, --release  Optimize\n  -h, --help     Print this help\n";
+    if !Same(subWriter.Written(), buildHelp) { return 9; }
+    return 0;
+}
