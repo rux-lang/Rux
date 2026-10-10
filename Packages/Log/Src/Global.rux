@@ -1,0 +1,138 @@
+// The process-wide log: records written to standard error, from any thread.
+// Its settings are module variables read and written atomically, and a lock is held only for the one write of a
+// finished record, so threads build their records at the same time and never interleave them.
+
+import Allocator::SystemAllocator;
+import Core::{ AtomicLoad, AtomicStore, MemoryOrder };
+import Io::{ StandardError, WriteAll };
+import Log::{ CompiledLevel, Field, Level, LogFormat, NoFields, WriteRecord };
+import Sync::Lock;
+import Text::StringBuilder;
+
+var GlobalLevel: uint8 = 2;
+var GlobalFormat: uint8 = 0;
+var GlobalTimestamps: bool = true;
+var GlobalLock: Lock = Lock::Unlocked;
+
+/// Writes process-wide records at `level` and above from now on. The level starts as `Info`.
+/// @param level the least severe level written
+/// @see https://rux-lang.dev/docs/api/log/global#set-level
+pub func SetLevel(level: Level) {
+    AtomicStore(@GlobalLevel, level as uint8, MemoryOrder::Relaxed);
+}
+
+/// Writes process-wide records in `format` from now on. The format starts as `Text`.
+/// @param format how records are written
+/// @see https://rux-lang.dev/docs/api/log/global#set-format
+pub func SetFormat(format: LogFormat) {
+    AtomicStore(@GlobalFormat, format as uint8, MemoryOrder::Relaxed);
+}
+
+/// Whether process-wide records start with the time. They start with it.
+/// @param enabled whether to write the time
+/// @see https://rux-lang.dev/docs/api/log/global#set-timestamps
+pub func SetTimestamps(enabled: bool) {
+    AtomicStore(@GlobalTimestamps, enabled, MemoryOrder::Relaxed);
+}
+
+/// Whether a process-wide record at `level` would be written.
+/// @param level the level to ask about
+/// @returns whether it would be written
+/// @see https://rux-lang.dev/docs/api/log/global#enabled
+pub func Enabled(level: Level) -> bool {
+    return level as uint8 >= CompiledLevel() as uint8 &&
+           level as uint8 >= AtomicLoad(@GlobalLevel, MemoryOrder::Relaxed);
+}
+
+/// Writes a process-wide record at `level` with `message` and `fields` to standard error, if the level is enabled.
+/// A record that cannot be written is dropped.
+/// @param level how severe it is
+/// @param message what happened
+/// @param fields the values that go with it
+/// @see https://rux-lang.dev/docs/api/log/global#log
+pub func Log(level: Level, message: char8[..], fields: Field[..]) {
+    if !Enabled(level) { return; }
+    let format = AtomicLoad(@GlobalFormat, MemoryOrder::Relaxed) as LogFormat;
+    let timestamps = AtomicLoad(@GlobalTimestamps, MemoryOrder::Relaxed);
+    var builder = StringBuilder(SystemAllocator());
+    if !WriteRecord(builder, format, timestamps, level, message, NoFields(), fields) { return; }
+    GlobalLock.Acquire();
+    var stream = StandardError::Acquire();
+    WriteAll(stream, builder.Bytes()) catch { else => {} };
+    GlobalLock.Release();
+}
+
+/// Writes a process-wide `Trace` record.
+/// @param message what happened
+/// @param fields the values that go with it
+/// @see https://rux-lang.dev/docs/api/log/global#trace
+pub func Trace(message: char8[..], fields: Field[..]) {
+    Log(Level::Trace, message, fields);
+}
+
+/// Writes a process-wide `Trace` record with no fields.
+/// @param message what happened
+/// @see https://rux-lang.dev/docs/api/log/global#trace
+pub func Trace(message: char8[..]) {
+    Log(Level::Trace, message, NoFields());
+}
+
+/// Writes a process-wide `Debug` record.
+/// @param message what happened
+/// @param fields the values that go with it
+/// @see https://rux-lang.dev/docs/api/log/global#debug
+pub func Debug(message: char8[..], fields: Field[..]) {
+    Log(Level::Debug, message, fields);
+}
+
+/// Writes a process-wide `Debug` record with no fields.
+/// @param message what happened
+/// @see https://rux-lang.dev/docs/api/log/global#debug
+pub func Debug(message: char8[..]) {
+    Log(Level::Debug, message, NoFields());
+}
+
+/// Writes a process-wide `Info` record.
+/// @param message what happened
+/// @param fields the values that go with it
+/// @see https://rux-lang.dev/docs/api/log/global#info
+pub func Info(message: char8[..], fields: Field[..]) {
+    Log(Level::Info, message, fields);
+}
+
+/// Writes a process-wide `Info` record with no fields.
+/// @param message what happened
+/// @see https://rux-lang.dev/docs/api/log/global#info
+pub func Info(message: char8[..]) {
+    Log(Level::Info, message, NoFields());
+}
+
+/// Writes a process-wide `Warn` record.
+/// @param message what happened
+/// @param fields the values that go with it
+/// @see https://rux-lang.dev/docs/api/log/global#warn
+pub func Warn(message: char8[..], fields: Field[..]) {
+    Log(Level::Warn, message, fields);
+}
+
+/// Writes a process-wide `Warn` record with no fields.
+/// @param message what happened
+/// @see https://rux-lang.dev/docs/api/log/global#warn
+pub func Warn(message: char8[..]) {
+    Log(Level::Warn, message, NoFields());
+}
+
+/// Writes a process-wide `Error` record.
+/// @param message what happened
+/// @param fields the values that go with it
+/// @see https://rux-lang.dev/docs/api/log/global#error
+pub func Error(message: char8[..], fields: Field[..]) {
+    Log(Level::Error, message, fields);
+}
+
+/// Writes a process-wide `Error` record with no fields.
+/// @param message what happened
+/// @see https://rux-lang.dev/docs/api/log/global#error
+pub func Error(message: char8[..]) {
+    Log(Level::Error, message, NoFields());
+}

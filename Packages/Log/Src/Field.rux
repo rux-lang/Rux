@@ -1,0 +1,78 @@
+// The structured part of a record: named values beside its message.
+
+/// The value of a field. `Copy`.
+/// @see https://rux-lang.dev/docs/api/log/field#value
+pub variant Value {
+    /// Text, borrowed from the caller for as long as the record is being written.
+    Text(char8[..]),
+    /// A signed integer.
+    Integer(int64),
+    /// An unsigned integer.
+    Unsigned(uint64),
+    /// A floating-point number. JSON records write a value that is not finite as `null`.
+    Float(float64),
+    /// A truth value.
+    Boolean(bool)
+}
+
+/// A named value of a record. `Copy`.
+/// @see https://rux-lang.dev/docs/api/log/field#field
+pub struct Field {
+    /// The name, which should be a plain identifier so that every format writes it unquoted.
+    pub key: char8[..];
+    /// The value.
+    pub value: Value;
+}
+
+extend Field {
+    /// A field of text.
+    /// @param key the name
+    /// @param value the text, borrowed until the record is written
+    /// @returns the field
+    /// @see https://rux-lang.dev/docs/api/log/field#text
+    pub func Text(key: char8[..], value: char8[..]) -> Field {
+        return Field { key: key, value: Value::Text(value) };
+    }
+
+    /// A field of a signed integer.
+    /// @param key the name
+    /// @param value the number
+    /// @returns the field
+    /// @see https://rux-lang.dev/docs/api/log/field#integer
+    pub func Integer(key: char8[..], value: int64) -> Field {
+        return Field { key: key, value: Value::Integer(value) };
+    }
+
+    /// A field of an unsigned integer.
+    /// @param key the name
+    /// @param value the number
+    /// @returns the field
+    /// @see https://rux-lang.dev/docs/api/log/field#unsigned
+    pub func Unsigned(key: char8[..], value: uint64) -> Field {
+        return Field { key: key, value: Value::Unsigned(value) };
+    }
+
+    /// A field of a floating-point number.
+    /// @param key the name
+    /// @param value the number
+    /// @returns the field
+    /// @see https://rux-lang.dev/docs/api/log/field#float
+    pub func Float(key: char8[..], value: float64) -> Field {
+        return Field { key: key, value: Value::Float(value) };
+    }
+
+    /// A field of a truth value.
+    /// @param key the name
+    /// @param value the value
+    /// @returns the field
+    /// @see https://rux-lang.dev/docs/api/log/field#boolean
+    pub func Boolean(key: char8[..], value: bool) -> Field {
+        return Field { key: key, value: Value::Boolean(value) };
+    }
+}
+
+// No fields at all.
+func NoFields() -> Field[..] {
+    let nothing: *Field = null;
+    return nothing[..0];
+}

@@ -22,6 +22,7 @@ Packages = [
     "Packages/Io",
     "Packages/Json",
     "Packages/Linux",
+    "Packages/Log",
     "Packages/macOS",
     "Packages/Math",
     "Packages/Memory",
