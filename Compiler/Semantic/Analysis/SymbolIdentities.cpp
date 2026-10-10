@@ -229,7 +229,9 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
                                             ? programIndex.NominalName(*symbol->declaration)
                                             : *implementation->interfaceName;
         const auto interface = interfaceDecls.find(interfaceName);
-        if (interface == interfaceDecls.end() || interface->second->methods.empty()) {
+        // A generic interface has no value form, so nothing ever dispatches through a table of its operations.
+        if (interface == interfaceDecls.end() || interface->second->methods.empty() ||
+            !interface->second->typeParams.empty()) {
             continue;
         }
         // The vtable and its entries name the receiver the way its methods do, so an extension written on a spelling

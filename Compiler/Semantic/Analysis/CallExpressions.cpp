@@ -485,8 +485,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 return TypeRef::MakeUnknown();
             }
             const FuncDecl &operation = *constrained->operation;
-            const std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(operation, receiverBase);
-            const std::optional<TypeRef> variadicElement = ResolveInterfaceMethodVariadicType(operation, receiverBase);
+            const std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(
+                operation, receiverBase, constrained->interface, constrained->interfaceArguments);
+            const std::optional<TypeRef> variadicElement = ResolveInterfaceMethodVariadicType(
+                operation, receiverBase, constrained->interface, constrained->interfaceArguments);
             // The call is lowered against the witness's own parameters rather than the requirement's, so no default
             // value is filled in here and every fixed parameter takes an argument; a variadic one collects any number,
             // as it does on any other call.
@@ -505,7 +507,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
             }
             RecordConstrainedBinding(*e, *constrained, receiverType);
-            return ResolveInterfaceMethodReturnType(operation, receiverBase);
+            return ResolveInterfaceMethodReturnType(operation, receiverBase, constrained->interface,
+                                                    constrained->interfaceArguments);
         }
 
         std::unordered_map<std::string, TypeRef> methodSubstitutions;

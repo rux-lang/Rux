@@ -323,6 +323,19 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         }
 
         Symbol *sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
+        // A generic interface only constrains a type parameter: it has no value form, since an interface value would
+        // need one table of operations per type argument.
+        if (const Symbol *named = sym ? sym : FindUniquePackageType(t->name);
+            named && named->kind == Symbol::Kind::Interface) {
+            if (const auto *interface = dynamic_cast<const InterfaceDecl *>(named->declaration);
+                interface && !interface->typeParams.empty()) {
+                EmitError(expr.location,
+                          std::format("generic interface '{}' can only be used as a type-parameter bound", t->name),
+                          {DeclarationNote(*named)},
+                          std::format("constrain a type parameter instead, as in 'T: {}<...>'", t->name));
+                return TypeRef::MakeUnknown();
+            }
+        }
         if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
             // Return base type if no generic arguments are provided
             if (t->typeArgs.empty() && !sym->type.IsUnknown()) {

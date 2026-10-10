@@ -822,9 +822,11 @@ struct UnionDecl : Decl {
     std::vector<Field> fields;
 };
 
-// interface Name { func Sig(); ... }
+// interface Name<T> { func Sig(); ... }
 struct InterfaceDecl : Decl {
     std::string name;
+    /// The parameters of a generic interface, which may only be named as a type-parameter bound, as in `I: Cursor<T>`.
+    std::vector<TypeParameter> typeParams;
     std::vector<std::unique_ptr<FuncDecl>> methods;
 };
 
@@ -838,6 +840,8 @@ struct ImplDecl : Decl {
     std::string typeName;
     TypeExprPtr extendedType;
     std::optional<std::string> interfaceName;
+    /// The type arguments of a generic interface the extension implements, as in `extend Counter : Cursor<int32>`.
+    std::vector<TypeExprPtr> interfaceTypeArgs;
     std::vector<std::unique_ptr<FuncDecl>> methods;
     std::vector<std::unique_ptr<ConstDecl>> constants;
 

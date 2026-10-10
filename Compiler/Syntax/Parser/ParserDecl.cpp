@@ -288,6 +288,9 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
     decl->location = loc;
     decl->isPublic = isPublic;
     decl->name = ExpectBefore(TokenKind::Ident, "an interface name after 'interface'").text;
+    if (Check(TokenKind::Less)) {
+        decl->typeParams = ParseTypeParams();
+    }
 
     if (!ConsumeBodyStart("the interface body")) {
         return decl;
@@ -330,9 +333,17 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         decl->extendedType = std::move(firstType);
         decl->typeName = firstName;
         decl->interfaceName = ExpectBefore(TokenKind::Ident, "an interface name after ':' in the extension").text;
+        if (IsTypeArgListAhead()) {
+            decl->interfaceTypeArgs = ParseTypeArgs();
+        }
     }
     else if (Match(TokenKind::ForKeyword)) {
         decl->interfaceName = firstName;
+        if (auto *named = dynamic_cast<NamedTypeExpr *>(firstType.get());
+            named != nullptr && !named->typeArgs.empty()) {
+            decl->interfaceName = named->name;
+            decl->interfaceTypeArgs = std::move(named->typeArgs);
+        }
         decl->extendedType = ParseType("add the extended type after 'for'");
         decl->typeName = decl->extendedType ? ImplTypeName(*decl->extendedType) : "?";
     }

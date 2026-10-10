@@ -558,7 +558,10 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         module.unions.push_back(LowerUnion(*unionDecl));
     }
     else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
-        module.interfaces.push_back(LowerInterface(*interfaceDecl));
+        // A generic interface only constrains type parameters, so no value of it is ever laid out or dispatched.
+        if (interfaceDecl->typeParams.empty()) {
+            module.interfaces.push_back(LowerInterface(*interfaceDecl));
+        }
     }
     else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
         if (ImplTypeParams(*implDecl).empty()) {

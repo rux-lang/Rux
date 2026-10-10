@@ -244,31 +244,54 @@ std::unordered_map<std::string, TypeRef> AnalysisContext::SelfSubstitution(const
     return {{std::string(SemanticDetail::SelfTypeName), selfType}};
 }
 
-TypeRef AnalysisContext::ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType) {
+TypeRef AnalysisContext::ResolveRequirementType(const TypeExpr &type, const TypeRef &selfType,
+                                                const InterfaceDecl *interface,
+                                                const std::vector<TypeRef> &interfaceArguments) {
+    auto substitution = SelfSubstitution(selfType);
+    if (interface == nullptr || interface->typeParams.empty()) {
+        return ResolveTypeWithSubstitution(type, substitution);
+    }
+    // The requirement is written in terms of the interface's own parameters, so they are named as type parameters
+    // while it is read, whatever generic happens to be reading it.
+    const auto savedTypeParams = currentTypeParams;
+    AppendTypeParameterNames(currentTypeParams, interface->typeParams);
+    for (std::size_t index = 0; index < interface->typeParams.size() && index < interfaceArguments.size(); ++index) {
+        substitution.insert_or_assign(interface->typeParams[index].name, interfaceArguments[index]);
+    }
+    TypeRef resolved = ResolveTypeWithSubstitution(type, substitution);
+    currentTypeParams = savedTypeParams;
+    return resolved;
+}
+
+TypeRef AnalysisContext::ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType,
+                                                          const InterfaceDecl *interface,
+                                                          const std::vector<TypeRef> &interfaceArguments) {
     if (!method.returnType) {
         return TypeRef::MakeOpaque();
     }
-    return ResolveTypeWithSubstitution(*method.returnType->get(), SelfSubstitution(selfType));
+    return ResolveRequirementType(*method.returnType->get(), selfType, interface, interfaceArguments);
 }
 
-std::optional<TypeRef> AnalysisContext::ResolveInterfaceMethodVariadicType(const FuncDecl &method,
-                                                                           const TypeRef &selfType) {
+std::optional<TypeRef>
+AnalysisContext::ResolveInterfaceMethodVariadicType(const FuncDecl &method, const TypeRef &selfType,
+                                                    const InterfaceDecl *interface,
+                                                    const std::vector<TypeRef> &interfaceArguments) {
     if (method.params.empty() || !method.params.back().isVariadic) {
         return std::nullopt;
     }
-    return ResolveTypeWithSubstitution(*method.params.back().type, SelfSubstitution(selfType));
+    return ResolveRequirementType(*method.params.back().type, selfType, interface, interfaceArguments);
 }
 
-std::vector<TypeRef> AnalysisContext::ResolveInterfaceMethodParamTypes(const FuncDecl &method,
-                                                                       const TypeRef &selfType) {
-    const auto substitution = SelfSubstitution(selfType);
+std::vector<TypeRef> AnalysisContext::ResolveInterfaceMethodParamTypes(const FuncDecl &method, const TypeRef &selfType,
+                                                                       const InterfaceDecl *interface,
+                                                                       const std::vector<TypeRef> &interfaceArguments) {
     std::vector<TypeRef> params;
     for (const auto &param : method.params) {
         // The receiver arrives as the data half of the interface value, so it is not one of the written arguments.
         if (param.isVariadic || param.IsReceiver()) {
             continue;
         }
-        params.push_back(ResolveTypeWithSubstitution(*param.type, substitution));
+        params.push_back(ResolveRequirementType(*param.type, selfType, interface, interfaceArguments));
     }
     return params;
 }

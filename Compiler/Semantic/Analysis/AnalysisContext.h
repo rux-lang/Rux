@@ -221,10 +221,21 @@ private:
         std::string name;
         const InterfaceDecl *interface = nullptr;
         SourceLocation location;
+        /// The type arguments of a generic interface bound, as in `I: Cursor<T>`, in terms of the declaring generic's
+        /// own type parameters. Empty for an interface that takes none.
+        std::vector<TypeRef> typeArguments;
     };
 
-    [[nodiscard]] std::vector<ResolvedTypeBound> ResolveTypeParameterBounds(const TypeParameter &parameter,
-                                                                            bool report);
+    /// The bounds written on `parameter`. A declaration resolves its own bounds with `report` set; a use site passes
+    /// the declaration's whole parameter list, so that type arguments of a generic interface bound resolve against the
+    /// declaring generic's parameters rather than the caller's.
+    [[nodiscard]] std::vector<ResolvedTypeBound>
+    ResolveTypeParameterBounds(const TypeParameter &parameter, bool report,
+                               const std::vector<TypeParameter> *declaringParameters = nullptr);
+    /// Fills in type parameters that appear only in the type arguments of another parameter's generic interface bound,
+    /// such as `T` in `I: Cursor<T>`, from the method the bounded type argument already deduced provides.
+    void DeduceTypeArgumentsFromBounds(const std::vector<TypeParameter> &parameters,
+                                       std::unordered_map<std::string, TypeRef> &substitutions);
     void DeclareTypeParameterBounds(const std::vector<TypeParameter> &parameters);
 
     /// Holds the bounds of the type parameters a declaration owns for as long as that declaration is being checked,
@@ -255,7 +266,8 @@ private:
                                              const std::string &subject);
     [[nodiscard]] bool TypeArgumentsSatisfyBounds(const std::vector<TypeParameter> &parameters,
                                                   const std::unordered_map<std::string, TypeRef> &substitutions);
-    [[nodiscard]] bool TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason);
+    [[nodiscard]] bool TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason,
+                                          const std::vector<TypeRef> &interfaceArguments = {});
     [[nodiscard]] const FuncDecl *SelectBoundOperation(const std::string &typeName, const FuncDecl &required) const;
     /// Deduces type arguments from the fixed arguments and, past them, from each argument the variadic parameter
     /// collects. `call` says which argument is spread, so it deduces from the variadic slice rather than an element.
@@ -290,6 +302,9 @@ private:
         std::string interfaceName;
         const FuncDecl *operation = nullptr;
         std::size_t operationIndex;
+        const InterfaceDecl *interface = nullptr;
+        /// The bound's type arguments for a generic interface, which the operation's signature is read with.
+        std::vector<TypeRef> interfaceArguments;
     };
 
     [[nodiscard]] std::optional<ConstrainedOperation> LookupConstrainedOperation(const TypeRef &receiverType,
@@ -1013,15 +1028,26 @@ private:
                                      const std::string &interfaceName, const std::string &typeName);
     /// An interface method's written types, with `Self` standing for `selfType`.
     ///
-    /// An interface cannot name the type implementing it any other way -- there are no generic interfaces -- so a
-    /// binary operation like equality or comparison has no way to say that its other operand is the same type as its
-    /// receiver. `Self` is that name, and it is substituted here, where the receiver is known.
-    [[nodiscard]] TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType);
-    [[nodiscard]] std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method,
-                                                                        const TypeRef &selfType);
+    /// An interface cannot name the type implementing it any other way, so a binary operation like equality or
+    /// comparison has no way to say that its other operand is the same type as its receiver. `Self` is that name, and
+    /// it is substituted here, where the receiver is known. The parameters of a generic interface are substituted with
+    /// `interfaceArguments` the same way.
+    [[nodiscard]] TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType,
+                                                           const InterfaceDecl *interface = nullptr,
+                                                           const std::vector<TypeRef> &interfaceArguments = {});
+    [[nodiscard]] std::vector<TypeRef>
+    ResolveInterfaceMethodParamTypes(const FuncDecl &method, const TypeRef &selfType,
+                                     const InterfaceDecl *interface = nullptr,
+                                     const std::vector<TypeRef> &interfaceArguments = {});
     /// The element type of an interface method's trailing variadic parameter, with `Self` standing for `selfType`.
-    [[nodiscard]] std::optional<TypeRef> ResolveInterfaceMethodVariadicType(const FuncDecl &method,
-                                                                            const TypeRef &selfType);
+    [[nodiscard]] std::optional<TypeRef>
+    ResolveInterfaceMethodVariadicType(const FuncDecl &method, const TypeRef &selfType,
+                                       const InterfaceDecl *interface = nullptr,
+                                       const std::vector<TypeRef> &interfaceArguments = {});
+    /// Resolves a type written in an interface requirement with `Self` and the interface's own parameters substituted.
+    [[nodiscard]] TypeRef ResolveRequirementType(const TypeExpr &type, const TypeRef &selfType,
+                                                 const InterfaceDecl *interface,
+                                                 const std::vector<TypeRef> &interfaceArguments);
     [[nodiscard]] TypeRef EnumType(const EnumDecl &declaration, const std::vector<TypeRef> &typeArguments = {});
     [[nodiscard]] TypeRef LiteralType(const Token &token) const;
     void ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType, const TypeRef &targetType) const;

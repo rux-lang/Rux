@@ -265,6 +265,19 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
     // type parameter and bound to the implementing type wherever the interface is actually read.
     const auto savedTypeParams = currentTypeParams;
     currentTypeParams.emplace_back(SemanticDetail::SelfTypeName);
+    // A generic interface's parameters are named like `Self`: the bound that uses the interface supplies them.
+    std::unordered_set<std::string> parameterNames;
+    for (const TypeParameter &parameter : d.typeParams) {
+        if (!parameterNames.insert(parameter.name).second) {
+            EmitError(parameter.location,
+                      std::format("interface '{}' repeats type parameter '{}'", d.name, parameter.name));
+        }
+        if (!parameter.bounds.empty()) {
+            EmitError(parameter.location,
+                      std::format("type parameter '{}' of interface '{}' cannot have bounds", parameter.name, d.name));
+        }
+        currentTypeParams.push_back(parameter.name);
+    }
     const auto restore = [&] { currentTypeParams = savedTypeParams; };
 
     std::unordered_set<std::string> seen;
@@ -405,6 +418,24 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
                 {DeclarationNote(*ifaceSym)});
         }
         else {
+            // A generic interface is implemented for particular type arguments, and any other is named bare.
+            if (const auto *interface = dynamic_cast<const InterfaceDecl *>(ifaceSym->declaration)) {
+                const std::size_t expected = interface->typeParams.size();
+                if (d.interfaceTypeArgs.size() != expected) {
+                    EmitError(d.location, expected == 0
+                                              ? std::format("interface '{}' takes no type arguments", *d.interfaceName)
+                                              : std::format("interface '{}' takes {} type argument{}, but {} {} given",
+                                                            *d.interfaceName, expected, expected == 1 ? "" : "s",
+                                                            d.interfaceTypeArgs.size(),
+                                                            d.interfaceTypeArgs.size() == 1 ? "was" : "were"));
+                }
+                const auto savedParams = currentTypeParams;
+                currentTypeParams = ImplTypeParams(d);
+                for (const TypeExprPtr &argument : d.interfaceTypeArgs) {
+                    static_cast<void>(ResolveType(*argument));
+                }
+                currentTypeParams = savedParams;
+            }
             std::unordered_set<std::string> implNames;
             for (const auto &m : d.methods) {
                 implNames.insert(m->name);

@@ -724,6 +724,7 @@ bool AnalysisContext::DeduceTypeArguments(const FuncDecl &declaration, const std
             DeduceTypeArgument((*bound)[i], argumentTypes[i], typeParamNames, substitutions);
         }
     }
+    DeduceTypeArgumentsFromBounds(declaration.typeParams, substitutions);
     return substitutions.size() == declaration.typeParams.size();
 }
 

@@ -3,6 +3,7 @@
 
 #include "Semantic/Analysis/AnalysisContext.h"
 
+#include <algorithm>
 #include <format>
 #include <unordered_set>
 #include <utility>
@@ -17,7 +18,8 @@ namespace {
 } // namespace
 
 std::vector<AnalysisContext::ResolvedTypeBound>
-AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, const bool report) {
+AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, const bool report,
+                                            const std::vector<TypeParameter> *declaringParameters) {
     std::vector<ResolvedTypeBound> resolved;
     std::unordered_set<std::string> seen;
     for (const TypeExprPtr &bound : parameter.bounds) {
@@ -28,13 +30,6 @@ AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, cons
                 EmitError(bound->location,
                           std::format("bound on type parameter '{}' must name an interface", parameter.name));
             }
-            continue;
-        }
-        if (!named->typeArgs.empty()) {
-            if (report) {
-                EmitError(named->location, std::format("interface bound '{}' cannot take type arguments", named->name));
-            }
-            resolved.push_back({named->name, nullptr, named->location});
             continue;
         }
 
@@ -51,36 +46,120 @@ AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, cons
         // would resolve the bound to nothing at all -- silently, since a use site does not report -- leaving lowering
         // with a conformance it was promised and cannot find. So a use site reads the program's interfaces directly,
         // and only the declaration itself is held to what is in scope where it was written.
+        const InterfaceDecl *interface = nullptr;
         if (!report) {
             const auto known = interfaceDecls.find(NominalTypeName(named->name));
-            resolved.push_back({NominalTypeName(named->name), known == interfaceDecls.end() ? nullptr : known->second,
-                                named->location});
-            continue;
+            interface = known == interfaceDecls.end() ? nullptr : known->second;
+        }
+        else {
+            const Symbol *symbol = currentScope->Lookup(named->name);
+            if (!symbol) {
+                std::optional<std::string> help;
+                if (const Symbol *suggestion = currentScope->Suggest(named->name)) {
+                    help = std::format("did you mean '{}'?", suggestion->name);
+                }
+                EmitError(named->location, std::format("interface '{}' is not defined", named->name), {},
+                          std::move(help));
+                resolved.push_back({named->name, nullptr, named->location, {}});
+                continue;
+            }
+            if (symbol->kind != Symbol::Kind::Interface) {
+                EmitError(named->location,
+                          std::format("name '{}' is a {}, not an interface, and cannot bound type parameter '{}'",
+                                      named->name, SymbolKindName(symbol->kind), parameter.name),
+                          {DeclarationNote(*symbol)});
+                resolved.push_back({named->name, nullptr, named->location, {}});
+                continue;
+            }
+            const auto declaration = interfaceDecls.find(NominalTypeName(named->name));
+            interface = declaration == interfaceDecls.end() ? nullptr : declaration->second;
         }
 
-        const Symbol *symbol = currentScope->Lookup(named->name);
-        if (!symbol) {
-            std::optional<std::string> help;
-            if (const Symbol *suggestion = currentScope->Suggest(named->name)) {
-                help = std::format("did you mean '{}'?", suggestion->name);
+        // A generic interface takes exactly as many type arguments as it declares parameters, and any other interface
+        // takes none. The arguments are read in the declaring generic's terms: a use site names that declaration's
+        // parameters while resolving them, so `I: Cursor<T>` refers to its own `T` whoever is calling.
+        const std::size_t expected = interface ? interface->typeParams.size() : 0;
+        if (named->typeArgs.size() != expected && (interface || !named->typeArgs.empty())) {
+            if (report) {
+                if (expected == 0) {
+                    EmitError(named->location,
+                              std::format("interface bound '{}' cannot take type arguments", named->name));
+                }
+                else {
+                    EmitError(named->location,
+                              std::format("interface bound '{}' takes {} type argument{}, but {} {} given", named->name,
+                                          expected, expected == 1 ? "" : "s", named->typeArgs.size(),
+                                          named->typeArgs.size() == 1 ? "was" : "were"));
+                }
             }
-            EmitError(named->location, std::format("interface '{}' is not defined", named->name), {}, std::move(help));
-            resolved.push_back({named->name, nullptr, named->location});
+            resolved.push_back({NominalTypeName(named->name), nullptr, named->location, {}});
             continue;
         }
-        if (symbol->kind != Symbol::Kind::Interface) {
-            EmitError(named->location,
-                      std::format("name '{}' is a {}, not an interface, and cannot bound type parameter '{}'",
-                                  named->name, SymbolKindName(symbol->kind), parameter.name),
-                      {DeclarationNote(*symbol)});
-            resolved.push_back({named->name, nullptr, named->location});
-            continue;
+        std::vector<TypeRef> arguments;
+        if (!named->typeArgs.empty()) {
+            const auto savedTypeParams = currentTypeParams;
+            if (declaringParameters) {
+                currentTypeParams.clear();
+                AppendTypeParameterNames(currentTypeParams, *declaringParameters);
+            }
+            for (const TypeExprPtr &argument : named->typeArgs) {
+                arguments.push_back(ResolveType(*argument));
+            }
+            currentTypeParams = savedTypeParams;
         }
-        const auto declaration = interfaceDecls.find(NominalTypeName(named->name));
-        resolved.push_back({NominalTypeName(named->name),
-                            declaration == interfaceDecls.end() ? nullptr : declaration->second, named->location});
+        resolved.push_back({NominalTypeName(named->name), interface, named->location, std::move(arguments)});
     }
     return resolved;
+}
+
+void AnalysisContext::DeduceTypeArgumentsFromBounds(const std::vector<TypeParameter> &parameters,
+                                                    std::unordered_map<std::string, TypeRef> &substitutions) {
+    if (substitutions.size() == parameters.size()) {
+        return;
+    }
+    std::unordered_set<std::string> names;
+    for (const TypeParameter &parameter : parameters) {
+        names.insert(parameter.name);
+    }
+    // Each pass can settle an argument that a later bound's arguments mention, so passes repeat while they learn.
+    for (std::size_t pass = 0; pass < parameters.size() && substitutions.size() < parameters.size(); ++pass) {
+        const std::size_t before = substitutions.size();
+        for (const TypeParameter &parameter : parameters) {
+            const auto argument = substitutions.find(parameter.name);
+            if (argument == substitutions.end() || argument->second.IsUnknown() ||
+                argument->second.kind == TypeRef::Kind::TypeParam) {
+                continue;
+            }
+            const TypeRef receiver = argument->second;
+            const std::string typeName = NamedBaseTypeName(receiver);
+            if (typeName.empty()) {
+                continue;
+            }
+            for (const ResolvedTypeBound &bound : ResolveTypeParameterBounds(parameter, false, &parameters)) {
+                if (!bound.interface || bound.typeArguments.empty()) {
+                    continue;
+                }
+                for (const auto &required : bound.interface->methods) {
+                    const FuncDecl *operation = SelectBoundOperation(typeName, *required);
+                    if (!operation) {
+                        continue;
+                    }
+                    const TypeRef pattern =
+                        ResolveInterfaceMethodReturnType(*required, receiver, bound.interface, bound.typeArguments);
+                    DeduceTypeArgument(pattern, ResolveMethodReturnType(receiver, *operation), names, substitutions);
+                    const std::vector<TypeRef> patterns =
+                        ResolveInterfaceMethodParamTypes(*required, receiver, bound.interface, bound.typeArguments);
+                    const std::vector<TypeRef> actuals = ResolveMethodParamTypes(receiver, *operation);
+                    for (std::size_t index = 0; index < patterns.size() && index < actuals.size(); ++index) {
+                        DeduceTypeArgument(patterns[index], actuals[index], names, substitutions);
+                    }
+                }
+            }
+        }
+        if (substitutions.size() == before) {
+            break;
+        }
+    }
 }
 
 void AnalysisContext::DeclareTypeParameterBounds(const std::vector<TypeParameter> &parameters) {
@@ -107,7 +186,8 @@ AnalysisContext::ScopedTypeParameterBounds::~ScopedTypeParameterBounds() {
     context.currentTypeParamBounds = std::move(saved);
 }
 
-bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason) {
+bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason,
+                                         const std::vector<TypeRef> &interfaceArguments) {
     // An interface that requires nothing is satisfied by everything, so a marker bound costs no conformance work.
     if (interface.methods.empty()) {
         return true;
@@ -125,7 +205,7 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
             return true;
         }
         for (const ResolvedTypeBound &bound : bounds->second) {
-            if (bound.interface == &interface) {
+            if (bound.interface == &interface && bound.typeArguments == interfaceArguments) {
                 return true;
             }
         }
@@ -153,6 +233,22 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
             reason = std::format("interface '{}' requires method '{}', which type '{}' does not implement",
                                  interface.name, required->name, argument.ToString());
             return false;
+        }
+        // A generic interface fixes the types its operations work with, and the method found by name has to agree,
+        // since every call through the bound is typed by the requirement and lowered to that method.
+        if (!interface.typeParams.empty() && !interfaceArguments.empty() &&
+            std::ranges::none_of(interfaceArguments, [](const TypeRef &type) {
+                return type.IsUnknown() || type.kind == TypeRef::Kind::TypeParam;
+            })) {
+            const TypeRef requiredReturn =
+                ResolveInterfaceMethodReturnType(*required, argument, &interface, interfaceArguments);
+            const TypeRef actualReturn = ResolveMethodReturnType(argument, *operation);
+            if (!requiredReturn.IsUnknown() && !actualReturn.IsUnknown() && !(requiredReturn == actualReturn)) {
+                reason =
+                    std::format("method '{}' of type '{}' returns '{}', but the bound requires '{}'", required->name,
+                                argument.ToString(), actualReturn.ToString(), requiredReturn.ToString());
+                return false;
+            }
         }
         witness.operations.push_back(operation);
     }
@@ -220,7 +316,8 @@ AnalysisContext::LookupConstrainedOperation(const TypeRef &receiverType, const s
             if (bound.interface->methods[index]->name != methodName) {
                 continue;
             }
-            return ConstrainedOperation{receiver.name, bound.name, bound.interface->methods[index].get(), index};
+            return ConstrainedOperation{receiver.name, bound.name,      bound.interface->methods[index].get(),
+                                        index,         bound.interface, bound.typeArguments};
         }
     }
     return std::nullopt;
@@ -271,14 +368,18 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
             continue;
         }
 
-        for (const ResolvedTypeBound &bound : ResolveTypeParameterBounds(parameter, /*report=*/false)) {
+        for (const ResolvedTypeBound &bound : ResolveTypeParameterBounds(parameter, /*report=*/false, &parameters)) {
             // A bound that named nothing usable was reported where it was written; repeating it at each use would bury
             // the one diagnostic that can be acted on.
             if (!bound.interface) {
                 continue;
             }
+            std::vector<TypeRef> interfaceArguments;
+            for (const TypeRef &type : bound.typeArguments) {
+                interfaceArguments.push_back(SubstituteTypeParameters(type, substitutions));
+            }
             std::string reason;
-            if (TypeSatisfiesBound(argument->second, *bound.interface, reason)) {
+            if (TypeSatisfiesBound(argument->second, *bound.interface, reason, interfaceArguments)) {
                 continue;
             }
             const std::string argumentName = argument->second.ToString();
@@ -345,9 +446,16 @@ bool AnalysisContext::TypeArgumentsSatisfyBounds(const std::vector<TypeParameter
         if (argument == substitutions.end() || argument->second.IsUnknown()) {
             continue;
         }
-        for (const ResolvedTypeBound &bound : ResolveTypeParameterBounds(parameter, /*report=*/false)) {
+        for (const ResolvedTypeBound &bound : ResolveTypeParameterBounds(parameter, /*report=*/false, &parameters)) {
+            if (!bound.interface) {
+                continue;
+            }
+            std::vector<TypeRef> interfaceArguments;
+            for (const TypeRef &type : bound.typeArguments) {
+                interfaceArguments.push_back(SubstituteTypeParameters(type, substitutions));
+            }
             std::string reason;
-            if (bound.interface && !TypeSatisfiesBound(argument->second, *bound.interface, reason)) {
+            if (!TypeSatisfiesBound(argument->second, *bound.interface, reason, interfaceArguments)) {
                 return false;
             }
         }
