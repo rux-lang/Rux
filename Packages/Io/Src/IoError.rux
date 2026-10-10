@@ -40,6 +40,22 @@ pub enum IoErrorKind: int32 {
     InvalidText = 15,
     /// A bounded operation met its bound before its end.
     LimitExceeded = 16,
+    /// The other end refused the connection: nothing listens there.
+    ConnectionRefused = 17,
+    /// The other end reset the connection.
+    ConnectionReset = 18,
+    /// The connection was aborted on this side.
+    ConnectionAborted = 19,
+    /// The socket is not connected.
+    NotConnected = 20,
+    /// The local address is already in use.
+    AddressInUse = 21,
+    /// The address is not one this machine has, or cannot be reached from it.
+    AddressUnavailable = 22,
+    /// No route leads to the network or host.
+    Unreachable = 23,
+    /// The other end closed the connection, so nothing more can be written to it.
+    BrokenPipe = 24,
     /// Something the platform reported that has no shared meaning; the raw code is the detail.
     Other = 14
 }

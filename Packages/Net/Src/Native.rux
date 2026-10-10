@@ -1,0 +1,435 @@
+// Sockets as each system makes them, behind one set of operations on a word-sized handle.
+// A socket is a descriptor on the Unix systems and a `SOCKET` on Windows; both fit in a word, so nothing above this
+// module asks which. Addresses are encoded here into the `sockaddr` bytes the system reads: the BSD systems start them
+// with a length byte and a one-byte family, Linux and Windows with a two-byte family, and every system puts the port
+// in network order. Errors become `IoError`s with the system's own code kept beside the meaning.
+
+import Core::{ #Error, #target, AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder, SpinHint };
+import Io::{ IoError, IoErrorKind };
+import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
+
+when #target.os {
+    .Linux => import Linux::{
+        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, GetPeerName, GetSocketName, Listen, MSG_NOSIGNAL,
+        ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo, SetSocketOption,
+        Shutdown, Socket
+    },
+    .FreeBSD => import FreeBSD::{
+        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, GetPeerName, GetSocketName, Listen, MSG_NOSIGNAL,
+        ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo, SetSocketOption,
+        Shutdown, Socket
+    },
+    .macOS => import macOS::{
+        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, GetPeerName, GetSocketName, Listen, ReceiveFrom,
+        F_SETFD, FD_CLOEXEC, SO_NOSIGPIPE, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOL_SOCKET, SendTo, SetSocketOption,
+        Shutdown, Socket, fcntl
+    },
+    .Windows => import Windows::{
+        AF_INET, AF_INET6, HANDLE_FLAG_INHERIT, INVALID_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, SOL_SOCKET, SetHandleInformation,
+        WSAGetLastError, WSAStartup, WsaData, accept, bind, closesocket, connect, getpeername, getsockname, listen,
+        recvfrom, sendto, setsockopt, shutdown, socket
+    },
+    else => #Error("Unsupported operating system")
+}
+
+// The handle that is not a socket.
+const NoSocket: uint64 = 0xFFFFFFFFFFFFFFFF;
+
+// Room for any `sockaddr` this package uses: `sockaddr_in6` is the largest, at 28 bytes.
+struct RawAddress {
+    bytes: uint8[32];
+    length: uint32;
+}
+
+// Winsock's state: 0 before starting, 1 while one thread starts it, 2 once started.
+var WinsockState: uint32 = 0;
+
+// Starts Winsock once for the process; nothing to do elsewhere.
+func StartNetworking() {
+    when #target.os == .Windows {
+        if AtomicLoad(@WinsockState, MemoryOrder::Acquire) == 2u32 { return; }
+        if AtomicCompareExchange(@WinsockState, 0u32, 1u32, MemoryOrder::Acquire, MemoryOrder::Acquire) == 0u32 {
+            var data = WsaData();
+            WSAStartup(0x0202u16, @data);
+            AtomicStore(@WinsockState, 2u32, MemoryOrder::Release);
+            return;
+        }
+        while AtomicLoad(@WinsockState, MemoryOrder::Acquire) != 2u32 { SpinHint(); }
+    }
+}
+
+// What a system error code means.
+func FailureOf(code: int64) -> IoError {
+    var kind = IoErrorKind::Other;
+    when #target.os == .Windows {
+        if code == 10061 { kind = IoErrorKind::ConnectionRefused; }
+        else if code == 10054 { kind = IoErrorKind::ConnectionReset; }
+        else if code == 10053 { kind = IoErrorKind::ConnectionAborted; }
+        else if code == 10057 { kind = IoErrorKind::NotConnected; }
+        else if code == 10048 { kind = IoErrorKind::AddressInUse; }
+        else if code == 10049 { kind = IoErrorKind::AddressUnavailable; }
+        else if code == 10051 || code == 10065 { kind = IoErrorKind::Unreachable; }
+        else if code == 10060 || code == 10035 { kind = IoErrorKind::TimedOut; }
+        else if code == 10058 { kind = IoErrorKind::BrokenPipe; }
+        else if code == 10004 { kind = IoErrorKind::Interrupted; }
+        else if code == 10013 { kind = IoErrorKind::PermissionDenied; }
+        else if code == 10022 { kind = IoErrorKind::InvalidInput; }
+        else if code == 10009 || code == 10038 { kind = IoErrorKind::InvalidHandle; }
+        else if code == 11001 || code == 11004 { kind = IoErrorKind::NotFound; }
+    }
+    else when #target.os == .Linux {
+        if code == 111 { kind = IoErrorKind::ConnectionRefused; }
+        else if code == 104 { kind = IoErrorKind::ConnectionReset; }
+        else if code == 103 { kind = IoErrorKind::ConnectionAborted; }
+        else if code == 107 { kind = IoErrorKind::NotConnected; }
+        else if code == 98 { kind = IoErrorKind::AddressInUse; }
+        else if code == 99 { kind = IoErrorKind::AddressUnavailable; }
+        else if code == 101 || code == 113 { kind = IoErrorKind::Unreachable; }
+        else if code == 110 || code == 11 { kind = IoErrorKind::TimedOut; }
+        else if code == 32 { kind = IoErrorKind::BrokenPipe; }
+        else if code == 4 { kind = IoErrorKind::Interrupted; }
+        else if code == 13 || code == 1 { kind = IoErrorKind::PermissionDenied; }
+        else if code == 22 { kind = IoErrorKind::InvalidInput; }
+        else if code == 9 || code == 88 { kind = IoErrorKind::InvalidHandle; }
+    }
+    else {
+        if code == 61 { kind = IoErrorKind::ConnectionRefused; }
+        else if code == 54 { kind = IoErrorKind::ConnectionReset; }
+        else if code == 53 { kind = IoErrorKind::ConnectionAborted; }
+        else if code == 57 { kind = IoErrorKind::NotConnected; }
+        else if code == 48 { kind = IoErrorKind::AddressInUse; }
+        else if code == 49 { kind = IoErrorKind::AddressUnavailable; }
+        else if code == 51 || code == 65 { kind = IoErrorKind::Unreachable; }
+        else if code == 60 || code == 35 { kind = IoErrorKind::TimedOut; }
+        else if code == 32 { kind = IoErrorKind::BrokenPipe; }
+        else if code == 4 { kind = IoErrorKind::Interrupted; }
+        else if code == 13 || code == 1 { kind = IoErrorKind::PermissionDenied; }
+        else if code == 22 { kind = IoErrorKind::InvalidInput; }
+        else if code == 9 || code == 38 { kind = IoErrorKind::InvalidHandle; }
+    }
+    return IoError { kind: kind, raw: code as int32 };
+}
+
+// The last error of a Winsock call, or the error a Unix wrapper returned.
+func LastFailure(result: int64) -> IoError {
+    when #target.os == .Windows {
+        return FailureOf(WSAGetLastError() as int64);
+    }
+    else {
+        return FailureOf(-result);
+    }
+}
+
+// Encodes `address` as a `sockaddr`.
+func Encode(address: SocketAddress) -> RawAddress {
+    var raw = RawAddress { bytes: [0u8; 32], length: 16 };
+    let family = address.ip.IsIpv6() ? AF_INET6 : AF_INET;
+    when #target.os == .macOS || #target.os == .FreeBSD {
+        raw.bytes[0] = address.ip.IsIpv6() ? 28u8 : 16u8;
+        raw.bytes[1] = family as uint8;
+    }
+    else {
+        raw.bytes[0] = family as uint8;
+        raw.bytes[1] = (family >> 8) as uint8;
+    }
+    raw.bytes[2] = (address.port >> 8) as uint8;
+    raw.bytes[3] = address.port as uint8;
+    match address.ip.AsIpv4() {
+        .Some(v4) => {
+            var index: uint = 0;
+            while index < 4u {
+                raw.bytes[4u + index] = v4.octets[index];
+                index = index + 1;
+            }
+        },
+        none => {
+            let v6 = address.ip.AsIpv6() ?? Ipv6Address::Unspecified();
+            var index: uint = 0;
+            while index < 16u {
+                raw.bytes[8u + index] = v6.octets[index];
+                index = index + 1;
+            }
+            raw.length = 28;
+        }
+    }
+    return raw;
+}
+
+// Decodes a `sockaddr`, or none for a family this package does not know.
+func Decode(bytes: *uint8) -> SocketAddress? {
+    var family: int32 = 0;
+    when #target.os == .macOS || #target.os == .FreeBSD {
+        family = bytes[1] as int32;
+    }
+    else {
+        family = bytes[0] as int32 | (bytes[1] as int32 << 8);
+    }
+    let port = (bytes[2] as uint16 << 8) | bytes[3] as uint16;
+    if family == AF_INET {
+        let v4 = Ipv4Address { octets: [bytes[4], bytes[5], bytes[6], bytes[7]] };
+        return SocketAddress { ip: IpAddress::FromIpv4(v4), port: port };
+    }
+    if family == AF_INET6 {
+        var octets: uint8[16] = [0u8; 16];
+        var index: uint = 0;
+        while index < 16u {
+            octets[index] = bytes[8u + index];
+            index = index + 1;
+        }
+        return SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address { octets: octets }), port: port };
+    }
+    return none;
+}
+
+// Opens a stream or datagram socket for addresses like `address`.
+// Keeps a new socket out of child processes, where the system does not do so as it makes one. On macOS this also
+// turns `SIGPIPE` into a `BrokenPipe` failure, as `MSG_NOSIGNAL` does on each send elsewhere.
+func KeepFromChildren(handle: uint64) {
+    when #target.os == .Windows {
+        SetHandleInformation(handle as *opaque, HANDLE_FLAG_INHERIT, 0);
+    }
+    else when #target.os == .macOS {
+        fcntl(handle as int32, F_SETFD, FD_CLOEXEC);
+        var one: int32 = 1;
+        SetSocketOption(handle as int32, SOL_SOCKET, SO_NOSIGPIPE, (@one) as *opaque, 4u32);
+    }
+}
+
+func OpenSocket(address: SocketAddress, stream: bool) -> uint64 ! IoError {
+    StartNetworking();
+    let family = address.ip.IsIpv6() ? AF_INET6 : AF_INET;
+    let kind: int32 = stream ? 1 : 2;
+    when #target.os == .Windows {
+        let handle = socket(family, kind, 0);
+        if handle == INVALID_SOCKET { fail LastFailure(0); }
+        KeepFromChildren(handle);
+        return handle;
+    }
+    else when #target.os == .macOS {
+        let result = Socket(family, kind, 0);
+        if result < 0 { fail LastFailure(result); }
+        KeepFromChildren(result as uint64);
+        return result as uint64;
+    }
+    else {
+        let result = Socket(family, kind | SOCK_CLOEXEC, 0);
+        if result < 0 { fail LastFailure(result); }
+        return result as uint64;
+    }
+}
+
+func CloseSocket(handle: uint64) {
+    if handle == NoSocket { return; }
+    when #target.os == .Windows {
+        closesocket(handle);
+    }
+    else {
+        Close(handle as int32);
+    }
+}
+
+func BindSocket(handle: uint64, address: SocketAddress, reuse: bool) -> ! IoError {
+    when #target.os != .Windows {
+        // Lets a server restart on its port while connections from its last run wind down. Windows means something
+        // else by the option, letting another socket take the port over, so it is not set there.
+        if reuse {
+            var one: int32 = 1;
+            SetSocketOption(handle as int32, SOL_SOCKET, SO_REUSEADDR, (@one) as *opaque, 4u32);
+        }
+    }
+    var raw = Encode(address);
+    when #target.os == .Windows {
+        if bind(handle, (@raw.bytes[0]) as *opaque, raw.length as int32) != 0 { fail LastFailure(0); }
+    }
+    else {
+        let result = Bind(handle as int32, (@raw.bytes[0]) as *opaque, raw.length);
+        if result < 0 { fail LastFailure(result); }
+    }
+}
+
+func ListenSocket(handle: uint64) -> ! IoError {
+    when #target.os == .Windows {
+        if listen(handle, 128) != 0 { fail LastFailure(0); }
+    }
+    else {
+        let result = Listen(handle as int32, 128);
+        if result < 0 { fail LastFailure(result); }
+    }
+}
+
+func ConnectSocket(handle: uint64, address: SocketAddress) -> ! IoError {
+    var raw = Encode(address);
+    when #target.os == .Windows {
+        if connect(handle, (@raw.bytes[0]) as *opaque, raw.length as int32) != 0 { fail LastFailure(0); }
+    }
+    else {
+        while true {
+            let result = Connect(handle as int32, (@raw.bytes[0]) as *opaque, raw.length);
+            if result >= 0 { return; }
+            let failure = LastFailure(result);
+            if failure.kind != IoErrorKind::Interrupted { fail failure; }
+        }
+    }
+}
+
+// Accepts a connection, returning its handle and filling in the peer's address.
+func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError {
+    var raw = RawAddress { bytes: [0u8; 32], length: 32 };
+    when #target.os == .Windows {
+        var length: int32 = 32;
+        let accepted = accept(handle, (@raw.bytes[0]) as *var opaque, @length);
+        if accepted == INVALID_SOCKET { fail LastFailure(0); }
+        KeepFromChildren(accepted);
+        *peer = Decode(@raw.bytes[0]) ?? *peer;
+        return accepted;
+    }
+    else {
+        while true {
+            var length: uint32 = 32;
+            when #target.os == .macOS {
+                let result = Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, 0);
+                if result >= 0 {
+                    KeepFromChildren(result as uint64);
+                    *peer = Decode(@raw.bytes[0]) ?? *peer;
+                    return result as uint64;
+                }
+                let failure = LastFailure(result);
+                if failure.kind != IoErrorKind::Interrupted { fail failure; }
+            }
+            else {
+                let result = Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, SOCK_CLOEXEC);
+                if result >= 0 {
+                    *peer = Decode(@raw.bytes[0]) ?? *peer;
+                    return result as uint64;
+                }
+                let failure = LastFailure(result);
+                if failure.kind != IoErrorKind::Interrupted { fail failure; }
+            }
+        }
+        fail IoError::Of(IoErrorKind::Other);
+    }
+}
+
+// Sends bytes, to `target` when one is given.
+func SendSocket(handle: uint64, bytes: char8[..], target: SocketAddress?) -> uint ! IoError {
+    var raw = RawAddress { bytes: [0u8; 32], length: 0 };
+    match target {
+        .Some(address) => raw = Encode(address),
+        none => {}
+    }
+    let address: *opaque = raw.length == 0u32 ? null : (@raw.bytes[0]) as *opaque;
+    when #target.os == .Windows {
+        let count = bytes.length > 0x40000000u ? 0x40000000i32 : bytes.length as int32;
+        let sent = sendto(handle, bytes.data as *opaque, count, 0, address, raw.length as int32);
+        if sent < 0 { fail LastFailure(0); }
+        return sent as uint;
+    }
+    else {
+        var flags: int32 = 0;
+        when #target.os != .macOS {
+            flags = MSG_NOSIGNAL;
+        }
+        while true {
+            let result = SendTo(handle as int32, bytes.data as *opaque, bytes.length, flags, address, raw.length);
+            if result >= 0 { return result as uint; }
+            let failure = LastFailure(result);
+            if failure.kind != IoErrorKind::Interrupted { fail failure; }
+        }
+        fail IoError::Of(IoErrorKind::Other);
+    }
+}
+
+// Receives bytes, filling in where they came from when `source` is given.
+func ReceiveSocket(handle: uint64, into: var char8[..], source: *var SocketAddress) -> uint ! IoError {
+    var raw = RawAddress { bytes: [0u8; 32], length: 32 };
+    let address: *var opaque = source == null ? null : (@raw.bytes[0]) as *var opaque;
+    when #target.os == .Windows {
+        var length: int32 = 32;
+        let count = into.length > 0x40000000u ? 0x40000000i32 : into.length as int32;
+        let received = recvfrom(handle, into.data as *var opaque, count, 0, address, source == null ? null : @length);
+        if received < 0 { fail LastFailure(0); }
+        if source != null { *source = Decode(@raw.bytes[0]) ?? *source; }
+        return received as uint;
+    }
+    else {
+        while true {
+            var length: uint32 = 32;
+            let result = ReceiveFrom(handle as int32, into.data as *var opaque, into.length, 0, address,
+                                     source == null ? null : @length);
+            if result >= 0 {
+                if source != null { *source = Decode(@raw.bytes[0]) ?? *source; }
+                return result as uint;
+            }
+            let failure = LastFailure(result);
+            if failure.kind != IoErrorKind::Interrupted { fail failure; }
+        }
+        fail IoError::Of(IoErrorKind::Other);
+    }
+}
+
+func ShutdownSocket(handle: uint64, how: int32) -> ! IoError {
+    when #target.os == .Windows {
+        if shutdown(handle, how) != 0 { fail LastFailure(0); }
+    }
+    else {
+        let result = Shutdown(handle as int32, how);
+        if result < 0 { fail LastFailure(result); }
+    }
+}
+
+// The socket's local address, or its peer's.
+func SocketName(handle: uint64, peer: bool) -> SocketAddress ! IoError {
+    var raw = RawAddress { bytes: [0u8; 32], length: 32 };
+    when #target.os == .Windows {
+        var length: int32 = 32;
+        let result = peer ? getpeername(handle, (@raw.bytes[0]) as *var opaque, @length)
+                          : getsockname(handle, (@raw.bytes[0]) as *var opaque, @length);
+        if result != 0 { fail LastFailure(0); }
+    }
+    else {
+        var length: uint32 = 32;
+        let result = peer ? GetPeerName(handle as int32, (@raw.bytes[0]) as *var opaque, @length)
+                          : GetSocketName(handle as int32, (@raw.bytes[0]) as *var opaque, @length);
+        if result < 0 { fail LastFailure(result); }
+    }
+    return Decode(@raw.bytes[0]) ?? fail IoError::Of(IoErrorKind::Other);
+}
+
+func SetIntegerOption(handle: uint64, level: int32, name: int32, value: int32) -> ! IoError {
+    var setting = value;
+    when #target.os == .Windows {
+        if setsockopt(handle, level, name, (@setting) as *opaque, 4) != 0 { fail LastFailure(0); }
+    }
+    else {
+        let result = SetSocketOption(handle as int32, level, name, (@setting) as *opaque, 4u32);
+        if result < 0 { fail LastFailure(result); }
+    }
+}
+
+// Sets how long a receive, or a send, may wait; zero or less waits without a limit.
+func SetTimeout(handle: uint64, receive: bool, nanoseconds: int64) -> ! IoError {
+    let name = receive ? SO_RCVTIMEO : SO_SNDTIMEO;
+    when #target.os == .Windows {
+        var milliseconds: uint32 = 0;
+        if nanoseconds > 0i64 {
+            let rounded = (nanoseconds + 999999i64) / 1000000i64;
+            milliseconds = rounded > 0xFFFFFFFEi64 ? 0xFFFFFFFEu32 : rounded as uint32;
+        }
+        if setsockopt(handle, SOL_SOCKET, name, (@milliseconds) as *opaque, 4) != 0 { fail LastFailure(0); }
+    }
+    else {
+        // A `timeval`: whole seconds and microseconds, each in a 64-bit field on every system this package supports
+        // but macOS, whose 32-bit microseconds sit in the low half of the same place.
+        var value: int64[2] = [0i64, 0i64];
+        if nanoseconds > 0i64 {
+            value[0] = nanoseconds / 1000000000i64;
+            value[1] = (nanoseconds % 1000000000i64 + 999i64) / 1000i64;
+            if value[1] == 1000000i64 {
+                value[0] = value[0] + 1i64;
+                value[1] = 0;
+            }
+        }
+        let result = SetSocketOption(handle as int32, SOL_SOCKET, name, (@value[0]) as *opaque, 16u32);
+        if result < 0 { fail LastFailure(result); }
+    }
+}

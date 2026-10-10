@@ -399,7 +399,7 @@ extend DecompressReader : Reader {
     /// Decompresses into `into` until it is full or the data ends.
     /// @param into where to put the data
     /// @returns how many bytes were produced, or fails with `EndOfStream` after the last, or with `InvalidInput` for
-    /// damaged or truncated input
+    ///   damaged or truncated input
     /// @see https://rux-lang.dev/docs/api/compress/inflate#read
     pub func Read(self: &var DecompressReader, into: var char8[..]) -> uint ! IoError {
         if self.failed { fail Corrupt(); }

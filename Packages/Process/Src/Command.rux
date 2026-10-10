@@ -186,7 +186,7 @@ extend Command {
 
     /// Starts the program as a child process.
     /// @returns the child, or fails: with a part of the command the system could not take, with `NotFound` for a
-    /// program that is not there, or with the system's reason
+    ///   program that is not there, or with the system's reason
     /// @see https://rux-lang.dev/docs/api/process/command#spawn
     pub func Spawn(self: &Command) -> Child ! IoError {
         if self.failure != none { fail self.failure ?? IoError::Of(IoErrorKind::Other); }
@@ -387,7 +387,7 @@ extend Command {
             var inheritable = SecurityAttributes {
                 length: sizeof(SecurityAttributes) as uint32, securityDescriptor: null, inheritHandle: true
             };
-            let self_ = GetCurrentProcess();
+            let currentProcess = GetCurrentProcess();
             var parentEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
             var childHandles: (*opaque)[3] = [null, null, null];
             let streams: Stdio[3] = [input, output, error];
@@ -399,7 +399,7 @@ extend Command {
                     let own = GetStdHandle(standard[stream]);
                     if own != null && own as uint64 != InvalidHandleValue {
                         var copy: *opaque = null;
-                        if DuplicateHandle(self_, own, self_, @copy, 0, true, DUPLICATE_SAME_ACCESS) != 0 {
+                        if DuplicateHandle(currentProcess, own, currentProcess, @copy, 0, true, DUPLICATE_SAME_ACCESS) != 0 {
                             childHandles[stream] = copy;
                         }
                     }

@@ -1,0 +1,134 @@
+// Addresses read and write themselves; a TCP connection on the loopback interface carries bytes both ways and ends
+// cleanly; UDP datagrams arrive with their sender; a read with a timeout gives up; nothing listening refuses a
+// connection; and `localhost` and numeric hosts resolve.
+
+import Allocator::SystemAllocator;
+import Core::Assert;
+import Io::{ IoErrorKind, ReadExact, Reader, WriteAll, Writer };
+import Net::{
+    IpAddress, Ipv4Address, Ipv6Address, Resolve, ShutdownDirection, SocketAddress, TcpListener, TcpStream, UdpSocket
+};
+import Thread::Spawn;
+import Time::Duration;
+
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Written(address: SocketAddress, expected: char8[..]) -> bool {
+    var buffer: char8[64] = ['\0'; 64];
+    let length = address.WriteText(buffer[..]);
+    return Same(buffer[..length], expected);
+}
+
+func Loopback(port: uint16) -> SocketAddress {
+    return SocketAddress::New(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
+}
+
+// The server's side: accepts one connection and echoes what it reads, upper-cased, until the client stops writing.
+func Echo(listener: TcpListener) -> bool {
+    var stream = listener.Accept() catch { else => return false };
+    var chunk: char8[64] = ['\0'; 64];
+    while true {
+        match stream.Read(chunk[..]) {
+            .Success(count) => {
+                var index: uint = 0;
+                while index < count {
+                    let byte = chunk[index] as uint8;
+                    if byte >= 0x61u8 && byte <= 0x7Au8 { chunk[index] = (byte - 32u8) as char8; }
+                    index = index + 1;
+                }
+                WriteAll(stream, chunk[..count]) catch { else => return false };
+            },
+            .Failure(error) => return error.kind == IoErrorKind::EndOfStream
+        }
+    }
+    return true;
+}
+
+func Main() -> int {
+    // Addresses.
+    Assert(Written(SocketAddress::Parse("192.168.0.1:8080") ?? Loopback(0), "192.168.0.1:8080"), "IPv4 round-trips");
+    Assert(Written(SocketAddress::Parse("[2001:DB8:0:0:0:0:0:1]:443") ?? Loopback(0), "[2001:db8::1]:443"),
+           "IPv6 is written canonically");
+    Assert(SocketAddress::Parse("1.2.3:80") == none && SocketAddress::Parse("1.2.3.4:99999") == none &&
+           SocketAddress::Parse("01.2.3.4:80") == none, "malformed addresses are refused");
+    Assert((Ipv6Address::Parse("::1") ?? Ipv6Address::Unspecified()).IsLoopback(), "::1 is loopback");
+    Assert((IpAddress::Parse("10.0.0.1") ?? IpAddress::FromIpv6(Ipv6Address::Localhost())).AsIpv4() != none,
+           "an IPv4 address parses as one");
+
+    // TCP: a server thread echoes upper-cased what the client sends.
+    let listener = TcpListener::Bind(Loopback(0)) catch { else => return 10 };
+    let bound = listener.LocalAddress() catch { else => return 11 };
+    Assert(bound.port != 0u16 && bound.ip.IsLoopback(), "the system chose a port");
+    var server = Spawn(Echo, <-listener) catch { else => return 12 };
+    var client = TcpStream::Connect(Loopback(bound.port)) catch { else => return 13 };
+    client.SetNoDelay(true) catch { else => return 14 };
+    let peer = client.PeerAddress() catch { else => return 15 };
+    Assert(peer.Equals(Loopback(bound.port)), "the peer is the listener's address");
+    WriteAll(client, "hello, server") catch { else => return 16 };
+    var reply: char8[13] = ['\0'; 13];
+    ReadExact(client, reply[..]) catch { else => return 17 };
+    Assert(Same(reply[..], "HELLO, SERVER"), "the server echoed the bytes");
+    client.Shutdown(ShutdownDirection::Write) catch { else => return 18 };
+    var rest: char8[4] = ['\0'; 4];
+    match client.Read(rest[..]) {
+        .Success(_) => Assert(false, "the server sends nothing more"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::EndOfStream, "the stream ends after the server closes")
+    }
+    Assert(server.Join(), "the server saw the end of the client's stream");
+
+    // UDP: datagrams arrive whole, with their sender.
+    let first = UdpSocket::Bind(Loopback(0)) catch { else => return 20 };
+    let second = UdpSocket::Bind(Loopback(0)) catch { else => return 21 };
+    let firstAddress = first.LocalAddress() catch { else => return 22 };
+    let secondAddress = second.LocalAddress() catch { else => return 23 };
+    first.SendTo("ping", secondAddress) catch { else => return 24 };
+    var datagram: char8[16] = ['\0'; 16];
+    let received = second.ReceiveFrom(datagram[..]) catch { else => return 25 };
+    Assert(Same(datagram[..received.length], "ping") && received.source.Equals(firstAddress),
+           "a datagram arrives with its sender");
+    second.Connect(firstAddress) catch { else => return 26 };
+    second.Send("pong") catch { else => return 27 };
+    let back = first.ReceiveFrom(datagram[..]) catch { else => return 28 };
+    Assert(Same(datagram[..back.length], "pong"), "a connected socket sends to its peer");
+
+    // A receive with a timeout gives up when nothing comes.
+    first.SetReadTimeout(Duration::FromMilliseconds(50)) catch { else => return 29 };
+    match first.ReceiveFrom(datagram[..]) {
+        .Success(_) => Assert(false, "nothing was sent"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::TimedOut, "a receive times out")
+    }
+
+    // Nothing listening refuses a connection: a port the system chose, freed again when its listener is dropped.
+    var unused: uint16 = 0;
+    match TcpListener::Bind(Loopback(0)) {
+        .Success(closed) => unused = (closed.LocalAddress() catch { else => return 30 }).port,
+        .Failure(_) => return 31
+    }
+    match TcpStream::Connect(Loopback(unused)) {
+        .Success(_) => Assert(false, "nothing listens on a freed port"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::ConnectionRefused, "the connection is refused")
+    }
+
+    // Resolution.
+    let numeric = Resolve(SystemAllocator(), "127.0.0.1", 80) catch { else => return 33 };
+    Assert(numeric.Length() == 1u && numeric.AsSlice()[0].Equals(Loopback(80)), "a numeric host resolves to itself");
+    let local = Resolve(SystemAllocator(), "localhost", 8080) catch { else => return 34 };
+    var loopbackFound = false;
+    for address in local.AsSlice() {
+        if address.ip.IsLoopback() && address.port == 8080u16 { loopbackFound = true; }
+    }
+    Assert(loopbackFound, "localhost resolves to a loopback address");
+    match Resolve(SystemAllocator(), "no-such-host.invalid", 80) {
+        .Success(_) => Assert(false, "an invalid name does not resolve"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "an invalid name is not found")
+    }
+    return 0;
+}

@@ -23,6 +23,7 @@ rux add Rux/Windows
 | `Synch`     | `WaitOnAddress`, `WakeByAddressSingle` and `WakeByAddressAll`, from the synchronization API set |
 | `ProcessControl` | `CreateProcessW` and its structures, `CreatePipe`, handle inheritance, `GetExitCodeProcess`, `TerminateProcess` and `SetEnvironmentVariableW` |
 | `TimeZone`  | `GetTimeZoneInformation`, `TimeZoneInformation` and `TimeZoneRuleDate`                 |
+| `Winsock`   | `WSAStartup`, `WSAGetLastError`, the Ws2_32 socket calls, `getaddrinfo` and `freeaddrinfo`, `WsaData`, `AddressInfo` and the socket constants |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

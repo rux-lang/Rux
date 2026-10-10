@@ -1,0 +1,83 @@
+// Finding the addresses of a host by name.
+// The system's resolver does the work: `getaddrinfo` reads the hosts file and asks the name servers the system is
+// configured with, so names resolve the way every other program on the machine resolves them. On the Unix systems
+// that resolver belongs to the C library, so a program that resolves names is linked against it. A host that is
+// already a numeric address is read directly, without asking anyone.
+
+import Allocator::Allocator;
+import Collections::Vector;
+import Core::{ #Error, #target };
+import Io::{ IoError, IoErrorKind };
+import Net::{ Decode, IpAddress, SocketAddress, StartNetworking };
+
+when #target.os {
+    .Linux => import Linux::{ AddressInfo, freeaddrinfo, getaddrinfo },
+    .FreeBSD => import FreeBSD::{ AddressInfo, freeaddrinfo, getaddrinfo },
+    .macOS => import macOS::{ AddressInfo, freeaddrinfo, getaddrinfo },
+    .Windows => import Windows::{ AddressInfo, freeaddrinfo, getaddrinfo },
+    else => #Error("Unsupported operating system")
+}
+
+/// The addresses of `host`, each with `port`, in the order the resolver prefers them, without repeats.
+/// A host that is a numeric IPv4 or IPv6 address gives just that address.
+/// @param allocator what the list is kept in
+/// @param host a host name, such as `example.com`, or a numeric address
+/// @param port the port every address gets
+/// @returns the addresses, or fails with `NotFound` when the name has none, or with the resolver's reason
+/// @see https://rux-lang.dev/docs/api/net/resolve#resolve
+pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
+    var addresses = Vector<SocketAddress>(allocator);
+    match IpAddress::Parse(host) {
+        .Some(ip) => {
+            addresses.Push(SocketAddress { ip: ip, port: port }) catch {
+                else => fail IoError::Of(IoErrorKind::LimitExceeded)
+            };
+            return <-addresses;
+        },
+        none => {}
+    }
+    if host.length == 0u { fail IoError::Of(IoErrorKind::InvalidInput); }
+    StartNetworking();
+    var name = Vector<char8>(allocator);
+    var index: uint = 0;
+    while index < host.length {
+        if host[index] as uint8 == 0u8 { fail IoError::Of(IoErrorKind::InvalidInput); }
+        index = index + 1;
+    }
+    name.PushSlice(host) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+    name.Push(c8'\0') catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+    let hints = AddressInfo {
+        flags: 0, family: 0, socketType: 1, protocol: 0, addressLength: 0, canonicalName: null, address: null,
+        next: null
+    };
+    var first: *var AddressInfo = null;
+    let code = getaddrinfo(name.AsSlice().data, null, @hints, @first);
+    if code != 0 { fail IoError { kind: IoErrorKind::NotFound, raw: code }; }
+    var node = first;
+    while node != null {
+        if node.address != null {
+            match Decode(node.address as *uint8) {
+                .Some(found) => {
+                    let address = SocketAddress { ip: found.ip, port: port };
+                    var seen = false;
+                    for earlier in addresses.AsSlice() {
+                        if earlier.Equals(address) { seen = true; }
+                    }
+                    if !seen {
+                        addresses.Push(address) catch {
+                            else => {
+                                freeaddrinfo(first);
+                                fail IoError::Of(IoErrorKind::LimitExceeded);
+                            }
+                        };
+                    }
+                },
+                none => {}
+            }
+        }
+        node = node.next;
+    }
+    freeaddrinfo(first);
+    if addresses.Length() == 0u { fail IoError::Of(IoErrorKind::NotFound); }
+    return <-addresses;
+}

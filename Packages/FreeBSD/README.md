@@ -24,6 +24,8 @@ rux add Rux/FreeBSD
 | `Thread`  | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `pthread_getthreadid_np`, linked from libthr and libc |
 | `Umtx`    | `UmtxWait` and `UmtxWake`, the private `_umtx_op(2)` word operations every lock in `Rux/Sync` sleeps on |
 | `Spawn`   | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill`, `fcntl` and `__error`, linked from libc |
+| `Socket`  | `Socket`, `Connect`, `Bind`, `Listen`, `Accept4`, `SendTo`, `ReceiveFrom`, `Shutdown`, `SetSocketOption`, `GetSocketName` and `GetPeerName` as system calls, with the address families, socket options and `MSG_NOSIGNAL` |
+| `Resolve` | `getaddrinfo`, `freeaddrinfo` and `AddressInfo`, linked from libc                         |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

@@ -123,7 +123,7 @@ pub extern {
     /// @param exitCode receives the code
     /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
     /// @see https://rux-lang.dev/docs/api/windows/process-control#get-exit-code-process
-    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodeprocess
+    /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodeprocess
     func GetExitCodeProcess(process: *opaque, exitCode: *var uint32) -> bool32;
 
     /// Ends a process and all its threads.
@@ -172,7 +172,7 @@ pub extern {
     /// Returns a pseudo-handle for the calling process, which needs no closing.
     /// @returns the pseudo-handle
     /// @see https://rux-lang.dev/docs/api/windows/process-control#get-current-process
-    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess
+    /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess
     func GetCurrentProcess() -> *opaque;
 
     /// Sets or removes an environment variable of the calling process.

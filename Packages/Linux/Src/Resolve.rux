@@ -1,0 +1,46 @@
+// Finding the addresses of a host by name, which is the C library's work rather than the kernel's: it reads the
+// hosts file, asks the name servers the system is configured with, and follows whatever else the system's name
+// service switch says. That is why this module links a library, and why a program that resolves names is linked
+// dynamically.
+
+const ResolveLib = "libc.so.6";
+
+/// The C library's `addrinfo`: one result of `getaddrinfo`, linked to the next.
+/// @see https://rux-lang.dev/docs/api/linux/resolve#address-info
+pub struct AddressInfo {
+    /// Flags such as `AI_PASSIVE`.
+    pub flags: int32;
+    /// The address family, or zero for any.
+    pub family: int32;
+    /// The socket type, or zero for any.
+    pub socketType: int32;
+    /// The protocol, or zero for any.
+    pub protocol: int32;
+    /// The size of `address` in bytes.
+    pub addressLength: uint32;
+    /// The address, a `sockaddr`.
+    pub address: *opaque;
+    /// The host's canonical name, or null.
+    pub canonicalName: *char8;
+    /// The next result, or null after the last.
+    pub next: *var AddressInfo;
+}
+
+#Link(ResolveLib)
+extern {
+    /// Looks up the addresses of a host and service.
+    /// @param node the host name or numeric address, NUL-terminated, or null
+    /// @param service the service name or port number, NUL-terminated, or null
+    /// @param hints what kind of results are wanted, or null for every kind
+    /// @param result receives the first result, freed with `freeaddrinfo`
+    /// @returns zero, or an `EAI_*` code
+    /// @see https://rux-lang.dev/docs/api/linux/resolve#getaddrinfo
+    /// @see https://man7.org/linux/man-pages/man3/getaddrinfo.3.html
+    pub func getaddrinfo(node: *char8, service: *char8, hints: *AddressInfo, result: *var *var AddressInfo) -> int32;
+
+    /// Frees the results of `getaddrinfo`.
+    /// @param info the first result
+    /// @see https://rux-lang.dev/docs/api/linux/resolve#freeaddrinfo
+    /// @see https://man7.org/linux/man-pages/man3/freeaddrinfo.3.html
+    pub func freeaddrinfo(info: *var AddressInfo);
+}

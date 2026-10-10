@@ -1,0 +1,245 @@
+// Sockets through Winsock: endpoints of network connections and datagrams, and the lookup of a host's addresses.
+// A process starts Winsock once with `WSAStartup` before any other call. A socket is a handle-sized `SOCKET`, not a
+// descriptor, and a failure is reported through `WSAGetLastError` rather than `GetLastError`.
+
+/// Room for a `WSADATA`, which `WSAStartup` fills and nothing here reads.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-data
+pub struct WsaData {
+    storage: uint64[51];
+}
+
+extend WsaData {
+    /// Zeroed storage for `WSAStartup` to fill.
+    /// @returns the storage
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-data
+    pub func WsaData() -> WsaData {
+        return WsaData { storage: [0u64; 51] };
+    }
+}
+
+/// Winsock's `addrinfo`: one result of `getaddrinfo`, linked to the next.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#address-info
+pub struct AddressInfo {
+    /// Flags such as `AI_PASSIVE`.
+    pub flags: int32;
+    /// The address family, or zero for any.
+    pub family: int32;
+    /// The socket type, or zero for any.
+    pub socketType: int32;
+    /// The protocol, or zero for any.
+    pub protocol: int32;
+    /// The size of `address` in bytes.
+    pub addressLength: uint64;
+    /// The host's canonical name, or null.
+    pub canonicalName: *char8;
+    /// The address, a `sockaddr`.
+    pub address: *opaque;
+    /// The next result, or null after the last.
+    pub next: *var AddressInfo;
+}
+
+/// `AF_INET`: the IPv4 address family.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#af-inet
+#Allow("naming.const")
+pub const AF_INET: int32 = 2;
+
+/// `AF_INET6`: the IPv6 address family.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#af-inet6
+#Allow("naming.const")
+pub const AF_INET6: int32 = 23;
+
+/// `SOCK_STREAM`: a connected byte stream.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#sock-stream
+#Allow("naming.const")
+pub const SOCK_STREAM: int32 = 1;
+
+/// `SOCK_DGRAM`: individual datagrams.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#sock-dgram
+#Allow("naming.const")
+pub const SOCK_DGRAM: int32 = 2;
+
+/// `SOL_SOCKET`: the level of the options every socket has.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#sol-socket
+#Allow("naming.const")
+pub const SOL_SOCKET: int32 = 0xFFFF;
+
+/// `SO_RCVTIMEO`: how long a receive waits, in milliseconds.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#so-rcvtimeo
+#Allow("naming.const")
+pub const SO_RCVTIMEO: int32 = 0x1006;
+
+/// `SO_SNDTIMEO`: how long a send waits, in milliseconds.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#so-sndtimeo
+#Allow("naming.const")
+pub const SO_SNDTIMEO: int32 = 0x1005;
+
+/// `IPPROTO_TCP`: the level of TCP's options.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#ipproto-tcp
+#Allow("naming.const")
+pub const IPPROTO_TCP: int32 = 6;
+
+/// `TCP_NODELAY`: send small writes at once rather than gathering them.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#tcp-nodelay
+#Allow("naming.const")
+pub const TCP_NODELAY: int32 = 1;
+
+/// `IPPROTO_IPV6`: the level of IPv6's options.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#ipproto-ipv6
+#Allow("naming.const")
+pub const IPPROTO_IPV6: int32 = 41;
+
+/// `IPV6_V6ONLY`: accept only IPv6 on an IPv6 socket.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#ipv6-v6only
+#Allow("naming.const")
+pub const IPV6_V6ONLY: int32 = 27;
+
+/// `INVALID_SOCKET`: what a call that makes a socket returns on failure.
+/// @see https://rux-lang.dev/docs/api/windows/winsock#invalid-socket
+#Allow("naming.const")
+pub const INVALID_SOCKET: uint64 = 0xFFFFFFFFFFFFFFFF;
+
+#Link("Ws2_32.dll")
+pub extern {
+    /// Starts Winsock for this process.
+    /// @param version the version wanted, `0x0202` for 2.2
+    /// @param data receives details of the implementation
+    /// @returns zero, or an error code
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-startup
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-wsastartup
+    func WSAStartup(version: uint16, data: *var WsaData) -> int32;
+
+    /// The calling thread's last Winsock error.
+    /// @returns the error code
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-get-last-error
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-wsagetlasterror
+    func WSAGetLastError() -> int32;
+
+    /// Opens a socket.
+    /// @param family the address family
+    /// @param kind the socket type
+    /// @param protocol the protocol, or zero
+    /// @returns the socket, or `INVALID_SOCKET`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#socket
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-socket
+    func socket(family: int32, kind: int32, protocol: int32) -> uint64;
+
+    /// Connects a socket to `address`.
+    /// @param socket the socket
+    /// @param address the address, a `sockaddr`
+    /// @param length the address's size
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#connect
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-connect
+    func connect(socket: uint64, address: *opaque, length: int32) -> int32;
+
+    /// Gives a socket its local address.
+    /// @param socket the socket
+    /// @param address the address, a `sockaddr`
+    /// @param length the address's size
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#bind
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-bind
+    func bind(socket: uint64, address: *opaque, length: int32) -> int32;
+
+    /// Makes a bound stream socket accept connections.
+    /// @param socket the socket
+    /// @param backlog how many connections may wait
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#listen
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-listen
+    func listen(socket: uint64, backlog: int32) -> int32;
+
+    /// Accepts a waiting connection.
+    /// @param socket the listening socket
+    /// @param address receives the peer's address, or null
+    /// @param length the buffer's size, then the address's, or null
+    /// @returns the new socket, or `INVALID_SOCKET`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#accept
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-accept
+    func accept(socket: uint64, address: *var opaque, length: *var int32) -> uint64;
+
+    /// Sends bytes on a socket, to `address` when it is not connected.
+    /// @param socket the socket
+    /// @param buffer the bytes
+    /// @param count how many
+    /// @param flags flags, or zero
+    /// @param address the destination, or null
+    /// @param length the destination's size
+    /// @returns the bytes sent, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#sendto
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-sendto
+    func sendto(socket: uint64, buffer: *opaque, count: int32, flags: int32, address: *opaque, length: int32) -> int32;
+
+    /// Receives bytes from a socket, and where they came from.
+    /// @param socket the socket
+    /// @param buffer receives the bytes
+    /// @param count how many fit
+    /// @param flags flags, or zero
+    /// @param address receives the sender's address, or null
+    /// @param length the buffer's size, then the address's, or null
+    /// @returns the bytes received, zero once a stream's peer closed it, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#recvfrom
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-recvfrom
+    func recvfrom(socket: uint64, buffer: *var opaque, count: int32, flags: int32, address: *var opaque,
+                  length: *var int32) -> int32;
+
+    /// Closes a socket.
+    /// @param socket the socket
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#closesocket
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-closesocket
+    func closesocket(socket: uint64) -> int32;
+
+    /// Ends one or both directions of a connection.
+    /// @param socket the socket
+    /// @param how 0 to stop receiving, 1 to stop sending, 2 for both
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#shutdown
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-shutdown
+    func shutdown(socket: uint64, how: int32) -> int32;
+
+    /// Sets a socket option.
+    /// @param socket the socket
+    /// @param level the option's level
+    /// @param name the option
+    /// @param value the option's value
+    /// @param length the value's size
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#setsockopt
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-setsockopt
+    func setsockopt(socket: uint64, level: int32, name: int32, value: *opaque, length: int32) -> int32;
+
+    /// Reads a socket's local address.
+    /// @param socket the socket
+    /// @param address receives the address
+    /// @param length the buffer's size, then the address's
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#getsockname
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-getsockname
+    func getsockname(socket: uint64, address: *var opaque, length: *var int32) -> int32;
+
+    /// Reads the address of a connected socket's peer.
+    /// @param socket the socket
+    /// @param address receives the address
+    /// @param length the buffer's size, then the address's
+    /// @returns zero, or -1 with the reason in `WSAGetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#getpeername
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-getpeername
+    func getpeername(socket: uint64, address: *var opaque, length: *var int32) -> int32;
+
+    /// Looks up the addresses of a host and service.
+    /// @param node the host name or numeric address, NUL-terminated, or null
+    /// @param service the service name or port number, NUL-terminated, or null
+    /// @param hints what kind of results are wanted, or null
+    /// @param result receives the first result, freed with `freeaddrinfo`
+    /// @returns zero, or a Winsock error code
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#getaddrinfo
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/nf-ws2tcpip-getaddrinfo
+    func getaddrinfo(node: *char8, service: *char8, hints: *AddressInfo, result: *var *var AddressInfo) -> int32;
+
+    /// Frees the results of `getaddrinfo`.
+    /// @param info the first result
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#freeaddrinfo
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/nf-ws2tcpip-freeaddrinfo
+    func freeaddrinfo(info: *var AddressInfo);
+}
