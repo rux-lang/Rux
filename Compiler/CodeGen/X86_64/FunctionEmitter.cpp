@@ -518,6 +518,9 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
 }
 
 bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
+    if (framePlan.BranchComparisons().contains(instruction.dst)) {
+        return true; // The sole consuming branch selects the comparison directly into flags.
+    }
     // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
     // paths below, and neither must a float32 or float64 remainder.
     if (EmitX87(instruction)) {
@@ -1195,8 +1198,14 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         }
         hooks.LoadA(base, registerTypes.at(base));
         hooks.LoadB(index, registerTypes.at(index));
-        encoder.ImulR11R10Imm32(elementSize);
-        encoder.AddRaxR11();
+        if (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8) {
+            const unsigned shift = elementSize == 8 ? 3 : elementSize == 4 ? 2 : elementSize == 2 ? 1 : 0;
+            encoder.LeaRaxRaxR10(shift);
+        }
+        else {
+            encoder.ImulR11R10Imm32(elementSize);
+            encoder.AddRaxR11();
+        }
         hooks.StoreA(instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     }

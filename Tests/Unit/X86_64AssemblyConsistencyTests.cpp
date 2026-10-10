@@ -590,3 +590,79 @@ TEST_CASE("x86-64 assembly text lowers wide integers word by word") {
         CHECK_FALSE(text.contains(", 340282366920938463463374607431"));
     }
 }
+
+TEST_CASE("x86-64 indexed addresses select scaled LEA and retain odd-size multiplication") {
+    const std::vector<TypeRef> elements = {TypeRef::MakeInt8(), TypeRef::MakeInt16(), TypeRef::MakeInt32(),
+                                           TypeRef::MakeInt64(), TypeRef::MakeArray(TypeRef::MakeInt8(), 3)};
+    for (const auto os : Systems) {
+        for (std::size_t index = 0; index < elements.size(); ++index) {
+            const auto pointer = TypeRef::MakePointer(elements[index]);
+            const auto function = Function("Element", {{0, pointer, "base"}, {1, TypeRef::MakeInt64(), "index"}},
+                                           {Instruction(LirOpcode::IndexPtr, 2, pointer, {0, 1})}, 2, pointer);
+            const auto package = PackageOf({function});
+            const auto text = AssemblyPrinter(package, os).Generate();
+            const auto code = CodeOf(package, os);
+            if (index < 4) {
+                const std::vector<std::uint8_t> expected = {0x4A, 0x8D, 0x04,
+                                                            static_cast<std::uint8_t>(0x10 | (index << 6))};
+                CHECK(std::ranges::search(code, expected).begin() != code.end());
+                CHECK(text.contains(std::format("lea     rax, [rax + r10 * {}]", 1U << index)));
+                CHECK_FALSE(text.contains("imul"));
+            }
+            else {
+                CHECK(text.contains("imul    r11, r10, 3"));
+                CHECK(text.contains("add     rax, r11"));
+            }
+        }
+    }
+}
+
+TEST_CASE("x86-64 integer branch selection shares conditions and preserves independent consumers") {
+    const std::vector<LirOpcode> operations = {LirOpcode::CmpEq, LirOpcode::CmpNe, LirOpcode::CmpLt,
+                                               LirOpcode::CmpLe, LirOpcode::CmpGt, LirOpcode::CmpGe};
+    const std::vector<TypeRef> types = {TypeRef::MakeInt8(), TypeRef::MakeUInt32(), TypeRef::MakeInt64(),
+                                        TypeRef::MakeUInt64(), TypeRef::MakeFloat64()};
+    for (const auto os : Systems) {
+        for (const auto &type : types) {
+            for (const auto operation : operations) {
+                auto function = Function("Choose", {{0, type, "left"}, {1, type, "right"}},
+                                         {Instruction(operation, 2, TypeRef::MakeBool(), {0, 1})}, 0, type);
+                function.blocks.push_back(function.blocks[1]);
+                function.blocks[2].label = "other";
+                function.blocks[2].term->retVal = 1;
+                auto &branch = *function.blocks[0].term;
+                branch.kind = LirTermKind::Branch;
+                branch.cond = 2;
+                branch.trueTarget = 1;
+                branch.falseTarget = 2;
+                const auto plan = PlanX86_64Frame(function, {}, {}, os);
+                CHECK_EQ(plan.BranchComparisons().contains(2), type.IsInteger());
+                const auto package = PackageOf({function});
+                const auto text = AssemblyPrinter(package, os).Generate();
+                if (type.IsInteger()) {
+                    const auto condition = *IntegerComparisonCondition(operation, type.IsSigned());
+                    const std::uint8_t signedFalse[] = {5, 4, 13, 15, 14, 12};
+                    const std::uint8_t unsignedFalse[] = {5, 4, 3, 7, 6, 2};
+                    const auto operationIndex =
+                        static_cast<std::size_t>(std::ranges::find(operations, operation) - operations.begin());
+                    CHECK_EQ(static_cast<std::uint8_t>(Inverse(condition)),
+                             type.IsSigned() ? signedFalse[operationIndex] : unsignedFalse[operationIndex]);
+                    CHECK(text.contains(std::format("{:<8}", ConditionMnemonic(Inverse(condition)))));
+                    CHECK_FALSE(text.contains("test    rax, rax"));
+                    CHECK_FALSE(text.contains("movzx   rax, al"));
+                    const auto code = CodeOf(package, os);
+                    const std::vector<std::uint8_t> opcode = {
+                        0x0F, static_cast<std::uint8_t>(0x80U | static_cast<std::uint8_t>(Inverse(condition)))};
+                    CHECK(std::ranges::search(code, opcode).begin() != code.end());
+                }
+                // A Boolean used beyond the branch still needs its ordinary value home.
+                function.returnType = TypeRef::MakeBool();
+                for (std::size_t block = 1; block < 3; ++block) {
+                    function.blocks[block].term->retType = TypeRef::MakeBool();
+                    function.blocks[block].term->retVal = 2;
+                }
+                CHECK(PlanX86_64Frame(function, {}, {}, os).BranchComparisons().empty());
+            }
+        }
+    }
+}

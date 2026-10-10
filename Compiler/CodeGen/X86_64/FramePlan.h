@@ -2,6 +2,7 @@
 
 #include "CodeGen/Layout.h"
 #include "CodeGen/PhiMoveResolver.h"
+#include "CodeGen/X86_64/Conditions.h"
 #include "Ir/Lir/Lir.h"
 #include "Target/Target.h"
 
@@ -16,6 +17,13 @@ namespace Rux {
 class X86_64FramePlanner;
 
 using X86_64PhiMoves = std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<PhiMove>>>;
+
+struct X86BranchComparison {
+    LirReg left;
+    LirReg right;
+    TypeRef type;
+    X86Condition condition;
+};
 
 /// Every function-local placement decision needed by x86-64 emission. Planning finishes before the first instruction is
 /// written; consumers can only inspect the result, so instruction selection cannot grow or otherwise reshape a frame
@@ -60,6 +68,10 @@ public:
         return immediateValues;
     }
 
+    [[nodiscard]] const std::unordered_map<LirReg, X86BranchComparison> &BranchComparisons() const {
+        return branchComparisons;
+    }
+
     [[nodiscard]] std::int32_t FrameSize() const {
         return frameSize;
     }
@@ -95,6 +107,7 @@ private:
     std::unordered_map<LirReg, std::int32_t> allocaDataOffsets;
     std::unordered_map<LirReg, TypeRef> registerTypes;
     std::unordered_map<LirReg, std::uint64_t> immediateValues;
+    std::unordered_map<LirReg, X86BranchComparison> branchComparisons;
     X86_64PhiMoves phiMoves;
     std::unordered_map<LirReg, int> physicalRegisters;
     std::vector<int> usedPhysicalRegisters;

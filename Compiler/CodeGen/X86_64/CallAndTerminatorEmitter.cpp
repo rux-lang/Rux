@@ -564,27 +564,53 @@ void X86_64TerminatorEmitter::Emit(const std::uint32_t blockIndex, const LirTerm
     switch (terminator.kind) {
     case LirTermKind::Jump: {
         EmitPhiMoves(blockIndex, terminator.trueTarget);
-        std::uint32_t patch;
-        encoder.Jmp(patch);
-        jumpPatches.push_back({patch, terminator.trueTarget});
+        if (terminator.trueTarget != blockIndex + 1) {
+            std::uint32_t patch;
+            encoder.Jmp(patch);
+            jumpPatches.push_back({patch, terminator.trueTarget});
+        }
         break;
     }
     case LirTermKind::Branch: {
-        hooks.LoadA(terminator.cond, types.contains(terminator.cond) ? types.at(terminator.cond) : TypeRef::MakeBool());
-        encoder.TestRaxRax();
+        auto condition = X86Condition::NotEqual;
+        if (const auto found = framePlan.BranchComparisons().find(terminator.cond);
+            found != framePlan.BranchComparisons().end()) {
+            const auto &comparison = found->second;
+            hooks.LoadA(comparison.right, comparison.type);
+            encoder.MovR10Rax();
+            hooks.LoadA(comparison.left, comparison.type);
+            encoder.CmpRaxR10();
+            condition = comparison.condition;
+        }
+        else {
+            hooks.LoadA(terminator.cond,
+                        types.contains(terminator.cond) ? types.at(terminator.cond) : TypeRef::MakeBool());
+            encoder.TestRaxRax();
+        }
+        const auto conditionalJump = [&](const X86Condition selected) {
+            encoder.Byte(0x0F);
+            encoder.Byte(static_cast<std::uint8_t>(0x80U | static_cast<std::uint8_t>(selected)));
+            const auto patch = encoder.Size();
+            encoder.Dword(0);
+            return patch;
+        };
         const bool truePhi = HasPhiMoves(blockIndex, terminator.trueTarget);
         const bool falsePhi = HasPhiMoves(blockIndex, terminator.falseTarget);
         if (!truePhi && !falsePhi) {
-            std::uint32_t falsePatch;
-            encoder.Jz(falsePatch);
-            jumpPatches.push_back({falsePatch, terminator.falseTarget});
-            std::uint32_t truePatch;
-            encoder.Jmp(truePatch);
-            jumpPatches.push_back({truePatch, terminator.trueTarget});
+            if (terminator.falseTarget == blockIndex + 1) {
+                jumpPatches.push_back({conditionalJump(condition), terminator.trueTarget});
+            }
+            else {
+                jumpPatches.push_back({conditionalJump(Inverse(condition)), terminator.falseTarget});
+                if (terminator.trueTarget != blockIndex + 1) {
+                    std::uint32_t truePatch;
+                    encoder.Jmp(truePatch);
+                    jumpPatches.push_back({truePatch, terminator.trueTarget});
+                }
+            }
         }
         else {
-            std::uint32_t falseTrampoline;
-            encoder.Jz(falseTrampoline);
+            const auto falseTrampoline = conditionalJump(Inverse(condition));
             EmitPhiMoves(blockIndex, terminator.trueTarget);
             std::uint32_t truePatch;
             encoder.Jmp(truePatch);
@@ -592,9 +618,11 @@ void X86_64TerminatorEmitter::Emit(const std::uint32_t blockIndex, const LirTerm
             const auto here = static_cast<std::int32_t>(encoder.Size());
             encoder.Patch32(falseTrampoline, here - static_cast<std::int32_t>(falseTrampoline + 4));
             EmitPhiMoves(blockIndex, terminator.falseTarget);
-            std::uint32_t falsePatch;
-            encoder.Jmp(falsePatch);
-            jumpPatches.push_back({falsePatch, terminator.falseTarget});
+            if (terminator.falseTarget != blockIndex + 1) {
+                std::uint32_t falsePatch;
+                encoder.Jmp(falsePatch);
+                jumpPatches.push_back({falsePatch, terminator.falseTarget});
+            }
         }
         break;
     }

@@ -157,6 +157,13 @@ evaluation, dumps, DCE, both encoders, and the x86 assembly printer understand i
 Unsigned 32/64-bit power-of-two division and remainder use logical shifts and masks. Signed arithmetic and zero
 divisors retain their original paths. Frame plans retain unique integer constants for immediate shift selection.
 
+The x86 frame plan also selects single-use integer comparisons immediately feeding a branch. Their operands are
+compared at the terminator, avoiding a materialized Boolean; wider integers, floating comparisons, and independently
+used results retain their existing paths. Architectural condition nibbles and text mnemonics share `Conditions.h`.
+Branches can fall through to the next emitted block after any required edge phi copies; a true-edge trampoline still
+jumps over false-edge copies. Indexed element sizes 1/2/4/8 use scaled LEA, with multiply/add retained for other sizes.
+GPR and scalar-FP planning reuse the same immutable live-interval snapshot within one frame plan.
+
 Release optimization runs CFG cleanup before private aggregate field replacement and scalar memory promotion.
 Promotion admits only direct, type-identical, nonvolatile loads and stores of nonescaping scalar slots. Per-slot
 liveness and definite-initialization dataflow construct pruned SSA merges, including allocations inside loops;

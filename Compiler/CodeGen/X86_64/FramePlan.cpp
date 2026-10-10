@@ -27,12 +27,18 @@ public:
     }
 
     [[nodiscard]] X86_64FramePlan Build() {
-        PlanCalleeSaves();
+        ParamTypeMap parameters;
+        for (const auto &parameter : func.params) {
+            parameters.emplace(parameter.reg, ParameterRegisterType(parameter.type));
+        }
+        const auto intervals = ComputeLiveIntervals(func, parameters);
+        PlanCalleeSaves(intervals);
         nextOffset = static_cast<std::int32_t>(plan.usedPhysicalRegisters.size() * 8);
-        PlanFloatRegisters();
+        PlanFloatRegisters(intervals);
         PlanHiddenReturn();
         PlanParameters();
         PlanInstructions();
+        PlanBranches();
         PlanWideTemporaries();
         PlanPhiTemporary();
 
@@ -157,14 +163,9 @@ private:
         return offset;
     }
 
-    void PlanCalleeSaves() {
-        ParamTypeMap parameterTypes;
-        for (const auto &parameter : func.params) {
-            parameterTypes[parameter.reg] = ParameterRegisterType(parameter.type);
-        }
-
+    void PlanCalleeSaves(const std::vector<LiveInterval> &intervals) {
         std::vector<LiveInterval> candidates;
-        for (const auto &interval : ComputeLiveIntervals(func, parameterTypes)) {
+        for (const auto &interval : intervals) {
             if (interval.type.IsFloat() || IsAggregate(interval.type) || RuntimeSize(interval.type) > 8) {
                 continue;
             }
@@ -176,12 +177,7 @@ private:
         plan.usedPhysicalRegisters = std::move(assignment.usedPhysRegs);
     }
 
-    void PlanFloatRegisters() {
-        ParamTypeMap parameters;
-        for (const auto &parameter : func.params) {
-            parameters.emplace(parameter.reg, ParameterRegisterType(parameter.type));
-        }
-        const auto intervals = ComputeLiveIntervals(func, parameters);
+    void PlanFloatRegisters(const std::vector<LiveInterval> &intervals) {
         // Wide/software arithmetic still has memory-only operand paths. Keep this first FP allocation phase out of
         // such functions until those paths describe all their operand constraints.
         if (std::ranges::any_of(intervals, [](const LiveInterval &interval) {
@@ -230,6 +226,43 @@ private:
         if ((convention == CallingConvention::Win64 && IsWin64ByRefAggregate(func.returnType)) ||
             (convention == CallingConvention::SysV && IsSysVMemoryAggregate(func.returnType))) {
             plan.hiddenReturnOffset = AllocateRegion(8);
+        }
+    }
+
+    void PlanBranches() {
+        std::unordered_map<LirReg, std::size_t> uses;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                for (const auto source : instruction.srcs)
+                    ++uses[source];
+                for (const auto &[source, predecessor] : instruction.phiPreds) {
+                    static_cast<void>(predecessor);
+                    ++uses[source];
+                }
+            }
+            if (block.term) {
+                ++uses[block.term->cond];
+                if (block.term->retVal)
+                    ++uses[*block.term->retVal];
+            }
+        }
+        for (const auto &block : func.blocks) {
+            if (!block.term || block.term->kind != LirTermKind::Branch || block.instrs.empty())
+                continue;
+            const auto &comparison = block.instrs.back();
+            if (comparison.dst != block.term->cond || comparison.srcs.size() != 2 || uses[comparison.dst] != 1 ||
+                comparison.type != TypeRef::MakeBool() || comparison.isVolatile)
+                continue;
+            const auto left = plan.registerTypes.find(comparison.srcs[0]);
+            const auto right = plan.registerTypes.find(comparison.srcs[1]);
+            if (left == plan.registerTypes.end() || right == plan.registerTypes.end() ||
+                left->second != right->second || !left->second.IsInteger() || RuntimeSize(left->second) > 8)
+                continue;
+            if (const auto condition = IntegerComparisonCondition(comparison.op, left->second.IsSigned())) {
+                plan.branchComparisons.emplace(
+                    comparison.dst,
+                    X86BranchComparison{comparison.srcs[0], comparison.srcs[1], left->second, *condition});
+            }
         }
     }
 

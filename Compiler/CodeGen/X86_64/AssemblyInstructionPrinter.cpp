@@ -1323,6 +1323,9 @@ bool AssemblyInstructionPrinter::EmitWideArithmetic(const LirInstr &instruction)
 // ---- scalar arithmetic (FunctionEmitter.cpp, EmitArithmetic) ------------------------------------------------------
 
 bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
+    if (framePlan.BranchComparisons().contains(instruction.dst)) {
+        return true;
+    }
     // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
     // paths below, and neither must a float32 or float64 remainder.
     if (PrintX87(*this, instruction) || EmitWideArithmetic(instruction)) {
@@ -1741,8 +1744,13 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         elementSize = std::max(elementSize, 1);
         LoadA(base, registerTypes.at(base));
         LoadB(index, registerTypes.at(index));
-        Instruction("imul", std::format("r11, r10, {}", elementSize));
-        Instruction("add", "rax, r11");
+        if (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8) {
+            Instruction("lea", std::format("rax, [rax + r10 * {}]", elementSize));
+        }
+        else {
+            Instruction("imul", std::format("r11, r10, {}", elementSize));
+            Instruction("add", "rax, r11");
+        }
         StoreA(instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     }

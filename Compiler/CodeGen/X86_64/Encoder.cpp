@@ -504,6 +504,13 @@ void X64Enc::LeaRaxRaxDisp(int32_t v) const {
     Dword(u(v));
 }
 
+void X64Enc::LeaRaxRaxR10(const unsigned shift) const {
+    Byte(0x4A); // REX.W | REX.X: 64-bit destination and extended r10 index
+    Byte(0x8D);
+    Byte(0x04);                                           // rax destination, SIB addressing, no displacement
+    Byte(static_cast<std::uint8_t>((shift << 6) | 0x10)); // index r10, base rax
+}
+
 void X64Enc::PopRbp() const {
     Byte(0x5D);
 }

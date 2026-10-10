@@ -356,6 +356,8 @@ public:
     void AddRaxR11() const;
 
     void LeaRaxRaxDisp(int32_t v) const;
+    /// rax = rax + r10 * 2^shift; shift must be in 0..3.
+    void LeaRaxRaxR10(unsigned shift) const;
 
     void PopRbp() const;
 

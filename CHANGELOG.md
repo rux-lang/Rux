@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Native x86 address and branch selection** — indexed 1/2/4/8-byte elements use scaled LEA; single-use integer
+  comparisons immediately feeding a branch use condition flags directly. Fall-through edges omit redundant jumps,
+  preserving edge-specific phi copies. General and floating register planning share one liveness computation.
+
 - **Validated x86 CPU state detection** — runtime AVX2/AVX-512 availability now requires the corresponding CPU bits,
   XSAVE/OSXSAVE and enabled XCR0 register state. Detection checks supported CPUID leaves before querying them.
 

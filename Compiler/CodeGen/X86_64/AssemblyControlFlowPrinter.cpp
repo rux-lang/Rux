@@ -708,15 +708,29 @@ private:
         switch (terminator.kind) {
         case LirTermKind::Jump:
             EmitPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
-            TI(std::format("{:<8}{}", "jmp",
-                           BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label)));
+            if (terminator.trueTarget != blockIndex + 1) {
+                TI(std::format("{:<8}{}", "jmp",
+                               BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label)));
+            }
             break;
         case LirTermKind::Branch: {
             const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
-            const TypeRef conditionType =
-                registerTypes.contains(terminator.cond) ? registerTypes.at(terminator.cond) : TypeRef::MakeBool();
-            instructionPrinter.LoadA(terminator.cond, conditionType);
-            TI("test    rax, rax");
+            auto condition = X86Condition::NotEqual;
+            const auto &comparisons = instructionPrinter.FramePlan().BranchComparisons();
+            if (const auto found = comparisons.find(terminator.cond); found != comparisons.end()) {
+                const auto &comparison = found->second;
+                instructionPrinter.LoadA(comparison.right, comparison.type);
+                TI("mov     r10, rax");
+                instructionPrinter.LoadA(comparison.left, comparison.type);
+                TI("cmp     rax, r10");
+                condition = comparison.condition;
+            }
+            else {
+                const TypeRef conditionType =
+                    registerTypes.contains(terminator.cond) ? registerTypes.at(terminator.cond) : TypeRef::MakeBool();
+                instructionPrinter.LoadA(terminator.cond, conditionType);
+                TI("test    rax, rax");
+            }
             const std::string trueLabel =
                 BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label);
             const std::string falseLabel =
@@ -724,19 +738,28 @@ private:
             const bool truePhi = HasPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
             const bool falsePhi = HasPhiMoves(blockIndex, terminator.falseTarget, instructionPrinter);
             if (!truePhi && !falsePhi) {
-                TI(std::format("{:<8}{}", "jz", falseLabel));
-                TI(std::format("{:<8}{}", "jmp", trueLabel));
+                if (terminator.falseTarget == blockIndex + 1) {
+                    TI(std::format("{:<8}{}", ConditionMnemonic(condition), trueLabel));
+                }
+                else {
+                    TI(std::format("{:<8}{}", ConditionMnemonic(Inverse(condition)), falseLabel));
+                    if (terminator.trueTarget != blockIndex + 1) {
+                        TI(std::format("{:<8}{}", "jmp", trueLabel));
+                    }
+                }
             }
             else {
                 const std::string trampolineTrue = std::format(".{}_br{}_t", currentFunction, blockIndex);
                 const std::string trampolineFalse = std::format(".{}_br{}_f", currentFunction, blockIndex);
-                TI(std::format("{:<8}{}", "jz", trampolineFalse));
+                TI(std::format("{:<8}{}", ConditionMnemonic(Inverse(condition)), trampolineFalse));
                 TL(trampolineTrue);
                 EmitPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
                 TI(std::format("{:<8}{}", "jmp", trueLabel));
                 TL(trampolineFalse);
                 EmitPhiMoves(blockIndex, terminator.falseTarget, instructionPrinter);
-                TI(std::format("{:<8}{}", "jmp", falseLabel));
+                if (terminator.falseTarget != blockIndex + 1) {
+                    TI(std::format("{:<8}{}", "jmp", falseLabel));
+                }
             }
             break;
         }

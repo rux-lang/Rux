@@ -106,7 +106,7 @@ TEST_CASE("x86-64 assembly control-flow printing owns calls phi edges and termin
     // System V sets AL to the vector-register count before every call, as the object code does.
     CHECK(output.find("mov     rdi, rax\n    mov     eax, 0\n    call    Direct") != std::string::npos);
     CHECK(output.find("call    r10") != std::string::npos);
-    CHECK(output.find("jz      .Control_false") != std::string::npos);
+    CHECK(output.find("je      .Control_false") != std::string::npos);
     CHECK(output.find("jmp     .Control_join") != std::string::npos);
     CHECK(output.find("cmp     rax, 10\n    je      .Control_return") != std::string::npos);
     CHECK(output.find("pop     rbp\n    ret") != std::string::npos);
