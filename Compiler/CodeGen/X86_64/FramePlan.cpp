@@ -12,10 +12,6 @@
 namespace Rux {
 using namespace Layout;
 
-namespace {
-constexpr int kCalleeSavedRegisters = 5;
-} // namespace
-
 class X86_64FramePlanner {
 public:
     X86_64FramePlanner(const LirFunc &inputFunc, const LayoutMap &inputLayouts,
@@ -203,7 +199,21 @@ private:
             candidates.push_back(interval);
         }
 
-        RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegisters, tiedInputs);
+        bool extendedWin64 = EffectiveConvention() == CallingConvention::Win64;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::ThreadLocalAddr || instruction.op == LirOpcode::WriteStandardError)
+                    extendedWin64 = false;
+                if (instruction.op == LirOpcode::Call || instruction.op == LirOpcode::CallIndirect) {
+                    const auto convention =
+                        instruction.callConv == CallingConvention::Default
+                            ? PlatformDefaultConvention(targetOs, Target::Arch::X86_64)
+                            : ResolveCConvention(instruction.callConv, targetOs, Target::Arch::X86_64);
+                    extendedWin64 = extendedWin64 && convention == CallingConvention::Win64;
+                }
+            }
+        }
+        RegisterAssignment assignment = AllocateRegisters(candidates, extendedWin64 ? 7 : 5, tiedInputs);
         plan.physicalRegisters = std::move(assignment.physRegs);
         plan.usedPhysicalRegisters = std::move(assignment.usedPhysRegs);
     }

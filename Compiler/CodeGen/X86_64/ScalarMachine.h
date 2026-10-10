@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CodeGen/X86_64/FramePlan.h"
+#include "CodeGen/X86_64/Registers.h"
 
 #include <array>
 #include <optional>
@@ -67,9 +68,8 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
         types.at(instruction.srcs[0]) != instruction.type || types.at(instruction.srcs[1]) != instruction.type ||
         (destination->second == right->second && destination->second != left->second))
         return std::nullopt;
-    constexpr std::array<int, 5> generalRegisters = {3, 12, 13, 14, 15};
     const auto reg = [&](const int home) {
-        return floating ? home : generalRegisters.at(static_cast<std::size_t>(home));
+        return floating ? home : X86AllocatedGprs.at(static_cast<std::size_t>(home));
     };
     X86ScalarMachineInstruction selected{
         floating ? (single ? X86ScalarRegisterClass::Float32 : X86ScalarRegisterClass::Float64)
@@ -119,6 +119,6 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
 [[nodiscard]] inline std::string ScalarMachineRegister(const X86ScalarMachineInstruction &instruction, const int reg) {
     if (instruction.registerClass != X86ScalarRegisterClass::Integer64)
         return "xmm" + std::to_string(reg);
-    return reg == 3 ? "rbx" : "r" + std::to_string(reg);
+    return std::string(X86GeneralRegisterName(reg));
 }
 } // namespace Rux

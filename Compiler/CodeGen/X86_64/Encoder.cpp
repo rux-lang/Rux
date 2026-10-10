@@ -596,162 +596,58 @@ void X64Enc::PopR15() const {
     Byte(0x5F);
 }
 
-void X64Enc::PushReg(int rIdx) const {
-    if (rIdx == 0)
-        PushRbx();
-    else if (rIdx == 1)
-        PushR12();
-    else if (rIdx == 2)
-        PushR13();
-    else if (rIdx == 3)
-        PushR14();
-    else if (rIdx == 4)
-        PushR15();
+void X64Enc::PushReg(const int index) const {
+    if (index < 0 || index >= static_cast<int>(X86AllocatedGprs.size()))
+        return;
+    const auto reg = X86AllocatedGprs[static_cast<std::size_t>(index)];
+    if (reg >= 8)
+        Byte(0x41);
+    Byte(static_cast<std::uint8_t>(0x50 | (reg & 7)));
 }
 
-void X64Enc::PopReg(int rIdx) const {
-    if (rIdx == 0)
-        PopRbx();
-    else if (rIdx == 1)
-        PopR12();
-    else if (rIdx == 2)
-        PopR13();
-    else if (rIdx == 3)
-        PopR14();
-    else if (rIdx == 4)
-        PopR15();
+void X64Enc::PopReg(const int index) const {
+    if (index < 0 || index >= static_cast<int>(X86AllocatedGprs.size()))
+        return;
+    const auto reg = X86AllocatedGprs[static_cast<std::size_t>(index)];
+    if (reg >= 8)
+        Byte(0x41);
+    Byte(static_cast<std::uint8_t>(0x58 | (reg & 7)));
 }
 
-void X64Enc::MovRaxPhysReg(int rIdx) const {
-    if (rIdx == 0) {
-        // rbx
-        Byte(0x48);
-        Byte(0x89);
-        Byte(0xD8); // mov rax, rbx
-    }
-    else if (rIdx == 1) {
-        // r12
-        Byte(0x4C);
-        Byte(0x89);
-        Byte(0xE0); // mov rax, r12
-    }
-    else if (rIdx == 2) {
-        // r13
-        Byte(0x4C);
-        Byte(0x89);
-        Byte(0xE8); // mov rax, r13
-    }
-    else if (rIdx == 3) {
-        // r14
-        Byte(0x4C);
-        Byte(0x89);
-        Byte(0xF0); // mov rax, r14
-    }
-    else if (rIdx == 4) {
-        // r15
-        Byte(0x4C);
-        Byte(0x89);
-        Byte(0xF8); // mov rax, r15
-    }
+void X64Enc::MovRaxPhysReg(const int index) const {
+    if (index < 0 || index >= static_cast<int>(X86AllocatedGprs.size()))
+        return;
+    const auto reg = X86AllocatedGprs[static_cast<std::size_t>(index)];
+    Byte(static_cast<std::uint8_t>(0x48 | (reg >= 8 ? 4 : 0)));
+    Byte(0x89);
+    Byte(static_cast<std::uint8_t>(0xC0 | ((reg & 7) << 3)));
 }
 
-void X64Enc::MovR10PhysReg(int rIdx) const {
-    if (rIdx == 0) {
-        // rbx
-        Byte(0x49);
-        Byte(0x89);
-        Byte(0xDA); // mov r10, rbx
-    }
-    else if (rIdx == 1) {
-        // r12
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xE2); // mov r10, r12
-    }
-    else if (rIdx == 2) {
-        // r13
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xEA); // mov r10, r13
-    }
-    else if (rIdx == 3) {
-        // r14
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xF2); // mov r10, r14
-    }
-    else if (rIdx == 4) {
-        // r15
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xFA); // mov r10, r15
-    }
+void X64Enc::MovR10PhysReg(const int index) const {
+    if (index < 0 || index >= static_cast<int>(X86AllocatedGprs.size()))
+        return;
+    const auto reg = X86AllocatedGprs[static_cast<std::size_t>(index)];
+    Byte(static_cast<std::uint8_t>(0x49 | (reg >= 8 ? 4 : 0)));
+    Byte(0x89);
+    Byte(static_cast<std::uint8_t>(0xC2 | ((reg & 7) << 3)));
 }
 
-void X64Enc::MovR11PhysReg(int rIdx) const {
-    if (rIdx == 0) {
-        // rbx
-        Byte(0x49);
-        Byte(0x89);
-        Byte(0xDB); // mov r11, rbx
-    }
-    else if (rIdx == 1) {
-        // r12
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xE3); // mov r11, r12
-    }
-    else if (rIdx == 2) {
-        // r13
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xEB); // mov r11, r13
-    }
-    else if (rIdx == 3) {
-        // r14
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xF3); // mov r11, r14
-    }
-    else if (rIdx == 4) {
-        // r15
-        Byte(0x4D);
-        Byte(0x89);
-        Byte(0xFB); // mov r11, r15
-    }
+void X64Enc::MovR11PhysReg(const int index) const {
+    if (index < 0 || index >= static_cast<int>(X86AllocatedGprs.size()))
+        return;
+    const auto reg = X86AllocatedGprs[static_cast<std::size_t>(index)];
+    Byte(static_cast<std::uint8_t>(0x49 | (reg >= 8 ? 4 : 0)));
+    Byte(0x89);
+    Byte(static_cast<std::uint8_t>(0xC3 | ((reg & 7) << 3)));
 }
 
-void X64Enc::MovPhysRegRax(int rIdx) const {
-    if (rIdx == 0) {
-        // rbx
-        Byte(0x48);
-        Byte(0x89);
-        Byte(0xC3); // mov rbx, rax
-    }
-    else if (rIdx == 1) {
-        // r12
-        Byte(0x49);
-        Byte(0x89);
-        Byte(0xC4); // mov r12, rax
-    }
-    else if (rIdx == 2) {
-        // r13
-        Byte(0x49);
-        Byte(0x89);
-        Byte(0xC5); // mov r13, rax
-    }
-    else if (rIdx == 3) {
-        // r14
-        Byte(0x49);
-        Byte(0x89);
-        Byte(0xC6); // mov r14, rax
-    }
-    else if (rIdx == 4) {
-        // r15
-        Byte(0x49);
-        Byte(0x89);
-        Byte(0xC7); // mov r15, rax
-    }
+void X64Enc::MovPhysRegRax(const int index) const {
+    if (index < 0 || index >= static_cast<int>(X86AllocatedGprs.size()))
+        return;
+    const auto reg = X86AllocatedGprs[static_cast<std::size_t>(index)];
+    Byte(static_cast<std::uint8_t>(0x48 | (reg >= 8 ? 1 : 0)));
+    Byte(0x89);
+    Byte(static_cast<std::uint8_t>(0xC0 | (reg & 7)));
 }
 
 uint32_t X64Enc::u(const int32_t v) {

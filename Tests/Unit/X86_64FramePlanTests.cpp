@@ -71,6 +71,51 @@ TEST_CASE("x86-64 float allocation respects nonvolatile widths and call clobbers
     CHECK(mixed.FloatRegisters().contains(1));
 }
 
+TEST_CASE("x86-64 uses RSI and RDI only with proven Win64 preservation") {
+    LirFunc function;
+    function.name = "Pressure";
+    function.returnType = TypeRef::MakeInt64();
+    LirInstr call;
+    call.op = LirOpcode::Call;
+    call.type = TypeRef::MakeOpaque();
+    call.strArg = "Observe";
+    for (LirReg reg = 0; reg < 8; ++reg) {
+        function.params.push_back({reg, TypeRef::MakeInt64(), "input"});
+        call.srcs.push_back(reg);
+    }
+    LirBlock block;
+    block.instrs = {call};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 0;
+    block.term->retType = function.returnType;
+    function.blocks = {block};
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Windows).UsedPhysicalRegisters().size(), 7);
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Linux).UsedPhysicalRegisters().size(), 5);
+    function.blocks[0].instrs[0].callConv = CallingConvention::SysV;
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Windows).UsedPhysicalRegisters().size(), 5);
+    function.blocks[0].instrs[0].callConv = CallingConvention::Win64;
+    function.callConv = CallingConvention::SysV;
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Windows).UsedPhysicalRegisters().size(), 5);
+}
+
+TEST_CASE("x86-64 extra nonvolatile registers encode moves and balanced preservation") {
+    std::vector<std::uint8_t> bytes;
+    X64Enc encoder(bytes);
+    for (const int index : {5, 6}) {
+        encoder.PushReg(index);
+        encoder.MovRaxPhysReg(index);
+        encoder.MovR10PhysReg(index);
+        encoder.MovR11PhysReg(index);
+        encoder.MovPhysRegRax(index);
+        encoder.PopReg(index);
+    }
+    const std::vector<std::uint8_t> expected = {0x56, 0x48, 0x89, 0xF0, 0x49, 0x89, 0xF2, 0x49, 0x89, 0xF3,
+                                                0x48, 0x89, 0xC6, 0x5E, 0x57, 0x48, 0x89, 0xF8, 0x49, 0x89,
+                                                0xFA, 0x49, 0x89, 0xFB, 0x48, 0x89, 0xC7, 0x5F};
+    CHECK_EQ(bytes, expected);
+}
+
 TEST_CASE("x86-64 XMM copies and saves encode high register numbers without losing upper bits") {
     std::vector<std::uint8_t> bytes;
     X64Enc encoder(bytes);

@@ -328,3 +328,6 @@ and allocated-register paths emit the same hardware operation. Other assembly bo
 Unsigned scalar expression ranges are bounded, memoized analysis local to a combine pass. Only proofs valid across
 all represented values may fold comparisons. Wrapping arithmetic and lossy casts revert to the full unsigned domain;
 these facts never authorize removing an operation that can trap.
+The x86 scalar integer pool adds RSI/RDI for Win64 functions whose calls all preserve those registers. A different
+function/call convention or implicit runtime-call operation retains the five-register pool. Encoders, text emission
+and direct scalar selection share one mapping from allocator indices to architectural register numbers.

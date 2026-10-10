@@ -12,6 +12,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
+  reducing stack traffic while retaining conservative pools across incompatible calls.
+
 - **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
   while retaining wrapping, signed and potentially trapping behavior.
 
@@ -662,6 +665,9 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 ### Added
 
+- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
+  reducing stack traffic while retaining conservative pools across incompatible calls.
+
 - **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
   while retaining wrapping, signed and potentially trapping behavior.
 
@@ -746,6 +752,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 
 ### Added
 
+- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
+  reducing stack traffic while retaining conservative pools across incompatible calls.
+
 - **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
   while retaining wrapping, signed and potentially trapping behavior.
 
@@ -775,6 +784,9 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 Expands the compiler with control flow, composite types, modules, and a richer type system.
 
 ### Added
+
+- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
+  reducing stack traffic while retaining conservative pools across incompatible calls.
 
 - **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
   while retaining wrapping, signed and potentially trapping behavior.
@@ -816,6 +828,9 @@ func Main() -> int32 {
 ```
 
 ### Added
+
+- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
+  reducing stack traffic while retaining conservative pools across incompatible calls.
 
 - **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
   while retaining wrapping, signed and potentially trapping behavior.

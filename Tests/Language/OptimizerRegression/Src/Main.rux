@@ -91,6 +91,7 @@ func VerifyWordOperations(limit: uint64) {
 func Main() -> int {
     VerifyBranchedInlining(30);
     Assert(CheckFloatPreservation() == 1, "Win64 preserves all 128 bits of every allocated XMM register");
+    Assert(CheckIntegerPreservation() == 1, "Win64 preserves allocated RSI and RDI across native calls");
     VerifyFloatRegisters(25);
     let outer = 1;
     if true {
@@ -168,6 +169,39 @@ func VerifyFloatRegisters(limit: int) {
 }
 
 when #target.os == OperatingSystem::Windows && #target.arch == Architecture::X86_64 {
+    asm func CheckIntegerPreservation() -> int {
+        sub rsp, 88
+        mov [rsp + 64], rsi
+        mov [rsp + 72], rdi
+        mov rsi, 0x0123456789abcdef
+        mov rdi, 0xfedcba9876543210
+        mov rcx, 1
+        mov rdx, 2
+        mov r8, 3
+        mov r9, 4
+        mov qword [rsp + 32], 5
+        mov qword [rsp + 40], 6
+        mov qword [rsp + 48], 7
+        mov qword [rsp + 56], 8
+        call ManyIntegers
+        cmp rax, 36
+        jne integer_preserve_failed
+        mov r10, 0x0123456789abcdef
+        cmp rsi, r10
+        jne integer_preserve_failed
+        mov r10, 0xfedcba9876543210
+        cmp rdi, r10
+        jne integer_preserve_failed
+        mov rax, 1
+        jmp integer_preserve_done
+    integer_preserve_failed:
+        xor rax, rax
+    integer_preserve_done:
+        mov rsi, [rsp + 64]
+        mov rdi, [rsp + 72]
+        add rsp, 88
+        ret
+    }
     // The generated callee uses all eight allocated XMM registers. Check both halves of each nonvolatile register.
     asm func CheckFloatPreservation() -> int {
         sub rsp, 360
@@ -278,4 +312,9 @@ when #target.os == OperatingSystem::Windows && #target.arch == Architecture::X86
     }
 } else {
     func CheckFloatPreservation() -> int { return 1; }
+    func CheckIntegerPreservation() -> int { return 1; }
+}
+
+func ManyIntegers(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int {
+    return a + b + c + d + e + f + g + h;
 }

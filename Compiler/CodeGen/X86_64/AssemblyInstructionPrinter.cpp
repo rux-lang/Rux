@@ -403,20 +403,9 @@ bool AssemblyInstructionPrinter::IsRegPointerTo(const LirReg reg, const TypeRef 
 }
 
 std::string_view AssemblyInstructionPrinter::PhysicalRegisterName(const int index) const {
-    switch (index) {
-    case 0:
+    if (index < 0 || index >= static_cast<int>(X86AllocatedGprs.size()))
         return "rbx";
-    case 1:
-        return "r12";
-    case 2:
-        return "r13";
-    case 3:
-        return "r14";
-    case 4:
-        return "r15";
-    default:
-        return "rbx";
-    }
+    return X86GeneralRegisterName(X86AllocatedGprs[static_cast<std::size_t>(index)]);
 }
 
 // ---- operand moves (ModuleValues.cpp) ----------------------------------------------------------------------------
