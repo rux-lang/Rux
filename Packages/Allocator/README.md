@@ -17,6 +17,7 @@ rux add Rux/Allocator
 | `Contract` | the `Allocator` interface every allocator here implements                  |
 | `System`   | `SystemAllocator`, which asks the operating system for pages               |
 | `Box`      | `Box<T>`, one heap value with exactly one owner                             |
+| `Shared`   | `Rc<T>` and `Arc<T>`, one heap value shared by counted handles               |
 | `Arena`    | `Arena`, which advances a pointer and reclaims everything at once           |
 | `FixedBuffer` | `FixedBuffer`, which hands out storage the caller already has            |
 | `Pool`     | `Pool`, which serves small blocks from per-class free lists                 |
@@ -37,6 +38,8 @@ Every operation returns a native fallible: `Allocate` and `Reallocate` give `(*v
 A zero-sized layout is legal and gives a non-null aligned address that nothing may be read from or written to, and which must still be released. That is cheaper than a null case every caller has to branch on, and it keeps an empty collection from being a special shape.
 
 `Arena`, `Pool`, `FixedBuffer`, and `Box<T>` prohibit copying. The first two and the box use canonical destructors; the fixed buffer owns no storage but still cannot be copied because duplicate bump state could hand out overlapping blocks. Move an owner explicitly, for example `let destination <- source`. `Box::Create` returns `Box<T> ! AllocError`, destroying the value it was given when the allocator refuses. Destroying a box destroys its value before returning the allocation, while `TryTake` moves the value to the caller and leaves the box empty.
+
+`Rc<T>` and `Arc<T>` are the opposite: copying a handle shares its value and adds to a count, and the value is destroyed when the last handle goes. `Rc` counts with plain arithmetic for one thread; `Arc` counts atomically, so its copies can be made and dropped on any thread. Both hand out the value for reading through `Get`, and for writing through `GetMutable` only while a single handle exists. There are no weak handles, so a cycle of handles is never freed.
 
 Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and `FixedBuffer(storage, capacity)`. `Layout::New` retains its name because it validates and returns `Layout?`, so `Layout::New(size, alignment) ?? fail AllocError::Unsupported` turns an unrepresentable layout into a failure.
 
