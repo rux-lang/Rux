@@ -367,3 +367,11 @@ removing dead blocks. Entry blocks, conditional joins and self-targeting edges a
 calls and potentially trapping arithmetic remain in their original execution order; no instruction crosses a
 conditional edge. A bounded one-shot pass limits CFG analysis and instruction movement. Running after guarded loop
 versioning turns the check-free body into a straight-line block suitable for subsequent loop analysis.
+
+The x86 scalar machine layer also selects immediate add, subtract, multiply and bitwise operands. UInt32 consumes
+the low 32 bits; 64-bit operations require the literal to equal the sign-extension of an imm32. Encoding chooses
+imm8 only when its sign-extension has the same value. Three-operand immediate multiplication can write the result
+without an input copy. Candidate constants do not consume a GPR when all their IR uses are eligible right operands.
+After allocation, a constant definition is omitted only if every consumer actually selected an immediate form.
+Spilled/unselected consumers retain its ordinary stack materialization; phi, return and other uses retain the normal
+path. Frame slots remain conservatively planned. Text and bytes share the same selected instruction descriptor.

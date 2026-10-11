@@ -4,6 +4,7 @@
 #include "CodeGen/LinearScan.h"
 #include "CodeGen/ScalarImmediates.h"
 #include "CodeGen/SpillWeights.h"
+#include "CodeGen/X86_64/ScalarMachine.h"
 #include "Target/CallingConvention.h"
 
 #include <algorithm>
@@ -24,6 +25,8 @@ public:
     }
 
     [[nodiscard]] X86_64FramePlan Build() {
+        plan.immediateValues = ScalarImmediates(func);
+        PlanImmediateCandidates();
         ParamTypeMap parameters;
         for (const auto &parameter : func.params) {
             parameters.emplace(parameter.reg, ParameterRegisterType(parameter.type));
@@ -40,12 +43,12 @@ public:
         PlanBranches();
         PlanWideTemporaries();
         PlanPhiTemporary();
+        PlanImmediateElision();
 
         plan.frameSize = AlignUp(nextOffset, 16);
         if (plan.frameSize == 0) {
             plan.frameSize = 16;
         }
-        plan.immediateValues = ScalarImmediates(func);
         return std::move(plan);
     }
 
@@ -58,6 +61,49 @@ private:
     std::int32_t nextOffset = 0;
     std::unordered_map<LirReg, LirReg> tiedInputs;
     std::unordered_map<LirReg, double> priorities;
+    std::unordered_set<LirReg> immediateCandidates;
+
+    void PlanImmediateCandidates() {
+        for (const auto &[reg, value] : plan.immediateValues) {
+            static_cast<void>(value);
+            immediateCandidates.insert(reg);
+        }
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.isVolatile)
+                    immediateCandidates.erase(instruction.dst);
+                for (std::size_t index = 0; index < instruction.srcs.size(); ++index) {
+                    const auto source = instruction.srcs[index];
+                    if (immediateCandidates.contains(source) &&
+                        (index != 1 || !ScalarMachineImmediate(instruction, plan.immediateValues.at(source))))
+                        immediateCandidates.erase(source);
+                }
+                for (const auto &[source, predecessor] : instruction.phiPreds) {
+                    static_cast<void>(predecessor);
+                    immediateCandidates.erase(source);
+                }
+            }
+            if (block.term) {
+                immediateCandidates.erase(block.term->cond);
+                if (block.term->retVal)
+                    immediateCandidates.erase(*block.term->retVal);
+            }
+        }
+    }
+
+    void PlanImmediateElision() {
+        plan.elidedImmediates = immediateCandidates;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.srcs.size() != 2 || !plan.elidedImmediates.contains(instruction.srcs[1]))
+                    continue;
+                const auto selected = SelectScalarMachineInstruction(instruction, plan);
+                if (!selected || !selected->immediate)
+                    plan.elidedImmediates.erase(instruction.srcs[1]);
+            }
+        }
+        // Unselected users retain the constant's ordinary stack materialization. Slot planning remains unchanged.
+    }
 
     void PlanTiedInputs(const std::vector<LiveInterval> &intervals) {
         std::unordered_map<LirReg, const LiveInterval *> spans;
@@ -197,7 +243,8 @@ private:
     void PlanCalleeSaves(const std::vector<LiveInterval> &intervals) {
         std::vector<LiveInterval> candidates;
         for (const auto &interval : intervals) {
-            if (interval.type.IsFloat() || IsAggregate(interval.type) || RuntimeSize(interval.type) > 8) {
+            if (interval.type.IsFloat() || IsAggregate(interval.type) || RuntimeSize(interval.type) > 8 ||
+                immediateCandidates.contains(interval.reg)) {
                 continue;
             }
             candidates.push_back(interval);

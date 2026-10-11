@@ -142,3 +142,81 @@ TEST_CASE("x86 scalar arithmetic coalesces a dying left input without a physical
         CHECK_EQ(bytes.size(), type.IsFloat() ? 5 : 3);
     }
 }
+
+namespace {
+LirFunc ImmediateArithmetic(const TypeRef &type, const LirOpcode operation, const std::string &literal) {
+    auto function = Arithmetic(type, operation);
+    function.params.pop_back();
+    LirInstr constant;
+    constant.op = LirOpcode::Const;
+    constant.type = type;
+    constant.dst = 1;
+    constant.strArg = literal;
+    function.blocks[0].instrs.insert(function.blocks[0].instrs.begin(), constant);
+    return function;
+}
+} // namespace
+
+TEST_CASE("Allocated integer immediates encode all arithmetic groups and omit constant homes") {
+    const std::vector<std::pair<LirOpcode, std::vector<std::uint8_t>>> cases = {
+        {LirOpcode::Add, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xC4, 0x2A}},
+        {LirOpcode::Sub, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xEC, 0x2A}},
+        {LirOpcode::Mul, {0x4C, 0x6B, 0xE3, 0x2A}},
+        {LirOpcode::And, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xE4, 0x2A}},
+        {LirOpcode::Or, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xCC, 0x2A}},
+        {LirOpcode::Xor, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xF4, 0x2A}},
+    };
+    for (const auto &[operation, expected] : cases) {
+        const auto function = ImmediateArithmetic(TypeRef::MakeUInt64(), operation, "42");
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        REQUIRE(plan.ElidedImmediates().contains(1));
+        CHECK_FALSE(plan.PhysicalRegisters().contains(1));
+        const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+        REQUIRE(selected.has_value());
+        CHECK(selected->immediate == 42);
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(*selected);
+        CHECK(bytes == expected);
+    }
+}
+
+TEST_CASE("Immediate selection preserves 32-bit patterns and 64-bit sign extension") {
+    for (const auto &type : {TypeRef::MakeUInt32(), TypeRef::MakeUInt64(), TypeRef::MakeInt64()}) {
+        for (const auto value :
+             {0ULL, 127ULL, 128ULL, 2147483647ULL, 2147483648ULL, 4294967295ULL, 18446744071562067968ULL,
+              18446744073709551487ULL, 18446744073709551488ULL, 18446744073709551615ULL}) {
+            const auto function = ImmediateArithmetic(type, LirOpcode::Add, std::to_string(value));
+            const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+            const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+            REQUIRE(selected.has_value());
+            const bool fits =
+                type == TypeRef::MakeUInt32() || value <= 2147483647ULL || value >= 18446744071562067968ULL;
+            CHECK(selected->immediate.has_value() == fits);
+            CHECK(plan.ElidedImmediates().contains(1) == fits);
+        }
+    }
+    auto function = ImmediateArithmetic(TypeRef::MakeUInt32(), LirOpcode::Add, "4294967295");
+    const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Linux);
+    const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+    REQUIRE(selected.has_value());
+    std::vector<std::uint8_t> bytes;
+    X64Enc encoder(bytes);
+    encoder.EmitScalarMachineInstruction(*selected);
+    CHECK(bytes == std::vector<std::uint8_t>{0x41, 0x89, 0xDC, 0x41, 0x83, 0xC4, 0xFF});
+}
+
+TEST_CASE("Constants with non-immediate or volatile uses retain materialization") {
+    for (const auto mode : {0, 1, 2}) {
+        auto function = ImmediateArithmetic(TypeRef::MakeUInt64(), LirOpcode::Add, "42");
+        if (mode == 0)
+            function.blocks[0].term->retVal = 1;
+        else if (mode == 1)
+            function.blocks[0].instrs.back().srcs = {1};
+        else
+            function.blocks[0].instrs[0].isVolatile = true;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        CHECK_FALSE(plan.ElidedImmediates().contains(1));
+        CHECK(plan.SlotOffsets().contains(1));
+    }
+}

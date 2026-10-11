@@ -68,6 +68,11 @@ public:
         return immediateValues;
     }
 
+    /// Constants whose every use is an allocated immediate instruction; their definition emits no materialization.
+    [[nodiscard]] const std::unordered_set<LirReg> &ElidedImmediates() const {
+        return elidedImmediates;
+    }
+
     [[nodiscard]] const std::unordered_map<LirReg, X86BranchComparison> &BranchComparisons() const {
         return branchComparisons;
     }
@@ -107,6 +112,7 @@ private:
     std::unordered_map<LirReg, std::int32_t> allocaDataOffsets;
     std::unordered_map<LirReg, TypeRef> registerTypes;
     std::unordered_map<LirReg, std::uint64_t> immediateValues;
+    std::unordered_set<LirReg> elidedImmediates;
     std::unordered_map<LirReg, X86BranchComparison> branchComparisons;
     X86_64PhiMoves phiMoves;
     std::unordered_map<LirReg, int> physicalRegisters;

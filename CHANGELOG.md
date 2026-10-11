@@ -11,6 +11,8 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler context), native AArch64 host support on every platform, explicit references and ownership transfer, deterministic value lifecycles, an explicit `let`/`var` mutability model, and a consolidated, hermetic test tree.
 
 ### Added
+- **Allocated immediate arithmetic** — Use direct x86 integer immediate operations with correct sign extension,
+  freeing constant registers and removing materialization when every use is covered by instruction selection.
 - **Straight-line control flow** — Coalesce uniquely entered block chains in Release, remove redundant jumps and
   phi copies, and retain conditional boundaries and the order of observable operations.
 - **Guarded loop bounds** — Release builds can select a check-free copy of a bounded unsigned traversal after

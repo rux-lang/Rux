@@ -4,6 +4,7 @@
 #include "CodeGen/X86_64/Registers.h"
 
 #include <array>
+#include <bit>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -31,7 +32,34 @@ struct X86ScalarMachineInstruction {
     bool twoByteOpcode;
     bool destinationInRegField;
     std::string_view mnemonic;
+    std::optional<std::int32_t> immediate = std::nullopt;
 };
+
+/// x86 sign-extends an imm32 in a 64-bit operation; a 32-bit operation consumes the low 32 bits.
+[[nodiscard]] inline std::optional<std::int32_t> ScalarMachineImmediate(const LirInstr &instruction,
+                                                                        const std::uint64_t value) {
+    if (instruction.isVolatile || instruction.dst == LirNoReg || instruction.srcs.size() != 2)
+        return std::nullopt;
+    const auto kind = instruction.type.kind;
+    if (kind != TypeRef::Kind::UInt32 && kind != TypeRef::Kind::Int64 && kind != TypeRef::Kind::UInt64 &&
+        kind != TypeRef::Kind::Int && kind != TypeRef::Kind::UInt)
+        return std::nullopt;
+    switch (instruction.op) {
+    case LirOpcode::Add:
+    case LirOpcode::Sub:
+    case LirOpcode::Mul:
+    case LirOpcode::And:
+    case LirOpcode::Or:
+    case LirOpcode::Xor:
+        break;
+    default:
+        return std::nullopt;
+    }
+    const auto immediate = std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(value));
+    if (kind != TypeRef::Kind::UInt32 && value != static_cast<std::uint64_t>(static_cast<std::int64_t>(immediate)))
+        return std::nullopt;
+    return immediate;
+}
 
 /// Select only fully allocated, same-width scalar arithmetic. UInt32 operations naturally zero-extend in a 32-bit
 /// destination; signed/narrow values requiring normalization, wide values, spills, fixed-register operations and
@@ -71,10 +99,13 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
     const auto destination = homes.find(instruction.dst);
     const auto left = homes.find(instruction.srcs[0]);
     const auto right = homes.find(instruction.srcs[1]);
-    if (destination == homes.end() || left == homes.end() || right == homes.end() ||
+    std::optional<std::int32_t> immediate;
+    if (const auto found = plan.ImmediateValues().find(instruction.srcs[1]); found != plan.ImmediateValues().end())
+        immediate = ScalarMachineImmediate(instruction, found->second);
+    if (destination == homes.end() || left == homes.end() || (!immediate && right == homes.end()) ||
         !types.contains(instruction.srcs[0]) || !types.contains(instruction.srcs[1]) ||
         types.at(instruction.srcs[0]) != instruction.type || types.at(instruction.srcs[1]) != instruction.type ||
-        (destination->second == right->second && destination->second != left->second))
+        (!immediate && destination->second == right->second && destination->second != left->second))
         return std::nullopt;
     const auto reg = [&](const int home) {
         return floating ? home : X86AllocatedGprs.at(static_cast<std::size_t>(home));
@@ -85,7 +116,7 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
                  : X86ScalarRegisterClass::Integer64,
         reg(destination->second),
         reg(left->second),
-        reg(right->second),
+        immediate ? 0 : reg(right->second),
         0,
         floating,
         floating,
@@ -121,6 +152,30 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
         break;
     default:
         return std::nullopt;
+    }
+    if (immediate) {
+        selected.immediate = immediate;
+        selected.opcode = instruction.op == LirOpcode::Mul ? 0x69 : 0x81;
+        selected.twoByteOpcode = false;
+        selected.destinationInRegField = instruction.op == LirOpcode::Mul;
+        // For group-1 immediates, right holds the opcode extension rather than a physical register.
+        switch (instruction.op) {
+        case LirOpcode::Or:
+            selected.right = 1;
+            break;
+        case LirOpcode::And:
+            selected.right = 4;
+            break;
+        case LirOpcode::Sub:
+            selected.right = 5;
+            break;
+        case LirOpcode::Xor:
+            selected.right = 6;
+            break;
+        default:
+            selected.right = 0;
+            break;
+        }
     }
     return selected;
 }

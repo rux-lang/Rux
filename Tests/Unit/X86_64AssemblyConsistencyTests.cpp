@@ -708,3 +708,21 @@ TEST_CASE("x86-64 uint32 allocated arithmetic agrees in text and binary width") 
         CHECK(std::ranges::search(code, expected).begin() != code.end());
     }
 }
+
+TEST_CASE("x86-64 immediate arithmetic agrees in text and bytes without a constant register") {
+    const auto type = TypeRef::MakeUInt64();
+    for (const auto os : Systems) {
+        const auto function =
+            Function("Immediate", {{0, type, "left"}},
+                     {Instruction(LirOpcode::Const, 1, type, {}, "128"), Instruction(LirOpcode::Add, 2, type, {0, 1}),
+                      Instruction(LirOpcode::Cast, 3, type, {0})},
+                     2, type);
+        const auto package = PackageOf({function});
+        const auto text = AssemblyPrinter(package, os).Generate();
+        CHECK(text.contains("add     r12, 128"));
+        CHECK_FALSE(text.contains("mov     eax, 128"));
+        const auto code = CodeOf(package, os);
+        const std::vector<std::uint8_t> expected = {0x49, 0x89, 0xDC, 0x49, 0x81, 0xC4, 0x80, 0, 0, 0};
+        CHECK(std::ranges::search(code, expected).begin() != code.end());
+    }
+}

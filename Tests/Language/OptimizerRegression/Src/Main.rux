@@ -89,6 +89,7 @@ func VerifyWordOperations(limit: uint64) {
 }
 
 func Main() -> int {
+    CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
     Assert(CheckFloatPreservation() == 1, "Win64 preserves all 128 bits of every allocated XMM register");
@@ -119,6 +120,36 @@ func Main() -> int {
     Assert(LoopRegisterValues(10, 7) == 370, "nested loop values and indirect calls");
     VerifyWordOperations(5000);
     return 0;
+}
+
+func Immediate64(value: uint64) -> uint64 {
+    return ((value + 128u64) ^ (value - 129u64)) * ((value | 255u64) & 0xFFFFFFFFu64);
+}
+
+func Immediate32(value: uint32) -> uint64 {
+    return (((value + 128u32) ^ (value - 129u32)) * (value | 0x80000000u32)) as uint64;
+}
+
+func ImmediateSigned(value: int64) -> int64 {
+    return ((value + 128i64) ^ (value - 129i64)) * -7i64;
+}
+
+func CheckImmediateOperands() {
+    let values: uint64[8] = [0u64, 1u64, 127u64, 128u64, 0x7FFFFFFFu64, 0x80000000u64,
+        0x8000000000000000u64, 0xFFFFFFFFFFFFFFFFu64];
+    let operands: uint64[5] = [128u64, 129u64, 255u64, 0xFFFFFFFFu64, 0x80000000u64];
+    let signedOperands: int64[3] = [128i64, 129i64, -7i64];
+    for value in values {
+        let expected = ((value + operands[0]) ^ (value - operands[1])) * ((value | operands[2]) & operands[3]);
+        Assert(Immediate64(value) == expected, "64-bit immediate arithmetic matches runtime operands");
+        let narrow = value as uint32;
+        let expected32 = (((narrow + operands[0] as uint32) ^ (narrow - operands[1] as uint32))
+            * (narrow | operands[4] as uint32)) as uint64;
+        Assert(Immediate32(narrow) == expected32, "32-bit immediates wrap and zero-extend");
+        let signed = value as int64;
+        let expectedSigned = ((signed + signedOperands[0]) ^ (signed - signedOperands[1])) * signedOperands[2];
+        Assert(ImmediateSigned(signed) == expectedSigned, "signed immediate multiplication preserves wrapping");
+    }
 }
 
 func SelectInline(value: int) -> int {

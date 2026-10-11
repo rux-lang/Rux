@@ -524,7 +524,8 @@ void X64Enc::EmitScalarMachineInstruction(const X86ScalarMachineInstruction &ins
     const auto modrm = [&](const int reg, const int rm) {
         Byte(static_cast<std::uint8_t>(0xC0 | ((reg & 7) << 3) | (rm & 7)));
     };
-    if (instruction.destination != instruction.left) {
+    const bool immediateMultiply = instruction.immediate && instruction.opcode == 0x69;
+    if (instruction.destination != instruction.left && !immediateMultiply) {
         if (floating) {
             MovXmm(instruction.destination, instruction.left);
         }
@@ -533,6 +534,21 @@ void X64Enc::EmitScalarMachineInstruction(const X86ScalarMachineInstruction &ins
             Byte(0x89);
             modrm(instruction.left, instruction.destination);
         }
+    }
+    if (instruction.immediate) {
+        const auto value = *instruction.immediate;
+        const bool shortValue = value >= -128 && value <= 127;
+        const auto reg = immediateMultiply ? instruction.destination : instruction.right;
+        const auto rm = immediateMultiply ? instruction.left : instruction.destination;
+        rex(reg, rm, word64);
+        Byte(immediateMultiply ? (shortValue ? 0x6B : 0x69) : (shortValue ? 0x83 : 0x81));
+        modrm(reg, rm);
+        if (shortValue)
+            Byte(static_cast<std::uint8_t>(value));
+        else
+            for (unsigned shift = 0; shift < 32; shift += 8)
+                Byte(static_cast<std::uint8_t>(static_cast<std::uint32_t>(value) >> shift));
+        return;
     }
     const auto reg = instruction.destinationInRegField ? instruction.destination : instruction.right;
     const auto rm = instruction.destinationInRegField ? instruction.right : instruction.destination;

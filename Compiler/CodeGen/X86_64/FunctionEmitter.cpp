@@ -924,6 +924,8 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
     switch (instruction.op) {
     case LirOpcode::Const: {
+        if (framePlan.ElidedImmediates().contains(instruction.dst))
+            return true;
         if (instruction.dst == LirNoReg) {
             return true;
         }

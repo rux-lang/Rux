@@ -1318,11 +1318,20 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     }
     if (const auto selected = SelectScalarMachineInstruction(instruction, framePlan)) {
         const auto destination = ScalarMachineRegister(*selected, selected->destination);
-        if (selected->destination != selected->left) {
+        const bool immediateMultiply = selected->immediate && selected->opcode == 0x69;
+        if (selected->destination != selected->left && !immediateMultiply) {
             Instruction(ScalarMachineIsFloat(selected->registerClass) ? "movaps" : "mov",
                         destination + ", " + ScalarMachineRegister(*selected, selected->left));
         }
-        Instruction(selected->mnemonic, destination + ", " + ScalarMachineRegister(*selected, selected->right));
+        if (selected->immediate) {
+            const auto operands = immediateMultiply
+                                    ? destination + ", " + ScalarMachineRegister(*selected, selected->left) + ", "
+                                    : destination + ", ";
+            Instruction(selected->mnemonic, operands + std::to_string(*selected->immediate));
+        }
+        else {
+            Instruction(selected->mnemonic, destination + ", " + ScalarMachineRegister(*selected, selected->right));
+        }
         return true;
     }
     // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
@@ -1592,6 +1601,8 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
     switch (instruction.op) {
     case LirOpcode::Const: {
+        if (framePlan.ElidedImmediates().contains(instruction.dst))
+            return true;
         if (instruction.dst == LirNoReg) {
             return true;
         }
