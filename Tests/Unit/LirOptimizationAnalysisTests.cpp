@@ -856,6 +856,69 @@ TEST_CASE("Loop versioning merges live outs read by phis after the exit") {
     }
 }
 
+TEST_CASE("Loop versioning proves byte-indexed and secondary-counter checks") {
+    const auto original = Promoted(R"(
+        func Walk(limit: uint, bound: uint, tableBound: uint, pointer: *var uint, bytes: *uint8) -> uint {
+            var o: uint = 0u;
+            for i in 0u..limit {
+                if ((*bytes) as uint) < tableBound { *pointer += i; }
+                else { return 1u; }
+                if o < bound { *pointer += o; }
+                else { return 2u; }
+                o += 1u;
+                if o + 1u < bound { *pointer += 1u; }
+                else { return 3u; }
+                o += 2u;
+            }
+            return o;
+        }
+    )");
+    auto versioned = original;
+    const auto oldCount = versioned.modules[0].funcs[0].blocks.size();
+    Optimization::LirLoopVersioning versioning;
+    REQUIRE(versioning.Run(versioned, {}) == Optimization::PassChange::Changed);
+    REQUIRE(SsaErrors(versioned).empty());
+    // Only the counted test remains in the fast copy.
+    std::size_t branches = 0;
+    const auto &blocks = versioned.modules[0].funcs[0].blocks;
+    for (std::size_t block = oldCount; block < blocks.size(); ++block)
+        branches += blocks[block].term->kind == LirTermKind::Branch;
+    CHECK_EQ(branches, 1);
+    for (const std::uint64_t limit : {1ull, 2ull, 5ull, 0x100000000ull, 0x100000001ull}) {
+        for (const std::uint64_t bound : {0ull, 1ull, 3ull, 13ull, 14ull, 15ull, 0x400000000ull}) {
+            for (const std::uint64_t tableBound : {255ull, 256ull}) {
+                auto package = versioned;
+                auto &function = package.modules[0].funcs[0];
+                const std::uint64_t arguments[] = {limit, bound, tableBound};
+                std::vector<LirInstr> constants;
+                for (std::size_t index = 0; index < 3; ++index) {
+                    LirInstr constant;
+                    constant.op = LirOpcode::Const;
+                    constant.dst = function.params[index].reg;
+                    constant.type = function.params[index].type;
+                    constant.strArg = std::to_string(arguments[index]);
+                    constants.push_back(std::move(constant));
+                }
+                function.params.erase(function.params.begin(), function.params.begin() + 3);
+                auto &entry = function.blocks[0];
+                entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
+                Optimization::LirConstantPropagation propagation;
+                static_cast<void>(propagation.Run(package, {}));
+                const auto condition = std::ranges::find_if(
+                    entry.instrs, [&](const auto &instruction) { return instruction.dst == entry.term->cond; });
+                REQUIRE(condition != entry.instrs.end());
+                REQUIRE(condition->op == LirOpcode::Const);
+                // Iteration n reads o = 3n and o + 2; every byte is below 256. Counts above 2^32 stay checked.
+                const bool allFit = tableBound > 255 && 3 * (limit - 1) + 2 < bound && limit <= 0x100000000ull;
+                CAPTURE(limit);
+                CAPTURE(bound);
+                CAPTURE(tableBound);
+                CHECK((condition->strArg == "true") == allFit);
+            }
+        }
+    }
+}
+
 TEST_CASE("Loop versioning finds the counted test after a short-circuit operand") {
     const auto original = Promoted(R"(
         func Walk(limit: uint, bound: uint, pointer: *var uint, start: bool) -> bool {

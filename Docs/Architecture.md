@@ -398,8 +398,12 @@ where the two copies' paths meet. A signed `int`/`int64` count starting at a
 non-negative constant with step one is versioned too: a check on `(count + c) as uint` with constant `c` and a
 non-negative first index is proven by `limit + c <= bound`, whose overflow wraps to a failing guard. An unsigned count
 with step one may start at any non-negative constant. A constant bound or limit defined inside the loop is recreated in
-the preheader. Memory-dependent bounds, volatile operations, calls, local allocations and other conversions are
-rejected. Loop size, instruction count and checks (eight) are capped; each round versions one innermost loop, and up
+the preheader. A check whose index never exceeds a constant, a zero-extended byte or halfword or a value masked by a
+constant, is proven by that constant being below the bound. A check on another counter, a header phi entered with an
+invariant start and advanced by the same constants every iteration, is proven by
+`start + (iterations - 1) * step + offset < bound` with the start below 2^40, the step below 2^16 and the limit at most
+2^32, so the sum cannot wrap. Memory-dependent bounds, volatile operations, calls, local allocations and other
+conversions are rejected. Loop size, instruction count and checks (sixteen) are capped; each round versions one innermost loop, and up
 to eight rounds per function reach its other loops, since a versioned loop's entry becomes a guard branch no round
 accepts again.
 

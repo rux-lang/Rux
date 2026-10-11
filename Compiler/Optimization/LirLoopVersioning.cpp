@@ -31,7 +31,26 @@ struct Check {
     LirReg bound;
     /// For a signed induction value, a constant added to it; its first index is non-negative by construction.
     std::int64_t constantOffset = 0;
+    /// For an index that never exceeds a constant, such as a byte used as a table index, that constant.
+    std::optional<std::uint64_t> maximum = std::nullopt;
+    /// For an index derived from another counter the loop advances by a constant, that counter's phi and the constant
+    /// added to it.
+    LirReg secondary = LirNoReg;
+    std::uint64_t secondaryOffset = 0;
 };
+
+/// A header phi other than the induction value that every iteration advances by the same constant: in iteration n it
+/// holds start + n * step.
+struct Secondary {
+    LirReg start;
+    std::uint64_t step;
+};
+
+// Small enough that start + iterations * step + offset cannot wrap once start is at most 2^40 and the limit at most
+// 2^32.
+constexpr std::uint64_t MaximumStep = std::uint64_t{1} << 16;
+constexpr std::uint64_t MaximumStart = std::uint64_t{1} << 40;
+constexpr std::uint64_t MaximumIterations = std::uint64_t{1} << 32;
 
 bool Version(LirFunc &function) {
     if (function.isExtern || function.isAsm || function.blocks.size() < 3 || function.blocks.size() > 2048)
@@ -205,6 +224,88 @@ bool Version(LirFunc &function) {
         };
         if (signedInduction ? !invariantLimit(limit) : !invariant(limit))
             continue;
+        const auto constantOf = [&](const LirReg reg) -> std::optional<std::uint64_t> {
+            const auto *instruction = get(reg);
+            if (!instruction || instruction->op != LirOpcode::Const || instruction->isVolatile ||
+                !instruction->srcs.empty())
+                return std::nullopt;
+            const auto value = ParseConstant(instruction->strArg, instruction->type);
+            return value ? std::optional<std::uint64_t>(value->RawBits()) : std::nullopt;
+        };
+        // An index that never exceeds a constant is below every bound larger than that constant: a zero-extended
+        // byte or halfword, or a value masked by a constant.
+        const auto maximumOf = [&](LirReg reg) -> std::optional<std::uint64_t> {
+            reg = strip(reg);
+            const auto *instruction = get(reg);
+            if (!instruction || instruction->isVolatile)
+                return std::nullopt;
+            if (instruction->op == LirOpcode::Cast && instruction->srcs.size() == 1) {
+                const auto found = definitions.find(instruction->srcs[0]);
+                if (found == definitions.end())
+                    return std::nullopt;
+                if (found->second.type.kind == TypeRef::Kind::UInt8)
+                    return 0xFF;
+                if (found->second.type.kind == TypeRef::Kind::UInt16)
+                    return 0xFFFF;
+                return std::nullopt;
+            }
+            if (instruction->op == LirOpcode::And && instruction->srcs.size() == 2 && Word(instruction->type)) {
+                const auto right = constantOf(instruction->srcs[1]);
+                const auto left = constantOf(instruction->srcs[0]);
+                if (right && *right < MaximumStart)
+                    return right;
+                if (left && *left < MaximumStart)
+                    return left;
+            }
+            return std::nullopt;
+        };
+        // Other counters: header phis entered with an invariant value and advanced only by constant additions.
+        std::unordered_map<LirReg, Secondary> secondaries;
+        for (const auto &instruction : function.blocks[header].instrs) {
+            if (instruction.op != LirOpcode::Phi || instruction.dst == induction || !Word(instruction.type) ||
+                instruction.phiPreds.size() != 2)
+                continue;
+            auto entered = LirNoReg;
+            auto advanced = LirNoReg;
+            for (const auto &[value, predecessor] : instruction.phiPreds)
+                (members.contains(predecessor) ? advanced : entered) = value;
+            if (entered == LirNoReg || advanced == LirNoReg || !invariant(entered))
+                continue;
+            std::uint64_t advance = 0;
+            auto reg = advanced;
+            for (std::size_t depth = 0; depth < 16 && reg != instruction.dst && advance <= MaximumStep; ++depth) {
+                const auto *add = get(reg);
+                const auto amount = add && add->op == LirOpcode::Add && !add->isVolatile &&
+                                            add->type == instruction.type && add->srcs.size() == 2
+                                      ? constantOf(add->srcs[1])
+                                      : std::nullopt;
+                if (!amount || *amount > MaximumStep)
+                    break;
+                advance += *amount;
+                reg = add->srcs[0];
+            }
+            if (reg == instruction.dst && advance <= MaximumStep)
+                secondaries.emplace(instruction.dst, Secondary{entered, advance});
+        }
+        // An index as another counter plus constants.
+        const auto secondaryIndex = [&](LirReg reg) -> std::optional<std::pair<LirReg, std::uint64_t>> {
+            std::uint64_t offset = 0;
+            for (std::size_t depth = 0; depth < 16 && offset <= MaximumStep; ++depth) {
+                reg = strip(reg);
+                if (secondaries.contains(reg))
+                    return std::pair{reg, offset};
+                const auto *add = get(reg);
+                const auto amount =
+                    add && add->op == LirOpcode::Add && !add->isVolatile && Word(add->type) && add->srcs.size() == 2
+                        ? constantOf(add->srcs[1])
+                        : std::nullopt;
+                if (!amount || *amount > MaximumStep)
+                    return std::nullopt;
+                offset += *amount;
+                reg = add->srcs[0];
+            }
+            return std::nullopt;
+        };
         // The signed index expression a check compares, as the induction value plus a constant.
         const auto signedIndex = [&](LirReg reg) -> std::optional<std::int64_t> {
             const auto *cast = get(reg);
@@ -254,6 +355,19 @@ bool Version(LirFunc &function) {
             if (!comparison || comparison->op != LirOpcode::CmpLt || comparison->isVolatile ||
                 comparison->srcs.size() != 2 || !word(comparison->srcs[0]) || !invariant(comparison->srcs[1]))
                 continue;
+            if (const auto maximum = maximumOf(comparison->srcs[0])) {
+                Check check{block, LirNoReg, comparison->srcs[1]};
+                check.maximum = maximum;
+                checks.push_back(check);
+                continue;
+            }
+            if (const auto derived = secondaryIndex(comparison->srcs[0])) {
+                Check check{block, LirNoReg, comparison->srcs[1]};
+                check.secondary = derived->first;
+                check.secondaryOffset = derived->second;
+                checks.push_back(check);
+                continue;
+            }
             if (signedInduction) {
                 // Only checks whose first index is already non-negative: below zero the conversion would wrap.
                 if (const auto offset = signedIndex(comparison->srcs[0]); offset && *start + *offset >= 0)
@@ -275,7 +389,7 @@ bool Version(LirFunc &function) {
             }
             checks.push_back({block, offset, comparison->srcs[1]});
         }
-        if (!eligible || cost > 320 || checks.empty() || checks.size() > 8)
+        if (!eligible || cost > 320 || checks.empty() || checks.size() > 16)
             continue;
         // Values the loop defines and code after it reads, directly or through a phi on an edge that leaves a block
         // outside the loop. Once the fast copy exists, both copies reach those readers.
@@ -379,6 +493,7 @@ bool Version(LirFunc &function) {
         const auto limit64 = widen(limit);
         auto count = limit64;
         LirReg guard = LirNoReg;
+        LirReg quotient = LirNoReg;
         if (stride != 1) {
             // The last visited index is floor((limit - 1) / stride) * stride. Reject limits for which the
             // increment could wrap: after wrapping, a non-power-of-two stride can visit different residues.
@@ -386,17 +501,57 @@ bool Version(LirFunc &function) {
             const auto one = emit(LirOpcode::Const, TypeRef::MakeUInt64(), {}, "1");
             const auto stepSize = emit(LirOpcode::Const, TypeRef::MakeUInt64(), {}, std::to_string(stride));
             const auto last = emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {limit64, one});
-            const auto quotient = emit(LirOpcode::Div, TypeRef::MakeUInt64(), {last, stepSize});
+            quotient = emit(LirOpcode::Div, TypeRef::MakeUInt64(), {last, stepSize});
             const auto lastIndex = emit(LirOpcode::Mul, TypeRef::MakeUInt64(), {quotient, stepSize});
             count = emit(LirOpcode::Add, TypeRef::MakeUInt64(), {lastIndex, one});
             const auto maximum = emit(LirOpcode::Const, TypeRef::MakeUInt64(), {},
                                       std::to_string(std::numeric_limits<std::uint64_t>::max() - (stride - 1)));
             guard = emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {limit64, maximum});
         }
+        const auto constant = [&](const std::uint64_t value) {
+            return emit(LirOpcode::Const, TypeRef::MakeUInt64(), {}, std::to_string(value));
+        };
+        const auto conjoin = [&](LirReg &all, const LirReg term) {
+            all = all == LirNoReg ? term : emit(LirOpcode::And, TypeRef::MakeBool(), {all, term});
+        };
+        // The number of iterations minus one, for counters derived from the induction value: the last index over
+        // the stride, or limit - 1 - start for a unit stride. The limit is kept below 2^32 so that products with a
+        // step cannot wrap; when the loop does not run at all, the value may wrap but nothing reads memory.
+        LirReg iterations = LirNoReg;
+        const auto lastIteration = [&] {
+            if (iterations != LirNoReg)
+                return iterations;
+            if (stride != 1) {
+                iterations = quotient;
+            }
+            else {
+                const auto last = emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {limit64, constant(1)});
+                iterations =
+                    emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {last, constant(static_cast<std::uint64_t>(*start))});
+            }
+            conjoin(guard, emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {limit64, constant(MaximumIterations)}));
+            return iterations;
+        };
         for (const auto &check : checks) {
             const auto bound = widen(check.bound);
             LirReg safe;
-            if (signedInduction) {
+            if (check.maximum) {
+                safe = emit(LirOpcode::CmpLt, TypeRef::MakeBool(), {constant(*check.maximum), bound});
+            }
+            else if (check.secondary != LirNoReg) {
+                // In the last iteration the counter reaches start + (iterations - 1) * step, and the index adds a
+                // constant to that; a start below 2^40 keeps the sum from wrapping.
+                const auto &secondary = secondaries.at(check.secondary);
+                const auto first = widen(secondary.start);
+                const auto advance =
+                    emit(LirOpcode::Mul, TypeRef::MakeUInt64(), {lastIteration(), constant(secondary.step)});
+                const auto reach = emit(LirOpcode::Add, TypeRef::MakeUInt64(), {first, advance});
+                const auto index =
+                    emit(LirOpcode::Add, TypeRef::MakeUInt64(), {reach, constant(check.secondaryOffset)});
+                safe = emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {first, constant(MaximumStart)});
+                conjoin(safe, emit(LirOpcode::CmpLt, TypeRef::MakeBool(), {index, bound}));
+            }
+            else if (signedInduction) {
                 // Every index the loop computes is at most limit - 1 + offset, so limit + offset must not exceed
                 // the bound. When the loop runs, limit exceeds the non-negative start, and limit + offset is
                 // positive; a sum that overflows wraps to a negative value, which as an unsigned bound fails the
@@ -420,7 +575,7 @@ bool Version(LirFunc &function) {
                 const auto lengthFits = emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {count, remaining});
                 safe = emit(LirOpcode::And, TypeRef::MakeBool(), {fits, lengthFits});
             }
-            guard = guard == LirNoReg ? safe : emit(LirOpcode::And, TypeRef::MakeBool(), {guard, safe});
+            conjoin(guard, safe);
         }
         auto &entry = *function.blocks[preheader].term;
         entry.kind = LirTermKind::Branch;
