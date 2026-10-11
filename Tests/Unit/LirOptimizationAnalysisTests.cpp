@@ -97,6 +97,39 @@ TEST_CASE("CFG cleanup threads a constant phi input past a branch-only block") {
     CHECK_EQ(blocks[3].instrs[0].phiPreds[0].second, 1U);
 }
 
+TEST_CASE("CFG cleanup folds a branch on a constant defined in another block") {
+    // 0 defines `true` and jumps to 1, which branches on it; inlining leaves this shape behind a callee's guard.
+    LirFunc function;
+    function.name = "Fold";
+    function.returnType = TypeRef::MakeInt();
+    function.blocks.resize(4);
+    LirInstr constant;
+    constant.op = LirOpcode::Const;
+    constant.dst = 1;
+    constant.type = TypeRef::MakeBool();
+    constant.strArg = "true";
+    function.blocks[0].instrs.push_back(constant);
+    function.blocks[0].term = JumpTo(1);
+    function.blocks[1].term = BranchTo(1, 2, 3);
+    for (const std::uint32_t block : {2U, 3U}) {
+        LirInstr result;
+        result.op = LirOpcode::Const;
+        result.dst = 10 + block;
+        result.type = TypeRef::MakeInt();
+        result.strArg = std::to_string(block);
+        function.blocks[block].instrs.push_back(result);
+        function.blocks[block].term = ReturnValue(10 + block, TypeRef::MakeInt());
+    }
+    LirPackage package;
+    package.modules.emplace_back();
+    package.modules[0].funcs.push_back(function);
+    Optimization::LirCfgCleanup cleanup;
+    CHECK(cleanup.Run(package, {}) == Optimization::PassChange::Changed);
+    const auto &blocks = package.modules[0].funcs[0].blocks;
+    REQUIRE(blocks[1].term->kind == LirTermKind::Jump);
+    CHECK_EQ(blocks[1].term->trueTarget, 2U);
+}
+
 TEST_CASE("Value numbering sees a bounds check through a same-width cast as the loop test") {
     auto package = Promoted(R"(
         func Sum(values: uint8[..]) -> uint {

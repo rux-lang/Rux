@@ -82,38 +82,62 @@ std::size_t HotCost(const LirFunc &function) {
         std::ranges::count_if(function.blocks, [](const LirBlock &block) { return !Fails(block); }));
 }
 
-bool Eligible(const LirFunc &function, const ConcreteReferenceTypes &references) {
+/// How large a callee may be. A call that passes the address of one of the caller's own objects earns the larger
+/// limits: once inlined, the object's fields can live in registers instead of memory the callee reads through a
+/// pointer.
+enum class Size {
+    Small,
+    Large
+};
+
+bool Within(const LirFunc &function, const Size size) {
+    const std::size_t scale = size == Size::Small ? 1 : 2;
+    return HotBlocks(function) <= 8 * scale && HotCost(function) <= 64 * scale && Cost(function) <= 160 * scale;
+}
+
+std::optional<Size> Eligible(const LirFunc &function, const ConcreteReferenceTypes &references) {
     const auto parameterFits = [&](const TypeRef &type) { return Scalar(type) || references.Contains(type); };
+    // A structure result is renamed into the caller only from a single block, where no phi has to merge it.
     if (function.isExtern || function.isAsm || function.isVariadic || function.blocks.empty() ||
-        HotBlocks(function) > 8 || HotCost(function) > 48 || Cost(function) > 160 ||
-        (!Scalar(function.returnType) && !function.returnType.IsOpaque()) ||
+        !Within(function, Size::Large) ||
+        (!Scalar(function.returnType) && !function.returnType.IsOpaque() && function.blocks.size() != 1) ||
         !std::ranges::all_of(function.params, [&](const auto &p) { return parameterFits(p.type); })) {
-        return false;
+        return std::nullopt;
+    }
+    // That block returns the structure itself or the address of an object holding it, which the caller loads.
+    if (!Scalar(function.returnType) && !function.returnType.IsOpaque()) {
+        const auto &exit = *function.blocks.front().term;
+        const auto returned = std::ranges::find_if(function.blocks.front().instrs, [&](const LirInstr &instruction) {
+            return exit.retVal && instruction.dst == *exit.retVal;
+        });
+        // An allocation's own type is the type of the object it holds.
+        if (returned == function.blocks.front().instrs.end() || returned->type != function.returnType)
+            return std::nullopt;
     }
     std::unordered_set<LirReg> definitions;
     for (const auto &parameter : function.params) {
         if (!definitions.insert(parameter.reg).second) {
-            return false;
+            return std::nullopt;
         }
     }
     bool returns = false;
     for (const auto &block : function.blocks) {
         if (!block.term) {
-            return false;
+            return std::nullopt;
         }
         if (block.term->kind == LirTermKind::Return) {
             if (block.term->retVal.has_value() == function.returnType.IsOpaque() ||
                 block.term->retType != function.returnType) {
-                return false;
+                return std::nullopt;
             }
             returns = true;
         }
         for (const auto &instruction : block.instrs) {
             if (instruction.dst != LirNoReg && !definitions.insert(instruction.dst).second) {
-                return false;
+                return std::nullopt;
             }
             if (instruction.op == LirOpcode::Load && !instruction.strArg.empty()) {
-                return false; // Module-local data lookup cannot be transplanted into another module.
+                return std::nullopt; // Module-local data lookup cannot be transplanted into another module.
             }
             switch (instruction.op) {
             case LirOpcode::Const:
@@ -156,7 +180,7 @@ bool Eligible(const LirFunc &function, const ConcreteReferenceTypes &references)
             case LirOpcode::Alloca:
                 break;
             default:
-                return false; // No frame identity, indirect recursion, atomics or thread-local access.
+                return std::nullopt; // No frame identity, indirect recursion, atomics or thread-local access.
             }
         }
     }
@@ -164,21 +188,23 @@ bool Eligible(const LirFunc &function, const ConcreteReferenceTypes &references)
         for (const auto &instruction : block.instrs) {
             for (const auto source : instruction.srcs) {
                 if (!definitions.contains(source)) {
-                    return false;
+                    return std::nullopt;
                 }
             }
             for (const auto &[source, predecessor] : instruction.phiPreds) {
                 if (!definitions.contains(source) || predecessor >= function.blocks.size()) {
-                    return false;
+                    return std::nullopt;
                 }
             }
         }
         if ((block.term->cond != LirNoReg && !definitions.contains(block.term->cond)) ||
             (block.term->retVal && !definitions.contains(*block.term->retVal))) {
-            return false;
+            return std::nullopt;
         }
     }
-    return returns;
+    if (!returns)
+        return std::nullopt;
+    return Within(function, Size::Small) ? Size::Small : Size::Large;
 }
 
 template <typename Map>
@@ -279,9 +305,16 @@ void Inline(LirFunc &caller, std::uint32_t &blockIndex, std::size_t &position, c
             LirInstr result;
             result.dst = call.dst;
             result.type = call.type;
-            result.op = LirOpcode::Cast;
             result.srcs = {*clones[0].term->retVal};
-            result.strArg = types.at(result.srcs[0]).ToString();
+            // A structure result may be returned as the address of the object holding it; the caller receives its
+            // contents as they stand at the return.
+            if (types.at(result.srcs[0]) == TypeRef::MakePointer(call.type)) {
+                result.op = LirOpcode::Load;
+            }
+            else {
+                result.op = LirOpcode::Cast;
+                result.strArg = types.at(result.srcs[0]).ToString();
+            }
             instructions.push_back(std::move(result));
         }
         auto &body = caller.blocks[blockIndex].instrs;
@@ -362,8 +395,9 @@ std::string_view LirInliner::Name() const noexcept {
 }
 
 PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
-    // A second round sees helpers that the first round's inlining and the folding after it made small enough.
-    if (context.iteration > 1) {
+    // Later rounds see helpers that earlier rounds' inlining and the folding and block coalescing after them made
+    // small enough: a helper calling a helper becomes inlinable one round after its callee was inlined into it.
+    if (context.iteration > 2) {
         return PassChange::None;
     }
     std::vector<LirFunc *> functions;
@@ -442,6 +476,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
         }
     }
     std::unordered_map<std::size_t, LirFunc> available;
+    std::unordered_map<std::size_t, Size> sizes;
     std::size_t packageBudget = 50000;
     bool changed = false;
     for (const auto index : order) {
@@ -461,6 +496,15 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 }
             }
         }
+        // Addresses of the function's own objects and their fields, as it stood before this round inlined into it.
+        std::unordered_set<LirReg> local;
+        for (int pass = 0; pass < 2; ++pass)
+            for (const auto &block : function.blocks)
+                for (const auto &instruction : block.instrs)
+                    if (instruction.op == LirOpcode::Alloca ||
+                        ((instruction.op == LirOpcode::FieldPtr || instruction.op == LirOpcode::IndexPtr) &&
+                         !instruction.srcs.empty() && local.contains(instruction.srcs[0])))
+                        local.insert(instruction.dst);
         std::size_t budget = 2048;
         for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
             for (std::size_t position = 0; position < function.blocks[block].instrs.size();) {
@@ -497,6 +541,9 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                         valid = types.contains(call.srcs[i]) &&
                                 ArgumentMatches(types.at(call.srcs[i]), callee.params[i].type);
                     }
+                    if (valid && sizes.at(*target) == Size::Large)
+                        valid =
+                            std::ranges::any_of(call.srcs, [&](const LirReg source) { return local.contains(source); });
                 }
                 if (!valid) {
                     ++position;
@@ -509,8 +556,9 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 changed = true;
             }
         }
-        if (remaining[index] == 0 && Eligible(function, references)) {
+        if (const auto size = remaining[index] == 0 ? Eligible(function, references) : std::nullopt) {
             available.emplace(index, function);
+            sizes.emplace(index, *size);
         }
     }
     return changed ? PassChange::Changed : PassChange::None;

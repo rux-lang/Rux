@@ -299,7 +299,7 @@ TEST_CASE("Leaf inlining keeps recursion and indirect calls but inlines trapping
     CHECK_EQ(Count(package, LirOpcode::Div), divisions + 1);
 }
 
-TEST_CASE("Leaf inlining expansion runs in the first two optimization iterations") {
+TEST_CASE("Leaf inlining expansion runs in the first three optimization iterations") {
     auto package = CompileToLir(R"(
         func Increment(value: int) -> int { return value + 1; }
         func Work(value: int) -> int { return Increment(value); }
@@ -309,12 +309,12 @@ TEST_CASE("Leaf inlining expansion runs in the first two optimization iterations
     static_cast<void>(promotion.Run(package, {}));
     Optimization::LirInliner inliner;
     Optimization::PassContext late;
-    late.iteration = 2;
+    late.iteration = 3;
     CHECK(inliner.Run(package, late) == Optimization::PassChange::None);
     CHECK_EQ(Calls(package), 1);
-    Optimization::PassContext second;
-    second.iteration = 1;
-    CHECK(inliner.Run(package, second) == Optimization::PassChange::Changed);
+    Optimization::PassContext third;
+    third.iteration = 2;
+    CHECK(inliner.Run(package, third) == Optimization::PassChange::Changed);
     CHECK_EQ(Calls(package), 0);
 }
 
@@ -423,4 +423,68 @@ TEST_CASE("Borrowed interface and unknown aggregate helpers retain their ABI bou
         CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
         CHECK_EQ(Calls(package), 1);
     }
+}
+
+TEST_CASE("Leaf inlining loads a structure result returned through its object") {
+    auto package = CompileToLir(R"(
+        struct Pair { first: int; second: int; }
+        func Make(value: int) -> Pair { return Pair { first: value, second: value + 1 }; }
+        func Work(value: int) -> int {
+            let pair = Make(value);
+            return pair.first + pair.second;
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    // The result is read from the object it was built in, never converted from that object's address.
+    CHECK_EQ(Count(package, LirOpcode::Cast), 0);
+    std::vector<Diagnostic> diagnostics;
+    Optimization::PassContext context;
+    context.diagnostics = &diagnostics;
+    Optimization::LirSsaVerifier verifier;
+    static_cast<void>(verifier.Run(package, context));
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("Leaf inlining admits a larger callee given the address of a caller's object") {
+    // Mix runs about seventy instructions: too many for an ordinary call, few enough for one whose state it reaches
+    // through a pointer that inlining turns into the caller's own registers.
+    auto package = CompileToLir(R"(
+        struct State { first: uint64; second: uint64; }
+        func Mix(state: &var State, value: uint64) {
+            state.first = state.first * 3u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 5u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 7u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 9u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 11u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 13u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 15u64 + value; state.second = state.second ^ state.first;
+        }
+        func Local(value: uint64) -> uint64 {
+            var state = State { first: 1u64, second: 2u64 };
+            Mix(state, value);
+            return state.second;
+        }
+        func Forwarded(state: &var State, value: uint64) {
+            Mix(state, value);
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    std::size_t localCalls = 0;
+    std::size_t forwardedCalls = 0;
+    for (const auto &function : package.modules[0].funcs)
+        for (const auto &block : function.blocks)
+            for (const auto &instruction : block.instrs)
+                if (instruction.op == LirOpcode::Call)
+                    (function.name == "Local" ? localCalls : forwardedCalls) += function.name != "Mix";
+    CHECK_EQ(localCalls, 0);
+    CHECK_EQ(forwardedCalls, 1);
 }

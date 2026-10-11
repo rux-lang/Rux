@@ -150,16 +150,24 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
 
 /// The constant a register holds, if it was defined by a constant in this same block. Deliberately block-local: a
 /// definition elsewhere might not dominate this use, and proving that it does is not this pass's job.
-std::optional<TypedConstant> LocalConstant(const LirBlock &block, const LirReg reg) {
-    for (auto instruction = block.instrs.rbegin(); instruction != block.instrs.rend(); ++instruction) {
-        if (instruction->dst == reg) {
-            if (instruction->op == LirOpcode::Const) {
-                return ParseConstant(instruction->strArg, instruction->type);
-            }
-            return std::nullopt;
-        }
-    }
-    return std::nullopt;
+/// The constants a function defines, by register. Each register has one definition in SSA form, so a constant
+/// condition is known wherever it is read, not only in the block that defines it.
+using Constants = std::unordered_map<LirReg, const LirInstr *>;
+
+Constants FunctionConstants(const LirFunc &function) {
+    Constants constants;
+    for (const auto &block : function.blocks)
+        for (const auto &instruction : block.instrs)
+            if (instruction.op == LirOpcode::Const && instruction.dst != LirNoReg && !instruction.isVolatile)
+                constants.emplace(instruction.dst, &instruction);
+    return constants;
+}
+
+std::optional<TypedConstant> KnownConstant(const Constants &constants, const LirReg reg) {
+    const auto found = constants.find(reg);
+    if (found == constants.end())
+        return std::nullopt;
+    return ParseConstant(found->second->strArg, found->second->type);
 }
 
 bool SameConstant(const TypedConstant &left, const TypedConstant &right) {
@@ -170,8 +178,8 @@ bool SameConstant(const TypedConstant &left, const TypedConstant &right) {
 /// case matches.
 ///
 /// @return nullopt when the subject is not known at compile time
-std::optional<BlockIndex> KnownSwitchTarget(const LirBlock &block, const LirTerminator &terminator) {
-    const auto condition = LocalConstant(block, terminator.cond);
+std::optional<BlockIndex> KnownSwitchTarget(const Constants &constants, const LirTerminator &terminator) {
+    const auto condition = KnownConstant(constants, terminator.cond);
     if (!condition) {
         return std::nullopt;
     }
@@ -197,18 +205,19 @@ std::optional<BlockIndex> KnownSwitchTarget(const LirBlock &block, const LirTerm
 /// taken unreachable for the pass below.
 bool FoldTerminators(LirFunc &function) {
     bool changed = false;
+    const auto constants = FunctionConstants(function);
     for (auto &block : function.blocks) {
         auto &terminator = *block.term;
         std::optional<BlockIndex> target;
         if (terminator.kind == LirTermKind::Branch) {
-            if (const auto condition = LocalConstant(block, terminator.cond)) {
+            if (const auto condition = KnownConstant(constants, terminator.cond)) {
                 if (const auto value = condition->BooleanValue()) {
                     target = *value ? terminator.trueTarget : terminator.falseTarget;
                 }
             }
         }
         else if (terminator.kind == LirTermKind::Switch) {
-            target = KnownSwitchTarget(block, terminator);
+            target = KnownSwitchTarget(constants, terminator);
         }
         if (target) {
             LirTerminator jump;
@@ -562,9 +571,9 @@ std::string_view LirBlockCoalescing::Name() const noexcept {
     return "lir-block-coalescing";
 }
 
-PassChange LirBlockCoalescing::Run(LirPackage &package, const PassContext &context) {
-    if (context.iteration != 0)
-        return PassChange::None;
+PassChange LirBlockCoalescing::Run(LirPackage &package, const PassContext &) {
+    // Every iteration: a later inlining round leaves the jump chains of the bodies it copies, and a function those
+    // chains keep looking large would not be inlined in turn.
     bool changed = false;
     for (auto &module : package.modules)
         for (auto &function : module.funcs)
