@@ -493,7 +493,8 @@ whose final values reach the exit, and the body is left unreachable for cleanup.
 work budgets bound code growth and compile-time work. When the body's floating-point instructions are float64 loads,
 stores and arithmetic on values it computed or on scalars fixed before the loop, every address advances by one
 element per iteration, and none of those values is read outside the body, the unroller pairs the two copies into
-two-lane vector instructions instead, broadcasting the scalars once on entry. Pairing moves each second-iteration
+two-lane vector instructions instead, broadcasting the scalars once on entry, and unrolls by four rather than two so a
+trip runs two pairs and the loop's own bookkeeping is shared by four elements. Pairing moves each second-iteration
 access ahead of the first iteration's later ones, so for every such pair where one access writes, the entry also
 checks that their elements, eight bytes apart in the second iteration, do not overlap; otherwise the scalar loop runs.
 No floating-point operation is reassociated: a value carried from one iteration to the next, such as a sum, keeps the

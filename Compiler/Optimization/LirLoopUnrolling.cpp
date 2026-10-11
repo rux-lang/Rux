@@ -104,7 +104,7 @@ bool Unroll(LirFunc &function) {
     for (const auto &[header, members] : loops.members) {
         const auto &head = function.blocks[header];
         // A loop this pass produced is not unrolled again.
-        if (head.label.ends_with(".unroll2.header"))
+        if (head.label.ends_with(".unroll2.header") || head.label.ends_with(".unroll4.header"))
             continue;
         if (members.size() != 2 || !head.term || head.term->kind != LirTermKind::Branch ||
             !members.contains(head.term->trueTarget) || members.contains(head.term->falseTarget) ||
@@ -406,9 +406,13 @@ bool Unroll(LirFunc &function) {
         const auto newHeader = preparation + 1;
         const auto newBody = newHeader + 1;
         LirBlock prepare, setup, doubled;
-        prepare.label = head.label + ".unroll2.prepare";
-        setup.label = head.label + ".unroll2.header";
-        doubled.label = source.label + ".unroll2.body";
+        // A paired loop runs two pairs per trip: four iterations as two vectors, which halves the loop's own
+        // bookkeeping per element.
+        const int copies = vectorize ? 4 : 2;
+        const auto factor = std::to_string(copies);
+        prepare.label = head.label + ".unroll" + factor + ".prepare";
+        setup.label = head.label + ".unroll" + factor + ".header";
+        doubled.label = source.label + ".unroll" + factor + ".body";
         std::unordered_map<LirReg, LirReg> values;
         for (const auto &original : phis) {
             auto copy = original;
@@ -418,7 +422,7 @@ bool Unroll(LirFunc &function) {
         }
         const auto headerValues = values;
         const auto mapped = [&](const LirReg value) { return values.contains(value) ? values.at(value) : value; };
-        for (int iteration = 0; iteration < 2; ++iteration) {
+        for (int iteration = 0; iteration < copies; ++iteration) {
             for (const auto &original : source.instrs) {
                 auto copy = original;
                 for (auto &input : copy.srcs)
@@ -450,47 +454,50 @@ bool Unroll(LirFunc &function) {
                 prepare.instrs.push_back(std::move(splat));
             }
             const auto size = source.instrs.size();
-            std::unordered_map<LirReg, LirReg> vectors;
-            const auto vectorOf = [&](const LirReg reg) {
-                return vectors.contains(reg) ? vectors.at(reg) : splats.at(reg);
-            };
             std::vector<LirInstr> pairedBody;
-            pairedBody.reserve(2 * size);
-            for (std::size_t index = 0; index < size; ++index) {
-                if (!paired[index]) {
-                    pairedBody.push_back(std::move(doubled.instrs[index]));
-                    continue;
+            pairedBody.reserve(static_cast<std::size_t>(copies) * size);
+            for (std::size_t pair = 0; pair < static_cast<std::size_t>(copies) / 2; ++pair) {
+                const auto low = 2 * pair * size;
+                std::unordered_map<LirReg, LirReg> vectors;
+                const auto vectorOf = [&](const LirReg reg) {
+                    return vectors.contains(reg) ? vectors.at(reg) : splats.at(reg);
+                };
+                for (std::size_t index = 0; index < size; ++index) {
+                    if (!paired[index]) {
+                        pairedBody.push_back(std::move(doubled.instrs[low + index]));
+                        continue;
+                    }
+                    const auto &original = source.instrs[index];
+                    const auto &first = doubled.instrs[low + index];
+                    LirInstr vector;
+                    vector.type = original.type;
+                    switch (original.op) {
+                    case LirOpcode::Load:
+                        vector.op = LirOpcode::VectorLoad;
+                        vector.srcs = {first.srcs[0]};
+                        break;
+                    case LirOpcode::Store:
+                        vector.op = LirOpcode::VectorStore;
+                        vector.srcs = {vectorOf(original.srcs[0]), first.srcs[1]};
+                        break;
+                    default:
+                        vector.op = original.op == LirOpcode::Add ? LirOpcode::VectorAdd
+                                  : original.op == LirOpcode::Sub ? LirOpcode::VectorSub
+                                  : original.op == LirOpcode::Mul ? LirOpcode::VectorMul
+                                                                  : LirOpcode::VectorDiv;
+                        vector.srcs = {vectorOf(original.srcs[0]), vectorOf(original.srcs[1])};
+                        break;
+                    }
+                    if (original.dst != LirNoReg) {
+                        vector.dst = next++;
+                        vectors.emplace(original.dst, vector.dst);
+                    }
+                    pairedBody.push_back(std::move(vector));
                 }
-                const auto &original = source.instrs[index];
-                const auto &first = doubled.instrs[index];
-                LirInstr vector;
-                vector.type = original.type;
-                switch (original.op) {
-                case LirOpcode::Load:
-                    vector.op = LirOpcode::VectorLoad;
-                    vector.srcs = {first.srcs[0]};
-                    break;
-                case LirOpcode::Store:
-                    vector.op = LirOpcode::VectorStore;
-                    vector.srcs = {vectorOf(original.srcs[0]), first.srcs[1]};
-                    break;
-                default:
-                    vector.op = original.op == LirOpcode::Add ? LirOpcode::VectorAdd
-                              : original.op == LirOpcode::Sub ? LirOpcode::VectorSub
-                              : original.op == LirOpcode::Mul ? LirOpcode::VectorMul
-                                                              : LirOpcode::VectorDiv;
-                    vector.srcs = {vectorOf(original.srcs[0]), vectorOf(original.srcs[1])};
-                    break;
-                }
-                if (original.dst != LirNoReg) {
-                    vector.dst = next++;
-                    vectors.emplace(original.dst, vector.dst);
-                }
-                pairedBody.push_back(std::move(vector));
+                for (std::size_t index = 0; index < size; ++index)
+                    if (!paired[index])
+                        pairedBody.push_back(std::move(doubled.instrs[low + size + index]));
             }
-            for (std::size_t index = 0; index < size; ++index)
-                if (!paired[index])
-                    pairedBody.push_back(std::move(doubled.instrs[size + index]));
             doubled.instrs = std::move(pairedBody);
             doubled.label += ".paired";
         }
@@ -514,10 +521,12 @@ bool Unroll(LirFunc &function) {
             return block.instrs.back().dst;
         };
         // Subtraction may wrap for a descending/empty range; the entry guard then selects the unchanged loop.
-        // Otherwise end is initial + floor((limit-initial)/2)*2 and cannot exceed limit or wrap.
+        // Otherwise end is initial + floor((limit-initial)/k)*k, for the k copies made, and cannot exceed limit or
+        // wrap.
         const auto remaining = emit(prepare, LirOpcode::Sub, phi->type, {limit, initial});
-        const auto mask =
-            emit(prepare, LirOpcode::Const, phi->type, {}, signedInduction ? "-2" : "18446744073709551614");
+        const auto mask = emit(prepare, LirOpcode::Const, phi->type, {},
+                               signedInduction ? "-" + factor
+                                               : std::to_string(std::uint64_t{0} - static_cast<std::uint64_t>(copies)));
         const auto evenCount = emit(prepare, LirOpcode::And, phi->type, {remaining, mask});
         const auto end = emit(prepare, LirOpcode::Add, phi->type, {initial, evenCount});
         auto inRange = emit(prepare, LirOpcode::CmpLt, TypeRef::MakeBool(), {initial, limit});

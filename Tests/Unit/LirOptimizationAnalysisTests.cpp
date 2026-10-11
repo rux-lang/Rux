@@ -269,19 +269,20 @@ TEST_CASE("Unrolling pairs float64 work with the next iteration and devectorizes
             for j in 0u..n { c[j] = c[j] + a * b[j]; }
         }
     )");
-    // One pair of loads, one multiply by the broadcast factor, one add and one store replace both iterations' work.
-    CHECK_EQ(Count(paired, LirOpcode::VectorLoad), 2);
+    // Four iterations as two pairs: each pair's two loads, multiply by the broadcast factor, add and store replace
+    // two iterations' work.
+    CHECK_EQ(Count(paired, LirOpcode::VectorLoad), 4);
     CHECK_EQ(Count(paired, LirOpcode::VectorSplat), 1);
-    CHECK_EQ(Count(paired, LirOpcode::VectorMul), 1);
-    CHECK_EQ(Count(paired, LirOpcode::VectorAdd), 1);
-    CHECK_EQ(Count(paired, LirOpcode::VectorStore), 1);
+    CHECK_EQ(Count(paired, LirOpcode::VectorMul), 2);
+    CHECK_EQ(Count(paired, LirOpcode::VectorAdd), 2);
+    CHECK_EQ(Count(paired, LirOpcode::VectorStore), 2);
     auto &function = paired.modules[0].funcs[0];
     REQUIRE(HasVectorInstructions(function));
     const auto scalarLoads = Count(paired, LirOpcode::Load);
     Devectorize(function);
     CHECK_FALSE(HasVectorInstructions(function));
     CHECK(SsaErrors(paired).empty());
-    CHECK_EQ(Count(paired, LirOpcode::Load), scalarLoads + 4);
+    CHECK_EQ(Count(paired, LirOpcode::Load), scalarLoads + 8);
 
     // A sum carried from one iteration to the next is a chain, not a pair: it stays scalar.
     const auto summed = unrolled(R"(
