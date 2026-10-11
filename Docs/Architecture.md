@@ -386,12 +386,15 @@ destructive overlaps retain their existing fallback paths. Textual assembly and 
 
 Guarded loop versioning runs once after invariant motion in Release. It recognizes an innermost, single-entry
 unsigned 64-bit traversal starting at zero, increasing by one and continuing while the induction value is below an
-invariant limit. For an invariant row offset and bound, `row <= bound && count <= bound - row` proves every executed
+invariant limit. That controlling test is the header's branch for a `for` loop; for `while a && i < n` it is a later
+exiting block, the first such test on the dominator chain to the latch, and checks count only below its true edge.
+For an invariant row offset and bound, `row <= bound && count <= bound - row` proves every executed
 `row + index < bound` test. A guard failure selects the original checked loop; it never raises a preheader panic.
 The guard contains only register arithmetic. It neither reads memory nor assumes that different pointers do not alias.
 The fast copy preserves memory operations, floating-point order, early exits and source contexts. SSA definitions and
-exit-phi edges are remapped. A value read after the loop gets an exit phi in a new block between the header and its
-normal exit, when that exit has the header as its only predecessor. A signed `int`/`int64` count starting at a
+exit-phi edges are remapped. Each read of a loop value after the loop, including a phi operand on an edge leaving a
+later block such as an inlined callee's return, takes the value of whichever copy reached it, through phis inserted
+where the two copies' paths meet. A signed `int`/`int64` count starting at a
 non-negative constant with step one is versioned too: a check on `(count + c) as uint` with constant `c` and a
 non-negative first index is proven by `limit + c <= bound`, whose overflow wraps to a failing guard. An unsigned count
 with step one may start at any non-negative constant. A constant bound or limit defined inside the loop is recreated in

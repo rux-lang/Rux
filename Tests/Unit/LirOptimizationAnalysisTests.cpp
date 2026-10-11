@@ -821,8 +821,8 @@ TEST_CASE("Loop versioning merges live outs read by phis after the exit") {
         return phi;
     };
 
-    // The exit jumps to a block whose phi reads the loop's value, as an inlined callee's return does. With a phi on
-    // the exit edge as well, that phi must read the merged value once a new exit block takes over the edge.
+    // The exit jumps to a block whose phi reads the loop's value, as an inlined callee's return does. A phi on the
+    // exit edge itself keeps that edge and gains one from the fast copy.
     for (const bool exitEdgePhi : {false, true}) {
         CAPTURE(exitEdgePhi);
         auto package = original;
@@ -846,10 +846,69 @@ TEST_CASE("Loop versioning merges live outs read by phis after the exit") {
         CHECK(versioning.Run(package, {}) == Optimization::PassChange::Changed);
         CHECK(SsaErrors(package).empty());
         CHECK(blocks[join].instrs.front().phiPreds.front().first != induction);
-        if (exitEdgePhi) {
-            const auto &incoming = blocks[target].instrs.front().phiPreds.front();
-            CHECK(incoming.first != induction);
-            CHECK(incoming.second != header);
+        for (const auto &instruction : blocks[target].instrs) {
+            if (instruction.op != LirOpcode::Phi)
+                continue;
+            REQUIRE_EQ(instruction.phiPreds.size(), 2);
+            CHECK_NE(instruction.phiPreds[0].first, instruction.phiPreds[1].first);
+            CHECK_NE(instruction.phiPreds[0].second, instruction.phiPreds[1].second);
+        }
+    }
+}
+
+TEST_CASE("Loop versioning finds the counted test after a short-circuit operand") {
+    const auto original = Promoted(R"(
+        func Walk(limit: uint, bound: uint, pointer: *var uint, start: bool) -> bool {
+            var same = start;
+            var k: uint = 0;
+            while same && k < limit {
+                if k < bound { same = *pointer != k; }
+                else { return false; }
+                k += 1u;
+            }
+            return same;
+        }
+    )");
+    auto versioned = original;
+    // Cleanup threads the short-circuit's constant `false` past its merge, leaving `k < limit` to branch alone.
+    Optimization::LirCfgCleanup cleanup;
+    static_cast<void>(cleanup.Run(versioned, {}));
+    REQUIRE(SsaErrors(versioned).empty());
+    const auto oldCount = versioned.modules[0].funcs[0].blocks.size();
+    Optimization::LirLoopVersioning versioning;
+    REQUIRE(versioning.Run(versioned, {}) == Optimization::PassChange::Changed);
+    REQUIRE(SsaErrors(versioned).empty());
+    // The fast copy keeps the test of `same` and the counted test, but not the bounds test.
+    std::size_t branches = 0;
+    const auto &blocks = versioned.modules[0].funcs[0].blocks;
+    for (std::size_t block = oldCount; block < blocks.size(); ++block)
+        branches += blocks[block].term->kind == LirTermKind::Branch;
+    CHECK_EQ(branches, 2);
+    for (const std::uint64_t limit : {0ull, 1ull, 5ull, 6ull}) {
+        for (const std::uint64_t bound : {0ull, 5ull, 6ull}) {
+            auto package = versioned;
+            auto &function = package.modules[0].funcs[0];
+            std::vector<LirInstr> constants;
+            for (std::size_t index = 0; index < 2; ++index) {
+                LirInstr constant;
+                constant.op = LirOpcode::Const;
+                constant.dst = function.params[index].reg;
+                constant.type = function.params[index].type;
+                constant.strArg = std::to_string(index == 0 ? limit : bound);
+                constants.push_back(std::move(constant));
+            }
+            function.params.erase(function.params.begin(), function.params.begin() + 2);
+            auto &entry = function.blocks[0];
+            entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
+            Optimization::LirConstantPropagation propagation;
+            static_cast<void>(propagation.Run(package, {}));
+            const auto condition = std::ranges::find_if(
+                entry.instrs, [&](const auto &instruction) { return instruction.dst == entry.term->cond; });
+            REQUIRE(condition != entry.instrs.end());
+            REQUIRE(condition->op == LirOpcode::Const);
+            CAPTURE(limit);
+            CAPTURE(bound);
+            CHECK((condition->strArg == "true") == (limit <= bound));
         }
     }
 }

@@ -3,6 +3,7 @@
 #include "Ir/Lir/NaturalLoops.h"
 #include "Optimization/ConstantEvaluator.h"
 
+#include <functional>
 #include <limits>
 #include <optional>
 #include <unordered_map>
@@ -60,6 +61,17 @@ bool Version(LirFunc &function) {
         const auto found = definitions.find(reg);
         return found == definitions.end() ? nullptr : found->second.instruction;
     };
+    // A branch condition seen through phis with one incoming value, which cleanup leaves after threading a
+    // short-circuit operand.
+    const auto condition = [&](LirReg reg) -> const LirInstr * {
+        for (std::size_t depth = 0; depth < 4; ++depth) {
+            const auto *instruction = get(reg);
+            if (!instruction || instruction->op != LirOpcode::Phi || instruction->phiPreds.size() != 1)
+                return instruction;
+            reg = instruction->phiPreds.front().first;
+        }
+        return nullptr;
+    };
     const auto word = [&](const LirReg reg) {
         const auto found = definitions.find(reg);
         return found != definitions.end() && Word(found->second.type);
@@ -75,19 +87,46 @@ bool Version(LirFunc &function) {
         return reg;
     };
     for (const auto &[header, members] : loops.members) {
-        if (header == 0 || members.size() > 16 || std::ranges::any_of(loops.members, [&](const auto &loop) {
+        if (header == 0 || members.size() > 48 || std::ranges::any_of(loops.members, [&](const auto &loop) {
                 return loop.first != header && members.contains(loop.first);
             }))
             continue;
-        const auto &term = function.blocks[header].term;
-        if (!term || term->kind != LirTermKind::Branch || !members.contains(term->trueTarget) ||
-            members.contains(term->falseTarget))
+        // The controlling test leaves the loop unless the induction value is below the limit. A `for` loop tests in
+        // its header; `while a && i < n` tests in a later block, which every iteration still passes because it
+        // dominates the latch. Such tests lie on one dominator chain; the first one controls, and later ones
+        // become checks.
+        if (cfg.predecessors[header].size() != 2)
             continue;
-        const auto *condition = get(term->cond);
-        if (!condition || condition->op != LirOpcode::CmpLt || condition->isVolatile || condition->srcs.size() != 2)
+        auto backEdge = LirDominance::Invalid;
+        for (const auto predecessor : cfg.predecessors[header])
+            if (members.contains(predecessor))
+                backEdge = predecessor;
+        if (backEdge == LirDominance::Invalid)
             continue;
-        const auto induction = condition->srcs[0];
-        const auto limit = condition->srcs[1];
+        const LirInstr *test = nullptr;
+        auto controlling = LirDominance::Invalid;
+        for (const auto block : members) {
+            const auto &branch = function.blocks[block].term;
+            if (!branch || branch->kind != LirTermKind::Branch || !members.contains(branch->trueTarget) ||
+                members.contains(branch->falseTarget) || !dominance.Dominates(block, backEdge))
+                continue;
+            const auto *comparison = condition(branch->cond);
+            if (!comparison || comparison->op != LirOpcode::CmpLt || comparison->isVolatile ||
+                comparison->srcs.size() != 2)
+                continue;
+            const auto *counter = get(comparison->srcs[0]);
+            if (!counter || counter->op != LirOpcode::Phi || definitions.at(comparison->srcs[0]).block != header)
+                continue;
+            if (!test || dominance.Dominates(block, controlling)) {
+                test = comparison;
+                controlling = block;
+            }
+        }
+        if (!test)
+            continue;
+        const auto &term = function.blocks[controlling].term;
+        const auto induction = test->srcs[0];
+        const auto limit = test->srcs[1];
         const auto *phi = get(induction);
         const auto signedWord = [&](const LirReg reg) {
             const auto found = definitions.find(reg);
@@ -194,12 +233,10 @@ bool Version(LirFunc &function) {
         std::size_t cost = 0;
         std::vector<Check> checks;
         for (const auto block : members) {
-            // No side entries; the controlling comparison must execute before every iteration's body.
+            // No side entries.
             for (const auto predecessor : cfg.predecessors[block])
                 if (block != header && !members.contains(predecessor))
                     eligible = false;
-            if (block != header && !dominance.Dominates(term->trueTarget, block))
-                eligible = false;
             for (const auto &instruction : function.blocks[block].instrs) {
                 ++cost;
                 if (instruction.op == LirOpcode::Alloca || instruction.op == LirOpcode::Call ||
@@ -207,10 +244,13 @@ bool Version(LirFunc &function) {
                     eligible = false;
             }
             const auto &branch = function.blocks[block].term;
-            if (block == header || !branch || branch->kind != LirTermKind::Branch ||
-                !members.contains(branch->trueTarget) || members.contains(branch->falseTarget))
+            // A check runs only after the controlling test passed in the same iteration, so the index is below the
+            // limit there.
+            if (block == controlling || !dominance.Dominates(term->trueTarget, block) || !branch ||
+                branch->kind != LirTermKind::Branch || !members.contains(branch->trueTarget) ||
+                members.contains(branch->falseTarget))
                 continue;
-            const auto *comparison = get(branch->cond);
+            const auto *comparison = condition(branch->cond);
             if (!comparison || comparison->op != LirOpcode::CmpLt || comparison->isVolatile ||
                 comparison->srcs.size() != 2 || !word(comparison->srcs[0]) || !invariant(comparison->srcs[1]))
                 continue;
@@ -235,117 +275,34 @@ bool Version(LirFunc &function) {
             }
             checks.push_back({block, offset, comparison->srcs[1]});
         }
-        if (!eligible || cost > 160 || checks.empty() || checks.size() > 8)
+        if (!eligible || cost > 320 || checks.empty() || checks.size() > 8)
             continue;
-        // A value defined in the loop and read after it must reach its readers through an exit phi, which merges
-        // what the checked and the fast loop computed. When the normal exit has the header as its only predecessor,
-        // a dedicated exit block holds those phis; any other shape keeps the loop unversioned.
+        // Values the loop defines and code after it reads, directly or through a phi on an edge that leaves a block
+        // outside the loop. Once the fast copy exists, both copies reach those readers.
         const auto local = [&](const LirReg reg) {
             const auto found = definitions.find(reg);
             return found != definitions.end() && members.contains(found->second.block);
         };
-        const auto exitBlock = term->falseTarget;
         std::vector<LirReg> liveOut;
-        std::vector<std::uint32_t> readers;
         const auto note = [&](const LirReg reg) {
-            if (std::ranges::find(liveOut, reg) == liveOut.end())
+            if (local(reg) && std::ranges::find(liveOut, reg) == liveOut.end())
                 liveOut.push_back(reg);
         };
-        // Phi operands on loop exit edges keep their edges in the clone. Only when a dedicated exit block takes over
-        // the normal exit do the normal exit's own phis read through it.
-        std::vector<LirReg> exitEdgeValues;
-        for (std::uint32_t block = 0; block < function.blocks.size() && eligible; ++block) {
+        for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
             if (members.contains(block))
                 continue;
-            bool reads = false;
-            bool readsThroughPhi = false;
             for (const auto &instruction : function.blocks[block].instrs) {
                 for (const auto source : instruction.srcs)
-                    if (local(source)) {
-                        reads = true;
-                        note(source);
-                    }
-                // Otherwise a phi operand is read at the end of its predecessor, which the normal exit must
-                // dominate, as it does the jump an inlined callee's return takes.
-                for (const auto &[value, predecessor] : instruction.phiPreds) {
-                    if (!local(value))
-                        continue;
-                    if (members.contains(predecessor)) {
-                        if (block == exitBlock)
-                            exitEdgeValues.push_back(value);
-                    }
-                    else if (dominance.Dominates(exitBlock, predecessor)) {
-                        readsThroughPhi = true;
+                    note(source);
+                for (const auto &[value, predecessor] : instruction.phiPreds)
+                    if (!members.contains(predecessor))
                         note(value);
-                    }
-                    else {
-                        eligible = false;
-                    }
-                }
             }
-            if (const auto &exit = function.blocks[block].term)
-                for (const auto reg : {exit->cond, exit->retVal.value_or(LirNoReg)})
-                    if (reg != LirNoReg && local(reg)) {
-                        reads = true;
-                        note(reg);
-                    }
-            if (reads && block != exitBlock && !dominance.Dominates(exitBlock, block))
-                eligible = false;
-            if (reads || readsThroughPhi)
-                readers.push_back(block);
-        }
-        if (!eligible || (!liveOut.empty() && cfg.predecessors[exitBlock] != std::vector<std::uint32_t>{header}))
-            continue;
-        if (!liveOut.empty() && !exitEdgeValues.empty()) {
-            for (const auto value : exitEdgeValues)
-                note(value);
-            if (std::ranges::find(readers, exitBlock) == readers.end())
-                readers.push_back(exitBlock);
-        }
-        if (!liveOut.empty()) {
-            const auto exitIndex = static_cast<std::uint32_t>(function.blocks.size());
-            LirBlock exit;
-            exit.label = function.blocks[header].label + ".exit";
-            std::unordered_map<LirReg, LirReg> merged;
-            for (const auto value : liveOut) {
-                LirInstr merge;
-                merge.op = LirOpcode::Phi;
-                merge.dst = next++;
-                merge.type = definitions.at(value).type;
-                merge.phiPreds = {{value, header}};
-                merged.emplace(value, merge.dst);
-                exit.instrs.push_back(std::move(merge));
+            if (const auto &exit = function.blocks[block].term) {
+                note(exit->cond);
+                if (exit->retVal)
+                    note(*exit->retVal);
             }
-            exit.term.emplace();
-            exit.term->kind = LirTermKind::Jump;
-            exit.term->trueTarget = exitBlock;
-            for (auto &instruction : function.blocks[exitBlock].instrs)
-                for (auto &[value, predecessor] : instruction.phiPreds) {
-                    static_cast<void>(value);
-                    if (predecessor == header)
-                        predecessor = exitIndex;
-                }
-            const auto rename = [&](LirReg &reg) {
-                if (const auto found = merged.find(reg); found != merged.end())
-                    reg = found->second;
-            };
-            for (const auto block : readers) {
-                for (auto &instruction : function.blocks[block].instrs) {
-                    for (auto &source : instruction.srcs)
-                        rename(source);
-                    for (auto &[value, predecessor] : instruction.phiPreds) {
-                        static_cast<void>(predecessor);
-                        rename(value);
-                    }
-                }
-                if (auto &exitTerm = function.blocks[block].term) {
-                    rename(exitTerm->cond);
-                    if (exitTerm->retVal)
-                        rename(*exitTerm->retVal);
-                }
-            }
-            function.blocks[header].term->falseTarget = exitIndex;
-            function.blocks.push_back(std::move(exit));
         }
 
         std::vector<std::uint32_t> ordered(members.begin(), members.end());
@@ -487,6 +444,69 @@ bool Version(LirFunc &function) {
                     if (edge != instruction.phiPreds.end())
                         instruction.phiPreds.emplace_back(mappedReg(edge->first), clone);
                 }
+            }
+        }
+        // Each read after the loop takes the value of whichever copy reached it, merged by a phi where both meet. A
+        // block of either copy holds that copy's value: the original program only reaches its readers through
+        // blocks the definition dominates.
+        for (const auto value : liveOut) {
+            const auto fast = registers.at(value);
+            std::unordered_map<std::uint32_t, LirReg> atStart;
+            std::unordered_map<std::uint32_t, LirInstr> merges;
+            std::function<LirReg(std::uint32_t)> startOf;
+            const auto endOf = [&](const std::uint32_t block) {
+                if (members.contains(block))
+                    return value;
+                return block >= oldCount ? fast : startOf(block);
+            };
+            startOf = [&](const std::uint32_t block) -> LirReg {
+                if (const auto found = atStart.find(block); found != atStart.end())
+                    return found->second;
+                const auto &predecessors = updated.predecessors[block];
+                if (predecessors.size() == 1) {
+                    atStart.emplace(block, value);
+                    return atStart[block] = endOf(predecessors.front());
+                }
+                if (predecessors.empty())
+                    return value;
+                LirInstr merge;
+                merge.op = LirOpcode::Phi;
+                merge.dst = next++;
+                merge.type = definitions.at(value).type;
+                const auto result = merge.dst;
+                atStart.emplace(block, result);
+                merges.emplace(block, std::move(merge));
+                for (const auto predecessor : predecessors) {
+                    const auto incoming = endOf(predecessor);
+                    merges.at(block).phiPreds.emplace_back(incoming, predecessor);
+                }
+                return result;
+            };
+            for (std::uint32_t block = 0; block < oldCount; ++block) {
+                if (members.contains(block) || !updated.reachable[block])
+                    continue;
+                for (auto &instruction : function.blocks[block].instrs) {
+                    for (auto &source : instruction.srcs)
+                        if (source == value)
+                            source = startOf(block);
+                    for (auto &[incoming, predecessor] : instruction.phiPreds)
+                        if (incoming == value && !members.contains(predecessor) && predecessor < oldCount)
+                            incoming = endOf(predecessor);
+                }
+                if (auto &exit = function.blocks[block].term) {
+                    if (exit->cond == value)
+                        exit->cond = startOf(block);
+                    if (exit->retVal && *exit->retVal == value)
+                        exit->retVal = startOf(block);
+                }
+            }
+            std::vector<std::uint32_t> placed;
+            for (const auto &merge : merges)
+                placed.push_back(merge.first);
+            std::ranges::sort(placed);
+            for (const auto block : placed) {
+                auto &instructions = function.blocks[block].instrs;
+                instructions.insert(instructions.begin(), std::move(merges.at(block)));
             }
         }
         return true; // Bound code growth to one innermost loop per function and one invocation per pipeline run.
