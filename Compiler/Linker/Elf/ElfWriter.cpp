@@ -27,6 +27,21 @@
 #include <vector>
 
 namespace Rux {
+namespace {
+/// A package without a namespace is identified by its manifest path ("local:/path/App/Rux.toml::Name"). Profilers
+/// show its folder ("App::Name") instead, which is shorter and keeps the build machine's paths out of the image.
+std::string ProfilerName(const std::string_view name) {
+    static constexpr std::string_view kLocal = "local:";
+    const auto separator = name.find("::");
+    if (!name.starts_with(kLocal) || separator == std::string_view::npos)
+        return std::string(name);
+    const auto manifest = name.substr(kLocal.size(), separator - kLocal.size());
+    const auto slash = manifest.rfind('/');
+    auto folder = slash == std::string_view::npos ? std::string_view{} : manifest.substr(0, slash);
+    folder = folder.substr(folder.rfind('/') + 1);
+    return std::string(folder) + std::string(name.substr(separator));
+}
+} // namespace
 
 // The machine code of an AArch64 entry stub. Written as words rather than
 // assembled, because the linker owns no code generator: the sequence is
@@ -565,7 +580,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             WriteU16(sections.symtab, 1); // .text
             WriteU64(sections.symtab, address);
             WriteU64(sections.symtab, symbol.size);
-            sections.strtab.insert(sections.strtab.end(), definition->name.begin(), definition->name.end());
+            const auto name = ProfilerName(definition->name);
+            sections.strtab.insert(sections.strtab.end(), name.begin(), name.end());
             WriteU8(sections.strtab, 0);
         }
         sections.count = static_cast<uint32_t>(functions.size() + 1);

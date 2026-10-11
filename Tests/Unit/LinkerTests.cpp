@@ -145,7 +145,8 @@ TEST_CASE("ELF linker names every placed function in a symbol table only when as
         text.relocs.push_back({1, dynamic ? 2U : 1U, RcuRelType::Rel32, 0});
         object.sections.push_back(std::move(text));
         object.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
-        object.symbols.push_back({"Helper", "int", 16, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+        object.symbols.push_back(
+            {"local:C:/Work/App/Rux.toml::Helper", "int", 16, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
         if (dynamic) {
             object.symbols.push_back(
                 {"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
@@ -211,7 +212,7 @@ TEST_CASE("ELF linker names every placed function in a symbol table only when as
         CHECK(found[0].name == "Main");
         CHECK(found[0].value >= textAddress);
         CHECK(found[0].size == 8);
-        CHECK(found[1].name == "Helper");
+        CHECK(found[1].name == "App::Helper"); // a local package's manifest path shortens to its folder
         CHECK(found[1].value == found[0].value + 16);
         CHECK(found[1].value + found[1].size <= textAddress + textSize);
         CHECK(found[1].size == 3);
