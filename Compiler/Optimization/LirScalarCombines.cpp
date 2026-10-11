@@ -201,6 +201,31 @@ bool Combine(LirFunc &function) {
                     }
                 }
             }
+            // A logical right shift by c leaves only the low width - c bits; a mask keeping all of them changes
+            // nothing, so the and becomes the shift itself. This is what lets a rotation written through a masked
+            // shift helper be recognized as one.
+            if (word && instruction.srcs.size() == 2 && instruction.op == LirOpcode::And) {
+                for (std::size_t side = 0; side < 2; ++side) {
+                    const auto shift = definitions.find(instruction.srcs[side]);
+                    const auto mask = constant(instruction.srcs[1 - side]);
+                    if (shift == definitions.end() || !mask ||
+                        (shift->second.op != LirOpcode::Lshr && shift->second.op != LirOpcode::Shr) ||
+                        shift->second.type != instruction.type || shift->second.srcs.size() != 2 ||
+                        shift->second.isVolatile)
+                        continue;
+                    const auto count = constant(shift->second.srcs[1]);
+                    const auto width = instruction.type.kind == TypeRef::Kind::UInt32 ? 32U : 64U;
+                    if (!count || *count == 0 || *count >= width)
+                        continue;
+                    const std::uint64_t kept = (std::uint64_t{1} << (width - *count)) - 1;
+                    if ((*mask & kept) != kept)
+                        continue;
+                    instruction.op = shift->second.op;
+                    instruction.srcs = shift->second.srcs;
+                    changed = true;
+                    break;
+                }
+            }
             if (word && instruction.srcs.size() == 2 &&
                 (instruction.op == LirOpcode::Div || instruction.op == LirOpcode::Mod)) {
                 const auto divisor = constant(instruction.srcs[1]);

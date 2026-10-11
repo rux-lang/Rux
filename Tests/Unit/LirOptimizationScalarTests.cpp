@@ -57,6 +57,29 @@ TEST_CASE("Unsigned representation ranges remove only proven comparisons") {
     }
 }
 
+TEST_CASE("Scalar combines drop a mask a logical shift already satisfies") {
+    auto package = Promoted(R"(
+        func Masked(value: uint64) -> uint64 { return (value << 16) | ((value >> 48) & 0xFFFFu64); }
+        func Wider(value: uint32) -> uint32 { return (value >> 20) & 0xFFFFu32; }
+        func Narrower(value: uint64) -> uint64 { return (value >> 48) & 0xFFu64; }
+        func Arithmetic(value: int64) -> int64 { return (value >> 48) & 0xFFFFi64; }
+    )");
+    Optimization::LirScalarCombines combines;
+    // The first round turns the masks into shifts; the second sees the complementary pair as a rotation.
+    CHECK(combines.Run(package, {}) == Optimization::PassChange::Changed);
+    static_cast<void>(combines.Run(package, {}));
+    CHECK_EQ(Count(package, LirOpcode::RotateRight), 1);
+    for (const auto &function : package.modules[0].funcs) {
+        std::size_t masks = 0;
+        for (const auto &block : function.blocks)
+            for (const auto &instruction : block.instrs)
+                masks += instruction.op == LirOpcode::And;
+        CAPTURE(function.name);
+        // A mask that clears shifted bits, and an arithmetic shift's sign fill, keep their and.
+        CHECK_EQ(masks, function.name == "Narrower" || function.name == "Arithmetic" ? 1U : 0U);
+    }
+}
+
 TEST_CASE("Scalar combines recognize only same-value complementary unsigned shifts") {
     auto package = Promoted(R"(
         func Rotate(value: uint64) -> uint64 { return (value >> 19) | (value << 45); }
