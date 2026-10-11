@@ -236,7 +236,12 @@ uses Granlund and Montgomery's reciprocal `m = floor(2^64 * (2^l - d) / d) + 1` 
 zero-extended first. Signed division by a constant other than 0 and -1 uses Hacker's Delight's signed magic
 multiplier with the signed high half of `imul`, corrected by the dividend when the multiplier's sign differs from the
 divisor's, shifted, and incremented when negative; a power of two biases a negative dividend by `d - 1` and shifts.
-Division by -1 keeps `idiv`, so dividing the most negative value still traps. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
+Division by -1 keeps `idiv`, so dividing the most negative value still traps. Two-lane float64 vector instructions
+(`VectorLoad`, `VectorStore`, `VectorSplat` and the four arithmetic operations) select `movupd`, `unpcklpd` and the
+packed arithmetic forms, written as floating-point operations of size 16; XMM registers spill whole, sixteen bytes at
+a time, so a vector survives a spill. The direct emitter, the direct assembly printer and the AArch64 back end select
+no vectors: `Devectorize` (`Ir/Lir/LirVectors.h`) first rewrites each vector instruction into the two scalar
+instructions it stands for, lane 0 then lane 1. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
 coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
 reports the callee-saved registers the prologue must save. `X86_64/MachineEmission.cpp` frames the function
 (frame pointer kept for stack traces, objects nothing references take no space), copies a small loop-condition block

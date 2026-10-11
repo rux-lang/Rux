@@ -1,4 +1,5 @@
 #include "CodeGen/AArch64/ModuleEmitter.h"
+#include "Ir/Lir/LirVectors.h"
 
 #include <algorithm>
 
@@ -96,6 +97,13 @@ void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
     if (func.isAsm) {
         GenAsmFunc(func);
         currentFunc.clear();
+        return;
+    }
+    // This back end selects no vectors: it emits the scalar instructions they stand for.
+    if (HasVectorInstructions(func)) {
+        LirFunc scalar = func;
+        Devectorize(scalar);
+        GenFunc(scalar);
         return;
     }
     const AArch64FramePlan framePlan = PlanAArch64Frame(func, layouts, interfaceNames, structDecls, targetOs);

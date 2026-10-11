@@ -38,6 +38,14 @@ MachineEncoder::MachineEncoder(std::vector<std::uint8_t> &bytes, std::vector<Sym
     , targetOs(inputTargetOs) {
 }
 
+namespace {
+/// The prefix that picks the form of an SSE floating-point instruction: F3 for one float32, F2 for one float64, and 66
+/// for two packed float64 lanes, which this back end writes as operand size 16.
+std::uint8_t FloatPrefix(const std::uint8_t size) {
+    return size == 4 ? 0xF3 : size == 16 ? 0x66 : 0xF2;
+}
+} // namespace
+
 void MachineEncoder::Byte(const std::uint8_t value) {
     out.push_back(value);
 }
@@ -302,7 +310,7 @@ void MachineEncoder::EncodeShift(const Instruction &instruction, const std::uint
 }
 
 void MachineEncoder::EncodeFloat(const Instruction &instruction, const std::uint8_t opcode) {
-    const std::uint8_t prefix = instruction.size == 4 ? 0xF3 : 0xF2;
+    const std::uint8_t prefix = FloatPrefix(instruction.size);
     const Operand &source = instruction.operands[1];
     const Rm rm = source.kind == Operand::Kind::Memory ? MemoryRm(source.address) : RegisterRm(source.reg);
     Emit(prefix, false, {0x0F, opcode}, HardwareNumber(instruction.operands[0].reg), false, rm);
@@ -648,10 +656,13 @@ void MachineEncoder::Encode(const Instruction &instruction) {
         Emit(0, false, {0x0F, 0x28}, number(0), false, RegisterRm(reg(1)));
         return;
     case Op::LoadFp:
-        Emit(instruction.size == 4 ? 0xF3 : 0xF2, false, {0x0F, 0x10}, number(0), false, MemoryRm(operands[1].address));
+        Emit(FloatPrefix(instruction.size), false, {0x0F, 0x10}, number(0), false, MemoryRm(operands[1].address));
         return;
     case Op::StoreFp:
-        Emit(instruction.size == 4 ? 0xF3 : 0xF2, false, {0x0F, 0x11}, number(1), false, MemoryRm(operands[0].address));
+        Emit(FloatPrefix(instruction.size), false, {0x0F, 0x11}, number(1), false, MemoryRm(operands[0].address));
+        return;
+    case Op::UnpackLowFp:
+        Emit(0x66, false, {0x0F, 0x14}, number(0), false, RegisterRm(reg(1)));
         return;
     case Op::AddFp:
         EncodeFloat(instruction, 0x58);

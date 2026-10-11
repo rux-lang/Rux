@@ -36,6 +36,7 @@ namespace {
     case Op::Sar:
     case Op::Ror:
     case Op::Bswap:
+    case Op::UnpackLowFp:
     case Op::MovZx:
     case Op::MovSx:
     case Op::SetCc:
@@ -285,7 +286,7 @@ public:
         Address address;
         address.frameObject = frameObject;
         instruction.opcode = static_cast<std::uint16_t>(regClass == RegClass::Vector ? Op::LoadFp : Op::Load);
-        instruction.size = 8;
+        instruction.size = regClass == RegClass::Vector ? 16 : 8;
         instruction.sourceSize = 8;
         instruction.operands = {Operand::Def(destination), Operand::Mem(address)};
         return instruction;
@@ -297,13 +298,14 @@ public:
         Address address;
         address.frameObject = frameObject;
         instruction.opcode = static_cast<std::uint16_t>(regClass == RegClass::Vector ? Op::StoreFp : Op::Store);
-        instruction.size = 8;
+        instruction.size = regClass == RegClass::Vector ? 16 : 8;
         instruction.operands = {Operand::Mem(address), Operand::Use(source)};
         return instruction;
     }
 
-    [[nodiscard]] std::int32_t SpillSize(const RegClass) const override {
-        return 8;
+    // An XMM register is spilled whole, with `movupd`: it may hold two float64 lanes.
+    [[nodiscard]] std::int32_t SpillSize(const RegClass regClass) const override {
+        return regClass == RegClass::Vector ? 16 : 8;
     }
 };
 

@@ -115,6 +115,7 @@ namespace {
 
 [[nodiscard]] std::string_view Mnemonic(const Op op, const int size) {
     const bool single = size == 4;
+    const bool packed = size == 16;
     switch (op) {
     case Op::Mov:
     case Op::MovImm:
@@ -180,21 +181,23 @@ namespace {
         return "movaps";
     case Op::LoadFp:
     case Op::StoreFp:
-        return single ? "movss" : "movsd";
+        return packed ? "movupd" : single ? "movss" : "movsd";
     case Op::AddFp:
-        return single ? "addss" : "addsd";
+        return packed ? "addpd" : single ? "addss" : "addsd";
     case Op::SubFp:
-        return single ? "subss" : "subsd";
+        return packed ? "subpd" : single ? "subss" : "subsd";
     case Op::MulFp:
-        return single ? "mulss" : "mulsd";
+        return packed ? "mulpd" : single ? "mulss" : "mulsd";
     case Op::DivFp:
-        return single ? "divss" : "divsd";
+        return packed ? "divpd" : single ? "divss" : "divsd";
     case Op::SqrtFp:
         return single ? "sqrtss" : "sqrtsd";
     case Op::CompareFp:
         return single ? "ucomiss" : "ucomisd";
     case Op::XorFp:
         return "xorps";
+    case Op::UnpackLowFp:
+        return "unpcklpd";
     case Op::IntToFp:
         return single ? "cvtsi2ss" : "cvtsi2sd";
     case Op::FpToFp:

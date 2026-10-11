@@ -187,6 +187,15 @@ TEST_CASE("machine encoding spells general operand forms") {
     // The widening multiply's operand is its only explicit one: F7 /4.
     CHECK(Encode(Make(Op::MulHigh, 8, {Operand::Use(Rcx)})) == std::vector<std::uint8_t>{0x48, 0xF7, 0xE1});
     CHECK(Encode(Make(Op::MulHigh, 8, {Operand::Use(R11)})) == std::vector<std::uint8_t>{0x49, 0xF7, 0xE3});
+    // Size 16 selects the packed float64 forms: a 66 prefix instead of F2.
+    Address pointer;
+    pointer.base = Rax;
+    CHECK(Encode(Make(Op::LoadFp, 16, {Operand::Def(Xmm0 + 1), Operand::Mem(pointer)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0x10, 0x08});
+    CHECK(Encode(Make(Op::AddFp, 16, {Operand::UseDef(Xmm0), Operand::Use(Xmm0 + 1)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0x58, 0xC1});
+    CHECK(Encode(Make(Op::UnpackLowFp, 16, {Operand::UseDef(Xmm0 + 2), Operand::Use(Xmm0 + 2)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0x14, 0xD2});
     // Its signed form is F7 /5.
     CHECK(Encode(Make(Op::MulHighSigned, 8, {Operand::Use(Rcx)})) == std::vector<std::uint8_t>{0x48, 0xF7, 0xE9});
 

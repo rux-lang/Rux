@@ -83,6 +83,18 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     // The frame pointer changes only on entry, so reading it twice reads the same value.
     case LirOpcode::FramePointer:
         return InstructionEffect::Pure;
+    case LirOpcode::VectorSplat:
+    case LirOpcode::VectorAdd:
+    case LirOpcode::VectorSub:
+    case LirOpcode::VectorMul:
+        return InstructionEffect::Pure;
+    case LirOpcode::VectorDiv:
+        return InstructionEffect::MayTrap;
+    // Vector memory accesses are produced last, by the unroller, and kept as they are: no store analysis here
+    // reasons about two elements at once.
+    case LirOpcode::VectorLoad:
+    case LirOpcode::VectorStore:
+        return InstructionEffect::Observable;
     }
     return InstructionEffect::Observable;
 }

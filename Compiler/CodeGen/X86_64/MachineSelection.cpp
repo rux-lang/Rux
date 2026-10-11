@@ -235,6 +235,22 @@ bool Selector::EligibleInstruction(const LirInstr &instruction) const {
         if (!instruction.strArg.empty())
             return result != ValueKind::Aggregate;
         return instruction.srcs.size() == 1 && kind(0) == ValueKind::Gpr;
+    // Two float64 lanes in one XMM register.
+    case LirOpcode::VectorLoad:
+        return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 1 &&
+               kind(0) == ValueKind::Gpr;
+    case LirOpcode::VectorStore:
+        return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 2 &&
+               kind(0) == ValueKind::Xmm && kind(1) == ValueKind::Gpr;
+    case LirOpcode::VectorSplat:
+        return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 1 &&
+               kind(0) == ValueKind::Xmm;
+    case LirOpcode::VectorAdd:
+    case LirOpcode::VectorSub:
+    case LirOpcode::VectorMul:
+    case LirOpcode::VectorDiv:
+        return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 2 &&
+               kind(0) == ValueKind::Xmm && kind(1) == ValueKind::Xmm;
     case LirOpcode::Store: {
         if (instruction.srcs.size() != 2 || kind(1) != ValueKind::Gpr)
             return false;
@@ -1008,6 +1024,36 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
     case LirOpcode::Load:
         SelectLoad(instruction);
         return;
+    case LirOpcode::VectorLoad:
+        Emit(Op::LoadFp, 16, {Operand::Def(Value(instruction.dst)), Operand::Mem(AddressOf(instruction.srcs[0]))});
+        return;
+    case LirOpcode::VectorStore:
+        Emit(Op::StoreFp, 16, {Operand::Mem(AddressOf(instruction.srcs[1])), Operand::Use(Value(instruction.srcs[0]))});
+        return;
+    case LirOpcode::VectorSplat: {
+        const Reg destination = Value(instruction.dst);
+        EmitCopy(destination, Value(instruction.srcs[0]), RegClass::Vector);
+        Emit(Op::UnpackLowFp, 16, {Operand::UseDef(destination), Operand::Use(destination)});
+        return;
+    }
+    case LirOpcode::VectorAdd:
+    case LirOpcode::VectorSub:
+    case LirOpcode::VectorMul:
+    case LirOpcode::VectorDiv: {
+        const Op op = instruction.op == LirOpcode::VectorAdd ? Op::AddFp
+                    : instruction.op == LirOpcode::VectorSub ? Op::SubFp
+                    : instruction.op == LirOpcode::VectorMul ? Op::MulFp
+                                                             : Op::DivFp;
+        // A commutative operation builds its result in the operand that dies here, saving the copy of the other.
+        LirReg left = instruction.srcs[0];
+        LirReg right = instruction.srcs[1];
+        if ((op == Op::AddFp || op == Op::MulFp) && !IsKilledAt(instruction, left) && IsKilledAt(instruction, right))
+            std::swap(left, right);
+        const Reg destination = Value(instruction.dst);
+        EmitCopy(destination, Value(left), RegClass::Vector);
+        Emit(op, 16, {Operand::UseDef(destination), Operand::Use(Value(right))});
+        return;
+    }
     case LirOpcode::Store:
         SelectStore(instruction);
         return;

@@ -12,6 +12,7 @@
 #include "CodeGen/X86_64/CodeAlignment.h"
 #include "CodeGen/X86_64/MachineEmission.h"
 #include "CodeGen/X86_64/MachineSelection.h"
+#include "Ir/Lir/LirVectors.h"
 #include "Target/AsmInstr.h"
 
 #include <format>
@@ -858,6 +859,13 @@ void AssemblyControlFlowPrinter::EmitFunction(const LirFunc &function) {
                 return;
             }
         }
+    }
+    // The direct printer, like the direct emitter, prints the scalar instructions vectors stand for.
+    if (HasVectorInstructions(function)) {
+        LirFunc scalar = function;
+        Devectorize(scalar);
+        EmitFunction(scalar);
+        return;
     }
     FunctionAssemblyPrinter printer(modulePrinter, layouts, interfaceNames, targetOs);
     printer.tracesPanics = tracesPanics;

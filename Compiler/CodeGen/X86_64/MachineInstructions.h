@@ -128,6 +128,8 @@ enum class Op : std::uint16_t {
     MulHigh,
     /// Signed widening multiply of RAX by the operand into RDX:RAX; selected for the high half.
     MulHighSigned,
+    /// Interleaves the low lanes of two XMM registers (`unpcklpd`); with itself, copies lane 0 into lane 1.
+    UnpackLowFp,
     // Extension from `sourceSize` bytes of operand 1 into `size` bytes of operand 0.
     MovZx,
     MovSx,

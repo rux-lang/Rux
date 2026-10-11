@@ -84,6 +84,16 @@ enum class LirOpcode {
     // Stack traces
     FramePointer,       // %dst = frame_pointer *uint64 — this function's frame record: the caller's frame and return
     WriteStandardError, // write_stderr %ptr, %length — writes bytes to standard error, ignoring any failure
+    // Two-lane vectors of `type`, which is float64: the elements at a pointer and the one after it. Only the
+    // Release unroller produces them, from a loop body it pairs with its next iteration, and a back end that does
+    // not select them rewrites each into the two scalar instructions it stands for (`Devectorize`).
+    VectorLoad,  // %dst = vload <type> %ptr — the elements at %ptr and %ptr + 1
+    VectorStore, // vstore <type> %vector, %ptr — writes both lanes to %ptr and %ptr + 1
+    VectorSplat, // %dst = vsplat <type> %scalar — both lanes hold the scalar
+    VectorAdd,   // %dst = vadd <type> %a, %b — lane by lane
+    VectorSub,   // %dst = vsub <type> %a, %b
+    VectorMul,   // %dst = vmul <type> %a, %b
+    VectorDiv,   // %dst = vdiv <type> %a, %b
 };
 
 /// The function every panic and failed assertion calls to print the frames that led to it, synthesized once for a
@@ -194,6 +204,20 @@ inline constexpr std::string_view kBacktraceFunctionName = "__rux_backtrace";
         return "frame_pointer";
     case LirOpcode::WriteStandardError:
         return "write_stderr";
+    case LirOpcode::VectorLoad:
+        return "vload";
+    case LirOpcode::VectorStore:
+        return "vstore";
+    case LirOpcode::VectorSplat:
+        return "vsplat";
+    case LirOpcode::VectorAdd:
+        return "vadd";
+    case LirOpcode::VectorSub:
+        return "vsub";
+    case LirOpcode::VectorMul:
+        return "vmul";
+    case LirOpcode::VectorDiv:
+        return "vdiv";
     }
     return "?";
 }

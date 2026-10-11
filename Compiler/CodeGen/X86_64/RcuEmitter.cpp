@@ -2,6 +2,7 @@
 #include "CodeGen/X86_64/MachineEmission.h"
 #include "CodeGen/X86_64/MachineSelection.h"
 #include "CodeGen/X86_64/ModuleEmitter.h"
+#include "Ir/Lir/LirVectors.h"
 
 #include <algorithm>
 
@@ -93,6 +94,13 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
     currentFunc = func.name;
     if (machineSelection && GenMachineFunc(func)) {
         currentFunc.clear();
+        return;
+    }
+    // The direct emitter selects no vectors: it emits the scalar instructions they stand for.
+    if (HasVectorInstructions(func)) {
+        LirFunc scalar = func;
+        Devectorize(scalar);
+        GenFunc(scalar);
         return;
     }
     const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
