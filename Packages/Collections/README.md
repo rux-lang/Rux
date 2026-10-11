@@ -120,7 +120,7 @@ Construct `MutableReferenceIterator<T>(items)` directly to walk a `var T[..]`. R
 
 ## Hashing
 
-`HashMap` and `HashSet` are one kernel — Robin Hood open addressing over a power-of-two table — with the set storing nothing alongside its keys. A fix to the probing or the deletion is a fix to both.
+`HashMap` and `HashSet` are one kernel — Robin Hood open addressing over a power-of-two table — with the set storing nothing alongside its keys. A fix to the probing or the deletion is a fix to both. Each slot also keeps the top byte of its key's hash, so a lookup passing other keys compares one byte for each and calls the equality function only on a likely match: for text keys that saves reading each passed key's bytes from wherever they live, at one byte per slot.
 
 Every entry records how far it sits from the slot its hash names. An insertion that meets an entry closer to home than itself takes the slot and carries that entry onward, so the distances along a chain never decrease and the worst one stays near the average. That also makes a miss cheap: a search reaching a slot whose occupant is closer to home than the search has travelled can stop, because the key would have taken that slot on the way past.
 

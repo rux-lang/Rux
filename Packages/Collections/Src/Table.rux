@@ -18,6 +18,9 @@
 // `Hashing` use `SipHash`, which is what makes guessing the seed the only way in.
 // Occupancy lives in the distance byte rather than in the key, so there is no reserved or sentinel key: every
 // possible `K` is storable, including zero and `uint::Max` and any struct bit pattern.
+// **Hash tags.** Each slot also keeps the top byte of its key's hash. A lookup compares that byte before it compares
+// keys, so a probe that passes other keys reads one byte for each instead of calling `equals` on it, which for text
+// keys means touching memory elsewhere. Only one key in 256 that differs gets as far as `equals`.
 // Internal to this package: the kernel, not something a caller reaches for.
 
 import Core::uint;
@@ -40,6 +43,11 @@ pub const MaximumProbeDistance: uint = 254;
 /// Below that the load factor rounds away to nothing useful.
 /// @see https://rux-lang.dev/docs/api/collections/table#minimum-table-capacity
 pub const MinimumTableCapacity: uint = 8;
+
+// The byte of a hash a slot keeps: the top one, since the low ones already chose the slot.
+func HashTag(hashed: uint64) -> uint8 {
+    return (hashed >> 56) as uint8;
+}
 
 /// A hash seed, drawn once and shared by every table that wants one.
 /// Two words, which is what `SipHash` takes as a key. Drawing one per table costs a system call each; a program
@@ -78,8 +86,8 @@ extend TableSeed {
 }
 
 /// The open-addressing table `HashMap` and `HashSet` are both built on.
-/// Holds keys, values and one distance byte per slot in three parallel runs. A set instantiates the value type with
-/// something that occupies nothing worth reading, which is what lets one kernel serve both.
+/// Holds keys, values, one distance byte and one hash tag per slot in four parallel runs. A set instantiates the value
+/// type with something that occupies nothing worth reading, which is what lets one kernel serve both.
 /// Move-only: it owns its storage and entries, prohibits copying, and destroys both with `~Table`.
 /// @typeParam K the key type
 /// @typeParam V the value type
@@ -91,6 +99,8 @@ pub struct Table<K, V> {
     values: *var V;
     /// The distance byte of each slot: `SlotEmpty`, or the entry's distance from home plus one.
     states: *var uint8;
+    /// The top byte of each occupied slot's key hash, compared before the keys themselves.
+    tags: *var uint8;
     /// How many slots hold an entry.
     length: uint;
     /// How many slots there are. A power of two, or zero.
@@ -117,6 +127,7 @@ extend Table<K, V> {
             keys: null,
             values: null,
             states: null,
+            tags: null,
             length: 0,
             capacity: 0,
             seed: seed,
@@ -183,14 +194,16 @@ extend Table<K, V> {
               equals: func(K, K) -> bool) -> uint? {
         if self.capacity == 0 || self.length == 0 { return none; }
 
-        var index = self.HomeOf(hash(key, self.seed.low, self.seed.high));
+        let hashed = hash(key, self.seed.low, self.seed.high);
+        let tag = HashTag(hashed);
+        var index = self.HomeOf(hashed);
         var distance: uint = 0;
         while distance < self.capacity {
             let state = self.states[index];
             if state == SlotEmpty { return none; }
             let occupantDistance = (state as uint) - 1;
             if occupantDistance < distance { return none; }
-            if equals(self.keys[index], key) { return .Some(index); }
+            if self.tags[index] == tag && equals(self.keys[index], key) { return .Some(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
@@ -202,6 +215,7 @@ extend Table<K, V> {
     func FindHashed(self: &Table<K, V>, key: K, hashed: uint64, equals: func(K, K) -> bool) -> uint? {
         if self.capacity == 0 || self.length == 0 { return none; }
 
+        let tag = HashTag(hashed);
         var index = self.HomeOf(hashed);
         var distance: uint = 0;
         while distance < self.capacity {
@@ -209,7 +223,7 @@ extend Table<K, V> {
             if state == SlotEmpty { return none; }
             let occupantDistance = (state as uint) - 1;
             if occupantDistance < distance { return none; }
-            if equals(self.keys[index], key) { return .Some(index); }
+            if self.tags[index] == tag && equals(self.keys[index], key) { return .Some(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
@@ -227,6 +241,7 @@ extend Table<K, V> {
         var distance: uint = 0;
         var carriedKey <- key;
         var carriedValue <- value;
+        var carriedTag = HashTag(hashed);
         var landed = self.capacity;
 
         while distance <= MaximumProbeDistance {
@@ -235,6 +250,7 @@ extend Table<K, V> {
                 self.keys[index] <- carriedKey;
                 self.values[index] <- carriedValue;
                 self.states[index] = (distance + 1) as uint8;
+                self.tags[index] = carriedTag;
                 self.length = self.length + 1;
                 return .Some(landed < self.capacity ? landed : index);
             }
@@ -246,14 +262,17 @@ extend Table<K, V> {
                 // extra step.
                 let displacedKey <- self.keys[index];
                 let displacedValue <- self.values[index];
+                let displacedTag = self.tags[index];
                 self.keys[index] <- carriedKey;
                 self.values[index] <- carriedValue;
                 self.states[index] = (distance + 1) as uint8;
+                self.tags[index] = carriedTag;
                 if landed == self.capacity {
                     landed = index;
                 }
                 carriedKey <- displacedKey;
                 carriedValue <- displacedValue;
+                carriedTag = displacedTag;
                 distance = occupantDistance;
             }
 
@@ -279,6 +298,7 @@ extend Table<K, V> {
             self.keys[hole] <- self.keys[next];
             self.values[hole] <- self.values[next];
             self.states[hole] = (state as uint8) - 1;
+            self.tags[hole] = self.tags[next];
             hole = next;
             next = self.NextOf(hole);
         }
@@ -328,6 +348,14 @@ extend Table<K, V> {
                 fail error;
             }
         };
+        var tags = AllocateBlock<uint8>(self.allocator, capacity) catch {
+            error => {
+                ReleaseBlock<K>(self.allocator, keys, capacity);
+                ReleaseBlock<V>(self.allocator, values, capacity);
+                ReleaseBlock<uint8>(self.allocator, states, capacity);
+                fail error;
+            }
+        };
 
         var index: uint = 0;
         while index < capacity {
@@ -338,11 +366,13 @@ extend Table<K, V> {
         let oldKeys = self.keys;
         let oldValues = self.values;
         let oldStates = self.states;
+        let oldTags = self.tags;
         let oldCapacity = self.capacity;
 
         self.keys = keys;
         self.values = values;
         self.states = states;
+        self.tags = tags;
         self.capacity = capacity;
         self.length = 0;
 
@@ -360,6 +390,7 @@ extend Table<K, V> {
             ReleaseBlock<K>(self.allocator, oldKeys, oldCapacity);
             ReleaseBlock<V>(self.allocator, oldValues, oldCapacity);
             ReleaseBlock<uint8>(self.allocator, oldStates, oldCapacity);
+            ReleaseBlock<uint8>(self.allocator, oldTags, oldCapacity);
         }
         return;
     }
@@ -424,15 +455,17 @@ extend Table<K, V> {
         self.length = 0;
     }
 
-    // Gives back all three runs and leaves the table as a new one.
+    // Gives back all four runs and leaves the table as a new one.
     func Release(self: &var Table<K, V>) {
         if self.keys == null { return; }
         ReleaseBlock<K>(self.allocator, self.keys, self.capacity);
         ReleaseBlock<V>(self.allocator, self.values, self.capacity);
         ReleaseBlock<uint8>(self.allocator, self.states, self.capacity);
+        ReleaseBlock<uint8>(self.allocator, self.tags, self.capacity);
         self.keys = null;
         self.values = null;
         self.states = null;
+        self.tags = null;
         self.capacity = 0;
         self.length = 0;
     }

@@ -193,6 +193,7 @@ extend HashSet<T> {
                 keys: set.table.keys,
                 values: set.table.values,
                 states: set.table.states,
+                tags: set.table.tags,
                 length: set.table.length,
                 capacity: set.table.capacity,
                 seed: set.table.seed,
@@ -203,6 +204,7 @@ extend HashSet<T> {
         set.table.keys = null;
         set.table.values = null;
         set.table.states = null;
+        set.table.tags = null;
         set.table.length = 0;
         set.table.capacity = 0;
         return <-taken;

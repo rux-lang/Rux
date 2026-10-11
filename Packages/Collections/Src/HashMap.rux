@@ -367,6 +367,7 @@ extend HashMap<K, V> {
                 keys: map.table.keys,
                 values: map.table.values,
                 states: map.table.states,
+                tags: map.table.tags,
                 length: map.table.length,
                 capacity: map.table.capacity,
                 seed: map.table.seed,
@@ -377,6 +378,7 @@ extend HashMap<K, V> {
         map.table.keys = null;
         map.table.values = null;
         map.table.states = null;
+        map.table.tags = null;
         map.table.length = 0;
         map.table.capacity = 0;
         return <-taken;
