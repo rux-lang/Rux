@@ -174,9 +174,11 @@ PassChange LirPointerInduction::Run(LirPackage &package, const PassContext &cont
     if (context.iteration != 0)
         return PassChange::None;
     bool changed = false;
+    // A reduced loop has no index-based address left to reduce, so repeating reaches the function's other loops.
     for (auto &module : package.modules)
         for (auto &function : module.funcs)
-            changed = Reduce(function) || changed;
+            for (int round = 0; round < 8 && Reduce(function); ++round)
+                changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

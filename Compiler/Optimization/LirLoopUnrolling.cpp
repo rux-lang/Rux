@@ -29,6 +29,18 @@ bool BodyOperation(const LirInstr &instruction) {
     case LirOpcode::RotateRight:
     case LirOpcode::Neg:
     case LirOpcode::BitNot:
+    // Duplicated in order, a trapping division traps at the same iteration it would have.
+    case LirOpcode::Div:
+    case LirOpcode::Mod:
+    case LirOpcode::Not:
+    case LirOpcode::Sqrt:
+    case LirOpcode::GlobalAddr:
+    case LirOpcode::CmpEq:
+    case LirOpcode::CmpNe:
+    case LirOpcode::CmpLt:
+    case LirOpcode::CmpLe:
+    case LirOpcode::CmpGt:
+    case LirOpcode::CmpGe:
         return true;
     default:
         return false;
@@ -71,6 +83,9 @@ bool Unroll(LirFunc &function) {
     std::size_t workRemaining = 200000;
     for (const auto &[header, members] : loops.members) {
         const auto &head = function.blocks[header];
+        // A loop this pass produced is not unrolled again.
+        if (head.label.ends_with(".unroll2.header"))
+            continue;
         if (members.size() != 2 || !head.term || head.term->kind != LirTermKind::Branch ||
             !members.contains(head.term->trueTarget) || members.contains(head.term->falseTarget) ||
             cfg.predecessors[header].size() != 2)
@@ -79,9 +94,7 @@ bool Unroll(LirFunc &function) {
         const auto &source = function.blocks[body];
         if (body == header || !source.term || source.term->kind != LirTermKind::Jump ||
             source.term->trueTarget != header || cfg.predecessors[body] != std::vector<std::uint32_t>{header} ||
-            source.instrs.size() < 4 || source.instrs.size() > 64 ||
-            !std::ranges::all_of(source.instrs, BodyOperation) ||
-            !std::ranges::any_of(source.instrs, [](const auto &i) { return i.op == LirOpcode::Store; }))
+            source.instrs.size() < 4 || source.instrs.size() > 64 || !std::ranges::all_of(source.instrs, BodyOperation))
             continue;
         const auto preheader = cfg.predecessors[header][cfg.predecessors[header][0] == body ? 1 : 0];
         const auto &entry = function.blocks[preheader];
@@ -99,9 +112,12 @@ bool Unroll(LirFunc &function) {
         const auto induction = comparison->srcs[0];
         const auto limit = comparison->srcs[1];
         const auto *phi = definition(induction);
+        const bool unsignedInduction =
+            phi && (phi->type.kind == TypeRef::Kind::UInt || phi->type.kind == TypeRef::Kind::UInt64);
+        const bool signedInduction =
+            phi && (phi->type.kind == TypeRef::Kind::Int || phi->type.kind == TypeRef::Kind::Int64);
         if (!phi || phi->op != LirOpcode::Phi || owners.at(induction) != header ||
-            (phi->type.kind != TypeRef::Kind::UInt && phi->type.kind != TypeRef::Kind::UInt64) ||
-            (owners.contains(limit) && members.contains(owners.at(limit))))
+            (!unsignedInduction && !signedInduction) || (owners.contains(limit) && members.contains(owners.at(limit))))
             continue;
         std::vector<LirInstr> phis;
         bool valid = true;
@@ -122,8 +138,17 @@ bool Unroll(LirFunc &function) {
             }
             phis.push_back(instruction);
         }
-        if (!valid || phis.empty() || phis.size() > 8)
+        if (!valid || phis.empty() || phis.size() > 16)
             continue;
+        // A signed count starts at a non-negative constant, so limit - initial cannot overflow when the loop runs.
+        if (signedInduction) {
+            const auto entryEdge =
+                std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second != body; });
+            const auto *first = entryEdge == phi->phiPreds.end() ? nullptr : definition(entryEdge->first);
+            if (!first || first->op != LirOpcode::Const || first->type != phi->type || first->strArg.empty() ||
+                first->strArg.starts_with('-'))
+                continue;
+        }
         const auto back = std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second == body; });
         if (back == phi->phiPreds.end())
             continue;
@@ -214,7 +239,8 @@ bool Unroll(LirFunc &function) {
         // Subtraction may wrap for a descending/empty range; the entry guard then selects the unchanged loop.
         // Otherwise end is initial + floor((limit-initial)/2)*2 and cannot exceed limit or wrap.
         const auto remaining = emit(prepare, LirOpcode::Sub, phi->type, {limit, initial});
-        const auto mask = emit(prepare, LirOpcode::Const, phi->type, {}, "18446744073709551614");
+        const auto mask =
+            emit(prepare, LirOpcode::Const, phi->type, {}, signedInduction ? "-2" : "18446744073709551614");
         const auto evenCount = emit(prepare, LirOpcode::And, phi->type, {remaining, mask});
         const auto end = emit(prepare, LirOpcode::Add, phi->type, {initial, evenCount});
         const auto inRange = emit(prepare, LirOpcode::CmpLt, TypeRef::MakeBool(), {initial, limit});
@@ -264,9 +290,12 @@ PassChange LirLoopUnrolling::Run(LirPackage &package, const PassContext &context
     if (context.iteration != 0)
         return PassChange::None;
     bool changed = false;
+    // The unrolled copy is skipped by its label and the original keeps a third header predecessor, which no round
+    // accepts, so repeating reaches the function's other loops without unrolling one twice.
     for (auto &module : package.modules)
         for (auto &function : module.funcs)
-            changed = Unroll(function) || changed;
+            for (int round = 0; round < 8 && Unroll(function); ++round)
+                changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

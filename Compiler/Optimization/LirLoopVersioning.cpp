@@ -4,6 +4,7 @@
 #include "Optimization/ConstantEvaluator.h"
 
 #include <limits>
+#include <optional>
 #include <unordered_map>
 
 namespace Rux::Optimization {
@@ -11,6 +12,10 @@ namespace {
 bool Word(const TypeRef &type) {
     // Every supported target has 64-bit uint. Signed and narrowing conversions need separate proofs.
     return type.kind == TypeRef::Kind::UInt || type.kind == TypeRef::Kind::UInt64;
+}
+
+bool SignedWord(const TypeRef &type) {
+    return type.kind == TypeRef::Kind::Int || type.kind == TypeRef::Kind::Int64;
 }
 
 struct Definition {
@@ -23,6 +28,8 @@ struct Check {
     std::uint32_t block;
     LirReg offset;
     LirReg bound;
+    /// For a signed induction value, a constant added to it; its first index is non-negative by construction.
+    std::int64_t constantOffset = 0;
 };
 
 bool Version(LirFunc &function) {
@@ -67,11 +74,6 @@ bool Version(LirFunc &function) {
         }
         return reg;
     };
-    const auto literal = [&](const LirReg reg, const std::string_view value) {
-        const auto *instruction = get(reg);
-        return instruction && instruction->op == LirOpcode::Const && !instruction->isVolatile &&
-               Word(instruction->type) && instruction->strArg == value;
-    };
     for (const auto &[header, members] : loops.members) {
         if (header == 0 || members.size() > 16 || std::ranges::any_of(loops.members, [&](const auto &loop) {
                 return loop.first != header && members.contains(loop.first);
@@ -87,8 +89,17 @@ bool Version(LirFunc &function) {
         const auto induction = condition->srcs[0];
         const auto limit = condition->srcs[1];
         const auto *phi = get(induction);
-        if (!word(induction) || !word(limit) || !phi || phi->op != LirOpcode::Phi || phi->phiPreds.size() != 2 ||
-            definitions.at(induction).block != header || cfg.predecessors[header].size() != 2)
+        const auto signedWord = [&](const LirReg reg) {
+            const auto found = definitions.find(reg);
+            return found != definitions.end() && SignedWord(found->second.type);
+        };
+        // A signed induction value counts up by one from a non-negative constant, so every value it takes in the
+        // loop is non-negative and below the limit, and converting it to an unsigned index changes nothing.
+        const bool signedInduction =
+            signedWord(induction) && signedWord(limit) && definitions.at(induction).type == definitions.at(limit).type;
+        if ((!signedInduction && (!word(induction) || !word(limit))) || !phi || phi->op != LirOpcode::Phi ||
+            phi->phiPreds.size() != 2 || definitions.at(induction).block != header ||
+            cfg.predecessors[header].size() != 2)
             continue;
         auto preheader = LirDominance::Invalid;
         auto latch = LirDominance::Invalid;
@@ -105,7 +116,19 @@ bool Version(LirFunc &function) {
             }
         }
         if (preheader == LirDominance::Invalid || latch == LirDominance::Invalid ||
-            cfg.successors[preheader].size() != 1 || !dominance.Dominates(preheader, header) || !literal(initial, "0"))
+            cfg.successors[preheader].size() != 1 || !dominance.Dominates(preheader, header))
+            continue;
+        // The first index: zero for an unsigned induction with any stride, any non-negative constant otherwise.
+        std::optional<std::int64_t> start;
+        if (const auto *first = get(initial); first && first->op == LirOpcode::Const && !first->isVolatile &&
+                                              first->srcs.empty() && first->type == phi->type) {
+            if (const auto value = ParseConstant(first->strArg, first->type)) {
+                const auto bits = static_cast<std::int64_t>(value->RawBits());
+                if (bits >= 0)
+                    start = bits;
+            }
+        }
+        if (!start)
             continue;
         const auto *step = get(increment);
         if (!step || step->op != LirOpcode::Add || step->isVolatile || step->type != phi->type ||
@@ -114,19 +137,59 @@ bool Version(LirFunc &function) {
             continue;
         const auto *strideInstruction = get(step->srcs[1]);
         if (!strideInstruction || strideInstruction->op != LirOpcode::Const || strideInstruction->isVolatile ||
-            !Word(strideInstruction->type) || !strideInstruction->srcs.empty())
+            strideInstruction->type != phi->type || !strideInstruction->srcs.empty())
             continue;
         const auto strideValue = ParseConstant(strideInstruction->strArg, strideInstruction->type);
         if (!strideValue || strideValue->RawBits() == 0 || strideValue->RawBits() > 64)
             continue;
         const auto stride = strideValue->RawBits();
+        // Strides other than one compute the last index from a zero start in unsigned arithmetic.
+        if ((stride != 1 && (signedInduction || *start != 0)))
+            continue;
+        // A constant counts as invariant wherever it is defined: the guard recreates it in the preheader.
+        const auto loopConstant = [&](const LirReg reg) {
+            const auto *instruction = get(reg);
+            return instruction && instruction->op == LirOpcode::Const && !instruction->isVolatile &&
+                   instruction->srcs.empty() && members.contains(definitions.at(reg).block);
+        };
         const auto invariant = [&](const LirReg reg) {
             const auto found = definitions.find(reg);
-            return found != definitions.end() && Word(found->second.type) && !members.contains(found->second.block) &&
-                   dominance.Dominates(found->second.block, preheader);
+            return found != definitions.end() && Word(found->second.type) &&
+                   ((!members.contains(found->second.block) && dominance.Dominates(found->second.block, preheader)) ||
+                    loopConstant(reg));
         };
-        if (!invariant(limit))
+        const auto invariantLimit = [&](const LirReg reg) {
+            const auto found = definitions.find(reg);
+            return found != definitions.end() &&
+                   ((!members.contains(found->second.block) && dominance.Dominates(found->second.block, preheader)) ||
+                    loopConstant(reg));
+        };
+        if (signedInduction ? !invariantLimit(limit) : !invariant(limit))
             continue;
+        // The signed index expression a check compares, as the induction value plus a constant.
+        const auto signedIndex = [&](LirReg reg) -> std::optional<std::int64_t> {
+            const auto *cast = get(reg);
+            if (!cast || cast->op != LirOpcode::Cast || cast->isVolatile || cast->srcs.size() != 1 ||
+                !signedWord(cast->srcs[0]))
+                return std::nullopt;
+            reg = cast->srcs[0];
+            if (reg == induction)
+                return 0;
+            const auto *arithmetic = get(reg);
+            if (!arithmetic || (arithmetic->op != LirOpcode::Add && arithmetic->op != LirOpcode::Sub) ||
+                arithmetic->isVolatile || arithmetic->srcs.size() != 2 || arithmetic->srcs[0] != induction)
+                return std::nullopt;
+            const auto *amount = get(arithmetic->srcs[1]);
+            if (!amount || amount->op != LirOpcode::Const || amount->isVolatile || amount->type != phi->type)
+                return std::nullopt;
+            const auto value = ParseConstant(amount->strArg, amount->type);
+            if (!value)
+                return std::nullopt;
+            const auto magnitude = static_cast<std::int64_t>(value->RawBits());
+            if (magnitude < -(std::int64_t{1} << 40) || magnitude > (std::int64_t{1} << 40))
+                return std::nullopt;
+            return arithmetic->op == LirOpcode::Add ? magnitude : -magnitude;
+        };
         bool eligible = true;
         std::size_t cost = 0;
         std::vector<Check> checks;
@@ -151,6 +214,12 @@ bool Version(LirFunc &function) {
             if (!comparison || comparison->op != LirOpcode::CmpLt || comparison->isVolatile ||
                 comparison->srcs.size() != 2 || !word(comparison->srcs[0]) || !invariant(comparison->srcs[1]))
                 continue;
+            if (signedInduction) {
+                // Only checks whose first index is already non-negative: below zero the conversion would wrap.
+                if (const auto offset = signedIndex(comparison->srcs[0]); offset && *start + *offset >= 0)
+                    checks.push_back({block, LirNoReg, comparison->srcs[1], *offset});
+                continue;
+            }
             const auto index = strip(comparison->srcs[0]);
             LirReg offset = LirNoReg;
             if (index != induction) {
@@ -166,29 +235,88 @@ bool Version(LirFunc &function) {
             }
             checks.push_back({block, offset, comparison->srcs[1]});
         }
-        if (!eligible || cost > 96 || checks.empty() || checks.size() > 4)
+        if (!eligible || cost > 160 || checks.empty() || checks.size() > 8)
             continue;
-        // Require existing exit phis for live-out definitions. General LCSSA construction is a separate phase.
+        // A value defined in the loop and read after it must reach its readers through an exit phi, which merges
+        // what the checked and the fast loop computed. When the normal exit has the header as its only predecessor,
+        // a dedicated exit block holds those phis; any other shape keeps the loop unversioned.
         const auto local = [&](const LirReg reg) {
             const auto found = definitions.find(reg);
             return found != definitions.end() && members.contains(found->second.block);
         };
-        for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        const auto exitBlock = term->falseTarget;
+        std::vector<LirReg> liveOut;
+        std::vector<std::uint32_t> readers;
+        for (std::uint32_t block = 0; block < function.blocks.size() && eligible; ++block) {
             if (members.contains(block))
                 continue;
+            bool reads = false;
             for (const auto &instruction : function.blocks[block].instrs) {
-                if (std::ranges::any_of(instruction.srcs, local))
-                    eligible = false;
+                for (const auto source : instruction.srcs)
+                    if (local(source)) {
+                        reads = true;
+                        if (std::ranges::find(liveOut, source) == liveOut.end())
+                            liveOut.push_back(source);
+                    }
                 for (const auto &[value, predecessor] : instruction.phiPreds)
                     if (local(value) && !members.contains(predecessor))
                         eligible = false;
             }
             if (const auto &exit = function.blocks[block].term)
-                if (local(exit->cond) || (exit->retVal && local(*exit->retVal)))
+                for (const auto reg : {exit->cond, exit->retVal.value_or(LirNoReg)})
+                    if (reg != LirNoReg && local(reg)) {
+                        reads = true;
+                        if (std::ranges::find(liveOut, reg) == liveOut.end())
+                            liveOut.push_back(reg);
+                    }
+            if (reads) {
+                if (block != exitBlock && !dominance.Dominates(exitBlock, block))
                     eligible = false;
+                readers.push_back(block);
+            }
         }
-        if (!eligible)
+        if (!eligible || (!liveOut.empty() && cfg.predecessors[exitBlock] != std::vector<std::uint32_t>{header}))
             continue;
+        if (!liveOut.empty()) {
+            const auto exitIndex = static_cast<std::uint32_t>(function.blocks.size());
+            LirBlock exit;
+            exit.label = function.blocks[header].label + ".exit";
+            std::unordered_map<LirReg, LirReg> merged;
+            for (const auto value : liveOut) {
+                LirInstr merge;
+                merge.op = LirOpcode::Phi;
+                merge.dst = next++;
+                merge.type = definitions.at(value).type;
+                merge.phiPreds = {{value, header}};
+                merged.emplace(value, merge.dst);
+                exit.instrs.push_back(std::move(merge));
+            }
+            exit.term.emplace();
+            exit.term->kind = LirTermKind::Jump;
+            exit.term->trueTarget = exitBlock;
+            for (auto &instruction : function.blocks[exitBlock].instrs)
+                for (auto &[value, predecessor] : instruction.phiPreds) {
+                    static_cast<void>(value);
+                    if (predecessor == header)
+                        predecessor = exitIndex;
+                }
+            const auto rename = [&](LirReg &reg) {
+                if (const auto found = merged.find(reg); found != merged.end())
+                    reg = found->second;
+            };
+            for (const auto block : readers) {
+                for (auto &instruction : function.blocks[block].instrs)
+                    for (auto &source : instruction.srcs)
+                        rename(source);
+                if (auto &exitTerm = function.blocks[block].term) {
+                    rename(exitTerm->cond);
+                    if (exitTerm->retVal)
+                        rename(*exitTerm->retVal);
+                }
+            }
+            function.blocks[header].term->falseTarget = exitIndex;
+            function.blocks.push_back(std::move(exit));
+        }
 
         std::vector<std::uint32_t> ordered(members.begin(), members.end());
         std::ranges::sort(ordered);
@@ -249,9 +377,18 @@ bool Version(LirFunc &function) {
             setup.push_back(std::move(instruction));
             return setup.back().dst;
         };
-        const auto widen = [&](const LirReg value) {
-            return emit(LirOpcode::Cast, TypeRef::MakeUInt64(), {value}, definitions.at(value).type.ToString());
+        const auto widenFrom = [&](const LirReg value, const TypeRef &from) {
+            return emit(LirOpcode::Cast, TypeRef::MakeUInt64(), {value}, from.ToString());
         };
+        // The value as the preheader sees it: a constant defined inside the loop is recreated there.
+        const auto outside = [&](const LirReg value) {
+            const auto &definition = definitions.at(value);
+            if (definition.instruction && definition.instruction->op == LirOpcode::Const &&
+                members.contains(definition.block))
+                return emit(LirOpcode::Const, definition.type, {}, definition.instruction->strArg);
+            return value;
+        };
+        const auto widen = [&](const LirReg value) { return widenFrom(outside(value), definitions.at(value).type); };
         const auto limit64 = widen(limit);
         auto count = limit64;
         LirReg guard = LirNoReg;
@@ -272,7 +409,21 @@ bool Version(LirFunc &function) {
         for (const auto &check : checks) {
             const auto bound = widen(check.bound);
             LirReg safe;
-            if (check.offset == LirNoReg) {
+            if (signedInduction) {
+                // Every index the loop computes is at most limit - 1 + offset, so limit + offset must not exceed
+                // the bound. When the loop runs, limit exceeds the non-negative start, and limit + offset is
+                // positive; a sum that overflows wraps to a negative value, which as an unsigned bound fails the
+                // guard and keeps the checked loop.
+                LirReg last = outside(limit);
+                if (check.constantOffset != 0) {
+                    const auto amount =
+                        emit(LirOpcode::Const, definitions.at(limit).type, {}, std::to_string(check.constantOffset));
+                    last = emit(LirOpcode::Add, definitions.at(limit).type, {last, amount});
+                }
+                safe =
+                    emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {widenFrom(last, definitions.at(limit).type), bound});
+            }
+            else if (check.offset == LirNoReg) {
                 safe = emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {count, bound});
             }
             else {
@@ -322,9 +473,12 @@ PassChange LirLoopVersioning::Run(LirPackage &package, const PassContext &contex
     if (context.iteration != 0)
         return PassChange::None;
     bool changed = false;
+    // Each round versions one loop; a versioned loop's entry becomes a guard branch, which no later round accepts as
+    // a preheader, so repeating reaches the function's other loops without revisiting one.
     for (auto &module : package.modules)
         for (auto &function : module.funcs)
-            changed = Version(function) || changed;
+            for (int round = 0; round < 8 && Version(function); ++round)
+                changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

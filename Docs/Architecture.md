@@ -390,9 +390,15 @@ invariant limit. For an invariant row offset and bound, `row <= bound && count <
 `row + index < bound` test. A guard failure selects the original checked loop; it never raises a preheader panic.
 The guard contains only register arithmetic. It neither reads memory nor assumes that different pointers do not alias.
 The fast copy preserves memory operations, floating-point order, early exits and source contexts. SSA definitions and
-exit-phi edges are remapped. Unmerged live-out values, memory-dependent bounds, volatile operations, calls, local
-allocations, non-unit steps, signed induction and narrowing conversions are rejected. The initial implementation caps
-loop size, instruction count and checks, and versions at most one innermost loop per function per pipeline run.
+exit-phi edges are remapped. A value read after the loop gets an exit phi in a new block between the header and its
+normal exit, when that exit has the header as its only predecessor. A signed `int`/`int64` count starting at a
+non-negative constant with step one is versioned too: a check on `(count + c) as uint` with constant `c` and a
+non-negative first index is proven by `limit + c <= bound`, whose overflow wraps to a failing guard. An unsigned count
+with step one may start at any non-negative constant. A constant bound or limit defined inside the loop is recreated in
+the preheader. Memory-dependent bounds, volatile operations, calls, local allocations and other conversions are
+rejected. Loop size, instruction count and checks (eight) are capped; each round versions one innermost loop, and up
+to eight rounds per function reach its other loops, since a versioned loop's entry becomes a guard branch no round
+accepts again.
 
 Release block coalescing joins an unconditional successor only when that successor has one predecessor. It preserves
 instruction order, replaces unique-edge phis through SSA renaming, and updates outgoing phi predecessors before
@@ -423,13 +429,15 @@ indices, spilled references, non-power-of-two element sizes and unallocated dest
 Field offsets remain owned by the existing layout resolver. Address computation adds no memory dereference and
 preserves wrapping machine-address arithmetic; it introduces neither alias assumptions nor bounds-check removal.
 
-The bounded LIR unroller follows CFG cleanup and duplicates one small straight-line innermost unsigned unit-step
-loop per function, once per pipeline run. A dedicated entry computes an even endpoint, guarding descending ranges;
-paired iterations keep every instruction in original order and the original loop handles the scalar tail. Phi
-recurrences update simultaneously between copies, including cross-dependent recurrences. Calls, volatile accesses,
-nonunit/signed induction, irregular bodies and unmerged body live-outs are rejected. Body, phi, function and analysis
-work budgets bound code growth and compile-time work. This is scalar unrolling, without vectorization, alias
-assumptions, speculative loads or floating-point reassociation.
+The bounded LIR unroller follows CFG cleanup and duplicates small straight-line innermost unit-step loops: unsigned
+counts, and signed counts starting at a non-negative constant. A dedicated entry computes an even endpoint, guarding
+descending ranges; paired iterations keep every instruction in original order and the original loop handles the
+scalar tail. Phi recurrences (up to sixteen) update simultaneously between copies, including cross-dependent
+recurrences such as a hash's rotating state. Bodies may compute, compare, divide and load global addresses as well as
+read and write memory. Calls, volatile accesses, non-unit induction, irregular bodies and unmerged body live-outs are
+rejected. Up to eight rounds per function reach its other loops; an unrolled copy is recognized by its header label
+and never unrolled again. Body, phi, function and analysis work budgets bound code growth and compile-time work. This
+is scalar unrolling, without vectorization, alias assumptions, speculative loads or floating-point reassociation.
 
 The x86 scalar machine descriptor also selects immediate shifts and rotations. Shift counts retain their independent
 integer type and are selected only within the operand width; variable and oversized counts retain existing lowering.
@@ -460,9 +468,10 @@ Bounded pointer induction runs after CFG cleanup and before ordered unrolling, f
 simple unsigned 64-bit unit-step loop, addresses of the form base + (row + index) advance through pointer phis.
 The base and row must dominate loop entry and remain outside the loop; addresses used outside the body are rejected.
 Only pure address arithmetic moves to the incoming block. Loads, stores, checks and floating operations retain their
-order, including raw-pointer aliases and unsigned index wrapping. The pass changes one loop and at most four pointers
-per function on the first pipeline iteration, with block/instruction/analysis budgets. General signed induction,
-irregular loops and escaping address values retain their existing form.
+order, including raw-pointer aliases and unsigned index wrapping. Each round changes one loop and at most four
+pointers; up to eight rounds per function on the first pipeline iteration reach its other loops, since a reduced loop
+has no index address left, with block/instruction/analysis budgets. General signed induction, irregular loops and
+escaping address values retain their existing form.
 
 On x86, constant indexed addresses use a signed 32-bit LEA displacement when the complete 64-bit wrapping scaled
 offset is representable. Other offsets, narrow indices and unsupported layouts retain existing lowering. Count

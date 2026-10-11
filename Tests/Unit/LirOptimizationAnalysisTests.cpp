@@ -593,7 +593,14 @@ TEST_CASE("Loop versioning rejects unproven induction and volatile accesses") {
             }
         }
         Optimization::LirLoopVersioning versioning;
-        CHECK(versioning.Run(package, {}) == Optimization::PassChange::None);
+        CAPTURE(mode);
+        // A unit-stride count may start at any non-negative constant; a zero step, a volatile access and a signed
+        // count against an unsigned limit stay unversioned.
+        CHECK(versioning.Run(package, {}) ==
+              (mode == 1 ? Optimization::PassChange::Changed : Optimization::PassChange::None));
+        // Mode 3 retypes only the phi, which leaves its inputs mismatched before the pass runs at all.
+        if (mode != 3)
+            CHECK(SsaErrors(package).empty());
     }
 }
 
@@ -661,6 +668,54 @@ TEST_CASE("Strided loop guards cover visited indices and reject wrapping inducti
     }
 }
 
+TEST_CASE("Signed loop guards cover every offset index the loop visits") {
+    const auto original = Promoted(R"(
+        func Walk(limit: int, bound: uint, pointer: *var uint) -> uint {
+            for t in 16..limit {
+                if ((t - 15) as uint) < bound { *pointer += 1u; }
+                else { return 1u; }
+                if (t as uint) < bound { *pointer += 2u; }
+                else { return 2u; }
+            }
+            return *pointer;
+        }
+    )");
+    auto versioned = original;
+    Optimization::LirLoopVersioning versioning;
+    REQUIRE(versioning.Run(versioned, {}) == Optimization::PassChange::Changed);
+    REQUIRE(SsaErrors(versioned).empty());
+    for (const std::int64_t limit : {17, 18, 40, 81}) {
+        for (const std::uint64_t bound : {0ull, 1ull, 2ull, 24ull, 25ull, 26ull, 65ull, 80ull, 81ull}) {
+            auto package = versioned;
+            auto &function = package.modules[0].funcs[0];
+            std::vector<LirInstr> constants;
+            for (std::size_t index = 0; index < 2; ++index) {
+                LirInstr constant;
+                constant.op = LirOpcode::Const;
+                constant.dst = function.params[index].reg;
+                constant.type = function.params[index].type;
+                constant.strArg = index == 0 ? std::to_string(limit) : std::to_string(bound);
+                constants.push_back(std::move(constant));
+            }
+            function.params.erase(function.params.begin(), function.params.begin() + 2);
+            auto &entry = function.blocks[0];
+            entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
+            Optimization::LirConstantPropagation propagation;
+            static_cast<void>(propagation.Run(package, {}));
+            const auto condition = std::ranges::find_if(
+                entry.instrs, [&](const auto &instruction) { return instruction.dst == entry.term->cond; });
+            REQUIRE(condition != entry.instrs.end());
+            REQUIRE(condition->op == LirOpcode::Const);
+            bool allFit = true;
+            for (std::int64_t t = 16; t < limit; ++t)
+                allFit = allFit && static_cast<std::uint64_t>(t - 15) < bound && static_cast<std::uint64_t>(t) < bound;
+            CAPTURE(limit);
+            CAPTURE(bound);
+            CHECK((condition->strArg == "true") == allFit);
+        }
+    }
+}
+
 TEST_CASE("Loop versioning rejects unsupported strides") {
     for (const auto stride : {"65", "18446744073709551615"}) {
         auto package = VersioningLoop();
@@ -673,7 +728,7 @@ TEST_CASE("Loop versioning rejects unsupported strides") {
     }
 }
 
-TEST_CASE("Loop versioning remaps exit phis and rejects unmerged live outs") {
+TEST_CASE("Loop versioning remaps exit phis and merges unmerged live outs") {
     auto package = VersioningLoop();
     auto &function = package.modules[0].funcs[0];
     std::uint32_t header = 0;
@@ -695,7 +750,10 @@ TEST_CASE("Loop versioning remaps exit phis and rejects unmerged live outs") {
     unmerged.modules[0].funcs[0].blocks[target].term = ReturnValue(induction, TypeRef::MakeUInt());
     Optimization::LirLoopVersioning versioning;
     CHECK(SsaErrors(unmerged).empty());
-    CHECK(versioning.Run(unmerged, {}) == Optimization::PassChange::None);
+    // The loop's value read after it reaches its reader through a phi in a new exit block both versions leave by.
+    CHECK(versioning.Run(unmerged, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(unmerged).empty());
+    CHECK(unmerged.modules[0].funcs[0].blocks[target].term->retVal != induction);
     LirInstr exitPhi;
     exitPhi.op = LirOpcode::Phi;
     exitPhi.dst = next;
