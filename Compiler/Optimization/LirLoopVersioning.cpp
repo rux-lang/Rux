@@ -565,8 +565,8 @@ bool Version(LirFunc &function) {
         // group, then costs one checked iteration instead of the whole loop. A loop with a constant limit keeps the
         // guard: it is short, and its fast copy keeps the constant trip count that full unrolling needs.
         const auto *limitDefinition = get(limit);
-        const bool split = controlling == header && !signedInduction &&
-                           !(limitDefinition && limitDefinition->op == LirOpcode::Const);
+        const bool split =
+            controlling == header && !signedInduction && !(limitDefinition && limitDefinition->op == LirOpcode::Const);
         if (split) {
             const auto bit = [&](const LirReg condition) {
                 return emit(LirOpcode::Cast, TypeRef::MakeUInt64(), {condition}, TypeRef::MakeBool().ToString());
