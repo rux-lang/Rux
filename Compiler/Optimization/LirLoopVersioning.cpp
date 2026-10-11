@@ -37,6 +37,9 @@ struct Check {
     /// added to it.
     LirReg secondary = LirNoReg;
     std::uint64_t secondaryOffset = 0;
+    /// For an index that is the tested value itself in a loop whose counting is not understood, true: the test that
+    /// just passed bounds it by the limit.
+    bool direct = false;
 };
 
 /// A header phi other than the induction value that every iteration advances by the same constant: in iteration n it
@@ -130,8 +133,8 @@ bool Version(LirFunc &function) {
                 members.contains(branch->falseTarget) || !dominance.Dominates(block, backEdge))
                 continue;
             const auto *comparison = condition(branch->cond);
-            if (!comparison || comparison->op != LirOpcode::CmpLt || comparison->isVolatile ||
-                comparison->srcs.size() != 2)
+            if (!comparison || (comparison->op != LirOpcode::CmpLt && comparison->op != LirOpcode::CmpLe) ||
+                comparison->isVolatile || comparison->srcs.size() != 2)
                 continue;
             const auto *counter = get(comparison->srcs[0]);
             if (!counter || counter->op != LirOpcode::Phi || definitions.at(comparison->srcs[0]).block != header)
@@ -146,6 +149,8 @@ bool Version(LirFunc &function) {
         const auto &term = function.blocks[controlling].term;
         const auto induction = test->srcs[0];
         const auto limit = test->srcs[1];
+        // `i <= limit` bounds the tested value without the count the other proofs rest on.
+        const bool inclusive = test->op == LirOpcode::CmpLe;
         const auto *phi = get(induction);
         const auto signedWord = [&](const LirReg reg) {
             const auto found = definitions.find(reg);
@@ -186,23 +191,33 @@ bool Version(LirFunc &function) {
                     start = bits;
             }
         }
-        if (!start)
-            continue;
+        // A counted loop starts at a constant and steps by a constant, so its every index and its number of
+        // iterations are known in terms of the limit. Any other loop still proves the checks on the tested value
+        // itself, as long as that value is unsigned: a signed one may be negative, which no limit rules out.
+        bool counted = start.has_value() && !inclusive;
+        std::uint64_t stride = 1;
         const auto *step = get(increment);
         if (!step || step->op != LirOpcode::Add || step->isVolatile || step->type != phi->type ||
             step->srcs.size() != 2 || step->srcs[0] != induction ||
-            !dominance.Dominates(definitions.at(increment).block, latch))
-            continue;
-        const auto *strideInstruction = get(step->srcs[1]);
-        if (!strideInstruction || strideInstruction->op != LirOpcode::Const || strideInstruction->isVolatile ||
-            strideInstruction->type != phi->type || !strideInstruction->srcs.empty())
-            continue;
-        const auto strideValue = ParseConstant(strideInstruction->strArg, strideInstruction->type);
-        if (!strideValue || strideValue->RawBits() == 0 || strideValue->RawBits() > 64)
-            continue;
-        const auto stride = strideValue->RawBits();
+            !dominance.Dominates(definitions.at(increment).block, latch)) {
+            counted = false;
+        }
+        else {
+            const auto *strideInstruction = get(step->srcs[1]);
+            const auto strideValue = strideInstruction && strideInstruction->op == LirOpcode::Const &&
+                                             !strideInstruction->isVolatile && strideInstruction->type == phi->type &&
+                                             strideInstruction->srcs.empty()
+                                       ? ParseConstant(strideInstruction->strArg, strideInstruction->type)
+                                       : std::nullopt;
+            if (!strideValue || strideValue->RawBits() == 0 || strideValue->RawBits() > 64)
+                counted = false;
+            else
+                stride = strideValue->RawBits();
+        }
         // Strides other than one compute the last index from a zero start in unsigned arithmetic.
-        if ((stride != 1 && (signedInduction || *start != 0)))
+        if (counted && stride != 1 && (signedInduction || *start != 0))
+            counted = false;
+        if (!counted && signedInduction)
             continue;
         // A constant counts as invariant wherever it is defined: the guard recreates it in the preheader.
         const auto loopConstant = [&](const LirReg reg) {
@@ -262,6 +277,8 @@ bool Version(LirFunc &function) {
         // Other counters: header phis entered with an invariant value and advanced only by constant additions.
         std::unordered_map<LirReg, Secondary> secondaries;
         for (const auto &instruction : function.blocks[header].instrs) {
+            if (!counted)
+                break;
             if (instruction.op != LirOpcode::Phi || instruction.dst == induction || !Word(instruction.type) ||
                 instruction.phiPreds.size() != 2)
                 continue;
@@ -359,6 +376,16 @@ bool Version(LirFunc &function) {
                 Check check{block, LirNoReg, comparison->srcs[1]};
                 check.maximum = maximum;
                 checks.push_back(check);
+                continue;
+            }
+            if (!counted) {
+                // Under `i <= limit`, a test of `i < limit` is the inclusive range's own exit, which no guard on the
+                // limit can prove; it stays in the fast copy instead of failing every guard.
+                if (strip(comparison->srcs[0]) == induction && !(inclusive && comparison->srcs[1] == limit)) {
+                    Check check{block, LirNoReg, comparison->srcs[1]};
+                    check.direct = true;
+                    checks.push_back(check);
+                }
                 continue;
             }
             if (const auto derived = secondaryIndex(comparison->srcs[0])) {
@@ -494,7 +521,7 @@ bool Version(LirFunc &function) {
         auto count = limit64;
         LirReg guard = LirNoReg;
         LirReg quotient = LirNoReg;
-        if (stride != 1) {
+        if (counted && stride != 1) {
             // The last visited index is floor((limit - 1) / stride) * stride. Reject limits for which the
             // increment could wrap: after wrapping, a non-power-of-two stride can visit different residues.
             // For an empty loop, these unsigned calculations may wrap but never access memory or trap.
@@ -537,6 +564,10 @@ bool Version(LirFunc &function) {
             LirReg safe;
             if (check.maximum) {
                 safe = emit(LirOpcode::CmpLt, TypeRef::MakeBool(), {constant(*check.maximum), bound});
+            }
+            else if (check.direct) {
+                // The check reads the value its loop just tested against the limit.
+                safe = emit(inclusive ? LirOpcode::CmpLt : LirOpcode::CmpLe, TypeRef::MakeBool(), {limit64, bound});
             }
             else if (check.secondary != LirNoReg) {
                 // In the last iteration the counter reaches start + (iterations - 1) * step, and the index adds a

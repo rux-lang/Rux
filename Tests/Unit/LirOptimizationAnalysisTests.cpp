@@ -1024,6 +1024,75 @@ TEST_CASE("Loop versioning proves byte-indexed and secondary-counter checks") {
     }
 }
 
+TEST_CASE("Loop versioning proves the tested value's checks in loops it cannot count") {
+    // A sieve's stride and start are only known at run time, and an inclusive range adds an exit of its own; the
+    // checks on the tested value still hold whenever the limit is below the bound.
+    for (const auto *source : {R"(
+        func Mark(at: *var uint8, length: uint, limit: uint, start: uint, step: uint) -> uint {
+            var j = start;
+            while j <= limit {
+                if j < length { at[j] = 1u8; }
+                else { return 1u; }
+                j += step;
+            }
+            return 0u;
+        }
+    )",
+                               R"(
+        func Count(at: *uint8, length: uint, limit: uint, start: uint, step: uint) -> uint {
+            var total: uint = 0u;
+            for k in start..=limit {
+                if k < length { total += at[k] as uint; }
+                else { return 1u; }
+            }
+            return total + step;
+        }
+    )"}) {
+        auto versioned = Promoted(source);
+        Optimization::LirCfgCleanup cleanup;
+        static_cast<void>(cleanup.Run(versioned, {}));
+        Optimization::LirLoopVersioning versioning;
+        REQUIRE(versioning.Run(versioned, {}) == Optimization::PassChange::Changed);
+        REQUIRE(SsaErrors(versioned).empty());
+        for (const std::uint64_t limit : {0ull, 5ull, 9ull, 10ull, 0xFFFFFFFFFFFFFFFFull}) {
+            for (const std::uint64_t length : {0ull, 9ull, 10ull, 11ull}) {
+                auto package = versioned;
+                auto &function = package.modules[0].funcs[0];
+                std::vector<LirInstr> constants;
+                for (std::size_t index = 1; index < 3; ++index) {
+                    LirInstr constant;
+                    constant.op = LirOpcode::Const;
+                    constant.dst = function.params[index].reg;
+                    constant.type = function.params[index].type;
+                    constant.strArg = std::to_string(index == 1 ? length : limit);
+                    constants.push_back(std::move(constant));
+                }
+                function.params.erase(function.params.begin() + 1, function.params.begin() + 3);
+                auto &entry = function.blocks[0];
+                entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
+                Optimization::LirConstantPropagation propagation;
+                static_cast<void>(propagation.Run(package, {}));
+                // The guard sits in the block that enters the loop, which the entry may reach by a jump.
+                std::optional<std::string> guard;
+                for (const auto &block : function.blocks) {
+                    if (block.term->kind != LirTermKind::Branch || block.label.contains(".range.fast.") ||
+                        !function.blocks[block.term->trueTarget].label.contains(".range.fast."))
+                        continue;
+                    const auto condition = std::ranges::find_if(
+                        block.instrs, [&](const auto &instruction) { return instruction.dst == block.term->cond; });
+                    REQUIRE(condition != block.instrs.end());
+                    REQUIRE(condition->op == LirOpcode::Const);
+                    guard = condition->strArg;
+                }
+                REQUIRE(guard.has_value());
+                CAPTURE(limit);
+                CAPTURE(length);
+                CHECK((*guard == "true") == (limit < length));
+            }
+        }
+    }
+}
+
 TEST_CASE("Loop versioning finds the counted test after a short-circuit operand") {
     const auto original = Promoted(R"(
         func Walk(limit: uint, bound: uint, pointer: *var uint, start: bool) -> bool {

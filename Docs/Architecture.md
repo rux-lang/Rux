@@ -395,7 +395,10 @@ unsigned 64-bit traversal starting at zero, increasing by one and continuing whi
 invariant limit. That controlling test is the header's branch for a `for` loop; for `while a && i < n` it is a later
 exiting block, the first such test on the dominator chain to the latch, and checks count only below its true edge.
 For an invariant row offset and bound, `row <= bound && count <= bound - row` proves every executed
-`row + index < bound` test. A guard failure selects the original checked loop; it never raises a preheader panic.
+`row + index < bound` test. A loop whose start or stride is not a constant, or whose test is `i <= limit`, is not
+counted; it still proves a check on the unsigned tested value itself by `limit <= bound`, or `limit < bound` under
+`<=`, since the check runs only after the test passed for the same value. An inclusive range's own `i < limit` exit is
+left in place rather than taken for a check. A guard failure selects the original checked loop; it never raises a preheader panic.
 The guard contains only register arithmetic. It neither reads memory nor assumes that different pointers do not alias.
 The fast copy preserves memory operations, floating-point order, early exits and source contexts. SSA definitions and
 exit-phi edges are remapped. Each read of a loop value after the loop, including a phi operand on an edge leaving a
