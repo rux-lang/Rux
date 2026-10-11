@@ -191,3 +191,41 @@ TEST_CASE("machine encoding spells general operand forms") {
     CHECK(uses[0].offset == 2);
     CHECK(uses[0].addend == 8 - 4);
 }
+
+TEST_CASE("machine selection folds a constant index offset into the displacement") {
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaces;
+    const SelectionContext context{layouts, interfaces, Target::OS::Linux, false};
+    const TypeRef word = TypeRef::MakeUInt64();
+    const TypeRef byte = TypeRef::MakePrimitive(TypeRef::Kind::UInt8);
+    const TypeRef pointer = TypeRef::MakePointer(byte);
+    LirFunc function;
+    function.name = "Next";
+    function.returnType = byte;
+    function.params.push_back({0, pointer, "bytes"});
+    function.params.push_back({1, word, "index"});
+    LirBlock block;
+    block.label = "entry";
+    block.instrs.push_back(Instruction(LirOpcode::Const, 2, word, {}, "3"));
+    block.instrs.push_back(Instruction(LirOpcode::Add, 3, word, {1, 2}));
+    block.instrs.push_back(Instruction(LirOpcode::IndexPtr, 4, pointer, {0, 3}));
+    block.instrs.push_back(Instruction(LirOpcode::Load, 5, byte, {4}));
+    LirTerminator ret;
+    ret.kind = LirTermKind::Return;
+    ret.retVal = 5;
+    ret.retType = byte;
+    block.term = ret;
+    function.blocks.push_back(block);
+    auto selected = SelectFunction(function, context);
+    REQUIRE(selected.has_value());
+    const auto emitted = EmitFunction(*selected, Target::OS::Linux, true);
+    REQUIRE(emitted.has_value());
+    std::string text;
+    for (const auto &line : emitted->assembly)
+        text += line + "\n";
+    CAPTURE(text);
+    // `bytes[index + 3]` loads from [bytes + index + 3] without computing the sum.
+    CHECK(text.find("lea") == std::string::npos);
+    CHECK(text.find("add") == std::string::npos);
+    CHECK(text.find("+ 3]") != std::string::npos);
+}

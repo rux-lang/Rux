@@ -566,6 +566,43 @@ Address Selector::AddressOf(const LirReg pointer, const int depth) {
             result = Address{};
             result.base = Value(instruction.srcs[0]);
         }
+        // An index that adds a constant to another 64-bit value moves the constant into the displacement, so
+        // `input[i + 1]` addresses one element past `input[i]` without computing `i + 1`; the 64-bit sum wraps
+        // the same either way.
+        LirReg folded = index;
+        std::int64_t elements = 0;
+        for (int step = 0; step < 4; ++step) {
+            const auto arithmetic = definitions.find(folded);
+            if (arithmetic == definitions.end())
+                break;
+            const LirInstr &sum = *arithmetic->second;
+            if (sum.op == LirOpcode::Cast && sum.srcs.size() == 1 && ScalarSize(sum.type) == 8 && !sum.type.IsBool() &&
+                ScalarSize(TypeOf(sum.srcs[0])) == 8 && !TypeOf(sum.srcs[0]).IsBool() &&
+                TypeOf(sum.srcs[0]).IsInteger() && sum.type.IsInteger()) {
+                folded = sum.srcs[0];
+                continue;
+            }
+            if ((sum.op != LirOpcode::Add && sum.op != LirOpcode::Sub) || sum.srcs.size() != 2 ||
+                ScalarSize(sum.type) != 8 || !sum.type.IsInteger())
+                break;
+            const auto constant = integerConstants.find(sum.srcs[1]);
+            if (constant == integerConstants.end())
+                break;
+            const auto amount = static_cast<std::int64_t>(constant->second);
+            if (amount <= -(std::int64_t{1} << 20) || amount >= (std::int64_t{1} << 20))
+                break;
+            elements += sum.op == LirOpcode::Add ? amount : -amount;
+            folded = sum.srcs[0];
+        }
+        if (folded != index) {
+            bool fits = true;
+            Address shifted = result;
+            shifted.index = Extended(folded);
+            shifted.scale = static_cast<std::uint8_t>(elementSize);
+            shifted = Offset(shifted, elements * elementSize, fits);
+            if (fits)
+                return shifted;
+        }
         result.index = Extended(index);
         result.scale = static_cast<std::uint8_t>(elementSize);
         return result;

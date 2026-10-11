@@ -67,8 +67,15 @@ void EliminateDeadCode(Machine::Function &function) {
         std::vector<bool> used(Machine::PhysicalRegisterCount + function.VirtualCount(), false);
         for (const auto &block : function.blocks) {
             for (const auto &instruction : block.instructions) {
+                // A pure two-address operation's read of the one register it overwrites does not keep that register
+                // alive: if nothing else reads it, the operation and the copy feeding it are both dead.
+                const auto defines = std::ranges::count_if(instruction.operands, [](const Operand &operand) {
+                    return operand.kind == Operand::Kind::Register && operand.def;
+                });
+                const bool removable =
+                    IsPure(static_cast<Op>(instruction.opcode)) && instruction.implicitDefs == 0 && defines == 1;
                 for (const auto &operand : instruction.operands) {
-                    if (operand.kind == Operand::Kind::Register && operand.use)
+                    if (operand.kind == Operand::Kind::Register && operand.use && !(operand.def && removable))
                         used[operand.reg] = true;
                     else if (operand.kind == Operand::Kind::Memory) {
                         if (operand.address.base != NoReg)
