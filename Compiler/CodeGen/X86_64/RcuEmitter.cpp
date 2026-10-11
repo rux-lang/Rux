@@ -1,4 +1,6 @@
 #include "CodeGen/X86_64/CodeAlignment.h"
+#include "CodeGen/X86_64/MachineEmission.h"
+#include "CodeGen/X86_64/MachineSelection.h"
 #include "CodeGen/X86_64/ModuleEmitter.h"
 
 #include <algorithm>
@@ -89,6 +91,10 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
         return;
     }
     currentFunc = func.name;
+    if (machineSelection && GenMachineFunc(func)) {
+        currentFunc.clear();
+        return;
+    }
     const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
     activeFramePlan = &framePlan;
     X86_64CallEmitter callEmitter(enc, framePlan, targetOs, *this);
@@ -307,6 +313,63 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
     activeFramePlan = nullptr;
     currentFunc.clear();
 }
+
+std::uint32_t X86_64ModuleEmitter::ResolveMachineSymbol(const X86_64Machine::SymbolRef &symbol) {
+    using Kind = X86_64Machine::SymbolRef::Kind;
+    switch (symbol.kind) {
+    case Kind::Global:
+        return ResolveGlobalSymbol(symbol.text);
+    case Kind::NamedData:
+        return ResolveNamedDataSymbol(symbol.text);
+    case Kind::Function:
+        return ResolveCallSymbol(symbol.text);
+    case Kind::String:
+        return InternStr(symbol.text);
+    case Kind::Float32:
+        return InternF32(symbol.text);
+    case Kind::Float64:
+        return InternF64(symbol.text);
+    case Kind::Float32SignMask:
+        return InternF32SignMask();
+    case Kind::Float64SignMask:
+        return InternF64SignMask();
+    case Kind::Kernel32:
+        return GetOrAddExtern(symbol.text, RcuSymKind::ExternFunc, "KERNEL32.DLL");
+    }
+    return ~0U;
+}
+
+bool X86_64ModuleEmitter::GenMachineFunc(const LirFunc &func) {
+    const X86_64Machine::SelectionContext context{layouts, interfaceNames, targetOs, backtrace.enabled};
+    auto selected = X86_64Machine::SelectFunction(func, context);
+    if (!selected) {
+        return false;
+    }
+    const auto emitted = X86_64Machine::EmitFunction(*selected, targetOs, false);
+    if (!emitted) {
+        return false;
+    }
+    const uint32_t symIdx = funcSyms.contains(func.name)
+                              ? funcSyms.at(func.name)
+                              : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
+                                              RcuSymVis::ForDefinition(func.isPublic, func.isExported));
+    funcSyms[func.name] = symIdx;
+    std::vector<std::uint32_t> symbols;
+    symbols.reserve(selected->symbols.size());
+    for (const auto &symbol : selected->symbols) {
+        symbols.push_back(ResolveMachineSymbol(symbol));
+    }
+    if (!moduleBuilder.BeginFunction(symIdx)) {
+        return true;
+    }
+    const auto start = static_cast<std::uint32_t>(TextData().size());
+    TextData().insert(TextData().end(), emitted->bytes.begin(), emitted->bytes.end());
+    for (const auto &use : emitted->symbolUses) {
+        AddTextReloc(start + use.offset, symbols.at(use.symbol), use.addend);
+    }
+    (void)moduleBuilder.EndFunction(symIdx);
+    return true;
+}
 } // namespace Rux::X86_64Detail
 
 namespace Rux {
@@ -315,9 +378,10 @@ using X86_64Detail::X86_64ModuleEmitter;
 RcuFile GenerateRcuModule(const LirModule &mod, const std::vector<LirStructDecl> &structDecls,
                           const std::vector<std::string> &interfaceNames, const std::string &packageName,
                           const Target::OS targetOs, const BuildInfo &buildInfo, std::vector<Diagnostic> &diagnostics,
-                          const BacktraceTables &backtrace) {
+                          const BacktraceTables &backtrace, const bool machineSelection) {
     X86_64ModuleEmitter gen(mod, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics);
     gen.SetBacktrace(backtrace);
+    gen.SetMachineSelection(machineSelection);
     return gen.Generate();
 }
 
@@ -345,7 +409,7 @@ std::vector<RcuFile> RcuEmitter::Generate() const {
     for (std::size_t index = 0; index < lir.modules.size(); ++index) {
         const BacktraceTables backtrace{tracesPanics, index, lir.modules.size()};
         result.push_back(GenerateRcuModule(lir.modules[index], structDecls, interfaceNames, packageName, targetOs,
-                                           buildInfo, diagnostics, backtrace));
+                                           buildInfo, diagnostics, backtrace, machineSelection));
     }
     return result;
 }

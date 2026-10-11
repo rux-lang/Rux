@@ -13,6 +13,7 @@
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/FunctionEmitter.h"
+#include "CodeGen/X86_64/MachineInstructions.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Object/Rcu/RcuMetadata.h"
 #include "Unicode/Utf.h"
@@ -262,7 +263,18 @@ public:
         backtrace = tables;
     }
 
+    /// Routes every function the machine selector supports through it (`MachineSelection.h`).
+    void SetMachineSelection(const bool enabled) noexcept {
+        machineSelection = enabled;
+    }
+
 private:
+    bool machineSelection = false;
+
+    /// Emits `func` through machine selection and register allocation; false when it has to use the direct emitter.
+    [[nodiscard]] bool GenMachineFunc(const LirFunc &func);
+    [[nodiscard]] std::uint32_t ResolveMachineSymbol(const X86_64Machine::SymbolRef &symbol);
+
     // One function this module emitted, for its stack-trace table.
     struct FunctionRange {
         std::uint32_t symbol = 0;

@@ -45,7 +45,9 @@ set(RUX_TEST_SOURCES
     CodegenFrameSlotSharingTests.cpp
     CodegenTests.cpp
     CodegenConstantDataTests.cpp
+    CodegenMachineAllocatorTests.cpp
     CodegenModuleVariableTests.cpp
+    X86_64MachineSelectionTests.cpp
     ThreadLocalTests.cpp
     TestAttributeTests.cpp
     TestEntryTests.cpp

@@ -10,6 +10,8 @@
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 #include "CodeGen/X86_64/CodeAlignment.h"
+#include "CodeGen/X86_64/MachineEmission.h"
+#include "CodeGen/X86_64/MachineSelection.h"
 #include "Target/AsmInstr.h"
 
 #include <format>
@@ -841,6 +843,22 @@ AssemblyControlFlowPrinter::AssemblyControlFlowPrinter(AssemblyModulePrinter &mo
 }
 
 void AssemblyControlFlowPrinter::EmitFunction(const LirFunc &function) {
+    if (machineSelection && !function.isAsm) {
+        const X86_64Machine::SelectionContext context{layouts, interfaceNames, targetOs, tracesPanics};
+        if (auto selected = X86_64Machine::SelectFunction(function, context)) {
+            if (const auto emitted = X86_64Machine::EmitFunction(*selected, targetOs, true)) {
+                modulePrinter.TextInstruction(std::format("align {}, db 0x90", X86CodeAlignment));
+                modulePrinter.TextBlank();
+                modulePrinter.TextComment(std::format("── {} (machine selection) ─", function.name));
+                modulePrinter.TextLabel(function.name);
+                for (const auto &line : emitted->assembly) {
+                    modulePrinter.TextLine(line);
+                }
+                modulePrinter.TextBlank();
+                return;
+            }
+        }
+    }
     FunctionAssemblyPrinter printer(modulePrinter, layouts, interfaceNames, targetOs);
     printer.tracesPanics = tracesPanics;
     printer.EmitFunction(function);

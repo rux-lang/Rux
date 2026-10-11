@@ -206,6 +206,21 @@ output starts at the defining instruction, the input dies at that exact point, a
 register. This removes two-address copies without weakening general interval endpoint or phi-edge interference.
 Other backends retain their existing allocation policy; splitting, eviction and caller-saved GPR allocation remain open.
 
+Release x86-64 builds first try machine selection (`X86_64/MachineSelection*.cpp`). It lowers a function into the
+target-independent machine IR of `CodeGen/Machine/MachineIr.h`: virtual registers with a class, physical registers
+for fixed operands and call clobbers, memory operands `[base + index*scale + disp]`, frame objects and RIP-relative
+symbols. Phis become per-edge copies through one temporary per phi, with conditional edges split. Integer values of
+narrow types keep unspecified upper bits and are extended only where an operation reads its full width; Booleans stay
+0 or 1. Comparisons feeding a branch in their own block fuse into `cmp`/`jcc`; `FieldPtr`, `IndexPtr`, allocations and
+globals fold into addressing modes. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
+coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
+reports the callee-saved registers the prologue must save. `X86_64/MachineEmission.cpp` frames the function
+(frame pointer kept for stack traces, objects nothing references take no space), places blocks so the deepest successor
+falls through and failure paths come last, relaxes branches to short forms and encodes through `MachineEncoder`;
+`MachinePrinter` produces the matching `--emit asm` text. A function that uses wide integers, software or x87 floating
+point, atomics, thread-local storage, standard-error writes or C variadic calls, or whose allocation exceeds the
+allocator's bounds, keeps the direct emitter. Both paths share one calling convention, so they call each other freely.
+
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
 `BaselineCpuFeatures` supplies the portable output policy: SSE2 on x86-64, NEON on AArch64, and no capabilities for an

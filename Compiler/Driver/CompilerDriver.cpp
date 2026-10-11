@@ -618,7 +618,8 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         BeginPhase(CompilePhase::EmittingAssembly, opts.manifest.package.name.Text());
         const auto asmPath = root / "Temp" / "Asm" / "out.asm";
         if (!WriteInspectionOutput(InspectionKind::Assembly, asmPath, [&] {
-                return AssemblyPrinter::Emit(lirPackage, asmPath, compileTimeContext.target.os);
+                return AssemblyPrinter::Emit(lirPackage, asmPath, compileTimeContext.target.os,
+                                             compileTimeContext.profile == BuildProfile::Release);
             })) {
             return false;
         }
@@ -645,6 +646,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     else {
         RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os,
                               compileTimeContext.buildInfo);
+        rcuEmitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
         rcuFiles = rcuEmitter.Generate();
         codegenDiagnostics = rcuEmitter.Diagnostics();
     }

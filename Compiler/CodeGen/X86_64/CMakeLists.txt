@@ -17,6 +17,12 @@ rux_add_component(RuxCodeGenX86_64
     EncoderX87.cpp
     FramePlan.cpp
     FunctionEmitter.cpp
+    MachineEmission.cpp
+    MachineEncoder.cpp
+    MachinePrinter.cpp
+    MachineSelection.cpp
+    MachineSelectionArithmetic.cpp
+    MachineSelectionCalls.cpp
     AtomicEmitter.cpp
     ThreadLocalEmitter.cpp
     WideIntegerEmitter.cpp

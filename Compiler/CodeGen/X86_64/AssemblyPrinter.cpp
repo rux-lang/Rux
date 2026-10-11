@@ -14,7 +14,8 @@
 
 namespace Rux {
 namespace {
-[[nodiscard]] std::string GenerateAssembly(const LirPackage &package, const Target::OS targetOs) {
+[[nodiscard]] std::string GenerateAssembly(const LirPackage &package, const Target::OS targetOs,
+                                           const bool machineSelection) {
     Layout::LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
     std::vector<LirStructDecl> allStructs;
@@ -28,6 +29,7 @@ namespace {
 
     AssemblyModulePrinter modulePrinter(targetOs);
     AssemblyControlFlowPrinter functionPrinter(modulePrinter, layouts, interfaceNames, targetOs);
+    functionPrinter.machineSelection = machineSelection;
     for (const auto &module : package.modules) {
         for (const auto &function : module.funcs) {
             functionPrinter.tracesPanics = functionPrinter.tracesPanics || function.name == kBacktraceFunctionName;
@@ -51,11 +53,12 @@ AssemblyPrinter::AssemblyPrinter(LirPackage package, const Target::OS inputTarge
 }
 
 std::string AssemblyPrinter::Generate() const {
-    return GenerateAssembly(lir, targetOs);
+    return GenerateAssembly(lir, targetOs, false);
 }
 
-bool AssemblyPrinter::Emit(const LirPackage &package, const std::filesystem::path &path, const Target::OS targetOs) {
-    const std::string text = GenerateAssembly(package, targetOs);
+bool AssemblyPrinter::Emit(const LirPackage &package, const std::filesystem::path &path, const Target::OS targetOs,
+                           const bool machineSelection) {
+    const std::string text = GenerateAssembly(package, targetOs, machineSelection);
     std::ofstream file(path, std::ios::out | std::ios::trunc);
     if (!file) {
         return false;
