@@ -24,4 +24,11 @@ public:
     [[nodiscard]] std::string_view Name() const noexcept override;
     PassChange Run(LirPackage &package, const PassContext &context) override;
 };
+
+/// Joins unconditional, uniquely entered block chains without moving instructions across a conditional edge.
+class LirBlockCoalescing final : public LirPass {
+public:
+    [[nodiscard]] std::string_view Name() const noexcept override;
+    PassChange Run(LirPackage &package, const PassContext &context) override;
+};
 } // namespace Rux::Optimization

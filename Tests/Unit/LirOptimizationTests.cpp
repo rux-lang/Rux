@@ -453,11 +453,13 @@ TEST_CASE("LIR propagation ignores what a phi receives along an edge a known bra
         CHECK_FALSE(report.HasErrors());
         CHECK(report.reachedFixedPoint);
         const auto &blocks = package.modules[0].funcs[0].blocks;
-        REQUIRE(blocks.size() == 3);
-        CHECK(blocks[1].label == "rhs");
-        CHECK(blocks[2].label == "merge");
+        REQUIRE(blocks.size() == 1);
         REQUIRE(blocks[0].term);
-        CHECK(blocks[0].term->kind == LirTermKind::Jump);
+        CHECK(blocks[0].term->kind == LirTermKind::Return);
+        REQUIRE(blocks[0].instrs.size() == 1);
+        CHECK(blocks[0].instrs[0].op == LirOpcode::Const);
+        CHECK(blocks[0].instrs[0].strArg == "false");
+        CHECK(blocks[0].term->retVal == blocks[0].instrs[0].dst);
     }
 }
 

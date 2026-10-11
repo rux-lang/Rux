@@ -360,3 +360,10 @@ The fast copy preserves memory operations, floating-point order, early exits and
 exit-phi edges are remapped. Unmerged live-out values, memory-dependent bounds, volatile operations, calls, local
 allocations, non-unit steps, signed induction and narrowing conversions are rejected. The initial implementation caps
 loop size, instruction count and checks, and versions at most one innermost loop per function per pipeline run.
+
+Release block coalescing joins an unconditional successor only when that successor has one predecessor. It preserves
+instruction order, replaces unique-edge phis through SSA renaming, and updates outgoing phi predecessors before
+removing dead blocks. Entry blocks, conditional joins and self-targeting edges are not absorbed. Volatile operations,
+calls and potentially trapping arithmetic remain in their original execution order; no instruction crosses a
+conditional edge. A bounded one-shot pass limits CFG analysis and instruction movement. Running after guarded loop
+versioning turns the check-free body into a straight-line block suitable for subsequent loop analysis.

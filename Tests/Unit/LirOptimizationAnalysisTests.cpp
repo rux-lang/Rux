@@ -500,3 +500,78 @@ TEST_CASE("Loop versioning remaps exit phis and rejects unmerged live outs") {
     CHECK_NE(incoming[0].first, incoming[1].first);
     CHECK_NE(incoming[0].second, incoming[1].second);
 }
+
+TEST_CASE("Block coalescing preserves ordered effects and replaces unique-edge phis") {
+    auto package = Promoted("func Walk(value: int, pointer: *var int) -> int { return value; }");
+    auto &function = package.modules[0].funcs[0];
+    const auto value = function.params[0].reg;
+    const auto pointer = function.params[1].reg;
+    function.blocks.clear();
+    function.blocks.resize(3);
+    function.blocks[0].term = JumpTo(2); // Deliberately non-layout order.
+    LirInstr store;
+    store.op = LirOpcode::Store;
+    store.type = TypeRef::MakeInt();
+    store.srcs = {value, pointer};
+    store.isVolatile = true;
+    function.blocks[0].instrs.push_back(store);
+    LirInstr phi;
+    phi.op = LirOpcode::Phi;
+    phi.dst = 100;
+    phi.type = TypeRef::MakeInt();
+    phi.phiPreds = {{value, 0}};
+    function.blocks[2].instrs.push_back(phi);
+    LirInstr divide;
+    divide.op = LirOpcode::Div;
+    divide.dst = 101;
+    divide.type = phi.type;
+    divide.srcs = {100, value};
+    function.blocks[2].instrs.push_back(divide);
+    function.blocks[2].term = JumpTo(1);
+    phi.dst = 102;
+    phi.phiPreds = {{101, 2}};
+    function.blocks[1].instrs.push_back(phi);
+    store.srcs = {102, pointer};
+    function.blocks[1].instrs.push_back(store);
+    function.blocks[1].term = ReturnValue(102, phi.type);
+    REQUIRE(SsaErrors(package).empty());
+    Optimization::LirBlockCoalescing coalescing;
+    REQUIRE(coalescing.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(package).empty());
+    REQUIRE_EQ(function.blocks.size(), 1);
+    const auto &instructions = function.blocks[0].instrs;
+    REQUIRE_EQ(instructions.size(), 3);
+    CHECK(instructions[0].op == LirOpcode::Store);
+    CHECK(instructions[0].isVolatile);
+    CHECK(instructions[1].op == LirOpcode::Div);
+    CHECK(instructions[1].srcs == std::vector<LirReg>{value, value});
+    CHECK(instructions[2].op == LirOpcode::Store);
+    CHECK(instructions[2].isVolatile);
+    CHECK(instructions[2].srcs == std::vector<LirReg>{101, pointer});
+    CHECK(function.blocks[0].term->retVal == 101);
+}
+
+TEST_CASE("Block coalescing keeps conditional joins and valid loop phi edges") {
+    auto package = Promoted(R"(
+        func Sum(test: bool, limit: int) -> int {
+            var result = 0;
+            for i in 0..limit {
+                if test { result += i; }
+                else { result -= i; }
+            }
+            return result;
+        }
+    )");
+    const auto before = Count(package, LirOpcode::Phi);
+    Optimization::LirBlockCoalescing coalescing;
+    static_cast<void>(coalescing.Run(package, {}));
+    CHECK(SsaErrors(package).empty());
+    CHECK_EQ(Count(package, LirOpcode::Phi), before);
+    const auto &function = package.modules[0].funcs[0];
+    CHECK_EQ(std::ranges::count_if(function.blocks,
+                                   [](const auto &block) { return block.term->kind == LirTermKind::Branch; }),
+             2);
+    Optimization::PassContext later;
+    later.iteration = 1;
+    CHECK(coalescing.Run(package, later) == Optimization::PassChange::None);
+}

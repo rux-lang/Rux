@@ -38,6 +38,7 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
         pipeline.lir.Add(std::make_unique<LirValueNumbering>());
         pipeline.lir.Add(std::make_unique<LirLoopInvariants>());
         pipeline.lir.Add(std::make_unique<LirLoopVersioning>());
+        pipeline.lir.Add(std::make_unique<LirBlockCoalescing>());
         pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
         pipeline.lir.Add(std::make_unique<LirCfgVerifier>());

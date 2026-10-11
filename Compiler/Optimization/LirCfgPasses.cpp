@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -315,6 +316,100 @@ void RemoveStalePhiPredecessors(LirFunc &function) {
         }
     }
 }
+
+bool CoalesceBlocks(LirFunc &function) {
+    if (function.isExtern || function.isAsm || function.blocks.size() < 2 || function.blocks.size() > 4096)
+        return false;
+    const auto reachable = ReachableBlocks(function);
+    Predecessors predecessors(function.blocks.size());
+    for (BlockIndex block = 0; block < function.blocks.size(); ++block)
+        for (const auto target : Successors(*function.blocks[block].term))
+            predecessors[target].push_back(block);
+    std::vector<bool> removed(function.blocks.size(), false);
+    std::unordered_map<LirReg, LirReg> copies;
+    bool changed = false;
+    std::size_t budget = 200000;
+    for (BlockIndex block = 0; block < function.blocks.size(); ++block) {
+        if (!reachable[block] || removed[block])
+            continue;
+        auto &current = function.blocks[block];
+        while (current.term->kind == LirTermKind::Jump) {
+            const auto target = current.term->trueTarget;
+            if (target == 0 || target == block || removed[target] || predecessors[target].size() != 1 ||
+                predecessors[target][0] != block)
+                break;
+            auto &successor = function.blocks[target];
+            const auto outgoing = Successors(*successor.term);
+            std::size_t cost = 1 + successor.instrs.size();
+            for (const auto next : outgoing)
+                cost += function.blocks[next].instrs.size();
+            if (cost > budget)
+                break;
+            bool validPhis = true;
+            for (const auto &instruction : successor.instrs)
+                if (instruction.op == LirOpcode::Phi &&
+                    (instruction.phiPreds.size() != 1 || instruction.phiPreds[0].second != block ||
+                     instruction.phiPreds[0].first == instruction.dst))
+                    validPhis = false;
+            if (!validPhis)
+                break;
+            budget -= cost;
+            // A phi on this unique edge is a copy. Preserve aggregate/reference identity through SSA renaming,
+            // rather than inventing a cast or memory operation with different representation semantics.
+            for (auto &instruction : successor.instrs) {
+                if (instruction.op == LirOpcode::Phi)
+                    copies.emplace(instruction.dst, instruction.phiPreds[0].first);
+                else
+                    current.instrs.push_back(std::move(instruction));
+            }
+            current.term = std::move(successor.term);
+            successor.instrs.clear();
+            successor.term = LirTerminator{};
+            successor.term->kind = LirTermKind::Unreachable;
+            removed[target] = true;
+            predecessors[target].clear();
+            for (const auto next : outgoing) {
+                for (auto &predecessor : predecessors[next])
+                    if (predecessor == target)
+                        predecessor = block;
+                for (auto &instruction : function.blocks[next].instrs)
+                    if (instruction.op == LirOpcode::Phi)
+                        for (auto &[value, predecessor] : instruction.phiPreds) {
+                            static_cast<void>(value);
+                            if (predecessor == target)
+                                predecessor = block;
+                        }
+            }
+            changed = true;
+        }
+    }
+    if (!changed)
+        return false;
+    const auto resolve = [&](LirReg reg) {
+        for (std::size_t depth = 0; depth < copies.size(); ++depth) {
+            const auto found = copies.find(reg);
+            if (found == copies.end())
+                break;
+            reg = found->second;
+        }
+        return reg;
+    };
+    for (auto &block : function.blocks) {
+        for (auto &instruction : block.instrs) {
+            for (auto &source : instruction.srcs)
+                source = resolve(source);
+            for (auto &[source, predecessor] : instruction.phiPreds) {
+                static_cast<void>(predecessor);
+                source = resolve(source);
+            }
+        }
+        block.term->cond = resolve(block.term->cond);
+        if (block.term->retVal)
+            block.term->retVal = resolve(*block.term->retVal);
+    }
+    static_cast<void>(RemoveUnreachableBlocks(function));
+    return true;
+}
 } // namespace
 
 std::string_view LirCfgVerifier::Name() const noexcept {
@@ -349,6 +444,20 @@ PassChange LirCfgCleanup::Run(LirPackage &package, const PassContext &) {
             changed = folded || removed || changed;
         }
     }
+    return changed ? PassChange::Changed : PassChange::None;
+}
+
+std::string_view LirBlockCoalescing::Name() const noexcept {
+    return "lir-block-coalescing";
+}
+
+PassChange LirBlockCoalescing::Run(LirPackage &package, const PassContext &context) {
+    if (context.iteration != 0)
+        return PassChange::None;
+    bool changed = false;
+    for (auto &module : package.modules)
+        for (auto &function : module.funcs)
+            changed = CoalesceBlocks(function) || changed;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization
