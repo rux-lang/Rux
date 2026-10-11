@@ -1,11 +1,77 @@
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarCast.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 
 #include <doctest.h>
 
 using namespace Rux;
+
+TEST_CASE("Allocated scalar casts encode exact source widths and signedness") {
+    const std::vector<std::pair<X86ScalarCastInstruction, std::vector<std::uint8_t>>> cases = {
+        {{12, 3, 1, false}, {0x4C, 0x0F, 0xB6, 0xE3}}, {{3, 12, 1, true}, {0x49, 0x0F, 0xBE, 0xDC}},
+        {{6, 7, 1, false}, {0x48, 0x0F, 0xB6, 0xF7}},  {{15, 14, 2, true}, {0x4D, 0x0F, 0xBF, 0xFE}},
+        {{12, 3, 4, false}, {0x44, 0x8B, 0xE3}},       {{12, 3, 4, true}, {0x4C, 0x63, 0xE3}},
+        {{12, 3, 8, false}, {0x4C, 0x8B, 0xE3}},       {{3, 3, 4, false}, {0x8B, 0xDB}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarCastInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+    CHECK(ScalarCastMnemonic(cases[0].first) == "movzx");
+    CHECK(ScalarCastOperands(cases[0].first) == "r12, bl");
+    CHECK(ScalarCastMnemonic(cases[5].first) == "movsxd");
+    CHECK(ScalarCastOperands(cases[4].first) == "r12d, ebx");
+}
+
+TEST_CASE("Scalar cast selection retains wide floating Boolean and volatile fallbacks") {
+    const std::vector<TypeRef> types = {TypeRef::MakeUInt8(),
+                                        TypeRef::MakeInt8(),
+                                        TypeRef::MakeUInt16(),
+                                        TypeRef::MakeInt16(),
+                                        TypeRef::MakeUInt32(),
+                                        TypeRef::MakeInt32(),
+                                        TypeRef::MakeUInt64(),
+                                        TypeRef::MakeInt64(),
+                                        TypeRef::MakePrimitive(TypeRef::Kind::Char8),
+                                        TypeRef::MakePointer(TypeRef::MakeUInt8())};
+    for (const auto &source : types) {
+        for (const auto &destination : types) {
+            LirFunc function;
+            function.name = "Convert";
+            function.params = {{0, source, "input"}};
+            function.returnType = destination;
+            function.blocks.resize(1);
+            LirInstr cast;
+            cast.op = LirOpcode::Cast;
+            cast.dst = 1;
+            cast.srcs = {0};
+            cast.type = destination;
+            cast.strArg = source.ToString();
+            function.blocks[0].instrs = {cast};
+            function.blocks[0].term.emplace();
+            function.blocks[0].term->kind = LirTermKind::Return;
+            function.blocks[0].term->retVal = 1;
+            function.blocks[0].term->retType = destination;
+            const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+            const auto selected = SelectScalarCastInstruction(cast, plan);
+            REQUIRE(selected.has_value());
+            CHECK_EQ(selected->sourceBytes, Layout::SizeOf(source));
+            CHECK_EQ(selected->signedSource, source.IsSigned());
+            cast.isVolatile = true;
+            CHECK_FALSE(SelectScalarCastInstruction(cast, plan).has_value());
+            cast.isVolatile = false;
+            cast.srcs = {9999};
+            CHECK_FALSE(SelectScalarCastInstruction(cast, plan).has_value());
+        }
+    }
+    for (const auto &type : {TypeRef::MakeFloat32(), TypeRef::MakeFloat64(), TypeRef::MakeBool(),
+                             TypeRef::MakePrimitive(TypeRef::Kind::UInt128), TypeRef::MakeNamed("Aggregate")})
+        CHECK_FALSE(ScalarCastType(type));
+}
 
 namespace {
 LirFunc Arithmetic(const TypeRef &type, const LirOpcode operation, const bool keepLeft = true) {

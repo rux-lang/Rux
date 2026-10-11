@@ -10,6 +10,7 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 #include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarCast.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 #include "Numeric/FloatFormat.h"
@@ -1315,6 +1316,10 @@ bool AssemblyInstructionPrinter::EmitWideArithmetic(const LirInstr &instruction)
 // ---- scalar arithmetic (FunctionEmitter.cpp, EmitArithmetic) ------------------------------------------------------
 
 bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
+    if (const auto selected = SelectScalarCastInstruction(instruction, framePlan)) {
+        Instruction(ScalarCastMnemonic(*selected), ScalarCastOperands(*selected));
+        return true;
+    }
     if (framePlan.BranchComparisons().contains(instruction.dst)) {
         return true;
     }

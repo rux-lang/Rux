@@ -3,9 +3,27 @@
 
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarCast.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 
 namespace Rux {
+
+void X64Enc::EmitScalarCastInstruction(const X86ScalarCastInstruction &instruction) const {
+    const bool wide = instruction.sourceBytes != 4 || instruction.signedSource;
+    const auto rex = static_cast<std::uint8_t>(0x40 | (wide ? 8 : 0) | (instruction.destination >= 8 ? 4 : 0) |
+                                               (instruction.source >= 8 ? 1 : 0));
+    if (rex != 0x40)
+        Byte(rex);
+    if (instruction.sourceBytes < 4) {
+        Byte(0x0F);
+        Byte(static_cast<std::uint8_t>((instruction.signedSource ? 0xBE : 0xB6) +
+                                       (instruction.sourceBytes == 2 ? 1 : 0)));
+    }
+    else {
+        Byte(instruction.sourceBytes == 4 && instruction.signedSource ? 0x63 : 0x8B);
+    }
+    Byte(static_cast<std::uint8_t>(0xC0 | ((instruction.destination & 7) << 3) | (instruction.source & 7)));
+}
 
 void X64Enc::EmitScalarAddressInstruction(const X86ScalarAddressInstruction &instruction) const {
     if (instruction.baseSlot)

@@ -12,6 +12,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- Emit allocated x86 integer and pointer casts directly, preserving source-width extension and checked character casts.
+
 - Fold immutable slice lengths and remove proven checks before bounded same-module helper inlining.
 
 - Extend guarded unsigned loop versioning to bounded positive constant strides with wraparound fallback.

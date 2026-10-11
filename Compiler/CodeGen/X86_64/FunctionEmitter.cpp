@@ -4,6 +4,7 @@
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarCast.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 
@@ -521,6 +522,10 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
 }
 
 bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
+    if (const auto selected = SelectScalarCastInstruction(instruction, framePlan)) {
+        encoder.EmitScalarCastInstruction(*selected);
+        return true;
+    }
     if (framePlan.BranchComparisons().contains(instruction.dst)) {
         return true; // The sole consuming branch selects the comparison directly into flags.
     }

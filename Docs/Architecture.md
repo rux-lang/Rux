@@ -196,6 +196,11 @@ descriptor with architectural registers, tied inputs and opcode direction. Both 
 consume that selection, avoiding round trips through scratch registers. Narrow values, spills, integer division and
 destructive right-input overlaps retain their established lowering.
 
+`X86_64/ScalarCast.h` selects integer, character and pointer casts whose source and destination both have GPR
+homes. Encoder and assembly output use the same direct move or sign/zero-extension instruction. The stored word
+is normalized at the source width, matching the existing scratch-register path; consumers interpret narrower
+destinations at their declared width. Boolean, floating-point, wide and spilled casts retain their existing paths.
+
 The x86 selector can request a tied left input for same-width scalar arithmetic. Linear scan honors it only when the
 output starts at the defining instruction, the input dies at that exact point, and the input still owns the physical
 register. This removes two-address copies without weakening general interval endpoint or phi-edge interference.

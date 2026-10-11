@@ -98,6 +98,7 @@ func Main() -> int {
     CheckPointerInduction();
     CheckStridedVersioning();
     CheckConstantSlices();
+    CheckAllocatedCasts();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -727,4 +728,43 @@ func CheckConstantSlices() {
     var other = 41u;
     Assert(mutate(@other) == 34u && other == 42u, "global reads with a distinct store");
     Assert(mutate(@MutableLookupValue) == 35u && MutableLookupValue == 18u, "inlined global reads retain aliasing writes");
+}
+
+func CastWords(value: uint64, output: *var uint64) {
+    *(output + 0u) = (value as uint8) as uint64;
+    *(output + 1u) = (value as uint16) as uint64;
+    *(output + 2u) = (value as uint32) as uint64;
+    *(output + 3u) = value as uint64;
+    *(output + 4u) = (value as int8) as uint64;
+    *(output + 5u) = (value as int16) as uint64;
+    *(output + 6u) = (value as int32) as uint64;
+    *(output + 7u) = (value as int64) as uint64;
+    *(output + 8u) = ((value as int8) as uint32) as uint64;
+    *(output + 9u) = ((value as int16) as uint32) as uint64;
+    *(output + 10u) = ((value & 127u64) as char8) as uint64;
+    *(output + 11u) = ((value & 127u64) as char16) as uint64;
+}
+func CastPointer(pointer: *uint64) -> *uint64 { return (pointer as uint64) as *uint64; }
+func CheckAllocatedCasts() {
+    let convert: func(uint64, *var uint64) = CastWords;
+    let pointer: func(*uint64) -> *uint64 = CastPointer;
+    for value in [0u64, 1u64, 127u64, 128u64, 255u64, 256u64, 32767u64, 32768u64, 65535u64,
+        0x7FFFFFFFu64, 0x80000000u64, 0xFFFFFFFFu64, 0x8000000000000000u64, 0xFFFFFFFFFFFFFFFFu64,
+        0x123456789ABCDEF0u64] {
+        var actual: uint64[12] = [0u64; 12];
+        convert(value, @actual[0]);
+        var expected: uint64[12] = [value; 12];
+        expected[0] = value & 255u64;
+        expected[1] = value & 65535u64;
+        expected[2] = value & 0xFFFFFFFFu64;
+        expected[4] = (value & 128u64) != 0u64 ? expected[0] | 0xFFFFFFFFFFFFFF00u64 : expected[0];
+        expected[5] = (value & 32768u64) != 0u64 ? expected[1] | 0xFFFFFFFFFFFF0000u64 : expected[1];
+        expected[6] = (value & 0x80000000u64) != 0u64 ? expected[2] | 0xFFFFFFFF00000000u64 : expected[2];
+        expected[8] = expected[4] & 0xFFFFFFFFu64;
+        expected[9] = expected[5] & 0xFFFFFFFFu64;
+        expected[10] = value & 127u64;
+        expected[11] = value & 127u64;
+        for i in 0u..12u { Assert(actual[i] == expected[i], "allocated cast width and signedness"); }
+        Assert(pointer(@actual[0]) == @actual[0] && *pointer(@actual[0]) == expected[0], "allocated pointer bit round trip");
+    }
 }
