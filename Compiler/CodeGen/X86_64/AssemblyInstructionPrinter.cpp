@@ -1319,7 +1319,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     if (const auto selected = SelectScalarMachineInstruction(instruction, framePlan)) {
         const auto destination = ScalarMachineRegister(*selected, selected->destination);
         if (selected->destination != selected->left) {
-            Instruction(selected->registerClass == X86ScalarRegisterClass::Integer64 ? "mov" : "movaps",
+            Instruction(ScalarMachineIsFloat(selected->registerClass) ? "movaps" : "mov",
                         destination + ", " + ScalarMachineRegister(*selected, selected->left));
         }
         Instruction(selected->mnemonic, destination + ", " + ScalarMachineRegister(*selected, selected->right));

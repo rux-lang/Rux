@@ -664,7 +664,9 @@ TEST_CASE("x86-64 integer branch selection shares conditions and preserves indep
                 const auto package = PackageOf({function});
                 const auto text = AssemblyPrinter(package, os).Generate();
                 if (type.IsInteger()) {
-                    const auto condition = *IntegerComparisonCondition(operation, type.IsSigned());
+                    const auto selectedCondition = IntegerComparisonCondition(operation, type.IsSigned());
+                    REQUIRE(selectedCondition.has_value());
+                    const auto condition = selectedCondition.value();
                     const std::uint8_t signedFalse[] = {5, 4, 13, 15, 14, 12};
                     const std::uint8_t unsignedFalse[] = {5, 4, 3, 7, 6, 2};
                     const auto operationIndex =
@@ -688,5 +690,21 @@ TEST_CASE("x86-64 integer branch selection shares conditions and preserves indep
                 CHECK(PlanX86_64Frame(function, {}, {}, os).BranchComparisons().empty());
             }
         }
+    }
+}
+
+TEST_CASE("x86-64 uint32 allocated arithmetic agrees in text and binary width") {
+    const auto type = TypeRef::MakeUInt32();
+    for (const auto os : Systems) {
+        const auto function = Function(
+            "Word32", {{0, type, "left"}, {1, type, "right"}},
+            {Instruction(LirOpcode::Add, 2, type, {0, 1}), Instruction(LirOpcode::Cast, 3, type, {0})}, 2, type);
+        const auto package = PackageOf({function});
+        const auto text = AssemblyPrinter(package, os).Generate();
+        CHECK(text.contains("mov     r13d, ebx"));
+        CHECK(text.contains("add     r13d, r12d"));
+        const auto code = CodeOf(package, os);
+        const std::vector<std::uint8_t> expected = {0x41, 0x89, 0xDD, 0x45, 0x01, 0xE5};
+        CHECK(std::ranges::search(code, expected).begin() != code.end());
     }
 }

@@ -89,6 +89,7 @@ func VerifyWordOperations(limit: uint64) {
 }
 
 func Main() -> int {
+    CheckWord32();
     VerifyBranchedInlining(30);
     Assert(CheckFloatPreservation() == 1, "Win64 preserves all 128 bits of every allocated XMM register");
     Assert(CheckIntegerPreservation() == 1, "Win64 preserves allocated RSI and RDI across native calls");
@@ -317,4 +318,27 @@ when #target.os == OperatingSystem::Windows && #target.arch == Architecture::X86
 
 func ManyIntegers(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int {
     return a + b + c + d + e + f + g + h;
+}
+
+func AddWord32(a: uint32, b: uint32) -> uint64 { return (a + b) as uint64; }
+func SubWord32(a: uint32, b: uint32) -> uint64 { return (a - b) as uint64; }
+func MulWord32(a: uint32, b: uint32) -> uint64 { return (a * b) as uint64; }
+func AndWord32(a: uint32, b: uint32) -> uint64 { return (a & b) as uint64; }
+func OrWord32(a: uint32, b: uint32) -> uint64 { return (a | b) as uint64; }
+func XorWord32(a: uint32, b: uint32) -> uint64 { return (a ^ b) as uint64; }
+
+func CheckWord32() {
+    let values: uint32[8] = [0u32, 1u32, 255u32, 65535u32, 65536u32, 0x7FFFFFFFu32, 0x80000000u32, 0xFFFFFFFFu32];
+    for a in values {
+        for b in values {
+            let wideA = a as uint64;
+            let wideB = b as uint64;
+            Assert(AddWord32(a, b) == ((wideA + wideB) & 0xFFFFFFFFu64), "uint32 add wraps and zero-extends");
+            Assert(SubWord32(a, b) == ((wideA - wideB) & 0xFFFFFFFFu64), "uint32 subtract wraps and zero-extends");
+            Assert(MulWord32(a, b) == ((wideA * wideB) & 0xFFFFFFFFu64), "uint32 multiply wraps and zero-extends");
+            Assert(AndWord32(a, b) == (wideA & wideB), "uint32 and zero-extends");
+            Assert(OrWord32(a, b) == (wideA | wideB), "uint32 or zero-extends");
+            Assert(XorWord32(a, b) == (wideA ^ wideB), "uint32 xor zero-extends");
+        }
+    }
 }

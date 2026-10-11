@@ -10,10 +10,15 @@
 
 namespace Rux {
 enum class X86ScalarRegisterClass {
+    Integer32,
     Integer64,
     Float32,
     Float64
 };
+
+[[nodiscard]] inline bool ScalarMachineIsFloat(const X86ScalarRegisterClass registerClass) {
+    return registerClass == X86ScalarRegisterClass::Float32 || registerClass == X86ScalarRegisterClass::Float64;
+}
 
 /// Selected two-address machine operation. Registers are architectural numbers. The destination is tied to `left`;
 /// emission inserts its copy when needed. Integer operations define flags; floating operations preserve them.
@@ -28,8 +33,9 @@ struct X86ScalarMachineInstruction {
     std::string_view mnemonic;
 };
 
-/// Select only fully allocated, same-width scalar arithmetic. Narrow/wide values, spills, fixed-register operations
-/// and destructive right-operand overlaps continue through the established scratch-register emitter.
+/// Select only fully allocated, same-width scalar arithmetic. UInt32 operations naturally zero-extend in a 32-bit
+/// destination; signed/narrow values requiring normalization, wide values, spills, fixed-register operations and
+/// destructive right-operand overlaps continue through the established scratch-register emitter.
 [[nodiscard]] inline std::optional<X86ScalarMachineInstruction>
 SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePlan &plan) {
     if (instruction.op == LirOpcode::Sqrt && instruction.srcs.size() == 1 && !instruction.isVolatile &&
@@ -55,8 +61,10 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
         return std::nullopt;
     const bool single = instruction.type.kind == TypeRef::Kind::Float32;
     const bool floating = single || instruction.type.kind == TypeRef::Kind::Float64;
-    if (!floating && instruction.type.kind != TypeRef::Kind::Int64 && instruction.type.kind != TypeRef::Kind::UInt64 &&
-        instruction.type.kind != TypeRef::Kind::Int && instruction.type.kind != TypeRef::Kind::UInt)
+    const bool word32 = instruction.type.kind == TypeRef::Kind::UInt32;
+    if (!floating && !word32 && instruction.type.kind != TypeRef::Kind::Int64 &&
+        instruction.type.kind != TypeRef::Kind::UInt64 && instruction.type.kind != TypeRef::Kind::Int &&
+        instruction.type.kind != TypeRef::Kind::UInt)
         return std::nullopt;
     const auto &homes = floating ? plan.FloatRegisters() : plan.PhysicalRegisters();
     const auto &types = plan.RegisterTypes();
@@ -73,6 +81,7 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
     };
     X86ScalarMachineInstruction selected{
         floating ? (single ? X86ScalarRegisterClass::Float32 : X86ScalarRegisterClass::Float64)
+        : word32 ? X86ScalarRegisterClass::Integer32
                  : X86ScalarRegisterClass::Integer64,
         reg(destination->second),
         reg(left->second),
@@ -117,8 +126,8 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
 }
 
 [[nodiscard]] inline std::string ScalarMachineRegister(const X86ScalarMachineInstruction &instruction, const int reg) {
-    if (instruction.registerClass != X86ScalarRegisterClass::Integer64)
+    if (ScalarMachineIsFloat(instruction.registerClass))
         return "xmm" + std::to_string(reg);
-    return std::string(X86GeneralRegisterName(reg));
+    return std::string(X86GeneralRegisterName(reg, instruction.registerClass == X86ScalarRegisterClass::Integer32));
 }
 } // namespace Rux

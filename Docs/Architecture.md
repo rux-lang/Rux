@@ -345,3 +345,8 @@ Unknown names and interface references are excluded. Private reference slots fol
 volatile and type checks as other promoted scalar slots. Bounded void helpers clone return edges without manufacturing
 result values or phis; concrete borrowed parameters retain the caller's address identity. Existing expansion budgets,
 recursion exclusions, aggregate-by-value restrictions and required verifiers remain in force.
+
+The x86 scalar machine layer selects allocated uint32 arithmetic with 32-bit architectural register names and
+encodings. Add, subtract, multiply and bitwise operations wrap in the low word and implicitly zero-extend their
+result. Last-use input coalescing applies to this class; signed 32-bit normalization, spills, division and unsafe
+destructive overlaps retain their existing fallback paths. Textual assembly and binary emission share selection.

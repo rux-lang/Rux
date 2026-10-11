@@ -12,10 +12,13 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Direct uint32 arithmetic** — Select allocated x86-64 32-bit add, subtract, multiply and bitwise operations,
+  including last-use input coalescing and implicit zero-extension, with matching assembly and machine bytes.
+
 - **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
   void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
 
-- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
+- **Per-pass IR snapshots** — `build --emit passes` saves initial and per-pass HIR/LIR in separate invocation
   directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
 
 - **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
@@ -677,24 +680,6 @@ Adds broad multi-platform host support, a revamped platform abstraction layer, n
 
 ### Added
 
-- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
-  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
-
-- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
-  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
-
-- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
-  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
-
-- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
-  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
-
-- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
-  reducing stack traffic while retaining conservative pools across incompatible calls.
-
-- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
-  while retaining wrapping, signed and potentially trapping behavior.
-
 #### Language
 
 - **Target attributes** — `@[Target(...)]` attributes to conditionally compile code per platform
@@ -776,24 +761,6 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 
 ### Added
 
-- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
-  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
-
-- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
-  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
-
-- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
-  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
-
-- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
-  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
-
-- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
-  reducing stack traffic while retaining conservative pools across incompatible calls.
-
-- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
-  while retaining wrapping, signed and potentially trapping behavior.
-
 #### CLI / Package Manager
 
 - `rux install [package][@version]` — install a package into the current project
@@ -820,24 +787,6 @@ Expands the package manager CLI, adds Linux and FreeBSD host support, and fixes 
 Expands the compiler with control flow, composite types, modules, and a richer type system.
 
 ### Added
-
-- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
-  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
-
-- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
-  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
-
-- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
-  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
-
-- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
-  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
-
-- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
-  reducing stack traffic while retaining conservative pools across incompatible calls.
-
-- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
-  while retaining wrapping, signed and potentially trapping behavior.
 
 #### Language
 
@@ -876,24 +825,6 @@ func Main() -> int32 {
 ```
 
 ### Added
-
-- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
-  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
-
-- **Per-pass IR snapshots** — uild --emit passes saves initial and per-pass HIR/LIR in separate invocation
-  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
-
-- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
-  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
-
-- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
-  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
-
-- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
-  reducing stack traffic while retaining conservative pools across incompatible calls.
-
-- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
-  while retaining wrapping, signed and potentially trapping behavior.
 
 #### Compiler Pipeline
 

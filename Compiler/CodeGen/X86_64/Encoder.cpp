@@ -514,7 +514,8 @@ void X64Enc::LeaRaxRaxR10(const unsigned shift) const {
 }
 
 void X64Enc::EmitScalarMachineInstruction(const X86ScalarMachineInstruction &instruction) const {
-    const bool floating = instruction.registerClass != X86ScalarRegisterClass::Integer64;
+    const bool floating = ScalarMachineIsFloat(instruction.registerClass);
+    const bool word64 = instruction.registerClass == X86ScalarRegisterClass::Integer64;
     const auto rex = [&](const int reg, const int rm, const bool wide) {
         const auto prefix = static_cast<std::uint8_t>(0x40 | (wide ? 8 : 0) | (reg >= 8 ? 4 : 0) | (rm >= 8 ? 1 : 0));
         if (prefix != 0x40)
@@ -528,7 +529,7 @@ void X64Enc::EmitScalarMachineInstruction(const X86ScalarMachineInstruction &ins
             MovXmm(instruction.destination, instruction.left);
         }
         else {
-            rex(instruction.left, instruction.destination, true);
+            rex(instruction.left, instruction.destination, word64);
             Byte(0x89);
             modrm(instruction.left, instruction.destination);
         }
@@ -537,7 +538,7 @@ void X64Enc::EmitScalarMachineInstruction(const X86ScalarMachineInstruction &ins
     const auto rm = instruction.destinationInRegField ? instruction.right : instruction.destination;
     if (floating)
         Byte(instruction.registerClass == X86ScalarRegisterClass::Float32 ? 0xF3 : 0xF2);
-    rex(reg, rm, !floating);
+    rex(reg, rm, word64);
     if (instruction.twoByteOpcode)
         Byte(0x0F);
     Byte(instruction.opcode);

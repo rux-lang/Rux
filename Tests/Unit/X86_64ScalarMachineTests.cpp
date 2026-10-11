@@ -79,8 +79,33 @@ TEST_CASE("Selected scalar floating operations retain SSE width and operand orde
     }
 }
 
+TEST_CASE("Allocated uint32 arithmetic uses zero-extending 32-bit destinations") {
+    const std::vector<std::pair<LirOpcode, std::vector<std::uint8_t>>> cases = {
+        {LirOpcode::Add, {0x41, 0x89, 0xDD, 0x45, 0x01, 0xE5}},
+        {LirOpcode::Sub, {0x41, 0x89, 0xDD, 0x45, 0x29, 0xE5}},
+        {LirOpcode::Mul, {0x41, 0x89, 0xDD, 0x45, 0x0F, 0xAF, 0xEC}},
+        {LirOpcode::And, {0x41, 0x89, 0xDD, 0x45, 0x21, 0xE5}},
+        {LirOpcode::Or, {0x41, 0x89, 0xDD, 0x45, 0x09, 0xE5}},
+        {LirOpcode::Xor, {0x41, 0x89, 0xDD, 0x45, 0x31, 0xE5}},
+    };
+    for (const auto &[operation, expected] : cases) {
+        const auto function = Arithmetic(TypeRef::MakeUInt32(), operation);
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan);
+        REQUIRE(selected.has_value());
+        CHECK(selected->registerClass == X86ScalarRegisterClass::Integer32);
+        CHECK_EQ(ScalarMachineRegister(*selected, selected->destination), "r13d");
+        CHECK_EQ(ScalarMachineRegister(*selected, selected->left), "ebx");
+        CHECK_EQ(ScalarMachineRegister(*selected, selected->right), "r12d");
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(*selected);
+        CHECK(bytes == expected);
+    }
+}
+
 TEST_CASE("Scalar machine selection retains narrow fixed-register and spilled fallbacks") {
-    for (const auto &type : {TypeRef::MakeInt8(), TypeRef::MakeUInt32(), TypeRef::MakeInt64()}) {
+    for (const auto &type : {TypeRef::MakeInt8(), TypeRef::MakeInt32(), TypeRef::MakeInt64()}) {
         const auto function = Arithmetic(type, type == TypeRef::MakeInt64() ? LirOpcode::Div : LirOpcode::Add);
         const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
         CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan).has_value());
@@ -103,7 +128,8 @@ TEST_CASE("Scalar machine selection retains narrow fixed-register and spilled fa
 }
 
 TEST_CASE("x86 scalar arithmetic coalesces a dying left input without a physical copy") {
-    for (const auto &type : {TypeRef::MakeUInt64(), TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
+    for (const auto &type :
+         {TypeRef::MakeUInt32(), TypeRef::MakeUInt64(), TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
         const auto function = Arithmetic(type, LirOpcode::Sub, false);
         const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
         const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan);

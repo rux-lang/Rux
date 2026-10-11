@@ -69,8 +69,9 @@ private:
                 const bool floating =
                     instruction.type.kind == TypeRef::Kind::Float32 || instruction.type.kind == TypeRef::Kind::Float64;
                 const bool word =
-                    instruction.type.kind == TypeRef::Kind::Int64 || instruction.type.kind == TypeRef::Kind::UInt64 ||
-                    instruction.type.kind == TypeRef::Kind::Int || instruction.type.kind == TypeRef::Kind::UInt;
+                    instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::Int64 ||
+                    instruction.type.kind == TypeRef::Kind::UInt64 || instruction.type.kind == TypeRef::Kind::Int ||
+                    instruction.type.kind == TypeRef::Kind::UInt;
                 const bool arithmetic = instruction.op == LirOpcode::Add || instruction.op == LirOpcode::Sub ||
                                         instruction.op == LirOpcode::Mul ||
                                         (floating && instruction.op == LirOpcode::Div) ||
