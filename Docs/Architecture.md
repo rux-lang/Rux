@@ -497,8 +497,10 @@ read and write memory. Calls, volatile accesses, non-unit induction, irregular b
 rejected. Up to eight rounds per function reach its other loops; an unrolled copy is recognized by its header label
 and never unrolled again. A loop whose count runs between two constants at most sixteen times, with no more than 256
 instructions in all copies, is flattened instead: its header becomes one straight block of every iteration in order,
-whose final values reach the exit, and the body is left unreachable for cleanup. Body, phi, function and analysis
-work budgets bound code growth and compile-time work. When the body's floating-point instructions are float64 loads,
+whose final values reach the exit, and the body is left unreachable for cleanup. Before any of this, constants a
+loop header defines move to the one block entering it: an inlined loop keeps its limit there, where it would look
+loop-defined. Body, phi, function and analysis work budgets bound code growth and compile-time work. When the body's
+floating-point instructions are float64 loads,
 stores and arithmetic on values it computed or on scalars fixed before the loop, every address advances by one
 element per iteration, and none of those values is read outside the body, the unroller pairs the two copies into
 two-lane vector instructions instead, broadcasting the scalars once on entry, and unrolls by four rather than two so a

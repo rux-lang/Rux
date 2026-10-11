@@ -603,6 +603,43 @@ bool Unroll(LirFunc &function) {
     }
     return false;
 }
+
+/// Moves the constants a loop header defines to the one block entering it. An inlined loop keeps its constant limit in
+/// its header, where the limit looks loop-defined and the count cannot be known.
+bool HoistHeaderConstants(LirFunc &function) {
+    if (function.isExtern || function.isAsm || function.blocks.size() < 3)
+        return false;
+    const LirControlFlow cfg(function);
+    const LirDominance dominance(cfg);
+    const LirNaturalLoops loops(cfg, dominance);
+    if (!loops.complete)
+        return false;
+    bool changed = false;
+    for (const auto &[header, members] : loops.members) {
+        auto outside = LirDominance::Invalid;
+        std::size_t entries = 0;
+        for (const auto predecessor : cfg.predecessors[header])
+            if (!members.contains(predecessor)) {
+                outside = predecessor;
+                ++entries;
+            }
+        if (entries != 1 || header == 0)
+            continue;
+        auto &instrs = function.blocks[header].instrs;
+        const auto constant = [](const LirInstr &instruction) {
+            return instruction.op == LirOpcode::Const && !instruction.isVolatile;
+        };
+        if (std::ranges::none_of(instrs, constant))
+            continue;
+        auto &entry = function.blocks[outside].instrs;
+        std::vector<LirInstr> kept;
+        for (auto &instruction : instrs)
+            (constant(instruction) ? entry : kept).push_back(std::move(instruction));
+        instrs = std::move(kept);
+        changed = true;
+    }
+    return changed;
+}
 } // namespace
 
 std::string_view LirLoopUnrolling::Name() const noexcept {
@@ -616,9 +653,11 @@ PassChange LirLoopUnrolling::Run(LirPackage &package, const PassContext &context
     // The unrolled copy is skipped by its label and the original keeps a third header predecessor, which no round
     // accepts, so repeating reaches the function's other loops without unrolling one twice.
     for (auto &module : package.modules)
-        for (auto &function : module.funcs)
+        for (auto &function : module.funcs) {
+            changed = HoistHeaderConstants(function) || changed;
             for (int round = 0; round < 8 && Unroll(function); ++round)
                 changed = true;
+        }
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

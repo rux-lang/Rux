@@ -206,6 +206,56 @@ TEST_CASE("Unrolling flattens a loop between two constants into its header") {
         CHECK(block.term->kind != LirTermKind::Branch);
 }
 
+TEST_CASE("Unrolling flattens a constant loop whose limit its header defines") {
+    auto package = Promoted(R"(
+        func Assemble(at: *uint8) -> uint64 {
+            var value: uint64 = 0u64;
+            var index: uint = 0u;
+            while index < 8u {
+                value = value | ((at[index] as uint64) << ((index * 8u) as uint64));
+                index += 1u;
+            }
+            return value;
+        }
+    )");
+    Optimization::LirCfgCleanup cleanup;
+    Optimization::LirBlockCoalescing coalescing;
+    static_cast<void>(cleanup.Run(package, {}));
+    static_cast<void>(coalescing.Run(package, {}));
+    // Inlining leaves the limit in the header; move it there the same way.
+    auto &function = package.modules[0].funcs[0];
+    LirInstr *comparison = nullptr;
+    std::uint32_t header = 0;
+    for (std::uint32_t block = 0; block < function.blocks.size(); ++block)
+        for (auto &instruction : function.blocks[block].instrs)
+            if (instruction.op == LirOpcode::CmpLt) {
+                comparison = &instruction;
+                header = block;
+            }
+    REQUIRE(comparison != nullptr);
+    const auto limit = comparison->srcs[1];
+    for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        auto &instrs = function.blocks[block].instrs;
+        const auto found =
+            std::ranges::find_if(instrs, [&](const LirInstr &instruction) { return instruction.dst == limit; });
+        if (found == instrs.end() || block == header)
+            continue;
+        auto moved = std::move(*found);
+        instrs.erase(found);
+        auto &target = function.blocks[header].instrs;
+        target.insert(std::ranges::find_if(target, [](const LirInstr &i) { return i.op != LirOpcode::Phi; }),
+                      std::move(moved));
+        break;
+    }
+    REQUIRE(SsaErrors(package).empty());
+    Optimization::LirLoopUnrolling unrolling;
+    REQUIRE(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
+    static_cast<void>(cleanup.Run(package, {}));
+    CHECK(SsaErrors(package).empty());
+    CHECK_EQ(Count(package, LirOpcode::CmpLt), 0);
+    CHECK_EQ(Count(package, LirOpcode::Load), 8);
+}
+
 TEST_CASE("Dead loop elimination removes loops that only count and read") {
     const auto removed = [](const std::string &source) {
         auto package = Promoted(source);
