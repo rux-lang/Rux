@@ -177,6 +177,13 @@ bool Selector::CollectFacts() {
             types[instruction.dst] =
                 instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
             definitions[instruction.dst] = &instruction;
+            // Facts that hold however the blocks are ordered: a narrow unsigned load zero-extends, and a comparison
+            // is 0 or 1. Recording them now lets a use selected before its definition rely on them.
+            if (instruction.op == LirOpcode::Load && KindOf(instruction.type) == ValueKind::Gpr &&
+                !instruction.type.IsSigned())
+                NoteZeroAbove(instruction.dst, ScalarSize(instruction.type) * 8);
+            if (instruction.op >= LirOpcode::CmpEq && instruction.op <= LirOpcode::CmpGe)
+                NoteZeroAbove(instruction.dst, 1);
             if (instruction.op != LirOpcode::Const)
                 continue;
             if (IsFloat(instruction.type)) {

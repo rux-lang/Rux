@@ -97,6 +97,30 @@ TEST_CASE("CFG cleanup threads a constant phi input past a branch-only block") {
     CHECK_EQ(blocks[3].instrs[0].phiPreds[0].second, 1U);
 }
 
+TEST_CASE("Value numbering sees a bounds check through a same-width cast as the loop test") {
+    auto package = Promoted(R"(
+        func Sum(values: uint8[..]) -> uint {
+            var total: uint = 0;
+            var index: uint = 0;
+            while index < values.length { total += values[index] as uint; index += 1; }
+            return total;
+        }
+    )");
+    Optimization::LirViewParameters views;
+    static_cast<void>(views.Run(package, {}));
+    const auto before = Count(package, LirOpcode::CmpLt);
+    Optimization::LirValueNumbering numbering;
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(package).empty());
+    // `index < values.length` and the check `(index as uint64) < values.length` compare the same bits, and the check
+    // runs only where the loop test already held, so its branch becomes a jump.
+    CHECK(Count(package, LirOpcode::CmpLt) < before);
+    std::size_t branches = 0;
+    for (const auto &block : package.modules[0].funcs[0].blocks)
+        branches += block.term && block.term->kind == LirTermKind::Branch;
+    CHECK_EQ(branches, 1U);
+}
+
 TEST_CASE("View parameters read their fields once on entry when only read") {
     for (const bool escapes : {false, true}) {
         auto package = CompileToLir(escapes ? R"(

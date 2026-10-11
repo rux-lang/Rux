@@ -42,12 +42,23 @@ bool Pure(const LirOpcode op) {
 }
 
 using LiteralKeys = std::unordered_map<LirReg, std::string>;
+/// The source of each conversion between two integer types of one width and signedness, such as `uint` and `uint64`:
+/// the value's bits do not change, so an operand read through it is the same operand.
+using SameBits = std::unordered_map<LirReg, LirReg>;
 
-std::string Key(const LirInstr &instruction, const LiteralKeys &literals) {
+std::string Key(const LirInstr &instruction, const LiteralKeys &literals, const SameBits &sameBits = {}) {
     const auto type = instruction.type.ToString();
     std::string key = std::to_string(static_cast<unsigned>(instruction.op)) + ":" + std::to_string(type.size()) + ":" +
                       type + ":" + std::to_string(instruction.strArg.size()) + ":" + instruction.strArg;
-    for (const auto source : instruction.srcs) {
+    for (auto source : instruction.srcs) {
+        // Only an operand is looked through; the instruction's own type still separates different results.
+        if (instruction.op != LirOpcode::Cast)
+            for (int depth = 0; depth < 4; ++depth) {
+                const auto found = sameBits.find(source);
+                if (found == sameBits.end())
+                    break;
+                source = found->second;
+            }
         if (const auto literal = literals.find(source); literal != literals.end()) {
             key += ":c" + std::to_string(literal->second.size()) + ":" + literal->second;
         }
@@ -86,6 +97,18 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
             }
         }
     }
+    SameBits sameBits;
+    for (const auto &block : function.blocks)
+        for (const auto &instruction : block.instrs) {
+            if (instruction.op != LirOpcode::Cast || instruction.isVolatile || instruction.srcs.size() != 1 ||
+                instruction.dst == LirNoReg || !types.contains(instruction.srcs[0]))
+                continue;
+            const TypeRef &from = types.at(instruction.srcs[0]);
+            const TypeRef &to = instruction.type;
+            if (from.IsInteger() && to.IsInteger() && from.IsSigned() == to.IsSigned() && from.SizeInBytes() &&
+                from.SizeInBytes() == to.SizeInBytes())
+                sameBits.emplace(instruction.dst, instruction.srcs[0]);
+        }
     std::unordered_map<LirReg, LirReg> copies;
     const auto resolve = [&](LirReg reg) {
         for (std::size_t depth = 0; depth < copies.size(); ++depth) {
@@ -166,7 +189,7 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
                                 });
             if (instruction.dst != LirNoReg && (pure || load)) {
                 auto &available = load && !constantLoad ? loads : stable ? dominating : values;
-                const auto key = Key(instruction, literals);
+                const auto key = Key(instruction, literals, sameBits);
                 const auto [entry, inserted] = available.emplace(key, instruction.dst);
                 if (!inserted) {
                     copies[instruction.dst] = entry->second;
