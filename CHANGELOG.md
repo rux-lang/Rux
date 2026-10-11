@@ -12,6 +12,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Branches on flags** — x86-64 Release builds branch on a comparison's flags instead of testing the Boolean it set earlier in the block, so loops such as `while same && k < n` end in one compare-and-branch.
 - **Hash tags in `HashMap` and `HashSet`** — each slot keeps the top byte of its key's hash, and a lookup compares it before calling the equality function, so probing past other text keys no longer reads their bytes. WordCount spends about 6% fewer cycles.
 - **Division by constants** — x86-64 Release builds compute unsigned quotients and remainders by a constant with a multiplication by its reciprocal, or a shift or mask for a power of two, instead of `div`.
 - **Loop splitting** — a loop whose bounds checks cannot all be proven up front now runs check-free for as long as they provably pass and finishes in the checked loop, instead of falling back entirely. Base64's decoder, whose padded last group could not be proven, runs about 15% fewer instructions.

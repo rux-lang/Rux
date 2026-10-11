@@ -238,3 +238,84 @@ TEST_CASE("machine selection folds a constant index offset into the displacement
     CHECK(text.find("add") == std::string::npos);
     CHECK(text.find("+ 3]") != std::string::npos);
 }
+
+TEST_CASE("machine emission branches on a flag's comparison instead of testing the flag") {
+    // while same && k < n { same = p[k] == 0; k += 1 } return same: after rotation the latch would materialize `same`
+    // and test it; it branches on the comparison's flags instead.
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaces;
+    const SelectionContext context{layouts, interfaces, Target::OS::Linux, false};
+    const TypeRef word = TypeRef::MakeUInt64();
+    const TypeRef byte = TypeRef::MakePrimitive(TypeRef::Kind::UInt8);
+    const TypeRef flag = TypeRef::MakeBool();
+    LirFunc function;
+    function.name = "Zeros";
+    function.returnType = flag;
+    function.params.push_back({0, TypeRef::MakePointer(byte), "bytes"});
+    function.params.push_back({1, word, "count"});
+    const auto jump = [](const std::uint32_t target) {
+        LirTerminator term;
+        term.kind = LirTermKind::Jump;
+        term.trueTarget = target;
+        return term;
+    };
+    const auto branch = [](const LirReg condition, const std::uint32_t yes, const std::uint32_t no) {
+        LirTerminator term;
+        term.kind = LirTermKind::Branch;
+        term.cond = condition;
+        term.trueTarget = yes;
+        term.falseTarget = no;
+        return term;
+    };
+    LirBlock entry;
+    entry.label = "entry";
+    entry.instrs.push_back(Instruction(LirOpcode::Const, 2, word, {}, "0"));
+    entry.instrs.push_back(Instruction(LirOpcode::Const, 3, flag, {}, "true"));
+    entry.term = jump(1);
+    LirBlock header;
+    header.label = "header";
+    LirInstr index = Instruction(LirOpcode::Phi, 4, word);
+    index.phiPreds = {{2, 0}, {10, 3}};
+    LirInstr same = Instruction(LirOpcode::Phi, 5, flag);
+    same.phiPreds = {{3, 0}, {8, 3}};
+    header.instrs = {index, same};
+    header.term = branch(5, 2, 4);
+    LirBlock bounded;
+    bounded.label = "bounded";
+    bounded.instrs.push_back(Instruction(LirOpcode::CmpLt, 6, flag, {4, 1}));
+    bounded.term = branch(6, 3, 4);
+    LirBlock body;
+    body.label = "body";
+    body.instrs.push_back(Instruction(LirOpcode::IndexPtr, 11, TypeRef::MakePointer(byte), {0, 4}));
+    body.instrs.push_back(Instruction(LirOpcode::Load, 7, byte, {11}));
+    body.instrs.push_back(Instruction(LirOpcode::Const, 12, byte, {}, "0"));
+    body.instrs.push_back(Instruction(LirOpcode::CmpEq, 8, flag, {7, 12}));
+    body.instrs.push_back(Instruction(LirOpcode::Const, 9, word, {}, "1"));
+    body.instrs.push_back(Instruction(LirOpcode::Add, 10, word, {4, 9}));
+    body.term = jump(1);
+    LirBlock exit;
+    exit.label = "exit";
+    LirTerminator ret;
+    ret.kind = LirTermKind::Return;
+    ret.retVal = 5;
+    ret.retType = flag;
+    exit.term = ret;
+    function.blocks = {entry, header, bounded, body, exit};
+    auto selected = SelectFunction(function, context);
+    REQUIRE(selected.has_value());
+    const auto emitted = EmitFunction(*selected, Target::OS::Linux, true);
+    REQUIRE(emitted.has_value());
+    std::string text;
+    for (const auto &line : emitted->assembly)
+        text += line + "\n";
+    CAPTURE(text);
+    // The latch's comparison feeds its branch: nothing between the flag's `sete` and the next jump tests it, and the
+    // count's step that sits between them no longer writes the flags.
+    const auto set = text.find("sete");
+    REQUIRE(set != std::string::npos);
+    const auto next = text.find("\n    j", set);
+    REQUIRE(next != std::string::npos);
+    const auto between = text.substr(set, next - set);
+    CHECK(between.find("test") == std::string::npos);
+    CHECK(between.find("lea") != std::string::npos);
+}

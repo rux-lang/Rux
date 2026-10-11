@@ -107,6 +107,108 @@ void EliminateDeadCode(Machine::Function &function) {
     }
 }
 
+/// Whether an operation leaves the flags as they were.
+[[nodiscard]] bool KeepsFlags(const Op op) {
+    switch (op) {
+    case Op::Mov:
+    case Op::MovImm:
+    case Op::Load:
+    case Op::LoadSigned:
+    case Op::Store:
+    case Op::Lea:
+    case Op::MovZx:
+    case Op::MovSx:
+    case Op::SetCc:
+    case Op::Bswap:
+    case Op::MovFp:
+    case Op::LoadFp:
+    case Op::StoreFp:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/// A branch on a Boolean register that a comparison earlier in the same block produced branches on the comparison's
+/// flags instead. The register is traced back through copies and its zero extension to the `setcc` that made it;
+/// nothing between that and the branch may write the flags, except an addition or subtraction of a constant, which
+/// becomes the equivalent `lea`. A loop testing a flag it computed in its latch, such as `while same && ...` after
+/// rotation, then ends in the comparison's own conditional branch. The `setcc` stays for any other reader and is
+/// otherwise dead.
+void FuseFlagBranches(Machine::Function &function) {
+    for (auto &block : function.blocks) {
+        auto &code = block.instructions;
+        for (std::size_t branch = 1; branch < code.size(); ++branch) {
+            const auto &test = code[branch - 1];
+            auto &jump = code[branch];
+            const auto condition = static_cast<Cond>(jump.condition);
+            if (static_cast<Op>(jump.opcode) != Op::Jcc || (condition != Cond::Equal && condition != Cond::NotEqual) ||
+                static_cast<Op>(test.opcode) != Op::Test || test.operands.size() != 2 ||
+                !test.operands[0].IsRegister() || !test.operands[1].IsRegister() ||
+                test.operands[0].reg != test.operands[1].reg)
+                continue;
+            Reg wanted = test.operands[0].reg;
+            std::size_t set = branch - 1;
+            bool found = false;
+            while (set > 0 && !found) {
+                --set;
+                const auto &instruction = code[set];
+                const bool defines = std::ranges::any_of(instruction.operands, [&](const Operand &operand) {
+                    return operand.IsRegister() && operand.def && operand.reg == wanted;
+                });
+                if (!defines)
+                    continue;
+                const auto op = static_cast<Op>(instruction.opcode);
+                if (op == Op::SetCc && instruction.operands.size() == 1)
+                    found = true;
+                else if ((op == Op::Mov || (op == Op::MovZx && instruction.sourceSize == 1)) &&
+                         instruction.operands.size() == 2 && instruction.operands[1].IsRegister() &&
+                         instruction.operands[0].IsRegister() && instruction.operands[0].use == false)
+                    wanted = instruction.operands[1].reg;
+                else
+                    break;
+            }
+            if (!found)
+                continue;
+            std::vector<std::size_t> additions;
+            bool kept = true;
+            for (std::size_t index = set + 1; index + 1 < branch && kept; ++index) {
+                const auto &instruction = code[index];
+                const auto op = static_cast<Op>(instruction.opcode);
+                if (KeepsFlags(op) && instruction.implicitDefs == 0)
+                    continue;
+                if ((op == Op::Add || op == Op::Sub) && instruction.operands.size() == 2 &&
+                    instruction.operands[0].IsRegister() && instruction.operands[0].use &&
+                    instruction.operands[0].def && instruction.operands[1].kind == Operand::Kind::Immediate &&
+                    instruction.size == 8 &&
+                    instruction.operands[1].immediate > std::numeric_limits<std::int32_t>::min() &&
+                    instruction.operands[1].immediate <= std::numeric_limits<std::int32_t>::max())
+                    additions.push_back(index);
+                else
+                    kept = false;
+            }
+            if (!kept)
+                continue;
+            for (const auto index : additions) {
+                auto &instruction = code[index];
+                const Reg reg = instruction.operands[0].reg;
+                auto amount = instruction.operands[1].immediate;
+                if (static_cast<Op>(instruction.opcode) == Op::Sub)
+                    amount = -amount;
+                Machine::Address address;
+                address.base = reg;
+                address.displacement = static_cast<std::int32_t>(amount);
+                instruction.opcode = static_cast<std::uint16_t>(Op::Lea);
+                instruction.operands = {Operand::Def(reg), Operand::Mem(address)};
+            }
+            const auto flags = static_cast<Cond>(code[set].condition);
+            jump.condition = static_cast<std::uint8_t>(condition == Cond::NotEqual ? flags : Invert(flags));
+            code.erase(code.begin() + static_cast<std::ptrdiff_t>(branch - 1));
+            --branch;
+        }
+    }
+}
+
 /// Copies a loop's small condition block into every block in the loop that jumps back to it, so an iteration ends in
 /// the conditional branch itself rather than a jump to the condition. The original stays as the loop entry. The
 /// machine IR is not in SSA form, so a duplicated definition needs no renaming.
@@ -363,6 +465,8 @@ std::optional<EmittedFunction> EmitFunction(SelectedFunction &selected, const Ta
     auto &function = selected.function;
     EliminateDeadCode(function);
     RotateLoops(function);
+    FuseFlagBranches(function);
+    EliminateDeadCode(function);
     const SpillCode spills;
     const auto allocation = Machine::AllocateRegisters(function, TargetRegistersFor(selected.win64), spills);
     if (!allocation.succeeded)

@@ -237,7 +237,9 @@ zero-extended first. Signed division keeps `idiv`. `CodeGen/Machine/RegisterAllo
 coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
 reports the callee-saved registers the prologue must save. `X86_64/MachineEmission.cpp` frames the function
 (frame pointer kept for stack traces, objects nothing references take no space), copies a small loop-condition block
-into each block that ends with its single jump to it so an iteration ends in its conditional branch, places blocks so
+into each block that ends with its single jump to it so an iteration ends in its conditional branch, branches on a
+comparison's flags where such a branch would test a Boolean the comparison set earlier in the block (an intervening
+constant step becomes a flag-free `lea`), places blocks so
 the deepest successor falls through and failure paths come last, relaxes branches to short forms and encodes through
 `MachineEncoder`;
 `MachinePrinter` produces the matching `--emit asm` text. A function that uses wide integers, software or x87 floating
