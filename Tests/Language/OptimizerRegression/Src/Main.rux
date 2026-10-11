@@ -89,6 +89,7 @@ func VerifyWordOperations(limit: uint64) {
 }
 
 func Main() -> int {
+    CheckMemoryOperands();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -120,6 +121,39 @@ func Main() -> int {
     Assert(LoopRegisterValues(10, 7) == 370, "nested loop values and indirect calls");
     VerifyWordOperations(5000);
     return 0;
+}
+
+func CheckMemoryOperands() {
+    let sentinel = 0x1122334455667788u64;
+    var words: uint64[3] = [sentinel, sentinel, sentinel];
+    *(@words[1] as *var uint8) = 0x80u8;
+    Assert(words[1] == 0x1122334455667780u64, "byte store changes only one byte");
+    Assert((*(@words[1] as *int8) as int64) == -128i64, "byte load sign-extends");
+    Assert((*(@words[1] as *uint8) as uint64) == 128u64, "byte load zero-extends");
+    *(@words[1] as *var uint16) = 0x8000u16;
+    Assert(words[1] == 0x1122334455668000u64, "word store changes only two bytes");
+    Assert((*(@words[1] as *int16) as int64) == -32768i64, "word load sign-extends");
+    Assert((*(@words[1] as *uint16) as uint64) == 32768u64, "word load zero-extends");
+    *(@words[1] as *var uint32) = 0x80000000u32;
+    Assert(words[1] == 0x1122334480000000u64, "dword store changes only four bytes");
+    Assert((*(@words[1] as *int32) as int64) == -2147483648i64, "dword load sign-extends");
+    Assert((*(@words[1] as *uint32) as uint64) == 2147483648u64, "dword load zero-extends");
+    Assert(words[0] == sentinel && words[2] == sentinel, "narrow writes preserve adjacent objects");
+    for pattern in [0u64, 0x8000000000000000u64, 0x7FF0000000000000u64, 0x7FF8000000001234u64,
+        0x7FF0000000000001u64, 1u64] {
+        let bits = pattern;
+        var copied = 0u64;
+        let number = *(@bits as *float64);
+        *(@copied as *var float64) = number;
+        Assert(copied == pattern, "float64 memory moves preserve signed zero, infinity, NaN and subnormal bits");
+    }
+    for pattern in [0u32, 0x80000000u32, 0x7F800000u32, 0x7FC01234u32, 0x7F800001u32, 1u32] {
+        let bits = pattern;
+        var copied = 0u32;
+        let number = *(@bits as *float32);
+        *(@copied as *var float32) = number;
+        Assert(copied == pattern, "float32 memory moves preserve every payload bit");
+    }
 }
 
 func Immediate64(value: uint64) -> uint64 {

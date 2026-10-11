@@ -375,3 +375,10 @@ without an input copy. Candidate constants do not consume a GPR when all their I
 After allocation, a constant definition is omitted only if every consumer actually selected an immediate form.
 Spilled/unselected consumers retain its ordinary stack materialization; phi, return and other uses retain the normal
 path. Frame slots remain conservatively planned. Text and bytes share the same selected instruction descriptor.
+
+Allocated x86 scalar memory selection emits a single exact-width load/store when the address and value already have
+register homes. Integer/character loads preserve sign or zero extension, stores write only the declared byte width,
+and native float32/float64 moves preserve payload bits. The selected descriptor is shared by binary and assembly
+emission, including R12 SIB addressing, R13 zero displacement, extended XMM/GPR numbers and REX byte-register forms.
+Named/global accesses, volatile/atomic operations, aggregates, Boolean normalization, software floats and spilled
+operands retain their established paths. No accesses are reordered or combined, and no alias assumption is added.

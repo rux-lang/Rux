@@ -10,6 +10,7 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
+#include "CodeGen/X86_64/ScalarMemory.h"
 #include "Numeric/FloatFormat.h"
 #include "Numeric/FloatParsing.h"
 #include "Target/FloatLowering.h"
@@ -1597,6 +1598,12 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
 // ---- memory (FunctionEmitter.cpp, EmitMemory) ---------------------------------------------------------------------
 
 bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
+    if (const auto selected = SelectScalarMemoryInstruction(instruction, framePlan)) {
+        const auto address = ScalarMemoryAddress(*selected);
+        const auto value = ScalarMemoryValue(*selected);
+        Instruction(ScalarMemoryMnemonic(*selected), selected->store ? address + ", " + value : value + ", " + address);
+        return true;
+    }
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
     switch (instruction.op) {

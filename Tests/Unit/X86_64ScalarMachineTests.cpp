@@ -1,5 +1,6 @@
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
+#include "CodeGen/X86_64/ScalarMemory.h"
 
 #include <doctest.h>
 
@@ -218,5 +219,73 @@ TEST_CASE("Constants with non-immediate or volatile uses retain materialization"
         const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
         CHECK_FALSE(plan.ElidedImmediates().contains(1));
         CHECK(plan.SlotOffsets().contains(1));
+    }
+}
+
+TEST_CASE("Scalar memory encoding preserves widths extensions and extended address registers") {
+    const std::vector<std::pair<X86ScalarMemoryInstruction, std::vector<std::uint8_t>>> cases = {
+        {{3, 12, 1, false, false, false}, {0x4C, 0x0F, 0xB6, 0x23}},
+        {{13, 12, 1, false, false, true}, {0x4D, 0x0F, 0xBE, 0x65, 0}},
+        {{12, 6, 2, false, false, false}, {0x49, 0x0F, 0xB7, 0x34, 0x24}},
+        {{3, 12, 2, false, false, true}, {0x4C, 0x0F, 0xBF, 0x23}},
+        {{13, 12, 4, false, false, false}, {0x45, 0x8B, 0x65, 0}},
+        {{13, 12, 4, false, false, true}, {0x4D, 0x63, 0x65, 0}},
+        {{12, 13, 8, false, false, false}, {0x4D, 0x8B, 0x2C, 0x24}},
+        {{3, 6, 1, true, false, false}, {0x40, 0x88, 0x33}},
+        {{13, 12, 2, true, false, false}, {0x66, 0x45, 0x89, 0x65, 0}},
+        {{12, 13, 4, true, false, false}, {0x45, 0x89, 0x2C, 0x24}},
+        {{12, 13, 8, true, false, false}, {0x4D, 0x89, 0x2C, 0x24}},
+        {{12, 9, 4, false, true, false}, {0xF3, 0x45, 0x0F, 0x10, 0x0C, 0x24}},
+        {{13, 10, 8, true, true, false}, {0xF2, 0x45, 0x0F, 0x11, 0x55, 0}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMemoryInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+    CHECK_EQ(ScalarMemoryValue({3, 6, 1, true, false, false}), "sil");
+    CHECK_EQ(ScalarMemoryValue({3, 12, 4, false, false, true}), "r12");
+    CHECK_EQ(ScalarMemoryValue({3, 12, 4, false, false, false}), "r12d");
+    CHECK_EQ(ScalarMemoryMnemonic({3, 12, 4, false, false, true}), "movsxd");
+}
+
+TEST_CASE("Scalar memory selection uses allocated homes and retains unsupported fallbacks") {
+    for (const auto &type : {TypeRef::MakeInt8(), TypeRef::MakeUInt8(), TypeRef::MakeInt16(), TypeRef::MakeUInt16(),
+                             TypeRef::MakeInt32(), TypeRef::MakeUInt32(), TypeRef::MakeInt64(), TypeRef::MakeUInt64(),
+                             TypeRef::MakeChar8(), TypeRef::MakeChar32(), TypeRef::MakeFloat32(),
+                             TypeRef::MakeFloat64(), TypeRef::MakePointer(TypeRef::MakeUInt64())}) {
+        LirFunc function;
+        function.name = "Memory";
+        function.returnType = type;
+        function.params = {{0, TypeRef::MakePointer(type), "pointer"}, {1, type, "value"}};
+        function.blocks.resize(1);
+        LirInstr load;
+        load.op = LirOpcode::Load;
+        load.dst = 2;
+        load.type = type;
+        load.srcs = {0};
+        LirInstr store;
+        store.op = LirOpcode::Store;
+        store.type = type;
+        store.srcs = {1, 0};
+        function.blocks[0].instrs = {load, store};
+        function.blocks[0].term.emplace();
+        function.blocks[0].term->kind = LirTermKind::Return;
+        function.blocks[0].term->retVal = 2;
+        function.blocks[0].term->retType = type;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        REQUIRE(SelectScalarMemoryInstruction(load, plan).has_value());
+        REQUIRE(SelectScalarMemoryInstruction(store, plan).has_value());
+        load.isVolatile = true;
+        CHECK_FALSE(SelectScalarMemoryInstruction(load, plan).has_value());
+        load.isVolatile = false;
+        load.strArg = "named";
+        CHECK_FALSE(SelectScalarMemoryInstruction(load, plan).has_value());
+        load.strArg.clear();
+        load.srcs = {9999};
+        CHECK_FALSE(SelectScalarMemoryInstruction(load, plan).has_value());
+        store.op = LirOpcode::AtomicStore;
+        CHECK_FALSE(SelectScalarMemoryInstruction(store, plan).has_value());
     }
 }

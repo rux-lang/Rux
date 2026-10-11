@@ -2,8 +2,45 @@
 // frame layout addresses spill slots through.
 
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarMemory.h"
 
 namespace Rux {
+
+void X64Enc::EmitScalarMemoryInstruction(const X86ScalarMemoryInstruction &instruction) const {
+    if (instruction.floating)
+        Byte(instruction.bytes == 4 ? 0xF3 : 0xF2);
+    else if (instruction.store && instruction.bytes == 2)
+        Byte(0x66);
+    const bool wide =
+        !instruction.floating &&
+        (instruction.bytes == 8 || (!instruction.store && (instruction.bytes < 4 || instruction.signedLoad)));
+    const auto rex = static_cast<std::uint8_t>(0x40 | (wide ? 8 : 0) | (instruction.value >= 8 ? 4 : 0) |
+                                               (instruction.address >= 8 ? 1 : 0));
+    // A byte store from SPL/BPL/SIL/DIL needs REX even when no extension bit is set.
+    if (rex != 0x40 || (!instruction.floating && instruction.store && instruction.bytes == 1 && instruction.value >= 4))
+        Byte(rex);
+    if (instruction.floating) {
+        Byte(0x0F);
+        Byte(instruction.store ? 0x11 : 0x10);
+    }
+    else if (instruction.store) {
+        Byte(instruction.bytes == 1 ? 0x88 : 0x89);
+    }
+    else if (instruction.bytes < 4) {
+        Byte(0x0F);
+        Byte(instruction.signedLoad ? (instruction.bytes == 1 ? 0xBE : 0xBF) : (instruction.bytes == 1 ? 0xB6 : 0xB7));
+    }
+    else {
+        Byte(instruction.bytes == 4 && instruction.signedLoad ? 0x63 : 0x8B);
+    }
+    const auto base = instruction.address & 7;
+    const auto mode = base == 5 ? 0x40 : 0;
+    Byte(static_cast<std::uint8_t>(mode | ((instruction.value & 7) << 3) | base));
+    if (base == 4)
+        Byte(0x24); // No index, scale one; REX.B selects R12 rather than RSP when required.
+    if (base == 5)
+        Byte(0); // RBP/R13 require an explicit displacement, even when it is zero.
+}
 
 void X64Enc::MovRaxLoad(const int32_t d) const {
     Byte(0x48);

@@ -726,3 +726,20 @@ TEST_CASE("x86-64 immediate arithmetic agrees in text and bytes without a consta
         CHECK(std::ranges::search(code, expected).begin() != code.end());
     }
 }
+
+TEST_CASE("x86-64 allocated floating memory accesses agree in text and bytes") {
+    const auto type = TypeRef::MakeFloat64();
+    for (const auto os : Systems) {
+        const auto function = Function(
+            "Memory", {{0, TypeRef::MakePointer(type), "pointer"}, {1, type, "value"}},
+            {Instruction(LirOpcode::Load, 2, type, {0}), Instruction(LirOpcode::Store, LirNoReg, type, {1, 0})}, 2,
+            type);
+        const auto package = PackageOf({function});
+        const auto text = AssemblyPrinter(package, os).Generate();
+        CHECK(text.contains("movsd   xmm9, qword [rbx]"));
+        CHECK(text.contains("movsd   qword [rbx], xmm8"));
+        const auto code = CodeOf(package, os);
+        const std::vector<std::uint8_t> expected = {0xF2, 0x44, 0x0F, 0x10, 0x0B, 0xF2, 0x44, 0x0F, 0x11, 0x03};
+        CHECK(std::ranges::search(code, expected).begin() != code.end());
+    }
+}

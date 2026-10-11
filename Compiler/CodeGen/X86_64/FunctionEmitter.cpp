@@ -4,6 +4,7 @@
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
+#include "CodeGen/X86_64/ScalarMemory.h"
 
 #include <algorithm>
 #include <limits>
@@ -920,6 +921,10 @@ void X86_64FunctionEmitter::CopyAggregateFromR10ToR11(const int size) const {
 }
 
 bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
+    if (const auto selected = SelectScalarMemoryInstruction(instruction, framePlan)) {
+        encoder.EmitScalarMemoryInstruction(*selected);
+        return true;
+    }
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
     switch (instruction.op) {

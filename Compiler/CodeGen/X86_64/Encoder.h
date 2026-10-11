@@ -7,6 +7,7 @@
 
 namespace Rux {
 struct X86ScalarMachineInstruction;
+struct X86ScalarMemoryInstruction;
 
 /// x86-64 binary encoder.
 ///
@@ -361,6 +362,7 @@ public:
     /// rax = rax + r10 * 2^shift; shift must be in 0..3.
     void LeaRaxRaxR10(unsigned shift) const;
     void EmitScalarMachineInstruction(const X86ScalarMachineInstruction &instruction) const;
+    void EmitScalarMemoryInstruction(const X86ScalarMemoryInstruction &instruction) const;
 
     void PopRbp() const;
 
