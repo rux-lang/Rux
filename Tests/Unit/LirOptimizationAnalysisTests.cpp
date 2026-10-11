@@ -794,6 +794,66 @@ TEST_CASE("Loop versioning remaps exit phis and merges unmerged live outs") {
     CHECK_NE(incoming[0].second, incoming[1].second);
 }
 
+TEST_CASE("Loop versioning merges live outs read by phis after the exit") {
+    auto original = VersioningLoop();
+    auto &walk = original.modules[0].funcs[0];
+    std::uint32_t header = 0;
+    LirReg induction = LirNoReg;
+    LirReg next = 0;
+    for (std::uint32_t block = 0; block < walk.blocks.size(); ++block) {
+        for (const auto &instruction : walk.blocks[block].instrs) {
+            if (instruction.dst != LirNoReg)
+                next = std::max(next, instruction.dst + 1);
+            if (instruction.op == LirOpcode::Phi) {
+                header = block;
+                induction = instruction.dst;
+            }
+        }
+    }
+    REQUIRE(induction != LirNoReg);
+    const auto target = walk.blocks[header].term->falseTarget;
+    const auto phiOf = [&](const LirReg value, const std::uint32_t predecessor) {
+        LirInstr phi;
+        phi.op = LirOpcode::Phi;
+        phi.dst = next;
+        phi.type = TypeRef::MakeUInt();
+        phi.phiPreds = {{value, predecessor}};
+        return phi;
+    };
+
+    // The exit jumps to a block whose phi reads the loop's value, as an inlined callee's return does. With a phi on
+    // the exit edge as well, that phi must read the merged value once a new exit block takes over the edge.
+    for (const bool exitEdgePhi : {false, true}) {
+        CAPTURE(exitEdgePhi);
+        auto package = original;
+        auto &blocks = package.modules[0].funcs[0].blocks;
+        const auto join = static_cast<std::uint32_t>(blocks.size());
+        LirBlock returned;
+        returned.label = "returned";
+        returned.instrs.push_back(phiOf(induction, target));
+        returned.term = ReturnValue(next, TypeRef::MakeUInt());
+        if (exitEdgePhi) {
+            auto onEdge = phiOf(induction, header);
+            onEdge.dst = next + 1;
+            blocks[target].instrs.insert(blocks[target].instrs.begin(), onEdge);
+        }
+        blocks[target].term.emplace();
+        blocks[target].term->kind = LirTermKind::Jump;
+        blocks[target].term->trueTarget = join;
+        blocks.push_back(std::move(returned));
+        REQUIRE(SsaErrors(package).empty());
+        Optimization::LirLoopVersioning versioning;
+        CHECK(versioning.Run(package, {}) == Optimization::PassChange::Changed);
+        CHECK(SsaErrors(package).empty());
+        CHECK(blocks[join].instrs.front().phiPreds.front().first != induction);
+        if (exitEdgePhi) {
+            const auto &incoming = blocks[target].instrs.front().phiPreds.front();
+            CHECK(incoming.first != induction);
+            CHECK(incoming.second != header);
+        }
+    }
+}
+
 TEST_CASE("Block coalescing preserves ordered effects and replaces unique-edge phis") {
     auto package = Promoted("func Walk(value: int, pointer: *var int) -> int { return value; }");
     auto &function = package.modules[0].funcs[0];

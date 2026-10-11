@@ -247,36 +247,61 @@ bool Version(LirFunc &function) {
         const auto exitBlock = term->falseTarget;
         std::vector<LirReg> liveOut;
         std::vector<std::uint32_t> readers;
+        const auto note = [&](const LirReg reg) {
+            if (std::ranges::find(liveOut, reg) == liveOut.end())
+                liveOut.push_back(reg);
+        };
+        // Phi operands on loop exit edges keep their edges in the clone. Only when a dedicated exit block takes over
+        // the normal exit do the normal exit's own phis read through it.
+        std::vector<LirReg> exitEdgeValues;
         for (std::uint32_t block = 0; block < function.blocks.size() && eligible; ++block) {
             if (members.contains(block))
                 continue;
             bool reads = false;
+            bool readsThroughPhi = false;
             for (const auto &instruction : function.blocks[block].instrs) {
                 for (const auto source : instruction.srcs)
                     if (local(source)) {
                         reads = true;
-                        if (std::ranges::find(liveOut, source) == liveOut.end())
-                            liveOut.push_back(source);
+                        note(source);
                     }
-                for (const auto &[value, predecessor] : instruction.phiPreds)
-                    if (local(value) && !members.contains(predecessor))
+                // Otherwise a phi operand is read at the end of its predecessor, which the normal exit must
+                // dominate, as it does the jump an inlined callee's return takes.
+                for (const auto &[value, predecessor] : instruction.phiPreds) {
+                    if (!local(value))
+                        continue;
+                    if (members.contains(predecessor)) {
+                        if (block == exitBlock)
+                            exitEdgeValues.push_back(value);
+                    }
+                    else if (dominance.Dominates(exitBlock, predecessor)) {
+                        readsThroughPhi = true;
+                        note(value);
+                    }
+                    else {
                         eligible = false;
+                    }
+                }
             }
             if (const auto &exit = function.blocks[block].term)
                 for (const auto reg : {exit->cond, exit->retVal.value_or(LirNoReg)})
                     if (reg != LirNoReg && local(reg)) {
                         reads = true;
-                        if (std::ranges::find(liveOut, reg) == liveOut.end())
-                            liveOut.push_back(reg);
+                        note(reg);
                     }
-            if (reads) {
-                if (block != exitBlock && !dominance.Dominates(exitBlock, block))
-                    eligible = false;
+            if (reads && block != exitBlock && !dominance.Dominates(exitBlock, block))
+                eligible = false;
+            if (reads || readsThroughPhi)
                 readers.push_back(block);
-            }
         }
         if (!eligible || (!liveOut.empty() && cfg.predecessors[exitBlock] != std::vector<std::uint32_t>{header}))
             continue;
+        if (!liveOut.empty() && !exitEdgeValues.empty()) {
+            for (const auto value : exitEdgeValues)
+                note(value);
+            if (std::ranges::find(readers, exitBlock) == readers.end())
+                readers.push_back(exitBlock);
+        }
         if (!liveOut.empty()) {
             const auto exitIndex = static_cast<std::uint32_t>(function.blocks.size());
             LirBlock exit;
@@ -305,9 +330,14 @@ bool Version(LirFunc &function) {
                     reg = found->second;
             };
             for (const auto block : readers) {
-                for (auto &instruction : function.blocks[block].instrs)
+                for (auto &instruction : function.blocks[block].instrs) {
                     for (auto &source : instruction.srcs)
                         rename(source);
+                    for (auto &[value, predecessor] : instruction.phiPreds) {
+                        static_cast<void>(predecessor);
+                        rename(value);
+                    }
+                }
                 if (auto &exitTerm = function.blocks[block].term) {
                     rename(exitTerm->cond);
                     if (exitTerm->retVal)
