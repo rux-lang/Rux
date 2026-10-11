@@ -397,3 +397,9 @@ recurrences update simultaneously between copies, including cross-dependent recu
 nonunit/signed induction, irregular bodies and unmerged body live-outs are rejected. Body, phi, function and analysis
 work budgets bound code growth and compile-time work. This is scalar unrolling, without vectorization, alias
 assumptions, speculative loads or floating-point reassociation.
+
+The x86 scalar machine descriptor also selects immediate shifts and rotations. Shift counts retain their independent
+integer type and are selected only within the operand width; variable and oversized counts retain existing lowering.
+Covered count definitions no longer occupy registers or emit materialization. Last-use operands may share the result
+home. Zero-count operations become copies, with an explicit 32-bit self-copy when needed to normalize UInt32 upper
+bits. Shared selection and copy predicates keep textual and binary emission consistent, using baseline instructions.

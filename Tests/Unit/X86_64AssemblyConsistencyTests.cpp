@@ -743,3 +743,26 @@ TEST_CASE("x86-64 allocated floating memory accesses agree in text and bytes") {
         CHECK(std::ranges::search(code, expected).begin() != code.end());
     }
 }
+
+TEST_CASE("x86-64 allocated shifts and rotations agree in assembly and machine bytes") {
+    const auto type = TypeRef::MakeUInt64();
+    for (const auto os : Systems) {
+        const auto shift =
+            Function("Shift", {{0, type, "value"}},
+                     {Instruction(LirOpcode::Const, 1, type, {}, "13"), Instruction(LirOpcode::Shr, 2, type, {0, 1}),
+                      Instruction(LirOpcode::Cast, 3, type, {0})},
+                     2, type);
+        const auto rotation = Function("Rotate", {{0, type, "value"}},
+                                       {Instruction(LirOpcode::RotateRight, 1, type, {0}, "19")}, 1, type);
+        const auto package = PackageOf({shift, rotation});
+        const auto text = AssemblyPrinter(package, os).Generate();
+        CHECK(text.contains("shr     r12, 13"));
+        CHECK(text.contains("ror     rbx, 19"));
+        CHECK_FALSE(text.contains("mov     eax, 13"));
+        const auto code = CodeOf(package, os);
+        const std::vector<std::uint8_t> expectedShift = {0x49, 0x89, 0xDC, 0x49, 0xC1, 0xEC, 13};
+        const std::vector<std::uint8_t> expectedRotate = {0x48, 0xC1, 0xCB, 19};
+        CHECK(std::ranges::search(code, expectedShift).begin() != code.end());
+        CHECK(std::ranges::search(code, expectedRotate).begin() != code.end());
+    }
+}

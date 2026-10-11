@@ -1321,10 +1321,12 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     if (const auto selected = SelectScalarMachineInstruction(instruction, framePlan)) {
         const auto destination = ScalarMachineRegister(*selected, selected->destination);
         const bool immediateMultiply = selected->immediate && selected->opcode == 0x69;
-        if (selected->destination != selected->left && !immediateMultiply) {
+        if (ScalarMachineNeedsCopy(*selected)) {
             Instruction(ScalarMachineIsFloat(selected->registerClass) ? "movaps" : "mov",
                         destination + ", " + ScalarMachineRegister(*selected, selected->left));
         }
+        if (ScalarMachineIsZeroShift(*selected))
+            return true;
         if (selected->immediate) {
             const auto operands = immediateMultiply
                                     ? destination + ", " + ScalarMachineRegister(*selected, selected->left) + ", "

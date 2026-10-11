@@ -340,3 +340,84 @@ TEST_CASE("Allocated address selection retains narrow index and unusual layout f
         CHECK_FALSE(SelectScalarAddressInstruction(address, plan, 8).has_value());
     }
 }
+
+TEST_CASE("Allocated constant shifts and rotates encode width count and opcode extension") {
+    const std::vector<std::pair<X86ScalarMachineInstruction, std::vector<std::uint8_t>>> cases = {
+        {{X86ScalarRegisterClass::Integer64, 13, 3, 1, 0xC1, false, false, "ror", 63},
+         {0x49, 0x89, 0xDD, 0x49, 0xC1, 0xCD, 63}},
+        {{X86ScalarRegisterClass::Integer32, 13, 3, 1, 0xC1, false, false, "ror", 31},
+         {0x41, 0x89, 0xDD, 0x41, 0xC1, 0xCD, 31}},
+        {{X86ScalarRegisterClass::Integer64, 3, 3, 4, 0xC1, false, false, "shl", 7}, {0x48, 0xC1, 0xE3, 7}},
+        {{X86ScalarRegisterClass::Integer64, 12, 12, 5, 0xC1, false, false, "shr", 63}, {0x49, 0xC1, 0xEC, 63}},
+        {{X86ScalarRegisterClass::Integer64, 12, 12, 7, 0xC1, false, false, "sar", 63}, {0x49, 0xC1, 0xFC, 63}},
+        {{X86ScalarRegisterClass::Integer32, 12, 12, 4, 0xC1, false, false, "shl", 0}, {0x45, 0x89, 0xE4}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+}
+
+TEST_CASE("Constant shift selection elides covered counts but preserves oversized fallbacks") {
+    for (const auto &type : {TypeRef::MakeUInt32(), TypeRef::MakeUInt64(), TypeRef::MakeInt64()}) {
+        const auto width = Layout::SizeOf(type) * 8;
+        for (const auto operation : {LirOpcode::Shl, LirOpcode::Shr, LirOpcode::Lshr}) {
+            for (int count = 0; count < width; ++count) {
+                const auto function = ImmediateArithmetic(type, operation, std::to_string(count));
+                const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+                const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+                REQUIRE(selected.has_value());
+                CHECK_EQ(selected->immediate, count);
+                CHECK_EQ(selected->mnemonic, operation == LirOpcode::Shl                      ? "shl"
+                                             : operation == LirOpcode::Shr && type.IsSigned() ? "sar"
+                                                                                              : "shr");
+                CHECK(plan.ElidedImmediates().contains(1));
+                CHECK_FALSE(plan.PhysicalRegisters().contains(1));
+            }
+            for (const auto &count : {std::to_string(width), std::to_string(width + 1), std::string("-1")}) {
+                const auto function = ImmediateArithmetic(type, operation, count);
+                const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+                CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan).has_value());
+                CHECK_FALSE(plan.ElidedImmediates().contains(1));
+            }
+        }
+    }
+}
+
+TEST_CASE("Allocated rotations coalesce their last input and reject unsupported counts") {
+    for (const auto &type : {TypeRef::MakeUInt32(), TypeRef::MakeUInt64()}) {
+        auto function = Arithmetic(type, LirOpcode::RotateRight, false);
+        auto &rotate = function.blocks[0].instrs[0];
+        rotate.srcs = {0};
+        const auto width = Layout::SizeOf(type) * 8;
+        for (int count = 0; count < width; ++count) {
+            rotate.strArg = std::to_string(count);
+            const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+            const auto selected = SelectScalarMachineInstruction(rotate, plan);
+            REQUIRE(selected.has_value());
+            CHECK_EQ(selected->destination, selected->left);
+            CHECK_EQ(selected->immediate, count);
+            CHECK_EQ(selected->mnemonic, "ror");
+        }
+        rotate.strArg = std::to_string(width);
+        CHECK_FALSE(
+            SelectScalarMachineInstruction(rotate, PlanX86_64Frame(function, {}, {}, Target::OS::Windows)).has_value());
+        rotate.strArg = "1";
+        rotate.isVolatile = true;
+        CHECK_FALSE(
+            SelectScalarMachineInstruction(rotate, PlanX86_64Frame(function, {}, {}, Target::OS::Windows)).has_value());
+    }
+}
+
+TEST_CASE("Immediate shift counts retain their independent source integer type") {
+    for (const auto &countType :
+         {TypeRef::MakeInt(), TypeRef::MakeInt8(), TypeRef::MakeUInt16(), TypeRef::MakeUInt64()}) {
+        auto function = ImmediateArithmetic(TypeRef::MakeUInt32(), LirOpcode::Shr, "13");
+        function.blocks[0].instrs[0].type = countType;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        REQUIRE(SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan).has_value());
+        CHECK(plan.ElidedImmediates().contains(1));
+    }
+}

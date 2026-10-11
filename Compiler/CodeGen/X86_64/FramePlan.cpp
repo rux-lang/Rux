@@ -118,12 +118,15 @@ private:
                     instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::Int64 ||
                     instruction.type.kind == TypeRef::Kind::UInt64 || instruction.type.kind == TypeRef::Kind::Int ||
                     instruction.type.kind == TypeRef::Kind::UInt;
-                const bool arithmetic = instruction.op == LirOpcode::Add || instruction.op == LirOpcode::Sub ||
-                                        instruction.op == LirOpcode::Mul ||
-                                        (floating && instruction.op == LirOpcode::Div) ||
-                                        (word && (instruction.op == LirOpcode::And || instruction.op == LirOpcode::Or ||
-                                                  instruction.op == LirOpcode::Xor));
-                if ((floating || word) && arithmetic && !instruction.isVolatile && instruction.srcs.size() == 2 &&
+                const bool arithmetic =
+                    instruction.op == LirOpcode::Add || instruction.op == LirOpcode::Sub ||
+                    instruction.op == LirOpcode::Mul || (floating && instruction.op == LirOpcode::Div) ||
+                    (word && (instruction.op == LirOpcode::And || instruction.op == LirOpcode::Or ||
+                              instruction.op == LirOpcode::Xor || instruction.op == LirOpcode::Shl ||
+                              instruction.op == LirOpcode::Shr || instruction.op == LirOpcode::Lshr ||
+                              instruction.op == LirOpcode::RotateRight));
+                if ((floating || word) && arithmetic && !instruction.isVolatile &&
+                    instruction.srcs.size() == (instruction.op == LirOpcode::RotateRight ? 1U : 2U) &&
                     spans.contains(instruction.dst) && spans.contains(instruction.srcs[0]) &&
                     spans.at(instruction.dst)->start == position && spans.at(instruction.srcs[0])->end == position &&
                     spans.at(instruction.srcs[0])->type == instruction.type) {

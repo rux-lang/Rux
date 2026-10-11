@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/Registers.h"
 
@@ -35,6 +36,16 @@ struct X86ScalarMachineInstruction {
     std::optional<std::int32_t> immediate = std::nullopt;
 };
 
+[[nodiscard]] inline bool ScalarMachineIsZeroShift(const X86ScalarMachineInstruction &instruction) {
+    return instruction.opcode == 0xC1 && instruction.immediate == 0;
+}
+
+[[nodiscard]] inline bool ScalarMachineNeedsCopy(const X86ScalarMachineInstruction &instruction) {
+    // A zero-count operation still produces a normalized UInt32 value even if its physical home has stale upper bits.
+    return (instruction.destination != instruction.left && !(instruction.immediate && instruction.opcode == 0x69)) ||
+           (instruction.registerClass == X86ScalarRegisterClass::Integer32 && ScalarMachineIsZeroShift(instruction));
+}
+
 /// x86 sign-extends an imm32 in a 64-bit operation; a 32-bit operation consumes the low 32 bits.
 [[nodiscard]] inline std::optional<std::int32_t> ScalarMachineImmediate(const LirInstr &instruction,
                                                                         const std::uint64_t value) {
@@ -45,6 +56,12 @@ struct X86ScalarMachineInstruction {
         kind != TypeRef::Kind::Int && kind != TypeRef::Kind::UInt)
         return std::nullopt;
     switch (instruction.op) {
+    case LirOpcode::Shl:
+    case LirOpcode::Shr:
+    case LirOpcode::Lshr:
+        // Keep oversized-count behavior on the established path rather than introducing hardware width masking here.
+        return value < (kind == TypeRef::Kind::UInt32 ? 32U : 64U) ? std::optional{static_cast<std::int32_t>(value)}
+                                                                   : std::nullopt;
     case LirOpcode::Add:
     case LirOpcode::Sub:
     case LirOpcode::Mul:
@@ -66,6 +83,27 @@ struct X86ScalarMachineInstruction {
 /// destructive right-operand overlaps continue through the established scratch-register emitter.
 [[nodiscard]] inline std::optional<X86ScalarMachineInstruction>
 SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePlan &plan) {
+    if (instruction.op == LirOpcode::RotateRight && instruction.srcs.size() == 1 && !instruction.isVolatile &&
+        (instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64)) {
+        const auto &homes = plan.PhysicalRegisters();
+        const auto &types = plan.RegisterTypes();
+        const bool word32 = instruction.type.kind == TypeRef::Kind::UInt32;
+        const auto count = ParseIntegerLiteralBits(instruction.strArg);
+        if (count && *count < (word32 ? 32U : 64U) && homes.contains(instruction.dst) &&
+            homes.contains(instruction.srcs[0]) && types.contains(instruction.srcs[0]) &&
+            types.at(instruction.srcs[0]) == instruction.type) {
+            return X86ScalarMachineInstruction{
+                word32 ? X86ScalarRegisterClass::Integer32 : X86ScalarRegisterClass::Integer64,
+                X86AllocatedGprs.at(static_cast<std::size_t>(homes.at(instruction.dst))),
+                X86AllocatedGprs.at(static_cast<std::size_t>(homes.at(instruction.srcs[0]))),
+                1,
+                0xC1,
+                false,
+                false,
+                "ror",
+                static_cast<std::int32_t>(*count)};
+        }
+    }
     if (instruction.op == LirOpcode::Sqrt && instruction.srcs.size() == 1 && !instruction.isVolatile &&
         (instruction.type.kind == TypeRef::Kind::Float32 || instruction.type.kind == TypeRef::Kind::Float64)) {
         const auto &homes = plan.FloatRegisters();
@@ -102,9 +140,14 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
     std::optional<std::int32_t> immediate;
     if (const auto found = plan.ImmediateValues().find(instruction.srcs[1]); found != plan.ImmediateValues().end())
         immediate = ScalarMachineImmediate(instruction, found->second);
+    const bool immediateShift = immediate && (instruction.op == LirOpcode::Shl || instruction.op == LirOpcode::Shr ||
+                                              instruction.op == LirOpcode::Lshr);
     if (destination == homes.end() || left == homes.end() || (!immediate && right == homes.end()) ||
         !types.contains(instruction.srcs[0]) || !types.contains(instruction.srcs[1]) ||
-        types.at(instruction.srcs[0]) != instruction.type || types.at(instruction.srcs[1]) != instruction.type ||
+        types.at(instruction.srcs[0]) != instruction.type ||
+        (immediateShift
+             ? !types.at(instruction.srcs[1]).IsInteger() || Layout::SizeOf(types.at(instruction.srcs[1])) > 8
+             : types.at(instruction.srcs[1]) != instruction.type) ||
         (!immediate && destination->second == right->second && destination->second != left->second))
         return std::nullopt;
     const auto reg = [&](const int home) {
@@ -122,6 +165,18 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
         floating,
         {}};
     switch (instruction.op) {
+    case LirOpcode::Shl:
+    case LirOpcode::Shr:
+    case LirOpcode::Lshr:
+        if (floating || !immediate)
+            return std::nullopt;
+        selected.opcode = 0xC1;
+        selected.immediate = immediate;
+        selected.right = instruction.op == LirOpcode::Shl                                ? 4
+                       : instruction.op == LirOpcode::Shr && instruction.type.IsSigned() ? 7
+                                                                                         : 5;
+        selected.mnemonic = selected.right == 4 ? "shl" : selected.right == 7 ? "sar" : "shr";
+        return selected;
     case LirOpcode::Add:
         selected.opcode = floating ? 0x58 : 0x01;
         selected.mnemonic = floating ? (single ? "addss" : "addsd") : "add";
