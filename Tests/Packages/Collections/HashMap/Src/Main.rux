@@ -1,6 +1,6 @@
 import Core::uint;
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, HashSet, KeyValue, TableSeed };
+import Collections::{ CollectionError, EqualsInt32, EqualsSlice, HashInt32, HashMap, HashSet, KeyValue, TableSeed };
 import Core::{ Assert, Panic };
 
 // A hash table is mostly interesting where it is full and where things have been removed from it, so what is checked
@@ -164,10 +164,34 @@ func VerifyEntryHashes(allocator: Allocator) {
     }
 }
 
+// Slice equality compares whole words, the last one overlapping, and four-byte halves below eight bytes, so a
+// difference at any position of any length up to three words must still show.
+func VerifySliceEquality() {
+    var left: char8[24] = [c8'a'; 24];
+    var right: char8[24] = [c8'a'; 24];
+    for i in 0u..24u {
+        left[i] = (65 + i * 7 % 26) as char8;
+        right[i] = left[i];
+    }
+    for length in 0u..=24u {
+        Assert(EqualsSlice(left[..length], right[..length]), "equal runs are equal at every length");
+        Assert(EqualsSlice(left[1..1 + length / 2], right[1..1 + length / 2]), "equal runs at an odd start");
+        if length > 0 {
+            Assert(!EqualsSlice(left[..length], right[..length - 1]), "different lengths are never equal");
+        }
+        for at in 0u..length {
+            right[at] = c8'#';
+            Assert(!EqualsSlice(left[..length], right[..length]), "a difference at any position shows");
+            right[at] = left[at];
+        }
+    }
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     VerifyEntryHashes(allocator);
+    VerifySliceEquality();
 
     // A new map allocates nothing.
     var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);

@@ -11,7 +11,7 @@
 // seed in, and an equality that agrees with it. The one rule is the usual one — two keys that compare equal must
 // hash the same.
 
-import Hash::{ SipHash24, SipHash24Of, WriteUint64 };
+import Hash::{ SipHash24, SipHash24Of, SipWord, WriteUint64 };
 
 /// The seeded hash of a `uint`.
 /// `value`, `low` and `high` are read by value. The seed is the table's, and two tables with different seeds hash
@@ -158,16 +158,43 @@ pub func EqualsChar8(left: char8, right: char8) -> bool {
 /// Whether two runs of characters hold the same characters.
 /// Both are borrowed and read. Different lengths are never equal, and two empty slices are, whatever their data
 /// pointers hold.
+/// Compares eight bytes at a time, finishing with the last eight, which may overlap words already compared; runs of
+/// four to seven bytes compare their first and last four. Only shorter runs go byte by byte.
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether both hold the same bytes
 /// @see https://rux-lang.dev/docs/api/collections/hashing#equals-slice
 pub func EqualsSlice(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }
+    let length = left.length;
+    let first = left.data as *byte;
+    let second = right.data as *byte;
+    if length >= 8 {
+        var offset: uint = 0;
+        while length - offset > 8 {
+            if SipWord(first + offset) != SipWord(second + offset) { return false; }
+            offset += 8;
+        }
+        return SipWord(first + (length - 8)) == SipWord(second + (length - 8));
+    }
+    if length >= 4 {
+        return Quarter(first) == Quarter(second) && Quarter(first + (length - 4)) == Quarter(second + (length - 4));
+    }
     var index: uint = 0;
-    while index < left.length {
-        if left.data[index] != right.data[index] { return false; }
+    while index < length {
+        if *(first + index) != *(second + index) { return false; }
         index++;
     }
     return true;
+}
+
+// The four bytes at `bytes` as a word, least significant byte first; assembled byte by byte, so any address will do.
+func Quarter(bytes: *byte) -> uint32 {
+    var value: uint32 = 0;
+    var index: uint = 0;
+    while index < 4 {
+        value = value | ((*(bytes + index) as uint32) << ((index * 8) as uint32));
+        index++;
+    }
+    return value;
 }
