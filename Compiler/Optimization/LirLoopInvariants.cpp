@@ -84,6 +84,64 @@ bool Speculatable(const LirInstr &instruction) {
     return false;
 }
 
+/// Gives every loop entered from a single block that also branches elsewhere its own preheader on that edge, so the
+/// loop has a block that runs exactly when the loop is entered and nothing else depends on.
+bool InsertPreheaders(LirFunc &function) {
+    if (function.isExtern || function.isAsm || function.blocks.size() < 2 || function.blocks.size() > 4096)
+        return false;
+    const LirControlFlow cfg(function);
+    const LirDominance dominance(cfg);
+    const LirNaturalLoops loops(cfg, dominance);
+    if (!loops.complete)
+        return false;
+    bool changed = false;
+    for (const auto &[header, members] : loops.members) {
+        std::vector<std::uint32_t> outside;
+        for (const auto predecessor : cfg.predecessors[header])
+            if (!members.contains(predecessor))
+                outside.push_back(predecessor);
+        if (outside.size() != 1 || cfg.successors[outside[0]].size() == 1 || header == 0)
+            continue;
+        const auto entry = outside[0];
+        const auto preheader = static_cast<std::uint32_t>(function.blocks.size());
+        auto &term = *function.blocks[entry].term;
+        const auto retarget = [&](std::uint32_t &target) {
+            if (target == header)
+                target = preheader;
+        };
+        switch (term.kind) {
+        case LirTermKind::Jump:
+            retarget(term.trueTarget);
+            break;
+        case LirTermKind::Branch:
+            retarget(term.trueTarget);
+            retarget(term.falseTarget);
+            break;
+        case LirTermKind::Switch:
+            retarget(term.defaultTarget);
+            for (auto &item : term.cases)
+                retarget(item.target);
+            break;
+        default:
+            continue;
+        }
+        for (auto &instruction : function.blocks[header].instrs)
+            for (auto &[value, predecessor] : instruction.phiPreds) {
+                static_cast<void>(value);
+                if (predecessor == entry)
+                    predecessor = preheader;
+            }
+        LirBlock block;
+        block.label = function.blocks[header].label + ".preheader";
+        block.term.emplace();
+        block.term->kind = LirTermKind::Jump;
+        block.term->trueTarget = header;
+        function.blocks.push_back(std::move(block));
+        changed = true;
+    }
+    return changed;
+}
+
 bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNames) {
     if (function.isExtern || function.isAsm || function.blocks.size() < 2 || function.blocks.size() > 4096) {
         return false;
@@ -241,7 +299,13 @@ bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNam
                     // Keep crowded loops from gaining more long-lived values than the allocatable registers hold.
                     // Replacing the sole loop use of an input need not add pressure, and a hoisted load costs the
                     // loop no more than the load it replaces even when its value has to be spilled.
-                    invariant = invariant && (live.size() < 12 || freed != 0 || load);
+                    // A field address of an allocation or global is a frame or symbol constant the back end
+                    // rematerializes or folds into an access, so it never occupies a register across the loop.
+                    const bool constantAddress = instruction.op == LirOpcode::FieldPtr &&
+                                                 instruction.srcs.size() == 1 &&
+                                                 origins.contains(instruction.srcs[0]) &&
+                                                 origins.at(instruction.srcs[0]).first != LirOpcode::FieldPtr;
+                    invariant = invariant && (live.size() < 12 || freed != 0 || load || constantAddress);
                     if (invariant && 1 + neededConstants.size() <= budget) {
                         for (const auto &[source, count] : consumed) {
                             uses[source] -= count;
@@ -295,7 +359,9 @@ PassChange LirLoopInvariants::Run(LirPackage &package, const PassContext &contex
     const auto constantNames = ConstantNames(package);
     for (auto &module : package.modules) {
         for (auto &function : module.funcs) {
-            changed = Hoist(function, constantNames) || changed;
+            const bool preheaders = InsertPreheaders(function);
+            const bool hoisted = Hoist(function, constantNames);
+            changed = preheaders || hoisted || changed;
         }
     }
     return changed ? PassChange::Changed : PassChange::None;
