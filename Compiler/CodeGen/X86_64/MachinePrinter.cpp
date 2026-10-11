@@ -252,6 +252,9 @@ std::string PrintInstruction(const SelectedFunction &selected, const Instruction
                            operand(1, instruction.sourceSize));
     case Op::FpToUInt64:
         return std::format("cvt2u64 {}, {}  ; via {}", operand(0, 8), operand(1, 8), operand(2, 8));
+    case Op::UInt64ToFp:
+        return std::format("cvtu64  {}, {}  ; via {}, {}", operand(0, size), operand(1, 8), operand(2, 8),
+                           operand(3, 8));
     case Op::Panic:
         return std::format("panic   {}  ; site {}", operand(0, 8), operands[1].immediate);
     case Op::LoadFp:

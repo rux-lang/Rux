@@ -1,0 +1,48 @@
+// An unsigned 64-bit integer converts to the nearest float, ties to even, across its whole range. The hardware
+// conversion is signed, so a value of 2^63 or more takes a different path from a smaller one, and the rounding at
+// both ends of that path is what this checks. The inputs live in a module variable, which no optimization reads at
+// compile time, so every conversion here runs in the program.
+
+import Core::Assert;
+
+var Inputs: uint64[10] = [
+    0u64,
+    1u64,
+    9007199254740993u64,
+    9223372036854775807u64,
+    9223372036854775808u64,
+    9223372036854776832u64,
+    9223372036854776833u64,
+    9223372036854777856u64,
+    18446744073709551615u64,
+    12345678901234567890u64
+];
+
+func Double(index: uint) -> float64 {
+    return Inputs[index] as float64;
+}
+
+func Single(index: uint) -> float32 {
+    return Inputs[index] as float32;
+}
+
+func Main() -> int {
+    Assert(Double(0) == 0.0, "zero converts to zero");
+    Assert(Double(1) == 1.0, "one converts to one");
+    // 2^53 + 1 lies halfway between two doubles and rounds to the even one.
+    Assert(Double(2) == 9007199254740992.0, "2^53 + 1 rounds to even");
+    // 2^63 - 1 is the largest signed value and rounds up to 2^63.
+    Assert(Double(3) == 9223372036854775808.0, "2^63 - 1 rounds up to 2^63");
+    Assert(Double(4) == 9223372036854775808.0, "2^63 converts exactly");
+    // Above 2^63 doubles are 2048 apart: half way rounds to even, past it rounds up.
+    Assert(Double(5) == 9223372036854775808.0, "2^63 + 1024 ties to the even 2^63");
+    Assert(Double(6) == 9223372036854777856.0, "2^63 + 1025 rounds up");
+    Assert(Double(7) == 9223372036854777856.0, "2^63 + 2048 converts exactly");
+    Assert(Double(8) == 18446744073709551616.0, "2^64 - 1 rounds to 2^64");
+    Assert(Double(9) == 12345678901234567168.0, "a large value rounds to the nearest double");
+    Assert(Single(1) == 1.0f32, "one converts to one in single precision");
+    Assert(Single(4) == 9223372036854775808.0f32, "2^63 converts exactly in single precision");
+    Assert(Single(8) == 18446744073709551616.0f32, "2^64 - 1 rounds to 2^64 in single precision");
+    Assert(Single(9) == 12345678901234567168.0f32, "a large value rounds to the nearest single");
+    return 0;
+}

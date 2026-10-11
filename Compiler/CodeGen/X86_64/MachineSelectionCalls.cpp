@@ -170,6 +170,17 @@ bool Selector::SelectBitCast(const LirInstr &instruction) {
     if (instruction.op != LirOpcode::Call || instruction.srcs.size() != 1 || instruction.dst == LirNoReg)
         return false;
     const std::string &name = instruction.strArg;
+    // Lowering routes an unsigned 64-bit conversion to floating point through a software helper, because the hardware
+    // conversion is signed. Two instructions and a halving step do it exactly, so the call never happens here.
+    if ((name == "__rux_float_f64_from_uint64" || name == "__rux_float_f32_from_uint64") &&
+        KindOfReg(instruction.srcs[0]) == ValueKind::Gpr && KindOfReg(instruction.dst) == ValueKind::Xmm) {
+        const Reg half = NewGpr();
+        const Reg low = NewGpr();
+        Emit(Op::UInt64ToFp, name == "__rux_float_f64_from_uint64" ? 8 : 4,
+             {Operand::Def(Value(instruction.dst)), Operand::Use(Value(instruction.srcs[0])), Operand::Def(half),
+              Operand::Def(low)});
+        return true;
+    }
     Op op;
     std::uint8_t size;
     if (name == "FloatBits64") {

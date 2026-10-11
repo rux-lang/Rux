@@ -333,6 +333,36 @@ void MachineEncoder::EncodeFpToUInt64(const Instruction &instruction) {
     out[done] = static_cast<std::uint8_t>(out.size() - (done + 1));
 }
 
+void MachineEncoder::EncodeUInt64ToFp(const Instruction &instruction) {
+    const Reg destination = instruction.operands[0].reg;
+    const Reg value = instruction.operands[1].reg;
+    const Reg half = instruction.operands[2].reg;
+    const Reg low = instruction.operands[3].reg;
+    const bool single = instruction.size == 4;
+    const std::uint8_t prefix = single ? 0xF3 : 0xF2;
+    // test value, value; js large
+    Emit(0, true, {0x85}, HardwareNumber(value), false, RegisterRm(value));
+    Byte(0x78);
+    const auto large = out.size();
+    Byte(0);
+    // A value below 2^63 converts as the signed integer it also is.
+    Emit(prefix, true, {0x0F, 0x2A}, HardwareNumber(destination), false, RegisterRm(value));
+    Byte(0xEB); // jmp done
+    const auto done = out.size();
+    Byte(0);
+    out[large] = static_cast<std::uint8_t>(out.size() - (large + 1));
+    // Otherwise halve it, keeping the bit shifted out as a sticky bit so the conversion still rounds correctly, then
+    // double the result, which is exact. The value is read before either scratch register is written.
+    Emit(0, true, {0x8B}, HardwareNumber(half), false, RegisterRm(value));
+    Emit(0, true, {0x8B}, HardwareNumber(low), false, RegisterRm(value));
+    Emit(0, true, {0xD1}, 5, false, RegisterRm(half));                   // shr half, 1
+    Emit(0, true, {0x83}, 4, false, RegisterRm(low), 1, 1);              // and low, 1
+    Emit(0, true, {0x0B}, HardwareNumber(half), false, RegisterRm(low)); // or half, low
+    Emit(prefix, true, {0x0F, 0x2A}, HardwareNumber(destination), false, RegisterRm(half));
+    Emit(prefix, false, {0x0F, 0x58}, HardwareNumber(destination), false, RegisterRm(destination));
+    out[done] = static_cast<std::uint8_t>(out.size() - (done + 1));
+}
+
 void MachineEncoder::EncodePanic(const Instruction &instruction) {
     const Reg message = instruction.operands[0].reg;
     const PanicSite &site = function.panics.at(static_cast<std::size_t>(instruction.operands[1].immediate));
@@ -647,6 +677,9 @@ void MachineEncoder::Encode(const Instruction &instruction) {
         return;
     case Op::FpToUInt64:
         EncodeFpToUInt64(instruction);
+        return;
+    case Op::UInt64ToFp:
+        EncodeUInt64ToFp(instruction);
         return;
     case Op::Panic:
         EncodePanic(instruction);

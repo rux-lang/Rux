@@ -74,6 +74,7 @@ private:
     void EncodeShift(const Machine::Instruction &instruction, std::uint8_t digit);
     void EncodeFloat(const Machine::Instruction &instruction, std::uint8_t opcode);
     void EncodeFpToUInt64(const Machine::Instruction &instruction);
+    void EncodeUInt64ToFp(const Machine::Instruction &instruction);
     void EncodePanic(const Machine::Instruction &instruction);
     void CallSymbol(std::uint32_t symbol);
     void LeaRip(Reg destination, std::uint32_t symbol);

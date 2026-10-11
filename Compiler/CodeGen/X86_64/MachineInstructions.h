@@ -166,6 +166,9 @@ enum class Op : std::uint16_t {
     // FpToUInt64: operand 0 (GPR) receives the truncation of operand 1 (XMM, clobbered) to an unsigned 64-bit
     // integer, operand 2 is an XMM scratch register.
     FpToUInt64,
+    // UInt64ToFp: operand 0 (XMM) receives operand 1 (GPR) converted as an unsigned 64-bit integer to floating point
+    // of `size` bytes, correctly rounded; operands 2 and 3 are GPR scratch registers.
+    UInt64ToFp,
     // Reports a runtime failure and never returns. Operand 0 holds the address of the message slice;
     // `PanicSite` carries the static text.
     Panic,
