@@ -13,117 +13,42 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 ### Added
 
 - Emit allocated x86 integer and pointer casts directly, preserving source-width extension and checked character casts.
-
 - Fold immutable slice lengths and remove proven checks before bounded same-module helper inlining.
-
 - Extend guarded unsigned loop versioning to bounded positive constant strides with wraparound fallback.
-
 - Advance affine loop pointers and fold constant x86 address steps into displacement LEA with last-use coalescing.
-
 - Recognize equal typed literal operands across blocks to remove repeated arithmetic and proven checks.
-
 - Align x86 function and backward-branch entries consistently in machine code and assembly output.
-
 - Reuse exact loads across uniquely entered CFG edges while retaining write, ordering, join and loop barriers.
-
 - Emit constant shifts and rotations in allocated x86 registers, eliding covered shift-count constants.
-
 - Unroll bounded unsigned memory loops in execution order with guarded entry and a scalar tail.
-
 - Select allocated x86 scalar addresses directly with scaled LEA and bounded spill reloads.
-- **Allocated scalar memory access** — Load and store directly through allocated x86 registers, removing scratch
-  transfers while preserving integer extension, exact store widths and floating-point payload bits.
-- **Allocated immediate arithmetic** — Use direct x86 integer immediate operations with correct sign extension,
-  freeing constant registers and removing materialization when every use is covered by instruction selection.
-- **Straight-line control flow** — Coalesce uniquely entered block chains in Release, remove redundant jumps and
-  phi copies, and retain conditional boundaries and the order of observable operations.
-- **Guarded loop bounds** — Release builds can select a check-free copy of a bounded unsigned traversal after
-  proving its row ranges safe, retaining the original checked loop when the guard fails.
-
-- **Direct uint32 arithmetic** — Select allocated x86-64 32-bit add, subtract, multiply and bitwise operations,
-  including last-use input coalescing and implicit zero-extension, with matching assembly and machine bytes.
-
-- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded
-  void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
-
-- **Per-pass IR snapshots** — `build --emit passes` saves initial and per-pass HIR/LIR in separate invocation
-  directories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
-
-- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer
-  bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
-
-- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder
-  complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
-
-- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation,
-  reducing stack traffic while retaining conservative pools across incompatible calls.
-
-- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts
-  while retaining wrapping, signed and potentially trapping behavior.
-
-- **Native square-root lowering** — Release optimization recognizes exact scalar hardware square-root assembly
-  wrappers and emits a typed operation at the call site on x86-64 and AArch64. Arbitrary assembly and other widths
-  remain callable; unused square roots retain their possible floating-point exceptions.
-
-- **Optimizer pass diagnostics** — `build --stats` reports pass time, runs, changed runs and LIR instruction deltas.
-  Repeatable `build --disable-pass <name>` supports diagnostic bisection while keeping required verification and frame
-  normalization enabled. Unknown or inactive pass names are rejected.
-
-- **Portable target CPU baselines** — native and cross-target compilation both expose SSE2 for x86-64 and NEON for
-  AArch64. Compiler-host build flags no longer authorize extra instructions in portable output; runtime detection
-  remains a separate source of hardware availability.
-
-- **Explicit last-use register coalescing** — selected x86 scalar arithmetic can overwrite its dying left input,
-  removing physical copies and reducing register demand. Live inputs, reassigned homes and phi-edge overlaps retain
-  their interference constraints.
-
-- **Dominated scalar value reuse** — exact integer/address computations are reused across dominated blocks;
-  typed stores forward to same-address loads until a memory or ordering barrier. Repeated branches simplify only
-  when an incoming edge proves the exact Boolean value, preserving phi edges and conservative alias behavior.
-
-- **Direct x86 scalar register operations** — allocated 64-bit integer arithmetic/bitwise operations and scalar
-  float32/float64 arithmetic use their physical register operands directly. A shared selection descriptor keeps
-  assembly text and binary encoding aligned; narrow, spilled and fixed-register operations retain safe fallbacks.
-
-- **Native x86 address and branch selection** — indexed 1/2/4/8-byte elements use scaled LEA; single-use integer
-  comparisons immediately feeding a branch use condition flags directly. Fall-through edges omit redundant jumps,
-  preserving edge-specific phi copies. General and floating register planning share one liveness computation.
-
-- **Validated x86 CPU state detection** — runtime AVX2/AVX-512 availability now requires the corresponding CPU bits,
-  XSAVE/OSXSAVE and enabled XCR0 register state. Detection checks supported CPUID leaves before querying them.
-
-- **Private aggregate scalar replacement** — concrete structs and tuples with scalar fields, including closed
-  whole-object copy chains, can be split into promotable locals. Copies snapshot their fields before later mutation;
-  raw-byte access, escapes, overlapping representations and volatile operations preserve the original storage.
-
-- **Bounded control-flow inlining** — small scalar helpers with branches, loops, multiple returns, and direct call
-  chains can be expanded in callee-first order. Recursive components and their wrappers remain callable; per-function
-  and package growth limits bound expansion. Return merging preserves SSA edges and avoids artificial numeric casts.
-
-- **Native x86 scalar floating-point registers** — float32/float64 intermediates can remain in XMM registers through
-  control flow and compatible calls. Win64 preserves their complete nonvolatile state; incompatible call intervals and
-  wide/software arithmetic retain conservative stack storage. Calls, phi copies, constants, and x87 remainder use the
-  selected value location without changing floating-point evaluation order.
-
-- **Collection insertion hash reuse** — HashMap insertion, replacement and get-or-insert, and HashSet insertion reuse
-  the lookup hash when placing a new entry. Growth recomputes the home under the new capacity with the same keyed seed.
-
-- **SSA verification and conservative loop optimization** — Release builds verify definition dominance and phi
-  types, reuse exact local expressions and scalar loads between memory barriers, and hoist nontrapping integer/address
-  invariants from natural loops with existing preheaders. Primitive borrow and function-pointer locals can be promoted.
-  Pattern address normalization preserves conditional payload access; ternary arms convert to their merged result type.
-
-- **Bounded scalar inlining and instruction selection** — Release optimization inlines small direct scalar leaf
-  functions once within explicit growth budgets. Complementary constant shifts select native uint32/uint64 rotates;
-  unsigned power-of-two division/remainder select shifts/masks. Both backends use immediate forms for constant shifts.
-
-- **Scalar memory promotion** — Release builds replace eligible private scalar locals and independent range/slice
-  fields with SSA values, eliminating repeated local loads and stores through branches and nested loops. Escaped,
-  volatile, mixed-width and potentially uninitialized storage keeps its memory behavior.
-
-- **Register allocation through control flow** — native x86-64 and AArch64 code can retain scalar values in callee-saved
-  registers across branches and loops. Shared CFG liveness covers back edges and predecessor-edge phi uses, and AArch64
-  phi copies honor register homes. Software floating-point values retain conservative memory storage.
+- **Allocated scalar memory access** — Load and store directly through allocated x86 registers, removing scratch transfers while preserving integer extension, exact store widths and floating-point payload bits.
+- **Allocated immediate arithmetic** — Use direct x86 integer immediate operations with correct sign extension, freeing constant registers and removing materialization when every use is covered by instruction selection.
+- **Straight-line control flow** — Coalesce uniquely entered block chains in Release, remove redundant jumps and phi copies, and retain conditional boundaries and the order of observable operations.
+- **Guarded loop bounds** — Release builds can select a check-free copy of a bounded unsigned traversal after proving its row ranges safe, retaining the original checked loop when the guard fails.
+- **Direct uint32 arithmetic** — Select allocated x86-64 32-bit add, subtract, multiply and bitwise operations, including last-use input coalescing and implicit zero-extension, with matching assembly and machine bytes.
+- **Borrowed structure helpers** — Promote known thin references out of private stack slots and inline bounded void helpers with concrete borrowed structures, preserving early returns and raw-pointer aliasing.
+- **Per-pass IR snapshots** — `build --emit passes` saves initial and per-pass HIR/LIR in separate invocation irectories, with iteration/slot identities, disabled-pass handling and explicit output-failure diagnostics.
+- **SipHash throughput** — Keep round state in scalar locals and hash one-shot inputs without streaming-buffer bookkeeping, preserving SipHash-2-4 keys, round counts, tails and streaming behavior.
+- **Loop-weighted allocation** — x86 scalar allocation prioritizes frequently used loop values and can spill a colder complete interval before emission, preserving tied-input interference and canonical stack fallbacks.
+- **Additional Win64 integer registers** — Compatible functions allocate RSI/RDI with ABI-correct preservation, reducing stack traffic while retaining conservative pools across incompatible calls.
+- **Unsigned range comparison folding** — Prove constant comparisons from masks, bounded arithmetic and safe casts while retaining wrapping, signed and potentially trapping behavior.
+- **Native square-root lowering** — Release optimization recognizes exact scalar hardware square-root assembly wrappers and emits a typed operation at the call site on x86-64 and AArch64. Arbitrary assembly and other widths remain callable; unused square roots retain their possible floating-point exceptions.
+- **Optimizer pass diagnostics** — `build --stats` reports pass time, runs, changed runs and LIR instruction deltas. Repeatable `build --disable-pass <name>` supports diagnostic bisection while keeping required verification and frame normalization enabled. Unknown or inactive pass names are rejected.
+- **Portable target CPU baselines** — native and cross-target compilation both expose SSE2 for x86-64 and NEON for AArch64. Compiler-host build flags no longer authorize extra instructions in portable output; runtime detection remains a separate source of hardware availability.
+- **Explicit last-use register coalescing** — selected x86 scalar arithmetic can overwrite its dying left input, removing physical copies and reducing register demand. Live inputs, reassigned homes and phi-edge overlaps retain their interference constraints.
+- **Dominated scalar value reuse** — exact integer/address computations are reused across dominated blocks; typed stores forward to same-address loads until a memory or ordering barrier. Repeated branches simplify only when an incoming edge proves the exact Boolean value, preserving phi edges and conservative alias behavior.
+- **Direct x86 scalar register operations** — allocated 64-bit integer arithmetic/bitwise operations and scalar float32/float64 arithmetic use their physical register operands directly. A shared selection descriptor keeps assembly text and binary encoding aligned; narrow, spilled and fixed-register operations retain safe fallbacks.
+- **Native x86 address and branch selection** — indexed 1/2/4/8-byte elements use scaled LEA; single-use integer comparisons immediately feeding a branch use condition flags directly. Fall-through edges omit redundant jumps, preserving edge-specific phi copies. General and floating register planning share one liveness computation.
+- **Validated x86 CPU state detection** — runtime AVX2/AVX-512 availability now requires the corresponding CPU bits, XSAVE/OSXSAVE and enabled XCR0 register state. Detection checks supported CPUID leaves before querying them.
+- **Private aggregate scalar replacement** — concrete structs and tuples with scalar fields, including closed whole-object copy chains, can be split into promotable locals. Copies snapshot their fields before later mutation; raw-byte access, escapes, overlapping representations and volatile operations preserve the original storage.
+- **Bounded control-flow inlining** — small scalar helpers with branches, loops, multiple returns, and direct call chains can be expanded in callee-first order. Recursive components and their wrappers remain callable; per-function and package growth limits bound expansion. Return merging preserves SSA edges and avoids artificial numeric casts.
+- **Native x86 scalar floating-point registers** — float32/float64 intermediates can remain in XMM registers through control flow and compatible calls. Win64 preserves their complete nonvolatile state; incompatible call intervals and wide/software arithmetic retain conservative stack storage. Calls, phi copies, constants, and x87 remainder use the selected value location without changing floating-point evaluation order.
+- **Collection insertion hash reuse** — HashMap insertion, replacement and get-or-insert, and HashSet insertion reuse the lookup hash when placing a new entry. Growth recomputes the home under the new capacity with the same keyed seed.
+- **SSA verification and conservative loop optimization** — Release builds verify definition dominance and phi types, reuse exact local expressions and scalar loads between memory barriers, and hoist nontrapping integer/address invariants from natural loops with existing preheaders. Primitive borrow and function-pointer locals can be promoted. Pattern address normalization preserves conditional payload access; ternary arms convert to their merged result type.
+- **Bounded scalar inlining and instruction selection** — Release optimization inlines small direct scalar leaf functions once within explicit growth budgets. Complementary constant shifts select native uint32/uint64 rotates; unsigned power-of-two division/remainder select shifts/masks. Both backends use immediate forms for constant shifts.
+- **Scalar memory promotion** — Release builds replace eligible private scalar locals and independent range/slice fields with SSA values, eliminating repeated local loads and stores through branches and nested loops. Escaped, volatile, mixed-width and potentially uninitialized storage keeps its memory behavior.
+- **Register allocation through control flow** — native x86-64 and AArch64 code can retain scalar values in callee-saved registers across branches and loops. Shared CFG liveness covers back edges and predecessor-edge phi uses, and AArch64 phi copies honor register homes. Software floating-point values retain conservative memory storage.
 
 #### Language
 
