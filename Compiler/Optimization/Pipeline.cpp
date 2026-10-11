@@ -10,6 +10,7 @@
 #include "Optimization/LirLoopUnrolling.h"
 #include "Optimization/LirLoopVersioning.h"
 #include "Optimization/LirMemoryPromotion.h"
+#include "Optimization/LirPointerInduction.h"
 #include "Optimization/LirScalarCombines.h"
 #include "Optimization/LirScalarReplacement.h"
 #include "Optimization/LirSsaVerifier.h"
@@ -42,6 +43,8 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
         pipeline.lir.Add(std::make_unique<LirBlockCoalescing>());
         pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
+        pipeline.lir.Add(std::make_unique<LirPointerInduction>());
+        pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir.Add(std::make_unique<LirLoopUnrolling>());
         pipeline.lir.Add(std::make_unique<LirCfgVerifier>());
         pipeline.lir.Add(std::make_unique<LirSsaVerifier>());

@@ -14,6 +14,7 @@ rux_add_component(RuxOptimization
     LirLoopInvariants.cpp
     LirLoopVersioning.cpp
     LirLoopUnrolling.cpp
+    LirPointerInduction.cpp
     LirSsaVerifier.cpp
     LirScalarReplacement.cpp
     LirReachability.cpp

@@ -341,6 +341,53 @@ TEST_CASE("Allocated address selection retains narrow index and unusual layout f
     }
 }
 
+TEST_CASE("Constant address offsets preserve wrapping and signed displacement limits") {
+    LirInstr address;
+    address.op = LirOpcode::IndexPtr;
+    address.type = TypeRef::MakePointer(TypeRef::MakeUInt64());
+    address.dst = 2;
+    address.srcs = {0, 1};
+    CHECK(ScalarAddressImmediate(address, 1, 8) == 8);
+    CHECK(ScalarAddressImmediate(address, UINT64_MAX, 8) == -8);
+    CHECK(ScalarAddressImmediate(address, 268435455, 8) == 2147483640);
+    CHECK_FALSE(ScalarAddressImmediate(address, 268435456, 8));
+    CHECK(ScalarAddressImmediate(address, UINT64_MAX - 268435455, 8) == INT32_MIN);
+    CHECK_FALSE(ScalarAddressImmediate(address, UINT64_MAX - 268435456, 8));
+    CHECK(ScalarAddressImmediate(address, std::uint64_t{1} << 61, 8) == 0);
+    CHECK_FALSE(ScalarAddressImmediate(address, 1, 3));
+
+    for (const auto &indexType : {TypeRef::MakeUInt64(), TypeRef::MakeUInt32()}) {
+        LirFunc function;
+        function.name = "Step";
+        function.params = {{0, address.type, "pointer"}};
+        function.returnType = address.type;
+        function.blocks.resize(1);
+        LirInstr literal;
+        literal.op = LirOpcode::Const;
+        literal.dst = 1;
+        literal.type = indexType;
+        literal.strArg = "1";
+        function.blocks[0].instrs = {literal, address};
+        function.blocks[0].term.emplace();
+        function.blocks[0].term->kind = LirTermKind::Return;
+        function.blocks[0].term->retVal = 2;
+        function.blocks[0].term->retType = address.type;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        const auto selected = SelectScalarAddressInstruction(address, plan, 8);
+        if (indexType == TypeRef::MakeUInt64()) {
+            REQUIRE(selected.has_value());
+            CHECK(selected->index == -1);
+            CHECK(selected->displacement == 8);
+            CHECK(selected->destination == selected->base);
+            CHECK(plan.ElidedImmediates().contains(1));
+        }
+        else {
+            CHECK_FALSE(selected.has_value());
+            CHECK_FALSE(plan.ElidedImmediates().contains(1));
+        }
+    }
+}
+
 TEST_CASE("Allocated constant shifts and rotates encode width count and opcode extension") {
     const std::vector<std::pair<X86ScalarMachineInstruction, std::vector<std::uint8_t>>> cases = {
         {{X86ScalarRegisterClass::Integer64, 13, 3, 1, 0xC1, false, false, "ror", 63},

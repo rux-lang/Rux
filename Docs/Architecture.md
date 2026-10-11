@@ -423,3 +423,15 @@ text and type, including literal-length delimiters. Constants remain defined in 
 hoist them or lengthen their register intervals. The key table owns copied text before block rewriting. Different
 literal spellings may conservatively miss reuse; different types/values never share a key. Floating-point and pointer
 constants keep register identity. Existing dominance, memory barriers and floating computation restrictions still apply.
+Bounded pointer induction runs after CFG cleanup and before ordered unrolling, followed by dead-code cleanup. In a
+simple unsigned 64-bit unit-step loop, addresses of the form base + (row + index) advance through pointer phis.
+The base and row must dominate loop entry and remain outside the loop; addresses used outside the body are rejected.
+Only pure address arithmetic moves to the incoming block. Loads, stores, checks and floating operations retain their
+order, including raw-pointer aliases and unsigned index wrapping. The pass changes one loop and at most four pointers
+per function on the first pipeline iteration, with block/instruction/analysis budgets. General signed induction,
+irregular loops and escaping address values retain their existing form.
+
+On x86, constant indexed addresses use a signed 32-bit LEA displacement when the complete 64-bit wrapping scaled
+offset is representable. Other offsets, narrow indices and unsupported layouts retain existing lowering. Count
+constants are elided only when every consumer selects a supported immediate form. Last-use pointer inputs may share
+the result register, as scalar arithmetic inputs already do; shared text/binary selection preserves operand rules.

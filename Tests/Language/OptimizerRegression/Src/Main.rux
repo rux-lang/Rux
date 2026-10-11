@@ -95,6 +95,7 @@ func Main() -> int {
     CheckAllocatedShifts();
     CheckLoadFacts();
     CheckLiteralKeys();
+    CheckPointerInduction();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -592,4 +593,49 @@ func CheckLiteralKeys() {
         Assert(values(value, true) == value + 15, "literal expression branch result");
         Assert(values(value, false) == value * 2 + 30, "literal expression dominating result");
     }
+}
+
+func AffinePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uint, other: *uint) -> uint {
+    var result = 0u;
+    for i in start..limit {
+        *(pointer + (row + i)) += 3u;
+        result += *(other + (row + i));
+    }
+    return result;
+}
+func ReferencePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uint, other: *uint) -> uint {
+    var remaining = limit > start ? limit - start : 0u;
+    var index = start;
+    var result = 0u;
+    while remaining > 0u {
+        *(pointer + (row + index)) += 3u;
+        result += *(other + (row + index));
+        index += 1u;
+        remaining -= 1u;
+    }
+    return result;
+}
+func CheckPointerInduction() {
+    let walk: func(uint, uint, uint, *var uint, *uint) -> uint = AffinePointerWalk;
+    for start in 0u..5u {
+        for limit in 0u..6u {
+            for displacement in 0u..3u {
+                var actual: uint[12] = [7u; 12];
+                var expected: uint[12] = [7u; 12];
+                let writeOffset = displacement == 2u ? 1u : 0u;
+                let readOffset = displacement == 1u ? 1u : 0u;
+                let a = walk(start, limit, 3u, @actual[writeOffset], @actual[readOffset]);
+                let b = ReferencePointerWalk(start, limit, 3u, @expected[writeOffset], @expected[readOffset]);
+                Assert(a == b, "pointer induction preserves aliased load/store order");
+                for i in 0u..12u { Assert(actual[i] == expected[i], "pointer induction writes the same elements"); }
+            }
+        }
+    }
+    var actual: uint[12] = [11u; 12];
+    var expected: uint[12] = [11u; 12];
+    let wrappedRow = 0xFFFFFFFFFFFFFFFCu;
+    let a = walk(4u, 8u, wrappedRow, @actual[0], @actual[1]);
+    let b = ReferencePointerWalk(4u, 8u, wrappedRow, @expected[0], @expected[1]);
+    Assert(a == b, "pointer induction preserves unsigned row wrapping");
+    for i in 0u..12u { Assert(actual[i] == expected[i], "wrapped pointer induction writes"); }
 }

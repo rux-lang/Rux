@@ -12,6 +12,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- Advance affine loop pointers and fold constant x86 address steps into displacement LEA with last-use coalescing.
+
 - Recognize equal typed literal operands across blocks to remove repeated arithmetic and proven checks.
 
 - Align x86 function and backward-branch entries consistently in machine code and assembly output.

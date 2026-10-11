@@ -4,6 +4,7 @@
 #include "Optimization/LirLoopUnrolling.h"
 #include "Optimization/LirLoopVersioning.h"
 #include "Optimization/LirMemoryPromotion.h"
+#include "Optimization/LirPointerInduction.h"
 #include "Optimization/LirScalarReplacement.h"
 #include "Optimization/LirSsaVerifier.h"
 #include "Optimization/LirValueNumbering.h"
@@ -821,4 +822,83 @@ TEST_CASE("Literal expression keys remove repeated bounds without crossing write
     static_cast<void>(numbering.Run(writes, {}));
     CHECK_EQ(Count(writes, LirOpcode::Load), 2);
     CHECK(SsaErrors(writes).empty());
+}
+
+namespace {
+LirPackage AffinePointers() {
+    auto package = Promoted(R"(
+        func Walk(start: uint, limit: uint, row: uint, pointer: *var uint, other: *uint) -> uint {
+            var total = 0u;
+            for i in start..limit {
+                *(pointer + (row + i)) += 3u;
+                total += *(other + (row + i));
+            }
+            return total;
+        }
+    )");
+    Optimization::LirBlockCoalescing coalescing;
+    static_cast<void>(coalescing.Run(package, {}));
+    Optimization::LirDeadCodeElimination dead;
+    static_cast<void>(dead.Run(package, {}));
+    Optimization::LirCfgCleanup cleanup;
+    static_cast<void>(cleanup.Run(package, {}));
+    return package;
+}
+} // namespace
+
+TEST_CASE("Pointer induction advances affine row addresses and preserves memory order") {
+    auto package = AffinePointers();
+    REQUIRE(SsaErrors(package).empty());
+    const auto loads = Count(package, LirOpcode::Load);
+    const auto stores = Count(package, LirOpcode::Store);
+    const auto phis = Count(package, LirOpcode::Phi);
+    Optimization::LirPointerInduction induction;
+    REQUIRE(induction.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(Count(package, LirOpcode::Phi) > phis);
+    CHECK_EQ(Count(package, LirOpcode::Load), loads);
+    CHECK_EQ(Count(package, LirOpcode::Store), stores);
+    CHECK(SsaErrors(package).empty());
+    Optimization::LirDeadCodeElimination dead;
+    static_cast<void>(dead.Run(package, {}));
+    Optimization::LirLoopUnrolling unrolling;
+    CHECK(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(package).empty());
+    Optimization::PassContext later;
+    later.iteration = 1;
+    CHECK(induction.Run(package, later) == Optimization::PassChange::None);
+}
+
+TEST_CASE("Pointer induction rejects volatile addresses and nonunit induction") {
+    for (const bool volatileAddress : {false, true}) {
+        auto package = AffinePointers();
+        for (auto &block : package.modules[0].funcs[0].blocks) {
+            for (auto &instruction : block.instrs) {
+                if (volatileAddress && instruction.op == LirOpcode::IndexPtr)
+                    instruction.isVolatile = true;
+                if (!volatileAddress && instruction.op == LirOpcode::Const && instruction.strArg == "1")
+                    instruction.strArg = "2";
+            }
+        }
+        Optimization::LirPointerInduction induction;
+        CHECK(induction.Run(package, {}) == Optimization::PassChange::None);
+        CHECK(SsaErrors(package).empty());
+    }
+}
+
+TEST_CASE("Pointer induction retains addresses captured across loop exits") {
+    auto package = Promoted(R"(
+        func Walk(start: uint, limit: uint, row: uint, pointer: *uint) -> *uint {
+            var last = pointer;
+            for i in start..limit { last = pointer + (row + i); }
+            return last;
+        }
+    )");
+    Optimization::LirBlockCoalescing coalescing;
+    static_cast<void>(coalescing.Run(package, {}));
+    Optimization::LirCfgCleanup cleanup;
+    static_cast<void>(cleanup.Run(package, {}));
+    REQUIRE(SsaErrors(package).empty());
+    Optimization::LirPointerInduction induction;
+    CHECK(induction.Run(package, {}) == Optimization::PassChange::None);
+    CHECK(SsaErrors(package).empty());
 }

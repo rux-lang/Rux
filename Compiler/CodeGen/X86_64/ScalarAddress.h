@@ -3,6 +3,7 @@
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/Registers.h"
 
+#include <bit>
 #include <format>
 #include <optional>
 #include <string>
@@ -17,6 +18,19 @@ struct X86ScalarAddressInstruction {
     std::optional<std::int32_t> baseSlot;
     std::optional<std::int32_t> indexSlot;
 };
+
+[[nodiscard]] inline std::optional<std::int32_t> ScalarAddressImmediate(const LirInstr &instruction,
+                                                                        const std::uint64_t index, const int scale) {
+    if (instruction.op != LirOpcode::IndexPtr || instruction.isVolatile || instruction.dst == LirNoReg ||
+        instruction.srcs.size() != 2 || instruction.type.kind != TypeRef::Kind::Pointer ||
+        (scale != 1 && scale != 2 && scale != 4 && scale != 8))
+        return std::nullopt;
+    // Address arithmetic wraps at the target's 64-bit pointer width, just like the indexed LEA form.
+    const auto bytes = index * static_cast<std::uint64_t>(scale);
+    const auto immediate = std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(bytes));
+    return bytes == static_cast<std::uint64_t>(static_cast<std::int64_t>(immediate)) ? std::optional{immediate}
+                                                                                     : std::nullopt;
+}
 
 /// Preserve existing layout decisions while removing address-generation scratch copies. Narrow indices still need
 /// the ordinary operand loader's normalization; spilled references may have a multiword representation.
@@ -51,6 +65,12 @@ SelectScalarAddressInstruction(const LirInstr &instruction, const X86_64FramePla
         const auto index = instruction.srcs[1];
         if (!types.contains(index) || !types.at(index).IsInteger() || Layout::SizeOf(types.at(index)) != 8)
             return std::nullopt;
+        if (displacement == 0 && plan.ImmediateValues().contains(index)) {
+            if (const auto immediate = ScalarAddressImmediate(instruction, plan.ImmediateValues().at(index), scale)) {
+                result.displacement = *immediate;
+                return result;
+            }
+        }
         result.scale = scale;
         result.index = 10;
         if (homes.contains(index))

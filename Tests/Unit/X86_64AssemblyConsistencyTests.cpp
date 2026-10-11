@@ -644,10 +644,10 @@ TEST_CASE("x86-64 indexed addresses select scaled LEA and retain odd-size multip
             const auto text = AssemblyPrinter(package, os).Generate();
             const auto code = CodeOf(package, os);
             if (index < 4) {
-                const std::vector<std::uint8_t> expected = {0x4E, 0x8D, 0x2C,
+                const std::vector<std::uint8_t> expected = {0x4A, 0x8D, 0x1C,
                                                             static_cast<std::uint8_t>(0x23 | (index << 6))};
                 CHECK(std::ranges::search(code, expected).begin() != code.end());
-                CHECK(text.contains(std::format("lea     r13, [rbx + r12 * {}]", 1U << index)));
+                CHECK(text.contains(std::format("lea     rbx, [rbx + r12 * {}]", 1U << index)));
                 CHECK_FALSE(text.contains("imul"));
             }
             else {
@@ -839,5 +839,26 @@ TEST_CASE("x86-64 function and backward branch alignment preserve symbol ranges 
         const auto text = AssemblyPrinter(package, os).Generate();
         CHECK(text.contains("align 32, db 0x90\n\n.Loop_again:"));
         CHECK(text.contains("Raw:\n    ret\n"));
+    }
+}
+
+TEST_CASE("x86-64 constant pointer steps use displacement LEA without a count register") {
+    const auto pointer = TypeRef::MakePointer(TypeRef::MakeUInt64());
+    for (const auto os : Systems) {
+        for (const bool negative : {false, true}) {
+            const auto function =
+                Function("Step", {{0, pointer, "pointer"}},
+                         {Instruction(LirOpcode::Const, 1, TypeRef::MakeInt64(), {}, negative ? "-1" : "1"),
+                          Instruction(LirOpcode::IndexPtr, 2, pointer, {0, 1})},
+                         2, pointer);
+            const auto package = PackageOf({function});
+            const auto text = AssemblyPrinter(package, os).Generate();
+            CHECK(text.contains(negative ? "lea     rbx, [rbx - 8]" : "lea     rbx, [rbx + 8]"));
+            CHECK_FALSE(text.contains("mov     eax, 1"));
+            const auto code = CodeOf(package, os);
+            const std::vector<std::uint8_t> expected = {0x48, 0x8D, 0x5B,
+                                                        static_cast<std::uint8_t>(negative ? 0xF8 : 8)};
+            CHECK(std::ranges::search(code, expected).begin() != code.end());
+        }
     }
 }

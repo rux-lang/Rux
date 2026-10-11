@@ -4,6 +4,7 @@
 #include "CodeGen/LinearScan.h"
 #include "CodeGen/ScalarImmediates.h"
 #include "CodeGen/SpillWeights.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "Target/CallingConvention.h"
 
@@ -63,6 +64,12 @@ private:
     std::unordered_map<LirReg, double> priorities;
     std::unordered_set<LirReg> immediateCandidates;
 
+    [[nodiscard]] int AddressScale(const LirInstr &instruction) const {
+        return instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty()
+                 ? std::max(1, RuntimeSize(instruction.type.inner[0]))
+                 : 8;
+    }
+
     void PlanImmediateCandidates() {
         for (const auto &[reg, value] : plan.immediateValues) {
             static_cast<void>(value);
@@ -75,7 +82,9 @@ private:
                 for (std::size_t index = 0; index < instruction.srcs.size(); ++index) {
                     const auto source = instruction.srcs[index];
                     if (immediateCandidates.contains(source) &&
-                        (index != 1 || !ScalarMachineImmediate(instruction, plan.immediateValues.at(source))))
+                        (index != 1 || (!ScalarMachineImmediate(instruction, plan.immediateValues.at(source)) &&
+                                        !ScalarAddressImmediate(instruction, plan.immediateValues.at(source),
+                                                                AddressScale(instruction)))))
                         immediateCandidates.erase(source);
                 }
                 for (const auto &[source, predecessor] : instruction.phiPreds) {
@@ -98,7 +107,8 @@ private:
                 if (instruction.srcs.size() != 2 || !plan.elidedImmediates.contains(instruction.srcs[1]))
                     continue;
                 const auto selected = SelectScalarMachineInstruction(instruction, plan);
-                if (!selected || !selected->immediate)
+                const auto address = SelectScalarAddressInstruction(instruction, plan, AddressScale(instruction));
+                if ((!selected || !selected->immediate) && (!address || address->index >= 0))
                     plan.elidedImmediates.erase(instruction.srcs[1]);
             }
         }
@@ -125,7 +135,9 @@ private:
                               instruction.op == LirOpcode::Xor || instruction.op == LirOpcode::Shl ||
                               instruction.op == LirOpcode::Shr || instruction.op == LirOpcode::Lshr ||
                               instruction.op == LirOpcode::RotateRight));
-                if ((floating || word) && arithmetic && !instruction.isVolatile &&
+                const bool address =
+                    instruction.op == LirOpcode::IndexPtr && instruction.type.kind == TypeRef::Kind::Pointer;
+                if ((((floating || word) && arithmetic) || address) && !instruction.isVolatile &&
                     instruction.srcs.size() == (instruction.op == LirOpcode::RotateRight ? 1U : 2U) &&
                     spans.contains(instruction.dst) && spans.contains(instruction.srcs[0]) &&
                     spans.at(instruction.dst)->start == position && spans.at(instruction.srcs[0])->end == position &&
