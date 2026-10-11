@@ -196,6 +196,21 @@ TEST_CASE("machine encoding spells general operand forms") {
           std::vector<std::uint8_t>{0x66, 0x0F, 0x58, 0xC1});
     CHECK(Encode(Make(Op::UnpackLowFp, 16, {Operand::UseDef(Xmm0 + 2), Operand::Use(Xmm0 + 2)})) ==
           std::vector<std::uint8_t>{0x66, 0x0F, 0x14, 0xD2});
+    // Packed 64-bit integer lanes: 66 0F with the SSE2 opcode, and 66 0F 73 /6 or /2 with an immediate count.
+    CHECK(Encode(Make(Op::AddPacked64, 16, {Operand::UseDef(Xmm0), Operand::Use(Xmm0 + 1)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0xD4, 0xC1});
+    CHECK(Encode(Make(Op::SubPacked64, 16, {Operand::UseDef(Xmm0), Operand::Use(Xmm0 + 1)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0xFB, 0xC1});
+    CHECK(Encode(Make(Op::AndPacked, 16, {Operand::UseDef(Xmm0), Operand::Use(Xmm0 + 1)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0xDB, 0xC1});
+    CHECK(Encode(Make(Op::OrPacked, 16, {Operand::UseDef(Xmm0), Operand::Use(Xmm0 + 1)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0xEB, 0xC1});
+    CHECK(Encode(Make(Op::XorPacked, 16, {Operand::UseDef(Xmm0 + 8), Operand::Use(Xmm0 + 9)})) ==
+          std::vector<std::uint8_t>{0x66, 0x45, 0x0F, 0xEF, 0xC1});
+    CHECK(Encode(Make(Op::ShlPacked64, 16, {Operand::UseDef(Xmm0 + 2), Operand::Imm(63)})) ==
+          std::vector<std::uint8_t>{0x66, 0x0F, 0x73, 0xF2, 0x3F});
+    CHECK(Encode(Make(Op::ShrPacked64, 16, {Operand::UseDef(Xmm0 + 9), Operand::Imm(7)})) ==
+          std::vector<std::uint8_t>{0x66, 0x41, 0x0F, 0x73, 0xD1, 0x07});
     // Its signed form is F7 /5.
     CHECK(Encode(Make(Op::MulHighSigned, 8, {Operand::Use(Rcx)})) == std::vector<std::uint8_t>{0x48, 0xF7, 0xE9});
 

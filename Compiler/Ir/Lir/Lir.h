@@ -84,9 +84,9 @@ enum class LirOpcode {
     // Stack traces
     FramePointer,       // %dst = frame_pointer *uint64 — this function's frame record: the caller's frame and return
     WriteStandardError, // write_stderr %ptr, %length — writes bytes to standard error, ignoring any failure
-    // Two-lane vectors of `type`, which is float64: the elements at a pointer and the one after it. Only the
-    // Release unroller produces them, from a loop body it pairs with its next iteration, and a back end that does
-    // not select them rewrites each into the two scalar instructions it stands for (`Devectorize`).
+    // Two-lane vectors of `type`, which is float64 or a 64-bit integer: the elements at a pointer and the one after
+    // it. Only the Release unroller produces them, from a loop body it pairs with its next iteration, and a back end
+    // that does not select them rewrites each into the two scalar instructions it stands for (`Devectorize`).
     VectorLoad,  // %dst = vload <type> %ptr — the elements at %ptr and %ptr + 1
     VectorStore, // vstore <type> %vector, %ptr — writes both lanes to %ptr and %ptr + 1
     VectorSplat, // %dst = vsplat <type> %scalar — both lanes hold the scalar
@@ -94,6 +94,14 @@ enum class LirOpcode {
     VectorSub,   // %dst = vsub <type> %a, %b
     VectorMul,   // %dst = vmul <type> %a, %b
     VectorDiv,   // %dst = vdiv <type> %a, %b
+    // Bitwise and shifting lanes of 64-bit integers, in the forms of their scalar counterparts: a shift's count is
+    // a constant scalar operand and a rotation's is its literal, the same for both lanes. Shifts right are logical.
+    VectorAnd,         // %dst = vand <type> %a, %b
+    VectorOr,          // %dst = vor <type> %a, %b
+    VectorXor,         // %dst = vxor <type> %a, %b
+    VectorShl,         // %dst = vshl <type> %a, %count
+    VectorShr,         // %dst = vshr <type> %a, %count
+    VectorRotateRight, // %dst = vrotr <type> %a, count
 };
 
 /// The function every panic and failed assertion calls to print the frames that led to it, synthesized once for a
@@ -218,6 +226,18 @@ inline constexpr std::string_view kBacktraceFunctionName = "__rux_backtrace";
         return "vmul";
     case LirOpcode::VectorDiv:
         return "vdiv";
+    case LirOpcode::VectorAnd:
+        return "vand";
+    case LirOpcode::VectorOr:
+        return "vor";
+    case LirOpcode::VectorXor:
+        return "vxor";
+    case LirOpcode::VectorShl:
+        return "vshl";
+    case LirOpcode::VectorShr:
+        return "vshr";
+    case LirOpcode::VectorRotateRight:
+        return "vrotr";
     }
     return "?";
 }

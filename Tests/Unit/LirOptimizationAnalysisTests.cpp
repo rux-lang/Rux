@@ -417,6 +417,60 @@ TEST_CASE("Unrolling pairs float64 work with the next iteration and devectorizes
     CHECK_EQ(Count(summed, LirOpcode::VectorAdd), 0);
 }
 
+TEST_CASE("Unrolling pairs 64-bit integer work and keeps loads that read back recent stores scalar") {
+    const auto unrolled = [](const std::string &source) {
+        auto package = Promoted(source);
+        Optimization::LirCfgCleanup cleanup;
+        Optimization::LirBlockCoalescing coalescing;
+        static_cast<void>(cleanup.Run(package, {}));
+        static_cast<void>(coalescing.Run(package, {}));
+        Optimization::LirLoopUnrolling unrolling;
+        REQUIRE(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
+        CHECK(SsaErrors(package).empty());
+        return package;
+    };
+    // Shifts by constants, logic and sums of loaded words pair; the scalar index arithmetic stays scalar.
+    auto mixed = unrolled(R"(
+        func Mix(c: *var uint64, a: *uint64, b: *uint64, n: uint) {
+            for j in 0u..n {
+                let x = a[j];
+                c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] + x);
+            }
+        }
+    )");
+    CHECK_EQ(Count(mixed, LirOpcode::VectorLoad), 4);
+    CHECK_EQ(Count(mixed, LirOpcode::VectorShr), 2);
+    CHECK_EQ(Count(mixed, LirOpcode::VectorShl), 2);
+    CHECK_EQ(Count(mixed, LirOpcode::VectorOr), 2);
+    CHECK_EQ(Count(mixed, LirOpcode::VectorXor), 2);
+    CHECK_EQ(Count(mixed, LirOpcode::VectorAdd), 2);
+    CHECK_EQ(Count(mixed, LirOpcode::VectorStore), 2);
+    auto &function = mixed.modules[0].funcs[0];
+    Devectorize(function);
+    CHECK_FALSE(HasVectorInstructions(function));
+    CHECK(SsaErrors(mixed).empty());
+    // Reading back words stored an even number of elements earlier pairs: each vector load meets one earlier store.
+    const auto even = unrolled(R"(
+        func Even(w: *var uint64) {
+            for t in 16u..80u { w[t] = w[t - 16u] + w[t - 2u]; }
+        }
+    )");
+    CHECK_EQ(Count(even, LirOpcode::VectorStore), 2);
+    // An odd distance would straddle two stores, and one element apart the pair's lanes would depend on each other.
+    const auto odd = unrolled(R"(
+        func Odd(w: *var uint64) {
+            for t in 16u..80u { w[t] = w[t - 16u] + w[t - 7u]; }
+        }
+    )");
+    CHECK_EQ(Count(odd, LirOpcode::VectorStore), 0);
+    const auto adjacent = unrolled(R"(
+        func Adjacent(w: *var uint64) {
+            for t in 1u..80u { w[t] = w[t - 1u] + 1u64; }
+        }
+    )");
+    CHECK_EQ(Count(adjacent, LirOpcode::VectorStore), 0);
+}
+
 TEST_CASE("Value numbering sees a bounds check through a same-width cast as the loop test") {
     auto package = Promoted(R"(
         func Sum(values: uint8[..]) -> uint {

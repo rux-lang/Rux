@@ -3,6 +3,9 @@
 #include "Ir/Lir/Lir.h"
 
 namespace Rux {
+/// Whether `op` is a two-lane vector instruction.
+[[nodiscard]] bool IsVectorOpcode(LirOpcode op) noexcept;
+
 /// Whether a function holds any two-lane vector instruction.
 [[nodiscard]] bool HasVectorInstructions(const LirFunc &function) noexcept;
 

@@ -12,6 +12,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Two-lane integer vectors** — Release builds also pair unrolled loops over 64-bit integers, such as `c[j] = (a[j] >> 3 | a[j] << 61) ^ (b[j] - a[j]) & mask`, into SSE2 `paddq`, `pxor`, `psllq` and their kin on x86-64, including arrays indexed by the count plus or minus a constant. A loop that reads back its own stores an odd number of elements later, such as SHA-512's message schedule, stays scalar, because its vector loads could not be forwarded from the stores.
 - **Word-wise slice equality** — `Collections::EqualsSlice`, the equality text keys in `HashMap` and `HashSet` use, compares eight bytes at a time (four for runs of four to seven bytes) instead of one, so WordCount spends about 7% fewer cycles.
 - **If-conversion** — Release builds turn a small conditional integer update inside a loop, such as `if composite[k] == 0 { count += 1; sum += k }`, into branch-free arithmetic on the condition. PrimeSieve's prime count stops mispredicting (6.5 million misses to a few thousand, 4% fewer cycles) and WordCount spends about 5% fewer cycles.
 - **Two-lane float64 vectors** — Release builds run unrolled float64 loops such as `c[j] += a * b[j]` two elements at a time with SSE2 on x86-64, after an entry check that the arrays do not overlap in a way pairing would expose; other back ends keep the scalar instructions. MatrixMultiply drops from 0.356 s to 0.219 s, level with C++.

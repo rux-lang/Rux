@@ -198,6 +198,20 @@ namespace {
         return "xorps";
     case Op::UnpackLowFp:
         return "unpcklpd";
+    case Op::AddPacked64:
+        return "paddq";
+    case Op::SubPacked64:
+        return "psubq";
+    case Op::AndPacked:
+        return "pand";
+    case Op::OrPacked:
+        return "por";
+    case Op::XorPacked:
+        return "pxor";
+    case Op::ShlPacked64:
+        return "psllq";
+    case Op::ShrPacked64:
+        return "psrlq";
     case Op::IntToFp:
         return single ? "cvtsi2ss" : "cvtsi2sd";
     case Op::FpToFp:

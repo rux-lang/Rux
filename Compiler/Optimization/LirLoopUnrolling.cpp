@@ -279,21 +279,67 @@ bool Unroll(LirFunc &function) {
             return true;
         }
 
-        // Pairing the two copies into two-lane float64 vectors: every floating-point instruction of the body is a
-        // load, store or arithmetic on float64 values the body computed or on scalars fixed before the loop, every
-        // address it reads or writes moves by one element per iteration, and nothing else in the program reads a
-        // value it computes. The second copy's work then sits in the upper lane of the first copy's.
+        // Pairing the two copies into two-lane vectors: every floating-point instruction of the body is a load, store
+        // or arithmetic on float64 values the body computed or on scalars fixed before the loop, or, in a body with no
+        // float64 values, every 64-bit integer value it loads and everything it computes from them is integer
+        // arithmetic, bitwise logic or a shift by a constant; every address it reads or writes moves by one element
+        // per iteration, and nothing else in the program reads a value it computes. The second copy's work then sits
+        // in the upper lane of the first copy's.
         struct Access {
             std::size_t index;
             bool store;
             LirReg identity; // the pointer counter, or the invariant base an indexed address starts from
             bool counter;
-            LirReg entry; // the counter's value on entry, when it is one
+            LirReg entry;            // the counter's value on entry, when it is one
+            std::int64_t offset = 0; // elements past the count, for an indexed address
+            LirReg address = LirNoReg;
         };
 
-        const auto pointerToDouble = [](const TypeRef &type) {
-            return type.kind == TypeRef::Kind::Pointer && type.inner.size() == 1 &&
-                   type.inner[0].kind == TypeRef::Kind::Float64;
+        const bool floating = std::ranges::any_of(
+            source.instrs, [](const LirInstr &instruction) { return instruction.type.kind == TypeRef::Kind::Float64; });
+        const auto element = [&](const TypeRef &type) {
+            return floating ? type.kind == TypeRef::Kind::Float64
+                            : type.kind == TypeRef::Kind::Int64 || type.kind == TypeRef::Kind::UInt64;
+        };
+        const auto pointerToDouble = [&](const TypeRef &type) {
+            return type.kind == TypeRef::Kind::Pointer && type.inner.size() == 1 && element(type.inner[0]);
+        };
+        // A small integer known now, or once constants fold: the unroller runs before inlined arguments such as a
+        // rotation's `64 - n` have been folded.
+        const auto constantOf = [&](this const auto &self, const LirReg reg,
+                                    const int depth = 0) -> std::optional<std::int64_t> {
+            const auto *instruction = definition(reg);
+            if (!instruction || !instruction->type.IsInteger() || depth > 4)
+                return std::nullopt;
+            if (instruction->op == LirOpcode::Cast && instruction->srcs.size() == 1)
+                return self(instruction->srcs[0], depth + 1);
+            if ((instruction->op == LirOpcode::Add || instruction->op == LirOpcode::Sub) &&
+                instruction->srcs.size() == 2) {
+                const auto left = self(instruction->srcs[0], depth + 1);
+                const auto right = left ? self(instruction->srcs[1], depth + 1) : std::nullopt;
+                if (!left || !right || *left < -4096 || *left > 4096 || *right < -4096 || *right > 4096)
+                    return std::nullopt;
+                return instruction->op == LirOpcode::Add ? *left + *right : *left - *right;
+            }
+            if (instruction->op != LirOpcode::Const)
+                return std::nullopt;
+            const auto value = ParseConstant(instruction->strArg, instruction->type);
+            if (!value)
+                return std::nullopt;
+            return static_cast<std::int64_t>(value->RawBits());
+        };
+        // An index that is the count plus or minus a small constant.
+        const auto offsetOf = [&](const LirReg reg) -> std::optional<std::int64_t> {
+            if (reg == induction)
+                return 0;
+            const auto *instruction = definition(reg);
+            if (!instruction || (instruction->op != LirOpcode::Add && instruction->op != LirOpcode::Sub) ||
+                instruction->srcs.size() != 2 || instruction->srcs[0] != induction || instruction->type != phi->type)
+                return std::nullopt;
+            const auto amount = constantOf(instruction->srcs[1]);
+            if (!amount || *amount < -1024 || *amount > 1024)
+                return std::nullopt;
+            return instruction->op == LirOpcode::Add ? *amount : -*amount;
         };
         const auto outsideLoop = [&](const LirReg reg) {
             return !owners.contains(reg) || (owners.at(reg) != header && owners.at(reg) != body);
@@ -307,9 +353,15 @@ bool Unroll(LirFunc &function) {
                     return parameter.type;
             return std::nullopt;
         };
-        const auto invariantDouble = [&](const LirReg reg) {
+        // A scalar both lanes share: fixed before the loop, or a constant the body defines, which the entry repeats.
+        const auto shared = [&](const LirReg reg) {
             const auto type = floatType(reg);
-            return outsideLoop(reg) && type && type->kind == TypeRef::Kind::Float64;
+            if (!type || !element(*type))
+                return false;
+            if (outsideLoop(reg))
+                return true;
+            const auto *instruction = definition(reg);
+            return instruction && instruction->op == LirOpcode::Const && owners.at(reg) == body;
         };
         const auto addressOf = [&](const LirReg address) -> std::optional<Access> {
             const auto *instruction = definition(address);
@@ -330,8 +382,9 @@ bool Unroll(LirFunc &function) {
                 return Access{0, false, address, true, entry};
             }
             if (owners.at(address) == body && instruction->op == LirOpcode::IndexPtr && instruction->srcs.size() == 2 &&
-                instruction->srcs[1] == induction && outsideLoop(instruction->srcs[0]))
-                return Access{0, false, instruction->srcs[0], false, LirNoReg};
+                outsideLoop(instruction->srcs[0]))
+                if (const auto offset = offsetOf(instruction->srcs[1]))
+                    return Access{0, false, instruction->srcs[0], false, LirNoReg, *offset, address};
             return std::nullopt;
         };
         std::vector<bool> paired(source.instrs.size(), false);
@@ -339,33 +392,69 @@ bool Unroll(LirFunc &function) {
         std::vector<Access> accesses;
         std::vector<LirReg> broadcasts;
         bool vectorize = true;
+        const auto lane = [&](const LirReg reg) { return lanes.contains(reg); };
         for (std::size_t index = 0; index < source.instrs.size(); ++index) {
             const auto &instruction = source.instrs[index];
-            if (instruction.type.kind != TypeRef::Kind::Float64 || instruction.isVolatile)
+            if (!element(instruction.type) || instruction.isVolatile)
                 continue;
-            switch (instruction.op) {
-            case LirOpcode::Load:
-                vectorize = vectorize && instruction.strArg.empty() && instruction.srcs.size() == 1;
-                break;
-            case LirOpcode::Store:
-            case LirOpcode::Add:
-            case LirOpcode::Sub:
-            case LirOpcode::Mul:
-            case LirOpcode::Div:
-                vectorize = vectorize && instruction.srcs.size() == 2;
-                break;
-            default:
-                continue;
+            const auto &sources = instruction.srcs;
+            if (floating) {
+                switch (instruction.op) {
+                case LirOpcode::Load:
+                    vectorize = vectorize && instruction.strArg.empty() && sources.size() == 1;
+                    break;
+                case LirOpcode::Store:
+                case LirOpcode::Add:
+                case LirOpcode::Sub:
+                case LirOpcode::Mul:
+                case LirOpcode::Div:
+                    vectorize = vectorize && sources.size() == 2;
+                    break;
+                default:
+                    continue;
+                }
+            }
+            else {
+                // Integer lanes start at the loads and spread through what is computed from them.
+                bool pair = false;
+                switch (instruction.op) {
+                case LirOpcode::Load:
+                    pair = instruction.strArg.empty() && sources.size() == 1 && addressOf(sources[0]).has_value();
+                    break;
+                case LirOpcode::Store:
+                    pair = sources.size() == 2 && lane(sources[0]);
+                    break;
+                case LirOpcode::Add:
+                case LirOpcode::Sub:
+                case LirOpcode::And:
+                case LirOpcode::Or:
+                case LirOpcode::Xor:
+                    pair = sources.size() == 2 && (lane(sources[0]) || lane(sources[1]));
+                    break;
+                case LirOpcode::Shl:
+                case LirOpcode::Shr: {
+                    const auto count = sources.size() == 2 ? constantOf(sources[1]) : std::nullopt;
+                    pair = lane(sources[0]) && count && *count >= 0 && *count < 64 &&
+                           (instruction.op == LirOpcode::Shl || !instruction.type.IsSigned());
+                    break;
+                }
+                case LirOpcode::RotateRight:
+                    pair = sources.size() == 1 && lane(sources[0]);
+                    break;
+                default:
+                    break;
+                }
+                if (!pair)
+                    continue;
             }
             paired[index] = true;
             if (instruction.dst != LirNoReg)
                 lanes.insert(instruction.dst);
         }
-        const auto lane = [&](const LirReg reg) { return lanes.contains(reg); };
         const auto operand = [&](const LirReg reg) {
             if (lane(reg))
                 return true;
-            if (!invariantDouble(reg))
+            if (!shared(reg))
                 return false;
             if (std::ranges::find(broadcasts, reg) == broadcasts.end())
                 broadcasts.push_back(reg);
@@ -388,8 +477,24 @@ bool Unroll(LirFunc &function) {
                 }
                 continue;
             }
-            vectorize = operand(instruction.srcs[0]) && operand(instruction.srcs[1]);
+            // A shift's count is the same scalar for both lanes; a rotation's is its literal.
+            const bool counted = instruction.op == LirOpcode::Shl || instruction.op == LirOpcode::Shr ||
+                                 instruction.op == LirOpcode::RotateRight;
+            vectorize = operand(instruction.srcs[0]) && (counted || operand(instruction.srcs[1]));
         }
+        // Two indexed accesses to one base, one element apart, would meet inside a pair when one of them writes:
+        // the second iteration's would run beside the first's. Any other even distance leaves each pair independent.
+        // An odd one does too, but then every vector load reads halves of two earlier vector stores, which the
+        // processor cannot forward from its store buffer; such a loop (a message schedule reading back what it
+        // wrote a few iterations earlier) runs faster as scalars.
+        for (std::size_t later = 0; later < accesses.size() && vectorize; ++later)
+            for (std::size_t earlier = 0; earlier < later; ++earlier) {
+                const auto &x = accesses[earlier];
+                const auto &y = accesses[later];
+                if ((x.store || y.store) && !x.counter && !y.counter && x.identity == y.identity &&
+                    (x.offset - y.offset) % 2 != 0)
+                    vectorize = false;
+            }
         vectorize = vectorize && std::ranges::any_of(accesses, [](const Access &access) { return access.store; }) &&
                     !lane(source.term->cond);
         for (std::uint32_t block = 0; block < function.blocks.size() && vectorize; ++block) {
@@ -445,11 +550,18 @@ bool Unroll(LirFunc &function) {
         std::unordered_map<LirReg, LirReg> splats;
         if (vectorize) {
             for (const auto reg : broadcasts) {
+                auto scalar = reg;
+                if (!outsideLoop(reg)) {
+                    auto copy = *definition(reg);
+                    copy.dst = next++;
+                    scalar = copy.dst;
+                    prepare.instrs.push_back(std::move(copy));
+                }
                 LirInstr splat;
                 splat.op = LirOpcode::VectorSplat;
-                splat.type = TypeRef::MakePrimitive(TypeRef::Kind::Float64);
+                splat.type = *floatType(reg);
                 splat.dst = next++;
-                splat.srcs = {reg};
+                splat.srcs = {scalar};
                 splats.emplace(reg, splat.dst);
                 prepare.instrs.push_back(std::move(splat));
             }
@@ -480,11 +592,24 @@ bool Unroll(LirFunc &function) {
                         vector.op = LirOpcode::VectorStore;
                         vector.srcs = {vectorOf(original.srcs[0]), first.srcs[1]};
                         break;
+                    case LirOpcode::Shl:
+                    case LirOpcode::Shr:
+                        vector.op = original.op == LirOpcode::Shl ? LirOpcode::VectorShl : LirOpcode::VectorShr;
+                        vector.srcs = {vectorOf(original.srcs[0]), first.srcs[1]};
+                        break;
+                    case LirOpcode::RotateRight:
+                        vector.op = LirOpcode::VectorRotateRight;
+                        vector.srcs = {vectorOf(original.srcs[0])};
+                        vector.strArg = original.strArg;
+                        break;
                     default:
                         vector.op = original.op == LirOpcode::Add ? LirOpcode::VectorAdd
                                   : original.op == LirOpcode::Sub ? LirOpcode::VectorSub
                                   : original.op == LirOpcode::Mul ? LirOpcode::VectorMul
-                                                                  : LirOpcode::VectorDiv;
+                                  : original.op == LirOpcode::Div ? LirOpcode::VectorDiv
+                                  : original.op == LirOpcode::And ? LirOpcode::VectorAnd
+                                  : original.op == LirOpcode::Or  ? LirOpcode::VectorOr
+                                                                  : LirOpcode::VectorXor;
                         vector.srcs = {vectorOf(original.srcs[0]), vectorOf(original.srcs[1])};
                         break;
                     }
@@ -539,11 +664,17 @@ bool Unroll(LirFunc &function) {
             const auto entryOf = [&](const Access &access) {
                 if (const auto found = entries.find(access.index); found != entries.end())
                     return found->second;
-                const auto address = access.counter
-                                       ? access.entry
-                                       : emit(prepare, LirOpcode::IndexPtr,
-                                              TypeRef::MakePointer(TypeRef::MakePrimitive(TypeRef::Kind::Float64)),
-                                              {access.identity, initial});
+                auto start = initial;
+                if (!access.counter && access.offset != 0) {
+                    const auto amount = phi->type.IsSigned()
+                                          ? std::to_string(access.offset)
+                                          : std::to_string(static_cast<std::uint64_t>(access.offset));
+                    start = emit(prepare, LirOpcode::Add, phi->type,
+                                 {initial, emit(prepare, LirOpcode::Const, phi->type, {}, amount)});
+                }
+                const auto address = access.counter ? access.entry
+                                                    : emit(prepare, LirOpcode::IndexPtr,
+                                                           definition(access.address)->type, {access.identity, start});
                 const auto pointerType = floatType(access.counter ? access.identity : address);
                 const auto number = emit(prepare, LirOpcode::Cast, TypeRef::MakeUInt64(), {address},
                                          pointerType ? pointerType->ToString() : "*float64");
@@ -554,6 +685,7 @@ bool Unroll(LirFunc &function) {
                 for (std::size_t earlier = 0; earlier < later; ++earlier) {
                     const auto &x = accesses[earlier];
                     const auto &y = accesses[later];
+                    // One base shares its distances with every pair, checked above.
                     if ((!x.store && !y.store) || (x.identity == y.identity && x.counter == y.counter))
                         continue;
                     const auto shifted =

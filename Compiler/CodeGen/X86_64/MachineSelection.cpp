@@ -3,6 +3,7 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/X86_64/MachineSelector.h"
 #include "Ir/Lir/ControlFlow.h"
+#include "Ir/Lir/LirVectors.h"
 #include "Ir/Lir/NaturalLoops.h"
 #include "Target/CallingConvention.h"
 
@@ -19,9 +20,33 @@ namespace Rux::X86_64Machine {
 namespace Detail {
 using namespace Layout;
 
+namespace {
+/// A 64-bit integer element, two of which fill an XMM register.
+[[nodiscard]] bool PackedInteger(const TypeRef &type) noexcept {
+    return type.kind == TypeRef::Kind::Int64 || type.kind == TypeRef::Kind::UInt64 || type.kind == TypeRef::Kind::Int ||
+           type.kind == TypeRef::Kind::UInt;
+}
+} // namespace
+
 Selector::Selector(const LirFunc &inputFunction, const SelectionContext &inputContext)
     : func(inputFunction)
     , context(inputContext) {
+}
+
+void Selector::SelectPackedInteger(const LirInstr &instruction) {
+    const Op op = instruction.op == LirOpcode::VectorAdd ? Op::AddPacked64
+                : instruction.op == LirOpcode::VectorSub ? Op::SubPacked64
+                : instruction.op == LirOpcode::VectorAnd ? Op::AndPacked
+                : instruction.op == LirOpcode::VectorOr  ? Op::OrPacked
+                                                         : Op::XorPacked;
+    // A commutative operation builds its result in the operand that dies here, saving the copy of the other.
+    LirReg left = instruction.srcs[0];
+    LirReg right = instruction.srcs[1];
+    if (op != Op::SubPacked64 && !IsKilledAt(instruction, left) && IsKilledAt(instruction, right))
+        std::swap(left, right);
+    const Reg destination = Value(instruction.dst);
+    EmitCopy(destination, Value(left), RegClass::Vector);
+    Emit(op, 16, {Operand::UseDef(destination), Operand::Use(Value(right))});
 }
 
 // ---- types -------------------------------------------------------------------------------------------------------
@@ -84,6 +109,8 @@ const TypeRef &Selector::TypeOf(const LirReg reg) const {
 }
 
 ValueKind Selector::KindOfReg(const LirReg reg) const {
+    if (vectorValues.contains(reg))
+        return ValueKind::Xmm;
     return KindOf(TypeOf(reg));
 }
 
@@ -180,6 +207,8 @@ bool Selector::CollectFacts() {
             types[instruction.dst] =
                 instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
             definitions[instruction.dst] = &instruction;
+            if (IsVectorOpcode(instruction.op))
+                vectorValues.insert(instruction.dst);
             // Facts that hold however the blocks are ordered: a narrow unsigned load zero-extends, and a comparison
             // is 0 or 1. Recording them now lets a use selected before its definition rely on them.
             if (instruction.op == LirOpcode::Load && KindOf(instruction.type) == ValueKind::Gpr &&
@@ -216,7 +245,7 @@ bool Selector::EligibleInstruction(const LirInstr &instruction) const {
     if (opaque && instruction.op != LirOpcode::Call && instruction.op != LirOpcode::CallIndirect &&
         instruction.op != LirOpcode::Const)
         return false;
-    const ValueKind result = instruction.dst != LirNoReg && !opaque ? KindOf(TypeOf(instruction.dst)) : ValueKind::Gpr;
+    const ValueKind result = instruction.dst != LirNoReg && !opaque ? KindOfReg(instruction.dst) : ValueKind::Gpr;
     if (result == ValueKind::Unsupported)
         return false;
     if (instruction.op == LirOpcode::Store && instruction.type.IsOpaque())
@@ -235,22 +264,42 @@ bool Selector::EligibleInstruction(const LirInstr &instruction) const {
         if (!instruction.strArg.empty())
             return result != ValueKind::Aggregate;
         return instruction.srcs.size() == 1 && kind(0) == ValueKind::Gpr;
-    // Two float64 lanes in one XMM register.
+    // Two float64 or 64-bit integer lanes in one XMM register.
     case LirOpcode::VectorLoad:
-        return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 1 &&
-               kind(0) == ValueKind::Gpr;
+        return (instruction.type.kind == TypeRef::Kind::Float64 || PackedInteger(instruction.type)) &&
+               instruction.srcs.size() == 1 && kind(0) == ValueKind::Gpr;
     case LirOpcode::VectorStore:
-        return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 2 &&
-               kind(0) == ValueKind::Xmm && kind(1) == ValueKind::Gpr;
+        return (instruction.type.kind == TypeRef::Kind::Float64 || PackedInteger(instruction.type)) &&
+               instruction.srcs.size() == 2 && kind(0) == ValueKind::Xmm && kind(1) == ValueKind::Gpr;
     case LirOpcode::VectorSplat:
-        return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 1 &&
-               kind(0) == ValueKind::Xmm;
+        return instruction.srcs.size() == 1 &&
+               ((instruction.type.kind == TypeRef::Kind::Float64 && kind(0) == ValueKind::Xmm) ||
+                (PackedInteger(instruction.type) && kind(0) == ValueKind::Gpr));
     case LirOpcode::VectorAdd:
     case LirOpcode::VectorSub:
+        return (instruction.type.kind == TypeRef::Kind::Float64 || PackedInteger(instruction.type)) &&
+               instruction.srcs.size() == 2 && kind(0) == ValueKind::Xmm && kind(1) == ValueKind::Xmm;
     case LirOpcode::VectorMul:
     case LirOpcode::VectorDiv:
         return instruction.type.kind == TypeRef::Kind::Float64 && instruction.srcs.size() == 2 &&
                kind(0) == ValueKind::Xmm && kind(1) == ValueKind::Xmm;
+    case LirOpcode::VectorAnd:
+    case LirOpcode::VectorOr:
+    case LirOpcode::VectorXor:
+        return PackedInteger(instruction.type) && instruction.srcs.size() == 2 && kind(0) == ValueKind::Xmm &&
+               kind(1) == ValueKind::Xmm;
+    case LirOpcode::VectorShl:
+    case LirOpcode::VectorShr: {
+        if (!PackedInteger(instruction.type) || instruction.srcs.size() != 2 || kind(0) != ValueKind::Xmm)
+            return false;
+        const auto count = integerConstants.find(instruction.srcs[1]);
+        return count != integerConstants.end() && count->second < 64;
+    }
+    case LirOpcode::VectorRotateRight: {
+        const auto count = ParseIntegerLiteralBits(instruction.strArg);
+        return PackedInteger(instruction.type) && instruction.srcs.size() == 1 && kind(0) == ValueKind::Xmm &&
+               count.has_value() && *count > 0 && *count < 64;
+    }
     case LirOpcode::Store: {
         if (instruction.srcs.size() != 2 || kind(1) != ValueKind::Gpr)
             return false;
@@ -1032,12 +1081,45 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
         return;
     case LirOpcode::VectorSplat: {
         const Reg destination = Value(instruction.dst);
-        EmitCopy(destination, Value(instruction.srcs[0]), RegClass::Vector);
+        if (PackedInteger(instruction.type))
+            Emit(Op::GprToXmm, 8, {Operand::Def(destination), Operand::Use(Value(instruction.srcs[0]))});
+        else
+            EmitCopy(destination, Value(instruction.srcs[0]), RegClass::Vector);
         Emit(Op::UnpackLowFp, 16, {Operand::UseDef(destination), Operand::Use(destination)});
+        return;
+    }
+    case LirOpcode::VectorAnd:
+    case LirOpcode::VectorOr:
+    case LirOpcode::VectorXor:
+        SelectPackedInteger(instruction);
+        return;
+    case LirOpcode::VectorShl:
+    case LirOpcode::VectorShr:
+    case LirOpcode::VectorRotateRight: {
+        const Reg destination = Value(instruction.dst);
+        EmitCopy(destination, Value(instruction.srcs[0]), RegClass::Vector);
+        if (instruction.op == LirOpcode::VectorRotateRight) {
+            // No packed rotation before AVX-512: the bits shifted out at the bottom come back in from a copy.
+            const auto count = static_cast<std::int64_t>(ParseIntegerLiteralBits(instruction.strArg).value_or(0));
+            const Reg wrapped = NewXmm();
+            EmitCopy(wrapped, destination, RegClass::Vector);
+            Emit(Op::ShrPacked64, 16, {Operand::UseDef(destination), Operand::Imm(count)});
+            Emit(Op::ShlPacked64, 16, {Operand::UseDef(wrapped), Operand::Imm(64 - count)});
+            Emit(Op::OrPacked, 16, {Operand::UseDef(destination), Operand::Use(wrapped)});
+            return;
+        }
+        const auto count = static_cast<std::int64_t>(integerConstants.at(instruction.srcs[1]));
+        Emit(instruction.op == LirOpcode::VectorShl ? Op::ShlPacked64 : Op::ShrPacked64, 16,
+             {Operand::UseDef(destination), Operand::Imm(count)});
         return;
     }
     case LirOpcode::VectorAdd:
     case LirOpcode::VectorSub:
+        if (PackedInteger(instruction.type)) {
+            SelectPackedInteger(instruction);
+            return;
+        }
+        [[fallthrough]];
     case LirOpcode::VectorMul:
     case LirOpcode::VectorDiv: {
         const Op op = instruction.op == LirOpcode::VectorAdd ? Op::AddFp

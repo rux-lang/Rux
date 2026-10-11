@@ -55,6 +55,8 @@ private:
     bool win64 = false;
 
     std::unordered_map<LirReg, TypeRef> types;
+    /// Values of vector instructions: whatever their element type, they live in XMM registers.
+    std::unordered_set<LirReg> vectorValues;
     std::unordered_map<LirReg, const LirInstr *> definitions;
     std::unordered_map<LirReg, std::uint64_t> integerConstants;
     std::unordered_map<LirReg, std::string> floatConstants;
@@ -143,6 +145,7 @@ private:
     void SelectDivision(const LirInstr &instruction);
     void SelectShift(const LirInstr &instruction);
     void SelectUnary(const LirInstr &instruction);
+    void SelectPackedInteger(const LirInstr &instruction);
     void SelectComparison(const LirInstr &instruction);
     void SelectCast(const LirInstr &instruction);
     /// Sets the flags for an integer or floating comparison and returns the condition that is true when the comparison

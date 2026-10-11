@@ -6,21 +6,6 @@
 
 namespace Rux {
 namespace {
-[[nodiscard]] bool IsVector(const LirOpcode op) noexcept {
-    switch (op) {
-    case LirOpcode::VectorLoad:
-    case LirOpcode::VectorStore:
-    case LirOpcode::VectorSplat:
-    case LirOpcode::VectorAdd:
-    case LirOpcode::VectorSub:
-    case LirOpcode::VectorMul:
-    case LirOpcode::VectorDiv:
-        return true;
-    default:
-        return false;
-    }
-}
-
 [[nodiscard]] LirOpcode ScalarOf(const LirOpcode op) noexcept {
     switch (op) {
     case LirOpcode::VectorAdd:
@@ -29,15 +14,49 @@ namespace {
         return LirOpcode::Sub;
     case LirOpcode::VectorMul:
         return LirOpcode::Mul;
+    case LirOpcode::VectorAnd:
+        return LirOpcode::And;
+    case LirOpcode::VectorOr:
+        return LirOpcode::Or;
+    case LirOpcode::VectorXor:
+        return LirOpcode::Xor;
+    case LirOpcode::VectorShl:
+        return LirOpcode::Shl;
+    case LirOpcode::VectorShr:
+        return LirOpcode::Shr;
+    case LirOpcode::VectorRotateRight:
+        return LirOpcode::RotateRight;
     default:
         return LirOpcode::Div;
     }
 }
 } // namespace
 
+bool IsVectorOpcode(const LirOpcode op) noexcept {
+    switch (op) {
+    case LirOpcode::VectorLoad:
+    case LirOpcode::VectorStore:
+    case LirOpcode::VectorSplat:
+    case LirOpcode::VectorAdd:
+    case LirOpcode::VectorSub:
+    case LirOpcode::VectorMul:
+    case LirOpcode::VectorDiv:
+    case LirOpcode::VectorAnd:
+    case LirOpcode::VectorOr:
+    case LirOpcode::VectorXor:
+    case LirOpcode::VectorShl:
+    case LirOpcode::VectorShr:
+    case LirOpcode::VectorRotateRight:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool HasVectorInstructions(const LirFunc &function) noexcept {
     return std::ranges::any_of(function.blocks, [](const LirBlock &block) {
-        return std::ranges::any_of(block.instrs, [](const LirInstr &instruction) { return IsVector(instruction.op); });
+        return std::ranges::any_of(block.instrs,
+                                   [](const LirInstr &instruction) { return IsVectorOpcode(instruction.op); });
     });
 }
 
@@ -89,10 +108,30 @@ void Devectorize(LirFunc &function) {
             case LirOpcode::VectorSplat:
                 lanes.emplace(instruction.dst, std::pair{instruction.srcs[0], instruction.srcs[0]});
                 break;
+            case LirOpcode::VectorShl:
+            case LirOpcode::VectorShr:
+            case LirOpcode::VectorRotateRight: {
+                // The count, a scalar operand or a rotation's literal, is the same for both lanes.
+                const auto op = ScalarOf(instruction.op);
+                const auto [valueLow, valueHigh] = lanes.at(instruction.srcs[0]);
+                auto scalar = [&](const LirReg value) {
+                    std::vector<LirReg> sources{value};
+                    if (instruction.srcs.size() > 1)
+                        sources.push_back(instruction.srcs[1]);
+                    return emit(op, instruction.type, std::move(sources), next++, instruction.strArg);
+                };
+                const auto low = scalar(valueLow);
+                const auto high = scalar(valueHigh);
+                lanes.emplace(instruction.dst, std::pair{low, high});
+                break;
+            }
             case LirOpcode::VectorAdd:
             case LirOpcode::VectorSub:
             case LirOpcode::VectorMul:
-            case LirOpcode::VectorDiv: {
+            case LirOpcode::VectorDiv:
+            case LirOpcode::VectorAnd:
+            case LirOpcode::VectorOr:
+            case LirOpcode::VectorXor: {
                 const auto op = ScalarOf(instruction.op);
                 const auto [leftLow, leftHigh] = lanes.at(instruction.srcs[0]);
                 const auto [rightLow, rightHigh] = lanes.at(instruction.srcs[1]);

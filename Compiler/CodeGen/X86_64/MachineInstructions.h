@@ -130,6 +130,15 @@ enum class Op : std::uint16_t {
     MulHighSigned,
     /// Interleaves the low lanes of two XMM registers (`unpcklpd`); with itself, copies lane 0 into lane 1.
     UnpackLowFp,
+    // Two 64-bit integer lanes of XMM registers: `paddq`, `psubq`, `pand`, `por`, `pxor`, and `psllq`/`psrlq` of
+    // operand 0 by an immediate count.
+    AddPacked64,
+    SubPacked64,
+    AndPacked,
+    OrPacked,
+    XorPacked,
+    ShlPacked64,
+    ShrPacked64,
     // Extension from `sourceSize` bytes of operand 1 into `size` bytes of operand 0.
     MovZx,
     MovSx,

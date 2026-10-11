@@ -239,7 +239,9 @@ divisor's, shifted, and incremented when negative; a power of two biases a negat
 Division by -1 keeps `idiv`, so dividing the most negative value still traps. Two-lane float64 vector instructions
 (`VectorLoad`, `VectorStore`, `VectorSplat` and the four arithmetic operations) select `movupd`, `unpcklpd` and the
 packed arithmetic forms, written as floating-point operations of size 16; XMM registers spill whole, sixteen bytes at
-a time, so a vector survives a spill. The direct emitter, the direct assembly printer and the AArch64 back end select
+a time, so a vector survives a spill. Vectors of two 64-bit integers live in XMM registers too, whatever their element
+type says: their sums, differences and bitwise logic select `paddq`, `psubq`, `pand`, `por` and `pxor`, their shifts
+by a constant `psllq` and `psrlq`, a rotation the two shifts and `por`, and a broadcast `movq` and `unpcklpd`. The direct emitter, the direct assembly printer and the AArch64 back end select
 no vectors: `Devectorize` (`Ir/Lir/LirVectors.h`) first rewrites each vector instruction into the two scalar
 instructions it stands for, lane 0 then lane 1. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
 coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
@@ -500,13 +502,18 @@ instructions in all copies, is flattened instead: its header becomes one straigh
 whose final values reach the exit, and the body is left unreachable for cleanup. Before any of this, constants a
 loop header defines move to the one block entering it: an inlined loop keeps its limit there, where it would look
 loop-defined. Body, phi, function and analysis work budgets bound code growth and compile-time work. When the body's
-floating-point instructions are float64 loads,
-stores and arithmetic on values it computed or on scalars fixed before the loop, every address advances by one
-element per iteration, and none of those values is read outside the body, the unroller pairs the two copies into
+floating-point instructions are float64 loads, stores and arithmetic on values it computed or on scalars fixed before
+the loop or defined as constants in it (or, in a body with no float64 values, its 64-bit integer loads and everything
+computed from them are sums, differences, bitwise logic, shifts and rotations by constants), every address is a
+pointer advancing by one element or a base indexed by the count plus or minus a constant, and none of those values
+is read outside the body, the unroller pairs the two copies into
 two-lane vector instructions instead, broadcasting the scalars once on entry, and unrolls by four rather than two so a
 trip runs two pairs and the loop's own bookkeeping is shared by four elements. Pairing moves each second-iteration
 access ahead of the first iteration's later ones, so for every such pair where one access writes, the entry also
 checks that their elements, eight bytes apart in the second iteration, do not overlap; otherwise the scalar loop runs.
+Accesses to one base differ by constants known now: one element apart they would meet inside a pair, and at any odd
+distance a load that reads back the loop's own stores would straddle two of them, which processors cannot forward
+from the store buffer, so both keep the loop scalar.
 No floating-point operation is reassociated: a value carried from one iteration to the next, such as a sum, keeps the
 loop scalar.
 

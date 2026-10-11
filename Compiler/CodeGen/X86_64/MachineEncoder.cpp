@@ -664,6 +664,26 @@ void MachineEncoder::Encode(const Instruction &instruction) {
     case Op::UnpackLowFp:
         Emit(0x66, false, {0x0F, 0x14}, number(0), false, RegisterRm(reg(1)));
         return;
+    case Op::AddPacked64:
+        Emit(0x66, false, {0x0F, 0xD4}, number(0), false, RegisterRm(reg(1)));
+        return;
+    case Op::SubPacked64:
+        Emit(0x66, false, {0x0F, 0xFB}, number(0), false, RegisterRm(reg(1)));
+        return;
+    case Op::AndPacked:
+        Emit(0x66, false, {0x0F, 0xDB}, number(0), false, RegisterRm(reg(1)));
+        return;
+    case Op::OrPacked:
+        Emit(0x66, false, {0x0F, 0xEB}, number(0), false, RegisterRm(reg(1)));
+        return;
+    case Op::XorPacked:
+        Emit(0x66, false, {0x0F, 0xEF}, number(0), false, RegisterRm(reg(1)));
+        return;
+    case Op::ShlPacked64:
+    case Op::ShrPacked64:
+        Emit(0x66, false, {0x0F, 0x73}, op == Op::ShlPacked64 ? 6 : 2, false, RegisterRm(reg(0)), 1,
+             operands[1].immediate);
+        return;
     case Op::AddFp:
         EncodeFloat(instruction, 0x58);
         return;

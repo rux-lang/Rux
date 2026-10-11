@@ -1,0 +1,105 @@
+// Loops whose 64-bit integer work pairs with the next iteration run two lanes at a time: sums, differences, bitwise
+// logic and shifts by constants. Each result is compared with a reference loop that may stop early, which keeps it
+// one iteration after another. The views share one buffer at chosen offsets, so a source one element behind its
+// destination must stay sequential, and a schedule that reads back words it wrote two or sixteen elements earlier,
+// or seven, must compute the same words either way.
+
+import Core::Assert;
+
+var Buffer: uint64[96] = [0u64; 96];
+var Expected: uint64[96] = [0u64; 96];
+// Never set: the reference loops test it on every iteration, which keeps them from pairing.
+var Stop: uint64 = 0;
+
+func Mix(c: *var uint64, a: *uint64, b: *uint64, n: uint) {
+    for j in 0u..n {
+        let x = a[j];
+        c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] - x) & 0xFFFF0000FFFF0000u64;
+    }
+}
+
+func MixReference(c: *var uint64, a: *uint64, b: *uint64, n: uint) {
+    for j in 0u..n {
+        if Stop != 0 { break; }
+        let x = a[j];
+        c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] - x) & 0xFFFF0000FFFF0000u64;
+    }
+}
+
+func RotateRight(x: uint64, n: uint64) -> uint64 {
+    return (x >> n) | (x << (64u64 - n));
+}
+
+func Schedule(w: *var uint64) {
+    for t in 16u..80u {
+        let s1 = RotateRight(w[t - 2u], 19u64) ^ RotateRight(w[t - 2u], 61u64) ^ (w[t - 2u] >> 6u64);
+        w[t] = w[t - 16u] + s1;
+    }
+}
+
+func ScheduleReference(w: *var uint64) {
+    for t in 16u..80u {
+        if Stop != 0 { break; }
+        let s1 = RotateRight(w[t - 2u], 19u64) ^ RotateRight(w[t - 2u], 61u64) ^ (w[t - 2u] >> 6u64);
+        w[t] = w[t - 16u] + s1;
+    }
+}
+
+func OddSchedule(w: *var uint64) {
+    for t in 16u..80u {
+        w[t] = w[t - 16u] + (w[t - 7u] << 1u64);
+    }
+}
+
+func OddScheduleReference(w: *var uint64) {
+    for t in 16u..80u {
+        if Stop != 0 { break; }
+        w[t] = w[t - 16u] + (w[t - 7u] << 1u64);
+    }
+}
+
+func Reset() {
+    var state: uint64 = 0x9E3779B97F4A7C15u64;
+    for k in 0u..96u {
+        state = state * 6364136223846793005u64 + 1442695040888963407u64;
+        Buffer[k] = state;
+        Expected[k] = state;
+    }
+}
+
+func Matches() -> bool {
+    for k in 0u..96u {
+        if Buffer[k] != Expected[k] { return false; }
+    }
+    return true;
+}
+
+func Main() -> int {
+    for n in 0u..21u {
+        Reset();
+        Mix(@Buffer[48], @Buffer[0], @Buffer[24], n);
+        MixReference(@Expected[48], @Expected[0], @Expected[24], n);
+        Assert(Matches(), "paired integer work over separate arrays matches one element at a time");
+
+        // The source one element behind the destination: each element mixes the one just written.
+        Reset();
+        Mix(@Buffer[5], @Buffer[4], @Buffer[40], n);
+        MixReference(@Expected[5], @Expected[4], @Expected[40], n);
+        Assert(Matches(), "a recurrence through overlapping views stays sequential");
+
+        // The source one element ahead: read before it is overwritten.
+        Reset();
+        Mix(@Buffer[4], @Buffer[5], @Buffer[40], n);
+        MixReference(@Expected[4], @Expected[5], @Expected[40], n);
+        Assert(Matches(), "a source ahead of its destination is read before it is overwritten");
+    }
+    Reset();
+    Schedule(@Buffer[0]);
+    ScheduleReference(@Expected[0]);
+    Assert(Matches(), "a schedule reading back words two and sixteen elements earlier");
+    Reset();
+    OddSchedule(@Buffer[3]);
+    OddScheduleReference(@Expected[3]);
+    Assert(Matches(), "a schedule reading back words seven elements earlier");
+    return 0;
+}

@@ -37,6 +37,13 @@ namespace {
     case Op::Ror:
     case Op::Bswap:
     case Op::UnpackLowFp:
+    case Op::AddPacked64:
+    case Op::SubPacked64:
+    case Op::AndPacked:
+    case Op::OrPacked:
+    case Op::XorPacked:
+    case Op::ShlPacked64:
+    case Op::ShrPacked64:
     case Op::MovZx:
     case Op::MovSx:
     case Op::SetCc:

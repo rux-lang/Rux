@@ -87,6 +87,12 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::VectorAdd:
     case LirOpcode::VectorSub:
     case LirOpcode::VectorMul:
+    case LirOpcode::VectorAnd:
+    case LirOpcode::VectorOr:
+    case LirOpcode::VectorXor:
+    case LirOpcode::VectorShl:
+    case LirOpcode::VectorShr:
+    case LirOpcode::VectorRotateRight:
         return InstructionEffect::Pure;
     case LirOpcode::VectorDiv:
         return InstructionEffect::MayTrap;
