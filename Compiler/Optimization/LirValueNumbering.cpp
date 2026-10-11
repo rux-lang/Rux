@@ -2,6 +2,7 @@
 
 #include "Ir/Lir/Dominance.h"
 
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -87,10 +88,13 @@ bool Number(LirFunc &function) {
             children[parents[block]].push_back(block);
     }
 
+    using MemoryFacts = std::unordered_map<std::string, LirReg>;
+
     struct Visit {
         std::uint32_t block;
         bool exiting;
         std::size_t checkpoint;
+        std::shared_ptr<const MemoryFacts> memory = nullptr;
     };
 
     std::vector<Visit> visits;
@@ -101,6 +105,7 @@ bool Number(LirFunc &function) {
     }
     std::unordered_map<std::string, LirReg> dominating;
     std::vector<std::string> scopedKeys;
+    std::size_t memoryBudget = 65536;
     const auto stableType = [](const TypeRef &type) {
         return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer ||
                type.kind == TypeRef::Kind::Reference;
@@ -116,12 +121,12 @@ bool Number(LirFunc &function) {
             continue;
         }
         visits.push_back({visit.block, true, scopedKeys.size()});
-        for (const auto child : children[visit.block])
-            visits.push_back({child, false, 0});
         auto &block = function.blocks[visit.block];
-        // Loads and floating operations stay block-local. Integer/address expressions may be reused along
-        // the dominator tree without speculating execution or depending on memory/FP environment state.
-        std::unordered_map<std::string, LirReg> values, loads;
+        // Exact memory facts cross only a unique incoming edge, never a join or loop header. Each child owns its
+        // mutable copy, so a write on a sibling path cannot clear or populate this path's facts. FP computations
+        // remain block-local; integer/address expressions may also follow the general dominator tree.
+        MemoryFacts loads = visit.memory ? *visit.memory : MemoryFacts{};
+        std::unordered_map<std::string, LirReg> values;
         std::vector<LirInstr> retained;
         for (auto instruction : block.instrs) {
             for (auto &source : instruction.srcs) {
@@ -176,6 +181,18 @@ bool Number(LirFunc &function) {
             retained.push_back(std::move(instruction));
         }
         block.instrs = std::move(retained);
+        std::shared_ptr<const MemoryFacts> snapshot;
+        if (!loads.empty() && loads.size() <= 128 && loads.size() <= memoryBudget)
+            snapshot = std::make_shared<const MemoryFacts>(std::move(loads));
+        for (const auto child : children[visit.block]) {
+            std::shared_ptr<const MemoryFacts> incoming;
+            if (snapshot && cfg.predecessors[child].size() == 1 && cfg.predecessors[child][0] == visit.block &&
+                snapshot->size() <= memoryBudget) {
+                memoryBudget -= snapshot->size();
+                incoming = snapshot;
+            }
+            visits.push_back({child, false, 0, std::move(incoming)});
+        }
     }
     for (auto &block : function.blocks) {
         for (auto &instruction : block.instrs) {

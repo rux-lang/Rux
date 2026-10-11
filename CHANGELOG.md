@@ -12,6 +12,10 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- Align x86 function and backward-branch entries consistently in machine code and assembly output.
+
+- Reuse exact loads across uniquely entered CFG edges while retaining write, ordering, join and loop barriers.
+
 - Emit constant shifts and rotations in allocated x86 registers, eliding covered shift-count constants.
 
 - Unroll bounded unsigned memory loops in execution order with guarded entry and a scalar tail.

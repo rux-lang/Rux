@@ -93,6 +93,7 @@ func Main() -> int {
     CheckAddressOperands();
     CheckUnrolledLoops();
     CheckAllocatedShifts();
+    CheckLoadFacts();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -524,5 +525,48 @@ func CheckAllocatedShifts() {
         Assert(ConstantShifts32(word) == (shift32(word, 7u64) ^ shift32(word, 31u64)), "allocated 32-bit shifts normalize");
         let signed = value as int64;
         Assert(ConstantSignedShifts(signed) == (signedShift(signed, 7u64) ^ signedShift(signed, 63u64)), "allocated arithmetic right shifts");
+    }
+}
+
+func LoadBranch(pointer: *var uint, other: *var uint, first: bool, second: bool) -> uint {
+    let before = *pointer;
+    if first { *other += 3u; return before + *pointer; }
+    if second { return before + *pointer; }
+    return before - *pointer;
+}
+func LoadJoin(pointer: *var uint, other: *var uint, test: bool) -> uint {
+    let before = *pointer;
+    if test { *other += 9u; }
+    return before + *pointer;
+}
+func LoadLoop(pointer: *var uint, other: *var uint, count: uint) -> uint {
+    var result = *pointer;
+    for i in 0u..count { *other += 1u; result += *pointer; }
+    return result;
+}
+func CheckLoadFacts() {
+    let branch: func(*var uint, *var uint, bool, bool) -> uint = LoadBranch;
+    let join: func(*var uint, *var uint, bool) -> uint = LoadJoin;
+    let readLoop: func(*var uint, *var uint, uint) -> uint = LoadLoop;
+    for first in [false, true] {
+        for second in [false, true] {
+            var value = 17u;
+            var other = 21u;
+            let expected = first || second ? 34u : 0u;
+            Assert(branch(@value, @other, first, second) == expected, "load facts stay on their own branch");
+            Assert(value == 17u && other == (first ? 24u : 21u), "branch writes remain observable");
+            Assert(branch(@value, @value, first, second) == (first ? 37u : expected), "aliased writes invalidate inherited loads");
+        }
+        var separate = 17u;
+        var neighbor = 21u;
+        Assert(join(@separate, @neighbor, first) == 34u, "join with distinct addresses");
+        Assert(join(@separate, @separate, first) == (first ? 43u : 34u), "join with a conditional aliasing write");
+    }
+    for count in 0u..17u {
+        var value = 17u;
+        var other = 21u;
+        Assert(readLoop(@value, @other, count) == 17u * (count + 1u), "loop headers discard inherited load facts");
+        Assert(readLoop(@value, @value, count) == 17u * (count + 1u) + count * (count + 1u) / 2u,
+            "each loop iteration observes aliased writes");
     }
 }

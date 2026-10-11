@@ -403,3 +403,18 @@ integer type and are selected only within the operand width; variable and oversi
 Covered count definitions no longer occupy registers or emit materialization. Last-use operands may share the result
 home. Zero-count operations become copies, with an explicit 32-bit self-copy when needed to normalize UInt32 upper
 bits. Shared selection and copy predicates keep textual and binary emission consistent, using baseline instructions.
+
+Value numbering carries exact load/store facts across uniquely entered successor edges. Each child receives its
+own bounded copy of an immutable predecessor snapshot, so writes in one sibling cannot affect facts on another
+path. Possible writes, calls, atomics and volatile/ordering operations retain the existing invalidation rules;
+joins and loop headers start with no inherited memory facts. There is no address-range or type-based alias promise.
+At most 128 facts enter a snapshot and at most 65,536 facts are inherited per function/pass; exhausted budgets
+simply retain the original operations. Floating-point computations remain block-local.
+
+The x86 layout heuristic aligns defined functions and nonentry backward-branch destinations to 32-byte boundaries.
+The latter are likely loop entries, without requiring a semantic loop claim. A shared selector covers jump, branch,
+and switch edges in linear CFG time. At most 31 NOP bytes precede a selected destination. Padding precedes symbol
+starts and branch labels, so symbol sizes exclude inter-function padding and patched jumps skip loop padding.
+The object section records 32-byte alignment so linkers preserve offsets; assembly output uses the same rule.
+Raw assembly bodies retain their exact instructions, with alignment only before the function symbol. This is a
+portable x86 layout choice, not CPU feature dispatch, vectorization or instruction scheduling.

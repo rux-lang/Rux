@@ -651,3 +651,95 @@ TEST_CASE("Unrolling follows guarded versioning through a conditional entry edge
     CHECK(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
     CHECK(SsaErrors(package).empty());
 }
+
+TEST_CASE("Load facts cross unique checked edges without entering sibling writes or joins") {
+    Optimization::LirValueNumbering numbering;
+    auto chain = Promoted(R"(
+        func Read(pointer: *int, first: bool, second: bool) -> int {
+            let before = *pointer;
+            if first { return before; }
+            if second { return before + *pointer; }
+            return before - *pointer;
+        }
+    )");
+    REQUIRE_EQ(Count(chain, LirOpcode::Load), 3);
+    CHECK(numbering.Run(chain, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(chain, LirOpcode::Load), 1);
+    CHECK(SsaErrors(chain).empty());
+    auto siblings = Promoted(R"(
+        func Read(pointer: *int, other: *var int, test: bool) -> int {
+            let before = *pointer;
+            if test { *other = 42; return before + *pointer; }
+            return before - *pointer;
+        }
+    )");
+    static_cast<void>(numbering.Run(siblings, {}));
+    CHECK_EQ(Count(siblings, LirOpcode::Load), 2);
+    CHECK(SsaErrors(siblings).empty());
+    auto join = Promoted(R"(
+        func Read(pointer: *int, other: *var int, test: bool) -> int {
+            let before = *pointer;
+            if test { *other = 42; }
+            return before + *pointer;
+        }
+    )");
+    static_cast<void>(numbering.Run(join, {}));
+    CHECK_EQ(Count(join, LirOpcode::Load), 2);
+    CHECK(SsaErrors(join).empty());
+}
+
+TEST_CASE("Inherited load facts respect calls volatile accesses and loop backedges") {
+    Optimization::LirValueNumbering numbering;
+    auto calls = Promoted(R"(
+        func Touch(pointer: *var int) { *pointer = 99; }
+        func Read(pointer: *var int, test: bool) -> int {
+            let before = *pointer;
+            if test { Touch(pointer); return before + *pointer; }
+            return before;
+        }
+    )");
+    static_cast<void>(numbering.Run(calls, {}));
+    CHECK_EQ(Count(calls, LirOpcode::Load), 2);
+    CHECK(SsaErrors(calls).empty());
+    auto loop = Promoted(R"(
+        func Read(pointer: *int, other: *var int, count: uint) -> int {
+            var total = *pointer;
+            for i in 0u..count { *other += 1; total += *pointer; }
+            return total;
+        }
+    )");
+    const auto loads = Count(loop, LirOpcode::Load);
+    static_cast<void>(numbering.Run(loop, {}));
+    CHECK_EQ(Count(loop, LirOpcode::Load), loads);
+    CHECK(SsaErrors(loop).empty());
+    auto volatileRead = Promoted(R"(
+        func Read(pointer: *int, test: bool) -> int {
+            let before = *pointer;
+            if test { return before + *pointer; }
+            return before;
+        }
+    )");
+    for (auto &block : volatileRead.modules[0].funcs[0].blocks)
+        for (auto &instruction : block.instrs)
+            if (instruction.op == LirOpcode::Load)
+                instruction.isVolatile = true;
+    static_cast<void>(numbering.Run(volatileRead, {}));
+    CHECK_EQ(Count(volatileRead, LirOpcode::Load), 2);
+    CHECK(SsaErrors(volatileRead).empty());
+}
+
+TEST_CASE("Exact stored values forward through both unique successors") {
+    auto package = Promoted(R"(
+        func Read(pointer: *var int, value: int, test: bool) -> int {
+            *pointer = value;
+            if test { return *pointer + 1; }
+            return *pointer - 1;
+        }
+    )");
+    Optimization::LirValueNumbering numbering;
+    REQUIRE_EQ(Count(package, LirOpcode::Load), 2);
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(package, LirOpcode::Load), 0);
+    CHECK_EQ(Count(package, LirOpcode::Store), 1);
+    CHECK(SsaErrors(package).empty());
+}

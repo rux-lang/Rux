@@ -1,3 +1,4 @@
+#include "CodeGen/X86_64/CodeAlignment.h"
 #include "CodeGen/X86_64/ModuleEmitter.h"
 
 #include <algorithm>
@@ -73,6 +74,13 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
     if (func.isExtern) {
         GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
         return;
+    }
+    // Stabilize function-entry alignment when preceding instruction sequences change.
+    // Padding belongs outside the symbol, including for raw assembly functions.
+    const auto previousTextSize = TextData().size();
+    const auto functionOffset = moduleBuilder.AlignSection(RcuModuleSection::Text, X86CodeAlignment);
+    for (auto offset = previousTextSize; offset < functionOffset; ++offset) {
+        TextData()[offset] = 0x90;
     }
     if (func.isAsm) {
         currentFunc = func.name;
@@ -277,7 +285,13 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
         }
     }
     terminatorEmitter.Begin(func.blocks.size());
+    const auto alignedBlocks = X86AlignedBlocks(func);
     for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
+        if (alignedBlocks[bi]) {
+            while (enc.Size() % X86CodeAlignment != 0) {
+                enc.Byte(0x90);
+            }
+        }
         terminatorEmitter.MarkBlock(bi);
         const auto &block = func.blocks[bi];
         for (const auto &instr : block.instrs) {

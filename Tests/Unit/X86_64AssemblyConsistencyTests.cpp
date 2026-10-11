@@ -7,6 +7,7 @@
 // each side uses, which only agrees when every instruction that touches the frame does so in the same order.
 
 #include "CodeGen/X86_64/AssemblyPrinter.h"
+#include "CodeGen/X86_64/CodeAlignment.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Object/Rcu/Rcu.h"
@@ -23,6 +24,22 @@
 #include <vector>
 
 using namespace Rux;
+
+TEST_CASE("x86-64 alignment selects backward destinations without interpreting loop semantics") {
+    LirFunc function;
+    function.blocks.resize(6);
+    function.blocks[0].term.emplace().trueTarget = 4;
+    auto &branch = function.blocks[2].term.emplace();
+    branch.kind = LirTermKind::Branch;
+    branch.trueTarget = 1;
+    branch.falseTarget = 5;
+    function.blocks[3].term.emplace().trueTarget = 3;
+    auto &selection = function.blocks[4].term.emplace();
+    selection.kind = LirTermKind::Switch;
+    selection.cases = {{"0", 2}, {"1", 5}, {"2", 99}};
+    CHECK(X86AlignedBlocks(function) == std::vector<bool>{false, true, true, true, false, false});
+    CHECK(X86AlignedBlocks(LirFunc{}).empty());
+}
 
 namespace {
 const TypeRef Float16 = TypeRef::MakePrimitive(TypeRef::Kind::Float16);
@@ -764,5 +781,63 @@ TEST_CASE("x86-64 allocated shifts and rotations agree in assembly and machine b
         const std::vector<std::uint8_t> expectedRotate = {0x48, 0xC1, 0xCB, 19};
         CHECK(std::ranges::search(code, expectedShift).begin() != code.end());
         CHECK(std::ranges::search(code, expectedRotate).begin() != code.end());
+    }
+}
+
+TEST_CASE("x86-64 function and backward branch alignment preserve symbol ranges and jump targets") {
+    LirFunc raw;
+    raw.name = "Raw";
+    raw.isAsm = true;
+    AsmInstr ret;
+    ret.mnemonic = "ret";
+    raw.asmBody = {ret};
+    LirFunc loop;
+    loop.name = "Loop";
+    loop.blocks.resize(2);
+    loop.blocks[0].label = "entry";
+    loop.blocks[0].term.emplace().trueTarget = 1;
+    loop.blocks[1].label = "again";
+    loop.blocks[1].term.emplace().trueTarget = 1;
+    auto trailing = raw;
+    trailing.name = "Trailing";
+    for (const auto os : Systems) {
+        const auto package = PackageOf({raw, loop, trailing});
+        RcuEmitter emitter(package, "Aligned", os);
+        const auto objects = emitter.Generate();
+        REQUIRE(emitter.Diagnostics().empty());
+        REQUIRE(objects.size() == 1);
+        const auto &object = objects.front();
+        const auto &section = object.sections.at(RCU_TEXT_IDX);
+        CHECK(section.alignment == X86CodeAlignment);
+        const auto symbol = [&](const std::string_view name) -> const RcuSymbol & {
+            const auto found = std::ranges::find(object.symbols, name, &RcuSymbol::name);
+            REQUIRE(found != object.symbols.end());
+            return *found;
+        };
+        const auto &first = symbol("Raw");
+        const auto &middle = symbol("Loop");
+        const auto &last = symbol("Trailing");
+        CHECK(first.value == 0);
+        CHECK(first.size == 1);
+        CHECK(section.data[first.value] == 0xC3);
+        CHECK(middle.value == X86CodeAlignment);
+        CHECK(last.value % X86CodeAlignment == 0);
+        CHECK(last.size == 1);
+        for (auto offset = first.value + first.size; offset < middle.value; ++offset) {
+            CHECK(section.data[offset] == 0x90);
+        }
+        for (auto offset = middle.value + middle.size; offset < last.value; ++offset) {
+            CHECK(section.data[offset] == 0x90);
+        }
+        // The self-edge is the final five-byte near jump; padding precedes its destination.
+        const auto jump = middle.value + middle.size - 5;
+        CHECK(jump % X86CodeAlignment == 0);
+        REQUIRE(section.data[jump] == 0xE9);
+        std::int32_t displacement = 0;
+        std::memcpy(&displacement, section.data.data() + jump + 1, sizeof(displacement));
+        CHECK(displacement == -5);
+        const auto text = AssemblyPrinter(package, os).Generate();
+        CHECK(text.contains("align 32, db 0x90\n\n.Loop_again:"));
+        CHECK(text.contains("Raw:\n    ret\n"));
     }
 }

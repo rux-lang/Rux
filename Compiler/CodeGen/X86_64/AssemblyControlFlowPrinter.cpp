@@ -9,6 +9,7 @@
 #include "CodeGen/RuntimeFailure.h"
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
+#include "CodeGen/X86_64/CodeAlignment.h"
 #include "Target/AsmInstr.h"
 
 #include <format>
@@ -33,6 +34,7 @@ public:
 
     void EmitFunction(const LirFunc &function) {
         currentFunction = function.name;
+        TI(std::format("align {}, db 0x90", X86CodeAlignment));
         if (function.isAsm) {
             EmitAsmFunction(function);
             return;
@@ -41,7 +43,11 @@ public:
         AssemblyInstructionPrinter instructionPrinter(modulePrinter, framePlan, layouts, interfaceNames, targetOs);
         instructionPrinter.EmitFunctionSetup(function);
 
+        const auto alignedBlocks = X86AlignedBlocks(function);
         for (std::uint32_t index = 0; index < function.blocks.size(); ++index) {
+            if (alignedBlocks[index]) {
+                TI(std::format("align {}, db 0x90", X86CodeAlignment));
+            }
             GenBlock(index, function.blocks[index], function, instructionPrinter);
         }
         TB();

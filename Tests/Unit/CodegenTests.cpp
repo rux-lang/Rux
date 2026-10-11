@@ -178,7 +178,13 @@ TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
         CHECK(aarch64.sections[section].name == x86.sections[section].name);
         CHECK(aarch64.sections[section].type == x86.sections[section].type);
         CHECK(aarch64.sections[section].flags == x86.sections[section].flags);
-        CHECK(aarch64.sections[section].alignment == x86.sections[section].alignment);
+        if (section == RCU_TEXT_IDX) {
+            CHECK(aarch64.sections[section].alignment == 16);
+            CHECK(x86.sections[section].alignment == 32);
+        }
+        else {
+            CHECK(aarch64.sections[section].alignment == x86.sections[section].alignment);
+        }
     }
     CHECK(aarch64.sections[RCU_RODATA_IDX].data == x86.sections[RCU_RODATA_IDX].data);
     CHECK(aarch64.sections[RCU_DATA_IDX].data == x86.sections[RCU_DATA_IDX].data);
