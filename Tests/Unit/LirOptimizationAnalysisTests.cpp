@@ -177,6 +177,12 @@ TEST_CASE("Fill widening stores words where a loop stores one narrow value at ev
             for index in 0u..length { at[index] = *from; }
         }
     )"));
+    // Fewer elements than one word holds: a word loop would never run, and folding it away would invite widening again.
+    CHECK_FALSE(widened(R"(
+        func Fill(at: *var uint8) {
+            for index in 0u..7u { at[index] = 1u8; }
+        }
+    )"));
 }
 
 TEST_CASE("Unrolling flattens a loop between two constants into its header") {

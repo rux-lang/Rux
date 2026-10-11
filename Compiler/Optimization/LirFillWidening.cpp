@@ -194,6 +194,10 @@ bool Widen(LirFunc &function) {
             continue;
 
         const auto perWord = 8 / size;
+        // A constant limit below one word leaves the word loop nothing to do; cleanup would fold it away, and the next
+        // iteration would widen the loop again.
+        if (const auto bound = constantOf(limit); bound && *bound < perWord)
+            continue;
         static constexpr std::array<std::uint64_t, 5> splats = {0, 0x0101010101010101u, 0x0001000100010001u, 0,
                                                                 0x0000000100000001u};
         const auto indexType = phi->type;
