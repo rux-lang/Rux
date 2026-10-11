@@ -640,6 +640,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     if (isAArch64) {
         AArch64RcuEmitter aarch64Emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
                                          compileTimeContext.target.os, compileTimeContext.buildInfo);
+        aarch64Emitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
         rcuFiles = aarch64Emitter.Generate();
         codegenDiagnostics = aarch64Emitter.Diagnostics();
     }

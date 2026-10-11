@@ -1,3 +1,5 @@
+#include "CodeGen/AArch64/MachineEmission.h"
+#include "CodeGen/AArch64/MachineSelection.h"
 #include "CodeGen/AArch64/ModuleEmitter.h"
 #include "Ir/Lir/LirVectors.h"
 
@@ -106,6 +108,10 @@ void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
         GenFunc(scalar);
         return;
     }
+    if (machineSelection && GenMachineFunc(func)) {
+        currentFunc.clear();
+        return;
+    }
     const AArch64FramePlan framePlan = PlanAArch64Frame(func, layouts, interfaceNames, structDecls, targetOs);
     activeFramePlan = &framePlan;
     AArch64FunctionEmitter functionEmitter(enc, framePlan, layouts, interfaceNames, currentFunc, targetOs, *this);
@@ -163,6 +169,59 @@ void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
     activeFramePlan = nullptr;
     currentFunc.clear();
 }
+
+std::uint32_t AArch64ModuleEmitter::ResolveMachineSymbol(const AArch64Machine::SymbolRef &symbol) {
+    using Kind = AArch64Machine::SymbolRef::Kind;
+    switch (symbol.kind) {
+    case Kind::Global:
+        return ResolveGlobalSymbol(symbol.text);
+    case Kind::NamedData:
+        return GetOrAddExtern(symbol.text, RcuSymKind::ExternData);
+    case Kind::Function:
+        return ResolveCallSymbol(symbol.text);
+    case Kind::String:
+        return InternStringLiteral(symbol.text);
+    case Kind::Float32:
+        return InternF32(symbol.text);
+    case Kind::Float64:
+        return InternF64(symbol.text);
+    case Kind::Kernel32:
+        return GetOrAddExtern(symbol.text, RcuSymKind::ExternFunc, std::string(kKernel32));
+    }
+    return kNoSymbol;
+}
+
+bool AArch64ModuleEmitter::GenMachineFunc(const LirFunc &func) {
+    const AArch64Machine::SelectionContext context{layouts, interfaceNames, callPlanner, targetOs, backtrace.enabled};
+    auto selected = AArch64Machine::SelectFunction(func, context);
+    if (!selected) {
+        return false;
+    }
+    const auto emitted = AArch64Machine::EmitFunction(*selected, targetOs);
+    if (!emitted) {
+        return false;
+    }
+    const std::uint32_t symIdx = funcSyms.contains(func.name)
+                                   ? funcSyms.at(func.name)
+                                   : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
+                                                   RcuSymVis::ForDefinition(func.isPublic, func.isExported));
+    funcSyms[func.name] = symIdx;
+    std::vector<std::uint32_t> symbols;
+    symbols.reserve(selected->symbols.size());
+    for (const auto &symbol : selected->symbols) {
+        symbols.push_back(ResolveMachineSymbol(symbol));
+    }
+    if (!moduleBuilder.BeginFunction(symIdx)) {
+        return true;
+    }
+    const auto start = static_cast<std::uint32_t>(TextData().size());
+    TextData().insert(TextData().end(), emitted->bytes.begin(), emitted->bytes.end());
+    for (const auto &use : emitted->symbolUses) {
+        AddTextReloc(start + use.offset, symbols.at(use.symbol), use.type, use.addend);
+    }
+    (void)moduleBuilder.EndFunction(symIdx);
+    return true;
+}
 } // namespace Rux::AArch64Detail
 
 namespace Rux {
@@ -196,6 +255,7 @@ std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
         AArch64ModuleEmitter gen(lir.modules[index], structDecls, interfaceNames, packageName, targetOs, buildInfo,
                                  diagnostics);
         gen.SetBacktrace({tracesPanics, index, lir.modules.size()});
+        gen.SetMachineSelection(machineSelection);
         result.push_back(gen.Generate());
     }
     return result;

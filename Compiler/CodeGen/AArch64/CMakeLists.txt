@@ -14,6 +14,11 @@ rux_add_component(RuxCodeGenAArch64
     EncoderMemory.cpp
     FramePlan.cpp
     FunctionEmitter.cpp
+    MachineEmission.cpp
+    MachineEncoder.cpp
+    MachineSelection.cpp
+    MachineSelectionArithmetic.cpp
+    MachineSelectionCalls.cpp
     AtomicEmitter.cpp
     ThreadLocalEmitter.cpp
     SoftwareFloatEmitter.cpp

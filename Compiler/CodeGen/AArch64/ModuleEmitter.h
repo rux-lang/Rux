@@ -5,6 +5,7 @@
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/FramePlan.h"
 #include "CodeGen/AArch64/FunctionEmitter.h"
+#include "CodeGen/AArch64/MachineInstructions.h"
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/AArch64/Registers.h"
 #include "CodeGen/BackendDiagnostics.h"
@@ -759,6 +760,11 @@ public:
         backtrace = tables;
     }
 
+    /// Routes every function the machine selector supports through it (`MachineSelection.h`).
+    void SetMachineSelection(const bool enabled) noexcept {
+        machineSelection = enabled;
+    }
+
 private:
     // One function this module emitted, for its stack-trace table.
     struct FunctionRange {
@@ -796,6 +802,12 @@ private:
     void GenAsmFunc(const LirFunc &func);
 
     void GenFunc(const LirFunc &func);
+
+    // Machine selection: a function the selector supports is selected, register-allocated and encoded there, and
+    // only its words and relocations come back here.
+    bool machineSelection = false;
+    [[nodiscard]] bool GenMachineFunc(const LirFunc &func);
+    [[nodiscard]] std::uint32_t ResolveMachineSymbol(const AArch64Machine::SymbolRef &symbol);
 
     // Module-level data
     //

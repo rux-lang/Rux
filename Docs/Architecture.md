@@ -256,6 +256,23 @@ the deepest successor falls through and failure paths come last, relaxes branche
 point, atomics, thread-local storage, standard-error writes or C variadic calls, or whose allocation exceeds the
 allocator's bounds, keeps the direct emitter. Both paths share one calling convention, so they call each other freely.
 
+Release AArch64 builds for Linux and FreeBSD take the same route through `AArch64/MachineSelection*.cpp`, the same
+machine IR and the same allocator. Registers 0 to 30 are X0 to X30 and 32 to 63 are V0 to V31; X16 and X17 are never
+allocated because `MachineEncoder` legalizes into them whatever an operand cannot encode (a displacement out of reach,
+an index with a displacement, a symbol's ADRP and ADD pair, a constant with no immediate form), X18 is the platform
+register, and X29 and X30 hold the frame record. Selection is three-address, so no copy precedes an operation: add,
+subtract and compare take an immediate when its 12-bit form (or the negation's, which swaps the operation or makes
+the compare a CMN) encodes, logic takes a bitmask immediate, comparisons set the flags for `cset` or a conditional
+branch, and floating comparisons use MI and LS for `<` and `<=` so an unordered pair compares false. Division by a
+constant multiplies with `umulh` or `smulh`, a remainder is `msub`, and an unsigned value converts to floating point
+with `ucvtf`. Every argument, parameter and result is placed by `AArch64CallPlanner`, the planner the direct emitter
+uses, including aggregates in registers or as homogeneous float aggregates, copies passed by address, stack
+arguments and the X8 indirect result. The frame keeps the outgoing argument area at SP, frame objects and
+callee-saved registers above it, and the frame record at the top, where X29 points and stack arguments start sixteen
+bytes above; a failure report writes its three parts with the write system call and stops at BRK. Vector code is
+devectorized first, Windows and macOS targets and C variadic calls keep the direct emitter, and the AArch64 language
+tests run under `qemu-user` against both paths with the same results.
+
 `Target` describes the output machine. `System` describes the host running the compiler. Code generation and linking must use target data rather than host preprocessor checks. For example, emitting a Linux executable while running on Windows is a target decision; locating `%LocalAppData%` is a host decision.
 
 `BaselineCpuFeatures` supplies the portable output policy: SSE2 on x86-64, NEON on AArch64, and no capabilities for an

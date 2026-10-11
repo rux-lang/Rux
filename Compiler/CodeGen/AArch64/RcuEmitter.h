@@ -37,6 +37,12 @@ public:
                                Target::OS inputTargetOs = Target::OS::Linux, BuildInfo inputBuildInfo = {});
     [[nodiscard]] std::vector<RcuFile> Generate() const;
 
+    /// Routes every function the machine selector supports through machine IR and the shared register allocator
+    /// (`MachineSelection.h`); the rest keep the direct emitter. The Release profile enables it.
+    void SetMachineSelection(const bool enabled) noexcept {
+        machineSelection = enabled;
+    }
+
     /// Diagnostics accumulated during generation, which for this back end also covers everything it does not implement
     /// yet. Populated by Generate(); check after calling it.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
@@ -48,6 +54,7 @@ private:
     std::string packageName;
     Target::OS targetOs;
     BuildInfo buildInfo;
+    bool machineSelection = false;
     mutable std::vector<Diagnostic> diagnostics;
 };
 } // namespace Rux
