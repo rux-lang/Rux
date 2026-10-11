@@ -1,5 +1,6 @@
 #include "Ir/Lir/Dominance.h"
 #include "Optimization/LirCfgPasses.h"
+#include "Optimization/LirFillWidening.h"
 #include "Optimization/LirLoopInvariants.h"
 #include "Optimization/LirLoopUnrolling.h"
 #include "Optimization/LirLoopVersioning.h"
@@ -128,6 +129,50 @@ TEST_CASE("CFG cleanup folds a branch on a constant defined in another block") {
     const auto &blocks = package.modules[0].funcs[0].blocks;
     REQUIRE(blocks[1].term->kind == LirTermKind::Jump);
     CHECK_EQ(blocks[1].term->trueTarget, 2U);
+}
+
+TEST_CASE("Fill widening stores words where a loop stores one narrow value at every index") {
+    const auto widened = [](const std::string &source) {
+        auto package = Promoted(source);
+        Optimization::LirCfgCleanup cleanup;
+        Optimization::LirBlockCoalescing coalescing;
+        static_cast<void>(cleanup.Run(package, {}));
+        static_cast<void>(coalescing.Run(package, {}));
+        REQUIRE(SsaErrors(package).empty());
+        Optimization::LirFillWidening widening;
+        const bool changed = widening.Run(package, {}) == Optimization::PassChange::Changed;
+        CHECK(SsaErrors(package).empty());
+        std::size_t words = 0;
+        for (const auto &block : package.modules[0].funcs[0].blocks)
+            for (const auto &instruction : block.instrs)
+                words += instruction.op == LirOpcode::Store && instruction.type == TypeRef::MakeUInt64();
+        CHECK_EQ(words, changed ? 1U : 0U);
+        // A second run finds the element loop entered from the word loop, not from zero, and leaves it.
+        Optimization::LirFillWidening again;
+        CHECK(again.Run(package, {}) == Optimization::PassChange::None);
+        return changed;
+    };
+    CHECK(widened(R"(
+        func Fill(at: *var uint8, length: uint, value: uint8) {
+            for index in 0u..length { at[index] = value; }
+        }
+    )"));
+    CHECK(widened(R"(
+        func Fill(at: *var int16, length: uint, value: int16) {
+            for index in 0u..length { at[index] = value; }
+        }
+    )"));
+    // Floating-point values convert by value, and a loop that also reads keeps its order of reads and writes.
+    CHECK_FALSE(widened(R"(
+        func Fill(at: *var float32, length: uint, value: float32) {
+            for index in 0u..length { at[index] = value; }
+        }
+    )"));
+    CHECK_FALSE(widened(R"(
+        func Fill(at: *var uint8, length: uint, from: *uint8) {
+            for index in 0u..length { at[index] = *from; }
+        }
+    )"));
 }
 
 TEST_CASE("Value numbering sees a bounds check through a same-width cast as the loop test") {

@@ -8,6 +8,7 @@ rux_add_component(RuxOptimization
     LirConstantMemory.cpp
     LirDeclarationPruner.cpp
     LirDeadCodeElimination.cpp
+    LirFillWidening.cpp
     LirMemoryPromotion.cpp
     LirInliner.cpp
     LirScalarCombines.cpp

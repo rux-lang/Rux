@@ -410,6 +410,13 @@ conversions are rejected. Loop size, instruction count and checks (sixteen) are 
 to eight rounds per function reach its other loops, since a versioned loop's entry becomes a guard branch no round
 accepts again.
 
+Release fill widening follows block coalescing. A two-block loop that stores one invariant one-, two- or
+four-byte integer, character or Boolean at every index `0..limit` of a base pointer, and does nothing else, gains a
+loop in front of it that stores eight-byte words holding copies of that value up to the last whole word below the
+limit; the original loop then finishes the remainder from the word loop's index. The bytes written, and their order
+within each word, are unchanged, and nothing is read. Floating-point values, loops that read memory or whose values
+are used after them, and starts other than zero keep their loops.
+
 Release block coalescing joins an unconditional successor only when that successor has one predecessor. It preserves
 instruction order, replaces unique-edge phis through SSA renaming, and updates outgoing phi predecessors before
 removing dead blocks. Entry blocks, conditional joins and self-targeting edges are not absorbed. Volatile operations,
