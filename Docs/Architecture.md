@@ -450,6 +450,14 @@ count stepped by one against an invariant limit on every iteration, so that it e
 to its exit, and cleanup removes it. Unread loads count as inert, as they do in machine dead-code elimination. Such
 loops remain where an inlined drop visits the elements of an array of plain values.
 
+If-conversion follows dead loop elimination. Inside a loop, a block that branches on a Boolean to a side block,
+whose only other way leads (directly or through an empty block) to the side block's single successor, loses the
+branch when the side block computes at most six integer or Boolean values without effects, traps or 128-bit
+arithmetic and the merge receives at most four integers no wider than a word. The side block's instructions move
+above the branch, and each merged value becomes arithmetic on the condition `c` as 0 or 1: `x + c` for a
+conditional `x + 1`, `x + (y & -c)` for `x + y`, and `a ^ ((a ^ b) & -c)` otherwise. Loops only, because a
+misprediction matters only where it repeats; a predictable branch pays a few more instructions per iteration.
+
 Release block coalescing joins an unconditional successor only when that successor has one predecessor. It preserves
 instruction order, replaces unique-edge phis through SSA renaming, and updates outgoing phi predecessors before
 removing dead blocks. Entry blocks, conditional joins and self-targeting edges are not absorbed. Volatile operations,

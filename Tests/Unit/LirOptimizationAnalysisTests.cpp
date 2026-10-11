@@ -4,6 +4,7 @@
 #include "Optimization/LirCfgPasses.h"
 #include "Optimization/LirDeadLoops.h"
 #include "Optimization/LirFillWidening.h"
+#include "Optimization/LirIfConversion.h"
 #include "Optimization/LirLoopInvariants.h"
 #include "Optimization/LirLoopUnrolling.h"
 #include "Optimization/LirLoopVersioning.h"
@@ -248,6 +249,70 @@ TEST_CASE("Dead loop elimination removes loops that only count and read") {
             var index: uint = 0u;
             while index < length { index += 1u; }
             return index;
+        }
+    )"));
+}
+
+TEST_CASE("If conversion turns conditional updates in loops into arithmetic") {
+    const auto converted = [](const std::string &source) {
+        auto package = Promoted(source);
+        Optimization::LirCfgCleanup cleanup;
+        static_cast<void>(cleanup.Run(package, {}));
+        const auto branches = [&] {
+            std::size_t count = 0;
+            for (const auto &block : package.modules[0].funcs[0].blocks)
+                count += block.term && block.term->kind == LirTermKind::Branch;
+            return count;
+        };
+        const auto before = branches();
+        Optimization::LirIfConversion conversion;
+        const bool changed = conversion.Run(package, {}) == Optimization::PassChange::Changed;
+        static_cast<void>(cleanup.Run(package, {}));
+        CHECK(SsaErrors(package).empty());
+        if (changed)
+            CHECK_EQ(branches(), before - 1);
+        return changed;
+    };
+    // A count, a sum and a choice between two values each become arithmetic on the condition.
+    CHECK(converted(R"(
+        func Count(values: *uint8, length: uint) -> uint64 {
+            var count: uint64 = 0u64;
+            var sum: uint64 = 0u64;
+            var index: uint = 0u;
+            while index < length {
+                if values[index] == 0u8 { count += 1u64; sum += index as uint64; }
+                index += 1u;
+            }
+            return count + sum;
+        }
+    )"));
+    CHECK(converted(R"(
+        func Pick(values: *int32, length: uint) -> int32 {
+            var best: int32 = 0;
+            var index: uint = 0u;
+            while index < length {
+                let value = values[index];
+                if value > best { best = value - 1; }
+                index += 1u;
+            }
+            return best;
+        }
+    )"));
+    // A store, a call or a branch outside any loop stays a branch.
+    CHECK_FALSE(converted(R"(
+        func Mark(values: *var uint8, length: uint) {
+            var index: uint = 0u;
+            while index < length {
+                if values[index] == 0u8 { values[index] = 1u8; }
+                index += 1u;
+            }
+        }
+    )"));
+    CHECK_FALSE(converted(R"(
+        func Once(value: uint, flag: bool) -> uint {
+            var result = value;
+            if flag { result += 1u; }
+            return result;
         }
     )"));
 }

@@ -10,6 +10,7 @@ rux_add_component(RuxOptimization
     LirDeadCodeElimination.cpp
     LirDeadLoops.cpp
     LirFillWidening.cpp
+    LirIfConversion.cpp
     LirMemoryPromotion.cpp
     LirInliner.cpp
     LirScalarCombines.cpp
