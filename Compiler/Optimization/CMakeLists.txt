@@ -13,6 +13,7 @@ rux_add_component(RuxOptimization
     LirValueNumbering.cpp
     LirLoopInvariants.cpp
     LirLoopVersioning.cpp
+    LirLoopUnrolling.cpp
     LirSsaVerifier.cpp
     LirScalarReplacement.cpp
     LirReachability.cpp

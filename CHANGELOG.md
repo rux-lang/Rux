@@ -12,6 +12,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- Unroll bounded unsigned memory loops in execution order with guarded entry and a scalar tail.
+
 - Select allocated x86 scalar addresses directly with scaled LEA and bounded spill reloads.
 - **Allocated scalar memory access** — Load and store directly through allocated x86 registers, removing scratch
   transfers while preserving integer extension, exact store widths and floating-point payload bits.

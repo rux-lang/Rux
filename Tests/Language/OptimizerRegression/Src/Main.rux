@@ -91,6 +91,7 @@ func VerifyWordOperations(limit: uint64) {
 func Main() -> int {
     CheckMemoryOperands();
     CheckAddressOperands();
+    CheckUnrolledLoops();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -428,5 +429,74 @@ func CheckAddressOperands() {
     }
     for index in 0..8 {
         Assert(qwords[index] == (index as uint64) + 101u64, "scaled writes reach each element exactly");
+    }
+}
+
+func UnrolledWalk(start: uint, limit: uint, output: *var uint, floating: *var float64) -> uint {
+    var i = start;
+    var a = 3u;
+    var b = 5u;
+    while i < limit {
+        let old = a;
+        a = b;
+        b = old + i;
+        *output = *output * 7u + a + b;
+        *floating = (*floating * 0.25) + 1.0;
+        i += 1u;
+    }
+    return a + b;
+}
+
+func ReferenceWalk(start: uint, limit: uint, output: *var uint, floating: *var float64) -> uint {
+    var left = limit > start ? limit - start : 0u;
+    var i = start;
+    var a = 3u;
+    var b = 5u;
+    while left != 0u {
+        let old = a;
+        a = b;
+        b = old + i;
+        *output = *output * 7u + a + b;
+        *floating = (*floating * 0.25) + 1.0;
+        i += 1u;
+        left -= 1u;
+    }
+    return a + b;
+}
+
+func CheckUnrolledLoops() {
+    let walk: func(uint, uint, *var uint, *var float64) -> uint = UnrolledWalk;
+    for start in 0u..18u {
+        for limit in 0u..18u {
+            var actual = 11u;
+            var expected = 11u;
+            var actualFloat = -0.5;
+            var expectedFloat = -0.5;
+            let a = walk(start, limit, @actual, @actualFloat);
+            let b = ReferenceWalk(start, limit, @expected, @expectedFloat);
+            Assert(a == b && actual == expected, "unrolled recurrences, empty ranges and scalar tails");
+            Assert(actualFloat == expectedFloat, "unrolling preserves floating-point execution order");
+        }
+    }
+    for count in 0u..9u {
+        var actual = 0u;
+        var expected = 0u;
+        let a = walk(0u, count, @actual, @actual as *var float64);
+        let b = ReferenceWalk(0u, count, @expected, @expected as *var float64);
+        Assert(a == b && actual == expected, "unrolling preserves legal raw-pointer alias order");
+    }
+    var untouched = 13u;
+    var untouchedFloat = -0.5;
+    Assert(walk(0xFFFFFFFFFFFFFFFFu, 0u, @untouched, @untouchedFloat) == 8u, "descending maximum range is empty");
+    Assert(untouched == 13u && untouchedFloat == -0.5, "empty unrolled range performs no memory access");
+    let maximum = 0xFFFFFFFFFFFFFFFFu;
+    for distance in 0u..9u {
+        var actual = 11u;
+        var expected = 11u;
+        var actualFloat = -0.5;
+        var expectedFloat = -0.5;
+        let a = walk(maximum - distance, maximum, @actual, @actualFloat);
+        let b = ReferenceWalk(maximum - distance, maximum, @expected, @expectedFloat);
+        Assert(a == b && actual == expected && actualFloat == expectedFloat, "unrolled endpoint does not overflow");
     }
 }

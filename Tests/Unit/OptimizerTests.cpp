@@ -19,14 +19,14 @@ TEST_CASE("optimization pipelines are selected explicitly by profile") {
                                         "lir-constant-copy-propagation", "lir-leaf-inliner", "lir-scalar-combines",
                                         "lir-local-value-numbering", "lir-loop-invariants", "lir-loop-versioning",
                                         "lir-block-coalescing", "lir-dead-code-elimination", "lir-cfg-cleanup",
-                                        "lir-cfg-verifier", "lir-ssa-verifier"});
+                                        "lir-loop-unrolling", "lir-cfg-verifier", "lir-ssa-verifier"});
     CHECK(artifactRelease.LirPassNames() ==
-          std::vector<std::string_view>{"lir-cfg-verifier", "lir-frame-address-placement", "lir-ssa-verifier",
-                                        "lir-cfg-cleanup", "lir-scalar-replacement", "lir-memory-promotion",
-                                        "lir-constant-copy-propagation", "lir-leaf-inliner", "lir-scalar-combines",
-                                        "lir-local-value-numbering", "lir-loop-invariants", "lir-loop-versioning",
-                                        "lir-block-coalescing", "lir-dead-code-elimination", "lir-cfg-cleanup",
-                                        "lir-cfg-verifier", "lir-ssa-verifier", "lir-declaration-pruner"});
+          std::vector<std::string_view>{
+              "lir-cfg-verifier", "lir-frame-address-placement", "lir-ssa-verifier", "lir-cfg-cleanup",
+              "lir-scalar-replacement", "lir-memory-promotion", "lir-constant-copy-propagation", "lir-leaf-inliner",
+              "lir-scalar-combines", "lir-local-value-numbering", "lir-loop-invariants", "lir-loop-versioning",
+              "lir-block-coalescing", "lir-dead-code-elimination", "lir-cfg-cleanup", "lir-loop-unrolling",
+              "lir-cfg-verifier", "lir-ssa-verifier", "lir-declaration-pruner"});
 }
 
 TEST_CASE("pass pipeline reports changes and preserves explicit order") {

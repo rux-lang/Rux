@@ -1,5 +1,7 @@
 #include "Ir/Lir/Dominance.h"
+#include "Optimization/LirCfgPasses.h"
 #include "Optimization/LirLoopInvariants.h"
+#include "Optimization/LirLoopUnrolling.h"
 #include "Optimization/LirLoopVersioning.h"
 #include "Optimization/LirMemoryPromotion.h"
 #include "Optimization/LirScalarReplacement.h"
@@ -574,4 +576,78 @@ TEST_CASE("Block coalescing keeps conditional joins and valid loop phi edges") {
     Optimization::PassContext later;
     later.iteration = 1;
     CHECK(coalescing.Run(package, later) == Optimization::PassChange::None);
+}
+
+namespace {
+LirPackage UnrollingLoop() {
+    auto package = Promoted(R"(
+        func Walk(start: uint, limit: uint, pointer: *var uint) -> uint {
+            var i = start;
+            var a = 3u;
+            var b = 5u;
+            while i < limit {
+                let old = a;
+                a = b;
+                b = old + i;
+                *pointer = *pointer * 7u + a + b;
+                i += 1u;
+            }
+            return a + b;
+        }
+    )");
+    Optimization::LirBlockCoalescing coalescing;
+    static_cast<void>(coalescing.Run(package, {}));
+    return package;
+}
+} // namespace
+
+TEST_CASE("Loop unrolling preserves simultaneous recurrences scalar tail and valid SSA") {
+    auto package = UnrollingLoop();
+    REQUIRE(SsaErrors(package).empty());
+    const auto blocks = package.modules[0].funcs[0].blocks.size();
+    const auto stores = Count(package, LirOpcode::Store);
+    Optimization::LirLoopUnrolling unrolling;
+    REQUIRE(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(package).empty());
+    CHECK_EQ(package.modules[0].funcs[0].blocks.size(), blocks + 3);
+    CHECK_EQ(Count(package, LirOpcode::Store), stores + 2);
+    Optimization::PassContext later;
+    later.iteration = 1;
+    CHECK(unrolling.Run(package, later) == Optimization::PassChange::None);
+}
+
+TEST_CASE("Loop unrolling rejects volatile memory nonunit steps and calls") {
+    for (int mode = 0; mode < 3; ++mode) {
+        auto package = UnrollingLoop();
+        for (auto &block : package.modules[0].funcs[0].blocks) {
+            for (auto &instruction : block.instrs) {
+                if (mode == 0 && instruction.op == LirOpcode::Store)
+                    instruction.isVolatile = true;
+                if (mode == 1 && instruction.op == LirOpcode::Const && instruction.strArg == "1")
+                    instruction.strArg = "2";
+                if (mode == 2 && instruction.op == LirOpcode::Store) {
+                    instruction.op = LirOpcode::Call;
+                    instruction.strArg = "Opaque";
+                }
+            }
+        }
+        Optimization::LirLoopUnrolling unrolling;
+        CHECK(unrolling.Run(package, {}) == Optimization::PassChange::None);
+    }
+}
+
+TEST_CASE("Unrolling follows guarded versioning through a conditional entry edge") {
+    auto package = VersioningLoop();
+    Optimization::LirLoopVersioning versioning;
+    REQUIRE(versioning.Run(package, {}) == Optimization::PassChange::Changed);
+    Optimization::LirBlockCoalescing coalescing;
+    static_cast<void>(coalescing.Run(package, {}));
+    Optimization::LirDeadCodeElimination dead;
+    static_cast<void>(dead.Run(package, {}));
+    Optimization::LirCfgCleanup cleanup;
+    static_cast<void>(cleanup.Run(package, {}));
+    REQUIRE(SsaErrors(package).empty());
+    Optimization::LirLoopUnrolling unrolling;
+    CHECK(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(package).empty());
 }

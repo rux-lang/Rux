@@ -389,3 +389,11 @@ into RAX or a spilled 64-bit integer index into R10. Physical homes never overla
 indices, spilled references, non-power-of-two element sizes and unallocated destinations retain ordinary lowering.
 Field offsets remain owned by the existing layout resolver. Address computation adds no memory dereference and
 preserves wrapping machine-address arithmetic; it introduces neither alias assumptions nor bounds-check removal.
+
+The bounded LIR unroller follows CFG cleanup and duplicates one small straight-line innermost unsigned unit-step
+loop per function, once per pipeline run. A dedicated entry computes an even endpoint, guarding descending ranges;
+paired iterations keep every instruction in original order and the original loop handles the scalar tail. Phi
+recurrences update simultaneously between copies, including cross-dependent recurrences. Calls, volatile accesses,
+nonunit/signed induction, irregular bodies and unmerged body live-outs are rejected. Body, phi, function and analysis
+work budgets bound code growth and compile-time work. This is scalar unrolling, without vectorization, alias
+assumptions, speculative loads or floating-point reassociation.

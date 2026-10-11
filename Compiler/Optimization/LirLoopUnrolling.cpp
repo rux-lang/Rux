@@ -1,0 +1,272 @@
+#include "Optimization/LirLoopUnrolling.h"
+
+#include "Ir/Lir/NaturalLoops.h"
+
+#include <algorithm>
+#include <unordered_map>
+
+namespace Rux::Optimization {
+namespace {
+bool BodyOperation(const LirInstr &instruction) {
+    if (instruction.isVolatile)
+        return false;
+    switch (instruction.op) {
+    case LirOpcode::Const:
+    case LirOpcode::Load:
+    case LirOpcode::Store:
+    case LirOpcode::FieldPtr:
+    case LirOpcode::IndexPtr:
+    case LirOpcode::Cast:
+    case LirOpcode::Add:
+    case LirOpcode::Sub:
+    case LirOpcode::Mul:
+    case LirOpcode::And:
+    case LirOpcode::Or:
+    case LirOpcode::Xor:
+    case LirOpcode::Shl:
+    case LirOpcode::Shr:
+    case LirOpcode::Lshr:
+    case LirOpcode::RotateRight:
+    case LirOpcode::Neg:
+    case LirOpcode::BitNot:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool Unroll(LirFunc &function) {
+    if (function.isExtern || function.isAsm || function.blocks.size() < 4 || function.blocks.size() > 2048)
+        return false;
+    const LirControlFlow cfg(function);
+    const LirDominance dominance(cfg);
+    const LirNaturalLoops loops(cfg, dominance);
+    if (!loops.complete)
+        return false;
+    std::unordered_map<LirReg, const LirInstr *> definitions;
+    std::unordered_map<LirReg, std::uint32_t> owners;
+    std::size_t instructionCount = 0;
+    LirReg next = 0;
+    for (const auto &parameter : function.params) {
+        definitions.emplace(parameter.reg, nullptr);
+        next = std::max(next, parameter.reg + 1);
+    }
+    for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        instructionCount += function.blocks[block].instrs.size();
+        if (instructionCount > 20000)
+            return false;
+        for (const auto &instruction : function.blocks[block].instrs) {
+            if (instruction.dst == LirNoReg)
+                continue;
+            if (!definitions.emplace(instruction.dst, &instruction).second)
+                return false;
+            owners.emplace(instruction.dst, block);
+            next = std::max(next, instruction.dst + 1);
+        }
+    }
+    const auto definition = [&](const LirReg value) -> const LirInstr * {
+        const auto found = definitions.find(value);
+        return found == definitions.end() ? nullptr : found->second;
+    };
+    std::size_t workRemaining = 200000;
+    for (const auto &[header, members] : loops.members) {
+        const auto &head = function.blocks[header];
+        if (members.size() != 2 || !head.term || head.term->kind != LirTermKind::Branch ||
+            !members.contains(head.term->trueTarget) || members.contains(head.term->falseTarget) ||
+            cfg.predecessors[header].size() != 2)
+            continue;
+        const auto body = head.term->trueTarget;
+        const auto &source = function.blocks[body];
+        if (body == header || !source.term || source.term->kind != LirTermKind::Jump ||
+            source.term->trueTarget != header || cfg.predecessors[body] != std::vector<std::uint32_t>{header} ||
+            source.instrs.size() < 4 || source.instrs.size() > 64 ||
+            !std::ranges::all_of(source.instrs, BodyOperation) ||
+            !std::ranges::any_of(source.instrs, [](const auto &i) { return i.op == LirOpcode::Store; }))
+            continue;
+        const auto preheader = cfg.predecessors[header][cfg.predecessors[header][0] == body ? 1 : 0];
+        const auto &entry = function.blocks[preheader];
+        if (members.contains(preheader) || !entry.term ||
+            (entry.term->kind != LirTermKind::Jump && entry.term->kind != LirTermKind::Branch))
+            continue;
+        const auto *comparison = definition(head.term->cond);
+        if (!comparison || comparison->op != LirOpcode::CmpLt || comparison->srcs.size() != 2 ||
+            owners.at(comparison->dst) != header)
+            continue;
+        if (std::ranges::any_of(source.instrs, [&](const auto &i) {
+                return std::ranges::find(i.srcs, comparison->dst) != i.srcs.end();
+            }))
+            continue;
+        const auto induction = comparison->srcs[0];
+        const auto limit = comparison->srcs[1];
+        const auto *phi = definition(induction);
+        if (!phi || phi->op != LirOpcode::Phi || owners.at(induction) != header ||
+            (phi->type.kind != TypeRef::Kind::UInt && phi->type.kind != TypeRef::Kind::UInt64) ||
+            (owners.contains(limit) && members.contains(owners.at(limit))))
+            continue;
+        std::vector<LirInstr> phis;
+        bool valid = true;
+        for (const auto &instruction : head.instrs) {
+            if (instruction.isVolatile) {
+                valid = false;
+                break;
+            }
+            if (instruction.dst == comparison->dst)
+                continue;
+            if (instruction.op != LirOpcode::Phi || instruction.phiPreds.size() != 2 ||
+                std::ranges::count_if(instruction.phiPreds, [&](const auto &edge) { return edge.second == body; }) !=
+                    1 ||
+                std::ranges::count_if(instruction.phiPreds,
+                                      [&](const auto &edge) { return edge.second == preheader; }) != 1) {
+                valid = false;
+                break;
+            }
+            phis.push_back(instruction);
+        }
+        if (!valid || phis.empty() || phis.size() > 8)
+            continue;
+        const auto back = std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second == body; });
+        if (back == phi->phiPreds.end())
+            continue;
+        const auto *increment = definition(back->first);
+        if (!increment || increment->op != LirOpcode::Add || increment->type != phi->type ||
+            increment->srcs.size() != 2 || increment->srcs[0] != induction || owners.at(increment->dst) != body)
+            continue;
+        const auto *one = definition(increment->srcs[1]);
+        if (!one || one->op != LirOpcode::Const || one->type != phi->type || one->strArg != "1")
+            continue;
+        // Only header phis may export body-defined values. The original header remains the sole normal exit.
+        const auto bodyValue = [&](const LirReg value) { return owners.contains(value) && owners.at(value) == body; };
+        for (std::uint32_t block = 0; block < function.blocks.size() && valid; ++block) {
+            if (block == body)
+                continue;
+            for (const auto &instruction : function.blocks[block].instrs) {
+                if (workRemaining-- == 0)
+                    return false;
+                if (block == header && instruction.op == LirOpcode::Phi)
+                    continue;
+                if (std::ranges::any_of(instruction.srcs, bodyValue) ||
+                    std::ranges::any_of(instruction.phiPreds, [&](const auto &edge) { return bodyValue(edge.first); }))
+                    valid = false;
+            }
+            const auto &term = function.blocks[block].term;
+            if (term && (bodyValue(term->cond) || (term->retVal && bodyValue(*term->retVal))))
+                valid = false;
+        }
+        if (!valid)
+            continue;
+        const auto preparation = static_cast<std::uint32_t>(function.blocks.size());
+        const auto newHeader = preparation + 1;
+        const auto newBody = newHeader + 1;
+        LirBlock prepare, setup, doubled;
+        prepare.label = head.label + ".unroll2.prepare";
+        setup.label = head.label + ".unroll2.header";
+        doubled.label = source.label + ".unroll2.body";
+        std::unordered_map<LirReg, LirReg> values;
+        for (const auto &original : phis) {
+            auto copy = original;
+            copy.dst = next++;
+            values.emplace(original.dst, copy.dst);
+            setup.instrs.push_back(std::move(copy));
+        }
+        const auto headerValues = values;
+        const auto mapped = [&](const LirReg value) { return values.contains(value) ? values.at(value) : value; };
+        for (int iteration = 0; iteration < 2; ++iteration) {
+            for (const auto &original : source.instrs) {
+                auto copy = original;
+                for (auto &input : copy.srcs)
+                    input = mapped(input);
+                if (copy.dst != LirNoReg) {
+                    copy.dst = next++;
+                    values[original.dst] = copy.dst;
+                }
+                doubled.instrs.push_back(std::move(copy));
+            }
+            std::vector<std::pair<LirReg, LirReg>> updates;
+            for (const auto &original : phis) {
+                const auto incoming =
+                    std::ranges::find_if(original.phiPreds, [&](const auto &edge) { return edge.second == body; });
+                updates.emplace_back(original.dst, mapped(incoming->first));
+            }
+            for (const auto &[reg, value] : updates)
+                values[reg] = value;
+        }
+        for (std::size_t index = 0; index < phis.size(); ++index) {
+            for (auto &edge : setup.instrs[index].phiPreds) {
+                if (edge.second == body)
+                    edge = {values.at(phis[index].dst), newBody};
+                else
+                    edge.second = preparation;
+            }
+        }
+        const auto emit = [&](LirBlock &block, const LirOpcode op, const TypeRef &type, std::vector<LirReg> inputs,
+                              const std::string &argument = "") {
+            LirInstr instruction;
+            instruction.op = op;
+            instruction.type = type;
+            instruction.dst = next++;
+            instruction.srcs = std::move(inputs);
+            instruction.strArg = argument;
+            block.instrs.push_back(std::move(instruction));
+            return block.instrs.back().dst;
+        };
+        const auto initial =
+            std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second == preheader; })->first;
+        // Subtraction may wrap for a descending/empty range; the entry guard then selects the unchanged loop.
+        // Otherwise end is initial + floor((limit-initial)/2)*2 and cannot exceed limit or wrap.
+        const auto remaining = emit(prepare, LirOpcode::Sub, phi->type, {limit, initial});
+        const auto mask = emit(prepare, LirOpcode::Const, phi->type, {}, "18446744073709551614");
+        const auto evenCount = emit(prepare, LirOpcode::And, phi->type, {remaining, mask});
+        const auto end = emit(prepare, LirOpcode::Add, phi->type, {initial, evenCount});
+        const auto inRange = emit(prepare, LirOpcode::CmpLt, TypeRef::MakeBool(), {initial, limit});
+        prepare.term.emplace();
+        prepare.term->kind = LirTermKind::Branch;
+        prepare.term->cond = inRange;
+        prepare.term->trueTarget = newHeader;
+        prepare.term->falseTarget = header;
+        const auto current = headerValues.at(induction);
+        const auto guard = emit(setup, LirOpcode::CmpLt, TypeRef::MakeBool(), {current, end});
+        setup.term.emplace();
+        setup.term->kind = LirTermKind::Branch;
+        setup.term->cond = guard;
+        setup.term->trueTarget = newBody;
+        setup.term->falseTarget = header;
+        doubled.term.emplace();
+        doubled.term->kind = LirTermKind::Jump;
+        doubled.term->trueTarget = newHeader;
+        auto &incoming = *function.blocks[preheader].term;
+        if (incoming.trueTarget == header)
+            incoming.trueTarget = preparation;
+        if (incoming.kind == LirTermKind::Branch && incoming.falseTarget == header)
+            incoming.falseTarget = preparation;
+        for (auto &instruction : function.blocks[header].instrs) {
+            if (instruction.op != LirOpcode::Phi)
+                continue;
+            for (auto &edge : instruction.phiPreds) {
+                if (edge.second == preheader)
+                    edge.second = preparation;
+            }
+            instruction.phiPreds.emplace_back(headerValues.at(instruction.dst), newHeader);
+        }
+        function.blocks.push_back(std::move(prepare));
+        function.blocks.push_back(std::move(setup));
+        function.blocks.push_back(std::move(doubled));
+        return true;
+    }
+    return false;
+}
+} // namespace
+
+std::string_view LirLoopUnrolling::Name() const noexcept {
+    return "lir-loop-unrolling";
+}
+
+PassChange LirLoopUnrolling::Run(LirPackage &package, const PassContext &context) {
+    if (context.iteration != 0)
+        return PassChange::None;
+    bool changed = false;
+    for (auto &module : package.modules)
+        for (auto &function : module.funcs)
+            changed = Unroll(function) || changed;
+    return changed ? PassChange::Changed : PassChange::None;
+}
+} // namespace Rux::Optimization
