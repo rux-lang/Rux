@@ -399,6 +399,13 @@ For an invariant row offset and bound, `row <= bound && count <= bound - row` pr
 counted; it still proves a check on the unsigned tested value itself by `limit <= bound`, or `limit < bound` under
 `<=`, since the check runs only after the test passed for the same value. An inclusive range's own `i < limit` exit is
 left in place rather than taken for a check. A guard failure selects the original checked loop; it never raises a preheader panic.
+A loop tested in its header on an unsigned count whose limit is not a constant is split instead of guarded: the
+preheader computes, per check, the first count at which it could fail (`bound`, `bound - row`, a constant
+maximum's all-or-nothing limit, or a secondary counter's `ceil((bound - start - offset) / step)` iterations), and
+the fast copy runs while the count is below their minimum and below the loop's own limit, then enters the original
+header with its current values and finishes in the checked loop. A stride above one also stops the fast copy where
+one more step could wrap. Loops with a constant limit keep the guard, so their fast copy keeps the constant trip
+count that full unrolling needs.
 The guard contains only register arithmetic. It neither reads memory nor assumes that different pointers do not alias.
 The fast copy preserves memory operations, floating-point order, early exits and source contexts. SSA definitions and
 exit-phi edges are remapped. Each read of a loop value after the loop, including a phi operand on an edge leaving a

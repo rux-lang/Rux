@@ -12,6 +12,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Loop splitting** — a loop whose bounds checks cannot all be proven up front now runs check-free for as long as they provably pass and finishes in the checked loop, instead of falling back entirely. Base64's decoder, whose padded last group could not be proven, runs about 15% fewer instructions.
 - **Dead loop elimination** — Release builds remove loops that only count and read, such as the element drop of an array of plain values, which visited every element of every such array when it was freed.
 - **Checks in sieves and inclusive ranges** — loop versioning proves checks on a loop's tested value when its start or stride is only known at run time or its test is `<=`, as in `while j <= limit { a[j] = 1; j += i }` and `for k in 2..=limit`. PrimeSieve runs about 8% fewer instructions.
 - **Byte assembly as one load** — Release builds flatten loops that run a constant number of times up to sixteen, and x86-64 selection reads a value assembled from consecutive bytes, in either order, with one load and a `bswap` where needed. SHA-512 drops from 0.611 s to 0.547 s.

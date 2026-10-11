@@ -1,4 +1,5 @@
 #include "Ir/Lir/Dominance.h"
+#include "Optimization/ConstantEvaluator.h"
 #include "Optimization/LirCfgPasses.h"
 #include "Optimization/LirDeadLoops.h"
 #include "Optimization/LirFillWidening.h"
@@ -729,6 +730,52 @@ LirPackage VersioningLoop() {
 }
 } // namespace
 
+namespace {
+/// The limit a split loop's fast copy tests its count against, once every input is a known constant: the fast
+/// copy's header compares the count with it and leaves for the checked loop when the test fails.
+std::optional<std::uint64_t> FastLimit(const LirFunc &function) {
+    std::unordered_map<LirReg, const LirInstr *> definitions;
+    for (const auto &block : function.blocks)
+        for (const auto &instruction : block.instrs)
+            if (instruction.dst != LirNoReg)
+                definitions.emplace(instruction.dst, &instruction);
+    for (const auto &block : function.blocks) {
+        if (!block.label.contains(".range.fast.") || block.term->kind != LirTermKind::Branch ||
+            function.blocks[block.term->falseTarget].label.contains(".range.fast."))
+            continue;
+        const auto test = definitions.find(block.term->cond);
+        if (test == definitions.end() || test->second->op != LirOpcode::CmpLt)
+            continue;
+        const auto limit = definitions.find(test->second->srcs[1]);
+        if (limit == definitions.end() || limit->second->op != LirOpcode::Const)
+            return std::nullopt;
+        const auto value = Optimization::ParseConstant(limit->second->strArg, limit->second->type);
+        return value ? std::optional<std::uint64_t>(value->RawBits()) : std::nullopt;
+    }
+    return std::nullopt;
+}
+
+/// Replaces parameters with constants, in parameter order from `first`, and propagates them.
+void Substitute(LirPackage &package, const std::size_t first, const std::vector<std::uint64_t> &values) {
+    auto &function = package.modules[0].funcs[0];
+    std::vector<LirInstr> constants;
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        LirInstr constant;
+        constant.op = LirOpcode::Const;
+        constant.dst = function.params[first + index].reg;
+        constant.type = function.params[first + index].type;
+        constant.strArg = std::to_string(values[index]);
+        constants.push_back(std::move(constant));
+    }
+    function.params.erase(function.params.begin() + static_cast<std::ptrdiff_t>(first),
+                          function.params.begin() + static_cast<std::ptrdiff_t>(first + values.size()));
+    auto &entry = function.blocks[0];
+    entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
+    Optimization::LirConstantPropagation propagation;
+    static_cast<void>(propagation.Run(package, {}));
+}
+} // namespace
+
 TEST_CASE("Guarded loop versioning preserves scalar fallback and SSA") {
     auto package = VersioningLoop();
     REQUIRE(SsaErrors(package).empty());
@@ -795,7 +842,7 @@ TEST_CASE("Loop versioning retains memory-dependent bounds") {
     CHECK(SsaErrors(package).empty());
 }
 
-TEST_CASE("Strided loop guards cover visited indices and reject wrapping induction") {
+TEST_CASE("Split strided loops run fast exactly while every visited index fits") {
     for (const auto stride : {2u, 3u, 4u, 6u, 64u}) {
         auto original = VersioningLoop();
         for (auto &block : original.modules[0].funcs[0].blocks)
@@ -809,36 +856,18 @@ TEST_CASE("Strided loop guards cover visited indices and reject wrapping inducti
             for (const auto row : {0ull, 2ull, 0xFFFFFFFFFFFFFFFEull}) {
                 for (const auto bound : {0ull, 1ull, 4ull, 9ull, 0xFFFFFFFFFFFFFFFDull}) {
                     auto package = original;
-                    auto &function = package.modules[0].funcs[0];
-                    const std::uint64_t arguments[] = {limit, row, bound};
-                    std::vector<LirInstr> constants;
-                    for (std::size_t index = 0; index < 3; ++index) {
-                        LirInstr constant;
-                        constant.op = LirOpcode::Const;
-                        constant.dst = function.params[index].reg;
-                        constant.type = function.params[index].type;
-                        constant.strArg = std::to_string(arguments[index]);
-                        constants.push_back(std::move(constant));
-                    }
-                    function.params.erase(function.params.begin(), function.params.begin() + 3);
-                    auto &entry = function.blocks[0];
-                    entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
-                    Optimization::LirConstantPropagation propagation;
-                    static_cast<void>(propagation.Run(package, {}));
-                    const auto condition = std::ranges::find_if(
-                        entry.instrs, [&](const auto &instruction) { return instruction.dst == entry.term->cond; });
-                    REQUIRE(condition != entry.instrs.end());
-                    REQUIRE(condition->op == LirOpcode::Const);
-                    const bool fast = condition->strArg == "true";
-                    if (limit == 0xFFFFFFFFFFFFFFFFull) {
-                        CHECK_FALSE(fast); // Do not execute a huge or nonterminating wrapping loop.
-                    }
-                    else if (limit != 0) {
-                        bool allFit = row <= bound;
-                        for (std::uint64_t i = 0; i < limit; i += stride)
-                            allFit = allFit && i < bound - row;
-                        CHECK(fast == allFit);
-                    }
+                    Substitute(package, 0, {limit, row, bound});
+                    const auto fast = FastLimit(package.modules[0].funcs[0]);
+                    REQUIRE(fast.has_value());
+                    CAPTURE(stride);
+                    CAPTURE(limit);
+                    CAPTURE(row);
+                    CAPTURE(bound);
+                    // Every index below bound - row fits; none does when row exceeds the bound. The fast copy also
+                    // stops where one more step could wrap.
+                    const std::uint64_t fits = row <= bound ? bound - row : 0;
+                    const std::uint64_t unwrapped = 0xFFFFFFFFFFFFFFFFull - (stride - 1);
+                    CHECK_EQ(*fast, std::min({limit, fits, unwrapped}));
                 }
             }
         }
@@ -905,7 +934,7 @@ TEST_CASE("Loop versioning rejects unsupported strides") {
     }
 }
 
-TEST_CASE("Loop versioning remaps exit phis and merges unmerged live outs") {
+TEST_CASE("Loop splitting hands the fast copy's state to the checked loop") {
     auto package = VersioningLoop();
     auto &function = package.modules[0].funcs[0];
     std::uint32_t header = 0;
@@ -923,31 +952,29 @@ TEST_CASE("Loop versioning remaps exit phis and merges unmerged live outs") {
     }
     REQUIRE(induction != LirNoReg);
     const auto target = function.blocks[header].term->falseTarget;
-    auto unmerged = package;
-    unmerged.modules[0].funcs[0].blocks[target].term = ReturnValue(induction, TypeRef::MakeUInt());
-    Optimization::LirLoopVersioning versioning;
-    CHECK(SsaErrors(unmerged).empty());
-    // The loop's value read after it reaches its reader through a phi in a new exit block both versions leave by.
-    CHECK(versioning.Run(unmerged, {}) == Optimization::PassChange::Changed);
-    CHECK(SsaErrors(unmerged).empty());
-    CHECK(unmerged.modules[0].funcs[0].blocks[target].term->retVal != induction);
     LirInstr exitPhi;
     exitPhi.op = LirOpcode::Phi;
     exitPhi.dst = next;
     exitPhi.type = TypeRef::MakeUInt();
     exitPhi.phiPreds = {{induction, header}};
     function.blocks[target].instrs.insert(function.blocks[target].instrs.begin(), exitPhi);
-    function.blocks[target].term = ReturnValue(next, exitPhi.type);
+    function.blocks[target].term = ReturnValue(induction, exitPhi.type);
     REQUIRE(SsaErrors(package).empty());
+    Optimization::LirLoopVersioning versioning;
     REQUIRE(versioning.Run(package, {}) == Optimization::PassChange::Changed);
     CHECK(SsaErrors(package).empty());
-    const auto &incoming = function.blocks[target].instrs.front().phiPreds;
-    REQUIRE_EQ(incoming.size(), 2);
-    CHECK_NE(incoming[0].first, incoming[1].first);
-    CHECK_NE(incoming[0].second, incoming[1].second);
+    // The loop is still left only through its original header, whose count now arrives from the fast copy rather
+    // than from the entry, so what is read after the loop is unchanged.
+    const auto &phi = function.blocks[header].instrs.front();
+    REQUIRE(phi.op == LirOpcode::Phi);
+    REQUIRE_EQ(phi.phiPreds.size(), 2);
+    CHECK(std::ranges::any_of(
+        phi.phiPreds, [&](const auto &edge) { return function.blocks[edge.second].label.contains(".range.fast."); }));
+    CHECK_EQ(function.blocks[target].instrs.front().phiPreds.size(), 1);
+    CHECK_EQ(*function.blocks[target].term->retVal, induction);
 }
 
-TEST_CASE("Loop versioning merges live outs read by phis after the exit") {
+TEST_CASE("Loop splitting keeps live outs read by phis after the exit") {
     auto original = VersioningLoop();
     auto &walk = original.modules[0].funcs[0];
     std::uint32_t header = 0;
@@ -965,48 +992,27 @@ TEST_CASE("Loop versioning merges live outs read by phis after the exit") {
     }
     REQUIRE(induction != LirNoReg);
     const auto target = walk.blocks[header].term->falseTarget;
-    const auto phiOf = [&](const LirReg value, const std::uint32_t predecessor) {
-        LirInstr phi;
-        phi.op = LirOpcode::Phi;
-        phi.dst = next;
-        phi.type = TypeRef::MakeUInt();
-        phi.phiPreds = {{value, predecessor}};
-        return phi;
-    };
-
-    // The exit jumps to a block whose phi reads the loop's value, as an inlined callee's return does. A phi on the
-    // exit edge itself keeps that edge and gains one from the fast copy.
-    for (const bool exitEdgePhi : {false, true}) {
-        CAPTURE(exitEdgePhi);
-        auto package = original;
-        auto &blocks = package.modules[0].funcs[0].blocks;
-        const auto join = static_cast<std::uint32_t>(blocks.size());
-        LirBlock returned;
-        returned.label = "returned";
-        returned.instrs.push_back(phiOf(induction, target));
-        returned.term = ReturnValue(next, TypeRef::MakeUInt());
-        if (exitEdgePhi) {
-            auto onEdge = phiOf(induction, header);
-            onEdge.dst = next + 1;
-            blocks[target].instrs.insert(blocks[target].instrs.begin(), onEdge);
-        }
-        blocks[target].term.emplace();
-        blocks[target].term->kind = LirTermKind::Jump;
-        blocks[target].term->trueTarget = join;
-        blocks.push_back(std::move(returned));
-        REQUIRE(SsaErrors(package).empty());
-        Optimization::LirLoopVersioning versioning;
-        CHECK(versioning.Run(package, {}) == Optimization::PassChange::Changed);
-        CHECK(SsaErrors(package).empty());
-        CHECK(blocks[join].instrs.front().phiPreds.front().first != induction);
-        for (const auto &instruction : blocks[target].instrs) {
-            if (instruction.op != LirOpcode::Phi)
-                continue;
-            REQUIRE_EQ(instruction.phiPreds.size(), 2);
-            CHECK_NE(instruction.phiPreds[0].first, instruction.phiPreds[1].first);
-            CHECK_NE(instruction.phiPreds[0].second, instruction.phiPreds[1].second);
-        }
-    }
+    // The exit jumps to a block whose phi reads the loop's value, as an inlined callee's return does.
+    auto &blocks = original.modules[0].funcs[0].blocks;
+    const auto join = static_cast<std::uint32_t>(blocks.size());
+    LirBlock returned;
+    returned.label = "returned";
+    LirInstr phi;
+    phi.op = LirOpcode::Phi;
+    phi.dst = next;
+    phi.type = TypeRef::MakeUInt();
+    phi.phiPreds = {{induction, target}};
+    returned.instrs.push_back(std::move(phi));
+    returned.term = ReturnValue(next, TypeRef::MakeUInt());
+    blocks[target].term.emplace();
+    blocks[target].term->kind = LirTermKind::Jump;
+    blocks[target].term->trueTarget = join;
+    blocks.push_back(std::move(returned));
+    REQUIRE(SsaErrors(original).empty());
+    Optimization::LirLoopVersioning versioning;
+    CHECK(versioning.Run(original, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(original).empty());
+    CHECK_EQ(blocks[join].instrs.front().phiPreds.front().first, induction);
 }
 
 TEST_CASE("Loop versioning proves byte-indexed and secondary-counter checks") {
@@ -1057,16 +1063,16 @@ TEST_CASE("Loop versioning proves byte-indexed and secondary-counter checks") {
                 entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
                 Optimization::LirConstantPropagation propagation;
                 static_cast<void>(propagation.Run(package, {}));
-                const auto condition = std::ranges::find_if(
-                    entry.instrs, [&](const auto &instruction) { return instruction.dst == entry.term->cond; });
-                REQUIRE(condition != entry.instrs.end());
-                REQUIRE(condition->op == LirOpcode::Const);
-                // Iteration n reads o = 3n and o + 2; every byte is below 256. Counts above 2^32 stay checked.
-                const bool allFit = tableBound > 255 && 3 * (limit - 1) + 2 < bound && limit <= 0x100000000ull;
+                const auto fast = FastLimit(function);
+                REQUIRE(fast.has_value());
+                // Iteration i reads o = 3i and o + 2, so it fits while 3i + 2 < bound; every byte is below 256.
+                const std::uint64_t secondaryFits = bound > 2 ? (bound - 3) / 3 + 1 : 0;
                 CAPTURE(limit);
                 CAPTURE(bound);
                 CAPTURE(tableBound);
-                CHECK((condition->strArg == "true") == allFit);
+                CHECK_EQ(*fast, tableBound > 255 ? std::min(limit, secondaryFits) : 0);
+                for (std::uint64_t i = 0; i < std::min<std::uint64_t>(*fast, 64); ++i)
+                    CHECK(3 * i + 2 < bound);
             }
         }
     }
@@ -1120,22 +1126,12 @@ TEST_CASE("Loop versioning proves the tested value's checks in loops it cannot c
                 entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
                 Optimization::LirConstantPropagation propagation;
                 static_cast<void>(propagation.Run(package, {}));
-                // The guard sits in the block that enters the loop, which the entry may reach by a jump.
-                std::optional<std::string> guard;
-                for (const auto &block : function.blocks) {
-                    if (block.term->kind != LirTermKind::Branch || block.label.contains(".range.fast.") ||
-                        !function.blocks[block.term->trueTarget].label.contains(".range.fast."))
-                        continue;
-                    const auto condition = std::ranges::find_if(
-                        block.instrs, [&](const auto &instruction) { return instruction.dst == block.term->cond; });
-                    REQUIRE(condition != block.instrs.end());
-                    REQUIRE(condition->op == LirOpcode::Const);
-                    guard = condition->strArg;
-                }
-                REQUIRE(guard.has_value());
+                const auto fast = FastLimit(function);
+                REQUIRE(fast.has_value());
                 CAPTURE(limit);
                 CAPTURE(length);
-                CHECK((*guard == "true") == (limit < length));
+                // `j <= limit` runs fast as `j < limit + 1` while that stays within the length.
+                CHECK_EQ(*fast, limit < length ? limit + 1 : length);
             }
         }
     }

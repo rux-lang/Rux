@@ -559,7 +559,117 @@ bool Version(LirFunc &function) {
             conjoin(guard, emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {limit64, constant(MaximumIterations)}));
             return iterations;
         };
+        // A loop tested in its header on an unsigned count is split rather than guarded: the fast copy runs while the
+        // count stays below the first value at which some check could fail, then hands its state to the original
+        // loop, which finishes with every check in place. One iteration that might fail, such as a decoder's last
+        // group, then costs one checked iteration instead of the whole loop. A loop with a constant limit keeps the
+        // guard: it is short, and its fast copy keeps the constant trip count that full unrolling needs.
+        const auto *limitDefinition = get(limit);
+        const bool split = controlling == header && !signedInduction &&
+                           !(limitDefinition && limitDefinition->op == LirOpcode::Const);
+        if (split) {
+            const auto bit = [&](const LirReg condition) {
+                return emit(LirOpcode::Cast, TypeRef::MakeUInt64(), {condition}, TypeRef::MakeBool().ToString());
+            };
+            const auto minimum = [&](const LirReg a, const LirReg b) {
+                const auto smaller = bit(emit(LirOpcode::CmpLt, TypeRef::MakeBool(), {a, b}));
+                const auto difference = emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {a, b});
+                return emit(LirOpcode::Add, TypeRef::MakeUInt64(),
+                            {b, emit(LirOpcode::Mul, TypeRef::MakeUInt64(), {difference, smaller})});
+            };
+            // The first count value at which the check might fail, or a value no count reaches.
+            LirReg safeLimit = constant(std::numeric_limits<std::uint64_t>::max());
+            for (const auto &check : checks) {
+                const auto bound = widen(check.bound);
+                LirReg below;
+                if (check.maximum) {
+                    const auto fits =
+                        bit(emit(LirOpcode::CmpLt, TypeRef::MakeBool(), {constant(*check.maximum), bound}));
+                    below = emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {constant(0), fits});
+                }
+                else if (check.direct || (check.offset == LirNoReg && check.secondary == LirNoReg)) {
+                    below = bound;
+                }
+                else if (check.secondary != LirNoReg) {
+                    // The counter reaches start + n * step + offset in iteration n, which stays below the bound for
+                    // n < ceil((bound - start - offset) / step); iteration n tests count start + n * stride.
+                    const auto &secondary = secondaries.at(check.secondary);
+                    const auto first = widen(secondary.start);
+                    const auto reach =
+                        emit(LirOpcode::Add, TypeRef::MakeUInt64(), {first, constant(check.secondaryOffset)});
+                    const auto fits = bit(emit(LirOpcode::CmpLt, TypeRef::MakeBool(), {reach, bound}));
+                    const auto small =
+                        bit(emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {first, constant(MaximumStart)}));
+                    LirReg iterationsBelow;
+                    if (secondary.step == 0) {
+                        iterationsBelow = constant(MaximumStart);
+                    }
+                    else {
+                        const auto room = emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {bound, reach});
+                        const auto whole = emit(LirOpcode::Div, TypeRef::MakeUInt64(),
+                                                {emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {room, constant(1)}),
+                                                 constant(secondary.step)});
+                        iterationsBelow = minimum(emit(LirOpcode::Add, TypeRef::MakeUInt64(), {whole, constant(1)}),
+                                                  constant(MaximumStart));
+                    }
+                    const auto allowed =
+                        emit(LirOpcode::Mul, TypeRef::MakeUInt64(),
+                             {iterationsBelow, emit(LirOpcode::Mul, TypeRef::MakeUInt64(), {fits, small})});
+                    below = emit(LirOpcode::Add, TypeRef::MakeUInt64(),
+                                 {constant(static_cast<std::uint64_t>(*start)),
+                                  emit(LirOpcode::Mul, TypeRef::MakeUInt64(), {allowed, constant(stride)})});
+                }
+                else {
+                    // count + offset < bound for every count below bound - offset, and for none if offset >= bound.
+                    const auto offset = widen(check.offset);
+                    const auto fits = bit(emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {offset, bound}));
+                    below = emit(LirOpcode::Mul, TypeRef::MakeUInt64(),
+                                 {emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {bound, offset}), fits});
+                }
+                safeLimit = minimum(safeLimit, below);
+            }
+            // Below that and within the loop's own test: `count < limit`, or `count <= limit` as `count < limit + 1`
+            // where the addition cannot wrap. A count stepping by more than one stays far enough below the maximum
+            // that its next step cannot wrap either, as the original might do on its way to a failing check.
+            LirReg fastLimit;
+            if (inclusive) {
+                const auto under = bit(emit(LirOpcode::CmpLt, TypeRef::MakeBool(), {limit64, safeLimit}));
+                const auto excess =
+                    emit(LirOpcode::Sub, TypeRef::MakeUInt64(),
+                         {safeLimit, emit(LirOpcode::Add, TypeRef::MakeUInt64(), {limit64, constant(1)})});
+                fastLimit = emit(LirOpcode::Sub, TypeRef::MakeUInt64(),
+                                 {safeLimit, emit(LirOpcode::Mul, TypeRef::MakeUInt64(), {excess, under})});
+            }
+            else {
+                fastLimit = minimum(limit64, safeLimit);
+            }
+            if (counted && stride != 1)
+                fastLimit = minimum(fastLimit, constant(std::numeric_limits<std::uint64_t>::max() - (stride - 1)));
+            const auto &countType = definitions.at(induction).type;
+            const auto fastCountLimit = emit(LirOpcode::Cast, countType, {fastLimit}, TypeRef::MakeUInt64().ToString());
+            auto &fastHeader = clones[static_cast<std::size_t>(std::ranges::find(ordered, header) - ordered.begin())];
+            for (auto &instruction : fastHeader.instrs)
+                if (instruction.dst == mappedReg(test->dst)) {
+                    instruction.op = LirOpcode::CmpLt;
+                    instruction.srcs = {mappedReg(induction), fastCountLimit};
+                }
+            fastHeader.term->falseTarget = header;
+            for (auto &instruction : function.blocks[header].instrs)
+                if (instruction.op == LirOpcode::Phi)
+                    for (auto &[value, predecessor] : instruction.phiPreds)
+                        if (predecessor == preheader) {
+                            value = mappedReg(instruction.dst);
+                            predecessor = blocks.at(header);
+                        }
+            auto &entry = *function.blocks[preheader].term;
+            entry.kind = LirTermKind::Jump;
+            entry.cond = LirNoReg;
+            entry.trueTarget = blocks.at(header);
+            entry.falseTarget = 0;
+        }
         for (const auto &check : checks) {
+            if (split)
+                break;
             const auto bound = widen(check.bound);
             LirReg safe;
             if (check.maximum) {
@@ -608,11 +718,13 @@ bool Version(LirFunc &function) {
             }
             conjoin(guard, safe);
         }
-        auto &entry = *function.blocks[preheader].term;
-        entry.kind = LirTermKind::Branch;
-        entry.cond = guard;
-        entry.trueTarget = blocks.at(header);
-        entry.falseTarget = header;
+        if (!split) {
+            auto &entry = *function.blocks[preheader].term;
+            entry.kind = LirTermKind::Branch;
+            entry.cond = guard;
+            entry.trueTarget = blocks.at(header);
+            entry.falseTarget = header;
+        }
         for (auto &clone : clones)
             function.blocks.push_back(std::move(clone));
         // Update only real outgoing edges of the clone (eliminated check-failure edges get no phi operands).
