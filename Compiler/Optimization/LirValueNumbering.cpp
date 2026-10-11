@@ -39,12 +39,19 @@ bool Pure(const LirOpcode op) {
     }
 }
 
-std::string Key(const LirInstr &instruction) {
+using LiteralKeys = std::unordered_map<LirReg, std::string>;
+
+std::string Key(const LirInstr &instruction, const LiteralKeys &literals) {
     const auto type = instruction.type.ToString();
     std::string key = std::to_string(static_cast<unsigned>(instruction.op)) + ":" + std::to_string(type.size()) + ":" +
                       type + ":" + std::to_string(instruction.strArg.size()) + ":" + instruction.strArg;
     for (const auto source : instruction.srcs) {
-        key += ":" + std::to_string(source);
+        if (const auto literal = literals.find(source); literal != literals.end()) {
+            key += ":c" + std::to_string(literal->second.size()) + ":" + literal->second;
+        }
+        else {
+            key += ":r" + std::to_string(source);
+        }
     }
     return key;
 }
@@ -52,6 +59,7 @@ std::string Key(const LirInstr &instruction) {
 bool Number(LirFunc &function) {
     std::unordered_set<LirReg> definitions;
     std::unordered_map<LirReg, TypeRef> types;
+    LiteralKeys literals;
     for (const auto &parameter : function.params) {
         types.emplace(parameter.reg, parameter.type);
         if (!definitions.insert(parameter.reg).second) {
@@ -64,6 +72,13 @@ bool Number(LirFunc &function) {
                 types.emplace(instruction.dst, instruction.type);
             if (instruction.dst != LirNoReg && !definitions.insert(instruction.dst).second) {
                 return false;
+            }
+            if (instruction.dst != LirNoReg && instruction.op == LirOpcode::Const && !instruction.isVolatile &&
+                instruction.srcs.empty() &&
+                (instruction.type.IsInteger() || instruction.type.IsBool() || instruction.type.IsChar())) {
+                // Preserve local constant definitions while recognizing equal typed operands. Own the text:
+                // instruction storage is replaced during traversal, so retaining instruction pointers is unsafe.
+                literals.emplace(instruction.dst, Key(instruction, {}));
             }
         }
     }
@@ -146,7 +161,7 @@ bool Number(LirFunc &function) {
                                 });
             if (instruction.dst != LirNoReg && (pure || load)) {
                 auto &available = load ? loads : stable ? dominating : values;
-                const auto key = Key(instruction);
+                const auto key = Key(instruction, literals);
                 const auto [entry, inserted] = available.emplace(key, instruction.dst);
                 if (!inserted) {
                     copies[instruction.dst] = entry->second;
@@ -176,7 +191,7 @@ bool Number(LirFunc &function) {
                 forwarded.op = LirOpcode::Load;
                 forwarded.type = instruction.type;
                 forwarded.srcs = {instruction.srcs[1]};
-                loads.emplace(Key(forwarded), instruction.srcs[0]);
+                loads.emplace(Key(forwarded, literals), instruction.srcs[0]);
             }
             retained.push_back(std::move(instruction));
         }

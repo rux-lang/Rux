@@ -12,6 +12,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- Recognize equal typed literal operands across blocks to remove repeated arithmetic and proven checks.
+
 - Align x86 function and backward-branch entries consistently in machine code and assembly output.
 
 - Reuse exact loads across uniquely entered CFG edges while retaining write, ordering, join and loop barriers.

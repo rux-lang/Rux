@@ -94,6 +94,7 @@ func Main() -> int {
     CheckUnrolledLoops();
     CheckAllocatedShifts();
     CheckLoadFacts();
+    CheckLiteralKeys();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -568,5 +569,27 @@ func CheckLoadFacts() {
         Assert(readLoop(@value, @other, count) == 17u * (count + 1u), "loop headers discard inherited load facts");
         Assert(readLoop(@value, @value, count) == 17u * (count + 1u) + count * (count + 1u) / 2u,
             "each loop iteration observes aliased writes");
+    }
+}
+
+func RepeatedLiteralChecks(value: uint) -> uint {
+    if value < 15u { return value; }
+    if value < 15u { return value + 1u; }
+    return value + 2u;
+}
+func RepeatedLiteralValues(value: int, test: bool) -> int {
+    let before = value + 15;
+    if test { return before; }
+    return before + (value + 15);
+}
+func CheckLiteralKeys() {
+    let checks: func(uint) -> uint = RepeatedLiteralChecks;
+    let values: func(int, bool) -> int = RepeatedLiteralValues;
+    for value in 0u..65u {
+        Assert(checks(value) == (value < 15u ? value : value + 2u), "equal typed literal bounds preserve results");
+    }
+    for value in -32..33 {
+        Assert(values(value, true) == value + 15, "literal expression branch result");
+        Assert(values(value, false) == value * 2 + 30, "literal expression dominating result");
     }
 }

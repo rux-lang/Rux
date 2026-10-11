@@ -418,3 +418,8 @@ starts and branch labels, so symbol sizes exclude inter-function padding and pat
 The object section records 32-byte alignment so linkers preserve offsets; assembly output uses the same rule.
 Raw assembly bodies retain their exact instructions, with alignment only before the function symbol. This is a
 portable x86 layout choice, not CPU feature dispatch, vectorization or instruction scheduling.
+Value-numbering operand keys recognize identical nonvolatile integer, Boolean and character literals by their exact
+text and type, including literal-length delimiters. Constants remain defined in their original blocks; this does not
+hoist them or lengthen their register intervals. The key table owns copied text before block rewriting. Different
+literal spellings may conservatively miss reuse; different types/values never share a key. Floating-point and pointer
+constants keep register identity. Existing dominance, memory barriers and floating computation restrictions still apply.

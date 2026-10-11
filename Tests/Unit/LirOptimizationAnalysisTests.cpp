@@ -743,3 +743,82 @@ TEST_CASE("Exact stored values forward through both unique successors") {
     CHECK_EQ(Count(package, LirOpcode::Store), 1);
     CHECK(SsaErrors(package).empty());
 }
+
+TEST_CASE("Value numbering recognizes equal typed literals while retaining local constants") {
+    auto package = Promoted(R"(
+        func Read(value: int, test: bool) -> int {
+            let before = value + 15;
+            if test { return before; }
+            return before + (value + 15);
+        }
+    )");
+    REQUIRE_EQ(Count(package, LirOpcode::Add), 3);
+    const auto constants = Count(package, LirOpcode::Const);
+    Optimization::LirValueNumbering numbering;
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(package, LirOpcode::Add), 2);
+    CHECK_EQ(Count(package, LirOpcode::Const), constants);
+    CHECK(SsaErrors(package).empty());
+
+    auto distinct = Promoted(R"(
+        func Read(value: int, test: bool) -> int {
+            let before = value + 15;
+            if test { return before; }
+            return before + (value + 16);
+        }
+    )");
+    static_cast<void>(numbering.Run(distinct, {}));
+    CHECK_EQ(Count(distinct, LirOpcode::Add), 3);
+    CHECK(SsaErrors(distinct).empty());
+
+    auto countTypes = Promoted(R"(
+        func Read(value: uint64, test: bool) -> uint64 {
+            let before = value >> 1u32;
+            if test { return before; }
+            return before ^ (value >> 1u64);
+        }
+    )");
+    static_cast<void>(numbering.Run(countTypes, {}));
+    CHECK_EQ(Count(countTypes, LirOpcode::Shr), 2);
+    CHECK(SsaErrors(countTypes).empty());
+
+    auto floating = Promoted(R"(
+        func Read(value: float64, test: bool) -> float64 {
+            let before = value + 1.0;
+            if test { return before; }
+            return before + (value + 1.0);
+        }
+    )");
+    static_cast<void>(numbering.Run(floating, {}));
+    CHECK_EQ(Count(floating, LirOpcode::Add), 3);
+    CHECK(SsaErrors(floating).empty());
+}
+
+TEST_CASE("Literal expression keys remove repeated bounds without crossing writes") {
+    auto package = Promoted(R"(
+        func Read(value: uint) -> uint {
+            if value < 15u { return value; }
+            if value < 15u { return value + 1u; }
+            return value + 2u;
+        }
+    )");
+    Optimization::LirValueNumbering numbering;
+    REQUIRE_EQ(Count(package, LirOpcode::CmpLt), 2);
+    CHECK(numbering.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(package, LirOpcode::CmpLt), 1);
+    CHECK_EQ(
+        std::ranges::count_if(package.modules[0].funcs[0].blocks,
+                              [](const auto &block) { return block.term && block.term->kind == LirTermKind::Branch; }),
+        1);
+    CHECK(SsaErrors(package).empty());
+    auto writes = Promoted(R"(
+        func Read(pointer: *var int, other: *var int, test: bool) -> int {
+            let before = *(pointer + 1u);
+            if test { *other = 99; return before + *(pointer + 1u); }
+            return before;
+        }
+    )");
+    static_cast<void>(numbering.Run(writes, {}));
+    CHECK_EQ(Count(writes, LirOpcode::Load), 2);
+    CHECK(SsaErrors(writes).empty());
+}
