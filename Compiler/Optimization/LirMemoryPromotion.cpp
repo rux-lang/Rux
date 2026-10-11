@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <map>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -49,6 +51,17 @@ bool Scalar(const TypeRef &type) {
            type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Func ||
            (type.kind == TypeRef::Kind::Reference && type.inner.size() == 1 &&
             (type.inner[0].IsInteger() || type.inner[0].IsChar() || type.inner[0].IsBool() || type.inner[0].IsFloat()));
+}
+
+/// The spelling of a slot type's zero, which a path that reads the slot before any store reads instead. Source
+/// definite assignment rules out such a read; lowering still leaves paths that look like one, such as the fallthrough
+/// after the last arm of an exhaustive match, and garbage is all a real one could have read.
+std::optional<std::string> ZeroOf(const TypeRef &type) {
+    if (type.IsFloat())
+        return "0.0";
+    if (type.IsInteger() || type.IsChar() || type.IsBool() || type.kind == TypeRef::Kind::Pointer)
+        return "0";
+    return std::nullopt;
 }
 
 bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
@@ -179,8 +192,19 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
                 }
             }
         }
+        LirReg zero = LirNoReg;
         if (!valid) {
-            continue;
+            const auto spelling = ZeroOf(type);
+            if (!spelling || liveIn[0])
+                continue;
+            LirInstr constant;
+            constant.op = LirOpcode::Const;
+            constant.dst = next++;
+            constant.type = type;
+            constant.strArg = *spelling;
+            zero = constant.dst;
+            types[zero] = type;
+            function.blocks[0].instrs.insert(function.blocks[0].instrs.begin(), std::move(constant));
         }
         std::vector<LirReg> incoming(count, LirNoReg), outgoing(count, LirNoReg);
         for (std::size_t block = 0; block < count; ++block) {
@@ -194,7 +218,7 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
             auto value = incoming[block];
             std::erase_if(function.blocks[block].instrs, [&](const LirInstr &instruction) {
                 if (instruction.op == LirOpcode::Alloca && instruction.dst == slot) {
-                    value = LirNoReg;
+                    value = zero;
                     return true;
                 }
                 if (instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 && instruction.srcs[1] == slot) {
@@ -218,7 +242,8 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
             phi.type = type;
             phi.op = LirOpcode::Phi;
             for (const auto predecessor : cfg.predecessors[block]) {
-                phi.phiPreds.emplace_back(outgoing[predecessor], predecessor);
+                phi.phiPreds.emplace_back(outgoing[predecessor] == LirNoReg ? zero : outgoing[predecessor],
+                                          predecessor);
             }
             function.blocks[block].instrs.insert(function.blocks[block].instrs.begin(), std::move(phi));
         }

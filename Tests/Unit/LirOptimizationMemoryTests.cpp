@@ -193,16 +193,26 @@ TEST_CASE("Memory promotion rewrites call arguments and branch merges") {
     CHECK_EQ(Count(package, LirOpcode::Call), 1);
 }
 
-TEST_CASE("Memory promotion preserves uninitialized volatile and mismatched storage") {
+TEST_CASE("Memory promotion preserves volatile and mismatched storage and zeroes an uninitialized read") {
     Optimization::LirMemoryPromotion promotion;
-    auto uninitialized = Storage(false);
     auto volatileWrite = Storage(true, true);
     auto mixed = Storage(true, false, true);
-    for (auto *package : {&uninitialized, &volatileWrite, &mixed}) {
+    for (auto *package : {&volatileWrite, &mixed}) {
         CHECK(promotion.Run(*package, {}) == Optimization::PassChange::None);
         CHECK_EQ(Count(*package, LirOpcode::Alloca), 1);
         CHECK_EQ(Count(*package, LirOpcode::Load), 1);
     }
+    // A read no store reaches could only have seen garbage; it reads a zero of the slot's type instead.
+    auto uninitialized = Storage(false);
+    CHECK(promotion.Run(uninitialized, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Count(uninitialized, LirOpcode::Alloca), 0);
+    CHECK_EQ(Count(uninitialized, LirOpcode::Load), 0);
+    const auto &entry = uninitialized.modules[0].funcs[0].blocks[0];
+    const auto zero = std::ranges::find_if(
+        entry.instrs, [&](const LirInstr &instruction) { return instruction.dst == *entry.term->retVal; });
+    REQUIRE(zero != entry.instrs.end());
+    CHECK(zero->op == LirOpcode::Const);
+    CHECK_EQ(zero->strArg, "0");
     auto direct = Storage(true);
     CHECK(promotion.Run(direct, {}) == Optimization::PassChange::Changed);
     CHECK_EQ(*direct.modules[0].funcs[0].blocks[0].term->retVal, 1);
