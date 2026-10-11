@@ -465,4 +465,14 @@ Before bounded inlining, the Release pipeline folds constant memory, propagates 
 and removes dead CFG paths/instructions. This exposes small helpers whose checks have become provably redundant.
 The inliner can copy GlobalAddr within its defining module; helpers containing such references remain calls across
 module boundaries. Value numbering may reuse the named address itself across writes, but ordinary memory-load
-availability retains its existing invalidation rules. Inlining growth limits and first-iteration scheduling remain.
+availability retains its existing invalidation rules. The inliner runs in the first two pipeline iterations, so a
+helper the first round shrank becomes a candidate in the second. A call resolves to the definition in its own module
+first, because every module that uses a generic instantiation carries its own copy under one name. Helpers may divide,
+check and report failures: a division traps where the call would have, and a failure report keeps its source context
+and allocates its message at the call site. Size limits count only the blocks that do not end in a failure report.
+
+Loop-invariant motion also hoists a scalar load when the loop contains no store, call, atomic or fence and the address
+is valid whether or not the loop runs: an allocation, a global, a field of either, or a by-address parameter. Lowering
+marks a slice or interface parameter `byAddress`, since the caller always passes the address of its own copy. Integer,
+character, Boolean and pointer conversions move as well. A loop already holding twelve live general values gains
+no more.

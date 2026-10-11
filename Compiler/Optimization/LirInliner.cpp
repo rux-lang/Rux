@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -60,10 +61,31 @@ std::size_t Cost(const LirFunc &function) {
     return cost;
 }
 
+[[nodiscard]] bool Fails(const LirBlock &block) {
+    return std::ranges::any_of(block.instrs,
+                               [](const LirInstr &instruction) { return instruction.op == LirOpcode::Panic; });
+}
+
+/// The size of what a call site executes: a failure report is code that only runs on the way to a trap, so a helper
+/// whose checks each add one is still small where it matters.
+std::size_t HotCost(const LirFunc &function) {
+    std::size_t cost = 0;
+    for (const auto &block : function.blocks) {
+        if (!Fails(block))
+            cost += 1 + block.instrs.size();
+    }
+    return cost;
+}
+
+[[nodiscard]] std::size_t HotBlocks(const LirFunc &function) {
+    return static_cast<std::size_t>(
+        std::ranges::count_if(function.blocks, [](const LirBlock &block) { return !Fails(block); }));
+}
+
 bool Eligible(const LirFunc &function, const ConcreteReferenceTypes &references) {
     const auto parameterFits = [&](const TypeRef &type) { return Scalar(type) || references.Contains(type); };
     if (function.isExtern || function.isAsm || function.isVariadic || function.blocks.empty() ||
-        function.blocks.size() > 8 || Cost(function) > 48 ||
+        HotBlocks(function) > 8 || HotCost(function) > 48 || Cost(function) > 160 ||
         (!Scalar(function.returnType) && !function.returnType.IsOpaque()) ||
         !std::ranges::all_of(function.params, [&](const auto &p) { return parameterFits(p.type); })) {
         return false;
@@ -123,9 +145,18 @@ bool Eligible(const LirFunc &function, const ConcreteReferenceTypes &references)
             case LirOpcode::IndexPtr:
             case LirOpcode::Phi:
             case LirOpcode::Call:
+            // A division traps at the same point inlined or not. A failure report keeps the source context it
+            // carries, its message storage is a fresh allocation the call site owns, and literal text is interned by
+            // whichever module emits it.
+            case LirOpcode::Div:
+            case LirOpcode::Mod:
+            case LirOpcode::Panic:
+            case LirOpcode::Assert:
+            case LirOpcode::StringAddr:
+            case LirOpcode::Alloca:
                 break;
             default:
-                return false; // No stack identity, indirect recursion, atomics or relocated runtime reports.
+                return false; // No frame identity, indirect recursion, atomics or thread-local access.
             }
         }
     }
@@ -190,7 +221,8 @@ void Inline(LirFunc &caller, std::uint32_t &blockIndex, std::size_t &position, c
         for (const auto &instruction : block.instrs) {
             if (instruction.dst != LirNoReg) {
                 renamed[instruction.dst] = next;
-                types[next++] = instruction.type;
+                types[next++] =
+                    instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
             }
         }
     }
@@ -330,26 +362,43 @@ std::string_view LirInliner::Name() const noexcept {
 }
 
 PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
-    if (context.iteration != 0) {
+    // A second round sees helpers that the first round's inlining and the folding after it made small enough.
+    if (context.iteration > 1) {
         return PassChange::None;
     }
     std::vector<LirFunc *> functions;
     std::vector<const LirModule *> owners;
+    std::vector<std::size_t> ownerIndex;
     std::unordered_map<std::string, std::size_t> names;
     std::unordered_set<std::string> ambiguous;
+    // A generic instantiation is emitted in every module that uses it, so one name can have a definition per module.
+    // A call resolves to the definition in its own module first, which is the one it links against anyway.
+    std::vector<std::unordered_map<std::string, std::size_t>> moduleNames(package.modules.size());
     const ConcreteReferenceTypes references(package);
-    for (auto &module : package.modules) {
+    for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
+        auto &module = package.modules[moduleIndex];
         for (auto &function : module.funcs) {
             if (!names.emplace(function.name, functions.size()).second) {
                 ambiguous.insert(function.name);
             }
+            if (!function.isExtern)
+                moduleNames[moduleIndex].emplace(function.name, functions.size());
             functions.push_back(&function);
             owners.push_back(&module);
+            ownerIndex.push_back(moduleIndex);
         }
     }
     for (const auto &name : ambiguous) {
         names.erase(name);
     }
+    const auto resolve = [&](const std::size_t caller, const std::string &name) -> std::optional<std::size_t> {
+        const auto &local = moduleNames[ownerIndex[caller]];
+        if (const auto found = local.find(name); found != local.end())
+            return found->second;
+        if (const auto found = names.find(name); found != names.end())
+            return found->second;
+        return std::nullopt;
+    };
     // Deterministic sink removal orders callees before callers. Recursive components and wrappers reaching them never
     // become candidates. Their bodies may still inline independent leaf calls, under the same finite growth budget.
     std::vector<std::vector<std::size_t>> callers(functions.size());
@@ -358,8 +407,10 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
         std::unordered_set<std::size_t> targets;
         for (const auto &block : functions[index]->blocks) {
             for (const auto &instruction : block.instrs) {
-                if (instruction.op == LirOpcode::Call && names.contains(instruction.strArg)) {
-                    targets.insert(names.at(instruction.strArg));
+                if (instruction.op != LirOpcode::Call)
+                    continue;
+                if (const auto target = resolve(index, instruction.strArg)) {
+                    targets.insert(*target);
                 }
             }
         }
@@ -390,7 +441,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
             order.push_back(i);
         }
     }
-    std::unordered_map<std::string, LirFunc> available;
+    std::unordered_map<std::size_t, LirFunc> available;
     std::size_t packageBudget = 50000;
     bool changed = false;
     for (const auto index : order) {
@@ -414,10 +465,11 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
         for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
             for (std::size_t position = 0; position < function.blocks[block].instrs.size();) {
                 auto &call = function.blocks[block].instrs[position];
-                if (call.op == LirOpcode::Call && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
-                    names.contains(call.strArg) && NativeSquareRoot(*functions[names.at(call.strArg)]) &&
-                    call.srcs.size() == 1 && types.contains(call.srcs[0]) && types.at(call.srcs[0]) == call.type &&
-                    call.type == functions[names.at(call.strArg)]->returnType) {
+                const auto target =
+                    call.op == LirOpcode::Call ? resolve(index, call.strArg) : std::optional<std::size_t>{};
+                if (target && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
+                    NativeSquareRoot(*functions[*target]) && call.srcs.size() == 1 && types.contains(call.srcs[0]) &&
+                    types.at(call.srcs[0]) == call.type && call.type == functions[*target]->returnType) {
                     call.op = LirOpcode::Sqrt;
                     call.strArg.clear();
                     call.callConv = CallingConvention::Default;
@@ -425,7 +477,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     ++position;
                     continue;
                 }
-                const auto found = available.find(call.strArg);
+                const auto found = target ? available.find(*target) : available.end();
                 bool valid =
                     call.op == LirOpcode::Call && found != available.end() && !call.isCVariadic && !call.isVolatile;
                 if (valid) {
@@ -433,7 +485,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     valid = call.type == callee.returnType && call.srcs.size() == callee.params.size() &&
                             (!callee.returnType.IsOpaque() || call.dst == LirNoReg) && Cost(callee) <= budget &&
                             Cost(callee) <= packageBudget && function.blocks.size() + callee.blocks.size() + 1 <= 4096;
-                    if (valid && owners[names.at(callee.name)] != owners[index]) {
+                    if (valid && owners[*target] != owners[index]) {
                         // A named data lookup is module-relative. Copy it only within its original module;
                         // moving it across modules requires explicit symbol qualification first.
                         for (const auto &calleeBlock : callee.blocks)
@@ -457,8 +509,8 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 changed = true;
             }
         }
-        if (remaining[index] == 0 && !ambiguous.contains(function.name) && Eligible(function, references)) {
-            available.emplace(function.name, function);
+        if (remaining[index] == 0 && Eligible(function, references)) {
+            available.emplace(index, function);
         }
     }
     return changed ? PassChange::Changed : PassChange::None;

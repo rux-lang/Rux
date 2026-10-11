@@ -378,9 +378,13 @@ TEST_CASE("Loop motion leaves recurrence constants near their uses") {
 
 TEST_CASE("Loop motion avoids adding another live value to a crowded loop") {
     auto package = Promoted(R"(
-        func Sum(limit: int, scale: int, a: int, b: int, c: int, d: int) -> int {
+        func Sum(limit: int, scale: int, a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, j: int,
+                 k: int, m: int) -> int {
             var result = 0;
-            for i in 0..limit { result += scale * 3 + scale * i + a * i + b * i + c * i + d * i; }
+            for i in 0..limit {
+                result += scale * 3 + scale * i + a * i + b * i + c * i + d * i + e * i + f * i + g * i + h * i +
+                          j * i + k * i + m * i;
+            }
             return result;
         }
     )");
@@ -389,6 +393,49 @@ TEST_CASE("Loop motion avoids adding another live value to a crowded loop") {
     CHECK(SsaErrors(package).empty());
     const auto &entry = package.modules[0].funcs[0].blocks[0].instrs;
     CHECK_FALSE(std::ranges::any_of(entry, [](const auto &instruction) { return instruction.op == LirOpcode::Mul; }));
+}
+
+TEST_CASE("Loop motion hoists header loads of a by-address view out of a loop that writes nothing") {
+    for (const bool writes : {false, true}) {
+        auto package = Promoted(writes ? R"(
+            func Count(text: char8[..], target: char8, out: *var uint) -> uint {
+                var found: uint = 0;
+                var index: uint = 0;
+                while index < text.length {
+                    if text.data[index] == target { found += 1; }
+                    *out = found;
+                    index += 1;
+                }
+                return found;
+            }
+        )"
+                                       : R"(
+            func Count(text: char8[..], target: char8) -> uint {
+                var found: uint = 0;
+                var index: uint = 0;
+                while index < text.length {
+                    if text.data[index] == target { found += 1; }
+                    index += 1;
+                }
+                return found;
+            }
+        )");
+        REQUIRE(SsaErrors(package).empty());
+        const auto &function = package.modules[0].funcs[0];
+        REQUIRE(function.params[0].byAddress);
+        Optimization::LirLoopInvariants motion;
+        static_cast<void>(motion.Run(package, {}));
+        CHECK(SsaErrors(package).empty());
+        // The length and data words of the header are read once before the loop only when nothing in it can
+        // write them.
+        const auto &entry = package.modules[0].funcs[0].blocks[0].instrs;
+        const auto entryLoads = std::ranges::count_if(entry, [](const auto &i) { return i.op == LirOpcode::Load; });
+        CAPTURE(writes);
+        if (writes)
+            CHECK_EQ(entryLoads, 0);
+        else
+            CHECK_GE(entryLoads, 2);
+    }
 }
 
 namespace {

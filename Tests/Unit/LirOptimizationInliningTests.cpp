@@ -22,6 +22,16 @@ std::size_t Calls(const LirPackage &package) {
     }
     return count;
 }
+
+std::size_t Count(const LirPackage &package, const LirOpcode op) {
+    std::size_t count = 0;
+    for (const auto &module : package.modules)
+        for (const auto &function : module.funcs)
+            for (const auto &block : function.blocks)
+                count +=
+                    std::ranges::count_if(block.instrs, [op](const auto &instruction) { return instruction.op == op; });
+    return count;
+}
 } // namespace
 
 TEST_CASE("Inlining named data addresses stays within their defining module") {
@@ -269,7 +279,7 @@ TEST_CASE("Leaf inlining substitutes scalar parameters with fresh definitions") 
     CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
 }
 
-TEST_CASE("Leaf inlining keeps recursion indirect calls and trapping helpers bounded") {
+TEST_CASE("Leaf inlining keeps recursion and indirect calls but inlines trapping helpers") {
     auto package = CompileToLir(R"(
         func Recurse(value: int) -> int { return Recurse(value); }
         func Divide(value: int) -> int { return value / 0; }
@@ -281,12 +291,15 @@ TEST_CASE("Leaf inlining keeps recursion indirect calls and trapping helpers bou
     Optimization::LirMemoryPromotion promotion;
     static_cast<void>(promotion.Run(package, {}));
     const auto calls = Calls(package);
+    const auto divisions = Count(package, LirOpcode::Div);
     Optimization::LirInliner inliner;
-    CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
-    CHECK_EQ(Calls(package), calls);
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    // The division still runs, and traps, exactly where the call did; recursion and the callback remain calls.
+    CHECK_EQ(Calls(package), calls - 1);
+    CHECK_EQ(Count(package, LirOpcode::Div), divisions + 1);
 }
 
-TEST_CASE("Leaf inlining expansion runs once per optimization phase") {
+TEST_CASE("Leaf inlining expansion runs in the first two optimization iterations") {
     auto package = CompileToLir(R"(
         func Increment(value: int) -> int { return value + 1; }
         func Work(value: int) -> int { return Increment(value); }
@@ -295,10 +308,40 @@ TEST_CASE("Leaf inlining expansion runs once per optimization phase") {
     Optimization::LirMemoryPromotion promotion;
     static_cast<void>(promotion.Run(package, {}));
     Optimization::LirInliner inliner;
-    Optimization::PassContext later;
-    later.iteration = 1;
-    CHECK(inliner.Run(package, later) == Optimization::PassChange::None);
+    Optimization::PassContext late;
+    late.iteration = 2;
+    CHECK(inliner.Run(package, late) == Optimization::PassChange::None);
     CHECK_EQ(Calls(package), 1);
+    Optimization::PassContext second;
+    second.iteration = 1;
+    CHECK(inliner.Run(package, second) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+}
+
+TEST_CASE("Leaf inlining resolves a generic instantiation to the caller's own module") {
+    // Each module that uses an instantiation carries its own copy under the same name.
+    auto package = CompileToLir(R"(
+        func Twice(value: uint64) -> uint64 { return value * 2u64; }
+        func Work(value: uint64) -> uint64 { return Twice(value); }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    REQUIRE_FALSE(package.modules.empty());
+    LirModule copy;
+    copy.name = "copy";
+    for (const auto &function : package.modules[0].funcs)
+        if (function.name == "Twice")
+            copy.funcs.push_back(function);
+    REQUIRE_EQ(copy.funcs.size(), 1U);
+    package.modules.push_back(copy);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    for (const auto &function : package.modules[0].funcs)
+        if (function.name == "Work")
+            for (const auto &block : function.blocks)
+                for (const auto &instruction : block.instrs)
+                    CHECK(instruction.op != LirOpcode::Call);
 }
 
 TEST_CASE("Scalar reference leaf inlining preserves updates through a lowered local address") {

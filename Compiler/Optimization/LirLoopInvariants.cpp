@@ -32,8 +32,55 @@ bool Speculatable(const LirInstr &instruction) {
     case LirOpcode::IndexPtr:
         return true;
     default:
-        return false; // No loads, traps, calls, checks, casts, FP changes or address/lifetime creation.
+        return false; // No loads, traps, calls, checks, FP changes or address/lifetime creation.
     }
+}
+
+[[nodiscard]] bool ScalarValue(const TypeRef &type) {
+    return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer ||
+           type.kind == TypeRef::Kind::Reference || type.kind == TypeRef::Kind::Func ||
+           type.kind == TypeRef::Kind::Float32 || type.kind == TypeRef::Kind::Float64;
+}
+
+/// An integer, character, Boolean or pointer conversion of a value that is not floating point: it cannot trap or
+/// raise a floating-point exception wherever it runs.
+[[nodiscard]] bool SpeculatableCast(const LirInstr &instruction, const std::unordered_map<LirReg, TypeRef> &types) {
+    if (instruction.op != LirOpcode::Cast || instruction.isVolatile || instruction.srcs.size() != 1)
+        return false;
+    const auto source = types.find(instruction.srcs[0]);
+    const auto general = [](const TypeRef &type) {
+        return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer;
+    };
+    return source != types.end() && general(source->second) && general(instruction.type) &&
+           source->second.SizeInBytes().value_or(16) <= 8 && instruction.type.SizeInBytes().value_or(16) <= 8;
+}
+
+/// Whether the loop body can write memory: any store, call or atomic or ordering operation does.
+[[nodiscard]] bool WritesMemory(const LirFunc &function, const std::unordered_set<std::uint32_t> &members) {
+    for (const auto block : members) {
+        for (const auto &instruction : function.blocks[block].instrs) {
+            switch (instruction.op) {
+            case LirOpcode::Store:
+            case LirOpcode::Call:
+            case LirOpcode::CallIndirect:
+            case LirOpcode::AtomicStore:
+            case LirOpcode::AtomicExchange:
+            case LirOpcode::AtomicCmpXchg:
+            case LirOpcode::AtomicFetchAdd:
+            case LirOpcode::AtomicFetchSub:
+            case LirOpcode::AtomicFetchAnd:
+            case LirOpcode::AtomicFetchOr:
+            case LirOpcode::AtomicFetchXor:
+            case LirOpcode::AtomicLoad:
+            case LirOpcode::Fence:
+            case LirOpcode::WriteStandardError:
+                return true;
+            default:
+                break;
+            }
+        }
+    }
+    return false;
 }
 
 bool Hoist(LirFunc &function) {
@@ -46,11 +93,17 @@ bool Hoist(LirFunc &function) {
     std::unordered_map<LirReg, std::uint32_t> definitions;
     std::unordered_map<LirReg, LirInstr> constants;
     std::unordered_map<LirReg, TypeRef> types;
+    // Where an address comes from, for the addresses a load may be read through anywhere: an allocation, a global,
+    // a by-address parameter, or a field of one of those.
+    std::unordered_map<LirReg, std::pair<LirOpcode, LirReg>> origins;
+    std::unordered_set<LirReg> validParameters;
     LirReg next = 0;
     for (const auto &parameter : function.params) {
         definitions.emplace(parameter.reg, 0);
         types.emplace(parameter.reg, parameter.type);
         next = std::max(next, parameter.reg + 1);
+        if (parameter.byAddress)
+            validParameters.insert(parameter.reg);
     }
     for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
         for (const auto &instruction : function.blocks[block].instrs) {
@@ -62,12 +115,30 @@ bool Hoist(LirFunc &function) {
                 types.emplace(instruction.dst, instruction.op == LirOpcode::Alloca
                                                    ? TypeRef::MakePointer(instruction.type)
                                                    : instruction.type);
+                if (instruction.op == LirOpcode::Alloca || instruction.op == LirOpcode::GlobalAddr ||
+                    (instruction.op == LirOpcode::FieldPtr && instruction.srcs.size() == 1))
+                    origins.emplace(
+                        instruction.dst,
+                        std::pair{instruction.op, instruction.srcs.empty() ? LirNoReg : instruction.srcs[0]});
             }
             if (instruction.op == LirOpcode::Const && Speculatable(instruction)) {
                 constants.emplace(instruction.dst, instruction);
             }
         }
     }
+    const auto dereferenceable = [&](LirReg address) {
+        for (int depth = 0; depth < 8; ++depth) {
+            if (validParameters.contains(address))
+                return true;
+            const auto origin = origins.find(address);
+            if (origin == origins.end())
+                return false;
+            if (origin->second.first != LirOpcode::FieldPtr)
+                return true;
+            address = origin->second.second;
+        }
+        return false;
+    };
     const LirNaturalLoops loops(cfg, dominance);
     if (!loops.complete)
         return false;
@@ -89,6 +160,7 @@ bool Hoist(LirFunc &function) {
             continue;
         }
         bool again = true;
+        const bool writes = WritesMemory(function, members);
         std::unordered_map<LirReg, LirReg> materialized;
         const auto general = [&](const LirReg reg) {
             const auto found = types.find(reg);
@@ -131,7 +203,14 @@ bool Hoist(LirFunc &function) {
                 for (auto &instruction : function.blocks[block].instrs) {
                     // A constant used by a varying recurrence is cheap to recreate near its use. Hoisting it alone
                     // extends its live range and can displace hotter loop values from the small register pool.
-                    bool invariant = budget != 0 && instruction.op != LirOpcode::Const && Speculatable(instruction);
+                    // A load moves only out of a loop that writes no memory, and only through an address that is
+                    // valid whether or not the loop runs, so hoisting it can neither change its value nor fault.
+                    const bool load = instruction.op == LirOpcode::Load && instruction.strArg.empty() &&
+                                      !instruction.isVolatile && instruction.srcs.size() == 1 &&
+                                      instruction.dst != LirNoReg && ScalarValue(instruction.type) && !writes &&
+                                      dereferenceable(instruction.srcs[0]);
+                    bool invariant = budget != 0 && instruction.op != LirOpcode::Const &&
+                                     (Speculatable(instruction) || SpeculatableCast(instruction, types) || load);
                     std::unordered_set<LirReg> neededConstants;
                     std::unordered_map<LirReg, std::size_t> consumed;
                     for (const auto source : instruction.srcs) {
@@ -155,10 +234,9 @@ bool Hoist(LirFunc &function) {
                             ++freed;
                         }
                     }
-                    // Five is the smaller current native GPR pool. Until machine-level costing exists, avoid adding
-                    // long-lived values to crowded loops. Replacing the sole loop use of an input need not add
-                    // pressure.
-                    invariant = invariant && (live.size() < 5 || freed != 0);
+                    // Keep crowded loops from gaining more long-lived values than the allocatable registers hold.
+                    // Replacing the sole loop use of an input need not add pressure.
+                    invariant = invariant && (live.size() < 12 || freed != 0);
                     if (invariant && 1 + neededConstants.size() <= budget) {
                         for (const auto &[source, count] : consumed) {
                             uses[source] -= count;

@@ -279,6 +279,9 @@ struct LirParam {
     LirReg reg;
     TypeRef type;
     std::string name;
+    /// A slice or interface value the caller passes as the address of its own copy. The pointer is never null and the
+    /// memory it addresses stays valid for the whole call, so a load through it may be moved anywhere in the function.
+    bool byAddress = false;
 };
 
 struct LirFunc {

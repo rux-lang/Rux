@@ -12,6 +12,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Inlining checked and per-module helpers** — Release inlining accepts helpers that divide, check or report failures, runs a second round after folding, and resolves a call to its own module's copy of a generic instantiation, so `Core` bit helpers such as `RotateLeft` disappear into SipHash. Loop-invariant motion hoists scalar loads through allocations, globals and by-address slice parameters out of loops that write no memory.
 - **x86-64 machine selection** — Release builds select machine instructions per function and allocate the whole register file by iterated register coalescing: caller- and callee-saved registers, fused compare-and-branch, folded addressing modes, immediates, three-address `lea`, cold failure paths laid out last and short branches. Functions using wide integers, software or x87 floating point, atomics, thread-local storage or C variadic calls keep the direct emitter, whose calling convention the new path reproduces. The benchmark geometric mean against C++ improves from 2.6× to 1.4×.
 - Emit allocated x86 integer and pointer casts directly, preserving source-width extension and checked character casts.
 - Fold immutable slice lengths and remove proven checks before bounded same-module helper inlining.

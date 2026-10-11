@@ -1245,7 +1245,7 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
             // address. pr holds that address directly — no extra
             // alloca.
             locals[name] = pr;
-            lf.params.push_back({pr, TypeRef::MakePointer(type), name});
+            lf.params.push_back({pr, TypeRef::MakePointer(type), name, true});
         }
         else if (IsViewType(type)) {
             // Slice and string values are 16-byte {data, length} structs;
@@ -1253,7 +1253,7 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
             // handles the indirection. Register with Pointer<type> so
             // ResolveFieldOffset can compute field offsets.
             locals[name] = pr;
-            lf.params.push_back({pr, TypeRef::MakePointer(type), name});
+            lf.params.push_back({pr, TypeRef::MakePointer(type), name, true});
         }
         else {
             const LirReg slot = EmitAlloca(type);
