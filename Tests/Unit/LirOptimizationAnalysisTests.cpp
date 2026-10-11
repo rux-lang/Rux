@@ -437,7 +437,7 @@ TEST_CASE("Loop versioning rejects unproven induction and volatile accesses") {
         for (auto &block : package.modules[0].funcs[0].blocks) {
             for (auto &instruction : block.instrs) {
                 if (mode == 0 && instruction.op == LirOpcode::Const && instruction.strArg == "1")
-                    instruction.strArg = "2";
+                    instruction.strArg = "0";
                 if (mode == 1 && instruction.op == LirOpcode::Const && instruction.strArg == "0")
                     instruction.strArg = "1";
                 if (mode == 2 && instruction.op == LirOpcode::Store)
@@ -463,6 +463,68 @@ TEST_CASE("Loop versioning retains memory-dependent bounds") {
     Optimization::LirLoopVersioning versioning;
     CHECK(versioning.Run(package, {}) == Optimization::PassChange::None);
     CHECK(SsaErrors(package).empty());
+}
+
+TEST_CASE("Strided loop guards cover visited indices and reject wrapping induction") {
+    for (const auto stride : {2u, 3u, 4u, 6u, 64u}) {
+        auto original = VersioningLoop();
+        for (auto &block : original.modules[0].funcs[0].blocks)
+            for (auto &instruction : block.instrs)
+                if (instruction.op == LirOpcode::Const && instruction.strArg == "1")
+                    instruction.strArg = std::to_string(stride);
+        Optimization::LirLoopVersioning versioning;
+        REQUIRE(versioning.Run(original, {}) == Optimization::PassChange::Changed);
+        REQUIRE(SsaErrors(original).empty());
+        for (const auto limit : {0ull, 1ull, 2ull, 4ull, 7ull, 10ull, 0xFFFFFFFFFFFFFFFFull}) {
+            for (const auto row : {0ull, 2ull, 0xFFFFFFFFFFFFFFFEull}) {
+                for (const auto bound : {0ull, 1ull, 4ull, 9ull, 0xFFFFFFFFFFFFFFFDull}) {
+                    auto package = original;
+                    auto &function = package.modules[0].funcs[0];
+                    const std::uint64_t arguments[] = {limit, row, bound};
+                    std::vector<LirInstr> constants;
+                    for (std::size_t index = 0; index < 3; ++index) {
+                        LirInstr constant;
+                        constant.op = LirOpcode::Const;
+                        constant.dst = function.params[index].reg;
+                        constant.type = function.params[index].type;
+                        constant.strArg = std::to_string(arguments[index]);
+                        constants.push_back(std::move(constant));
+                    }
+                    function.params.erase(function.params.begin(), function.params.begin() + 3);
+                    auto &entry = function.blocks[0];
+                    entry.instrs.insert(entry.instrs.begin(), constants.begin(), constants.end());
+                    Optimization::LirConstantPropagation propagation;
+                    static_cast<void>(propagation.Run(package, {}));
+                    const auto condition = std::ranges::find_if(
+                        entry.instrs, [&](const auto &instruction) { return instruction.dst == entry.term->cond; });
+                    REQUIRE(condition != entry.instrs.end());
+                    REQUIRE(condition->op == LirOpcode::Const);
+                    const bool fast = condition->strArg == "true";
+                    if (limit == 0xFFFFFFFFFFFFFFFFull) {
+                        CHECK_FALSE(fast); // Do not execute a huge or nonterminating wrapping loop.
+                    }
+                    else if (limit != 0) {
+                        bool allFit = row <= bound;
+                        for (std::uint64_t i = 0; i < limit; i += stride)
+                            allFit = allFit && i < bound - row;
+                        CHECK(fast == allFit);
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Loop versioning rejects unsupported strides") {
+    for (const auto stride : {"65", "18446744073709551615"}) {
+        auto package = VersioningLoop();
+        for (auto &block : package.modules[0].funcs[0].blocks)
+            for (auto &instruction : block.instrs)
+                if (instruction.op == LirOpcode::Const && instruction.strArg == "1")
+                    instruction.strArg = stride;
+        Optimization::LirLoopVersioning versioning;
+        CHECK(versioning.Run(package, {}) == Optimization::PassChange::None);
+    }
 }
 
 TEST_CASE("Loop versioning remaps exit phis and rejects unmerged live outs") {

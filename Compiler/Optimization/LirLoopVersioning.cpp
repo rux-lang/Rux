@@ -1,7 +1,9 @@
 #include "Optimization/LirLoopVersioning.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Optimization/ConstantEvaluator.h"
 
+#include <limits>
 #include <unordered_map>
 
 namespace Rux::Optimization {
@@ -107,9 +109,17 @@ bool Version(LirFunc &function) {
             continue;
         const auto *step = get(increment);
         if (!step || step->op != LirOpcode::Add || step->isVolatile || step->type != phi->type ||
-            step->srcs.size() != 2 || step->srcs[0] != induction || !literal(step->srcs[1], "1") ||
+            step->srcs.size() != 2 || step->srcs[0] != induction ||
             !dominance.Dominates(definitions.at(increment).block, latch))
             continue;
+        const auto *strideInstruction = get(step->srcs[1]);
+        if (!strideInstruction || strideInstruction->op != LirOpcode::Const || strideInstruction->isVolatile ||
+            !Word(strideInstruction->type) || !strideInstruction->srcs.empty())
+            continue;
+        const auto strideValue = ParseConstant(strideInstruction->strArg, strideInstruction->type);
+        if (!strideValue || strideValue->RawBits() == 0 || strideValue->RawBits() > 64)
+            continue;
+        const auto stride = strideValue->RawBits();
         const auto invariant = [&](const LirReg reg) {
             const auto found = definitions.find(reg);
             return found != definitions.end() && Word(found->second.type) && !members.contains(found->second.block) &&
@@ -242,8 +252,23 @@ bool Version(LirFunc &function) {
         const auto widen = [&](const LirReg value) {
             return emit(LirOpcode::Cast, TypeRef::MakeUInt64(), {value}, definitions.at(value).type.ToString());
         };
-        const auto count = widen(limit);
+        const auto limit64 = widen(limit);
+        auto count = limit64;
         LirReg guard = LirNoReg;
+        if (stride != 1) {
+            // The last visited index is floor((limit - 1) / stride) * stride. Reject limits for which the
+            // increment could wrap: after wrapping, a non-power-of-two stride can visit different residues.
+            // For an empty loop, these unsigned calculations may wrap but never access memory or trap.
+            const auto one = emit(LirOpcode::Const, TypeRef::MakeUInt64(), {}, "1");
+            const auto stepSize = emit(LirOpcode::Const, TypeRef::MakeUInt64(), {}, std::to_string(stride));
+            const auto last = emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {limit64, one});
+            const auto quotient = emit(LirOpcode::Div, TypeRef::MakeUInt64(), {last, stepSize});
+            const auto lastIndex = emit(LirOpcode::Mul, TypeRef::MakeUInt64(), {quotient, stepSize});
+            count = emit(LirOpcode::Add, TypeRef::MakeUInt64(), {lastIndex, one});
+            const auto maximum = emit(LirOpcode::Const, TypeRef::MakeUInt64(), {},
+                                      std::to_string(std::numeric_limits<std::uint64_t>::max() - (stride - 1)));
+            guard = emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {limit64, maximum});
+        }
         for (const auto &check : checks) {
             const auto bound = widen(check.bound);
             LirReg safe;

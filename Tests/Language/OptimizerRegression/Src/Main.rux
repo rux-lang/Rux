@@ -96,6 +96,7 @@ func Main() -> int {
     CheckLoadFacts();
     CheckLiteralKeys();
     CheckPointerInduction();
+    CheckStridedVersioning();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -638,4 +639,65 @@ func CheckPointerInduction() {
     let b = ReferencePointerWalk(4u, 8u, wrappedRow, @expected[0], @expected[1]);
     Assert(a == b, "pointer induction preserves unsigned row wrapping");
     for i in 0u..12u { Assert(actual[i] == expected[i], "wrapped pointer induction writes"); }
+}
+
+func StridedWalk3(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += 3u;
+    }
+    return *pointer;
+}
+func StridedWalk4(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += 4u;
+    }
+    return *pointer;
+}
+func StridedWalk6(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += 6u;
+    }
+    return *pointer;
+}
+func ReferenceStridedWalk(limit: uint, row: uint, bound: uint, pointer: *var uint, stride: uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += stride;
+    }
+    return *pointer;
+}
+func CheckStridedVersioning() {
+    let reference: func(uint, uint, uint, *var uint, uint) -> uint = ReferenceStridedWalk;
+    let walk3: func(uint, uint, uint, *var uint) -> uint = StridedWalk3;
+    let walk4: func(uint, uint, uint, *var uint) -> uint = StridedWalk4;
+    let walk6: func(uint, uint, uint, *var uint) -> uint = StridedWalk6;
+    for limit in 0u..18u {
+        for row in [0u, 2u, 0xFFFFFFFFFFFFFFFEu] {
+            for bound in [0u, 1u, 4u, 9u, 24u, 0xFFFFFFFFFFFFFFFFu] {
+                for stride in [3u, 4u, 6u] {
+                    var actual = 7u;
+                    var expected = 7u;
+                    let a = stride == 3u ? walk3(limit, row, bound, @actual)
+                        : stride == 4u ? walk4(limit, row, bound, @actual) : walk6(limit, row, bound, @actual);
+                    let b = reference(limit, row, bound, @expected, stride);
+                    Assert(a == b && actual == expected, "strided bounds preserve prefix writes and checked fallback");
+                }
+            }
+        }
+    }
 }
