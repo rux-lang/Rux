@@ -53,6 +53,8 @@ struct CompileOptions {
     bool dumpOptimizationPasses = false;
     bool dumpAsm = false;
     bool dumpRcu = false;
+    /// Write a function symbol table into the linked image for profilers (build --emit symbols).
+    bool emitSymbols = false;
     bool collectOptimizationStatistics = false;
     std::vector<std::string> disabledOptimizationPasses;
 

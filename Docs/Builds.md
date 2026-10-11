@@ -211,6 +211,21 @@ prevents convergence, compilation reports an error. `--all` cannot be combined w
 have different optimization profiles. This diagnostic option changes generated artifacts and is not a portable CPU
 selection or a guarantee that disabling an optimization improves performance.
 
+### Profiler Symbols
+
+`rux build --release --emit symbols` adds section headers and a non-allocated `.symtab` to an ELF image. Each placed
+function gets one local `STT_FUNC` entry with its address and size, so `perf` can name hot functions:
+
+```sh
+./Bin/rux --manifest Packages/App/Rux.toml build --release --target linux-x86_64 --emit symbols
+perf record -o perf.data Packages/App/Bin/Release/Linux/x86-64/App
+perf report -i perf.data --sort symbol
+```
+
+The table is not loaded at run time, and the build's code and data are unchanged. Ordinary builds carry no section
+headers. PE and Mach-O images ignore the request for now; on Windows, map profiler addresses to functions with
+`--emit asm`.
+
 ## Cross-Compilation and Execution
 
 `build` and `check` can select any supported target without an external assembler, compiler, linker, archiver, signer, emulator, or target sysroot. Producing an artifact does not imply the current host can execute it:

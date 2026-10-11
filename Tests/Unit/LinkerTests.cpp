@@ -123,6 +123,106 @@ TEST_CASE("ELF linker resolves local functions defined in another object") {
     CHECK(aarch64.NeededLibraries().empty());
 }
 
+TEST_CASE("ELF linker names every placed function in a symbol table only when asked") {
+    struct Symbol {
+        std::string name;
+        std::uint8_t info;
+        std::uint16_t sectionIndex;
+        std::uint64_t value;
+        std::uint64_t size;
+    };
+
+    const auto link = [](const bool emitSymbols, const bool dynamic, const std::string_view suffix) {
+        RcuFile object;
+        RcuSection text;
+        text.name = ".text";
+        text.type = RcuSecType::Text;
+        text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        text.alignment = 16;
+        text.data = {0xE8, 0,    0,    0,    0,    0x31, 0xC0, 0xC3, 0xCC, 0xCC,
+                     0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x31, 0xC0, 0xC3}; // Main: call Helper or Sqrt; xor eax, eax;
+                                                                            // ret. Helper at 16: xor eax, eax; ret
+        text.relocs.push_back({1, dynamic ? 2U : 1U, RcuRelType::Rel32, 0});
+        object.sections.push_back(std::move(text));
+        object.symbols.push_back({"Main", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        object.symbols.push_back({"Helper", "int", 16, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
+        if (dynamic) {
+            object.symbols.push_back(
+                {"sqrt", "libm.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+        }
+        const auto output = Rux::Testing::TestTemporaryDirectory() / ("rux-elf-symbols-" + std::string(suffix));
+        std::error_code ec;
+        std::filesystem::remove(output, ec);
+        Linker linker({std::move(object)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux,
+                      Target::Arch::X86_64);
+        linker.SetEmitSymbols(emitSymbols);
+        const bool linked = linker.Link(output);
+        CAPTURE(linker.Errors().empty() ? std::string{} : linker.Errors().front().message);
+        REQUIRE(linked);
+        std::ifstream stream(output, std::ios::binary);
+        REQUIRE(stream.is_open());
+        ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+        stream.close();
+        std::filesystem::remove(output, ec);
+        return image;
+    };
+    const auto symbols = [](const ElfImage &image) {
+        const auto sectionTable = static_cast<std::size_t>(image.Read64(40));
+        const std::size_t sectionCount = image.Read16(60);
+        std::vector<Symbol> result;
+        for (std::size_t section = 0; section < sectionCount; ++section) {
+            const std::size_t header = sectionTable + section * 64;
+            if (image.Read32(header + 4) != 2) { // SHT_SYMTAB
+                continue;
+            }
+            const std::size_t strings = sectionTable + image.Read32(header + 40) * 64;
+            const auto stringsOffset = static_cast<std::size_t>(image.Read64(strings + 24));
+            const auto offset = static_cast<std::size_t>(image.Read64(header + 24));
+            const auto size = static_cast<std::size_t>(image.Read64(header + 32));
+            for (std::size_t entry = offset + 24; entry < offset + size; entry += 24) {
+                const std::size_t nameOffset = stringsOffset + image.Read32(entry);
+                std::string name;
+                for (std::size_t i = nameOffset; image.bytes[i] != 0; ++i) {
+                    name.push_back(static_cast<char>(image.bytes[i]));
+                }
+                result.push_back({std::move(name), image.bytes[entry + 4], image.Read16(entry + 6),
+                                  image.Read64(entry + 8), image.Read64(entry + 16)});
+            }
+        }
+        return result;
+    };
+
+    for (const bool dynamic : {false, true}) {
+        CAPTURE(dynamic);
+        const ElfImage plain = link(false, dynamic, dynamic ? "plain-dynamic" : "plain-static");
+        CHECK(plain.Read64(40) == 0);
+        CHECK(plain.Read16(60) == 0);
+
+        const ElfImage image = link(true, dynamic, dynamic ? "dynamic" : "static");
+        REQUIRE(image.Read16(60) == 5);
+        CHECK(image.Read16(58) == 64);
+        CHECK(image.Read16(62) == 4);
+        const auto textHeader = static_cast<std::size_t>(image.Read64(40)) + 64;
+        CHECK(image.Read32(textHeader + 4) == 1); // SHT_PROGBITS
+        const std::uint64_t textAddress = image.Read64(textHeader + 16);
+        const std::uint64_t textSize = image.Read64(textHeader + 32);
+        const auto found = symbols(image);
+        REQUIRE(found.size() == 2);
+        CHECK(found[0].name == "Main");
+        CHECK(found[0].value >= textAddress);
+        CHECK(found[0].size == 8);
+        CHECK(found[1].name == "Helper");
+        CHECK(found[1].value == found[0].value + 16);
+        CHECK(found[1].value + found[1].size <= textAddress + textSize);
+        CHECK(found[1].size == 3);
+        for (const auto &symbol : found) {
+            CHECK(symbol.info == 2); // STB_LOCAL, STT_FUNC
+            CHECK(symbol.sectionIndex == 1);
+        }
+        CHECK(image.Entry() != 0);
+    }
+}
+
 TEST_CASE("ELF linker names the loader and C library of the target, not of the host") {
     // A dynamic image whose one import names no library of its own, so the
     // writer supplies the target's C library and the loader that binds it.

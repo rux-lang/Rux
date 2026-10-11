@@ -42,6 +42,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     bool dumpOptimizationPasses = false;
     bool dumpAsm = false;
     bool dumpRcu = false;
+    bool emitSymbols = false;
     bool showStats = false;
     std::vector<std::string> disabledPasses;
     std::map<std::string, std::string> defines;
@@ -94,11 +95,13 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                     dumpAsm = true;
                 else if (value == "rcu")
                     dumpRcu = true;
+                else if (value == "symbols")
+                    emitSymbols = true;
                 else {
                     diagnostics.Error(std::format("value '{}' is not supported by option '--emit'", value));
                     diagnostics.Note(
-                        "supported emission kinds are 'tokens', 'ast', 'sema', 'hir', 'lir', 'passes', 'asm', and "
-                        "'rcu'");
+                        "supported emission kinds are 'tokens', 'ast', 'sema', 'hir', 'lir', 'passes', 'asm', 'rcu', "
+                        "and 'symbols'");
                     return 2;
                 }
                 if (comma == std::string_view::npos)
@@ -226,6 +229,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         copts.dumpOptimizationPasses = dumpOptimizationPasses;
         copts.dumpAsm = dumpAsm;
         copts.dumpRcu = dumpRcu;
+        copts.emitSymbols = emitSymbols;
         CompilerDriver driver(std::move(copts));
         const CompileResult result = driver.Compile();
         for (const auto &inspection : result.inspectionOutputs) {

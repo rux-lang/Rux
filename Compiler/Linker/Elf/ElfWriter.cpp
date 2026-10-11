@@ -20,6 +20,7 @@
 #include <format>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <unordered_map>
@@ -518,10 +519,105 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     }
     std::ranges::sort(importNames);
 
+    // Optional non-allocated .symtab naming every placed function (build --emit symbols), so profilers such as perf
+    // attribute samples to functions. Section headers describe only .text and the symbol table; segments still own
+    // every loaded byte.
+    struct SymbolSections {
+        uint64_t textOff = 0;
+        uint64_t textVA = 0;
+        uint64_t textSize = 0;
+        uint32_t count = 0;
+        Buf symtab;
+        Buf strtab;
+    };
+
+    std::optional<SymbolSections> symbolSections;
+    const auto prepareSymbols = [&](const uint64_t textOff, const uint64_t textVA, const RcuSectionBases &bases) {
+        if (!emitSymbols) {
+            return;
+        }
+        SymbolSections sections;
+        sections.textOff = textOff;
+        sections.textVA = textVA;
+        sections.textSize = textBuf.size();
+        std::vector<std::pair<uint64_t, const RcuLinkDefinition *>> functions;
+        for (const auto &definition : graph->Definitions()) {
+            if (definition.kind != RcuSymKind::Func || definition.name.empty()) {
+                continue;
+            }
+            if (const auto address = symbolAddress(definition.location, bases)) {
+                functions.emplace_back(*address, &definition);
+            }
+        }
+        std::ranges::sort(functions, [](const auto &a, const auto &b) {
+            return a.first != b.first ? a.first < b.first : a.second->name < b.second->name;
+        });
+        WriteU8(sections.strtab, 0);
+        for (int i = 0; i < 24; ++i) {
+            WriteU8(sections.symtab, 0);
+        }
+        for (const auto &[address, definition] : functions) {
+            const RcuSymbol &symbol =
+                objects[definition->location.objectIndex].symbols[definition->location.symbolIndex];
+            WriteU32(sections.symtab, static_cast<uint32_t>(sections.strtab.size()));
+            WriteU8(sections.symtab, 2);  // STB_LOCAL, STT_FUNC
+            WriteU8(sections.symtab, 0);  // STV_DEFAULT
+            WriteU16(sections.symtab, 1); // .text
+            WriteU64(sections.symtab, address);
+            WriteU64(sections.symtab, symbol.size);
+            sections.strtab.insert(sections.strtab.end(), definition->name.begin(), definition->name.end());
+            WriteU8(sections.strtab, 0);
+        }
+        sections.count = static_cast<uint32_t>(functions.size() + 1);
+        symbolSections = std::move(sections);
+    };
+
     // Common file emitter shared by both paths.
     const auto emitFile = [&](uint16_t phnum, const Buf &phdrs,
                               const std::vector<std::pair<uint64_t, const Buf *>> &segments, uint64_t entryVA,
                               uint64_t phoff) -> bool {
+        // Section data follows the last loaded byte; the header table follows it.
+        uint64_t fileEnd = phoff + phdrs.size();
+        for (const auto &[off, buf] : segments) {
+            if (!buf->empty()) {
+                fileEnd = std::max<uint64_t>(fileEnd, off + buf->size());
+            }
+        }
+        static constexpr char kSectionNames[] = "\0.text\0.symtab\0.strtab\0.shstrtab";
+        Buf sectionData;
+        Buf sectionHeaders;
+        uint64_t shoff = 0;
+        if (symbolSections) {
+            const uint64_t symtabOff = alignUp(fileEnd, 8);
+            const uint64_t strtabOff = symtabOff + symbolSections->symtab.size();
+            const uint64_t shstrtabOff = strtabOff + symbolSections->strtab.size();
+            shoff = alignUp(shstrtabOff + sizeof(kSectionNames), 8);
+            sectionData = symbolSections->symtab;
+            sectionData.insert(sectionData.end(), symbolSections->strtab.begin(), symbolSections->strtab.end());
+            sectionData.insert(sectionData.end(), kSectionNames, kSectionNames + sizeof(kSectionNames));
+            const auto writeShdr = [&](uint32_t name, uint32_t type, uint64_t flags, uint64_t addr, uint64_t off,
+                                       uint64_t size, uint32_t link, uint32_t info, uint64_t align, uint64_t entsize) {
+                WriteU32(sectionHeaders, name);
+                WriteU32(sectionHeaders, type);
+                WriteU64(sectionHeaders, flags);
+                WriteU64(sectionHeaders, addr);
+                WriteU64(sectionHeaders, off);
+                WriteU64(sectionHeaders, size);
+                WriteU32(sectionHeaders, link);
+                WriteU32(sectionHeaders, info);
+                WriteU64(sectionHeaders, align);
+                WriteU64(sectionHeaders, entsize);
+            };
+            writeShdr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            writeShdr(1, 1, 0x6, symbolSections->textVA, symbolSections->textOff, symbolSections->textSize, 0, 0, 16,
+                      0); // .text: SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR
+            writeShdr(7, 2, 0, 0, symtabOff, symbolSections->symtab.size(), 3, symbolSections->count, 8,
+                      24); // .symtab: SHT_SYMTAB, every entry local
+            writeShdr(15, 3, 0, 0, strtabOff, symbolSections->strtab.size(), 0, 0, 1, 0); // .strtab
+            writeShdr(23, 3, 0, 0, shstrtabOff, sizeof(kSectionNames), 0, 0, 1, 0);       // .shstrtab
+            fileEnd = symtabOff;
+        }
+
         std::filesystem::create_directories(outputPath.parent_path());
         std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
         if (!out) {
@@ -554,14 +650,14 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         WriteU32(hdr, 1);                // e_version
         WriteU64(hdr, entryVA);
         WriteU64(hdr, phoff);
-        WriteU64(hdr, 0);  // e_shoff
-        WriteU32(hdr, 0);  // e_flags
-        WriteU16(hdr, 64); // e_ehsize
-        WriteU16(hdr, 56); // e_phentsize
+        WriteU64(hdr, shoff); // e_shoff
+        WriteU32(hdr, 0);     // e_flags
+        WriteU16(hdr, 64);    // e_ehsize
+        WriteU16(hdr, 56);    // e_phentsize
         WriteU16(hdr, phnum);
-        WriteU16(hdr, 0); // e_shentsize
-        WriteU16(hdr, 0); // e_shnum
-        WriteU16(hdr, 0); // e_shstrndx
+        WriteU16(hdr, shoff != 0 ? 64 : 0); // e_shentsize
+        WriteU16(hdr, shoff != 0 ? 5 : 0);  // e_shnum
+        WriteU16(hdr, shoff != 0 ? 4 : 0);  // e_shstrndx
         writeRaw(hdr.data(), hdr.size());
         writeRaw(phdrs.data(), phdrs.size());
 
@@ -571,6 +667,12 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
             padToOffset(off);
             writeRaw(buf->data(), buf->size());
+        }
+        if (shoff != 0) {
+            padToOffset(fileEnd);
+            writeRaw(sectionData.data(), sectionData.size());
+            padToOffset(shoff);
+            writeRaw(sectionHeaders.data(), sectionHeaders.size());
         }
 
         out.close();
@@ -655,6 +757,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             writePhdr(phdrs, kPtNote, kPfR, noteOff, imageBase + noteOff, abiNote.size(), abiNote.size(), 4);
         }
 
+        prepareSymbols(textOff, textVA, sectionBases);
         return emitFile(phnum, phdrs,
                         {{noteOff, &abiNote}, {textOff, &textBuf}, {rdataOff, &rodataBuf}, {dataOff, &dataBuf}}, textVA,
                         phoff);
@@ -1111,6 +1214,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         writePhdr(phdrs, kPtTls, kPfR, tlsOff, imageBase + tlsOff, tlsBuf.size(), tlsBuf.size(), tlsAlign); // PT_TLS
     }
 
+    prepareSymbols(textOff, textVA, sectionBases);
     return emitFile(phnum, phdrs,
                     {{noteOff, &abiNote},
                      {interpOff, &interp},

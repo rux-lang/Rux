@@ -697,6 +697,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     }
     Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, artifactKind, targetOs,
                   targetArch);
+    linker.SetEmitSymbols(opts.emitSymbols);
     if (!linker.Link(artifactPath)) {
         for (const auto &err : linker.Errors()) {
             Emit(ErrorDiagnostic(err.message, err.notes));

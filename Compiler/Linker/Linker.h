@@ -37,6 +37,12 @@ public:
         return errors;
     }
 
+    /// Also write a symbol table naming every defined function, so profilers such as perf can attribute samples.
+    /// Only ELF images carry it today; other formats ignore the request.
+    void SetEmitSymbols(bool enabled) noexcept {
+        emitSymbols = enabled;
+    }
+
 private:
     std::vector<RcuFile> objects;
     std::string packageName;
@@ -46,6 +52,7 @@ private:
     Target::OS targetOs = Target::HostOS;
     Target::Arch targetArch = Target::HostArch;
     std::optional<RcuLinkGraph> graph;
+    bool emitSymbols = false;
 
     void Error(std::string msg, std::vector<std::string> notes = {});
 
