@@ -1,8 +1,10 @@
 #include "Optimization/LirLoopUnrolling.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 
 namespace Rux::Optimization {
@@ -45,6 +47,23 @@ bool BodyOperation(const LirInstr &instruction) {
     default:
         return false;
     }
+}
+
+/// How many times a count from one constant to below another runs, when that is at most sixteen.
+std::optional<std::uint64_t> Trips(const LirInstr *first, const LirInstr *limit, const bool isSigned) {
+    if (!first || !limit || first->op != LirOpcode::Const || limit->op != LirOpcode::Const)
+        return std::nullopt;
+    const auto start = ParseConstant(first->strArg, first->type);
+    const auto end = ParseConstant(limit->strArg, limit->type);
+    if (!start || !end)
+        return std::nullopt;
+    const auto from = start->RawBits();
+    const auto to = end->RawBits();
+    const bool runs = isSigned ? static_cast<std::int64_t>(from) < static_cast<std::int64_t>(to) : from < to;
+    if (!runs)
+        return std::nullopt;
+    const auto count = to - from;
+    return count <= 16 ? std::optional<std::uint64_t>(count) : std::nullopt;
 }
 
 bool Unroll(LirFunc &function) {
@@ -179,6 +198,85 @@ bool Unroll(LirFunc &function) {
         }
         if (!valid)
             continue;
+        const auto initial =
+            std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second == preheader; })->first;
+        // A count between two constants runs a known number of times; up to sixteen small iterations become one
+        // straight block in the header's place, with the header's values after the last one flowing to the exit.
+        if (const auto trips = Trips(definition(initial), definition(limit), signedInduction);
+            trips && *trips * source.instrs.size() <= 256 &&
+            std::ranges::none_of(function.blocks, [&](const LirBlock &block) {
+                return std::ranges::any_of(block.instrs,
+                                           [&](const LirInstr &instruction) {
+                                               return std::ranges::find(instruction.srcs, comparison->dst) !=
+                                                      instruction.srcs.end();
+                                           }) ||
+                       (&block != &head && block.term && block.term->cond == comparison->dst);
+            })) {
+            std::unordered_map<LirReg, LirReg> values;
+            for (const auto &original : phis)
+                values.emplace(original.dst, std::ranges::find_if(original.phiPreds, [&](const auto &edge) {
+                                                 return edge.second == preheader;
+                                             })->first);
+            const auto mapped = [&](const LirReg value) { return values.contains(value) ? values.at(value) : value; };
+            std::vector<LirInstr> flat;
+            for (std::uint64_t iteration = 0; iteration < *trips; ++iteration) {
+                for (const auto &original : source.instrs) {
+                    auto copy = original;
+                    for (auto &input : copy.srcs)
+                        input = mapped(input);
+                    if (copy.dst != LirNoReg) {
+                        copy.dst = next++;
+                        values[original.dst] = copy.dst;
+                    }
+                    flat.push_back(std::move(copy));
+                }
+                std::vector<std::pair<LirReg, LirReg>> updates;
+                for (const auto &original : phis) {
+                    const auto incoming =
+                        std::ranges::find_if(original.phiPreds, [&](const auto &edge) { return edge.second == body; });
+                    updates.emplace_back(original.dst, mapped(incoming->first));
+                }
+                for (const auto &[reg, value] : updates)
+                    values[reg] = value;
+            }
+            // The header keeps its index and predecessors and becomes the straight block; the body is left
+            // unreachable for cleanup.
+            const auto exit = head.term->falseTarget;
+            std::unordered_map<LirReg, LirReg> finals;
+            for (const auto &original : phis)
+                finals.emplace(original.dst, values.at(original.dst));
+            auto &straight = function.blocks[header];
+            straight.instrs = std::move(flat);
+            straight.term.emplace();
+            straight.term->kind = LirTermKind::Jump;
+            straight.term->trueTarget = exit;
+            auto &unused = function.blocks[body];
+            unused.instrs.clear();
+            unused.term.emplace();
+            unused.term->kind = LirTermKind::Unreachable;
+            const auto final = [&](LirReg &reg) {
+                if (const auto found = finals.find(reg); found != finals.end())
+                    reg = found->second;
+            };
+            for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+                if (block == header)
+                    continue;
+                for (auto &instruction : function.blocks[block].instrs) {
+                    for (auto &input : instruction.srcs)
+                        final(input);
+                    for (auto &[input, predecessor] : instruction.phiPreds) {
+                        static_cast<void>(predecessor);
+                        final(input);
+                    }
+                }
+                if (auto &term = function.blocks[block].term) {
+                    final(term->cond);
+                    if (term->retVal)
+                        final(*term->retVal);
+                }
+            }
+            return true;
+        }
         const auto preparation = static_cast<std::uint32_t>(function.blocks.size());
         const auto newHeader = preparation + 1;
         const auto newBody = newHeader + 1;
@@ -234,8 +332,6 @@ bool Unroll(LirFunc &function) {
             block.instrs.push_back(std::move(instruction));
             return block.instrs.back().dst;
         };
-        const auto initial =
-            std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second == preheader; })->first;
         // Subtraction may wrap for a descending/empty range; the entry guard then selects the unchanged loop.
         // Otherwise end is initial + floor((limit-initial)/2)*2 and cannot exceed limit or wrap.
         const auto remaining = emit(prepare, LirOpcode::Sub, phi->type, {limit, initial});

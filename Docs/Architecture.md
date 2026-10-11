@@ -454,8 +454,11 @@ scalar tail. Phi recurrences (up to sixteen) update simultaneously between copie
 recurrences such as a hash's rotating state. Bodies may compute, compare, divide and load global addresses as well as
 read and write memory. Calls, volatile accesses, non-unit induction, irregular bodies and unmerged body live-outs are
 rejected. Up to eight rounds per function reach its other loops; an unrolled copy is recognized by its header label
-and never unrolled again. Body, phi, function and analysis work budgets bound code growth and compile-time work. This
-is scalar unrolling, without vectorization, alias assumptions, speculative loads or floating-point reassociation.
+and never unrolled again. A loop whose count runs between two constants at most sixteen times, with no more than 256
+instructions in all copies, is flattened instead: its header becomes one straight block of every iteration in order,
+whose final values reach the exit, and the body is left unreachable for cleanup. Body, phi, function and analysis
+work budgets bound code growth and compile-time work. This is scalar unrolling, without vectorization, alias
+assumptions, speculative loads or floating-point reassociation.
 
 The x86 scalar machine descriptor also selects immediate shifts and rotations. Shift counts retain their independent
 integer type and are selected only within the operand width; variable and oversized counts retain existing lowering.

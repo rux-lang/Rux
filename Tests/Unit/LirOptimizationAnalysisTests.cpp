@@ -175,6 +175,33 @@ TEST_CASE("Fill widening stores words where a loop stores one narrow value at ev
     )"));
 }
 
+TEST_CASE("Unrolling flattens a loop between two constants into its header") {
+    auto package = Promoted(R"(
+        func Assemble(at: *uint8) -> uint64 {
+            var value: uint64 = 0u64;
+            for b in 0u..8u {
+                value = (value << 8u64) | (at[b] as uint64);
+            }
+            return value;
+        }
+    )");
+    Optimization::LirCfgCleanup cleanup;
+    Optimization::LirBlockCoalescing coalescing;
+    static_cast<void>(cleanup.Run(package, {}));
+    static_cast<void>(coalescing.Run(package, {}));
+    const auto loads = Count(package, LirOpcode::Load);
+    Optimization::LirLoopUnrolling unrolling;
+    REQUIRE(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
+    static_cast<void>(cleanup.Run(package, {}));
+    CHECK(SsaErrors(package).empty());
+    // Eight copies of the body, no comparison left to count with and no block that branches.
+    CHECK_EQ(Count(package, LirOpcode::Load), loads * 8);
+    CHECK_EQ(Count(package, LirOpcode::CmpLt), 0);
+    CHECK_EQ(Count(package, LirOpcode::Phi), 0);
+    for (const auto &block : package.modules[0].funcs[0].blocks)
+        CHECK(block.term->kind != LirTermKind::Branch);
+}
+
 TEST_CASE("Value numbering sees a bounds check through a same-width cast as the loop test") {
     auto package = Promoted(R"(
         func Sum(values: uint8[..]) -> uint {
