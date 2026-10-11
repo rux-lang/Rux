@@ -135,6 +135,8 @@ private:
     /// Selects an unsigned division or remainder by a nonzero constant as a multiplication by its reciprocal.
     /// Returns false, emitting nothing, for any other division.
     [[nodiscard]] bool SelectConstantDivision(const LirInstr &instruction);
+    /// The same for a signed division or remainder by a constant other than 0 and -1.
+    [[nodiscard]] bool SelectSignedConstantDivision(const LirInstr &instruction);
     void SelectStore(const LirInstr &instruction);
     void SelectAddress(const LirInstr &instruction);
     void SelectBinary(const LirInstr &instruction);

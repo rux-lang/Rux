@@ -126,6 +126,8 @@ enum class Op : std::uint16_t {
     Bswap,
     /// Unsigned widening multiply of RAX by the operand into RDX:RAX; selected for the high half.
     MulHigh,
+    /// Signed widening multiply of RAX by the operand into RDX:RAX; selected for the high half.
+    MulHighSigned,
     // Extension from `sourceSize` bytes of operand 1 into `size` bytes of operand 0.
     MovZx,
     MovSx,

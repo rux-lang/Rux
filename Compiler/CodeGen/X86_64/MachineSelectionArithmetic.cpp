@@ -139,6 +139,119 @@ void Selector::SelectBinary(const LirInstr &instruction) {
          {Operand::UseDef(destination), immediate ? Operand::Imm(*immediate) : Operand::Use(Value(right))});
 }
 
+namespace {
+/// The multiplier and shift for signed division by `divisor` (Hacker's Delight, figure 10-1), for |divisor| >= 2.
+std::pair<std::int64_t, int> SignedMagic(const std::int64_t divisor) {
+    constexpr std::uint64_t Two63 = std::uint64_t{1} << 63;
+    const std::uint64_t absolute =
+        divisor < 0 ? 0 - static_cast<std::uint64_t>(divisor) : static_cast<std::uint64_t>(divisor);
+    const std::uint64_t t = Two63 + (static_cast<std::uint64_t>(divisor) >> 63);
+    const std::uint64_t anc = t - 1 - t % absolute;
+    int p = 63;
+    std::uint64_t q1 = Two63 / anc;
+    std::uint64_t r1 = Two63 - q1 * anc;
+    std::uint64_t q2 = Two63 / absolute;
+    std::uint64_t r2 = Two63 - q2 * absolute;
+    std::uint64_t delta = 0;
+    do {
+        ++p;
+        q1 *= 2;
+        r1 *= 2;
+        if (r1 >= anc) {
+            ++q1;
+            r1 -= anc;
+        }
+        q2 *= 2;
+        r2 *= 2;
+        if (r2 >= absolute) {
+            ++q2;
+            r2 -= absolute;
+        }
+        delta = absolute - r2;
+    }
+    while (q1 < delta || (q1 == delta && r1 == 0));
+    std::uint64_t magic = q2 + 1;
+    if (divisor < 0)
+        magic = 0 - magic;
+    return {static_cast<std::int64_t>(magic), p - 64};
+}
+} // namespace
+
+bool Selector::SelectSignedConstantDivision(const LirInstr &instruction) {
+    // Truncating signed division by a constant d other than 0 and -1 (which keeps `idiv`, and its trap for the most
+    // negative value) multiplies instead. A power of two adds d - 1 to a negative dividend and shifts; any other
+    // divisor takes the signed high half of a magic multiple, corrects it by the dividend when the multiplier's sign
+    // differs from the divisor's, shifts it and adds one to a negative result. A narrower value is sign-extended
+    // first, so one formula serves every width; a remainder is n - q * d.
+    const auto constant = integerConstants.find(instruction.srcs[1]);
+    const int size = ScalarSize(instruction.type);
+    if (constant == integerConstants.end() || !instruction.type.IsSigned() || !instruction.type.IsInteger() || size > 8)
+        return false;
+    std::uint64_t bits = constant->second;
+    if (size < 8) {
+        const int width = size * 8;
+        bits &= (std::uint64_t{1} << width) - 1;
+        if ((bits >> (width - 1)) != 0)
+            bits |= ~((std::uint64_t{1} << width) - 1);
+    }
+    const auto divisor = static_cast<std::int64_t>(bits);
+    if (divisor == 0 || divisor == -1 || divisor == std::numeric_limits<std::int64_t>::min())
+        return false;
+    const bool remainder = instruction.op == LirOpcode::Mod;
+    const Reg dividend = Extended(instruction.srcs[0]);
+    const Reg destination = Value(instruction.dst);
+    const Reg quotient = remainder ? NewGpr() : destination;
+    const std::uint64_t absolute = divisor < 0 ? 0 - bits : bits;
+    if (divisor == 1) {
+        EmitCopy(quotient, dividend, RegClass::General);
+    }
+    else if (std::has_single_bit(absolute)) {
+        const int shift = std::countr_zero(absolute);
+        const Reg bias = NewGpr();
+        EmitCopy(bias, dividend, RegClass::General);
+        Emit(Op::Sar, 8, {Operand::UseDef(bias), Operand::Imm(63)});
+        Emit(Op::Shr, 8, {Operand::UseDef(bias), Operand::Imm(64 - shift)});
+        EmitCopy(quotient, dividend, RegClass::General);
+        Emit(Op::Add, 8, {Operand::UseDef(quotient), Operand::Use(bias)});
+        Emit(Op::Sar, 8, {Operand::UseDef(quotient), Operand::Imm(shift)});
+        if (divisor < 0)
+            Emit(Op::Neg, 8, {Operand::UseDef(quotient)});
+    }
+    else {
+        const auto [magic, shift] = SignedMagic(divisor);
+        const Reg factor = NewGpr();
+        Emit(Op::MovImm, 8, {Operand::Def(factor), Operand::Imm(magic)}).rematerializable = true;
+        EmitCopy(Rax, dividend, RegClass::General);
+        auto &multiply = Emit(Op::MulHighSigned, 8, {Operand::Use(factor)});
+        multiply.implicitUses = Machine::RegisterBit(Rax);
+        multiply.implicitDefs = Machine::RegisterBit(Rax) | Machine::RegisterBit(Rdx);
+        EmitCopy(quotient, Rdx, RegClass::General);
+        if (divisor > 0 && magic < 0)
+            Emit(Op::Add, 8, {Operand::UseDef(quotient), Operand::Use(dividend)});
+        else if (divisor < 0 && magic > 0)
+            Emit(Op::Sub, 8, {Operand::UseDef(quotient), Operand::Use(dividend)});
+        if (shift > 0)
+            Emit(Op::Sar, 8, {Operand::UseDef(quotient), Operand::Imm(shift)});
+        const Reg sign = NewGpr();
+        EmitCopy(sign, quotient, RegClass::General);
+        Emit(Op::Shr, 8, {Operand::UseDef(sign), Operand::Imm(63)});
+        Emit(Op::Add, 8, {Operand::UseDef(quotient), Operand::Use(sign)});
+    }
+    if (!remainder)
+        return true;
+    const Reg product = NewGpr();
+    if (divisor >= std::numeric_limits<std::int32_t>::min() && divisor <= std::numeric_limits<std::int32_t>::max()) {
+        Emit(Op::ImulImm, 8, {Operand::Def(product), Operand::Use(quotient), Operand::Imm(divisor)});
+    }
+    else {
+        Emit(Op::MovImm, 8, {Operand::Def(product), Operand::Imm(divisor)}).rematerializable = true;
+        Emit(Op::Imul, 8, {Operand::UseDef(product), Operand::Use(quotient)});
+    }
+    EmitCopy(destination, dividend, RegClass::General);
+    Emit(Op::Sub, 8, {Operand::UseDef(destination), Operand::Use(product)});
+    return true;
+}
+
 bool Selector::SelectConstantDivision(const LirInstr &instruction) {
     // Unsigned division by a constant divisor d multiplies instead (Granlund and Montgomery, figure 4.1): with
     // l = ceil(log2 d) and m = floor(2^64 * (2^l - d) / d) + 1, the quotient of any 64-bit n is
@@ -223,7 +336,7 @@ bool Selector::SelectConstantDivision(const LirInstr &instruction) {
 }
 
 void Selector::SelectDivision(const LirInstr &instruction) {
-    if (SelectConstantDivision(instruction))
+    if (SelectConstantDivision(instruction) || SelectSignedConstantDivision(instruction))
         return;
     const bool isSigned = instruction.type.IsSigned();
     const Reg dividend = Extended(instruction.srcs[0]);

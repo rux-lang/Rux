@@ -624,6 +624,9 @@ void MachineEncoder::Encode(const Instruction &instruction) {
     case Op::MulHigh:
         Emit(0, instruction.size == 8, {0xF7}, 4, false, RegisterRm(reg(0)));
         return;
+    case Op::MulHighSigned:
+        Emit(0, instruction.size == 8, {0xF7}, 5, false, RegisterRm(reg(0)));
+        return;
     case Op::Idiv:
         Emit(0, instruction.size == 8, {0xF7}, 7, false, RegisterRm(reg(0)));
         return;

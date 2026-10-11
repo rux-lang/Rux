@@ -233,7 +233,10 @@ byte first, when nothing in its block between the first byte load and the `or` s
 or remainder by a nonzero constant multiplies instead: a power of two is a shift or mask, and any other divisor `d`
 uses Granlund and Montgomery's reciprocal `m = floor(2^64 * (2^l - d) / d) + 1` with `l = ceil(log2 d)`, giving
 `(t + ((n - t) >> 1)) >> (l - 1)` for the high half `t` of `m * n`, exact for every 64-bit `n`; narrower values are
-zero-extended first. Signed division keeps `idiv`. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
+zero-extended first. Signed division by a constant other than 0 and -1 uses Hacker's Delight's signed magic
+multiplier with the signed high half of `imul`, corrected by the dividend when the multiplier's sign differs from the
+divisor's, shifted, and incremented when negative; a power of two biases a negative dividend by `d - 1` and shifts.
+Division by -1 keeps `idiv`, so dividing the most negative value still traps. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
 coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
 reports the callee-saved registers the prologue must save. `X86_64/MachineEmission.cpp` frames the function
 (frame pointer kept for stack traces, objects nothing references take no space), copies a small loop-condition block

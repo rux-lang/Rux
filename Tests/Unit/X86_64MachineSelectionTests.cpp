@@ -187,6 +187,8 @@ TEST_CASE("machine encoding spells general operand forms") {
     // The widening multiply's operand is its only explicit one: F7 /4.
     CHECK(Encode(Make(Op::MulHigh, 8, {Operand::Use(Rcx)})) == std::vector<std::uint8_t>{0x48, 0xF7, 0xE1});
     CHECK(Encode(Make(Op::MulHigh, 8, {Operand::Use(R11)})) == std::vector<std::uint8_t>{0x49, 0xF7, 0xE3});
+    // Its signed form is F7 /5.
+    CHECK(Encode(Make(Op::MulHighSigned, 8, {Operand::Use(Rcx)})) == std::vector<std::uint8_t>{0x48, 0xF7, 0xE9});
 
     // A RIP-relative operand records its symbol with the displacement folded into the addend, less any immediate
     // that follows the field.

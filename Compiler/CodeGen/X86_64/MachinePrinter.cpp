@@ -159,6 +159,8 @@ namespace {
         return "bswap";
     case Op::MulHigh:
         return "mul";
+    case Op::MulHighSigned:
+        return "imul";
     case Op::MovZx:
         return "movzx";
     case Op::MovSx:
