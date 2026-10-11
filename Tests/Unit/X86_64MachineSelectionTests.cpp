@@ -184,6 +184,9 @@ TEST_CASE("machine encoding spells general operand forms") {
     CHECK(Encode(Make(Op::Bswap, 8, {Operand::UseDef(R9)})) == std::vector<std::uint8_t>{0x49, 0x0F, 0xC9});
     CHECK(Encode(Make(Op::Bswap, 4, {Operand::UseDef(Rdx)})) == std::vector<std::uint8_t>{0x0F, 0xCA});
     CHECK(Encode(Make(Op::Bswap, 4, {Operand::UseDef(R10)})) == std::vector<std::uint8_t>{0x41, 0x0F, 0xCA});
+    // The widening multiply's operand is its only explicit one: F7 /4.
+    CHECK(Encode(Make(Op::MulHigh, 8, {Operand::Use(Rcx)})) == std::vector<std::uint8_t>{0x48, 0xF7, 0xE1});
+    CHECK(Encode(Make(Op::MulHigh, 8, {Operand::Use(R11)})) == std::vector<std::uint8_t>{0x49, 0xF7, 0xE3});
 
     // A RIP-relative operand records its symbol with the displacement folded into the addend, less any immediate
     // that follows the field.

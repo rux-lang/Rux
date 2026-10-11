@@ -1,0 +1,194 @@
+// An unsigned division or remainder by a constant multiplies by a reciprocal instead of dividing. Every quotient
+// and remainder here is compared with the hardware division of the same operands, using a divisor read from
+// memory so that it stays a real division: dividends at both ends of the range, around multiples of the divisor
+// and from a pseudo-random sequence, for divisors that take each path of the reciprocal and powers of two.
+
+import Core::Assert;
+
+var Divisor64: uint64 = 1u64;
+var Divisor32: uint32 = 1u32;
+var Divisor8: uint8 = 1u8;
+
+func Quotient64_3(n: uint64) -> uint64 { return n / 3u64; }
+func Remainder64_3(n: uint64) -> uint64 { return n % 3u64; }
+func Quotient64_5(n: uint64) -> uint64 { return n / 5u64; }
+func Remainder64_5(n: uint64) -> uint64 { return n % 5u64; }
+func Quotient64_6(n: uint64) -> uint64 { return n / 6u64; }
+func Remainder64_6(n: uint64) -> uint64 { return n % 6u64; }
+func Quotient64_7(n: uint64) -> uint64 { return n / 7u64; }
+func Remainder64_7(n: uint64) -> uint64 { return n % 7u64; }
+func Quotient64_A(n: uint64) -> uint64 { return n / 10u64; }
+func Remainder64_A(n: uint64) -> uint64 { return n % 10u64; }
+func Quotient64_B(n: uint64) -> uint64 { return n / 11u64; }
+func Remainder64_B(n: uint64) -> uint64 { return n % 11u64; }
+func Quotient64_D(n: uint64) -> uint64 { return n / 13u64; }
+func Remainder64_D(n: uint64) -> uint64 { return n % 13u64; }
+func Quotient64_19(n: uint64) -> uint64 { return n / 25u64; }
+func Remainder64_19(n: uint64) -> uint64 { return n % 25u64; }
+func Quotient64_64(n: uint64) -> uint64 { return n / 100u64; }
+func Remainder64_64(n: uint64) -> uint64 { return n % 100u64; }
+func Quotient64_281(n: uint64) -> uint64 { return n / 641u64; }
+func Remainder64_281(n: uint64) -> uint64 { return n % 641u64; }
+func Quotient64_3B9ACA07(n: uint64) -> uint64 { return n / 1000000007u64; }
+func Remainder64_3B9ACA07(n: uint64) -> uint64 { return n % 1000000007u64; }
+func Quotient64_80000000(n: uint64) -> uint64 { return n / 2147483648u64; }
+func Remainder64_80000000(n: uint64) -> uint64 { return n % 2147483648u64; }
+func Quotient64_FFFFFFFF(n: uint64) -> uint64 { return n / 4294967295u64; }
+func Remainder64_FFFFFFFF(n: uint64) -> uint64 { return n % 4294967295u64; }
+func Quotient64_100000001(n: uint64) -> uint64 { return n / 4294967297u64; }
+func Remainder64_100000001(n: uint64) -> uint64 { return n % 4294967297u64; }
+func Quotient64_8000000000000001(n: uint64) -> uint64 { return n / 9223372036854775809u64; }
+func Remainder64_8000000000000001(n: uint64) -> uint64 { return n % 9223372036854775809u64; }
+func Quotient64_FFFFFFFFFFFFFFFF(n: uint64) -> uint64 { return n / 18446744073709551615u64; }
+func Remainder64_FFFFFFFFFFFFFFFF(n: uint64) -> uint64 { return n % 18446744073709551615u64; }
+func Quotient64_10000000000(n: uint64) -> uint64 { return n / 1099511627776u64; }
+func Remainder64_10000000000(n: uint64) -> uint64 { return n % 1099511627776u64; }
+func Quotient64_1(n: uint64) -> uint64 { return n / 1u64; }
+func Remainder64_1(n: uint64) -> uint64 { return n % 1u64; }
+func Quotient32_3(n: uint32) -> uint32 { return n / 3u32; }
+func Remainder32_3(n: uint32) -> uint32 { return n % 3u32; }
+func Quotient32_7(n: uint32) -> uint32 { return n / 7u32; }
+func Remainder32_7(n: uint32) -> uint32 { return n % 7u32; }
+func Quotient32_A(n: uint32) -> uint32 { return n / 10u32; }
+func Remainder32_A(n: uint32) -> uint32 { return n % 10u32; }
+func Quotient32_3C(n: uint32) -> uint32 { return n / 60u32; }
+func Remainder32_3C(n: uint32) -> uint32 { return n % 60u32; }
+func Quotient32_7FFFFFFF(n: uint32) -> uint32 { return n / 2147483647u32; }
+func Remainder32_7FFFFFFF(n: uint32) -> uint32 { return n % 2147483647u32; }
+func Quotient32_FFFFFFFF(n: uint32) -> uint32 { return n / 4294967295u32; }
+func Remainder32_FFFFFFFF(n: uint32) -> uint32 { return n % 4294967295u32; }
+func Quotient32_10(n: uint32) -> uint32 { return n / 16u32; }
+func Remainder32_10(n: uint32) -> uint32 { return n % 16u32; }
+func Quotient8_3(n: uint8) -> uint8 { return n / 3u8; }
+func Remainder8_3(n: uint8) -> uint8 { return n % 3u8; }
+func Quotient8_A(n: uint8) -> uint8 { return n / 10u8; }
+func Remainder8_A(n: uint8) -> uint8 { return n % 10u8; }
+func Quotient8_FF(n: uint8) -> uint8 { return n / 255u8; }
+func Remainder8_FF(n: uint8) -> uint8 { return n % 255u8; }
+
+func Next(state: &var uint64) -> uint64 {
+    state += 0x9E3779B97F4A7C15u64;
+    var z: uint64 = state;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9u64;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBu64;
+    return z ^ (z >> 31);
+}
+
+func Check64(n: uint64) {
+    Divisor64 = 3u64;
+    Assert(Quotient64_3(n) == n / Divisor64, "a 64-bit quotient by 3 matches division");
+    Assert(Remainder64_3(n) == n % Divisor64, "a 64-bit remainder by 3 matches division");
+    Divisor64 = 5u64;
+    Assert(Quotient64_5(n) == n / Divisor64, "a 64-bit quotient by 5 matches division");
+    Assert(Remainder64_5(n) == n % Divisor64, "a 64-bit remainder by 5 matches division");
+    Divisor64 = 6u64;
+    Assert(Quotient64_6(n) == n / Divisor64, "a 64-bit quotient by 6 matches division");
+    Assert(Remainder64_6(n) == n % Divisor64, "a 64-bit remainder by 6 matches division");
+    Divisor64 = 7u64;
+    Assert(Quotient64_7(n) == n / Divisor64, "a 64-bit quotient by 7 matches division");
+    Assert(Remainder64_7(n) == n % Divisor64, "a 64-bit remainder by 7 matches division");
+    Divisor64 = 10u64;
+    Assert(Quotient64_A(n) == n / Divisor64, "a 64-bit quotient by 10 matches division");
+    Assert(Remainder64_A(n) == n % Divisor64, "a 64-bit remainder by 10 matches division");
+    Divisor64 = 11u64;
+    Assert(Quotient64_B(n) == n / Divisor64, "a 64-bit quotient by 11 matches division");
+    Assert(Remainder64_B(n) == n % Divisor64, "a 64-bit remainder by 11 matches division");
+    Divisor64 = 13u64;
+    Assert(Quotient64_D(n) == n / Divisor64, "a 64-bit quotient by 13 matches division");
+    Assert(Remainder64_D(n) == n % Divisor64, "a 64-bit remainder by 13 matches division");
+    Divisor64 = 25u64;
+    Assert(Quotient64_19(n) == n / Divisor64, "a 64-bit quotient by 25 matches division");
+    Assert(Remainder64_19(n) == n % Divisor64, "a 64-bit remainder by 25 matches division");
+    Divisor64 = 100u64;
+    Assert(Quotient64_64(n) == n / Divisor64, "a 64-bit quotient by 100 matches division");
+    Assert(Remainder64_64(n) == n % Divisor64, "a 64-bit remainder by 100 matches division");
+    Divisor64 = 641u64;
+    Assert(Quotient64_281(n) == n / Divisor64, "a 64-bit quotient by 641 matches division");
+    Assert(Remainder64_281(n) == n % Divisor64, "a 64-bit remainder by 641 matches division");
+    Divisor64 = 1000000007u64;
+    Assert(Quotient64_3B9ACA07(n) == n / Divisor64, "a 64-bit quotient by 1000000007 matches division");
+    Assert(Remainder64_3B9ACA07(n) == n % Divisor64, "a 64-bit remainder by 1000000007 matches division");
+    Divisor64 = 2147483648u64;
+    Assert(Quotient64_80000000(n) == n / Divisor64, "a 64-bit quotient by 2147483648 matches division");
+    Assert(Remainder64_80000000(n) == n % Divisor64, "a 64-bit remainder by 2147483648 matches division");
+    Divisor64 = 4294967295u64;
+    Assert(Quotient64_FFFFFFFF(n) == n / Divisor64, "a 64-bit quotient by 4294967295 matches division");
+    Assert(Remainder64_FFFFFFFF(n) == n % Divisor64, "a 64-bit remainder by 4294967295 matches division");
+    Divisor64 = 4294967297u64;
+    Assert(Quotient64_100000001(n) == n / Divisor64, "a 64-bit quotient by 4294967297 matches division");
+    Assert(Remainder64_100000001(n) == n % Divisor64, "a 64-bit remainder by 4294967297 matches division");
+    Divisor64 = 9223372036854775809u64;
+    Assert(Quotient64_8000000000000001(n) == n / Divisor64, "a 64-bit quotient by 9223372036854775809 matches division");
+    Assert(Remainder64_8000000000000001(n) == n % Divisor64, "a 64-bit remainder by 9223372036854775809 matches division");
+    Divisor64 = 18446744073709551615u64;
+    Assert(Quotient64_FFFFFFFFFFFFFFFF(n) == n / Divisor64, "a 64-bit quotient by 18446744073709551615 matches division");
+    Assert(Remainder64_FFFFFFFFFFFFFFFF(n) == n % Divisor64, "a 64-bit remainder by 18446744073709551615 matches division");
+    Divisor64 = 1099511627776u64;
+    Assert(Quotient64_10000000000(n) == n / Divisor64, "a 64-bit quotient by 1099511627776 matches division");
+    Assert(Remainder64_10000000000(n) == n % Divisor64, "a 64-bit remainder by 1099511627776 matches division");
+    Divisor64 = 1u64;
+    Assert(Quotient64_1(n) == n / Divisor64, "a 64-bit quotient by 1 matches division");
+    Assert(Remainder64_1(n) == n % Divisor64, "a 64-bit remainder by 1 matches division");
+}
+
+func Check32(n: uint32) {
+    Divisor32 = 3u32;
+    Assert(Quotient32_3(n) == n / Divisor32, "a 32-bit quotient by 3 matches division");
+    Assert(Remainder32_3(n) == n % Divisor32, "a 32-bit remainder by 3 matches division");
+    Divisor32 = 7u32;
+    Assert(Quotient32_7(n) == n / Divisor32, "a 32-bit quotient by 7 matches division");
+    Assert(Remainder32_7(n) == n % Divisor32, "a 32-bit remainder by 7 matches division");
+    Divisor32 = 10u32;
+    Assert(Quotient32_A(n) == n / Divisor32, "a 32-bit quotient by 10 matches division");
+    Assert(Remainder32_A(n) == n % Divisor32, "a 32-bit remainder by 10 matches division");
+    Divisor32 = 60u32;
+    Assert(Quotient32_3C(n) == n / Divisor32, "a 32-bit quotient by 60 matches division");
+    Assert(Remainder32_3C(n) == n % Divisor32, "a 32-bit remainder by 60 matches division");
+    Divisor32 = 2147483647u32;
+    Assert(Quotient32_7FFFFFFF(n) == n / Divisor32, "a 32-bit quotient by 2147483647 matches division");
+    Assert(Remainder32_7FFFFFFF(n) == n % Divisor32, "a 32-bit remainder by 2147483647 matches division");
+    Divisor32 = 4294967295u32;
+    Assert(Quotient32_FFFFFFFF(n) == n / Divisor32, "a 32-bit quotient by 4294967295 matches division");
+    Assert(Remainder32_FFFFFFFF(n) == n % Divisor32, "a 32-bit remainder by 4294967295 matches division");
+    Divisor32 = 16u32;
+    Assert(Quotient32_10(n) == n / Divisor32, "a 32-bit quotient by 16 matches division");
+    Assert(Remainder32_10(n) == n % Divisor32, "a 32-bit remainder by 16 matches division");
+}
+
+func Check8(n: uint8) {
+    Divisor8 = 3u8;
+    Assert(Quotient8_3(n) == n / Divisor8, "an 8-bit quotient by 3 matches division");
+    Assert(Remainder8_3(n) == n % Divisor8, "an 8-bit remainder by 3 matches division");
+    Divisor8 = 10u8;
+    Assert(Quotient8_A(n) == n / Divisor8, "an 8-bit quotient by 10 matches division");
+    Assert(Remainder8_A(n) == n % Divisor8, "an 8-bit remainder by 10 matches division");
+    Divisor8 = 255u8;
+    Assert(Quotient8_FF(n) == n / Divisor8, "an 8-bit quotient by 255 matches division");
+    Assert(Remainder8_FF(n) == n % Divisor8, "an 8-bit remainder by 255 matches division");
+}
+
+func Main() -> int {
+    var state: uint64 = 7u64;
+    for i in 0u64..4096u64 {
+        let n = Next(state);
+        Check64(n);
+        Check64(n >> (i % 64u64));
+        Check64(i);
+        Check64(0u64 - 1u64 - i);
+        Check32(n as uint32);
+        Check32((n >> (i % 32u64)) as uint32);
+        Check32(0xFFFFFFFFu32 - (i as uint32));
+    }
+    for d in [3u64, 7u64, 641u64, 1000000007u64, 0xFFFFFFFFu64, 0x8000000000000001u64] {
+        for k in 0u64..64u64 {
+            let multiple = d * (k + 1u64);
+            Check64(multiple);
+            Check64(multiple - 1u64);
+            Check64(multiple + 1u64);
+        }
+    }
+    for n in 0u..256u {
+        Check8(n as uint8);
+    }
+    return 0;
+}

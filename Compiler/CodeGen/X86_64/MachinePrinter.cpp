@@ -157,6 +157,8 @@ namespace {
         return "ror";
     case Op::Bswap:
         return "bswap";
+    case Op::MulHigh:
+        return "mul";
     case Op::MovZx:
         return "movzx";
     case Op::MovSx:

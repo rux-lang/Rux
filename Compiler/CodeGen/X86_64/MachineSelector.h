@@ -132,6 +132,9 @@ private:
     /// Selects an `or` that assembles a whole value from consecutive bytes of memory as one wide load, reversed for
     /// big-endian order. Returns false, emitting nothing, for any other `or`.
     [[nodiscard]] bool SelectCombinedLoad(const LirInstr &instruction);
+    /// Selects an unsigned division or remainder by a nonzero constant as a multiplication by its reciprocal.
+    /// Returns false, emitting nothing, for any other division.
+    [[nodiscard]] bool SelectConstantDivision(const LirInstr &instruction);
     void SelectStore(const LirInstr &instruction);
     void SelectAddress(const LirInstr &instruction);
     void SelectBinary(const LirInstr &instruction);

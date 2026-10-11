@@ -229,7 +229,11 @@ narrow types keep unspecified upper bits and are extended only where an operatio
 globals fold into addressing modes, and an index that adds a constant to another 64-bit value moves the constant into
 the displacement. An `or` that assembles a whole 2-, 4- or 8-byte value from zero-extended byte loads at consecutive
 offsets of one address, through byte-multiple shifts, becomes one wide load, followed by `bswap` for most significant
-byte first, when nothing in its block between the first byte load and the `or` stores or calls. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
+byte first, when nothing in its block between the first byte load and the `or` stores or calls. An unsigned division
+or remainder by a nonzero constant multiplies instead: a power of two is a shift or mask, and any other divisor `d`
+uses Granlund and Montgomery's reciprocal `m = floor(2^64 * (2^l - d) / d) + 1` with `l = ceil(log2 d)`, giving
+`(t + ((n - t) >> 1)) >> (l - 1)` for the high half `t` of `m * n`, exact for every 64-bit `n`; narrower values are
+zero-extended first. Signed division keeps `idiv`. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
 coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
 reports the callee-saved registers the prologue must save. `X86_64/MachineEmission.cpp` frames the function
 (frame pointer kept for stack traces, objects nothing references take no space), copies a small loop-condition block
