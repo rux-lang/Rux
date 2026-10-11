@@ -239,8 +239,9 @@ bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNam
                         }
                     }
                     // Keep crowded loops from gaining more long-lived values than the allocatable registers hold.
-                    // Replacing the sole loop use of an input need not add pressure.
-                    invariant = invariant && (live.size() < 12 || freed != 0);
+                    // Replacing the sole loop use of an input need not add pressure, and a hoisted load costs the
+                    // loop no more than the load it replaces even when its value has to be spilled.
+                    invariant = invariant && (live.size() < 12 || freed != 0 || load);
                     if (invariant && 1 + neededConstants.size() <= budget) {
                         for (const auto &[source, count] : consumed) {
                             uses[source] -= count;

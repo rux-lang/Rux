@@ -317,6 +317,116 @@ void RemoveStalePhiPredecessors(LirFunc &function) {
     }
 }
 
+/// Sends a predecessor straight to the successor its constant decides when a block does nothing but branch on a phi.
+/// Short-circuit `&&` and `||` build exactly that block: the constant `false` of a short circuit flows into a phi
+/// whose only purpose is the branch, and the predecessor supplying it always takes one side. The block keeps its
+/// other predecessors; it disappears when none is left.
+bool ThreadConstantBranches(LirFunc &function) {
+    if (function.blocks.size() < 3 || function.blocks.size() > 4096)
+        return false;
+    std::unordered_map<LirReg, std::size_t> uses;
+    std::unordered_map<LirReg, std::optional<bool>> constants;
+    for (const auto &block : function.blocks) {
+        for (const auto &instruction : block.instrs) {
+            for (const auto source : instruction.srcs)
+                ++uses[source];
+            for (const auto &[source, predecessor] : instruction.phiPreds) {
+                static_cast<void>(predecessor);
+                ++uses[source];
+            }
+            if (instruction.op == LirOpcode::Const && instruction.dst != LirNoReg && instruction.type.IsBool())
+                if (const auto value = ParseConstant(instruction.strArg, instruction.type))
+                    constants[instruction.dst] = value->BooleanValue();
+        }
+        ++uses[block.term->cond];
+        if (block.term->retVal)
+            ++uses[*block.term->retVal];
+    }
+    bool changed = false;
+    for (BlockIndex block = 1; block < function.blocks.size(); ++block) {
+        auto &current = function.blocks[block];
+        if (current.term->kind != LirTermKind::Branch || current.term->trueTarget == current.term->falseTarget ||
+            current.term->trueTarget == block || current.term->falseTarget == block)
+            continue;
+        // Nothing but phis, each read by nothing but this branch: skipping the block skips no work and no value.
+        const LirInstr *condition = nullptr;
+        bool simple = !current.instrs.empty();
+        for (const auto &instruction : current.instrs) {
+            if (instruction.op != LirOpcode::Phi) {
+                simple = false;
+                break;
+            }
+            const std::size_t expected = instruction.dst == current.term->cond ? 1 : 0;
+            if (uses[instruction.dst] != expected) {
+                simple = false;
+                break;
+            }
+            if (expected == 1)
+                condition = &instruction;
+        }
+        if (!simple || condition == nullptr)
+            continue;
+        Predecessors predecessors(function.blocks.size());
+        for (BlockIndex index = 0; index < function.blocks.size(); ++index)
+            for (const auto target : Successors(*function.blocks[index].term))
+                predecessors[target].push_back(index);
+        for (const auto &[value, predecessor] : std::vector(condition->phiPreds)) {
+            const auto known = constants.find(value);
+            if (known == constants.end() || !known->second || predecessor == block)
+                continue;
+            const BlockIndex target = *known->second ? current.term->trueTarget : current.term->falseTarget;
+            if (std::ranges::find(predecessors[target], predecessor) != predecessors[target].end())
+                continue;
+            // The target's phis receive from the predecessor what they received from this block.
+            bool movable = true;
+            for (const auto &instruction : function.blocks[target].instrs)
+                if (instruction.op == LirOpcode::Phi)
+                    for (const auto &[incoming, from] : instruction.phiPreds)
+                        if (from == block && std::ranges::any_of(current.instrs, [&](const LirInstr &phi) {
+                                return phi.dst == incoming;
+                            }))
+                            movable = false;
+            if (!movable)
+                continue;
+            for (auto &instruction : function.blocks[target].instrs) {
+                if (instruction.op != LirOpcode::Phi)
+                    continue;
+                const auto found =
+                    std::ranges::find_if(instruction.phiPreds, [&](const auto &edge) { return edge.second == block; });
+                if (found != instruction.phiPreds.end())
+                    instruction.phiPreds.emplace_back(found->first, predecessor);
+            }
+            auto &term = *function.blocks[predecessor].term;
+            const auto redirect = [&](BlockIndex &edge) {
+                if (edge == block)
+                    edge = target;
+            };
+            switch (term.kind) {
+            case LirTermKind::Jump:
+                redirect(term.trueTarget);
+                break;
+            case LirTermKind::Branch:
+                redirect(term.trueTarget);
+                redirect(term.falseTarget);
+                break;
+            case LirTermKind::Switch:
+                redirect(term.defaultTarget);
+                for (auto &switchCase : term.cases)
+                    redirect(switchCase.target);
+                break;
+            default:
+                break;
+            }
+            for (auto &instruction : current.instrs)
+                if (instruction.op == LirOpcode::Phi)
+                    std::erase_if(instruction.phiPreds, [&](const auto &edge) { return edge.second == predecessor; });
+            predecessors[target].push_back(predecessor);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 bool CoalesceBlocks(LirFunc &function) {
     if (function.isExtern || function.isAsm || function.blocks.size() < 2 || function.blocks.size() > 4096)
         return false;
@@ -437,11 +547,12 @@ PassChange LirCfgCleanup::Run(LirPackage &package, const PassContext &) {
                 continue;
             }
             const bool folded = FoldTerminators(function);
+            const bool threaded = ThreadConstantBranches(function);
             const bool removed = RemoveUnreachableBlocks(function);
-            if (folded) {
+            if (folded || threaded) {
                 RemoveStalePhiPredecessors(function);
             }
-            changed = folded || removed || changed;
+            changed = folded || threaded || removed || changed;
         }
     }
     return changed ? PassChange::Changed : PassChange::None;

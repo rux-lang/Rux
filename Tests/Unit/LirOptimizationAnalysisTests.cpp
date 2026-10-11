@@ -8,7 +8,10 @@
 #include "Optimization/LirScalarReplacement.h"
 #include "Optimization/LirSsaVerifier.h"
 #include "Optimization/LirValueNumbering.h"
+#include "Optimization/LirViewParameters.h"
 #include "OptimizerTestSupport.h"
+
+#include <unordered_set>
 
 using namespace Rux;
 using namespace Rux::Testing::OptimizerTestSupport;
@@ -47,6 +50,102 @@ std::vector<Diagnostic> SsaErrors(LirPackage &package) {
     return diagnostics;
 }
 } // namespace
+
+TEST_CASE("CFG cleanup threads a constant phi input past a branch-only block") {
+    // 0 branches on a parameter; 1 supplies another parameter and 2 supplies `false` to the phi 3 branches on.
+    LirFunc function;
+    function.name = "Thread";
+    function.returnType = TypeRef::MakeInt();
+    function.params = {{0, TypeRef::MakeBool(), "p"}, {1, TypeRef::MakeBool(), "q"}};
+    function.blocks.resize(6);
+    LirInstr constant;
+    constant.op = LirOpcode::Const;
+    constant.dst = 2;
+    constant.type = TypeRef::MakeBool();
+    constant.strArg = "false";
+    function.blocks[0].instrs.push_back(constant);
+    function.blocks[0].term = BranchTo(0, 1, 2);
+    function.blocks[1].term = JumpTo(3);
+    function.blocks[2].term = JumpTo(3);
+    LirInstr phi;
+    phi.op = LirOpcode::Phi;
+    phi.dst = 3;
+    phi.type = TypeRef::MakeBool();
+    phi.phiPreds = {{1, 1}, {2, 2}};
+    function.blocks[3].instrs.push_back(phi);
+    function.blocks[3].term = BranchTo(3, 4, 5);
+    for (const std::uint32_t block : {4U, 5U}) {
+        LirInstr result;
+        result.op = LirOpcode::Const;
+        result.dst = 10 + block;
+        result.type = TypeRef::MakeInt();
+        result.strArg = std::to_string(block);
+        function.blocks[block].instrs.push_back(result);
+        function.blocks[block].term = ReturnValue(10 + block, TypeRef::MakeInt());
+    }
+    LirPackage package;
+    package.modules.emplace_back();
+    package.modules[0].funcs.push_back(function);
+    Optimization::LirCfgCleanup cleanup;
+    CHECK(cleanup.Run(package, {}) == Optimization::PassChange::Changed);
+    const auto &blocks = package.modules[0].funcs[0].blocks;
+    // The short-circuit edge now reaches the false target directly, and the phi keeps only the other edge.
+    CHECK(blocks[2].term->kind == LirTermKind::Jump);
+    CHECK_EQ(blocks[2].term->trueTarget, 5U);
+    REQUIRE_EQ(blocks[3].instrs.size(), 1U);
+    CHECK_EQ(blocks[3].instrs[0].phiPreds.size(), 1U);
+    CHECK_EQ(blocks[3].instrs[0].phiPreds[0].second, 1U);
+}
+
+TEST_CASE("View parameters read their fields once on entry when only read") {
+    for (const bool escapes : {false, true}) {
+        auto package = CompileToLir(escapes ? R"(
+            func Sum(values: uint32[..], sink: *var *uint32[..]) -> uint32 {
+                *sink = @values;
+                var total = 0u32;
+                var index: uint = 0;
+                while index < values.length { total += values[index]; index += 1; }
+                return total;
+            }
+        )"
+                                            : R"(
+            func Sum(values: uint32[..]) -> uint32 {
+                var total = 0u32;
+                var index: uint = 0;
+                while index < values.length { total += values[index]; index += 1; }
+                return total;
+            }
+        )",
+                                    BuildProfile::Debug);
+        Optimization::LirViewParameters views;
+        const auto change = views.Run(package, {});
+        CHECK(SsaErrors(package).empty());
+        const auto &function = package.modules[0].funcs[0];
+        REQUIRE(function.params[0].byAddress);
+        // Count field loads of the view parameter outside the entry block.
+        std::unordered_set<LirReg> fields;
+        for (const auto &block : function.blocks)
+            for (const auto &instruction : block.instrs)
+                if (instruction.op == LirOpcode::FieldPtr && instruction.srcs.size() == 1 &&
+                    instruction.srcs[0] == function.params[0].reg)
+                    fields.insert(instruction.dst);
+        std::size_t later = 0;
+        for (std::size_t block = 1; block < function.blocks.size(); ++block)
+            for (const auto &instruction : function.blocks[block].instrs)
+                if (instruction.op == LirOpcode::Load && !instruction.srcs.empty() &&
+                    fields.contains(instruction.srcs[0]))
+                    ++later;
+        CAPTURE(escapes);
+        if (escapes) {
+            CHECK(change == Optimization::PassChange::None);
+            CHECK(later > 0);
+        }
+        else {
+            CHECK(change == Optimization::PassChange::Changed);
+            CHECK_EQ(later, 0U);
+        }
+    }
+}
 
 TEST_CASE("Dominators handle diamonds loops and unreachable blocks") {
     LirFunc function;

@@ -104,7 +104,7 @@ void EliminateDeadCode(Machine::Function &function) {
 /// machine IR is not in SSA form, so a duplicated definition needs no renaming.
 void RotateLoops(Machine::Function &function) {
     const auto rotatable = [&](const Machine::Block &block) {
-        if (block.loopDepth == 0 || block.instructions.empty() || block.instructions.size() > 8)
+        if (block.loopDepth == 0 || block.instructions.empty() || block.instructions.size() > 12)
             return false;
         bool branches = false;
         for (const auto &instruction : block.instructions) {

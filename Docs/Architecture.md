@@ -164,6 +164,11 @@ Branches can fall through to the next emitted block after any required edge phi 
 jumps over false-edge copies. Indexed element sizes 1/2/4/8 use scaled LEA, with multiply/add retained for other sizes.
 GPR and scalar-FP planning reuse the same immutable live-interval snapshot within one frame plan.
 
+CFG cleanup also threads jumps: when a block holds nothing but phis that only its branch reads, a predecessor whose
+incoming condition is a constant is sent straight to the successor that constant selects, which removes the
+materialized `false` of short-circuit `&&` and `||`. A branch on a negation only the branch reads tests the operand
+and swaps its targets in x86-64 machine selection.
+
 Release optimization runs CFG cleanup, then view-parameter snapshots, before private aggregate field replacement and
 scalar memory promotion. `LirViewParameters` reads each field of a `byAddress` parameter once in the entry block when
 the function uses the parameter only for field loads and call arguments. A by-value parameter cannot be written, so

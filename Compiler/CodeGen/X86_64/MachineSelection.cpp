@@ -550,10 +550,15 @@ Address Selector::AddressOf(const LirReg pointer, const int depth) {
             }
             return direct;
         }
-        if (base.index != NoReg || base.symbol != Machine::NoSymbol ||
-            (elementSize != 1 && elementSize != 2 && elementSize != 4 && elementSize != 8))
+        if (elementSize != 1 && elementSize != 2 && elementSize != 4 && elementSize != 8)
             return direct;
+        // A RIP-relative or already indexed base cannot take another index: the base pointer itself becomes the
+        // base register, which is rematerialized or hoisted like any other address.
         Address result = base;
+        if (base.index != NoReg || base.symbol != Machine::NoSymbol) {
+            result = Address{};
+            result.base = Value(instruction.srcs[0]);
+        }
         result.index = Extended(index);
         result.scale = static_cast<std::uint8_t>(elementSize);
         return result;
@@ -841,7 +846,8 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
     case LirOpcode::Not:
     case LirOpcode::BitNot:
     case LirOpcode::Sqrt:
-        SelectUnary(instruction);
+        if (!fusedComparisons.contains(&instruction))
+            SelectUnary(instruction);
         return;
     case LirOpcode::CmpEq:
     case LirOpcode::CmpNe:
@@ -1065,6 +1071,16 @@ void Selector::EmitBranch(const LirTerminator &terminator, const std::uint32_t l
             jump(condition, whenTrue);
         }
     }
+    else if (const auto definition = definitions.find(terminator.cond); definition != definitions.end() &&
+                                                                        fusedComparisons.contains(definition->second) &&
+                                                                        definition->second->op == LirOpcode::Not) {
+        // A branch on a negation tests the operand and takes the opposite edge.
+        const LirInstr &negation = *definition->second;
+        const Reg operand = Value(negation.srcs[0]);
+        Emit(Op::Test, static_cast<std::uint8_t>(ScalarSize(negation.type)),
+             {Operand::Use(operand), Operand::Use(operand)});
+        jump(Cond::Equal, whenTrue);
+    }
     else {
         const Reg condition = Value(terminator.cond);
         Emit(Op::Test, 4, {Operand::Use(condition), Operand::Use(condition)});
@@ -1130,6 +1146,15 @@ void Selector::SelectBlock(const std::uint32_t lirBlock) {
         // Materialized as well only when something besides the branch reads the result.
         if (useCounts[comparison->dst] <= 1)
             fusedComparisons.insert(comparison);
+    }
+    else if (block.term && block.term->kind == LirTermKind::Branch) {
+        // A negation only the branch reads is folded into the branch.
+        if (const auto definition = definitions.find(block.term->cond);
+            definition != definitions.end() && definition->second->op == LirOpcode::Not &&
+            useCounts[block.term->cond] <= 1 && std::ranges::any_of(block.instrs, [&](const LirInstr &instruction) {
+                return &instruction == definition->second;
+            }))
+            fusedComparisons.insert(definition->second);
     }
     for (const auto &instruction : block.instrs) {
         if (instruction.op == LirOpcode::Phi)
