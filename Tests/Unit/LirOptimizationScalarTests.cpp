@@ -1,3 +1,4 @@
+#include "Optimization/LirDeadCodeElimination.h"
 #include "Optimization/LirMemoryPromotion.h"
 #include "Optimization/LirScalarCombines.h"
 #include "OptimizerTestSupport.h"
@@ -77,6 +78,36 @@ TEST_CASE("Scalar combines drop a mask a logical shift already satisfies") {
         CAPTURE(function.name);
         // A mask that clears shifted bits, and an arithmetic shift's sign fill, keep their and.
         CHECK_EQ(masks, function.name == "Narrower" || function.name == "Arithmetic" ? 1U : 0U);
+    }
+}
+
+TEST_CASE("Scalar combines add two unsigned constants once") {
+    auto package = Promoted(R"(
+        func Twice(value: uint) -> uint { return (value + 1u) + 1u; }
+        func Wrapping(value: uint8) -> uint8 { return (value + 200u8) + 100u8; }
+        func Signed(value: int64) -> int64 { return (value + 1i64) + 1i64; }
+    )");
+    Optimization::LirScalarCombines combines;
+    CHECK(combines.Run(package, {}) == Optimization::PassChange::Changed);
+    Optimization::LirDeadCodeElimination deadCode;
+    static_cast<void>(deadCode.Run(package, {}));
+    for (const auto &function : package.modules[0].funcs) {
+        std::size_t additions = 0;
+        std::vector<std::string> constants;
+        for (const auto &block : function.blocks)
+            for (const auto &instruction : block.instrs) {
+                additions += instruction.op == LirOpcode::Add;
+                if (instruction.op == LirOpcode::Const)
+                    constants.push_back(instruction.strArg);
+            }
+        CAPTURE(function.name);
+        // Signed arithmetic keeps its narrow contract and both additions.
+        CHECK_EQ(additions, function.name == "Signed" ? 2U : 1U);
+        if (function.name == "Twice")
+            CHECK(std::ranges::find(constants, "2") != constants.end());
+        // 200 + 100 wraps to 44 in eight bits.
+        if (function.name == "Wrapping")
+            CHECK(std::ranges::find(constants, "44") != constants.end());
     }
 }
 

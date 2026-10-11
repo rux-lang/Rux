@@ -242,6 +242,28 @@ bool Combine(LirFunc &function) {
                     changed = true;
                 }
             }
+            // Adding two constants in turn adds their sum, which leaves one addition where an unrolled loop stepped
+            // its count twice. Unsigned arithmetic wraps the same either way.
+            if (instruction.op == LirOpcode::Add && instruction.srcs.size() == 2 && !instruction.isVolatile &&
+                instruction.type.IsInteger() && !instruction.type.IsSigned()) {
+                const auto inner = definitions.find(instruction.srcs[0]);
+                const auto outer = constant(instruction.srcs[1]);
+                const auto maximum = UnsignedMaximum(instruction.type);
+                if (inner != definitions.end() && outer && maximum && inner->second.op == LirOpcode::Add &&
+                    inner->second.type == instruction.type && inner->second.srcs.size() == 2 &&
+                    !inner->second.isVolatile) {
+                    if (const auto first = constant(inner->second.srcs[1])) {
+                        LirInstr sum;
+                        sum.op = LirOpcode::Const;
+                        sum.dst = next++;
+                        sum.type = instruction.type;
+                        sum.strArg = std::to_string((*first + *outer) & *maximum);
+                        instruction.srcs = {inner->second.srcs[0], sum.dst};
+                        output.push_back(std::move(sum));
+                        changed = true;
+                    }
+                }
+            }
             output.push_back(std::move(instruction));
         }
         block.instrs = std::move(output);
