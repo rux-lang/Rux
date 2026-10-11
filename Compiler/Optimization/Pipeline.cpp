@@ -16,6 +16,7 @@
 #include "Optimization/LirScalarReplacement.h"
 #include "Optimization/LirSsaVerifier.h"
 #include "Optimization/LirValueNumbering.h"
+#include "Optimization/LirViewParameters.h"
 
 #include <memory>
 
@@ -33,6 +34,7 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
         pipeline.lir.Add(std::make_unique<LirFrameAddressPlacement>());
         pipeline.lir.Add(std::make_unique<LirSsaVerifier>());
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
+        pipeline.lir.Add(std::make_unique<LirViewParameters>());
         pipeline.lir.Add(std::make_unique<LirScalarReplacement>());
         pipeline.lir.Add(std::make_unique<LirMemoryPromotion>());
         pipeline.lir.Add(std::make_unique<LirConstantMemory>());

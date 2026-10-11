@@ -19,5 +19,6 @@ rux_add_component(RuxOptimization
     LirSsaVerifier.cpp
     LirScalarReplacement.cpp
     LirReachability.cpp
+    LirViewParameters.cpp
     Pipeline.cpp)
 target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir RuxUnicode)

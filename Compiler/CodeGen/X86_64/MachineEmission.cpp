@@ -99,6 +99,74 @@ void EliminateDeadCode(Machine::Function &function) {
     }
 }
 
+/// Copies a loop's small condition block into every block in the loop that jumps back to it, so an iteration ends in
+/// the conditional branch itself rather than a jump to the condition. The original stays as the loop entry. The
+/// machine IR is not in SSA form, so a duplicated definition needs no renaming.
+void RotateLoops(Machine::Function &function) {
+    const auto rotatable = [&](const Machine::Block &block) {
+        if (block.loopDepth == 0 || block.instructions.empty() || block.instructions.size() > 8)
+            return false;
+        bool branches = false;
+        for (const auto &instruction : block.instructions) {
+            switch (static_cast<Op>(instruction.opcode)) {
+            case Op::Mov:
+            case Op::MovImm:
+            case Op::Load:
+            case Op::LoadSigned:
+            case Op::Lea:
+            case Op::Add:
+            case Op::Sub:
+            case Op::And:
+            case Op::Or:
+            case Op::Xor:
+            case Op::Cmp:
+            case Op::Test:
+            case Op::MovZx:
+            case Op::MovSx:
+            case Op::SetCc:
+            case Op::MovFp:
+            case Op::LoadFp:
+            case Op::CompareFp:
+                break;
+            case Op::Jcc:
+                branches = true;
+                break;
+            case Op::Jmp:
+                break;
+            default:
+                return false;
+            }
+        }
+        return branches && static_cast<Op>(block.instructions.back().opcode) == Op::Jmp;
+    };
+    // Branches end a block: the emitter places every jump after the block's other instructions. A latch whose final
+    // jump follows a conditional one would interleave its own branch with the copied comparison, so only a latch
+    // ending in its single jump takes the copy.
+    const auto singleJump = [](const Machine::Block &block) {
+        if (block.instructions.empty() || static_cast<Op>(block.instructions.back().opcode) != Op::Jmp)
+            return false;
+        return std::ranges::none_of(block.instructions.begin(), block.instructions.end() - 1,
+                                    [](const Instruction &instruction) {
+                                        const auto op = static_cast<Op>(instruction.opcode);
+                                        return op == Op::Jmp || op == Op::Jcc;
+                                    });
+    };
+    for (std::uint32_t latch = 1; latch < function.blocks.size(); ++latch) {
+        auto &block = function.blocks[latch];
+        if (block.loopDepth == 0 || !singleJump(block))
+            continue;
+        const std::uint32_t header = block.instructions.back().operands[0].target;
+        if (header == latch || header == 0 || !rotatable(function.blocks[header]))
+            continue;
+        const auto copy = function.blocks[header].instructions;
+        const auto successors = function.blocks[header].successors;
+        auto &target = function.blocks[latch];
+        target.instructions.pop_back();
+        target.instructions.insert(target.instructions.end(), copy.begin(), copy.end());
+        target.successors = successors;
+    }
+}
+
 class SpillCode final : public Machine::SpillCodeFactory {
 public:
     [[nodiscard]] Instruction Load(const Machine::Reg destination, const RegClass regClass,
@@ -286,6 +354,7 @@ std::optional<EmittedFunction> EmitFunction(SelectedFunction &selected, const Ta
                                             const bool printAssembly) {
     auto &function = selected.function;
     EliminateDeadCode(function);
+    RotateLoops(function);
     const SpillCode spills;
     const auto allocation = Machine::AllocateRegisters(function, TargetRegistersFor(selected.win64), spills);
     if (!allocation.succeeded)

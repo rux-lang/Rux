@@ -1,6 +1,7 @@
 #include "Optimization/LirValueNumbering.h"
 
 #include "Ir/Lir/Dominance.h"
+#include "Optimization/ConstantAddresses.h"
 
 #include <memory>
 #include <unordered_map>
@@ -57,7 +58,9 @@ std::string Key(const LirInstr &instruction, const LiteralKeys &literals) {
     return key;
 }
 
-bool Number(LirFunc &function) {
+bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNames) {
+    // A load from read-only constant data is a pure value of its address, so it is shared like arithmetic.
+    const std::unordered_set<LirReg> constantAddresses = ConstantAddresses(function, constantNames);
     std::unordered_set<LirReg> definitions;
     std::unordered_map<LirReg, TypeRef> types;
     LiteralKeys literals;
@@ -153,7 +156,8 @@ bool Number(LirFunc &function) {
                 !instruction.isVolatile &&
                 (instruction.type.IsInteger() || instruction.type.IsFloat() || instruction.type.IsBool() ||
                  instruction.type.IsChar() || instruction.type.kind == TypeRef::Kind::Pointer);
-            const bool pure = Pure(instruction.op) && !instruction.isVolatile;
+            const bool constantLoad = load && constantAddresses.contains(instruction.srcs[0]);
+            const bool pure = (Pure(instruction.op) && !instruction.isVolatile) || constantLoad;
             // Keep cheap constants local: consumers rematerialize immediates and CFG folding recognizes local
             // constants. Sharing them globally needlessly lengthens allocation intervals and hides those forms.
             const bool stable = pure && instruction.op != LirOpcode::Const && stableType(instruction.type) &&
@@ -161,7 +165,7 @@ bool Number(LirFunc &function) {
                                     return types.contains(source) && stableType(types.at(source));
                                 });
             if (instruction.dst != LirNoReg && (pure || load)) {
-                auto &available = load ? loads : stable ? dominating : values;
+                auto &available = load && !constantLoad ? loads : stable ? dominating : values;
                 const auto key = Key(instruction, literals);
                 const auto [entry, inserted] = available.emplace(key, instruction.dst);
                 if (!inserted) {
@@ -292,9 +296,10 @@ std::string_view LirValueNumbering::Name() const noexcept {
 
 PassChange LirValueNumbering::Run(LirPackage &package, const PassContext &) {
     bool changed = false;
+    const auto constantNames = ConstantNames(package);
     for (auto &module : package.modules) {
         for (auto &function : module.funcs) {
-            changed = Number(function) || changed;
+            changed = Number(function, constantNames) || changed;
         }
     }
     return changed ? PassChange::Changed : PassChange::None;

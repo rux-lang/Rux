@@ -1,6 +1,7 @@
 #include "Optimization/LirLoopInvariants.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Optimization/ConstantAddresses.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -83,10 +84,11 @@ bool Speculatable(const LirInstr &instruction) {
     return false;
 }
 
-bool Hoist(LirFunc &function) {
+bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNames) {
     if (function.isExtern || function.isAsm || function.blocks.size() < 2 || function.blocks.size() > 4096) {
         return false;
     }
+    const std::unordered_set<LirReg> constantAddresses = ConstantAddresses(function, constantNames);
     const LirControlFlow cfg(function);
     const LirDominance dominance(cfg);
     const LirLiveness liveness(function, cfg);
@@ -203,11 +205,13 @@ bool Hoist(LirFunc &function) {
                 for (auto &instruction : function.blocks[block].instrs) {
                     // A constant used by a varying recurrence is cheap to recreate near its use. Hoisting it alone
                     // extends its live range and can displace hotter loop values from the small register pool.
-                    // A load moves only out of a loop that writes no memory, and only through an address that is
-                    // valid whether or not the loop runs, so hoisting it can neither change its value nor fault.
+                    // A load moves only out of a loop that writes no memory, or reads read-only constant data, and
+                    // only through an address that is valid whether or not the loop runs, so hoisting it can
+                    // neither change its value nor fault.
                     const bool load = instruction.op == LirOpcode::Load && instruction.strArg.empty() &&
                                       !instruction.isVolatile && instruction.srcs.size() == 1 &&
-                                      instruction.dst != LirNoReg && ScalarValue(instruction.type) && !writes &&
+                                      instruction.dst != LirNoReg && ScalarValue(instruction.type) &&
+                                      (!writes || constantAddresses.contains(instruction.srcs[0])) &&
                                       dereferenceable(instruction.srcs[0]);
                     bool invariant = budget != 0 && instruction.op != LirOpcode::Const &&
                                      (Speculatable(instruction) || SpeculatableCast(instruction, types) || load);
@@ -287,9 +291,10 @@ PassChange LirLoopInvariants::Run(LirPackage &package, const PassContext &contex
         return PassChange::None;
     }
     bool changed = false;
+    const auto constantNames = ConstantNames(package);
     for (auto &module : package.modules) {
         for (auto &function : module.funcs) {
-            changed = Hoist(function) || changed;
+            changed = Hoist(function, constantNames) || changed;
         }
     }
     return changed ? PassChange::Changed : PassChange::None;

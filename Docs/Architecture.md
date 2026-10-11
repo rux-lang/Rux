@@ -164,7 +164,13 @@ Branches can fall through to the next emitted block after any required edge phi 
 jumps over false-edge copies. Indexed element sizes 1/2/4/8 use scaled LEA, with multiply/add retained for other sizes.
 GPR and scalar-FP planning reuse the same immutable live-interval snapshot within one frame plan.
 
-Release optimization runs CFG cleanup before private aggregate field replacement and scalar memory promotion.
+Release optimization runs CFG cleanup, then view-parameter snapshots, before private aggregate field replacement and
+scalar memory promotion. `LirViewParameters` reads each field of a `byAddress` parameter once in the entry block when
+the function uses the parameter only for field loads and call arguments. A by-value parameter cannot be written, so
+its fields hold their call-time values throughout; the snapshot also makes stores through unrelated pointers
+irrelevant to them. Loads through the address of a module constant (`Optimization/ConstantAddresses.h`) read
+read-only data: value numbering shares them across stores like pure arithmetic, and loop-invariant motion hoists them
+even from loops that write memory.
 Promotion admits only direct, type-identical, nonvolatile loads and stores of nonescaping scalar slots. Per-slot
 liveness and definite-initialization dataflow construct pruned SSA merges, including allocations inside loops;
 uninitialized, escaped, aliased, and mixed-width storage retains its memory behavior. Trivial phi nodes collapse before
@@ -215,8 +221,10 @@ narrow types keep unspecified upper bits and are extended only where an operatio
 globals fold into addressing modes. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
 coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
 reports the callee-saved registers the prologue must save. `X86_64/MachineEmission.cpp` frames the function
-(frame pointer kept for stack traces, objects nothing references take no space), places blocks so the deepest successor
-falls through and failure paths come last, relaxes branches to short forms and encodes through `MachineEncoder`;
+(frame pointer kept for stack traces, objects nothing references take no space), copies a small loop-condition block
+into each block that ends with its single jump to it so an iteration ends in its conditional branch, places blocks so
+the deepest successor falls through and failure paths come last, relaxes branches to short forms and encodes through
+`MachineEncoder`;
 `MachinePrinter` produces the matching `--emit asm` text. A function that uses wide integers, software or x87 floating
 point, atomics, thread-local storage, standard-error writes or C variadic calls, or whose allocation exceeds the
 allocator's bounds, keeps the direct emitter. Both paths share one calling convention, so they call each other freely.
