@@ -1,4 +1,5 @@
 #include "Ir/Lir/Dominance.h"
+#include "Ir/Lir/LirVectors.h"
 #include "Optimization/ConstantEvaluator.h"
 #include "Optimization/LirCfgPasses.h"
 #include "Optimization/LirDeadLoops.h"
@@ -249,6 +250,49 @@ TEST_CASE("Dead loop elimination removes loops that only count and read") {
             return index;
         }
     )"));
+}
+
+TEST_CASE("Unrolling pairs float64 work with the next iteration and devectorizes back") {
+    const auto unrolled = [](const std::string &source) {
+        auto package = Promoted(source);
+        Optimization::LirCfgCleanup cleanup;
+        Optimization::LirBlockCoalescing coalescing;
+        static_cast<void>(cleanup.Run(package, {}));
+        static_cast<void>(coalescing.Run(package, {}));
+        Optimization::LirLoopUnrolling unrolling;
+        REQUIRE(unrolling.Run(package, {}) == Optimization::PassChange::Changed);
+        CHECK(SsaErrors(package).empty());
+        return package;
+    };
+    auto paired = unrolled(R"(
+        func Axpy(c: *var float64, b: *float64, a: float64, n: uint) {
+            for j in 0u..n { c[j] = c[j] + a * b[j]; }
+        }
+    )");
+    // One pair of loads, one multiply by the broadcast factor, one add and one store replace both iterations' work.
+    CHECK_EQ(Count(paired, LirOpcode::VectorLoad), 2);
+    CHECK_EQ(Count(paired, LirOpcode::VectorSplat), 1);
+    CHECK_EQ(Count(paired, LirOpcode::VectorMul), 1);
+    CHECK_EQ(Count(paired, LirOpcode::VectorAdd), 1);
+    CHECK_EQ(Count(paired, LirOpcode::VectorStore), 1);
+    auto &function = paired.modules[0].funcs[0];
+    REQUIRE(HasVectorInstructions(function));
+    const auto scalarLoads = Count(paired, LirOpcode::Load);
+    Devectorize(function);
+    CHECK_FALSE(HasVectorInstructions(function));
+    CHECK(SsaErrors(paired).empty());
+    CHECK_EQ(Count(paired, LirOpcode::Load), scalarLoads + 4);
+
+    // A sum carried from one iteration to the next is a chain, not a pair: it stays scalar.
+    const auto summed = unrolled(R"(
+        func Sum(b: *float64, n: uint) -> float64 {
+            var total = 0.0;
+            for j in 0u..n { total = total + b[j]; }
+            return total;
+        }
+    )");
+    CHECK_EQ(Count(summed, LirOpcode::VectorLoad), 0);
+    CHECK_EQ(Count(summed, LirOpcode::VectorAdd), 0);
 }
 
 TEST_CASE("Value numbering sees a bounds check through a same-width cast as the loop test") {

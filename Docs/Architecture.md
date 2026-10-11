@@ -490,8 +490,14 @@ rejected. Up to eight rounds per function reach its other loops; an unrolled cop
 and never unrolled again. A loop whose count runs between two constants at most sixteen times, with no more than 256
 instructions in all copies, is flattened instead: its header becomes one straight block of every iteration in order,
 whose final values reach the exit, and the body is left unreachable for cleanup. Body, phi, function and analysis
-work budgets bound code growth and compile-time work. This is scalar unrolling, without vectorization, alias
-assumptions, speculative loads or floating-point reassociation.
+work budgets bound code growth and compile-time work. When the body's floating-point instructions are float64 loads,
+stores and arithmetic on values it computed or on scalars fixed before the loop, every address advances by one
+element per iteration, and none of those values is read outside the body, the unroller pairs the two copies into
+two-lane vector instructions instead, broadcasting the scalars once on entry. Pairing moves each second-iteration
+access ahead of the first iteration's later ones, so for every such pair where one access writes, the entry also
+checks that their elements, eight bytes apart in the second iteration, do not overlap; otherwise the scalar loop runs.
+No floating-point operation is reassociated: a value carried from one iteration to the next, such as a sum, keeps the
+loop scalar.
 
 The x86 scalar machine descriptor also selects immediate shifts and rotations. Shift counts retain their independent
 integer type and are selected only within the operand width; variable and oversized counts retain existing lowering.

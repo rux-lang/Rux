@@ -1,0 +1,84 @@
+// Loops whose floating-point work pairs with the next iteration run two float64 lanes at a time. Every result here is
+// an integer held exactly in a float64, so each is compared exactly with what one iteration after another computes.
+// The arrays are views into one buffer at chosen offsets: a source one element behind its destination makes every
+// iteration read what the one before it wrote, which only the scalar loop computes, and the check on entry has to
+// send it there; one element ahead and the same array are read before they are written and may pair.
+
+import Core::Assert;
+
+var Buffer: float64[48] = [0.0; 48];
+var Expected: int64[48] = [0i64; 48];
+
+func Axpy(c: *var float64, b: *float64, a: float64, n: uint) {
+    for j in 0u..n {
+        c[j] = c[j] + a * b[j];
+    }
+}
+
+func Fill(c: *var float64, value: float64, n: uint) {
+    for j in 0u..n {
+        c[j] = value;
+    }
+}
+
+func Halve(c: *var float64, b: *float64, n: uint) {
+    for j in 0u..n {
+        c[j] = b[j] / 2.0;
+    }
+}
+
+func Reset() {
+    for k in 0u..48u {
+        Buffer[k] = (k + 1u) as float64;
+        Expected[k] = (k + 1u) as int64;
+    }
+}
+
+func Matches() -> bool {
+    for k in 0u..48u {
+        if Buffer[k] != Expected[k] as float64 {
+            return false;
+        }
+    }
+    return true;
+}
+
+func Main() -> int {
+    for n in 0u..21u {
+        // Separate ranges of the buffer.
+        Reset();
+        Axpy(@Buffer[24], @Buffer[0], 3.0, n);
+        for j in 0u..n { Expected[24u + j] = Expected[24u + j] + 3i64 * Expected[j]; }
+        Assert(Matches(), "a scaled sum over separate arrays matches one element at a time");
+
+        // The source one element behind the destination: each element adds the one just written.
+        Reset();
+        Axpy(@Buffer[5], @Buffer[4], 2.0, n);
+        for j in 0u..n { Expected[5u + j] = Expected[5u + j] + 2i64 * Expected[4u + j]; }
+        Assert(Matches(), "a recurrence through overlapping views stays sequential");
+
+        // The source one element ahead: read before it is overwritten.
+        Reset();
+        Axpy(@Buffer[4], @Buffer[5], 2.0, n);
+        for j in 0u..n { Expected[4u + j] = Expected[4u + j] + 2i64 * Expected[5u + j]; }
+        Assert(Matches(), "a source one element ahead matches one element at a time");
+
+        // The same array: each element scaled in place.
+        Reset();
+        Axpy(@Buffer[3], @Buffer[3], 1.0, n);
+        for j in 0u..n { Expected[3u + j] = Expected[3u + j] * 2i64; }
+        Assert(Matches(), "an element added to itself matches one element at a time");
+
+        Reset();
+        Fill(@Buffer[7], 9.0, n);
+        for j in 0u..n { Expected[7u + j] = 9i64; }
+        Assert(Matches(), "a fill writes every element and no more");
+
+        Reset();
+        for k in 0u..48u { Buffer[k] = (2u * k) as float64; Expected[k] = (2u * k) as int64; }
+        Halve(@Buffer[26], @Buffer[1], n);
+        for j in 0u..n { Expected[26u + j] = Expected[1u + j] / 2i64; }
+        Assert(Matches(), "a quotient over separate arrays matches one element at a time");
+    }
+    return 0;
+}

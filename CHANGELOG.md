@@ -12,6 +12,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- **Two-lane float64 vectors** — Release builds run unrolled float64 loops such as `c[j] += a * b[j]` two elements at a time with SSE2 on x86-64, after an entry check that the arrays do not overlap in a way pairing would expose; other back ends keep the scalar instructions. MatrixMultiply drops from 0.356 s to 0.261 s.
 - **Branches on flags** — x86-64 Release builds branch on a comparison's flags instead of testing the Boolean it set earlier in the block, so loops such as `while same && k < n` end in one compare-and-branch.
 - **Hash tags in `HashMap` and `HashSet`** — each slot keeps the top byte of its key's hash, and a lookup compares it before calling the equality function, so probing past other text keys no longer reads their bytes. WordCount spends about 6% fewer cycles.
 - **Division by constants** — x86-64 Release builds compute quotients and remainders by a constant with a multiplication by its reciprocal, or a shift for a power of two, instead of `div` or `idiv`; signed division by -1 still uses `idiv`.
