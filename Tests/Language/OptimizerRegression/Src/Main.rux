@@ -90,6 +90,7 @@ func VerifyWordOperations(limit: uint64) {
 
 func Main() -> int {
     CheckMemoryOperands();
+    CheckAddressOperands();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -405,5 +406,27 @@ func CheckWord32() {
             Assert(OrWord32(a, b) == (wideA | wideB), "uint32 or zero-extends");
             Assert(XorWord32(a, b) == (wideA ^ wideB), "uint32 xor zero-extends");
         }
+    }
+}
+
+func CheckAddressOperands() {
+    var bytes: uint8[8] = [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8];
+    var words: uint16[8] = [1u16, 2u16, 3u16, 4u16, 5u16, 6u16, 7u16, 8u16];
+    var dwords: uint32[8] = [1u32, 2u32, 3u32, 4u32, 5u32, 6u32, 7u32, 8u32];
+    var qwords: uint64[8] = [1u64, 2u64, 3u64, 4u64, 5u64, 6u64, 7u64, 8u64];
+    let b = @bytes[3];
+    let w = @words[3];
+    let d = @dwords[3];
+    let q = @qwords[3];
+    for offset in -3..5 {
+        let expected = (offset + 4) as uint64;
+        Assert((b + offset)[0] as uint64 == expected, "byte addressing with signed offset");
+        Assert((w + offset)[0] as uint64 == expected, "word addressing with signed offset");
+        Assert((d + offset)[0] as uint64 == expected, "dword addressing with signed offset");
+        Assert((q + offset)[0] == expected, "qword addressing with signed offset");
+        (q + offset)[0] = expected + 100u64;
+    }
+    for index in 0..8 {
+        Assert(qwords[index] == (index as uint64) + 101u64, "scaled writes reach each element exactly");
     }
 }

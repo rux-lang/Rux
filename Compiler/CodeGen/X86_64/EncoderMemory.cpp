@@ -2,9 +2,34 @@
 // frame layout addresses spill slots through.
 
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 
 namespace Rux {
+
+void X64Enc::EmitScalarAddressInstruction(const X86ScalarAddressInstruction &instruction) const {
+    if (instruction.baseSlot)
+        MovRaxLoad(*instruction.baseSlot);
+    if (instruction.indexSlot)
+        MovR10Load(*instruction.indexSlot);
+    Byte(static_cast<std::uint8_t>(0x48 | (instruction.destination >= 8 ? 4 : 0) | (instruction.index >= 8 ? 2 : 0) |
+                                   (instruction.base >= 8 ? 1 : 0)));
+    Byte(0x8D);
+    const int base = instruction.base & 7;
+    const bool sib = instruction.index >= 0 || base == 4;
+    const auto displacement = instruction.displacement;
+    const int mode = displacement == 0 && base != 5 ? 0 : displacement >= -128 && displacement <= 127 ? 1 : 2;
+    Byte(static_cast<std::uint8_t>((mode << 6) | ((instruction.destination & 7) << 3) | (sib ? 4 : base)));
+    if (sib) {
+        const int shift = instruction.scale == 8 ? 3 : instruction.scale == 4 ? 2 : instruction.scale == 2 ? 1 : 0;
+        const int index = instruction.index >= 0 ? instruction.index & 7 : 4;
+        Byte(static_cast<std::uint8_t>((shift << 6) | (index << 3) | base));
+    }
+    if (mode == 1)
+        Byte(static_cast<std::uint8_t>(displacement));
+    else if (mode == 2)
+        Dword(u(displacement));
+}
 
 void X64Enc::EmitScalarMemoryInstruction(const X86ScalarMemoryInstruction &instruction) const {
     if (instruction.floating)

@@ -9,6 +9,7 @@
 
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 #include "Numeric/FloatFormat.h"
@@ -1598,6 +1599,13 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
 // ---- memory (FunctionEmitter.cpp, EmitMemory) ---------------------------------------------------------------------
 
 bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
+    const auto emitAddress = [this](const X86ScalarAddressInstruction &selected) {
+        if (selected.baseSlot)
+            Instruction("mov", std::format("rax, qword [rbp - {}]", -*selected.baseSlot));
+        if (selected.indexSlot)
+            Instruction("mov", std::format("r10, qword [rbp - {}]", -*selected.indexSlot));
+        Instruction("lea", ScalarAddressOperands(selected));
+    };
     if (const auto selected = SelectScalarMemoryInstruction(instruction, framePlan)) {
         const auto address = ScalarMemoryAddress(*selected);
         const auto value = ScalarMemoryValue(*selected);
@@ -1753,8 +1761,13 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
     }
     case LirOpcode::FieldPtr: {
         const LirReg base = instruction.srcs[0];
+        const int fieldOffset = ResolveFieldOffset(base, instruction.strArg);
+        if (const auto selected = SelectScalarAddressInstruction(instruction, framePlan, 1, fieldOffset)) {
+            emitAddress(*selected);
+            return true;
+        }
         LoadA(base, registerTypes.at(base));
-        if (const int fieldOffset = ResolveFieldOffset(base, instruction.strArg); fieldOffset != 0) {
+        if (fieldOffset != 0) {
             Instruction("lea", std::format("rax, [rax + {}]", fieldOffset));
         }
         StoreA(instruction.dst, TypeRef::MakePointer(instruction.type));
@@ -1767,6 +1780,10 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
                             ? SizeOfRuntime(instruction.type.inner[0])
                             : 8;
         elementSize = std::max(elementSize, 1);
+        if (const auto selected = SelectScalarAddressInstruction(instruction, framePlan, elementSize)) {
+            emitAddress(*selected);
+            return true;
+        }
         LoadA(base, registerTypes.at(base));
         LoadB(index, registerTypes.at(index));
         if (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8) {

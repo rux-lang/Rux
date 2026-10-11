@@ -8,6 +8,7 @@
 namespace Rux {
 struct X86ScalarMachineInstruction;
 struct X86ScalarMemoryInstruction;
+struct X86ScalarAddressInstruction;
 
 /// x86-64 binary encoder.
 ///
@@ -363,6 +364,7 @@ public:
     void LeaRaxRaxR10(unsigned shift) const;
     void EmitScalarMachineInstruction(const X86ScalarMachineInstruction &instruction) const;
     void EmitScalarMemoryInstruction(const X86ScalarMemoryInstruction &instruction) const;
+    void EmitScalarAddressInstruction(const X86ScalarAddressInstruction &instruction) const;
 
     void PopRbp() const;
 

@@ -382,3 +382,10 @@ and native float32/float64 moves preserve payload bits. The selected descriptor 
 emission, including R12 SIB addressing, R13 zero displacement, extended XMM/GPR numbers and REX byte-register forms.
 Named/global accesses, volatile/atomic operations, aggregates, Boolean normalization, software floats and spilled
 operands retain their established paths. No accesses are reordered or combined, and no alias assumption is added.
+
+The x86 address selector shares base/index/destination registers, scale and displacement between binary and text
+emission. It emits LEA directly into an allocated pointer destination, optionally reloading a spilled pointer base
+into RAX or a spilled 64-bit integer index into R10. Physical homes never overlap those scratch registers. Narrow
+indices, spilled references, non-power-of-two element sizes and unallocated destinations retain ordinary lowering.
+Field offsets remain owned by the existing layout resolver. Address computation adds no memory dereference and
+preserves wrapping machine-address arithmetic; it introduces neither alias assumptions nor bounds-check removal.

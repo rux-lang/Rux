@@ -1,4 +1,5 @@
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 
@@ -287,5 +288,55 @@ TEST_CASE("Scalar memory selection uses allocated homes and retains unsupported 
         CHECK_FALSE(SelectScalarMemoryInstruction(load, plan).has_value());
         store.op = LirOpcode::AtomicStore;
         CHECK_FALSE(SelectScalarMemoryInstruction(store, plan).has_value());
+    }
+}
+
+TEST_CASE("Allocated address encoding handles scales extended SIB and displacement boundaries") {
+    const std::vector<std::pair<X86ScalarAddressInstruction, std::vector<std::uint8_t>>> cases = {
+        {{13, 3, 12, 8, 0, {}, {}}, {0x4E, 0x8D, 0x2C, 0xE3}},
+        {{3, 13, 14, 4, 0, {}, {}}, {0x4B, 0x8D, 0x5C, 0xB5, 0}},
+        {{12, 13, -1, 1, 0, {}, {}}, {0x4D, 0x8D, 0x65, 0}},
+        {{3, 12, -1, 1, 127, {}, {}}, {0x49, 0x8D, 0x5C, 0x24, 0x7F}},
+        {{3, 12, -1, 1, 128, {}, {}}, {0x49, 0x8D, 0x9C, 0x24, 0x80, 0, 0, 0}},
+        {{3, 6, 7, 2, -128, {}, {}}, {0x48, 0x8D, 0x5C, 0x7E, 0x80}},
+        {{3, 6, 7, 1, -129, {}, {}}, {0x48, 0x8D, 0x9C, 0x3E, 0x7F, 0xFF, 0xFF, 0xFF}},
+        {{12, 0, 10, 8, 0, -24, -32},
+         {0x48, 0x8B, 0x85, 0xE8, 0xFF, 0xFF, 0xFF, 0x4C, 0x8B, 0x95, 0xE0, 0xFF, 0xFF, 0xFF, 0x4E, 0x8D, 0x24, 0xD0}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarAddressInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+    CHECK_EQ(ScalarAddressOperands({13, 3, 12, 8, 0, {}, {}}), "r13, [rbx + r12 * 8]");
+    CHECK_EQ(ScalarAddressOperands({3, 13, -1, 1, -128, {}, {}}), "rbx, [r13 - 128]");
+}
+
+TEST_CASE("Allocated address selection retains narrow index and unusual layout fallbacks") {
+    const auto pointer = TypeRef::MakePointer(TypeRef::MakeUInt64());
+    for (const auto &indexType : {TypeRef::MakeUInt64(), TypeRef::MakeInt64(), TypeRef::MakeUInt32(),
+                                  TypeRef::MakeInt32(), TypeRef::MakeUInt8(), TypeRef::MakeInt8()}) {
+        LirFunc function;
+        function.name = "Address";
+        function.returnType = pointer;
+        function.params = {{0, pointer, "base"}, {1, indexType, "index"}};
+        LirInstr address;
+        address.op = LirOpcode::IndexPtr;
+        address.type = pointer;
+        address.dst = 2;
+        address.srcs = {0, 1};
+        function.blocks.resize(1);
+        function.blocks[0].instrs = {address};
+        function.blocks[0].term.emplace();
+        function.blocks[0].term->kind = LirTermKind::Return;
+        function.blocks[0].term->retVal = 2;
+        function.blocks[0].term->retType = pointer;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        for (const int scale : {1, 2, 4, 8})
+            CHECK_EQ(SelectScalarAddressInstruction(address, plan, scale).has_value(), Layout::SizeOf(indexType) == 8);
+        CHECK_FALSE(SelectScalarAddressInstruction(address, plan, 3).has_value());
+        address.isVolatile = true;
+        CHECK_FALSE(SelectScalarAddressInstruction(address, plan, 8).has_value());
     }
 }

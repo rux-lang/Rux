@@ -3,6 +3,7 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
 
@@ -1202,8 +1203,12 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     }
     case LirOpcode::FieldPtr: {
         const LirReg base = instruction.srcs[0];
-        hooks.LoadA(base, registerTypes.at(base));
         const int offset = FieldOffset(base, instruction.strArg);
+        if (const auto selected = SelectScalarAddressInstruction(instruction, framePlan, 1, offset)) {
+            encoder.EmitScalarAddressInstruction(*selected);
+            return true;
+        }
+        hooks.LoadA(base, registerTypes.at(base));
         if (offset != 0) {
             encoder.LeaRaxRaxDisp(offset);
         }
@@ -1218,6 +1223,10 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
                             : 8;
         if (elementSize < 1) {
             elementSize = 1;
+        }
+        if (const auto selected = SelectScalarAddressInstruction(instruction, framePlan, elementSize)) {
+            encoder.EmitScalarAddressInstruction(*selected);
+            return true;
         }
         hooks.LoadA(base, registerTypes.at(base));
         hooks.LoadB(index, registerTypes.at(index));

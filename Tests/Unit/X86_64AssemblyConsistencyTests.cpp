@@ -627,10 +627,10 @@ TEST_CASE("x86-64 indexed addresses select scaled LEA and retain odd-size multip
             const auto text = AssemblyPrinter(package, os).Generate();
             const auto code = CodeOf(package, os);
             if (index < 4) {
-                const std::vector<std::uint8_t> expected = {0x4A, 0x8D, 0x04,
-                                                            static_cast<std::uint8_t>(0x10 | (index << 6))};
+                const std::vector<std::uint8_t> expected = {0x4E, 0x8D, 0x2C,
+                                                            static_cast<std::uint8_t>(0x23 | (index << 6))};
                 CHECK(std::ranges::search(code, expected).begin() != code.end());
-                CHECK(text.contains(std::format("lea     rax, [rax + r10 * {}]", 1U << index)));
+                CHECK(text.contains(std::format("lea     r13, [rbx + r12 * {}]", 1U << index)));
                 CHECK_FALSE(text.contains("imul"));
             }
             else {

@@ -11,6 +11,8 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler context), native AArch64 host support on every platform, explicit references and ownership transfer, deterministic value lifecycles, an explicit `let`/`var` mutability model, and a consolidated, hermetic test tree.
 
 ### Added
+
+- Select allocated x86 scalar addresses directly with scaled LEA and bounded spill reloads.
 - **Allocated scalar memory access** — Load and store directly through allocated x86 registers, removing scratch
   transfers while preserving integer extension, exact store widths and floating-point payload bits.
 - **Allocated immediate arithmetic** — Use direct x86 integer immediate operations with correct sign extension,
