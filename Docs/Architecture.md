@@ -435,3 +435,14 @@ On x86, constant indexed addresses use a signed 32-bit LEA displacement when the
 offset is representable. Other offsets, narrow indices and unsupported layouts retain existing lowering. Count
 constants are elided only when every consumer selects a supported immediate form. Last-use pointer inputs may share
 the result register, as scalar arithmetic inputs already do; shared text/binary selection preserves operand rules.
+Constant-memory folding recognizes exact UInt64 length loads through the typed length field of a module-local
+immutable slice constant. It reads the constant's sequence metadata; UTF-16/UTF-32 lengths use the same shared
+Unicode code-unit counting as emission. Mutable globals, external or ambiguous declarations, volatile accesses,
+unsupported encodings and mismatched field/pointer types remain loads. The optimization never substitutes a data
+pointer or infers that an arbitrary slice parameter is immutable.
+
+Before bounded inlining, the Release pipeline folds constant memory, propagates values, combines scalar ranges,
+and removes dead CFG paths/instructions. This exposes small helpers whose checks have become provably redundant.
+The inliner can copy GlobalAddr within its defining module; helpers containing such references remain calls across
+module boundaries. Value numbering may reuse the named address itself across writes, but ordinary memory-load
+availability retains its existing invalidation rules. Inlining growth limits and first-iteration scheduling remain.

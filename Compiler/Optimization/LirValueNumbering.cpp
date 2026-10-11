@@ -11,6 +11,7 @@ namespace {
 bool Pure(const LirOpcode op) {
     switch (op) {
     case LirOpcode::Const:
+    case LirOpcode::GlobalAddr:
     case LirOpcode::Add:
     case LirOpcode::Sub:
     case LirOpcode::Mul:

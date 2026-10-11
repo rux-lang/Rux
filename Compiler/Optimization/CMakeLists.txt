@@ -5,6 +5,7 @@ rux_add_component(RuxOptimization
     HirConstantFolder.cpp
     LirCfgPasses.cpp
     LirConstantPropagation.cpp
+    LirConstantMemory.cpp
     LirDeclarationPruner.cpp
     LirDeadCodeElimination.cpp
     LirMemoryPromotion.cpp
@@ -19,4 +20,4 @@ rux_add_component(RuxOptimization
     LirScalarReplacement.cpp
     LirReachability.cpp
     Pipeline.cpp)
-target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir)
+target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir RuxUnicode)

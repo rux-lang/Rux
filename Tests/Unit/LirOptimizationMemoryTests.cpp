@@ -1,3 +1,4 @@
+#include "Optimization/LirConstantMemory.h"
 #include "Optimization/LirMemoryPromotion.h"
 #include "Optimization/LirScalarReplacement.h"
 #include "Optimization/LirSsaVerifier.h"
@@ -5,6 +6,99 @@
 
 using namespace Rux;
 using namespace Rux::Testing::OptimizerTestSupport;
+
+namespace {
+LirPackage ConstantHeader(const TypeRef &element, const std::string &text) {
+    LirConstDecl constant;
+    constant.name = "Header";
+    constant.type = TypeRef::MakeSlice(element);
+    constant.elementType = element;
+    constant.hasSequenceData = true;
+    constant.isTextSlice = true;
+    constant.text = text;
+    auto function = ReturningFunction("Read");
+    function.returnType = TypeRef::MakeUInt64();
+    LirInstr address;
+    address.op = LirOpcode::GlobalAddr;
+    address.dst = 0;
+    address.type = TypeRef::MakePointer(constant.type);
+    address.strArg = constant.name;
+    LirInstr field;
+    field.op = LirOpcode::FieldPtr;
+    field.dst = 1;
+    field.type = TypeRef::MakePointer(TypeRef::MakeUInt64());
+    field.srcs = {0};
+    field.strArg = "length";
+    LirInstr load;
+    load.op = LirOpcode::Load;
+    load.dst = 2;
+    load.type = TypeRef::MakeUInt64();
+    load.srcs = {1};
+    function.blocks[0].instrs = {address, field, load};
+    function.blocks[0].term = ReturnValue(2, load.type);
+    LirModule module;
+    module.consts = {constant};
+    module.funcs = {function};
+    LirPackage package;
+    package.modules = {module};
+    return package;
+}
+} // namespace
+
+TEST_CASE("Immutable slice headers fold their encoded code-unit count") {
+    for (const auto kind : {TypeRef::Kind::Char8, TypeRef::Kind::Char16, TypeRef::Kind::Char32}) {
+        auto package = ConstantHeader(TypeRef::MakePrimitive(kind), "A\xF0\x9F\x98\x80");
+        Optimization::LirConstantMemory memory;
+        REQUIRE(memory.Run(package, {}) == Optimization::PassChange::Changed);
+        const auto &load = package.modules[0].funcs[0].blocks[0].instrs.back();
+        CHECK(load.op == LirOpcode::Const);
+        CHECK(load.strArg == (kind == TypeRef::Kind::Char8 ? "5" : kind == TypeRef::Kind::Char16 ? "3" : "2"));
+        CHECK(memory.Run(package, {}) == Optimization::PassChange::None);
+    }
+    for (const bool empty : {false, true}) {
+        auto package = ConstantHeader(TypeRef::MakeUInt32(), "");
+        auto &constant = package.modules[0].consts[0];
+        constant.isTextSlice = false;
+        if (!empty)
+            constant.elements = {"1", "2", "3"};
+        Optimization::LirConstantMemory memory;
+        REQUIRE(memory.Run(package, {}) == Optimization::PassChange::Changed);
+        CHECK(package.modules[0].funcs[0].blocks[0].instrs.back().strArg == (empty ? "0" : "3"));
+    }
+}
+
+TEST_CASE("Constant memory folding rejects volatile mutable ambiguous and mismatched storage") {
+    for (int mode = 0; mode < 10; ++mode) {
+        auto package = ConstantHeader(TypeRef::MakePrimitive(TypeRef::Kind::Char16), "abc");
+        auto &module = package.modules[0];
+        auto &instructions = module.funcs[0].blocks[0].instrs;
+        if (mode < 3)
+            instructions[mode].isVolatile = true;
+        if (mode == 3)
+            module.consts[0].hasSequenceData = false;
+        if (mode == 4)
+            instructions[2].type = TypeRef::MakeUInt32();
+        if (mode == 5)
+            instructions[1].strArg = "data";
+        if (mode == 6)
+            module.consts.push_back(module.consts.front());
+        if (mode == 7) {
+            LirGlobal global;
+            global.name = "Header";
+            module.globals.push_back(global);
+        }
+        if (mode == 8)
+            module.consts[0].text = "\xFF";
+        if (mode == 9) {
+            LirModule other;
+            other.consts = module.consts;
+            module.consts.clear();
+            package.modules.push_back(other);
+        }
+        Optimization::LirConstantMemory memory;
+        CHECK(memory.Run(package, {}) == Optimization::PassChange::None);
+    }
+}
 
 namespace {
 std::size_t Count(const LirPackage &package, const LirOpcode op) {

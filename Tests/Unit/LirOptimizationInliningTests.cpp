@@ -24,6 +24,78 @@ std::size_t Calls(const LirPackage &package) {
 }
 } // namespace
 
+TEST_CASE("Inlining named data addresses stays within their defining module") {
+    for (const bool crossModule : {false, true}) {
+        auto package = CompileToLir(R"(
+            const Value: uint = 17u;
+            func Read() -> uint { return *@Value; }
+            func Use() -> uint { return Read(); }
+        )",
+                                    BuildProfile::Debug);
+        auto &module = package.modules[0];
+        REQUIRE_EQ(module.funcs.size(), 2);
+        if (crossModule) {
+            LirModule other;
+            other.funcs.push_back(std::move(module.funcs.back()));
+            module.funcs.pop_back();
+            package.modules.push_back(std::move(other));
+        }
+        Optimization::LirInliner inliner;
+        CHECK(inliner.Run(package, {}) ==
+              (crossModule ? Optimization::PassChange::None : Optimization::PassChange::Changed));
+        CHECK_EQ(Calls(package), crossModule ? 1 : 0);
+        std::vector<Diagnostic> diagnostics;
+        Optimization::PassContext context;
+        context.diagnostics = &diagnostics;
+        Optimization::LirSsaVerifier verifier;
+        static_cast<void>(verifier.Run(package, context));
+        CHECK(diagnostics.empty());
+    }
+}
+
+TEST_CASE("Constant slice lengths expose masked lookup helpers to bounded inlining") {
+    auto package = CompileToLir(R"(
+        const Alphabet: char8[..] = "ABCDEFGHIJKLMNOP";
+        func Symbol(index: uint32) -> uint8 { return Alphabet[(index & 15) as uint] as uint8; }
+        func Use(index: uint32) -> uint8 { return Symbol(index); }
+    )",
+                                BuildProfile::Debug);
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+    CHECK(report.reachedFixedPoint);
+    CHECK_EQ(Calls(package), 0);
+    for (const auto &module : package.modules)
+        for (const auto &function : module.funcs)
+            for (const auto &block : function.blocks)
+                for (const auto &instruction : block.instrs)
+                    CHECK(instruction.op != LirOpcode::Panic);
+}
+
+TEST_CASE("Reusing global addresses does not reuse loads across mutable writes") {
+    auto package = CompileToLir(R"(
+        var Value: uint = 17u;
+        func Read() -> uint { return Value; }
+        func Use(pointer: *var uint) -> uint {
+            let before = Read();
+            *pointer += 1u;
+            return before + Read();
+        }
+    )",
+                                BuildProfile::Debug);
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    CHECK(pipeline.RunLir(package).reachedFixedPoint);
+    const auto &function = package.modules[0].funcs.back();
+    std::size_t addresses = 0;
+    std::size_t loads = 0;
+    for (const auto &block : function.blocks)
+        for (const auto &instruction : block.instrs) {
+            addresses += instruction.op == LirOpcode::GlobalAddr;
+            loads += instruction.op == LirOpcode::Load;
+        }
+    CHECK_EQ(addresses, 1);
+    CHECK_EQ(loads, 3); // Two global reads plus the pointer's read-modify-write, with possible aliasing.
+}
+
 TEST_CASE("Exact native square-root wrappers lower by semantics rather than function spelling") {
     for (const auto arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {
         for (const bool single : {false, true}) {

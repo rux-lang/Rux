@@ -97,6 +97,7 @@ func Main() -> int {
     CheckLiteralKeys();
     CheckPointerInduction();
     CheckStridedVersioning();
+    CheckConstantSlices();
     CheckImmediateOperands();
     CheckWord32();
     VerifyBranchedInlining(30);
@@ -700,4 +701,30 @@ func CheckStridedVersioning() {
             }
         }
     }
+}
+
+const LookupAlphabet: char8[..] = "ABCDEFGHIJKLMNOP";
+const WideLookup: char16[..] = c16"A\u{1F600}";
+const ScalarLookup: char32[..] = c32"A\u{1F600}";
+var MutableLookupValue: uint = 17u;
+func LookupSymbol(index: uint32) -> uint8 { return LookupAlphabet[(index & 15) as uint] as uint8; }
+func ReadMutableLookup() -> uint { return MutableLookupValue; }
+func MutateLookup(pointer: *var uint) -> uint {
+    let before = ReadMutableLookup();
+    *pointer += 1u;
+    return before + ReadMutableLookup();
+}
+func LookupLengths() -> uint { return LookupAlphabet.length + WideLookup.length * 100u + ScalarLookup.length * 10000u; }
+func CheckConstantSlices() {
+    let symbol: func(uint32) -> uint8 = LookupSymbol;
+    let lengths: func() -> uint = LookupLengths;
+    for index in 0u32..128u32 {
+        Assert(symbol(index) == (65u32 + (index & 15u32)) as uint8, "constant lookup helper preserves data");
+        Assert(LookupSymbol(index) == symbol(index), "inlined constant lookup preserves dynamic results");
+    }
+    Assert(lengths() == 20316u, "constant lengths count UTF-16 code units and UTF-32 scalars");
+    let mutate: func(*var uint) -> uint = MutateLookup;
+    var other = 41u;
+    Assert(mutate(@other) == 34u && other == 42u, "global reads with a distinct store");
+    Assert(mutate(@MutableLookupValue) == 35u && MutableLookupValue == 18u, "inlined global reads retain aliasing writes");
 }

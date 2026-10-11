@@ -95,6 +95,7 @@ bool Eligible(const LirFunc &function, const ConcreteReferenceTypes &references)
             }
             switch (instruction.op) {
             case LirOpcode::Const:
+            case LirOpcode::GlobalAddr:
             case LirOpcode::Load:
             case LirOpcode::Store:
             case LirOpcode::Add:
@@ -333,6 +334,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
         return PassChange::None;
     }
     std::vector<LirFunc *> functions;
+    std::vector<const LirModule *> owners;
     std::unordered_map<std::string, std::size_t> names;
     std::unordered_set<std::string> ambiguous;
     const ConcreteReferenceTypes references(package);
@@ -342,6 +344,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 ambiguous.insert(function.name);
             }
             functions.push_back(&function);
+            owners.push_back(&module);
         }
     }
     for (const auto &name : ambiguous) {
@@ -430,6 +433,14 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     valid = call.type == callee.returnType && call.srcs.size() == callee.params.size() &&
                             (!callee.returnType.IsOpaque() || call.dst == LirNoReg) && Cost(callee) <= budget &&
                             Cost(callee) <= packageBudget && function.blocks.size() + callee.blocks.size() + 1 <= 4096;
+                    if (valid && owners[names.at(callee.name)] != owners[index]) {
+                        // A named data lookup is module-relative. Copy it only within its original module;
+                        // moving it across modules requires explicit symbol qualification first.
+                        for (const auto &calleeBlock : callee.blocks)
+                            for (const auto &instruction : calleeBlock.instrs)
+                                if (instruction.op == LirOpcode::GlobalAddr)
+                                    valid = false;
+                    }
                     for (std::size_t i = 0; valid && i < call.srcs.size(); ++i) {
                         valid = types.contains(call.srcs[i]) &&
                                 ArgumentMatches(types.at(call.srcs[i]), callee.params[i].type);

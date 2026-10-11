@@ -12,6 +12,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Added
 
+- Fold immutable slice lengths and remove proven checks before bounded same-module helper inlining.
+
 - Extend guarded unsigned loop versioning to bounded positive constant strides with wraparound fallback.
 
 - Advance affine loop pointers and fold constant x86 address steps into displacement LEA with last-use coalescing.

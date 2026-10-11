@@ -2,6 +2,7 @@
 
 #include "Optimization/HirConstantFolder.h"
 #include "Optimization/LirCfgPasses.h"
+#include "Optimization/LirConstantMemory.h"
 #include "Optimization/LirConstantPropagation.h"
 #include "Optimization/LirDeadCodeElimination.h"
 #include "Optimization/LirDeclarationPruner.h"
@@ -34,7 +35,11 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
         pipeline.lir.Add(std::make_unique<LirScalarReplacement>());
         pipeline.lir.Add(std::make_unique<LirMemoryPromotion>());
+        pipeline.lir.Add(std::make_unique<LirConstantMemory>());
         pipeline.lir.Add(std::make_unique<LirConstantPropagation>());
+        pipeline.lir.Add(std::make_unique<LirScalarCombines>());
+        pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
+        pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir.Add(std::make_unique<LirInliner>());
         pipeline.lir.Add(std::make_unique<LirScalarCombines>());
         pipeline.lir.Add(std::make_unique<LirValueNumbering>());
