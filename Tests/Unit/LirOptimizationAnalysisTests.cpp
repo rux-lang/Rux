@@ -1,5 +1,6 @@
 #include "Ir/Lir/Dominance.h"
 #include "Optimization/LirCfgPasses.h"
+#include "Optimization/LirDeadLoops.h"
 #include "Optimization/LirFillWidening.h"
 #include "Optimization/LirLoopInvariants.h"
 #include "Optimization/LirLoopUnrolling.h"
@@ -200,6 +201,53 @@ TEST_CASE("Unrolling flattens a loop between two constants into its header") {
     CHECK_EQ(Count(package, LirOpcode::Phi), 0);
     for (const auto &block : package.modules[0].funcs[0].blocks)
         CHECK(block.term->kind != LirTermKind::Branch);
+}
+
+TEST_CASE("Dead loop elimination removes loops that only count and read") {
+    const auto removed = [](const std::string &source) {
+        auto package = Promoted(source);
+        Optimization::LirCfgCleanup cleanup;
+        static_cast<void>(cleanup.Run(package, {}));
+        Optimization::LirDeadLoops deadLoops;
+        const bool changed = deadLoops.Run(package, {}) == Optimization::PassChange::Changed;
+        static_cast<void>(cleanup.Run(package, {}));
+        CHECK(SsaErrors(package).empty());
+        if (changed)
+            CHECK_EQ(Count(package, LirOpcode::Phi), 0);
+        return changed;
+    };
+    // An element drop that does nothing still visits every element; nothing it reads is used.
+    CHECK(removed(R"(
+        func Drop(values: *uint8, length: uint) -> uint {
+            var index: uint = 0u;
+            while index < length {
+                let value = values[index];
+                index += 1u;
+            }
+            return length;
+        }
+    )"));
+    // A store, a count that could step past its limit forever, and a count read afterwards all keep their loops.
+    CHECK_FALSE(removed(R"(
+        func Clear(values: *var uint8, length: uint) {
+            var index: uint = 0u;
+            while index < length { values[index] = 0u8; index += 1u; }
+        }
+    )"));
+    CHECK_FALSE(removed(R"(
+        func Skip(length: uint) -> uint {
+            var index: uint = 0u;
+            while index < length { index += 2u; }
+            return length;
+        }
+    )"));
+    CHECK_FALSE(removed(R"(
+        func Last(length: uint) -> uint {
+            var index: uint = 0u;
+            while index < length { index += 1u; }
+            return index;
+        }
+    )"));
 }
 
 TEST_CASE("Value numbering sees a bounds check through a same-width cast as the loop test") {

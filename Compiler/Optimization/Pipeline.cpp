@@ -5,6 +5,7 @@
 #include "Optimization/LirConstantMemory.h"
 #include "Optimization/LirConstantPropagation.h"
 #include "Optimization/LirDeadCodeElimination.h"
+#include "Optimization/LirDeadLoops.h"
 #include "Optimization/LirDeclarationPruner.h"
 #include "Optimization/LirFillWidening.h"
 #include "Optimization/LirInliner.h"
@@ -51,6 +52,7 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
         pipeline.lir.Add(std::make_unique<LirBlockCoalescing>());
         pipeline.lir.Add(std::make_unique<LirFillWidening>());
         pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
+        pipeline.lir.Add(std::make_unique<LirDeadLoops>());
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
         pipeline.lir.Add(std::make_unique<LirPointerInduction>());
         pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());

@@ -423,6 +423,12 @@ limit; the original loop then finishes the remainder from the word loop's index.
 within each word, are unchanged, and nothing is read. Floating-point values, loops that read memory or whose values
 are used after them, and starts other than zero keep their loops.
 
+Dead loop elimination follows the dead-code pass after fill widening. A loop that writes no memory, calls
+nothing, cannot trap, produces no value read after it, leaves only for one block without phis, and tests an unsigned
+count stepped by one against an invariant limit on every iteration, so that it ends, is skipped: its entry edges go
+to its exit, and cleanup removes it. Unread loads count as inert, as they do in machine dead-code elimination. Such
+loops remain where an inlined drop visits the elements of an array of plain values.
+
 Release block coalescing joins an unconditional successor only when that successor has one predecessor. It preserves
 instruction order, replaces unique-edge phis through SSA renaming, and updates outgoing phi predecessors before
 removing dead blocks. Entry blocks, conditional joins and self-targeting edges are not absorbed. Volatile operations,
