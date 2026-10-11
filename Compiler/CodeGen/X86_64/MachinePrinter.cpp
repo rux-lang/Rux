@@ -155,6 +155,8 @@ namespace {
         return "sar";
     case Op::Ror:
         return "ror";
+    case Op::Bswap:
+        return "bswap";
     case Op::MovZx:
         return "movzx";
     case Op::MovSx:

@@ -7,9 +7,12 @@
 #include "Target/CallingConvention.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
+#include <functional>
 #include <limits>
+#include <optional>
 #include <string_view>
 
 namespace Rux::X86_64Machine {
@@ -730,6 +733,149 @@ void Selector::SelectLoad(const LirInstr &instruction) {
         NoteZeroAbove(instruction.dst, ScalarSize(instruction.type) * 8);
 }
 
+bool Selector::SelectCombinedLoad(const LirInstr &instruction) {
+    const TypeRef &type = instruction.type;
+    const int width = ScalarSize(type);
+    if (!type.IsInteger() || (width != 2 && width != 4 && width != 8) || currentBlock == nullptr)
+        return false;
+
+    // Which byte of memory each byte of a value holds: the address it was read from, as a root pointer and a byte
+    // offset from it, or nothing for a byte known to be zero.
+    struct Byte {
+        LirReg root = LirNoReg;
+        std::int64_t offset = 0;
+    };
+
+    using Bytes = std::array<Byte, 8>;
+    std::vector<const LirInstr *> loads;
+    int budget = 64;
+    const auto rootOf = [&](LirReg pointer) {
+        std::int64_t offset = 0;
+        for (int depth = 0; depth < 16; ++depth) {
+            const auto definition = definitions.find(pointer);
+            if (definition == definitions.end() || definition->second->op != LirOpcode::IndexPtr ||
+                definition->second->srcs.size() != 2 ||
+                ScalarSize(definition->second->type.inner.empty() ? TypeRef{} : definition->second->type.inner[0]) != 1)
+                break;
+            const auto step = integerConstants.find(definition->second->srcs[1]);
+            if (step == integerConstants.end() || ScalarSize(TypeOf(definition->second->srcs[1])) != 8)
+                break;
+            offset += static_cast<std::int64_t>(step->second);
+            pointer = definition->second->srcs[0];
+        }
+        return Byte{pointer, offset};
+    };
+    std::function<std::optional<Bytes>(LirReg)> bytesOf = [&](const LirReg reg) -> std::optional<Bytes> {
+        if (--budget < 0)
+            return std::nullopt;
+        if (const auto constant = integerConstants.find(reg); constant != integerConstants.end())
+            return constant->second == 0 ? std::optional<Bytes>(Bytes{}) : std::nullopt;
+        const auto definition = definitions.find(reg);
+        if (definition == definitions.end() || definition->second->isVolatile)
+            return std::nullopt;
+        const LirInstr &node = *definition->second;
+        if (node.op == LirOpcode::Cast && node.srcs.size() == 1 && node.type.IsInteger() &&
+            ScalarSize(node.type) <= 8) {
+            const TypeRef &from = TypeOf(node.srcs[0]);
+            // Only a zero extension keeps the bytes above the source zero.
+            if (!from.IsInteger() || (from.IsSigned() && ScalarSize(from) < ScalarSize(node.type)))
+                return std::nullopt;
+            const auto load = definitions.find(node.srcs[0]);
+            if (ScalarSize(from) == 1 && load != definitions.end() && load->second->op == LirOpcode::Load &&
+                !load->second->isVolatile && load->second->strArg.empty() && load->second->srcs.size() == 1) {
+                Bytes bytes{};
+                bytes[0] = rootOf(load->second->srcs[0]);
+                loads.push_back(load->second);
+                return bytes;
+            }
+            return ScalarSize(from) <= ScalarSize(node.type) ? bytesOf(node.srcs[0]) : std::nullopt;
+        }
+        if (node.op == LirOpcode::Shl && node.srcs.size() == 2) {
+            const auto amount = integerConstants.find(node.srcs[1]);
+            if (amount == integerConstants.end() || amount->second % 8 != 0 || amount->second >= 64)
+                return std::nullopt;
+            const auto inner = bytesOf(node.srcs[0]);
+            if (!inner)
+                return std::nullopt;
+            const auto shift = static_cast<std::size_t>(amount->second / 8);
+            const auto size = static_cast<std::size_t>(ScalarSize(node.type));
+            Bytes bytes{};
+            for (std::size_t index = 0; index < 8; ++index) {
+                if ((*inner)[index].root == LirNoReg)
+                    continue;
+                if (index + shift >= size)
+                    return std::nullopt; // A byte shifted out would be lost, not moved.
+                bytes[index + shift] = (*inner)[index];
+            }
+            return bytes;
+        }
+        if (node.op == LirOpcode::Or && node.srcs.size() == 2) {
+            const auto left = bytesOf(node.srcs[0]);
+            const auto right = left ? bytesOf(node.srcs[1]) : std::nullopt;
+            if (!right)
+                return std::nullopt;
+            Bytes bytes = *left;
+            for (std::size_t index = 0; index < 8; ++index) {
+                if ((*right)[index].root == LirNoReg)
+                    continue;
+                if (bytes[index].root != LirNoReg)
+                    return std::nullopt;
+                bytes[index] = (*right)[index];
+            }
+            return bytes;
+        }
+        return std::nullopt;
+    };
+    const auto bytes = bytesOf(instruction.dst);
+    if (!bytes)
+        return false;
+    // Every byte of the value comes from one place, at consecutive offsets in one direction or the other.
+    const auto &first = (*bytes)[0];
+    bool little = first.root != LirNoReg;
+    bool big = first.root != LirNoReg;
+    for (int index = 0; index < width; ++index) {
+        const auto &byte = (*bytes)[static_cast<std::size_t>(index)];
+        little = little && byte.root == first.root && byte.offset == first.offset + index;
+        big = big && byte.root == first.root && byte.offset == first.offset - index;
+    }
+    if ((!little && !big) || (big && width == 2))
+        return false;
+    // The byte loads read memory where they stand; the wide load reads it here. Nothing in between may write.
+    const auto position = [&](const LirInstr *target) -> std::optional<std::size_t> {
+        const auto &instructions = currentBlock->instrs;
+        if (instructions.empty() || target < instructions.data() || target >= instructions.data() + instructions.size())
+            return std::nullopt;
+        return static_cast<std::size_t>(target - instructions.data());
+    };
+    const auto end = position(&instruction);
+    if (!end)
+        return false;
+    std::size_t start = *end;
+    for (const auto *load : loads) {
+        const auto at = position(load);
+        if (!at)
+            return false;
+        start = std::min(start, *at);
+    }
+    for (std::size_t index = start; index < *end; ++index) {
+        const LirInstr &between = currentBlock->instrs[index];
+        // Atomics never reach machine selection; a function using one keeps the direct emitter.
+        if (between.isVolatile || between.op == LirOpcode::Store || between.op == LirOpcode::Call ||
+            between.op == LirOpcode::CallIndirect)
+            return false;
+    }
+    bool fits = true;
+    const std::int64_t lowest = little ? first.offset : first.offset - (width - 1);
+    const Address address = Offset(AddressOf(first.root), lowest, fits);
+    if (!fits)
+        return false;
+    const Reg destination = Value(instruction.dst);
+    LoadInto(destination, address, type);
+    if (big)
+        Emit(Op::Bswap, static_cast<std::uint8_t>(width), {Operand::UseDef(destination)});
+    return true;
+}
+
 void Selector::SelectStore(const LirInstr &instruction) {
     const LirReg value = instruction.srcs[0];
     const Address address = AddressOf(instruction.srcs[1]);
@@ -865,11 +1011,14 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
     case LirOpcode::Store:
         SelectStore(instruction);
         return;
+    case LirOpcode::Or:
+        if (!SelectCombinedLoad(instruction))
+            SelectBinary(instruction);
+        return;
     case LirOpcode::Add:
     case LirOpcode::Sub:
     case LirOpcode::Mul:
     case LirOpcode::And:
-    case LirOpcode::Or:
     case LirOpcode::Xor:
         SelectBinary(instruction);
         return;
@@ -1185,6 +1334,7 @@ void Selector::SelectBlock(const std::uint32_t lirBlock) {
     current = blockEntry[lirBlock];
     EmitPhiDestinations(lirBlock);
     const auto &block = func.blocks[lirBlock];
+    currentBlock = &block;
     if (block.term && Fusable(lirBlock, *block.term)) {
         const LirInstr *comparison = definitions.at(block.term->cond);
         // Materialized as well only when something besides the branch reads the result.

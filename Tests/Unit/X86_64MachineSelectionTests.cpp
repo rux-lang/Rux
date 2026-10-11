@@ -179,6 +179,12 @@ TEST_CASE("machine encoding spells general operand forms") {
     CHECK(Encode(Make(Op::Cmp, 4, {Operand::Use(Rdx), Operand::Use(R11)})) ==
           std::vector<std::uint8_t>{0x41, 0x3B, 0xD3});
 
+    // A byte swap names its register in the opcode byte; REX.W widens it and REX.B reaches r8-r15.
+    CHECK(Encode(Make(Op::Bswap, 8, {Operand::UseDef(Rax)})) == std::vector<std::uint8_t>{0x48, 0x0F, 0xC8});
+    CHECK(Encode(Make(Op::Bswap, 8, {Operand::UseDef(R9)})) == std::vector<std::uint8_t>{0x49, 0x0F, 0xC9});
+    CHECK(Encode(Make(Op::Bswap, 4, {Operand::UseDef(Rdx)})) == std::vector<std::uint8_t>{0x0F, 0xCA});
+    CHECK(Encode(Make(Op::Bswap, 4, {Operand::UseDef(R10)})) == std::vector<std::uint8_t>{0x41, 0x0F, 0xCA});
+
     // A RIP-relative operand records its symbol with the displacement folded into the addend, less any immediate
     // that follows the field.
     Address constant;

@@ -568,6 +568,16 @@ void MachineEncoder::Encode(const Instruction &instruction) {
     case Op::Ror:
         EncodeShift(instruction, 1);
         return;
+    case Op::Bswap: {
+        const auto hardware = HardwareNumber(reg(0));
+        const std::uint8_t rex = static_cast<std::uint8_t>(0x40U | (instruction.size == 8 ? 0x08U : 0U) |
+                                                           ((hardware & 8U) != 0 ? 0x01U : 0U));
+        if (rex != 0x40)
+            Byte(rex);
+        Byte(0x0F);
+        Byte(static_cast<std::uint8_t>(0xC8U + (hardware & 7U)));
+        return;
+    }
     case Op::MovZx:
         switch (instruction.sourceSize) {
         case 1:

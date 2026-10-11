@@ -226,7 +226,10 @@ for fixed operands and call clobbers, memory operands `[base + index*scale + dis
 symbols. Phis become per-edge copies through one temporary per phi, with conditional edges split. Integer values of
 narrow types keep unspecified upper bits and are extended only where an operation reads its full width; Booleans stay
 0 or 1. Comparisons feeding a branch in their own block fuse into `cmp`/`jcc`; `FieldPtr`, `IndexPtr`, allocations and
-globals fold into addressing modes. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
+globals fold into addressing modes, and an index that adds a constant to another 64-bit value moves the constant into
+the displacement. An `or` that assembles a whole 2-, 4- or 8-byte value from zero-extended byte loads at consecutive
+offsets of one address, through byte-multiple shifts, becomes one wide load, followed by `bswap` for most significant
+byte first, when nothing in its block between the first byte load and the `or` stores or calls. `CodeGen/Machine/RegisterAllocator.cpp` colors the result by iterated register
 coalescing over every allocatable register, rematerializes constants and frame addresses instead of spilling them, and
 reports the callee-saved registers the prologue must save. `X86_64/MachineEmission.cpp` frames the function
 (frame pointer kept for stack traces, objects nothing references take no space), copies a small loop-condition block

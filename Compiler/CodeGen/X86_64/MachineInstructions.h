@@ -122,6 +122,8 @@ enum class Op : std::uint16_t {
     Shr,
     Sar,
     Ror,
+    /// Reverses the byte order of a 32- or 64-bit register in place.
+    Bswap,
     // Extension from `sourceSize` bytes of operand 1 into `size` bytes of operand 0.
     MovZx,
     MovSx,

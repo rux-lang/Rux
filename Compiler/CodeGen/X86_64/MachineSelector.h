@@ -71,6 +71,8 @@ private:
     std::unordered_set<const LirInstr *> fusedComparisons;
     std::vector<std::uint32_t> blockEntry;
     std::uint32_t current = 0;
+    /// The LIR block being selected, for combines that must see the instructions around the one they replace.
+    const LirBlock *currentBlock = nullptr;
     std::int32_t outgoingSize = 0;
     bool hasPanic = false;
     Reg hiddenReturnPointer = NoReg;
@@ -127,6 +129,9 @@ private:
     void SelectInstruction(const LirInstr &instruction);
     void SelectConstant(const LirInstr &instruction);
     void SelectLoad(const LirInstr &instruction);
+    /// Selects an `or` that assembles a whole value from consecutive bytes of memory as one wide load, reversed for
+    /// big-endian order. Returns false, emitting nothing, for any other `or`.
+    [[nodiscard]] bool SelectCombinedLoad(const LirInstr &instruction);
     void SelectStore(const LirInstr &instruction);
     void SelectAddress(const LirInstr &instruction);
     void SelectBinary(const LirInstr &instruction);

@@ -35,6 +35,7 @@ namespace {
     case Op::Shr:
     case Op::Sar:
     case Op::Ror:
+    case Op::Bswap:
     case Op::MovZx:
     case Op::MovSx:
     case Op::SetCc:
