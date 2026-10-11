@@ -14,6 +14,7 @@ func Choose(test: bool, pointer: *var int, a: int, b: int) -> int {
 }
 
 func Main() -> int {
+    CheckGuardedLoops();
     var first = 0;
     var second = 0;
     for input in -30..30 {
@@ -40,6 +41,52 @@ func Main() -> int {
     AliasPair(@pair, @pair);
     Assert(pair.first == 42 && pair.second == 42, "borrowed aggregate helper preserves aliases");
     return 0;
+}
+
+func GuardedWalk(limit: uint, row: uint, bound: uint, result: *var uint) -> uint {
+    for i in 0u..limit {
+        let index = row + i;
+        if index < bound { *result += index; }
+        else { return 123u; }
+    }
+    return *result;
+}
+
+func ReferenceWalk(limit: uint, row: uint, bound: uint, result: *var uint) -> uint {
+    var remaining = limit;
+    var index = row;
+    while remaining != 0u {
+        if index >= bound { return 123u; }
+        *result += index;
+        index += 1u;
+        remaining -= 1u;
+    }
+    return *result;
+}
+
+func CheckGuardedLoops() {
+    for limit in 0u..13u {
+        for row in 0u..13u {
+            for bound in 0u..13u {
+                var actual = 7u;
+                var expected = 7u;
+                Assert(GuardedWalk(limit, row, bound, @actual) == ReferenceWalk(limit, row, bound, @expected),
+                    "guarded traversal agrees with independent countdown loop");
+                Assert(actual == expected, "guard failure preserves writes before an early exit");
+            }
+        }
+    }
+    let maximum = 18446744073709551615u;
+    for row in [0u, maximum - 1u, maximum] {
+        for limit in [0u, 1u, 2u, maximum] {
+            var actual = 7u;
+            var expected = 7u;
+            let bound = row == 0u ? 2u : maximum;
+            Assert(GuardedWalk(limit, row, bound, @actual) == ReferenceWalk(limit, row, bound, @expected),
+                "maximum endpoints and wrapping offsets retain checked behavior");
+            Assert(actual == expected, "extreme guard fallback preserves side effects");
+        }
+    }
 }
 
 struct BorrowedPair { first: int; second: int; }

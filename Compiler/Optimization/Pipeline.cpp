@@ -7,6 +7,7 @@
 #include "Optimization/LirDeclarationPruner.h"
 #include "Optimization/LirInliner.h"
 #include "Optimization/LirLoopInvariants.h"
+#include "Optimization/LirLoopVersioning.h"
 #include "Optimization/LirMemoryPromotion.h"
 #include "Optimization/LirScalarCombines.h"
 #include "Optimization/LirScalarReplacement.h"
@@ -36,6 +37,7 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
         pipeline.lir.Add(std::make_unique<LirScalarCombines>());
         pipeline.lir.Add(std::make_unique<LirValueNumbering>());
         pipeline.lir.Add(std::make_unique<LirLoopInvariants>());
+        pipeline.lir.Add(std::make_unique<LirLoopVersioning>());
         pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
         pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
         pipeline.lir.Add(std::make_unique<LirCfgVerifier>());

@@ -1,5 +1,6 @@
 #include "Ir/Lir/Dominance.h"
 #include "Optimization/LirLoopInvariants.h"
+#include "Optimization/LirLoopVersioning.h"
 #include "Optimization/LirMemoryPromotion.h"
 #include "Optimization/LirScalarReplacement.h"
 #include "Optimization/LirSsaVerifier.h"
@@ -385,4 +386,117 @@ TEST_CASE("Loop motion avoids adding another live value to a crowded loop") {
     CHECK(SsaErrors(package).empty());
     const auto &entry = package.modules[0].funcs[0].blocks[0].instrs;
     CHECK_FALSE(std::ranges::any_of(entry, [](const auto &instruction) { return instruction.op == LirOpcode::Mul; }));
+}
+
+namespace {
+LirPackage VersioningLoop() {
+    return Promoted(R"(
+        func Walk(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
+            for i in 0u..limit {
+                let index = row + i;
+                if index < bound { *pointer += index; }
+                else { return 123u; }
+            }
+            return *pointer;
+        }
+    )");
+}
+} // namespace
+
+TEST_CASE("Guarded loop versioning preserves scalar fallback and SSA") {
+    auto package = VersioningLoop();
+    REQUIRE(SsaErrors(package).empty());
+    auto &function = package.modules[0].funcs[0];
+    const auto oldCount = function.blocks.size();
+    const auto original = function.blocks;
+    Optimization::LirLoopVersioning versioning;
+    REQUIRE(versioning.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(package).empty());
+    CHECK(function.blocks.size() > oldCount);
+    std::size_t removedChecks = 0;
+    for (std::size_t block = 1; block < oldCount; ++block) {
+        CHECK(function.blocks[block].term->kind == original[block].term->kind);
+        CHECK(function.blocks[block].term->cond == original[block].term->cond);
+    }
+    for (std::size_t block = oldCount; block < function.blocks.size(); ++block) {
+        CHECK(function.blocks[block].label.contains(".range.fast."));
+        removedChecks += function.blocks[block].term->kind == LirTermKind::Branch;
+    }
+    CHECK_EQ(removedChecks, 1); // Only the iteration test remains in the fast loop.
+    Optimization::PassContext later;
+    later.iteration = 1;
+    CHECK(versioning.Run(package, later) == Optimization::PassChange::None);
+}
+
+TEST_CASE("Loop versioning rejects unproven induction and volatile accesses") {
+    for (const auto mode : {0, 1, 2, 3}) {
+        auto package = VersioningLoop();
+        for (auto &block : package.modules[0].funcs[0].blocks) {
+            for (auto &instruction : block.instrs) {
+                if (mode == 0 && instruction.op == LirOpcode::Const && instruction.strArg == "1")
+                    instruction.strArg = "2";
+                if (mode == 1 && instruction.op == LirOpcode::Const && instruction.strArg == "0")
+                    instruction.strArg = "1";
+                if (mode == 2 && instruction.op == LirOpcode::Store)
+                    instruction.isVolatile = true;
+                if (mode == 3 && instruction.op == LirOpcode::Phi)
+                    instruction.type = TypeRef::MakeInt();
+            }
+        }
+        Optimization::LirLoopVersioning versioning;
+        CHECK(versioning.Run(package, {}) == Optimization::PassChange::None);
+    }
+}
+
+TEST_CASE("Loop versioning retains memory-dependent bounds") {
+    auto package = Promoted(R"(
+        func Walk(limit: uint, row: uint, bound: *var uint) {
+            for i in 0u..limit {
+                if row + i < *bound { *bound -= 1u; }
+                else { return; }
+            }
+        }
+    )");
+    Optimization::LirLoopVersioning versioning;
+    CHECK(versioning.Run(package, {}) == Optimization::PassChange::None);
+    CHECK(SsaErrors(package).empty());
+}
+
+TEST_CASE("Loop versioning remaps exit phis and rejects unmerged live outs") {
+    auto package = VersioningLoop();
+    auto &function = package.modules[0].funcs[0];
+    std::uint32_t header = 0;
+    LirReg induction = LirNoReg;
+    LirReg next = 0;
+    for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        for (const auto &instruction : function.blocks[block].instrs) {
+            if (instruction.dst != LirNoReg)
+                next = std::max(next, instruction.dst + 1);
+            if (instruction.op == LirOpcode::Phi) {
+                header = block;
+                induction = instruction.dst;
+            }
+        }
+    }
+    REQUIRE(induction != LirNoReg);
+    const auto target = function.blocks[header].term->falseTarget;
+    auto unmerged = package;
+    unmerged.modules[0].funcs[0].blocks[target].term = ReturnValue(induction, TypeRef::MakeUInt());
+    Optimization::LirLoopVersioning versioning;
+    CHECK(SsaErrors(unmerged).empty());
+    CHECK(versioning.Run(unmerged, {}) == Optimization::PassChange::None);
+    LirInstr exitPhi;
+    exitPhi.op = LirOpcode::Phi;
+    exitPhi.dst = next;
+    exitPhi.type = TypeRef::MakeUInt();
+    exitPhi.phiPreds = {{induction, header}};
+    function.blocks[target].instrs.insert(function.blocks[target].instrs.begin(), exitPhi);
+    function.blocks[target].term = ReturnValue(next, exitPhi.type);
+    REQUIRE(SsaErrors(package).empty());
+    REQUIRE(versioning.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK(SsaErrors(package).empty());
+    const auto &incoming = function.blocks[target].instrs.front().phiPreds;
+    REQUIRE_EQ(incoming.size(), 2);
+    CHECK_NE(incoming[0].first, incoming[1].first);
+    CHECK_NE(incoming[0].second, incoming[1].second);
 }

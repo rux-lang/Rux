@@ -350,3 +350,13 @@ The x86 scalar machine layer selects allocated uint32 arithmetic with 32-bit arc
 encodings. Add, subtract, multiply and bitwise operations wrap in the low word and implicitly zero-extend their
 result. Last-use input coalescing applies to this class; signed 32-bit normalization, spills, division and unsafe
 destructive overlaps retain their existing fallback paths. Textual assembly and binary emission share selection.
+
+Guarded loop versioning runs once after invariant motion in Release. It recognizes an innermost, single-entry
+unsigned 64-bit traversal starting at zero, increasing by one and continuing while the induction value is below an
+invariant limit. For an invariant row offset and bound, `row <= bound && count <= bound - row` proves every executed
+`row + index < bound` test. A guard failure selects the original checked loop; it never raises a preheader panic.
+The guard contains only register arithmetic. It neither reads memory nor assumes that different pointers do not alias.
+The fast copy preserves memory operations, floating-point order, early exits and source contexts. SSA definitions and
+exit-phi edges are remapped. Unmerged live-out values, memory-dependent bounds, volatile operations, calls, local
+allocations, non-unit steps, signed induction and narrowing conversions are rejected. The initial implementation caps
+loop size, instruction count and checks, and versions at most one innermost loop per function per pipeline run.
