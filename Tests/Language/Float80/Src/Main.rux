@@ -351,8 +351,9 @@ func Main() -> int {
     Assert(ToFloat64(-Infinity) == -float64::Infinity, "and an infinity an infinity");
     Assert(Same(FromFloat64(-0.0), NegativeZero), "and minus zero minus zero");
 
-    // Fields, arguments, returns and static data. The call's product is the one rounding here the optimizer cannot
-    // fold, so a host whose x87 only approximates, as Prism on Windows on Arm does, defines ApproximateX87.
+    // Fields, arguments, returns and static data. The products in the call and in the loop are the arithmetic here the
+    // optimizer cannot fold, so they run on the x87 unit, which Prism on Windows on Arm computes as float64 and
+    // rounds even a product by one; a run under it defines ApproximateX87.
     when !#config.Has("ApproximateX87") {
         let sample = Sample { tag: 1i8, value: Tenth };
         let scaled = Scaled(sample, Third);
@@ -361,9 +362,9 @@ func Main() -> int {
         samples[0] = sample;
         samples[1] = scaled;
         Assert(Same(samples[1].value, TenthTimesThird) && Same(samples[0].value, Tenth), "and through an array");
-    }
-    for i in 0..4 {
-        Assert(Same(Multiply(Table[i], One), Table[i]), "a constant table keeps every element");
+        for i in 0..4 {
+            Assert(Same(Multiply(Table[i], One), Table[i]), "a constant table keeps every element");
+        }
     }
     Assert(Same(Table[0], Tenth) && Same(Table[1], NegativeZero), "with its rounding and its sign");
     Assert(Same(Table[2], float80::Max) && Same(Table[3], Infinity), "and its limits");

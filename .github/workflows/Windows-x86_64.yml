@@ -100,8 +100,8 @@ jobs:
           path: Bin
 
       # Prism approximates x87 arithmetic with float64 unless an app opts out
-      # by hand, so x86-64 float80 results that round at run time are not the
-      # hardware's. ApproximateX87 compiles out the checks that pin them.
+      # by hand, so x86-64 float80 arithmetic at run time does not give the
+      # hardware's results. ApproximateX87 compiles out the checks that pin them.
       - name: Test the translated compiler
         shell: pwsh
         run: |
