@@ -8,7 +8,7 @@
 // since `==` would call -0 and +0 the same and every NaN different. A NaN result is only checked to be a NaN, because
 // its sign and payload are not specified at run time.
 
-import Core::Assert;
+import Core::{ Assert, #config };
 import Core::{ float128, float256, float32, float512, float64, float80, int128, int256, int32, int64, int8, uint128,
                uint32, uint512, uint64, uint8 };
 
@@ -351,14 +351,17 @@ func Main() -> int {
     Assert(ToFloat64(-Infinity) == -float64::Infinity, "and an infinity an infinity");
     Assert(Same(FromFloat64(-0.0), NegativeZero), "and minus zero minus zero");
 
-    // Fields, arguments, returns and static data.
-    let sample = Sample { tag: 1i8, value: Tenth };
-    let scaled = Scaled(sample, Third);
-    Assert(scaled.tag == 2i8 && Same(scaled.value, TenthTimesThird), "a struct field passes through a call");
-    var samples: Sample[2];
-    samples[0] = sample;
-    samples[1] = scaled;
-    Assert(Same(samples[1].value, TenthTimesThird) && Same(samples[0].value, Tenth), "and through an array");
+    // Fields, arguments, returns and static data. The call's product is the one rounding here the optimizer cannot
+    // fold, so a host whose x87 only approximates, as Prism on Windows on Arm does, defines ApproximateX87.
+    when !#config.Has("ApproximateX87") {
+        let sample = Sample { tag: 1i8, value: Tenth };
+        let scaled = Scaled(sample, Third);
+        Assert(scaled.tag == 2i8 && Same(scaled.value, TenthTimesThird), "a struct field passes through a call");
+        var samples: Sample[2];
+        samples[0] = sample;
+        samples[1] = scaled;
+        Assert(Same(samples[1].value, TenthTimesThird) && Same(samples[0].value, Tenth), "and through an array");
+    }
     for i in 0..4 {
         Assert(Same(Multiply(Table[i], One), Table[i]), "a constant table keeps every element");
     }
