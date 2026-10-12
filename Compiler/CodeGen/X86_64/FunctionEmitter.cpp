@@ -1125,9 +1125,12 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         else {
             encoder.MovR11Load(Disp(pointer));
         }
-        if (IsAggregate(type) && (runtimeSize > 8 || (runtimeSize > 0 && runtimeSize != 1 && runtimeSize != 2 &&
-                                                      runtimeSize != 4 && runtimeSize != 8))) {
-            // The same odd widths on the way out: chunked, so nothing beyond the object is touched.
+        if (IsAggregate(type) &&
+            (runtimeSize > 8 || IsRegPointerTo(value, type) ||
+             (runtimeSize > 0 && runtimeSize != 1 && runtimeSize != 2 && runtimeSize != 4 && runtimeSize != 8))) {
+            // The same odd widths on the way out: chunked, so nothing beyond the object is touched. An aggregate the
+            // value register only points at is copied from there at any width, since loading the register would
+            // store the address.
             if (IsRegPointerTo(value, type)) {
                 if (const auto physical = physicalRegisters.find(value); physical != physicalRegisters.end()) {
                     encoder.MovR10PhysReg(physical->second);

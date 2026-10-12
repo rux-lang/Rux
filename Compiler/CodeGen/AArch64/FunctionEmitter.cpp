@@ -703,7 +703,11 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             return true;
         }
         const A64Reg address = hooks.ReadPointerOperand(instruction.srcs[1], A64::Xn(kAddr));
-        if (IsAggregate(type) && size > 8) {
+        // An aggregate the value register only points at is copied from there whatever its size: reading the
+        // register as the value would store the address. An odd width is chunked the same way, so nothing beyond the
+        // object is touched, as the x86-64 back end does.
+        if (IsAggregate(type) &&
+            (size > 8 || IsRegPointerTo(valueReg, type) || (size != 1 && size != 2 && size != 4 && size != 8))) {
             A64Reg source = A64::Xn(kSrcAddr);
             if (IsRegPointerTo(valueReg, type)) {
                 source = hooks.ReadPointerOperand(valueReg, source);
