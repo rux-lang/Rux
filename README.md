@@ -54,7 +54,7 @@ Rux is written in C++26 and builds exclusively with upstream Clang 23.1 or newer
 - [macOS](Docs/Platforms/macOS.md#building-from-source)
 - [Windows](Docs/Platforms/Windows.md#building-from-source)
 
-Once the prerequisites are installed, one entry point covers local development. `sh Run.sh build` configures and builds the compiler, and `sh Run.sh test` runs the complete verification workflow; `format`, `policy`, `tidy`, `unit`, and `clean` are the individual steps. On Windows, use `.\Run.ps1 build` and `.\Run.ps1 test`. Run the script with no arguments for the full command and option summary.
+Once the prerequisites are installed, one entry point covers local development. `sh Run.sh build` configures and builds the compiler, and `sh Run.sh test` runs the complete verification workflow; `format`, `policy`, `tidy`, `unit`, `sync`, and `clean` are the individual steps. On Windows, use `.\Run.ps1 build` and `.\Run.ps1 test`. Run the script with no arguments for the full command and option summary.
 
 ## Contributing
 

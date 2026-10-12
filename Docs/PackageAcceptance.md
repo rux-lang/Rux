@@ -92,8 +92,10 @@ Nine test packages — `Tests/Packages/{Linux,macOS,FreeBSD}/{Descriptors,Mappin
 The package cache has to match the working tree first, or a check resolves a dependency from a stale copy and fails for a reason that is not in the source:
 
 ```sh
-pwsh -File Scripts/SyncLocalPackages.ps1
+sh Run.sh sync
 ```
+
+On Windows, use `./Run.ps1 sync`.
 
 Then the grid, which takes about a minute:
 

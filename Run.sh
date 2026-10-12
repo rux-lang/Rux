@@ -26,6 +26,8 @@ shard_count=1
 no_pch=false
 osx_architecture=
 no_tests=false
+cache_root=
+dry_run=false
 
 usage() {
     printf '%s\n' \
@@ -39,6 +41,7 @@ usage() {
         '  tidy      Run clang-tidy over maintained C++ sources' \
         '  unit      Run the C++ unit tests through CTest' \
         '  clean     Remove the build directory and Bin' \
+        '  sync      Copy the repository packages into the local package cache' \
         '  help      Show this help' \
         '' \
         'Options:' \
@@ -57,13 +60,16 @@ usage() {
         '  --osx-architecture ARCH        Build for this macOS architecture (build, test; default: the host)' \
         '  --shard-count N                Split the analysis into N disjoint shards (tidy; default: 1)' \
         '  --shard-index N                Analyze shard N of --shard-count, counting from zero (tidy)' \
+        '  --cache-root PATH              Package cache to synchronize (sync; default: $HOME/.rux/packages)' \
+        '  --dry-run                      Report the sync without changing the cache (sync)' \
         '  -h, --help                     Show this help' \
         '' \
         'Examples:' \
         '  sh Run.sh build --configuration Debug' \
         '  sh Run.sh format --check' \
         '  sh Run.sh test --skip-build --clang-tidy --jobs 4' \
-        '  sh Run.sh tidy --shard-count 3 --shard-index 0'
+        '  sh Run.sh tidy --shard-count 3 --shard-index 0' \
+        '  sh Run.sh sync --dry-run'
 }
 
 require_value() {
@@ -79,6 +85,7 @@ command_options() {
     tidy) printf '%s' '--build-directory --jobs --shard-index --shard-count' ;;
     unit) printf '%s' '--configuration --build-directory --jobs' ;;
     clean) printf '%s' '--build-directory' ;;
+    sync) printf '%s' '--cache-root --dry-run' ;;
     *) printf '%s' '' ;;
     esac
 }
@@ -102,7 +109,7 @@ help | -h | --help)
     usage
     exit 0
     ;;
-build | test | format | policy | tidy | unit | clean)
+build | test | format | policy | tidy | unit | clean | sync)
     subcommand=$1
     shift
     ;;
@@ -207,6 +214,18 @@ while [ "$#" -gt 0 ]; do
         esac
         [ "$shard_count" -ge 1 ] 2>/dev/null || die "option '--shard-count' requires a positive integer"
         shift 2
+        ;;
+    --cache-root)
+        require_option "$1"
+        require_value "$@"
+        cache_root=$2
+        [ -n "$cache_root" ] || die "option '--cache-root' requires a non-empty path"
+        shift 2
+        ;;
+    --dry-run)
+        require_option "$1"
+        dry_run=true
+        shift
         ;;
     -h | --help)
         usage
@@ -736,6 +755,135 @@ run_clean() {
     done
 }
 
+# The value of the single quoted `$2 = "..."` field in manifest $1.
+manifest_string() {
+    manifest_pattern="^[[:space:]]*$2[[:space:]]*=[[:space:]]*\"([^\"]+)\"[[:space:]]*(#.*)?\$"
+    [ "$(grep -cE "$manifest_pattern" "$1" || true)" -eq 1 ] ||
+        die "manifest '$1' must contain exactly one quoted '$2' field"
+    sed -n -E "s/$manifest_pattern/\\1/p" "$1"
+}
+
+# The compiler's NormalizeIdentity: ASCII lowercase, with `_` spelled `-`.
+normalize_identity() {
+    printf '%s' "$1" | LC_ALL=C tr 'A-Z_' 'a-z-'
+}
+
+# Copy every repository package into the local package cache. A dependency
+# resolved through the cache is otherwise a stale copy of the package in the
+# working tree. Each namespace the repository publishes is replaced whole, so a
+# package or version removed from Packages/ leaves the cache too, while other
+# namespaces, such as downloaded third-party packages, are kept. Every manifest
+# is validated before the cache changes.
+run_sync() {
+    source_root=$(cd -P "$repository_root/Packages" 2>/dev/null && pwd) ||
+        die "repository package directory '$repository_root/Packages' does not exist"
+
+    # The cache the compiler reads (Compiler/Package/Cache.cpp).
+    case "$cache_root" in
+    '') cache_path=${HOME:-/tmp}/.rux/packages ;;
+    /*) cache_path=$cache_root ;;
+    *) cache_path=$repository_root/$cache_root ;;
+    esac
+    while :; do
+        case "$cache_path" in
+        */) cache_path=${cache_path%/} ;;
+        *) break ;;
+        esac
+    done
+    # Resolve the nearest existing ancestor physically, so a symbolic link
+    # cannot hide an overlap with the repository packages.
+    cache_suffix=
+    cache_existing=$cache_path
+    while [ -n "$cache_existing" ] && [ ! -d "$cache_existing" ]; do
+        cache_suffix=/${cache_existing##*/}$cache_suffix
+        cache_existing=${cache_existing%/*}
+    done
+    cache_resolved=$(cd -P "${cache_existing:-/}" && pwd)
+    [ "$cache_resolved" != / ] || cache_resolved=
+    cache_path=$cache_resolved$cache_suffix
+
+    [ -n "$cache_path" ] || die "refusing to use filesystem root '/' as the package cache"
+    case "$cache_path/" in
+    "$source_root"/*) die "package cache '$cache_path' cannot overlap the repository package directory" ;;
+    esac
+    case "$source_root/" in
+    "$cache_path"/*) die "package cache '$cache_path' cannot overlap the repository package directory" ;;
+    esac
+
+    sync_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rux-sync.XXXXXX")
+
+    # The manifest schema restricts these values to safe, single path segments.
+    identity_pattern='^[A-Za-z0-9]+([-_][A-Za-z0-9]+)*$'
+    version_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+    : >"$sync_scratch/packages"
+    for package_source in "$source_root"/*/; do
+        [ -d "$package_source" ] || continue
+        package_source=${package_source%/}
+        package_manifest=$package_source/Rux.toml
+        [ -f "$package_manifest" ] || die "package directory '$package_source' does not contain Rux.toml"
+        package_namespace=$(manifest_string "$package_manifest" Namespace)
+        package_name=$(manifest_string "$package_manifest" Name)
+        package_version=$(manifest_string "$package_manifest" Version)
+        printf '%s' "$package_namespace" | grep -Eq "$identity_pattern" ||
+            die "manifest '$package_manifest' has an invalid package namespace '$package_namespace'"
+        printf '%s' "$package_name" | grep -Eq "$identity_pattern" ||
+            die "manifest '$package_manifest' has an invalid package name '$package_name'"
+        printf '%s' "$package_version" | grep -Eq "$version_pattern" ||
+            die "manifest '$package_manifest' has an invalid package version '$package_version'"
+        # Tab-separated, so the source path may hold spaces: namespace, name, version, source.
+        printf '%s\t%s\t%s\t%s\n' "$package_namespace" "$package_name" "$package_version" "$package_source" \
+            >>"$sync_scratch/packages"
+        normalize_identity "$package_namespace" >>"$sync_scratch/namespaces"
+        printf '\n' >>"$sync_scratch/namespaces"
+        printf '%s/%s\n' "$(normalize_identity "$package_namespace")" "$(normalize_identity "$package_name")" \
+            >>"$sync_scratch/identities"
+    done
+    package_count=$(wc -l <"$sync_scratch/packages" | tr -d '[:space:]')
+    [ "$package_count" -gt 0 ] || die "no packages were found below '$source_root'"
+
+    duplicate=$(sort "$sync_scratch/identities" | uniq -d | sed -n 1p)
+    [ -z "$duplicate" ] || die "repository contains duplicate package identity '$duplicate'"
+
+    # The compiler finds cache directories by normalized identity, so every
+    # spelling of a published namespace is stale.
+    : >"$sync_scratch/stale"
+    if [ -d "$cache_path" ]; then
+        for cached in "$cache_path"/*/; do
+            [ -d "$cached" ] || continue
+            cached=${cached%/}
+            if grep -qxF "$(normalize_identity "${cached##*/}")" "$sync_scratch/namespaces"; then
+                printf '%s\n' "$cached" >>"$sync_scratch/stale"
+            fi
+        done
+    fi
+
+    tab=$(printf '\t')
+    if [ "$dry_run" = true ]; then
+        step "Planning sync of $package_count repository packages (dry run)"
+        while IFS= read -r cached; do
+            printf "  Would remove '%s'\n" "$cached"
+        done <"$sync_scratch/stale"
+        while IFS="$tab" read -r package_namespace package_name package_version package_source; do
+            printf '  Would copy %s/%s@%s\n' "$package_namespace" "$package_name" "$package_version"
+        done <"$sync_scratch/packages"
+        printf "  Cache: '%s'\n" "$cache_path"
+    else
+        step "Synchronizing $package_count repository packages"
+        while IFS= read -r cached; do
+            rm -rf "$cached"
+            printf "  Removed '%s'\n" "$cached"
+        done <"$sync_scratch/stale"
+        while IFS="$tab" read -r package_namespace package_name package_version package_source; do
+            package_parent=$cache_path/$package_namespace/$package_name
+            mkdir -p "$package_parent"
+            cp -R "$package_source" "$package_parent/$package_version"
+        done <"$sync_scratch/packages"
+        printf "  Copied %s packages to '%s'\n" "$package_count" "$cache_path"
+    fi
+
+    rm -rf "$sync_scratch"
+}
+
 run_test() {
     run_policy
 
@@ -757,6 +905,7 @@ run_test() {
     fi
 
     run_unit
+    run_sync
     run_rux_suites
 }
 
@@ -788,6 +937,10 @@ unit)
 clean)
     run_clean
     finished "Finished clean in $(format_duration $(($(date +%s) - started_at)))"
+    ;;
+sync)
+    run_sync
+    finished "Finished package sync in $(format_duration $(($(date +%s) - started_at)))"
     ;;
 test)
     run_test
