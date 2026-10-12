@@ -1087,7 +1087,7 @@ TEST_CASE("Split strided loops run fast exactly while every visited index fits")
                     // stops where one more step could wrap.
                     const std::uint64_t fits = row <= bound ? bound - row : 0;
                     const std::uint64_t unwrapped = 0xFFFFFFFFFFFFFFFFull - (stride - 1);
-                    CHECK_EQ(*fast, std::min({limit, fits, unwrapped}));
+                    CHECK_EQ(*fast, std::min<std::uint64_t>({limit, fits, unwrapped}));
                 }
             }
         }
