@@ -47,10 +47,12 @@ std::string ProfilerName(const std::string_view name) {
 // assembled, because the linker owns no code generator: the sequence is
 // mov x9, sp / adrp x10, frame / str x9, [x10, :lo12:frame] / and x9, x9, #-16 /
 // mov sp, x9 / bl Main, closed by either mov x8, #nr / svc #0 or bl exit / brk #0.
+// FreeBSD keeps X0 rather than X9 in the frame word.
 namespace A64Entry {
 constexpr uint32_t MovX9Sp = 0x910003E9;
 constexpr uint32_t AdrpX10 = 0x9000000A;
 constexpr uint32_t StrX9X10 = 0xF9000149;
+constexpr uint32_t StrX0X10 = 0xF9000140;
 constexpr uint32_t AndX9Neg16 = 0x927CED29;
 constexpr uint32_t MovSpX9 = 0x9100013F;
 constexpr uint32_t Bl = 0x94000000;
@@ -227,11 +229,18 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     //    instruction itself rather than a field inside it, since an AArch64
     //    relocation rewrites a whole word.
     //    Before anything else, a program that reads its start frame keeps the
-    //    stack pointer the kernel started it with, which addresses the
-    //    argument count, the argument and environment pointers and the
-    //    auxiliary vector, in the word the linker defines for
-    //    `Core::ProcessStartFrame` to read.
+    //    address of the argument count, the argument and environment pointers
+    //    and the auxiliary vector in the word the linker defines for
+    //    `Core::ProcessStartFrame` to read. Linux starts a process with the
+    //    stack pointer at that block, and its dynamic loader restores it before
+    //    entering the program. FreeBSD passes the block's address in the first
+    //    argument register instead, RDI or X0, and only rounds the stack
+    //    pointer near it for alignment; its rtld also moves the stack pointer
+    //    and passes the address on in the same register, so the stack pointer
+    //    misses the count whenever the block is not aligned the way the
+    //    rounding assumes.
     const bool keepsStartFrame = !isShared && graph->FindDefinition(kProcessStartFrameSymbol).has_value();
+    const bool startFrameInFirstArgument = profile.os == Target::OS::FreeBSD;
     Buf textPre;
     size_t callMainOffset = 0;
     size_t callExitOffset = 0;
@@ -246,8 +255,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             WriteU32(textPre, A64Entry::MovX9Sp);
             if (keepsStartFrame) {
                 storeFrameOffset = textPre.size();
-                WriteU32(textPre, A64Entry::AdrpX10);  // adrp x10, frame
-                WriteU32(textPre, A64Entry::StrX9X10); // str x9, [x10, :lo12:frame]
+                WriteU32(textPre, A64Entry::AdrpX10); // adrp x10, frame
+                // str x0 or x9, [x10, :lo12:frame]
+                WriteU32(textPre, startFrameInFirstArgument ? A64Entry::StrX0X10 : A64Entry::StrX9X10);
             }
             WriteU32(textPre, A64Entry::AndX9Neg16);
             WriteU32(textPre, A64Entry::MovSpX9);
@@ -266,7 +276,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         else {
             if (keepsStartFrame) {
                 storeFrameOffset = textPre.size();
-                textPre.insert(textPre.end(), {0x48, 0x89, 0x25, 0x00, 0x00, 0x00, 0x00}); // mov [rip+frame], rsp
+                // mov [rip+frame], rdi or rsp
+                const uint8_t source = startFrameInFirstArgument ? 0x3D : 0x25;
+                textPre.insert(textPre.end(), {0x48, 0x89, source, 0x00, 0x00, 0x00, 0x00});
             }
             textPre.insert(textPre.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16 (align stack)
             callMainOffset = textPre.size();

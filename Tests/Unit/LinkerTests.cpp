@@ -780,6 +780,36 @@ TEST_CASE("an x86-64 ELF entry stub keeps the initial stack pointer for a progra
     CHECK(stored % 8 == 0);
 }
 
+// FreeBSD passes the start frame in the first argument register and only rounds the stack pointer near it, so the
+// stub keeps the register rather than the stack pointer.
+TEST_CASE("a FreeBSD ELF entry stub keeps the start frame from the first argument register") {
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-elf-freebsd-frame-test";
+    const auto link = [&](const uint8_t arch, const Target::Arch targetArch) {
+        std::error_code ec;
+        std::filesystem::remove(output, ec);
+        Linker linker({MakeStartFrameReader(arch)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::FreeBSD,
+                      targetArch);
+        REQUIRE(linker.Link(output));
+        std::ifstream stream(output, std::ios::binary);
+        REQUIRE(stream.is_open());
+        ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+        stream.close();
+        std::filesystem::remove(output, ec);
+        return image;
+    };
+
+    const ElfImage aarch64 = link(RcuArch::AArch64, Target::Arch::AArch64);
+    // mov x9, sp / adrp x10, frame / str x0, [x10, :lo12:frame], then the same alignment as Linux.
+    CHECK(aarch64.Word(aarch64.Entry()) == 0x910003E9);
+    CHECK((aarch64.Word(aarch64.Entry() + 8) & 0xFFC003FFU) == 0xF9000140U);
+    CHECK(aarch64.Word(aarch64.Entry() + 12) == 0x927CED29);
+
+    const ElfImage x86 = link(RcuArch::X86_64, Target::Arch::X86_64);
+    // mov [rip+frame], rdi, then and rsp, -16.
+    CHECK((x86.Word(x86.Entry()) & 0xFFFFFFU) == 0x3D8948U);
+    CHECK(x86.Word(x86.Entry() + 7) == 0xF0E48348U);
+}
+
 TEST_CASE("an ELF executable that never reads its start frame keeps the plain entry stub") {
     RcuFile object;
     object.arch = RcuArch::AArch64;
