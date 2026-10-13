@@ -366,3 +366,23 @@ TEST_CASE("Build matrix stats report includes per-cell and aggregate values with
     CHECK(report.contains("\033[32m\033[1mBuilt"));
     CHECK_FALSE(report.contains("\033[31m"));
 }
+
+TEST_CASE("a build matrix built side by side reports the time the whole matrix took") {
+    const std::vector<BuildCellReport> cells{{.profile = Rux::BuildProfile::Debug,
+                                              .target = *Rux::Target::TargetTriple::Parse("linux-x86_64"),
+                                              .outputDirectory = "Bin",
+                                              .succeeded = true,
+                                              .artifactPath = "Bin/App",
+                                              .stats = {},
+                                              .elapsed = std::chrono::milliseconds(900)},
+                                             {.profile = Rux::BuildProfile::Release,
+                                              .target = *Rux::Target::TargetTriple::Parse("linux-x86_64"),
+                                              .outputDirectory = "Bin",
+                                              .succeeded = true,
+                                              .artifactPath = "Bin/App",
+                                              .stats = {},
+                                              .elapsed = std::chrono::milliseconds(800)}};
+    CHECK(FormatBuildMatrixReport("App", cells, {}, false, false).contains("Built 2 cells in 1.7 s"));
+    CHECK(FormatBuildMatrixReport("App", cells, {}, false, false, std::chrono::milliseconds(950))
+              .contains("Built 2 cells in 950 ms"));
+}

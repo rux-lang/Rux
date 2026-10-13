@@ -7,11 +7,13 @@
 #include "Cli/JobsOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
+#include "Cli/Testing/TestScheduler.h"
 #include "Driver/BuildPlan.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "Reporting/Reporting.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -20,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -199,33 +202,61 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                     "Compiling", std::format("{} v{} ({} build cells)", packageName, packageVersion, matrix.size()));
             }
 
-            std::vector<BuildCellReport> reports;
-            reports.reserve(matrix.size());
+            // Each cell writes its own profile and target's artifact, so cells are built side by side, sharing the
+            // threads the build may use, and reported in order. What a cell reports is held until its turn, so reports
+            // never interleave; progress lines are only shown when cells are built one at a time.
+            const std::size_t threads =
+                jobs != 0 ? jobs : std::max<std::size_t>(1, std::thread::hardware_concurrency());
+            const std::size_t concurrent = opts.verbose ? 1 : std::clamp<std::size_t>(matrix.size(), 1, threads);
+            std::vector<std::optional<BuildCellReport>> cellReports(matrix.size());
+            std::vector<std::vector<std::string>> held(matrix.size());
+            const std::vector<TestTask> tasks(matrix.size());
             bool allSucceeded = true;
-            for (const auto &cell : matrix) {
-                output.Verbose(
-                    std::format("Compiling '{}' {}", packageName, FormatBuildContext(cell.profile, cell.target)));
-                CompileOptions copts;
-                Configure(copts);
-                copts.manifest = packageManifest;
-                copts.target = cell.target;
-                copts.profile = cell.profile;
+            const auto matrixStarted = std::chrono::steady_clock::now();
+            RunTestTasks(
+                tasks, concurrent,
+                [&](const std::size_t index) {
+                    const auto &cell = matrix[index];
+                    CompileOptions copts;
+                    Configure(copts);
+                    copts.manifest = packageManifest;
+                    copts.target = cell.target;
+                    copts.profile = cell.profile;
+                    copts.jobs = std::max<std::size_t>(1, threads / concurrent);
+                    if (concurrent > 1) {
+                        copts.emitDiagnostic = [&lines = held[index], color = diagnostics.Style().enabled](
+                                                   const Diagnostic &diagnostic,
+                                                   const SourceLineLookup &sourceLineLookup) {
+                            lines.push_back(RenderDiagnostic(diagnostic, color, sourceLineLookup));
+                        };
+                    }
+                    else {
+                        output.Verbose(std::format("Compiling '{}' {}", packageName,
+                                                   FormatBuildContext(cell.profile, cell.target)));
+                    }
 
-                const auto started = std::chrono::steady_clock::now();
-                CompilerDriver driver(std::move(copts));
-                const CompileResult result = driver.Compile();
-                const auto elapsed = ElapsedMs(started);
-                reports.push_back(BuildCellReport{.profile = cell.profile,
-                                                  .target = cell.target,
-                                                  .outputDirectory = cell.outputDirectory,
-                                                  .succeeded = result.ok,
-                                                  .artifactPath = result.primaryArtifactPath,
-                                                  .stats = result.stats,
-                                                  .elapsed = elapsed});
-                allSucceeded &= result.ok;
-            }
+                    const auto started = std::chrono::steady_clock::now();
+                    CompilerDriver driver(std::move(copts));
+                    const CompileResult result = driver.Compile();
+                    cellReports[index] = BuildCellReport{.profile = cell.profile,
+                                                         .target = cell.target,
+                                                         .outputDirectory = cell.outputDirectory,
+                                                         .succeeded = result.ok,
+                                                         .artifactPath = result.primaryArtifactPath,
+                                                         .stats = result.stats,
+                                                         .elapsed = ElapsedMs(started)};
+                },
+                [&](const std::size_t index) {
+                    for (const auto &text : held[index])
+                        diagnostics.Write(text, MessageVisibility::Always);
+                    allSucceeded &= cellReports[index]->succeeded;
+                });
+            std::vector<BuildCellReport> reports;
+            for (auto &report : cellReports)
+                reports.push_back(std::move(*report));
 
-            output.Write(FormatBuildMatrixReport(packageName, reports, shownRoot, showStats, output.Style().enabled));
+            output.Write(FormatBuildMatrixReport(packageName, reports, shownRoot, showStats, output.Style().enabled,
+                                                 ElapsedMs(matrixStarted)));
             return allSucceeded;
         }
         if (!opts.quiet) {

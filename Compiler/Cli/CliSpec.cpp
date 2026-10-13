@@ -69,6 +69,8 @@ constexpr std::array check_usage = {"[options]"sv};
 constexpr std::array check_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--json"sv, .desc = "Output diagnostics in JSON format"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Check every package even when an earlier check found nothing and is still up to date"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Check code health for a specific target platform"sv}};
 constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x86_64"sv};
 
@@ -202,7 +204,8 @@ constexpr std::array run_exs = {""sv, "--release"sv, "-- --port 8080"sv};
 // Test
 constexpr std::array test_usage = {"[options] [-- <test arguments>...]"sv};
 constexpr std::array test_opts = {
-    OptionDoc{.flags = "--jobs <N>"sv, .desc = "Run up to N test packages concurrently (default: 1)"sv},
+    OptionDoc{.flags = "--jobs <N>"sv,
+              .desc = "Run up to N test packages concurrently (default: one per logical core)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--no-cache"sv,
               .desc = "Compile every test package even when an earlier build is still up to date"sv},

@@ -40,7 +40,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const Reporter diagnostics(stderr, reporterOptions);
     bool isRelease = false;
     bool useBuildCache = true;
-    std::size_t jobs = 1;
+    // Test packages are independent, so by default one runs per logical core.
+    std::size_t jobs = std::max<std::size_t>(1, std::thread::hardware_concurrency());
     std::string_view target;
     std::map<std::string, std::string> defines;
     std::vector<std::string_view> testArguments;

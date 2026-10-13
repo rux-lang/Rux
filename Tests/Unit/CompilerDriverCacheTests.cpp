@@ -134,3 +134,39 @@ pub module Api {
     CHECK(CompilerDriver(release).Compile().stats.upToDate);
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("compiler driver skips a check that found nothing until an input changes") {
+    DependencyFixture fixture;
+    std::vector<Diagnostic> diagnostics;
+
+    const auto first = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+    REQUIRE(first.ok);
+    CHECK_FALSE(first.stats.upToDate);
+    CHECK(first.primaryArtifactPath.empty());
+
+    const auto second = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+    REQUIRE(second.ok);
+    CHECK(second.stats.upToDate);
+    CHECK(second.primaryArtifactPath.empty());
+
+    // A check and a build are separate requests: neither stands in for the other.
+    const auto build = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+    REQUIRE(build.ok);
+    CHECK_FALSE(build.stats.upToDate);
+    CHECK_FALSE(build.primaryArtifactPath.empty());
+    CHECK(diagnostics.empty());
+
+    // A check that reports anything is never recorded, so it reports the same on every run.
+    fixture.SetApplicationSource(R"(
+func Main() -> int {
+    return true;
+}
+)");
+    for (int run = 0; run < 2; ++run) {
+        diagnostics.clear();
+        const auto failing = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+        CHECK_FALSE(failing.ok);
+        CHECK_FALSE(failing.stats.upToDate);
+        CHECK_FALSE(diagnostics.empty());
+    }
+}

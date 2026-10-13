@@ -5,10 +5,10 @@
 //
 // A record names the request (`key`: the compiler executable, the options and the environment a build depends on),
 // every source file and manifest the build read, the listing of every directory sources were discovered in, and the
-// artifacts it produced. A later build is up to date only when all of them still match: the key is equal, every input
-// has the same content (its size and modification time, or failing those its hash), every directory lists the same
-// entries, and every artifact is still the file the build wrote. Anything else, including a missing or unreadable
-// record, rebuilds.
+// artifacts it produced (none, for a check). A later build is up to date only when all of them still match: the key is
+// equal, every input has the same content (its size and modification time, or failing those its hash), every directory
+// lists the same entries, and every artifact is still the file the build wrote. Anything else, including a missing or
+// unreadable record, rebuilds.
 
 #include "Driver/BuildStats.h"
 

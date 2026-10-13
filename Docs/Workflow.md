@@ -311,6 +311,6 @@ Time the repository commands directly, inside the same toolchain environment use
 
 ### Workers and Test Groups
 
-`-Jobs N` / `--jobs N` controls CTest, Rux-test, tidy, and formatting workers; the default is one worker per available logical processor. An explicit value also limits C++ build workers, while ordinary builds retain Ninja's default parallelism. Direct `rux test --jobs N` uses one worker by default.
+`-Jobs N` / `--jobs N` controls CTest, Rux-test, tidy, and formatting workers; the default is one worker per available logical processor. An explicit value also limits C++ build workers, while ordinary builds retain Ninja's default parallelism. Direct `rux test` also uses one worker per logical core unless `--jobs N` says otherwise.
 
 CTest partitions the existing doctest executable by source owner. `Unit.GroupCoverage` verifies every registered case belongs to exactly one group, including included reference-vector cases. Groups with shared fixtures take a resource lock; pure numeric tests can overlap them. Script and installer checks are ordinary CTest registrations; each section of the repository check is its own `Scripts.Repository.<Section>` test with a private fixture directory, so the sections run concurrently on POSIX hosts. On Windows the shell tests hold one CTest resource lock and run one at a time, because the Git for Windows fork emulation hangs under concurrent process creation; they still overlap the C++ groups. No line-count, language-cutover, or message-style scanner runs in local verification or CI.

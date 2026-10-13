@@ -40,7 +40,7 @@ private:
     [[nodiscard]] Parallel::WorkerPool &Workers();
 
     /// Build records (Driver/BuildCache.h): whether this compilation may use one, where it lives, the request it
-    /// describes, reusing an up-to-date one, and recording a finished build.
+    /// describes, reusing an up-to-date one, and recording a finished build, or with no artifact a clean check.
     [[nodiscard]] bool BuildCacheEligible() const;
     [[nodiscard]] std::filesystem::path BuildRecordPath() const;
     [[nodiscard]] std::string BuildKey() const;

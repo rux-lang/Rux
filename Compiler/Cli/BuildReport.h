@@ -2,6 +2,8 @@
 
 #include "Driver/BuildStats.h"
 
+#include <chrono>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -47,7 +49,10 @@ struct BuildReportInfo {
 [[nodiscard]] std::string FormatBuildSummary(std::string_view packageName, const std::filesystem::path &artifactPath,
                                              const std::filesystem::path &packageRoot, BuildProfile profile,
                                              std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
+/// The total is `elapsed` when given, the time the whole matrix took while cells were built side by side, and the sum
+/// of the cells' times otherwise.
 [[nodiscard]] std::string FormatBuildMatrixReport(std::string_view packageName, std::span<const BuildCellReport> cells,
                                                   const std::filesystem::path &packageRoot, bool includeStats,
-                                                  bool colorEnabled);
+                                                  bool colorEnabled,
+                                                  std::optional<std::chrono::milliseconds> elapsed = std::nullopt);
 } // namespace Rux::CliSupport

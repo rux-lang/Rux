@@ -348,7 +348,7 @@ std::string FormatBuildSummary(const std::string_view packageName, const std::fi
 
 std::string FormatBuildMatrixReport(const std::string_view packageName, const std::span<const BuildCellReport> cells,
                                     const std::filesystem::path &packageRoot, const bool includeStats,
-                                    const bool colorEnabled) {
+                                    const bool colorEnabled, const std::optional<std::chrono::milliseconds> elapsed) {
     const Reporting::Style style{colorEnabled};
     std::size_t succeeded = 0;
     std::chrono::milliseconds totalElapsed{0};
@@ -410,9 +410,9 @@ std::string FormatBuildMatrixReport(const std::string_view packageName, const st
     const auto overall = failed == 0 ? Reporting::StatusVerb::Built : Reporting::StatusVerb::Failed;
     output << '\n'
            << Reporting::RenderStatus(overall, style) << ' ' << Reporting::FormatCount(cells.size(), "cell") << " in "
-           << style.Bold() << Reporting::FormatDuration(totalElapsed) << style.Reset() << " (" << style.Green()
-           << succeeded << " succeeded" << style.Reset() << ", " << (failed == 0 ? style.Dim() : style.Red()) << failed
-           << " failed" << style.Reset() << ")\n";
+           << style.Bold() << Reporting::FormatDuration(elapsed.value_or(totalElapsed)) << style.Reset() << " ("
+           << style.Green() << succeeded << " succeeded" << style.Reset() << ", "
+           << (failed == 0 ? style.Dim() : style.Red()) << failed << " failed" << style.Reset() << ")\n";
     if (includeStats) {
         output << "Aggregate statistics: " << FormatNumber(aggregate.localFiles + aggregate.dependencyFiles)
                << " files | " << FormatNumber(aggregate.localLines + aggregate.dependencyLines) << " LOC | "

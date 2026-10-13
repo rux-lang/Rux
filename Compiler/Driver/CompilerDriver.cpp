@@ -99,15 +99,15 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
 }
 
 bool CompilerDriver::Impl::BuildCacheEligible() const {
-    return opts.useBuildCache && !opts.checkOnly && !opts.captureFrontend && !opts.collectOptimizationStatistics &&
-           !opts.dumpTokens && !opts.dumpAst && !opts.dumpSema && !opts.dumpHir && !opts.dumpLir &&
-           !opts.dumpOptimizationPasses && !opts.dumpAsm && !opts.dumpRcu;
+    return opts.useBuildCache && !opts.captureFrontend && !opts.collectOptimizationStatistics && !opts.dumpTokens &&
+           !opts.dumpAst && !opts.dumpSema && !opts.dumpHir && !opts.dumpLir && !opts.dumpOptimizationPasses &&
+           !opts.dumpAsm && !opts.dumpRcu;
 }
 
 std::filesystem::path CompilerDriver::Impl::BuildRecordPath() const {
     return root / "Temp" / "Cache" /
-           std::format("{}-{}{}.record", ToString(opts.profile), opts.target.CanonicalName(),
-                       opts.isTest ? "-test" : "");
+           std::format("{}-{}{}{}.record", ToString(opts.profile), opts.target.CanonicalName(),
+                       opts.isTest ? "-test" : "", opts.checkOnly ? "-check" : "");
 }
 
 std::string CompilerDriver::Impl::BuildKey() const {
@@ -121,8 +121,9 @@ std::string CompilerDriver::Impl::BuildKey() const {
         error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(compiler, error);
     key += std::format("executable {} {} {}\n", compiler.string(), error ? 0 : compilerSize,
                        compilerTime.time_since_epoch().count());
-    key += std::format("manifest {}\ntarget {}\nprofile {}\ntest {}\nsymbols {}\n", opts.manifestPath.string(),
-                       opts.target.CanonicalName(), ToString(opts.profile), opts.isTest, opts.emitSymbols);
+    key +=
+        std::format("manifest {}\ntarget {}\nprofile {}\ntest {}\ncheck {}\nsymbols {}\n", opts.manifestPath.string(),
+                    opts.target.CanonicalName(), ToString(opts.profile), opts.isTest, opts.checkOnly, opts.emitSymbols);
     for (const auto &[name, value] : opts.defines)
         key += std::format("define {}={}\n", name, value);
     for (const auto &pass : opts.disabledOptimizationPasses)
@@ -137,11 +138,13 @@ std::string CompilerDriver::Impl::BuildKey() const {
 
 bool CompilerDriver::Impl::ReuseRecordedBuild(CompileResult &result) {
     const auto record = ReadBuildRecord(BuildRecordPath());
-    if (!record || record->artifacts.empty() || record->key != BuildKey() || !IsUpToDate(*record))
+    // A check writes nothing, so its record names no artifact; a build's always names one.
+    if (!record || record->artifacts.empty() != opts.checkOnly || record->key != BuildKey() || !IsUpToDate(*record))
         return false;
     stats = record->stats;
     stats.upToDate = true;
-    result.primaryArtifactPath = record->artifacts.front().path;
+    if (!record->artifacts.empty())
+        result.primaryArtifactPath = record->artifacts.front().path;
     for (std::size_t index = 1; index < record->artifacts.size(); ++index)
         result.secondaryArtifactPaths.push_back(record->artifacts[index].path);
     result.ok = true;
@@ -178,7 +181,9 @@ void CompilerDriver::Impl::RecordBuild(const std::filesystem::path &artifactPath
         record.directories.push_back(
             {package.Root().parent_path(), DirectoryListing(package.Root().parent_path(), false), false});
     }
-    std::vector<std::filesystem::path> artifacts{artifactPath};
+    std::vector<std::filesystem::path> artifacts;
+    if (!artifactPath.empty())
+        artifacts.push_back(artifactPath);
     artifacts.insert(artifacts.end(), secondaryArtifactPaths.begin(), secondaryArtifactPaths.end());
     for (const auto &artifact : artifacts) {
         std::error_code error;
@@ -369,6 +374,10 @@ CompileResult CompilerDriver::Impl::Compile() {
     if (opts.checkOnly) {
         if (opts.captureFrontend) {
             result.modules = std::move(parseResults);
+        }
+        // Only a check that reported nothing is recorded, so a warning is reported again on every check.
+        if (BuildCacheEligible() && diagnostics.empty()) {
+            RecordBuild({}, {});
         }
         result.ok = true;
         finish();
