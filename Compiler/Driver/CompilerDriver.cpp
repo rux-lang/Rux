@@ -530,6 +530,8 @@ bool CompilerDriver::Impl::Analyze() {
     }
     SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), dependencyGraph->Root().id,
                               compileTimeContext, dependencyGraph->Bindings());
+    // LoadDependencies folded every package's conditionals while it decided which imports to load.
+    analyzer.SetConditionalsResolved();
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
     if (opts.dumpSema) {

@@ -70,15 +70,17 @@ SemanticModel SemanticAnalyzer::Analyze() {
         }
         return result;
     };
-    for (auto &dep : deps) {
-        std::vector<Module *> depModules;
-        depModules.reserve(dep.modules.size());
-        for (const auto &entry : dep.modules) {
-            depModules.push_back(entry.module);
+    if (!conditionalsResolved) {
+        for (auto &dep : deps) {
+            std::vector<Module *> depModules;
+            depModules.reserve(dep.modules.size());
+            for (const auto &entry : dep.modules) {
+                depModules.push_back(entry.module);
+            }
+            ResolveConditionalCompilation(depModules, compileTimeContext, diags, importedModules);
         }
-        ResolveConditionalCompilation(depModules, compileTimeContext, diags, importedModules);
+        ResolveConditionalCompilation(modules, compileTimeContext, diags, importedModules);
     }
-    ResolveConditionalCompilation(modules, compileTimeContext, diags, importedModules);
 
     std::vector<const Module *> constModules(modules.begin(), modules.end());
     SemanticFacts facts;

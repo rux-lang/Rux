@@ -56,7 +56,15 @@ public:
     /// outlive it.
     [[nodiscard]] SemanticModel Analyze();
 
+    /// Skip folding `#if` chains because the caller already folded every module against the same context, as the
+    /// driver does while it loads dependencies. Folding a folded module finds nothing but still walks every
+    /// declaration.
+    void SetConditionalsResolved() noexcept {
+        conditionalsResolved = true;
+    }
+
 private:
+    bool conditionalsResolved = false;
     std::vector<Module *> modules;
     std::vector<DepPackage> deps;
     std::string packageName;
