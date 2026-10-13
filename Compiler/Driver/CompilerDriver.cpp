@@ -298,15 +298,18 @@ bool CompilerDriver::Impl::LexAndParseSources() {
         }
     }
 
-    // Lex
+    // Lex. Files are independent, so they are lexed on the worker threads and reported in file order.
     bool lexErrors = false;
     bool inspectionErrors = false;
-    std::vector<LexerResult> lexResults;
-    lexResults.reserve(sourceFiles.size());
+    std::vector<LexerResult> lexResults(sourceFiles.size());
     const auto lexingStart = std::chrono::steady_clock::now();
-    for (const auto &file : sourceFiles) {
+    Workers().ForEach(sourceFiles.size(), [&](const std::size_t index) {
+        lexResults[index] = Lexer::TokenizeSource(sourceFiles[index].source.Text(), sourceFiles[index].path.string());
+    });
+    for (std::size_t fileIndex = 0; fileIndex < sourceFiles.size(); ++fileIndex) {
+        const auto &file = sourceFiles[fileIndex];
+        auto &lexResult = lexResults[fileIndex];
         BeginPhase(CompilePhase::Lexing, file.path.string(), file.path);
-        auto lexResult = Lexer::TokenizeSource(file.source.Text(), file.path.string());
         stats.localTokens += CountTokens(lexResult.tokens);
         if (EmitAll(lexResult.diagnostics)) {
             lexErrors = true;
@@ -318,7 +321,6 @@ bool CompilerDriver::Impl::LexAndParseSources() {
             inspectionErrors |= !WriteInspectionOutput(InspectionKind::Tokens, tokPath,
                                                        [&] { return Lexer::DumpTokens(lexResult, tokPath); });
         }
-        lexResults.push_back(std::move(lexResult));
     }
     stats.lexing += ElapsedMs(lexingStart);
     if (lexErrors || inspectionErrors) {
@@ -332,15 +334,21 @@ bool CompilerDriver::Impl::LexAndParseSources() {
     bool parseErrors = false;
     parseResults.reserve(sourceFiles.size());
     const auto parsingStart = std::chrono::steady_clock::now();
+    std::vector<std::optional<ParseResult>> parsedFiles(sourceFiles.size());
+    Workers().ForEach(sourceFiles.size(), [&](const std::size_t index) {
+        if (lexResults[index].HasErrors())
+            return;
+        Parser parser(std::move(lexResults[index].tokens), sourceFiles[index].path.string(),
+                      compileTimeContext.target.arch);
+        parsedFiles[index] = parser.Parse();
+    });
     for (std::size_t fileIndex = 0; fileIndex < sourceFiles.size(); ++fileIndex) {
         const auto &file = sourceFiles[fileIndex];
         BeginPhase(CompilePhase::Parsing, file.path.string(), file.path);
-        auto &lexResult = lexResults[fileIndex];
-        if (lexResult.HasErrors()) {
+        if (!parsedFiles[fileIndex]) {
             continue;
         }
-        Parser parser(std::move(lexResult.tokens), file.path.string(), compileTimeContext.target.arch);
-        auto parseResult = parser.Parse();
+        auto &parseResult = *parsedFiles[fileIndex];
         if (EmitAll(parseResult.diagnostics)) {
             parseErrors = true;
         }
@@ -415,26 +423,40 @@ bool CompilerDriver::Impl::LoadDependencies() {
         }
         auto &parsed = parsedPackages[name];
         parsed.reserve(files.size());
-        for (const auto &file : files) {
+        // The package's files are lexed and parsed on the worker threads, then reported in file order, stopping at
+        // the first file that fails as a one-at-a-time load would.
+        std::vector<LexerResult> lexedFiles(files.size());
+        const auto lexingStart = std::chrono::steady_clock::now();
+        Workers().ForEach(files.size(), [&](const std::size_t index) {
+            lexedFiles[index] = Lexer::TokenizeSource(files[index].source.Text(), files[index].path.string());
+        });
+        stats.lexing += ElapsedMs(lexingStart);
+        std::vector<std::size_t> tokenCounts(files.size());
+        std::vector<std::optional<ParseResult>> parsedFiles(files.size());
+        const auto parsingStart = std::chrono::steady_clock::now();
+        Workers().ForEach(files.size(), [&](const std::size_t index) {
+            tokenCounts[index] = CountTokens(lexedFiles[index].tokens);
+            if (lexedFiles[index].HasErrors())
+                return;
+            Parser parser(std::move(lexedFiles[index].tokens), files[index].path.string(),
+                          compileTimeContext.target.arch);
+            parsedFiles[index] = parser.Parse();
+        });
+        stats.parsing += ElapsedMs(parsingStart);
+        for (std::size_t index = 0; index < files.size(); ++index) {
+            const auto &file = files[index];
             stats.dependencyLines += CountLines(file.source.Text());
             stats.dependencySourceSize += file.source.Text().size();
-            const auto lexingStart = std::chrono::steady_clock::now();
-            auto lexed = Lexer::TokenizeSource(file.source.Text(), file.path.string());
-            stats.lexing += ElapsedMs(lexingStart);
-            stats.dependencyTokens += CountTokens(lexed.tokens);
-            if (EmitAll(lexed.diagnostics)) {
+            stats.dependencyTokens += tokenCounts[index];
+            if (EmitAll(lexedFiles[index].diagnostics)) {
                 failed = true;
                 return {};
             }
-            const auto parsingStart = std::chrono::steady_clock::now();
-            Parser parser(std::move(lexed.tokens), file.path.string(), compileTimeContext.target.arch);
-            auto result = parser.Parse();
-            stats.parsing += ElapsedMs(parsingStart);
-            if (EmitAll(result.diagnostics)) {
+            if (EmitAll(parsedFiles[index]->diagnostics)) {
                 failed = true;
                 return {};
             }
-            parsed.push_back(std::move(result));
+            parsed.push_back(std::move(*parsedFiles[index]));
         }
         const auto modules = modulesOf(parsed);
         for (const auto *module : modules)
