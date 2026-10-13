@@ -10,10 +10,12 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace Rux {
@@ -113,8 +115,20 @@ private:
     std::vector<RcuSymbol> symbols;
     std::vector<SymbolState> symbolStates;
     std::vector<Diagnostic> diagnostics;
-    std::vector<std::pair<std::string, std::uint32_t>> symbolNames;
-    std::vector<std::pair<std::string, std::uint32_t>> literals;
+
+    /// Hashes a name however it is spelled, so a lookup by `std::string_view` builds no string.
+    struct NameHash {
+        using is_transparent = void;
+
+        [[nodiscard]] std::size_t operator()(const std::string_view name) const noexcept {
+            return std::hash<std::string_view>{}(name);
+        }
+    };
+
+    // Symbol and literal indices by name. A module declares thousands of each, so a linear search made emitting the
+    // module holding a package's generic instances quadratic.
+    std::unordered_map<std::string, std::uint32_t, NameHash, std::equal_to<>> symbolNames;
+    std::unordered_map<std::string, std::uint32_t, NameHash, std::equal_to<>> literals;
     bool finalized = false;
 
     [[nodiscard]] static std::size_t SectionIndex(RcuModuleSection section);

@@ -184,7 +184,7 @@ bool RcuModuleBuilder::TruncateSection(const RcuModuleSection section, const std
 }
 
 std::optional<std::uint32_t> RcuModuleBuilder::FindSymbol(const std::string_view name) const {
-    const auto found = std::ranges::find(symbolNames, name, &decltype(symbolNames)::value_type::first);
+    const auto found = symbolNames.find(name);
     if (found == symbolNames.end()) {
         return std::nullopt;
     }
@@ -220,7 +220,7 @@ std::optional<std::uint32_t> RcuModuleBuilder::DeclareSymbol(RcuSymbolDeclaratio
                        .kind = declaration.kind,
                        .visibility = declaration.visibility});
     symbolStates.push_back({});
-    symbolNames.emplace_back(symbols.back().name, index);
+    symbolNames.emplace(symbols.back().name, index);
     return index;
 }
 
@@ -254,7 +254,7 @@ std::optional<std::uint32_t> RcuModuleBuilder::DeclareExternal(std::string name,
                        .kind = kind,
                        .visibility = RcuSymVis::Global});
     symbolStates.push_back({.external = true});
-    symbolNames.emplace_back(symbols.back().name, index);
+    symbolNames.emplace(symbols.back().name, index);
     return index;
 }
 
@@ -343,7 +343,7 @@ bool RcuModuleBuilder::EndFunction(const std::uint32_t symbolIndex) {
 std::optional<std::uint32_t> RcuModuleBuilder::InternedLiteral(const std::string_view family,
                                                                const std::string_view key) const {
     const auto composite = LiteralKey(family, key);
-    const auto found = std::ranges::find(literals, composite, &decltype(literals)::value_type::first);
+    const auto found = literals.find(composite);
     return found == literals.end() ? std::nullopt : std::optional(found->second);
 }
 
@@ -353,7 +353,7 @@ bool RcuModuleBuilder::RecordInternedLiteral(std::string family, std::string key
         return false;
     }
     const auto composite = LiteralKey(family, key);
-    const auto found = std::ranges::find(literals, composite, &decltype(literals)::value_type::first);
+    const auto found = literals.find(composite);
     if (found != literals.end()) {
         if (found->second == symbolIndex) {
             return true;
@@ -361,7 +361,7 @@ bool RcuModuleBuilder::RecordInternedLiteral(std::string family, std::string key
         Report(std::format("RCU literal '{}:{}' was interned with two symbols", family, key));
         return false;
     }
-    literals.emplace_back(composite, symbolIndex);
+    literals.emplace(composite, symbolIndex);
     return true;
 }
 
