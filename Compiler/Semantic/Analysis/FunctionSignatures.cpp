@@ -354,6 +354,58 @@ void AnalysisContext::CheckModule(const Module &module) {
     }
 }
 
+void AnalysisContext::PrecheckModule(const Module &module) {
+    currentFile = module.name;
+    for (const auto &declaration : module.items) {
+        PrecheckDecl(*declaration);
+    }
+}
+
+void AnalysisContext::PrecheckModuleInScope(const Module &module, Scope &scope) {
+    Scope *savedScope = currentScope;
+    currentScope = &scope;
+    PrecheckModule(module);
+    currentScope = savedScope;
+}
+
+void AnalysisContext::PrecheckDecl(const Decl &declaration) {
+    if (const auto *structDecl = AstCast<const StructDecl>(&declaration)) {
+        CheckStructDecl(*structDecl);
+    }
+    else if (const auto *enumDecl = AstCast<const EnumDecl>(&declaration)) {
+        CheckEnumDecl(*enumDecl);
+    }
+    else if (const auto *unionDecl = AstCast<const UnionDecl>(&declaration)) {
+        CheckUnionDecl(*unionDecl);
+    }
+    else if (const auto *constDecl = AstCast<const ConstDecl>(&declaration)) {
+        (void)CheckNamedConstant(*constDecl);
+    }
+    else if (const auto *globalDecl = AstCast<const GlobalDecl>(&declaration)) {
+        CheckGlobalDecl(*globalDecl);
+    }
+    else if (const auto *implDecl = AstCast<const ImplDecl>(&declaration)) {
+        for (const auto &constant : implDecl->constants) {
+            (void)CheckAssociatedConstant(*constant);
+            precheckedDeclarations.insert(constant.get());
+        }
+        return;
+    }
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&declaration)) {
+        Scope *savedScope = currentScope;
+        currentScope = &ModuleScopeFor(moduleDecl->name, *currentScope);
+        for (const auto &item : moduleDecl->items) {
+            PrecheckDecl(*item);
+        }
+        currentScope = savedScope;
+        return;
+    }
+    else {
+        return;
+    }
+    precheckedDeclarations.insert(&declaration);
+}
+
 void AnalysisContext::CheckModuleInScope(const Module &module, Scope &scope) {
     Scope *savedScope = currentScope;
     currentScope = &scope;

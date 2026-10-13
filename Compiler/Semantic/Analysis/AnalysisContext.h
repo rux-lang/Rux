@@ -1088,6 +1088,15 @@ private:
     void ResolveModuleSignaturesInScope(const Module &module, Scope &scope);
     void CheckModule(const Module &module);
     void CheckModuleInScope(const Module &module, Scope &scope);
+    /// Check the declarations other modules' bodies read before any body is checked: struct, enum and union
+    /// declarations, module constants and variables, and associated constants. A body then finds them checked rather
+    /// than checking them itself in the middle of its own flow, so what they record does not depend on which module
+    /// reached them first.
+    void PrecheckModule(const Module &module);
+    void PrecheckModuleInScope(const Module &module, Scope &scope);
+    void PrecheckDecl(const Decl &declaration);
+    /// Declarations `PrecheckDecl` checked, which `CheckDecl` then leaves alone.
+    std::unordered_set<const Decl *> precheckedDeclarations;
     /// Queues the destructor of every droppable type recorded, so its body is analyzed at each type it will
     /// be built for. Nothing in the source calls a destructor -- the generated glue does -- so without this a body
     /// reachable no other way is lowered having never been analyzed, and anything it deferred until its type

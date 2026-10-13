@@ -769,6 +769,12 @@ void AnalysisContext::Run() {
     for (auto &package : deps) {
         currentPackage = package.name;
         for (auto &entry : package.modules) {
+            PrecheckModuleInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
+        }
+    }
+    for (auto &package : deps) {
+        currentPackage = package.name;
+        for (auto &entry : package.modules) {
             CheckModuleInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
         }
     }
@@ -779,6 +785,10 @@ void AnalysisContext::Run() {
     for (const Module *module : modules) {
         currentPackage = packageName;
         ResolveModuleSignatures(*module);
+    }
+    for (const Module *module : modules) {
+        currentPackage = packageName;
+        PrecheckModule(*module);
     }
     for (const Module *module : modules) {
         currentPackage = packageName;

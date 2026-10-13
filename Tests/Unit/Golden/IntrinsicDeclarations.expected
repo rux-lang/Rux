@@ -1,9 +1,9 @@
 2:9: error: intrinsic associated constants support only floating-point Infinity, NaN, Max, Lowest, MinPositive and Epsilon
 2:9: error: intrinsic associated constant must have its owning floating-point type
-4:9: error: associated constant 'Bits' is already declared
-7:19: error: 'Min' not found in extend for type 'int8'
 16:11: error: field 'wordSize' of 'Target' is not one the compiler supplies for '#target'
 17:11: error: 'Machine' is not a value the compiler supplies for '#machine'
+4:9: error: associated constant 'Bits' is already declared
+7:19: error: 'Min' not found in extend for type 'int8'
 18:11: error: 'Frobnicate' is not a supported intrinsic function
 19:11: error: intrinsic 'Assert' must be declared as 'func Assert(condition: bool, message: char8[..])'
 20:11: error: intrinsic 'Panic' must be declared as 'func Panic(message: char8[..])'

@@ -349,7 +349,8 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         if (!constantNames.insert(constant->name).second) {
             EmitError(constant->location, std::format("associated constant '{}' is already declared", constant->name));
         }
-        (void)CheckAssociatedConstant(*constant);
+        if (!precheckedDeclarations.contains(constant.get()))
+            (void)CheckAssociatedConstant(*constant);
     }
     const auto savedTypeParams = currentTypeParams;
     currentTypeParams = ImplTypeParams(d);

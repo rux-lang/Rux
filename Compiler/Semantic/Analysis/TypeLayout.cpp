@@ -403,6 +403,9 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         }
         CheckFuncDecl(*fn);
     }
+    else if (precheckedDeclarations.contains(&decl)) {
+        // Checked before any body, by PrecheckDecl.
+    }
     else if (auto *structDecl = AstCast<const StructDecl>(&decl)) {
         CheckStructDecl(*structDecl);
     }
