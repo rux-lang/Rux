@@ -73,6 +73,7 @@ add_subdirectory(Driver)
 add_library(RuxCore INTERFACE)
 target_link_libraries(RuxCore INTERFACE RuxDriver RuxPackageServices)
 
+target_sources(rux PRIVATE ${RUX_ALLOCATOR_NEW_SOURCE})
 target_link_libraries(rux PRIVATE
     RuxDriver RuxPackageServices RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp RuxCliReporting RuxReporting)
 

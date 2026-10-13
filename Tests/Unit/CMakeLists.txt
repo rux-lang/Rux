@@ -33,6 +33,7 @@ set(RUX_TEST_SOURCES
     AArch64WideIntegerTests.cpp
     AArch64WideScalarTests.cpp
     AllocationMathTests.cpp
+    AllocatorTests.cpp
     AtomicIntrinsicTests.cpp
     ArtifactTests.cpp
     BackendDiagnosticTests.cpp
@@ -226,7 +227,7 @@ endif ()
 if (TARGET RuxLinter)
     list(APPEND RUX_TEST_SOURCES LinterTests.cpp)
 endif ()
-add_executable(rux-tests ${RUX_TEST_SOURCES})
+add_executable(rux-tests ${RUX_TEST_SOURCES} ${RUX_ALLOCATOR_NEW_SOURCE})
 add_dependencies(rux-tests rux)
 
 # Keep the unit-test executable with the other repository binaries. Explicit

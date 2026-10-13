@@ -8,7 +8,7 @@ foreach (source IN LISTS RUX_TEST_SOURCES)
     if (source STREQUAL "PackageDocumentationStyleTests.cpp" OR source STREQUAL "LanguageTestMatrixTests.cpp"
         OR source STREQUAL "PlatformBindingContractTests.cpp" OR source STREQUAL "PackageExampleTests.cpp")
         set(group Driver)
-    elseif (source MATCHES "^(SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
+    elseif (source MATCHES "^(Allocator|SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
         set(group Numeric)
     elseif (source MATCHES "^(Cli|Cmd|UserMessage|InspectionOutput|Reporter|Reporting|BuildReport)")
         set(group Cli)
