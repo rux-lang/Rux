@@ -383,11 +383,10 @@ bool X86_64ModuleEmitter::GenMachineFunc(const LirFunc &func) {
 namespace Rux {
 using X86_64Detail::X86_64ModuleEmitter;
 
-RcuFile GenerateRcuModule(const LirModule &mod, const std::vector<LirStructDecl> &structDecls,
-                          const std::vector<std::string> &interfaceNames, const std::string &packageName,
+RcuFile GenerateRcuModule(const LirModule &mod, const Layout::PackageLayouts &layouts, const std::string &packageName,
                           const Target::OS targetOs, const BuildInfo &buildInfo, std::vector<Diagnostic> &diagnostics,
                           const BacktraceTables &backtrace, const bool machineSelection) {
-    X86_64ModuleEmitter gen(mod, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics);
+    X86_64ModuleEmitter gen(mod, layouts, packageName, targetOs, buildInfo, diagnostics);
     gen.SetBacktrace(backtrace);
     gen.SetMachineSelection(machineSelection);
     return gen.Generate();
@@ -402,23 +401,27 @@ RcuEmitter::RcuEmitter(const LirPackage &package, std::string inputPackageName, 
 }
 
 std::vector<RcuFile> RcuEmitter::Generate() const {
-    std::vector<RcuFile> result;
-    result.reserve(lir.modules.size());
-    std::vector<LirStructDecl> structDecls;
-    std::vector<std::string> interfaceNames;
-    for (const auto &module : lir.modules) {
-        structDecls.insert(structDecls.end(), module.structs.begin(), module.structs.end());
-        interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
-    }
+    const auto layouts = Layout::BuildPackageLayouts(lir);
     const bool tracesPanics = std::ranges::any_of(lir.modules, [](const LirModule &module) {
         return std::ranges::any_of(module.funcs,
                                    [](const LirFunc &function) { return function.name == kBacktraceFunctionName; });
     });
-    for (std::size_t index = 0; index < lir.modules.size(); ++index) {
+    // Modules are independent objects, so each is emitted on its own; diagnostics merge in module order.
+    std::vector<RcuFile> result(lir.modules.size());
+    std::vector<std::vector<Diagnostic>> moduleDiagnostics(lir.modules.size());
+    const auto emit = [&](const std::size_t index) {
         const BacktraceTables backtrace{tracesPanics, index, lir.modules.size()};
-        result.push_back(GenerateRcuModule(lir.modules[index], structDecls, interfaceNames, packageName, targetOs,
-                                           buildInfo, diagnostics, backtrace, machineSelection));
-    }
+        result[index] = GenerateRcuModule(lir.modules[index], layouts, packageName, targetOs, buildInfo,
+                                          moduleDiagnostics[index], backtrace, machineSelection);
+    };
+    if (pool != nullptr)
+        pool->ForEach(lir.modules.size(), emit);
+    else
+        for (std::size_t index = 0; index < lir.modules.size(); ++index)
+            emit(index);
+    for (auto &emitted : moduleDiagnostics)
+        diagnostics.insert(diagnostics.end(), std::make_move_iterator(emitted.begin()),
+                           std::make_move_iterator(emitted.end()));
     return result;
 }
 } // namespace Rux

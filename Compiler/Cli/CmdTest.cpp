@@ -3,6 +3,7 @@
 #include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
+#include "Cli/JobsOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Cli/Testing/TestPackages.h"
@@ -24,6 +25,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -49,13 +51,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             break;
         }
         if (arg == "--jobs") {
-            if (i + 1 == args.size()) {
-                diagnostics.Error("option '--jobs' requires a positive integer");
-                return 1;
-            }
-            const auto value = args[++i];
-            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), jobs);
-            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || jobs == 0) {
+            if (i + 1 == args.size() || !ParseJobCount(args[++i], jobs)) {
                 diagnostics.Error("option '--jobs' requires a positive integer");
                 return 1;
             }
@@ -265,6 +261,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     compileOptions.defines = defines;
     compileOptions.localPackageRoots = localPackageRoots;
     compileOptions.localNamespaces = localNamespaces;
+    // Packages built side by side share the cores rather than each starting a thread per core.
+    compileOptions.jobs = std::max<std::size_t>(1, std::thread::hardware_concurrency() / jobs);
     std::vector<TestOutcome> outcomes(testPackages.size());
     RunTestTasks(
         tasks, jobs,

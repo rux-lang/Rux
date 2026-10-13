@@ -236,28 +236,32 @@ AArch64RcuEmitter::AArch64RcuEmitter(const LirPackage &package, std::string inpu
 }
 
 std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
-    std::vector<RcuFile> result;
-    result.reserve(lir.modules.size());
     // Struct layouts and interface names are gathered across the whole package
     // first: a module reaches types the module beside it declared, and a frame
     // cannot be laid out without their sizes.
-    std::vector<LirStructDecl> structDecls;
-    std::vector<std::string> interfaceNames;
-    for (const auto &module : lir.modules) {
-        structDecls.insert(structDecls.end(), module.structs.begin(), module.structs.end());
-        interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
-    }
+    const auto layouts = Layout::BuildPackageLayouts(lir);
     const bool tracesPanics = std::ranges::any_of(lir.modules, [](const LirModule &module) {
         return std::ranges::any_of(module.funcs,
                                    [](const LirFunc &function) { return function.name == kBacktraceFunctionName; });
     });
-    for (std::size_t index = 0; index < lir.modules.size(); ++index) {
-        AArch64ModuleEmitter gen(lir.modules[index], structDecls, interfaceNames, packageName, targetOs, buildInfo,
-                                 diagnostics);
+    // Modules are independent objects, so each is emitted on its own; diagnostics merge in module order.
+    std::vector<RcuFile> result(lir.modules.size());
+    std::vector<std::vector<Diagnostic>> moduleDiagnostics(lir.modules.size());
+    const auto emit = [&](const std::size_t index) {
+        AArch64ModuleEmitter gen(lir.modules[index], layouts, packageName, targetOs, buildInfo,
+                                 moduleDiagnostics[index]);
         gen.SetBacktrace({tracesPanics, index, lir.modules.size()});
         gen.SetMachineSelection(machineSelection);
-        result.push_back(gen.Generate());
-    }
+        result[index] = gen.Generate();
+    };
+    if (pool != nullptr)
+        pool->ForEach(lir.modules.size(), emit);
+    else
+        for (std::size_t index = 0; index < lir.modules.size(); ++index)
+            emit(index);
+    for (auto &emitted : moduleDiagnostics)
+        diagnostics.insert(diagnostics.end(), std::make_move_iterator(emitted.begin()),
+                           std::make_move_iterator(emitted.end()));
     return result;
 }
 } // namespace Rux

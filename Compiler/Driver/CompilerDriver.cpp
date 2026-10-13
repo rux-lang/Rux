@@ -648,6 +648,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         AArch64RcuEmitter aarch64Emitter(lirPackage, std::string(opts.manifest.package.name.Text()),
                                          compileTimeContext.target.os, compileTimeContext.buildInfo);
         aarch64Emitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
+        aarch64Emitter.SetWorkerPool(&Workers());
         rcuFiles = aarch64Emitter.Generate();
         codegenDiagnostics = aarch64Emitter.Diagnostics();
     }
@@ -655,6 +656,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         RcuEmitter rcuEmitter(lirPackage, std::string(opts.manifest.package.name.Text()), compileTimeContext.target.os,
                               compileTimeContext.buildInfo);
         rcuEmitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
+        rcuEmitter.SetWorkerPool(&Workers());
         rcuFiles = rcuEmitter.Generate();
         codegenDiagnostics = rcuEmitter.Diagnostics();
     }

@@ -135,11 +135,6 @@ void AArch64ModuleEmitter::EmitConstSlice(const LirConstDecl &c) {
 }
 
 void AArch64ModuleEmitter::GenModule() {
-    for (const auto &name : packageInterfaceNames) {
-        interfaceNames.insert(name);
-    }
-    BuildStructLayouts(structDecls, layouts, interfaceNames);
-
     PredeclareFunctions();
     for (const auto &ev : mod.externVars) {
         GetOrAddExtern(ev.name, RcuSymKind::ExternData);

@@ -4,6 +4,7 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"
 #include "Object/Rcu/Rcu.h"
+#include "Parallel/WorkerPool.h"
 #include "Target/Target.h"
 
 #include <string>
@@ -23,6 +24,11 @@ public:
         machineSelection = enabled;
     }
 
+    /// Threads modules may be emitted on; null emits them on the calling thread. The objects never depend on it.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        pool = inputPool;
+    }
+
     /// Diagnostics accumulated during generation (e.g. errors encoding an `asm func` body). Populated by Generate();
     /// check after calling it.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
@@ -35,6 +41,7 @@ private:
     Target::OS targetOs;
     BuildInfo buildInfo;
     bool machineSelection = false;
+    Parallel::WorkerPool *pool = nullptr;
     mutable std::vector<Diagnostic> diagnostics;
 };
 } // namespace Rux

@@ -136,13 +136,11 @@ inline constexpr std::uint32_t kNoSymbol = ~0U;
 
 class AArch64ModuleEmitter final : private AArch64FunctionEmitterHooks, private AArch64CallAndTerminatorHooks {
 public:
-    explicit AArch64ModuleEmitter(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
-                                  const std::vector<std::string> &inputPackageInterfaceNames,
+    explicit AArch64ModuleEmitter(const LirModule &module, const PackageLayouts &packageLayouts,
                                   std::string inputPackageName, const Target::OS inputTargetOs,
                                   const BuildInfo &inputBuildInfo, std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
-        , structDecls(inputStructDecls)
-        , packageInterfaceNames(inputPackageInterfaceNames)
+        , structDecls(packageLayouts.structDecls)
         , pkgName(std::move(inputPackageName))
         , targetOs(inputTargetOs)
         , buildInfo(inputBuildInfo)
@@ -153,7 +151,9 @@ public:
                          .buildTimestamp = RcuBuildTimestamp(buildInfo),
                          .ruxVersion = RcuCompilerVersion(buildInfo)})
         , enc(moduleBuilder.SectionData(RcuModuleSection::Text))
-        , callPlanner(layouts, interfaceNames, inputStructDecls, inputTargetOs) {
+        , layouts(packageLayouts.layouts)
+        , interfaceNames(packageLayouts.interfaceNames)
+        , callPlanner(layouts, interfaceNames, structDecls, inputTargetOs) {
     }
 
     RcuFile Generate();
@@ -161,7 +161,6 @@ public:
 private:
     const LirModule &mod;
     const std::vector<LirStructDecl> &structDecls;
-    const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
     Target::OS targetOs;
     const BuildInfo &buildInfo;
@@ -212,8 +211,8 @@ private:
     }
 
     // Struct field layouts and the interfaces whose values are fat pointers
-    LayoutMap layouts;
-    std::unordered_set<std::string> interfaceNames;
+    const LayoutMap &layouts;
+    const std::unordered_set<std::string> &interfaceNames;
 
     AArch64CallPlanner callPlanner;
 

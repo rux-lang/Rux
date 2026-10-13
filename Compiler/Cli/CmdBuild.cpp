@@ -4,6 +4,7 @@
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
+#include "Cli/JobsOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Driver/BuildPlan.h"
@@ -44,12 +45,20 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     bool dumpRcu = false;
     bool emitSymbols = false;
     bool showStats = false;
+    std::size_t jobs = 0;
     std::vector<std::string> disabledPasses;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
         if (arg == "--all") {
             buildAll = true;
+            continue;
+        }
+        if (arg == "--jobs") {
+            if (i + 1 == args.size() || !ParseJobCount(args[++i], jobs)) {
+                diagnostics.Error("option '--jobs' requires a positive integer");
+                return 2;
+            }
             continue;
         }
         if (arg == "--release") {
@@ -169,6 +178,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             copts.defines = defines;
             copts.disabledOptimizationPasses = disabledPasses;
             copts.collectOptimizationStatistics = showStats;
+            copts.jobs = jobs;
             copts.localPackageRoots = workspaceSources.packageRoots;
             copts.localNamespaces = workspaceSources.namespaces;
             ConfigureCompileDiagnostics(copts, diagnostics);

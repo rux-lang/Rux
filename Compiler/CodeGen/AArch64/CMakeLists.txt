@@ -27,4 +27,4 @@ rux_add_component(RuxCodeGenAArch64
     ModuleValues.cpp
     ModuleRuntimeFailure.cpp
     RcuEmitter.cpp)
-target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics RuxParallel)

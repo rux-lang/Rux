@@ -89,6 +89,16 @@ using LayoutMap = std::unordered_map<std::string, StructLayout>;
 void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &layouts,
                         const std::unordered_set<std::string> &interfaceNames);
 
+/// Every struct declaration, struct layout and interface name of a package. A module reaches types the module beside
+/// it declared, so each module emitter needs the whole package's; they are computed once and shared read-only.
+struct PackageLayouts {
+    std::vector<LirStructDecl> structDecls;
+    LayoutMap layouts;
+    std::unordered_set<std::string> interfaceNames;
+};
+
+[[nodiscard]] PackageLayouts BuildPackageLayouts(const LirPackage &package);
+
 /// The shared native layout of a sum, optional, or fallible, with each member sized by the runtime layout rules, or
 /// nullopt for any other type. Every stage that stores, matches, copies, or passes a native value reads this record.
 [[nodiscard]] std::optional<NativeLayout> RuntimeNativeLayout(const TypeRef &t, const LayoutMap &layouts,

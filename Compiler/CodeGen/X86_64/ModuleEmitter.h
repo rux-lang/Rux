@@ -31,13 +31,12 @@ using namespace Layout;
 
 class X86_64ModuleEmitter final : private X86_64FunctionEmitterHooks, private X86_64CallAndTerminatorHooks {
 public:
-    explicit X86_64ModuleEmitter(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
-                                 const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName,
+    explicit X86_64ModuleEmitter(const LirModule &module, const PackageLayouts &packageLayouts, std::string packageName,
                                  const Target::OS inputTargetOs, const BuildInfo &inputBuildInfo,
                                  std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
-        , structDecls(inputStructDecls)
-        , packageInterfaceNames(inputPackageInterfaceNames)
+        , layouts(packageLayouts.layouts)
+        , interfaceNames(packageLayouts.interfaceNames)
         , pkgName(std::move(packageName))
         , targetOs(inputTargetOs)
         , buildInfo(inputBuildInfo)
@@ -54,8 +53,9 @@ public:
 
 private:
     const LirModule &mod;
-    const std::vector<LirStructDecl> &structDecls;
-    const std::vector<std::string> &packageInterfaceNames;
+    // Struct field layouts
+    const LayoutMap &layouts;
+    const std::unordered_set<std::string> &interfaceNames;
     std::string pkgName;
     Target::OS targetOs;
     const BuildInfo &buildInfo;
@@ -82,9 +82,6 @@ private:
     std::unordered_map<std::string, uint32_t> funcSyms;
     std::unordered_map<std::string, uint32_t> dataSyms;
 
-    // Struct field layouts
-    LayoutMap layouts;
-    std::unordered_set<std::string> interfaceNames;
     std::unordered_set<std::string> reportedDiagnostics;
     std::string currentFunc;
 
@@ -340,14 +337,6 @@ private:
     void CopyAggregateFromR10ToStack(const int32_t dstDisp, const int size) const;
 
     void StoreHiddenReturnValue(const LirReg src, const TypeRef &t) const override;
-
-    // Build struct layouts
-    void BuildLayouts() {
-        for (const auto &name : packageInterfaceNames) {
-            interfaceNames.insert(name);
-        }
-        BuildStructLayouts(structDecls, layouts, interfaceNames);
-    }
 
     void EmitStackAlloc(int32_t bytes) const;
 

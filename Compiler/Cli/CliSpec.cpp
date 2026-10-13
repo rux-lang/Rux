@@ -41,6 +41,9 @@ constexpr std::array build_opts = {
         .flags = "--emit <kind[,kind...]>"sv,
         .desc =
             "Additionally emit tokens, ast, sema, hir, lir, passes, asm, or rcu inspection output, or image symbols"sv},
+    OptionDoc{.flags = "--jobs <N>"sv,
+              .desc =
+                  "Compile on up to N threads (default: one per logical core); the output is the same for every N"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
     OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, optimization, and performance statistics"sv},
     OptionDoc{.flags = "--target <triple>"sv,

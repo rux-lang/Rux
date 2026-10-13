@@ -104,6 +104,7 @@ The matrix fixes the target and profile of every cell, so `--all` is incompatibl
 | `--emit <kind[,kind...]>` | No           | Inspection output is a single-build feature |
 | `--disable-pass <name>`  | No           | Bisection targets one optimization profile  |
 | `--define <name[=value]>` | Yes          | The same definition is applied to each cell |
+| `--jobs <N>`              | Yes          | Each cell compiles on up to N threads       |
 | `--stats`                 | Yes          | Adds per-cell and aggregate statistics      |
 | `--quiet`                 | Yes          | Suppresses reports, but not errors          |
 | `--verbose`               | Yes          | Identifies each cell as it starts           |
@@ -237,9 +238,13 @@ headers. PE and Mach-O images ignore the request for now; on Windows, map profil
 
 See the platform guides for native requirements and runtime verification: [FreeBSD](Platforms/FreeBSD.md), [Linux](Platforms/Linux.md), [macOS](Platforms/macOS.md), and [Windows](Platforms/Windows.md). The [CI/CD guide](CI-CD.md) explains which native, cross-compiler, structural, and transferred-artifact paths protect each target.
 
+## Parallel Compilation
+
+One compilation runs its independent work on worker threads: LIR function passes and RCU object emission of modules. `rux build --jobs N` caps the threads at N; the default is one per logical core. Work is split by index and merged in source order, so the artifact, diagnostics and `--stats` counts are identical for every N (per-pass times in `--stats` add up the time each thread spent).
+
 ## Parallel Test Builds
 
-`rux test --jobs N` compiles and executes up to N discovered executable packages concurrently. The default is one worker. Each worker owns its compiler state, diagnostics, and captured program output. Reports remain in discovery order, and a failing package does not stop later packages. Packages with overlapping executable or intermediate paths are serialized through the complete compile-and-run operation; path aliases are normalized before scheduling. The option does not add persistent Rux build caching or change package output paths, target validation, or registry restrictions.
+`rux test --jobs N` compiles and executes up to N discovered executable packages concurrently. The default is one worker. Each worker owns its compiler state, diagnostics, and captured program output, and its compilation uses an equal share of the logical cores. Reports remain in discovery order, and a failing package does not stop later packages. Packages with overlapping executable or intermediate paths are serialized through the complete compile-and-run operation; path aliases are normalized before scheduling. The option does not add persistent Rux build caching or change package output paths, target validation, or registry restrictions.
 
 ### Per-pass IR snapshots
 

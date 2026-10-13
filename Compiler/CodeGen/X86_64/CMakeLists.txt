@@ -32,4 +32,4 @@ rux_add_component(RuxCodeGenX86_64
     RcuEmitter.cpp
     SoftwareFloatEmitter.cpp
     X87Emitter.cpp)
-target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics RuxParallel)

@@ -228,7 +228,6 @@ void X86_64ModuleEmitter::EmitGlobal(const LirGlobal &global) {
 }
 
 void X86_64ModuleEmitter::GenModule() {
-    BuildLayouts();
     PredeclareFunctions();
     // Extern vars
     for (const auto &ev : mod.externVars) {

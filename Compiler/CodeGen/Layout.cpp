@@ -277,6 +277,16 @@ void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &la
     }
 }
 
+PackageLayouts BuildPackageLayouts(const LirPackage &package) {
+    PackageLayouts result;
+    for (const auto &module : package.modules) {
+        result.structDecls.insert(result.structDecls.end(), module.structs.begin(), module.structs.end());
+        result.interfaceNames.insert(module.interfaceNames.begin(), module.interfaceNames.end());
+    }
+    BuildStructLayouts(result.structDecls, result.layouts, result.interfaceNames);
+    return result;
+}
+
 std::optional<NativeLayout> RuntimeNativeLayout(const TypeRef &t, const LayoutMap &layouts,
                                                 const std::unordered_set<std::string> &interfaceNames) {
     if (!t.IsSum() && !t.IsOptional() && !t.IsFallible()) {
