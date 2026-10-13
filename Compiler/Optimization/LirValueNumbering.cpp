@@ -170,7 +170,8 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         MemoryFacts loads = visit.memory ? *visit.memory : MemoryFacts{};
         std::unordered_map<std::string, LirReg> values;
         std::vector<LirInstr> retained;
-        for (auto instruction : block.instrs) {
+        retained.reserve(block.instrs.size());
+        for (auto &instruction : block.instrs) {
             for (auto &source : instruction.srcs) {
                 source = resolve(source);
             }
