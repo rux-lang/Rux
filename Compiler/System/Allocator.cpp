@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <thread>
 
 #if !RUX_OS_WINDOWS
     #include <sys/mman.h>
@@ -54,17 +55,17 @@ constexpr std::array<std::uint8_t, kMaxSmall / 16 + 1> kClassOfGranule = [] {
 static_assert(kBlockSizes[kClassCount - 1] == kMaxSmall);
 
 /// A spin lock that needs no construction, so it works before and after static initialization. It guards only slow
-/// paths: carving a slab and moving a free list to or from the depot.
+/// paths: carving a slab and moving a free list to or from the depot. It yields rather than waiting on the address,
+/// which would import the address-wait API set on Windows.
 class SpinLock {
 public:
     void Lock() noexcept {
         while (flag.test_and_set(std::memory_order_acquire))
-            flag.wait(true, std::memory_order_relaxed);
+            std::this_thread::yield();
     }
 
     void Unlock() noexcept {
         flag.clear(std::memory_order_release);
-        flag.notify_one();
     }
 
 private:
@@ -199,11 +200,10 @@ bool Reserve() noexcept {
             reservedBase.store(static_cast<char *>(base), std::memory_order_release);
             reserveState.store(base != nullptr ? ReserveState::Ready : ReserveState::Unavailable,
                                std::memory_order_release);
-            reserveState.notify_all();
             return base != nullptr;
         }
         if (state == ReserveState::Reserving)
-            reserveState.wait(ReserveState::Reserving, std::memory_order_acquire);
+            std::this_thread::yield();
         state = reserveState.load(std::memory_order_acquire);
     }
     return true;
