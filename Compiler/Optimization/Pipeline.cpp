@@ -306,6 +306,7 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
                                                       const std::size_t fixedPointLimit) {
     OptimizationPipeline pipeline = ForProfile(profile, fixedPointLimit);
     if (profile == BuildProfile::Release) {
+        pipeline.initialPruning = std::make_unique<LirDeclarationPruner>(artifactKind);
         pipeline.lir.Add(std::make_unique<LirDeclarationPruner>(artifactKind));
     }
     return pipeline;
@@ -324,7 +325,22 @@ PassRunReport OptimizationPipeline::RunHir(HirPackage &package) {
 }
 
 PassRunReport OptimizationPipeline::RunLir(LirPackage &package) {
-    return lir.Run(package);
+    // A program usually reaches a small part of its dependencies; dropping the rest first spares every pass the work.
+    // The pruner in the pipeline still runs after each iteration, for declarations inlining leaves unreferenced.
+    LirPruningStats initial;
+    std::vector<Diagnostic> initialDiagnostics;
+    if (initialPruning) {
+        const PassContext context{BuildProfile::Release, 0, 1, &initialDiagnostics, &initial};
+        static_cast<void>(initialPruning->Run(package, context));
+    }
+    auto report = lir.Run(package);
+    report.lirPruning.functionDefinitions += initial.functionDefinitions;
+    report.lirPruning.constants += initial.constants;
+    report.lirPruning.vtables += initial.vtables;
+    report.lirPruning.externDeclarations += initial.externDeclarations;
+    report.lirPruning.estimatedIrNodes += initial.estimatedIrNodes;
+    report.diagnostics.insert(report.diagnostics.begin(), initialDiagnostics.begin(), initialDiagnostics.end());
+    return report;
 }
 
 void OptimizationPipeline::SetObservers(HirPassPipeline::Observer hirObserver, LirPassPipeline::Observer lirObserver) {

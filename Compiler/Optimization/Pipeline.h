@@ -249,5 +249,7 @@ private:
 
     HirPassPipeline hir;
     LirPassPipeline lir;
+    /// Release pruning before the first LIR iteration, so no pass optimizes a declaration the artifact will not keep.
+    std::unique_ptr<LirPass> initialPruning;
 };
 } // namespace Rux::Optimization
