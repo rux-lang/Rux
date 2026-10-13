@@ -242,6 +242,12 @@ See the platform guides for native requirements and runtime verification: [FreeB
 
 One compilation runs its independent work on worker threads: HIR-to-LIR lowering of modules, LIR function passes and RCU object emission of modules. `rux build --jobs N` caps the threads at N; the default is one per logical core. Work is split by index and merged in source order, so the artifact, diagnostics and `--stats` counts are identical for every N (per-pass times in `--stats` add up the time each thread spent).
 
+## Up-to-Date Builds
+
+A successful build writes a record to `<package>/Temp/Cache/<Profile>-<target>.record` (`-test` is appended for test builds). It names the request (the compiler executable, target, profile, definitions, disabled passes, `--emit symbols`, workspace sources and `SOURCE_DATE_EPOCH`), every source file and manifest the build read with its size, modification time and SHA-256, the listing of every package's `Src` tree and of the directory each dependency was resolved from, and the artifacts it wrote. The next build of the same request reuses the artifact when all of them still match, and reports it as `Built App (Debug, Windows x86-64) in 12 ms (up to date)`. A source whose modification time changed but whose content did not stays up to date; a changed, added or removed source, a changed manifest, a newly installed dependency version, a rebuilt compiler, or a modified or missing artifact rebuilds.
+
+`--no-cache` always compiles. Builds with `--stats` or `--emit` output other than `symbols` always compile and leave the record alone, and `rux clean` removes the records with the rest of `Temp`. A record never changes what a build produces: it only decides whether the artifact already on disk is the one this build would write.
+
 ## Parallel Test Builds
 
 `rux test --jobs N` compiles and executes up to N discovered executable packages concurrently. The default is one worker. Each worker owns its compiler state, diagnostics, and captured program output, and its compilation uses an equal share of the logical cores. Reports remain in discovery order, and a failing package does not stop later packages. Packages with overlapping executable or intermediate paths are serialized through the complete compile-and-run operation; path aliases are normalized before scheduling. The option does not add persistent Rux build caching or change package output paths, target validation, or registry restrictions.

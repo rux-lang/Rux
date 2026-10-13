@@ -46,6 +46,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     bool emitSymbols = false;
     bool showStats = false;
     std::size_t jobs = 0;
+    bool useBuildCache = true;
     std::vector<std::string> disabledPasses;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -77,6 +78,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         }
         if (arg == "--stats") {
             showStats = true;
+            continue;
+        }
+        if (arg == "--no-cache") {
+            useBuildCache = false;
             continue;
         }
         if (arg == "--disable-pass" && i + 1 < args.size()) {
@@ -179,6 +184,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             copts.disabledOptimizationPasses = disabledPasses;
             copts.collectOptimizationStatistics = showStats;
             copts.jobs = jobs;
+            copts.useBuildCache = useBuildCache;
             copts.localPackageRoots = workspaceSources.packageRoots;
             copts.localNamespaces = workspaceSources.namespaces;
             ConfigureCompileDiagnostics(copts, diagnostics);

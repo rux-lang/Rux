@@ -44,6 +44,8 @@ constexpr std::array build_opts = {
     OptionDoc{.flags = "--jobs <N>"sv,
               .desc =
                   "Compile on up to N threads (default: one per logical core); the output is the same for every N"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Compile even when an earlier build of the same inputs is still up to date"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
     OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, optimization, and performance statistics"sv},
     OptionDoc{.flags = "--target <triple>"sv,

@@ -2,6 +2,7 @@
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
+#include "Driver/BuildCache.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompileContext.h"
 #include "Ir/Hir/Hir.h"
@@ -97,6 +98,101 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
     compileTimeContext.buildInfo = BuildInfo(std::string(CompilerBuild::compilerVersion), buildTimestamp);
 }
 
+bool CompilerDriver::Impl::BuildCacheEligible() const {
+    return opts.useBuildCache && !opts.checkOnly && !opts.captureFrontend && !opts.collectOptimizationStatistics &&
+           !opts.dumpTokens && !opts.dumpAst && !opts.dumpSema && !opts.dumpHir && !opts.dumpLir &&
+           !opts.dumpOptimizationPasses && !opts.dumpAsm && !opts.dumpRcu;
+}
+
+std::filesystem::path CompilerDriver::Impl::BuildRecordPath() const {
+    return root / "Temp" / "Cache" /
+           std::format("{}-{}{}.record", ToString(opts.profile), opts.target.CanonicalName(),
+                       opts.isTest ? "-test" : "");
+}
+
+std::string CompilerDriver::Impl::BuildKey() const {
+    // Everything outside the sources that changes what a build writes. The compiler is identified by its own file, so
+    // rebuilding it without changing its version still invalidates every record.
+    std::string key = std::format("compiler {}\n", CompilerBuild::compilerVersion);
+    const auto compiler = System::CurrentExecutablePath();
+    std::error_code error;
+    const auto compilerSize = std::filesystem::file_size(compiler, error);
+    const auto compilerTime =
+        error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(compiler, error);
+    key += std::format("executable {} {} {}\n", compiler.string(), error ? 0 : compilerSize,
+                       compilerTime.time_since_epoch().count());
+    key += std::format("manifest {}\ntarget {}\nprofile {}\ntest {}\nsymbols {}\n", opts.manifestPath.string(),
+                       opts.target.CanonicalName(), ToString(opts.profile), opts.isTest, opts.emitSymbols);
+    for (const auto &[name, value] : opts.defines)
+        key += std::format("define {}={}\n", name, value);
+    for (const auto &pass : opts.disabledOptimizationPasses)
+        key += std::format("disable {}\n", pass);
+    for (const auto &localRoot : opts.localPackageRoots)
+        key += std::format("local {}\n", localRoot.string());
+    for (const auto &ns : opts.localNamespaces)
+        key += std::format("namespace {}\n", ns);
+    key += std::format("epoch {}\n", System::GetEnv("SOURCE_DATE_EPOCH").value_or("-"));
+    return HashText(key);
+}
+
+bool CompilerDriver::Impl::ReuseRecordedBuild(CompileResult &result) {
+    const auto record = ReadBuildRecord(BuildRecordPath());
+    if (!record || record->artifacts.empty() || record->key != BuildKey() || !IsUpToDate(*record))
+        return false;
+    stats = record->stats;
+    stats.upToDate = true;
+    result.primaryArtifactPath = record->artifacts.front().path;
+    for (std::size_t index = 1; index < record->artifacts.size(); ++index)
+        result.secondaryArtifactPaths.push_back(record->artifacts[index].path);
+    result.ok = true;
+    return true;
+}
+
+void CompilerDriver::Impl::RecordBuild(const std::filesystem::path &artifactPath,
+                                       const std::vector<std::filesystem::path> &secondaryArtifactPaths) {
+    BuildRecord record;
+    record.key = BuildKey();
+    record.stats = stats;
+    for (const auto &[path, text] : loadedSourceTexts) {
+        const auto &[size, modified] = loadedSourceStamps.at(path);
+        record.inputs.push_back({path, size, modified, HashText(text.Text())});
+    }
+    auto manifests = dependencyGraph->ManifestPaths();
+    manifests.push_back(opts.manifestPath);
+    std::ranges::sort(manifests);
+    manifests.erase(std::ranges::unique(manifests).begin(), manifests.end());
+    for (const auto &manifest : manifests) {
+        auto file = RecordFile(manifest);
+        if (!file)
+            return;
+        record.inputs.push_back(std::move(*file));
+    }
+    std::ranges::sort(record.inputs, {}, &BuildRecord::File::path);
+    // Sources are discovered by listing each package's Src tree, and a registry package is chosen among the versions
+    // beside it, so a file or version that appears changes what the build would read.
+    record.directories.push_back({root / "Src", DirectoryListing(root / "Src", true), true});
+    for (const auto &[id, package] : dependencyGraph->Packages()) {
+        if (package.Root() == root)
+            continue;
+        record.directories.push_back({package.Root() / "Src", DirectoryListing(package.Root() / "Src", true), true});
+        record.directories.push_back(
+            {package.Root().parent_path(), DirectoryListing(package.Root().parent_path(), false), false});
+    }
+    std::vector<std::filesystem::path> artifacts{artifactPath};
+    artifacts.insert(artifacts.end(), secondaryArtifactPaths.begin(), secondaryArtifactPaths.end());
+    for (const auto &artifact : artifacts) {
+        std::error_code error;
+        const auto size = std::filesystem::file_size(artifact, error);
+        const auto modified =
+            error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(artifact, error);
+        if (error)
+            return;
+        record.artifacts.push_back(
+            {artifact, size, static_cast<std::int64_t>(modified.time_since_epoch().count()), std::string{}});
+    }
+    static_cast<void>(WriteBuildRecord(BuildRecordPath(), record));
+}
+
 Parallel::WorkerPool &CompilerDriver::Impl::Workers() {
     if (!workers)
         workers = std::make_unique<Parallel::WorkerPool>(Parallel::ResolveJobs(opts.jobs));
@@ -148,6 +244,16 @@ CompilerDriver::Impl::RememberSources(const std::span<SourceFile> sources) {
         const auto [stored, inserted] = loadedSourceTexts.try_emplace(file.path.string(), std::move(file.source));
         if (!inserted) {
             file.source.clear();
+        }
+        else {
+            // Stamped as soon as it is read, so an edit made while the build runs is not mistaken for what was built.
+            std::error_code error;
+            const auto size = std::filesystem::file_size(file.path, error);
+            const auto modified =
+                error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(file.path, error);
+            loadedSourceStamps.emplace(stored->first,
+                                       std::pair{error ? ~std::uintmax_t{0} : size,
+                                                 static_cast<std::int64_t>(modified.time_since_epoch().count())});
         }
         views.push_back({std::move(file.path), stored->second});
     }
@@ -233,6 +339,10 @@ CompileResult CompilerDriver::Impl::Compile() {
         finish();
         return result;
     }
+    if (BuildCacheEligible() && ReuseRecordedBuild(result)) {
+        finish();
+        return result;
+    }
 
     if (!LexAndParseSources()) {
         finish();
@@ -275,6 +385,9 @@ CompileResult CompilerDriver::Impl::Compile() {
     stats.executableSize = std::filesystem::file_size(artifactPath, sizeError);
     if (sizeError) {
         stats.executableSize = 0;
+    }
+    if (BuildCacheEligible()) {
+        RecordBuild(artifactPath, result.secondaryArtifactPaths);
     }
     result.primaryArtifactPath = std::move(artifactPath);
     result.ok = true;

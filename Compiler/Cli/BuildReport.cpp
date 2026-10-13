@@ -43,8 +43,9 @@ std::string FormatBuildStatusLine(const BuildReportInfo &info, const BuildStats 
     const auto triple = ReportedTriple(info.targetTriple);
     const std::string context = triple ? FormatBuildContext(info.profile, *triple)
                                        : std::format("({}, {})", ToString(info.profile), info.targetTriple);
-    return std::format("{} {} {} in {}", Reporting::RenderStatus(Reporting::StatusVerb::Built, style), info.packageName,
-                       context, Reporting::FormatDuration(stats.total));
+    return std::format("{} {} {} in {}{}", Reporting::RenderStatus(Reporting::StatusVerb::Built, style),
+                       info.packageName, context, Reporting::FormatDuration(stats.total),
+                       stats.upToDate ? " (up to date)" : "");
 }
 
 /// A label column followed by right-aligned value columns, under an optional header row. Column widths come from the
@@ -329,8 +330,15 @@ std::string FormatBuildSummary(const std::string_view packageName, const std::fi
     std::ostringstream output;
     output << FormatBuildStatusLine(info, stats, style) << '\n'
            << Reporting::indentation << "Output: " << style.Cyan() << DisplayPath(artifactPath, packageRoot)
-           << style.Reset() << '\n'
-           << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
+           << style.Reset() << '\n';
+    if (stats.upToDate) {
+        // Nothing was compiled, so a speed would only measure how fast the inputs were found unchanged.
+        output << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
+               << Reporting::Pluralize(totalFiles, "file") << " unchanged | " << artifactPath.filename().string() << ' '
+               << FormatSize(stats.executableSize) << style.Reset() << '\n';
+        return output.str();
+    }
+    output << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
            << Reporting::Pluralize(totalFiles, "file") << " | " << FormatNumber(totalLines) << " LOC | "
            << FormatCompactNumber(static_cast<double>(totalTokens)) << " tokens | " << FormatCompactNumber(compileSpeed)
            << " LOC/s | " << artifactPath.filename().string() << ' ' << FormatSize(stats.executableSize)

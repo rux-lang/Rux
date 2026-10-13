@@ -59,6 +59,9 @@ struct CompileOptions {
     std::vector<std::string> disabledOptimizationPasses;
     /// Threads one compilation may use; 0 means one per logical core. The artifact never depends on it.
     std::size_t jobs = 0;
+    /// Reuse the artifact of an earlier identical build when nothing it read has changed (see Driver/BuildCache.h).
+    /// Inspection output, statistics and check-only runs always compile.
+    bool useBuildCache = true;
 
     /// Optional presentation hook. The driver always retains diagnostics in CompileResult and supplies already-loaded
     /// source text to a callback so a CLI can render context without rereading files.

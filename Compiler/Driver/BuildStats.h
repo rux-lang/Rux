@@ -43,6 +43,9 @@ struct BuildStats {
     std::size_t prunedExternDeclarations = 0;
     std::size_t estimatedLirNodesEliminated = 0;
     std::vector<Optimization::PassStatistics> optimizationPasses;
+    /// The artifact of an earlier build was reused because nothing it was built from changed; the source counts are
+    /// that build's.
+    bool upToDate = false;
 };
 
 struct BuildCellReport {

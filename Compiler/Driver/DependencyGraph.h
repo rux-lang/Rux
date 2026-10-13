@@ -48,6 +48,20 @@ public:
         return diagnostics;
     }
 
+    /// Every package that resolved, by identity.
+    [[nodiscard]] const auto &Packages() const {
+        return packages;
+    }
+
+    /// Every manifest read while resolving, which together decided what resolved where.
+    [[nodiscard]] std::vector<std::filesystem::path> ManifestPaths() const {
+        std::vector<std::filesystem::path> paths;
+        paths.reserve(manifests.size());
+        for (const auto &[path, manifest] : manifests)
+            paths.push_back(path);
+        return paths;
+    }
+
 private:
     [[nodiscard]] const Manifest *ReadManifest(const std::filesystem::path &path, bool reportErrors);
     void AddLocal(const std::filesystem::path &path);

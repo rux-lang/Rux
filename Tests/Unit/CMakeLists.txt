@@ -63,6 +63,7 @@ set(RUX_TEST_SOURCES
     CommentSystemAcceptanceTests.cpp
     CmdInspectProcessTests.cpp
     CoalescingLoweringTests.cpp
+    CompilerDriverCacheTests.cpp
     CompilerDriverTests.cpp
     CompilerDriverTargetTests.cpp
     CompilerPipelineDiagnosticTests.cpp

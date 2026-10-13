@@ -39,6 +39,15 @@ private:
     /// The compilation's worker threads, started on first use.
     [[nodiscard]] Parallel::WorkerPool &Workers();
 
+    /// Build records (Driver/BuildCache.h): whether this compilation may use one, where it lives, the request it
+    /// describes, reusing an up-to-date one, and recording a finished build.
+    [[nodiscard]] bool BuildCacheEligible() const;
+    [[nodiscard]] std::filesystem::path BuildRecordPath() const;
+    [[nodiscard]] std::string BuildKey() const;
+    [[nodiscard]] bool ReuseRecordedBuild(CompileResult &result);
+    void RecordBuild(const std::filesystem::path &artifactPath,
+                     const std::vector<std::filesystem::path> &secondaryArtifactPaths);
+
     /// Pipeline phases. Each returns false when the pipeline cannot continue.
     bool LexAndParseSources();
     /// In a test build, adds a generated `Main` that runs the package's `#Test()` functions. Defined in
@@ -65,6 +74,8 @@ private:
     std::vector<std::string> loadedPackages;    // parallel: package identity per dep entry
     std::vector<std::string> loadedModuleNames; // parallel: source name per dep entry
     std::unordered_map<std::string, SourceText> loadedSourceTexts;
+    /// Size and modification time of every loaded source as it was read, for the build record.
+    std::unordered_map<std::string, std::pair<std::uintmax_t, std::int64_t>> loadedSourceStamps;
     std::optional<SemanticModel> semanticModel;
     std::unique_ptr<Parallel::WorkerPool> workers;
 };

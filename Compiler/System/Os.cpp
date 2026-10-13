@@ -21,6 +21,9 @@
         #include <sys/sysctl.h>
         #include <sys/user.h>
     #endif
+    #if RUX_OS_MACOS
+        #include <mach-o/dyld.h>
+    #endif
     #include <sys/wait.h>
     #include <unistd.h>
     #if defined(__has_include)
@@ -269,6 +272,40 @@ std::filesystem::path WindowsSystemDirectory() {
     }
 #endif
     return {};
+}
+
+std::filesystem::path CurrentExecutablePath() {
+#if RUX_OS_WINDOWS
+    std::wstring buffer(MAX_PATH, L'\0');
+    while (true) {
+        const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (length == 0)
+            return {};
+        if (length < buffer.size())
+            return std::filesystem::path(buffer.substr(0, length));
+        buffer.resize(buffer.size() * 2);
+    }
+#elif RUX_OS_FREEBSD
+    int request[] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+    std::string buffer(4096, '\0');
+    std::size_t length = buffer.size();
+    if (sysctl(request, 4, buffer.data(), &length, nullptr, 0) != 0 || length == 0)
+        return {};
+    return std::filesystem::path(buffer.c_str());
+#elif RUX_OS_MACOS
+    std::uint32_t length = 0;
+    _NSGetExecutablePath(nullptr, &length);
+    std::string buffer(length, '\0');
+    if (_NSGetExecutablePath(buffer.data(), &length) != 0)
+        return {};
+    std::error_code error;
+    const auto resolved = std::filesystem::canonical(buffer.c_str(), error);
+    return error ? std::filesystem::path(buffer.c_str()) : resolved;
+#else
+    std::error_code error;
+    const auto resolved = std::filesystem::read_symlink("/proc/self/exe", error);
+    return error ? std::filesystem::path{} : resolved;
+#endif
 }
 
 // ---- Files ----------------------------------------------------------------------
