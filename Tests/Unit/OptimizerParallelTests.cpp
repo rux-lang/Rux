@@ -127,6 +127,40 @@ TEST_CASE("LIR function passes skip functions that settled in an earlier iterati
     CHECK(package.modules[0].funcs[2].blocks[0].instrs.size() == 4);
 }
 
+TEST_CASE("HIR-to-LIR lowering produces the same package on one thread and on many") {
+    // Several modules, so the lowering has modules to spread across threads; helper requests and the panic printer
+    // must come out in the order a serial lowering produces them.
+    std::vector<std::string> sources;
+    for (int index = 0; index < 6; ++index) {
+        sources.push_back(std::format(R"(
+            const Limit{0}: uint32 = {0}u32;
+            func Scale{0}(x: float32, y: float64) -> float64 {{ return (x as float64) * y + {0}.5; }}
+            func Check{0}(values: uint32[..], index: uint) -> uint32 {{ return values[index] / (Limit{0} + 1u32); }}
+        )",
+                                      index));
+    }
+    const auto build = [&] {
+        HirPackage package;
+        for (const auto &source : sources) {
+            auto module = CompileToHir(source);
+            REQUIRE(module.modules.size() == 1);
+            package.modules.push_back(std::move(module.modules[0]));
+        }
+        return package;
+    };
+
+    HirToLirLowering serialLowering(build(), TargetContext::CreateNative());
+    const auto serial = serialLowering.Generate();
+    Parallel::WorkerPool pool(4);
+    HirToLirLowering parallelLowering(build(), TargetContext::CreateNative());
+    parallelLowering.SetWorkerPool(&pool);
+    const auto parallel = parallelLowering.Generate();
+
+    CHECK(serialLowering.Diagnostics().size() == parallelLowering.Diagnostics().size());
+    REQUIRE(serial.modules.size() == 6);
+    CHECK(Fingerprint(serial) == Fingerprint(parallel));
+}
+
 TEST_CASE("the release LIR pipeline produces the same package on one thread and on many") {
     const auto source = R"(
         const Table: uint32[..] = [3u32, 1u32, 4u32, 1u32, 5u32, 9u32, 2u32, 6u32];

@@ -152,6 +152,9 @@ public:
     /// Synthesizes every queued helper, and every helper those ask for in turn, in the order they were first asked for.
     [[nodiscard]] std::vector<LirFunc> SynthesizePending(std::vector<Diagnostic> &diagnostics);
 
+    /// Queue what `other` queued, in its order, as if its requests had been made here after this registry's own.
+    void Absorb(const SoftFloatHelperRegistry &other);
+
 private:
     std::map<SoftFloatHelperKey, std::string> symbols;
     std::vector<SoftFloatHelperKey> pending;

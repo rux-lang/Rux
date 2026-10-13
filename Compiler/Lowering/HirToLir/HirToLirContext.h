@@ -5,6 +5,7 @@
 #include "Ir/Lir/Lir.h"
 #include "Lowering/HirToLir/CheckedLirBuilder.h"
 #include "Lowering/HirToLir/HirToLirSoftFloat.h"
+#include "Parallel/WorkerPool.h"
 #include "Target/Target.h"
 
 #include <functional>
@@ -26,7 +27,8 @@ class HirToLirContext {
 public:
     HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics);
 
-    [[nodiscard]] LirPackage Run(const HirPackage &hir);
+    /// Lower `hir`, lowering modules on `pool`'s threads when one is given; the result never depends on it.
+    [[nodiscard]] LirPackage Run(const HirPackage &hir, Parallel::WorkerPool *pool = nullptr);
 
 private:
     struct LocalConstValue {
@@ -91,7 +93,8 @@ private:
     std::unordered_set<std::string> funcNames;
     std::unordered_map<std::string, std::uint32_t> cVariadicFixedParamCounts;
     std::unordered_map<std::string, std::string> externSymbols;
-    std::vector<Diagnostic> &diagnostics;
+    /// Where lowering reports; a worker lowering one module points it at that module's own list.
+    std::vector<Diagnostic> *diagnostics;
     std::string currentFunction;
     /// The logical file and user-facing function name a compiler-inserted runtime check in the current function
     /// reports.

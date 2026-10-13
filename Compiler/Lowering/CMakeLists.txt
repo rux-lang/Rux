@@ -29,4 +29,4 @@ rux_add_component(RuxLowering
     HirToLir/HirToLirSoftFloatMultiply.cpp
     HirToLir/HirToLirStatements.cpp)
 target_link_libraries(RuxLowering PUBLIC
-    RuxAst RuxSemanticModel RuxHir RuxLir RuxNumeric RuxOptimization RuxTarget RuxUnicode)
+    RuxAst RuxSemanticModel RuxHir RuxLir RuxNumeric RuxOptimization RuxParallel RuxTarget RuxUnicode)

@@ -41,15 +41,19 @@ public:
      */
     void ForEach(std::size_t count, const std::function<void(std::size_t)> &body);
 
+    /// `ForEach` that also tells each body which thread runs it, as an index in [0, Jobs()), so a loop can keep
+    /// per-thread scratch state. Which thread runs an index varies between runs; results must not depend on it.
+    void ForEachOnWorker(std::size_t count, const std::function<void(std::size_t index, std::size_t worker)> &body);
+
 private:
-    void WorkerLoop();
-    void Drain();
+    void WorkerLoop(std::size_t worker);
+    void Drain(std::size_t worker);
 
     std::vector<std::thread> workers;
     std::mutex mutex;
     std::condition_variable wake;
     std::condition_variable done;
-    const std::function<void(std::size_t)> *current = nullptr;
+    const std::function<void(std::size_t, std::size_t)> *current = nullptr;
     std::size_t total = 0;
     std::size_t nextIndex = 0;
     std::size_t generation = 0;

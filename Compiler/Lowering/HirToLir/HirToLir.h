@@ -3,6 +3,7 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
+#include "Parallel/WorkerPool.h"
 #include "Target/Target.h"
 
 #include <vector>
@@ -27,9 +28,15 @@ public:
     /// Problems found while lowering, all of them internal errors.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const noexcept;
 
+    /// Threads modules may be lowered on; null lowers them on the calling thread. The result never depends on it.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        pool = inputPool;
+    }
+
 private:
     HirPackage hir;
     TargetContext target;
     std::vector<Diagnostic> diagnostics;
+    Parallel::WorkerPool *pool = nullptr;
 };
 } // namespace Rux

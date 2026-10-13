@@ -80,11 +80,11 @@ FoldConstElement(const HirExpr &e, const std::unordered_map<std::string, const H
 
 HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics)
     : targetContext(target)
-    , diagnostics(outputDiagnostics) {
+    , diagnostics(&outputDiagnostics) {
     softFloatPolicy.arch = target.arch;
 }
 
-LirPackage HirToLirContext::Run(const HirPackage &hir) {
+LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *pool) {
     typeLayouts = &hir.typeLayouts;
     globalConsts.clear();
     for (const auto &mod : hir.modules) {
@@ -166,8 +166,43 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
     }
     LirPackage pkg;
     pkg.dropGlues = hir.dropGlues;
-    for (const auto &mod : hir.modules) {
-        pkg.modules.push_back(LowerModule(mod));
+    pkg.modules.resize(hir.modules.size());
+    // Lowering a module re-points its constants' names at its own declarations. Only a name two modules share makes
+    // that order visible, so such a package is lowered one module after another.
+    std::unordered_set<std::string_view> constantNames;
+    bool sharedConstantName = false;
+    for (const auto &mod : hir.modules)
+        for (const auto &c : mod.consts)
+            sharedConstantName = !constantNames.insert(c.name).second || sharedConstantName;
+    if (pool == nullptr || pool->Jobs() == 1 || sharedConstantName) {
+        for (std::size_t index = 0; index < hir.modules.size(); ++index)
+            pkg.modules[index] = LowerModule(hir.modules[index]);
+    }
+    else {
+        // Each thread lowers with its own copy of the package tables built above. What one module leaves behind for
+        // the package — diagnostics, helper requests, whether it can panic — is kept apart and merged in module order,
+        // so the package is the same as lowering the modules one after another.
+        std::vector<std::optional<HirToLirContext>> workers(pool->Jobs());
+        std::vector<std::vector<Diagnostic>> moduleDiagnostics(hir.modules.size());
+        std::vector<SoftFloatHelperRegistry> moduleHelpers(hir.modules.size());
+        std::vector<char> moduleFailures(hir.modules.size(), 0);
+        pool->ForEachOnWorker(hir.modules.size(), [&](const std::size_t index, const std::size_t worker) {
+            auto &context = workers[worker];
+            if (!context)
+                context.emplace(*this);
+            context->diagnostics = &moduleDiagnostics[index];
+            context->softFloatHelpers = {};
+            context->emittedRuntimeFailure = false;
+            pkg.modules[index] = context->LowerModule(hir.modules[index]);
+            moduleHelpers[index] = std::move(context->softFloatHelpers);
+            moduleFailures[index] = context->emittedRuntimeFailure ? 1 : 0;
+        });
+        for (std::size_t index = 0; index < hir.modules.size(); ++index) {
+            diagnostics->insert(diagnostics->end(), std::make_move_iterator(moduleDiagnostics[index].begin()),
+                                std::make_move_iterator(moduleDiagnostics[index].end()));
+            softFloatHelpers.Absorb(moduleHelpers[index]);
+            emittedRuntimeFailure = emittedRuntimeFailure || moduleFailures[index] != 0;
+        }
     }
     // Glue is synthesized once the modules are lowered, because a plan describes a type rather than a module and every
     // cleanup in the package names the same symbol for it. It joins the last module for the same reason a monomorphized
@@ -178,15 +213,15 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
         }
         // Software-float helpers join the same module on the same terms. Each is private, so a package that carries
         // its own copy of one another package also emits resolves to whichever copy the linker keeps first.
-        for (LirFunc &helper : softFloatHelpers.SynthesizePending(diagnostics)) {
+        for (LirFunc &helper : softFloatHelpers.SynthesizePending(*diagnostics)) {
             pkg.modules.back().funcs.push_back(std::move(helper));
         }
         // A program that can panic gets the stack-trace printer its failure paths call, once, in the same module.
         if (emittedRuntimeFailure) {
-            pkg.modules.back().funcs.push_back(SynthesizeBacktrace(diagnostics));
+            pkg.modules.back().funcs.push_back(SynthesizeBacktrace(*diagnostics));
         }
     }
-    VerifySoftFloatLowering(pkg, softFloatPolicy, diagnostics);
+    VerifySoftFloatLowering(pkg, softFloatPolicy, *diagnostics);
     return pkg;
 }
 
@@ -279,7 +314,7 @@ LirReg HirToLirContext::DefineParameter(const TypeRef &type) {
 }
 
 void HirToLirContext::BuilderFailure(std::string detail) const {
-    diagnostics.push_back(ErrorDiagnostic(
+    diagnostics->push_back(ErrorDiagnostic(
         std::format("invalid internal LIR while lowering function '{}': {}",
                     currentFunction.empty() ? "<unknown>" : currentFunction, std::move(detail)),
         {"HIR-to-LIR lowering generated an instruction or control-flow edge rejected by the checked builder"},
@@ -1300,7 +1335,7 @@ HirToLirLowering::HirToLirLowering(HirPackage inputHir, TargetContext inputTarge
 LirPackage HirToLirLowering::Generate() {
     diagnostics.clear();
     HirToLirDetail::HirToLirContext lowering(target, diagnostics);
-    return lowering.Run(hir);
+    return lowering.Run(hir, pool);
 }
 
 const std::vector<Diagnostic> &HirToLirLowering::Diagnostics() const noexcept {

@@ -308,6 +308,11 @@ const std::string &SoftFloatHelperRegistry::Request(const SoftFloatHelperKey &ke
     return entry->second;
 }
 
+void SoftFloatHelperRegistry::Absorb(const SoftFloatHelperRegistry &other) {
+    for (const auto &key : other.pending)
+        static_cast<void>(Request(key));
+}
+
 std::vector<LirFunc> SoftFloatHelperRegistry::SynthesizePending(std::vector<Diagnostic> &diagnostics) {
     std::vector<LirFunc> helpers;
     // A helper may ask for others while it is built, which lengthens the queue this walks.

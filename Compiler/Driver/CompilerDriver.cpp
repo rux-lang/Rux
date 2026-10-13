@@ -588,6 +588,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     const auto lirStart = std::chrono::steady_clock::now();
     BeginPhase(CompilePhase::LoweringToLir, opts.manifest.package.name.Text());
     HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
+    lirLowering.SetWorkerPool(&Workers());
     auto lirPackage = lirLowering.Generate();
     if (EmitAll(lirLowering.Diagnostics())) {
         return false;

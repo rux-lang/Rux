@@ -15,7 +15,7 @@ WorkerPool::WorkerPool(const std::size_t jobs) {
     const std::size_t threads = std::max<std::size_t>(jobs, 1) - 1;
     workers.reserve(threads);
     for (std::size_t i = 0; i < threads; ++i)
-        workers.emplace_back([this] { WorkerLoop(); });
+        workers.emplace_back([this, i] { WorkerLoop(i + 1); });
 }
 
 WorkerPool::~WorkerPool() {
@@ -29,11 +29,15 @@ WorkerPool::~WorkerPool() {
 }
 
 void WorkerPool::ForEach(const std::size_t count, const std::function<void(std::size_t)> &body) {
+    ForEachOnWorker(count, [&body](const std::size_t index, std::size_t) { body(index); });
+}
+
+void WorkerPool::ForEachOnWorker(const std::size_t count, const std::function<void(std::size_t, std::size_t)> &body) {
     if (count == 0)
         return;
     if (workers.empty() || count == 1) {
         for (std::size_t index = 0; index < count; ++index)
-            body(index);
+            body(index, 0);
         return;
     }
     {
@@ -46,7 +50,7 @@ void WorkerPool::ForEach(const std::size_t count, const std::function<void(std::
         ++generation;
     }
     wake.notify_all();
-    Drain();
+    Drain(0);
     std::unique_lock lock(mutex);
     done.wait(lock, [this] { return (nextIndex >= total || failure) && busy == 0; });
     current = nullptr;
@@ -58,7 +62,7 @@ void WorkerPool::ForEach(const std::size_t count, const std::function<void(std::
     }
 }
 
-void WorkerPool::Drain() {
+void WorkerPool::Drain(const std::size_t worker) {
     std::unique_lock lock(mutex);
     while (current != nullptr && nextIndex < total && !failure) {
         const auto index = nextIndex++;
@@ -67,7 +71,7 @@ void WorkerPool::Drain() {
         lock.unlock();
         std::exception_ptr thrown;
         try {
-            (*body)(index);
+            (*body)(index, worker);
         }
         catch (...) {
             thrown = std::current_exception();
@@ -81,7 +85,7 @@ void WorkerPool::Drain() {
     }
 }
 
-void WorkerPool::WorkerLoop() {
+void WorkerPool::WorkerLoop(const std::size_t worker) {
     std::size_t seen = 0;
     while (true) {
         {
@@ -91,7 +95,7 @@ void WorkerPool::WorkerLoop() {
                 return;
             seen = generation;
         }
-        Drain();
+        Drain(worker);
     }
 }
 } // namespace Rux::Parallel
