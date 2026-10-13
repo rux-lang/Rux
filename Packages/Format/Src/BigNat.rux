@@ -297,70 +297,16 @@ extend BigNat {
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-set-product
     func SetProduct(self: &var BigNat, left: &BigNat, right: &BigNat) -> bool {
-        let longer = left.length > right.length ? left.length : right.length;
-        let shorter = left.length < right.length ? left.length : right.length;
-        if shorter >= 32 && longer <= shorter * 2 {
-            return self.SetSplitProduct(left, right, longer / 2);
-        }
         let total = left.length + right.length;
         if !self.Reserve(total + 1) { return false; }
-        var index: uint = 0;
-        while index < total {
-            self.limbs[index] = 0;
-            index = index + 1;
-        }
-        var i: uint = 0;
-        while i < left.length {
-            var carry: uint64 = 0;
-            var j: uint = 0;
-            while j < right.length {
-                let product = (left.limbs[i] as uint128) * (right.limbs[j] as uint128) +
-                              (self.limbs[i + j] as uint128) + (carry as uint128);
-                self.limbs[i + j] = product as uint64;
-                carry = (product >> 64) as uint64;
-                j = j + 1;
-            }
-            self.limbs[i + right.length] = carry;
-            i = i + 1;
-        }
+        // The recursion works in one block taken here, so a product of any size asks the allocator twice, however
+        // deep the split goes; asking at every level was most of the time at the widest float.
+        var work = BigNat(self.allocator);
+        let room = ProductWork(left.length, right.length);
+        if room > 0 && !work.Reserve(room) { return false; }
+        MultiplyLimbs(self.limbs, left.limbs, left.length, right.limbs, right.length, work.limbs);
         self.length = total;
         self.Trim();
-        return true;
-    }
-
-    // Copies a limb range for the recursive product. Each temporary owns its storage and releases it on failure.
-    func SetRange(self: &var BigNat, source: &BigNat, start: uint, count: uint) -> bool {
-        let available = start < source.length ? source.length - start : 0u;
-        let size = count < available ? count : available;
-        if !self.Reserve(size) { return false; }
-        var index: uint = 0;
-        while index < size {
-            self.limbs[index] = source.limbs[start + index];
-            index = index + 1;
-        }
-        self.length = size;
-        self.Trim();
-        return true;
-    }
-
-    // Karatsuba: (a0 + a1 B)(b0 + b1 B) needs three half-size products, not four. B is a whole-limb power of two,
-    // so recombination is exact shifts and additions. Small or very unequal operands keep the schoolbook loop.
-    func SetSplitProduct(self: &var BigNat, left: &BigNat, right: &BigNat, split: uint) -> bool {
-        var a0 = BigNat(self.allocator);
-        var a1 = BigNat(self.allocator);
-        var b0 = BigNat(self.allocator);
-        var b1 = BigNat(self.allocator);
-        var low = BigNat(self.allocator);
-        var high = BigNat(self.allocator);
-        var middle = BigNat(self.allocator);
-        if !a0.SetRange(left, 0, split) || !a1.SetRange(left, split, left.length) ||
-           !b0.SetRange(right, 0, split) || !b1.SetRange(right, split, right.length) { return false; }
-        if !low.SetProduct(a0, b0) || !high.SetProduct(a1, b1) || !a0.Add(a1) || !b0.Add(b1) ||
-           !middle.SetProduct(a0, b0) { return false; }
-        middle.Subtract(low);
-        middle.Subtract(high);
-        if !middle.ShiftLeft(split * 64) || !high.ShiftLeft(split * 128) ||
-           !self.Assign(low) || !self.Add(middle) || !self.Add(high) { return false; }
         return true;
     }
 
@@ -383,6 +329,160 @@ extend BigNat {
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-destructor
     func ~BigNat(self: &var BigNat) {
         self.Release();
+    }
+}
+
+// Below this many limbs the schoolbook product beats splitting.
+const KaratsubaLimbs: uint = 32;
+
+// The working room `KaratsubaProduct` needs for two `count`-limb factors: four limbs per level for the two sums and
+// their product, at a size that halves.
+func KaratsubaWork(count: uint) -> uint {
+    var total: uint = 0;
+    var size = count;
+    while size >= KaratsubaLimbs {
+        let upper = size - size / 2 + 1;
+        total = total + 4 * upper;
+        size = upper;
+    }
+    return total;
+}
+
+// The working room `MultiplyLimbs` needs for factors of these lengths.
+func ProductWork(leftCount: uint, rightCount: uint) -> uint {
+    let long = leftCount > rightCount ? leftCount : rightCount;
+    let short = leftCount > rightCount ? rightCount : leftCount;
+    if short < KaratsubaLimbs { return 0; }
+    if long == short { return KaratsubaWork(short); }
+    let rest = long % short;
+    let whole = KaratsubaWork(short);
+    let tail = rest == 0 ? 0u : ProductWork(short, rest);
+    return 2 * short + (whole > tail ? whole : tail);
+}
+
+// out[0, l + r) = left[0, l) * right[0, r), one row at a time.
+func SchoolbookProduct(out: *var uint64, left: *uint64, leftCount: uint, right: *uint64, rightCount: uint) {
+    var index: uint = 0;
+    while index < leftCount + rightCount {
+        out[index] = 0;
+        index = index + 1;
+    }
+    var i: uint = 0;
+    while i < leftCount {
+        var carry: uint64 = 0;
+        var j: uint = 0;
+        while j < rightCount {
+            let product = (left[i] as uint128) * (right[j] as uint128) + (out[i + j] as uint128) + (carry as uint128);
+            out[i + j] = product as uint64;
+            carry = (product >> 64) as uint64;
+            j = j + 1;
+        }
+        out[i + rightCount] = carry;
+        i = i + 1;
+    }
+}
+
+// Adds `count` limbs of `value` into `out` from `offset` on, carrying as far as `end`.
+func AddLimbsAt(out: *var uint64, end: uint, offset: uint, value: *uint64, count: uint) {
+    var carry: uint64 = 0;
+    var index: uint = 0;
+    while index < count || (carry != 0 && offset + index < end) {
+        let addend = index < count ? value[index] : 0u64;
+        let sum = (out[offset + index] as uint128) + (addend as uint128) + (carry as uint128);
+        out[offset + index] = sum as uint64;
+        carry = (sum >> 64) as uint64;
+        index = index + 1;
+    }
+}
+
+// Subtracts `count` limbs of `value` from the `length` limbs of `out`, which is never the smaller.
+func SubtractLimbs(out: *var uint64, length: uint, value: *uint64, count: uint) {
+    var borrow: uint64 = 0;
+    var index: uint = 0;
+    while index < length {
+        let right = ((index < count ? value[index] : 0u64) as uint128) + (borrow as uint128);
+        let left = out[index] as uint128;
+        if left >= right {
+            out[index] = (left - right) as uint64;
+            borrow = 0;
+        }
+        else {
+            out[index] = (left + (1u128 << 64) - right) as uint64;
+            borrow = 1;
+        }
+        index = index + 1;
+    }
+}
+
+// Sets sum[0, upper + 1) to low[0, lower) + high[0, upper), where lower is at most upper.
+func SumHalves(sum: *var uint64, low: *uint64, lower: uint, high: *uint64, upper: uint) {
+    var carry: uint64 = 0;
+    var index: uint = 0;
+    while index < upper {
+        let addend = index < lower ? low[index] : 0u64;
+        let total = (high[index] as uint128) + (addend as uint128) + (carry as uint128);
+        sum[index] = total as uint64;
+        carry = (total >> 64) as uint64;
+        index = index + 1;
+    }
+    sum[upper] = carry;
+}
+
+// Karatsuba on two `count`-limb factors into out[0, 2 count): (a0 + a1 B)(b0 + b1 B) needs three half-size
+// products, not four, and B is a whole number of limbs, so recombining is additions at limb offsets. Every level
+// takes its room from `work` rather than from an allocator.
+func KaratsubaProduct(out: *var uint64, left: *uint64, right: *uint64, count: uint, work: *var uint64) {
+    if count < KaratsubaLimbs {
+        SchoolbookProduct(out, left, count, right, count);
+        return;
+    }
+    let lower = count / 2;
+    let upper = count - lower;
+    let size = upper + 1;
+    // a0 b0 goes to the bottom of `out` and a1 b1 to the top, filling it exactly.
+    KaratsubaProduct(out, left, right, lower, work);
+    KaratsubaProduct(@out[2 * lower], @left[lower], @right[lower], upper, work);
+    let leftSum = work;
+    let rightSum = @work[size];
+    let middle = @work[2 * size];
+    SumHalves(leftSum, left, lower, @left[lower], upper);
+    SumHalves(rightSum, right, lower, @right[lower], upper);
+    KaratsubaProduct(middle, leftSum, rightSum, size, @work[4 * size]);
+    SubtractLimbs(middle, 2 * size, out, 2 * lower);
+    SubtractLimbs(middle, 2 * size, @out[2 * lower], 2 * upper);
+    AddLimbsAt(out, 2 * count, lower, middle, 2 * size);
+}
+
+// out[0, l + r) = left[0, l) * right[0, r), with room in `work` as `ProductWork` measures it. Factors of equal
+// length split; a long one against a short one goes a piece of the short one's length at a time, so each piece
+// splits too rather than costing the product of both lengths in the schoolbook loop.
+func MultiplyLimbs(out: *var uint64, left: *uint64, leftCount: uint, right: *uint64, rightCount: uint,
+                   work: *var uint64) {
+    if leftCount < rightCount {
+        MultiplyLimbs(out, right, rightCount, left, leftCount, work);
+        return;
+    }
+    if rightCount < KaratsubaLimbs {
+        SchoolbookProduct(out, left, leftCount, right, rightCount);
+        return;
+    }
+    if leftCount == rightCount {
+        KaratsubaProduct(out, left, right, leftCount, work);
+        return;
+    }
+    let total = leftCount + rightCount;
+    var index: uint = 0;
+    while index < total {
+        out[index] = 0;
+        index = index + 1;
+    }
+    let piece = work;
+    var offset: uint = 0;
+    while offset < leftCount {
+        let count = leftCount - offset < rightCount ? leftCount - offset : rightCount;
+        MultiplyLimbs(piece, @left[offset], count, right, rightCount, @work[2 * rightCount]);
+        AddLimbsAt(out, total, offset, piece, count + rightCount);
+        offset = offset + rightCount;
     }
 }
 
