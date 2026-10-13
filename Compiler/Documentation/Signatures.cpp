@@ -298,8 +298,8 @@ void CollectPublicTypes(const Decl &decl, const bool containingModulesPublic,
         return;
     }
     if (!containingModulesPublic || !decl.isPublic ||
-        !(AstCast<const StructDecl>(&decl) || AstCast<const EnumDecl>(&decl) ||
-          AstCast<const UnionDecl>(&decl) || AstCast<const InterfaceDecl>(&decl))) {
+        !(AstCast<const StructDecl>(&decl) || AstCast<const EnumDecl>(&decl) || AstCast<const UnionDecl>(&decl) ||
+          AstCast<const InterfaceDecl>(&decl))) {
         return;
     }
     const std::string name = DeclName(decl);

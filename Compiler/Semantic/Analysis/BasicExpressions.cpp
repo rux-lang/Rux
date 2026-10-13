@@ -1020,12 +1020,10 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             // so `pair == (3, true)` builds the literal as the other operand's type, the way a scalar literal is.
             TypeRef compared = left;
             if (left != right) {
-                if (AstCast<const TupleExpr>(&rightExpression) &&
-                    CanAssignExprTo(rightExpression, right, left)) {
+                if (AstCast<const TupleExpr>(&rightExpression) && CanAssignExprTo(rightExpression, right, left)) {
                     compared = left;
                 }
-                else if (AstCast<const TupleExpr>(&leftExpression) &&
-                         CanAssignExprTo(leftExpression, left, right)) {
+                else if (AstCast<const TupleExpr>(&leftExpression) && CanAssignExprTo(leftExpression, left, right)) {
                     compared = right;
                 }
                 else {

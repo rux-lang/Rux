@@ -156,8 +156,7 @@ void ConditionalEvaluator::Impl::BindPrimitiveExtensions(const TypeRef::Kind kin
                         BindPrimitiveExtension(*extension, std::string(primitive->name), modules, *module, true);
                     }
                 }
-                else if (const auto *nested = AstCast<const ModuleDecl>(item.get());
-                         nested && nested->isPublic) {
+                else if (const auto *nested = AstCast<const ModuleDecl>(item.get()); nested && nested->isPublic) {
                     self(nested->items);
                 }
             }

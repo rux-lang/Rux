@@ -69,8 +69,8 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
             LirReg payload = LowerExpr(*payloadExpr);
             // A tuple or array literal lowers to the address of the storage it was built in, not to its value, so the
             // value is loaded from there before it is stored as the payload.
-            const bool builtAtAddress = HirCast<const HirTupleExpr>(payloadExpr.get()) ||
-                                        HirCast<const HirArrayExpr>(payloadExpr.get());
+            const bool builtAtAddress =
+                HirCast<const HirTupleExpr>(payloadExpr.get()) || HirCast<const HirArrayExpr>(payloadExpr.get());
             if (size != 0 && builtAtAddress && !IsTerminated()) {
                 payload = EmitLoad(payload, payloadExpr->type);
             }
@@ -338,8 +338,7 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
         if (const auto *binding = HirCast<const HirBindingPattern>(part.pattern)) {
             bindings.push_back({binding, partAddress, part.type});
         }
-        else if (HirCast<const HirTuplePattern>(part.pattern) ||
-                 HirCast<const HirStructPattern>(part.pattern)) {
+        else if (HirCast<const HirTuplePattern>(part.pattern) || HirCast<const HirStructPattern>(part.pattern)) {
             EmitDestructuringChecks(*part.pattern, partAddress, part.type, mismatch, bindings);
         }
         else if (!HirCast<const HirWildcardPattern>(part.pattern)) {
@@ -764,8 +763,7 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         }
         return;
     }
-    if (auto *initLitExpr = HirCast<const HirLiteralExpr>(&expr);
-        initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
+    if (auto *initLitExpr = HirCast<const HirLiteralExpr>(&expr); initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
         StoreStringLiteralSlice(*initLitExpr, slot);
         return;
     }

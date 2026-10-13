@@ -339,8 +339,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
     }
     else if (Match(TokenKind::ForKeyword)) {
         decl->interfaceName = firstName;
-        if (auto *named = AstCast<NamedTypeExpr>(firstType.get());
-            named != nullptr && !named->typeArgs.empty()) {
+        if (auto *named = AstCast<NamedTypeExpr>(firstType.get()); named != nullptr && !named->typeArgs.empty()) {
             decl->interfaceName = named->name;
             decl->interfaceTypeArgs = std::move(named->typeArgs);
         }

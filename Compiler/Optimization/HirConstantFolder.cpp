@@ -588,8 +588,8 @@ bool HirConstantFolder::FoldCast(HirExprPtr &expr) {
 }
 
 bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
-    if (HirCast<const HirLiteralExpr>(&expr) || HirCast<const HirVarExpr>(&expr) ||
-        HirCast<const HirSelfExpr>(&expr) || HirCast<const HirPathExpr>(&expr)) {
+    if (HirCast<const HirLiteralExpr>(&expr) || HirCast<const HirVarExpr>(&expr) || HirCast<const HirSelfExpr>(&expr) ||
+        HirCast<const HirPathExpr>(&expr)) {
         return true;
     }
     if (const auto *unary = HirCast<const HirUnaryExpr>(&expr)) {

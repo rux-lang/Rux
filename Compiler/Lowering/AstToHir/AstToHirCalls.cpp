@@ -121,8 +121,7 @@ HirExprPtr AstToHirContext::LowerArgumentAs(const Expr &argument, const TypeRef 
 
 HirExprPtr AstToHirContext::LowerDefaultArgument(const Expr &expression, const TypeRef &targetType,
                                                  const SourceLocation &callSiteLocation) {
-    if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression);
-        intrinsic && intrinsic->args.empty()) {
+    if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression); intrinsic && intrinsic->args.empty()) {
         IntrinsicExpr callSiteIntrinsic;
         callSiteIntrinsic.location = callSiteLocation;
         callSiteIntrinsic.kind = intrinsic->kind;

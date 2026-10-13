@@ -783,8 +783,7 @@ HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
         }
         recovery.pattern = std::move(failure);
         patternBindingsOwnPayload = savedOwnership;
-        const bool leaves =
-            AstCast<const DivergeExpr>(arm.body.get()) || AstCast<const BlockExpr>(arm.body.get());
+        const bool leaves = AstCast<const DivergeExpr>(arm.body.get()) || AstCast<const BlockExpr>(arm.body.get());
         recovery.body = leaves ? LowerExpr(*arm.body) : LowerExprAs(*arm.body, lowered->type);
         recovery.cleanups = CurrentScopeCleanups();
         PopScope();
@@ -843,7 +842,7 @@ HirExprPtr AstToHirContext::LowerNativeCoalesce(const BinaryExpr &expression) {
     absent.location = location;
     absent.pattern = NativeCasePattern(operandType, NativeAbsentTag, std::nullopt, nullptr, location);
     absent.body = AstCast<const DivergeExpr>(expression.right.get()) ? LowerExpr(*expression.right)
-                                                                            : LowerExprAs(*expression.right, payload);
+                                                                     : LowerExprAs(*expression.right, payload);
 
     auto lowered = std::make_unique<HirMatchExpr>();
     lowered->location = location;

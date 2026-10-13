@@ -262,8 +262,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (letStatement->type) {
             ValidateArrayType(**letStatement->type, false);
         }
-        if (letStatement->init && letStatement->type &&
-            AstCast<const ReferenceTypeExpr>(letStatement->type->get())) {
+        if (letStatement->init && letStatement->type && AstCast<const ReferenceTypeExpr>(letStatement->type->get())) {
             RejectSubsetViewUse(*letStatement->init, letStatement->location, "be stored as a reference");
         }
         // The annotation is resolved first so that an initializer whose parts take their type from it, such as the
@@ -1194,8 +1193,7 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
         if (!key.empty() && !seen.insert(key).second) {
             EmitError(pattern->location, "duplicate pattern in match");
         }
-        if (const auto *enumerator = AstCast<const EnumPattern>(pattern);
-            enumerator && !enumerator->path.empty()) {
+        if (const auto *enumerator = AstCast<const EnumPattern>(pattern); enumerator && !enumerator->path.empty()) {
             const std::string &variantName = enumerator->path.back();
             if (const auto resolved = LookupCase(BaseTypeName(subjectType.name), variantName);
                 resolved && CasePatternCoversCase(*enumerator, *resolved->selectedCase, resolved->form)) {

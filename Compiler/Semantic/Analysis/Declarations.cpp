@@ -383,8 +383,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         currentTypeParams = savedTypeParams;
         return;
     }
-    const bool receiverMayResolve =
-        extendedSymbol != nullptr || !AstCast<const NamedTypeExpr>(d.extendedType.get());
+    const bool receiverMayResolve = extendedSymbol != nullptr || !AstCast<const NamedTypeExpr>(d.extendedType.get());
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
     const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || extendedType.IsSlice();
     if (!isSliceReceiver && !extendedSymbol) {

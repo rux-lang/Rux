@@ -216,8 +216,7 @@ void AnalysisContext::ValidateRequirementReceiver(const FuncDecl &requirement, c
         pointee = pointer->pointee.get();
     }
     const auto *named = AstCast<const NamedTypeExpr>(pointee);
-    if (AstCast<const SelfTypeExpr>(pointee) ||
-        (named && named->name == SelfTypeName && named->typeArgs.empty())) {
+    if (AstCast<const SelfTypeExpr>(pointee) || (named && named->name == SelfTypeName && named->typeArgs.empty())) {
         return;
     }
     EmitError(receiver->location,

@@ -302,8 +302,7 @@ HirExprPtr AstToHirContext::LowerCompilerParamCall(const std::string &root, cons
     if (const auto *variant = AstCast<const EnumShorthandExpr>(argumentExpression)) {
         argument = variant->variant;
     }
-    else if (const auto *path = AstCast<const PathExpr>(argumentExpression);
-             path && path->segments.size() == 2) {
+    else if (const auto *path = AstCast<const PathExpr>(argumentExpression); path && path->segments.size() == 2) {
         argument = path->segments[1];
     }
     else if (const auto *literal = AstCast<const LiteralExpr>(argumentExpression);

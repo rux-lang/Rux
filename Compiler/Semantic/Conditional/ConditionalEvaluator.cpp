@@ -905,8 +905,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
     }
 
     if (const auto *e = AstCast<const FieldExpr>(&expr)) {
-        if (const auto *version = AstCast<const FieldExpr>(e->object.get());
-            version && version->field == "version") {
+        if (const auto *version = AstCast<const FieldExpr>(e->object.get()); version && version->field == "version") {
             if (const auto root = CompilerParamRoot(*version->object); root && *root == "Compiler") {
                 const auto *ident = AstCast<const IdentExpr>(version->object.get());
                 if (ident && !RequireRuxImport(ident->name, ident->location)) {

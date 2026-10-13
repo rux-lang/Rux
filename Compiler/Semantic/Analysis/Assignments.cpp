@@ -76,8 +76,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         // An index that resolved to a declared `[]` is a call whose result is a temporary, so it is not a place a
         // reference can borrow, however much it looks like one.
         const bool addressable =
-            AstCast<const IdentExpr>(&expr) || AstCast<const SelfExpr>(&expr) ||
-            AstCast<const FieldExpr>(&expr) ||
+            AstCast<const IdentExpr>(&expr) || AstCast<const SelfExpr>(&expr) || AstCast<const FieldExpr>(&expr) ||
             (AstCast<const IndexExpr>(&expr) && !IsIndexOperatorCall(expr)) ||
             (AstCast<const UnaryExpr>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
         if (!addressable) {
@@ -157,9 +156,9 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
 
     // A range literal is contextually typed bound by bound, like a tuple, so `let r: int32..int32 = 1..5;` gives
     // each unsuffixed bound the annotation's element type. The shape (which bounds exist, inclusive or not) must match.
-    if (const auto *range = AstCast<const RangeExpr>(&expr);
-        range && exprType.IsRange() && targetType.IsRange() && exprType.kind == targetType.kind &&
-        !targetType.inner.empty()) {
+    if (const auto *range = AstCast<const RangeExpr>(&expr); range && exprType.IsRange() && targetType.IsRange() &&
+                                                             exprType.kind == targetType.kind &&
+                                                             !targetType.inner.empty()) {
         const TypeRef &element = targetType.inner.front();
         for (const Expr *bound : {range->lo.get(), range->hi.get()}) {
             if (!bound) {

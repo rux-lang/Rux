@@ -529,8 +529,8 @@ void WriteMembers(JsonWriter &json, Context &context, const Decl &decl, const st
                                         extensionSource->display);
                 }
                 else {
-                    WriteConstantMember(json, context, *AstCast<const ConstDecl>(member),
-                                        extension->interfaceName, *extensionSource);
+                    WriteConstantMember(json, context, *AstCast<const ConstDecl>(member), extension->interfaceName,
+                                        *extensionSource);
                 }
             }
         }

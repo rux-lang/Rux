@@ -523,10 +523,9 @@ LirReg HirToLirContext::EmitVariantEquality(const TypeRef &type, const std::vect
 
 LirReg HirToLirContext::EqualityOperandStorage(const HirExpr &operand, const TypeRef &type) {
     const auto *unary = HirCast<const HirUnaryExpr>(&operand);
-    const bool addressable = HirCast<const HirVarExpr>(&operand) ||
-                             HirCast<const HirSelfExpr>(&operand) ||
-                             HirCast<const HirFieldExpr>(&operand) ||
-                             HirCast<const HirIndexExpr>(&operand) || (unary && unary->op == TokenKind::Star);
+    const bool addressable = HirCast<const HirVarExpr>(&operand) || HirCast<const HirSelfExpr>(&operand) ||
+                             HirCast<const HirFieldExpr>(&operand) || HirCast<const HirIndexExpr>(&operand) ||
+                             (unary && unary->op == TokenKind::Star);
     if (addressable) {
         return LowerLValue(operand);
     }

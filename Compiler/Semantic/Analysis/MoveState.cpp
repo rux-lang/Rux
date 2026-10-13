@@ -949,8 +949,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         if (const auto *field = AstCast<const FieldExpr>(&candidate)) {
             object = field->object.get();
         }
-        else if (const auto *index = AstCast<const IndexExpr>(&candidate);
-                 index && !IsIndexOperatorCall(*index)) {
+        else if (const auto *index = AstCast<const IndexExpr>(&candidate); index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
         if (!object) {
@@ -967,12 +966,10 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         if (const auto *field = AstCast<const FieldExpr>(&candidate)) {
             object = field->object.get();
         }
-        else if (const auto *index = AstCast<const IndexExpr>(&candidate);
-                 index && !IsIndexOperatorCall(*index)) {
+        else if (const auto *index = AstCast<const IndexExpr>(&candidate); index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
-        else if (const auto *unary = AstCast<const UnaryExpr>(&candidate);
-                 unary && unary->op == TokenKind::Star) {
+        else if (const auto *unary = AstCast<const UnaryExpr>(&candidate); unary && unary->op == TokenKind::Star) {
             object = unary->operand.get();
         }
         if (!object) {
