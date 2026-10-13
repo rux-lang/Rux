@@ -162,14 +162,14 @@ std::string_view ExpressionKind(const Expr &expression) {
 } // namespace
 
 void AstToHirContext::ReportUnsupportedExpression(const Expr &expression) {
-    diagnostics.push_back({Diagnostic::Severity::Error,
-                           currentFile,
-                           expression.location,
-                           std::format("cannot lower '{}' expression to HIR", ExpressionKind(expression)),
-                           {"this is an internal compiler limitation; semantic analysis accepted an expression that "
-                            "AST-to-HIR lowering does not support"},
-                           "please report this compiler limitation with a minimal source example",
-                           {}});
+    diagnostics->push_back({Diagnostic::Severity::Error,
+                            currentFile,
+                            expression.location,
+                            std::format("cannot lower '{}' expression to HIR", ExpressionKind(expression)),
+                            {"this is an internal compiler limitation; semantic analysis accepted an expression that "
+                             "AST-to-HIR lowering does not support"},
+                            "please report this compiler limitation with a minimal source example",
+                            {}});
 }
 
 HirExprPtr AstToHirContext::TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
@@ -566,7 +566,7 @@ HirPackage AstToHirLowering::Generate() {
     diagnostics.clear();
     AstToHirDetail::AstToHirContext lowering(semanticModel, semanticModel.modules, semanticModel.compileTimeContext,
                                              diagnostics);
-    return lowering.Run();
+    return lowering.Run(pool);
 }
 
 const std::vector<Diagnostic> &AstToHirLowering::Diagnostics() const noexcept {

@@ -668,6 +668,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     const auto hirStart = std::chrono::steady_clock::now();
     BeginPhase(CompilePhase::LoweringToHir, opts.manifest.package.name.Text());
     AstToHirLowering hirLowering(*semanticModel);
+    hirLowering.SetWorkerPool(&Workers());
     auto hirPackage = hirLowering.Generate();
     if (EmitAll(hirLowering.Diagnostics())) {
         return false;

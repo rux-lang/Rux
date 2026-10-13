@@ -52,26 +52,80 @@ AstToHirContext::AstToHirContext(const SemanticModel &inputModel, const std::vec
     , globalScope(nullptr)
     , currentScope(&globalScope)
     , cleanupPlanner(inputModel)
-    , diagnostics(outputDiagnostics) {
+    , diagnostics(&outputDiagnostics) {
+}
+
+AstToHirContext::AstToHirContext(const AstToHirContext &prepared, std::vector<Diagnostic> &outputDiagnostics)
+    : model(prepared.model)
+    , modules(prepared.modules)
+    , context(prepared.context)
+    , globalScope(prepared.globalScope)
+    , currentScope(&globalScope)
+    , structDecls(prepared.structDecls)
+    , enumDecls(prepared.enumDecls)
+    , unionDecls(prepared.unionDecls)
+    , methodsByType(prepared.methodsByType)
+    , interfaceDecls(prepared.interfaceDecls)
+    , typeInterfaceVtables(prepared.typeInterfaceVtables)
+    , methodImpl(prepared.methodImpl)
+    , cleanupPlanner(prepared.model)
+    , diagnostics(&outputDiagnostics) {
 }
 
 AstToHirContext::~AstToHirContext() = default;
 
-HirPackage AstToHirContext::Run() {
+void AstToHirContext::ResetModuleState() {
+    propagationOrdinal = 0;
+    coalescingOrdinal = 0;
+    iterationOrdinal = 0;
+    checkedArithmeticOrdinal = 0;
+    zeroizationOrdinal = 0;
+    nativeOrdinal = 0;
+    returnOrdinal = 0;
+    cleanupPlanner.ResetBindingIds();
+}
+
+HirPackage AstToHirContext::Run(Parallel::WorkerPool *pool) {
     RegisterBuiltins();
     for (const Module *module : modules) {
         CollectModule(*module);
     }
 
     HirPackage package;
-    for (const Module *module : modules) {
-        package.modules.push_back(LowerModule(*module));
+    package.modules.resize(modules.size());
+    if (pool == nullptr || pool->Jobs() == 1) {
+        for (std::size_t index = 0; index < modules.size(); ++index) {
+            package.modules[index] = LowerModule(*modules[index]);
+        }
+    }
+    else {
+        // Once the declarations are collected a module lowers on its own: the semantic model is read-only, and each
+        // module emits the generic instances it uses itself. Every thread lowers with its own copy of the tables, and
+        // diagnostics merge in module order.
+        std::vector<std::unique_ptr<AstToHirContext>> workers(pool->Jobs());
+        std::vector<std::vector<Diagnostic>> moduleDiagnostics(modules.size());
+        pool->ForEachOnWorker(modules.size(), [&](const std::size_t index, const std::size_t worker) {
+            auto &lowering = workers[worker];
+            if (!lowering)
+                lowering = std::make_unique<AstToHirContext>(*this, moduleDiagnostics[index]);
+            lowering->diagnostics = &moduleDiagnostics[index];
+            package.modules[index] = lowering->LowerModule(*modules[index]);
+        });
+        for (auto &reported : moduleDiagnostics) {
+            diagnostics->insert(diagnostics->end(), std::make_move_iterator(reported.begin()),
+                                std::make_move_iterator(reported.end()));
+        }
     }
     package.dropGlues.reserve(model.DropGluePlans().size());
     for (const auto &[_, plan] : model.DropGluePlans()) {
         package.dropGlues.push_back(plan);
     }
     std::ranges::sort(package.dropGlues, {}, [](const DropGluePlan &plan) { return plan.type.ToString(); });
+    // Destructor instances join the last module, so they are lowered as part of it, from the same starting state
+    // however the modules themselves were lowered.
+    if (!modules.empty()) {
+        BeginModule(*modules.back());
+    }
     ResolveDropGlue(package);
     for (const auto &[name, layout] : model.TypeLayouts()) {
         package.typeLayouts.emplace(name, HirTypeLayout{layout.size, layout.alignment});
@@ -490,10 +544,15 @@ std::string FilePathToModulePath(const std::string &filePath) {
 }
 } // namespace
 
-HirModule AstToHirContext::LowerModule(const Module &module) {
+void AstToHirContext::BeginModule(const Module &module) {
+    ResetModuleState();
     currentFile = module.name;
     currentModulePath = FilePathToModulePath(module.name);
     declModulePath.clear();
+}
+
+HirModule AstToHirContext::LowerModule(const Module &module) {
+    BeginModule(module);
     HirModule loweredModule;
     loweredModule.name = module.name;
     for (const auto &declaration : module.items) {

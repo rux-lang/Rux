@@ -240,7 +240,7 @@ See the platform guides for native requirements and runtime verification: [FreeB
 
 ## Parallel Compilation
 
-One compilation runs its independent work on worker threads: HIR-to-LIR lowering of modules, LIR function passes and RCU object emission of modules. `rux build --jobs N` caps the threads at N; the default is one per logical core. Work is split by index and merged in source order, so the artifact, diagnostics and `--stats` counts are identical for every N (per-pass times in `--stats` add up the time each thread spent).
+One compilation runs its independent work on worker threads: lexing and parsing of files, AST-to-HIR lowering and HIR constant folding of modules, HIR-to-LIR lowering of modules, LIR function passes and RCU object emission of modules. `rux build --jobs N` caps the threads at N; the default is one per logical core. Work is split by index and merged in source order, so the artifact, diagnostics and `--stats` counts are identical for every N (per-pass times in `--stats` add up the time each thread spent).
 
 ## Up-to-Date Builds
 

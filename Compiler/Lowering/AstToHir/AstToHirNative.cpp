@@ -198,7 +198,7 @@ HirExprPtr AstToHirContext::ConvertNative(HirExprPtr value, const TypeRef &desti
     }
     const NativeConversion conversion = ClassifyNativeConversion(source, destination);
     if (!conversion.Accepted()) {
-        diagnostics.push_back(
+        diagnostics->push_back(
             {Diagnostic::Severity::Error,
              currentFile,
              location,
@@ -253,13 +253,13 @@ HirExprPtr AstToHirContext::LowerNoneAs(const TypeRef &targetType, const SourceL
                               location);
     }
     if (!targetType.IsOptional()) {
-        diagnostics.push_back({Diagnostic::Severity::Error,
-                               currentFile,
-                               location,
-                               std::format("cannot lower 'none' as '{}'", targetType.ToString()),
-                               {"semantic analysis accepted 'none' without an optional destination"},
-                               "please report this compiler limitation with a minimal source example",
-                               {}});
+        diagnostics->push_back({Diagnostic::Severity::Error,
+                                currentFile,
+                                location,
+                                std::format("cannot lower 'none' as '{}'", targetType.ToString()),
+                                {"semantic analysis accepted 'none' without an optional destination"},
+                                "please report this compiler limitation with a minimal source example",
+                                {}});
     }
     return MakeNativeCase(targetType, NativeAbsentTag, nullptr, location);
 }
@@ -526,7 +526,7 @@ HirPatternPtr AstToHirContext::LowerNativeSelection(const TypeRef &subjectType, 
         return NativeCasePattern(subjectType, NativePresentTag, payload, std::move(inner), location);
     }
     case NativeSelection::Kind::Invalid:
-        diagnostics.push_back(
+        diagnostics->push_back(
             {Diagnostic::Severity::Error,
              currentFile,
              location,

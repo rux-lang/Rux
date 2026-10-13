@@ -2,6 +2,7 @@
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
+#include "Parallel/WorkerPool.h"
 #include "Semantic/Model/SemanticModel.h"
 
 #include <vector>
@@ -26,8 +27,14 @@ public:
     /// than user-facing ones.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const noexcept;
 
+    /// Threads modules may be lowered on; null lowers them on the calling thread. The package never depends on it.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        pool = inputPool;
+    }
+
 private:
     const SemanticModel &semanticModel;
     std::vector<Diagnostic> diagnostics;
+    Parallel::WorkerPool *pool = nullptr;
 };
 } // namespace Rux

@@ -2,6 +2,7 @@
 
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/AstToHir/Detail/CleanupPlanner.h"
+#include "Parallel/WorkerPool.h"
 #include "Types/NativeConversion.h"
 
 #include <cstdint>
@@ -57,10 +58,15 @@ public:
                     const CompileTimeContext &inputCompileTimeContext, std::vector<Diagnostic> &outputDiagnostics);
     ~AstToHirContext();
 
+    /// A context for lowering modules on another thread: the declaration tables `prepared` collected, with fresh
+    /// lowering state of its own.
+    AstToHirContext(const AstToHirContext &prepared, std::vector<Diagnostic> &outputDiagnostics);
+
     AstToHirContext(const AstToHirContext &) = delete;
     AstToHirContext &operator=(const AstToHirContext &) = delete;
 
-    [[nodiscard]] HirPackage Run();
+    /// Lower every module, on `pool`'s threads when one is given; the package never depends on it.
+    [[nodiscard]] HirPackage Run(Parallel::WorkerPool *pool = nullptr);
 
 protected:
     const SemanticModel &model;
@@ -106,7 +112,14 @@ protected:
     std::size_t returnOrdinal = 0;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
-    std::vector<Diagnostic> &diagnostics;
+    /// Where lowering reports; a worker lowering one module points it at that module's own list.
+    std::vector<Diagnostic> *diagnostics;
+
+    /// Start every counter that names a module's temporaries and bindings from zero, so what a module lowers to does
+    /// not depend on the modules lowered before it on the same context.
+    void ResetModuleState();
+    /// Make `module` the one being lowered: its file and path, with its counters reset.
+    void BeginModule(const Module &module);
 
     void PushScope();
     void PopScope();

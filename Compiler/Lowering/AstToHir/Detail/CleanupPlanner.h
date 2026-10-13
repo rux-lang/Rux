@@ -47,6 +47,12 @@ public:
     [[nodiscard]] std::vector<HirDropAction> LoopExitActions(const std::string &label) const;
     [[nodiscard]] std::optional<HirDropAction> ActionFor(std::uint64_t bindingId) const;
 
+    /// Number bindings from one again. Identities only have to be unique within a function, so each module starts
+    /// afresh, which keeps a module's lowering independent of which modules were lowered before it.
+    void ResetBindingIds() noexcept {
+        nextBindingId = 1;
+    }
+
     /// Introspection used by lowering invariants and focused ownership tests without exposing mutable planner state.
     [[nodiscard]] bool HasActiveFunction() const noexcept;
     [[nodiscard]] std::size_t ScopeDepth() const noexcept;

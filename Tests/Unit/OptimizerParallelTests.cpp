@@ -161,6 +161,52 @@ TEST_CASE("HIR-to-LIR lowering produces the same package on one thread and on ma
     CHECK(Fingerprint(serial) == Fingerprint(parallel));
 }
 
+TEST_CASE("AST-to-HIR lowering produces the same package on one thread and on many") {
+    // Several modules sharing a generic, so each module emits its own instances and numbers its own temporaries.
+    std::vector<std::string> sources{R"(
+        pub func Pick<T>(first: T, second: T, takeFirst: bool) -> T {
+            if takeFirst { return first; }
+            return second;
+        }
+    )"};
+    for (int index = 0; index < 5; ++index) {
+        sources.push_back(std::format(R"(
+            func Use{0}(x: uint32) -> uint32 {{
+                let limit = Pick<uint32>(x, {0}u32, x > 3u32);
+                var total: uint32 = 0;
+                for i in 0u32..limit {{ total += i ^ Pick<uint32>(i, x, i % 2u32 == 0u32); }}
+                return total;
+            }}
+        )",
+                                      index));
+    }
+    const auto lower = [&](Parallel::WorkerPool *pool) {
+        std::vector<ParseResult> parsed;
+        for (std::size_t index = 0; index < sources.size(); ++index) {
+            const auto name = std::format("module{}.rux", index);
+            Lexer lexer(sources[index], name);
+            auto lexed = lexer.Tokenize();
+            REQUIRE_FALSE(lexed.HasErrors());
+            Parser parser(std::move(lexed.tokens), name);
+            parsed.push_back(parser.Parse());
+            REQUIRE_FALSE(parsed.back().HasErrors());
+        }
+        std::vector<Module *> modules;
+        for (auto &result : parsed)
+            modules.push_back(&result.module);
+        SemanticAnalyzer analyzer(modules, {}, "test", "windows");
+        const auto model = analyzer.Analyze();
+        REQUIRE_FALSE(model.HasErrors());
+        AstToHirLowering lowering(model);
+        lowering.SetWorkerPool(pool);
+        auto hir = lowering.Generate();
+        REQUIRE(lowering.Diagnostics().empty());
+        return Fingerprint(HirToLirLowering(std::move(hir), TargetContext::CreateNative()).Generate());
+    };
+    Parallel::WorkerPool pool(4);
+    CHECK(lower(nullptr) == lower(&pool));
+}
+
 TEST_CASE("the release LIR pipeline produces the same package on one thread and on many") {
     const auto source = R"(
         const Table: uint32[..] = [3u32, 1u32, 4u32, 1u32, 5u32, 9u32, 2u32, 6u32];
