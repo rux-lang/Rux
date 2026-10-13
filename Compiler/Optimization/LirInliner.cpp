@@ -475,36 +475,46 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
             order.push_back(i);
         }
     }
-    std::unordered_map<std::size_t, LirFunc> available;
+    // Callees are kept by address: a function is finished, and never changed again this round, before it is offered.
+    std::unordered_map<std::size_t, const LirFunc *> available;
     std::unordered_map<std::size_t, Size> sizes;
     std::size_t packageBudget = 50000;
     bool changed = false;
     for (const auto index : order) {
         auto &function = *functions[index];
+        // Register types and the function's own addresses are needed only around a call this round may rewrite, so they
+        // are gathered when the first such call turns up, still before anything was inlined into the function.
         LirReg next = 0;
         Types types;
-        for (const auto &parameter : function.params) {
-            types[parameter.reg] = parameter.type;
-            next = std::max(next, parameter.reg + 1);
-        }
-        for (const auto &block : function.blocks) {
-            for (const auto &instruction : block.instrs) {
-                if (instruction.dst != LirNoReg) {
-                    types[instruction.dst] =
-                        instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
-                    next = std::max(next, instruction.dst + 1);
+        std::unordered_set<LirReg> local;
+        bool prepared = false;
+        const auto prepare = [&] {
+            if (prepared)
+                return;
+            prepared = true;
+            for (const auto &parameter : function.params) {
+                types[parameter.reg] = parameter.type;
+                next = std::max(next, parameter.reg + 1);
+            }
+            for (const auto &block : function.blocks) {
+                for (const auto &instruction : block.instrs) {
+                    if (instruction.dst != LirNoReg) {
+                        types[instruction.dst] = instruction.op == LirOpcode::Alloca
+                                                   ? TypeRef::MakePointer(instruction.type)
+                                                   : instruction.type;
+                        next = std::max(next, instruction.dst + 1);
+                    }
                 }
             }
-        }
-        // Addresses of the function's own objects and their fields, as it stood before this round inlined into it.
-        std::unordered_set<LirReg> local;
-        for (int pass = 0; pass < 2; ++pass)
-            for (const auto &block : function.blocks)
-                for (const auto &instruction : block.instrs)
-                    if (instruction.op == LirOpcode::Alloca ||
-                        ((instruction.op == LirOpcode::FieldPtr || instruction.op == LirOpcode::IndexPtr) &&
-                         !instruction.srcs.empty() && local.contains(instruction.srcs[0])))
-                        local.insert(instruction.dst);
+            // Addresses of the function's own objects and their fields, as it stood before this round inlined into it.
+            for (int pass = 0; pass < 2; ++pass)
+                for (const auto &block : function.blocks)
+                    for (const auto &instruction : block.instrs)
+                        if (instruction.op == LirOpcode::Alloca ||
+                            ((instruction.op == LirOpcode::FieldPtr || instruction.op == LirOpcode::IndexPtr) &&
+                             !instruction.srcs.empty() && local.contains(instruction.srcs[0])))
+                            local.insert(instruction.dst);
+        };
         std::size_t budget = 2048;
         bool functionChanged = false;
         for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
@@ -512,9 +522,12 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 auto &call = function.blocks[block].instrs[position];
                 const auto target =
                     call.op == LirOpcode::Call ? resolve(index, call.strArg) : std::optional<std::size_t>{};
-                if (target && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
-                    NativeSquareRoot(*functions[*target]) && call.srcs.size() == 1 && types.contains(call.srcs[0]) &&
-                    types.at(call.srcs[0]) == call.type && call.type == functions[*target]->returnType) {
+                const bool squareRoot = target && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
+                                        NativeSquareRoot(*functions[*target]) && call.srcs.size() == 1;
+                if (squareRoot)
+                    prepare();
+                if (squareRoot && types.contains(call.srcs[0]) && types.at(call.srcs[0]) == call.type &&
+                    call.type == functions[*target]->returnType) {
                     call.op = LirOpcode::Sqrt;
                     call.strArg.clear();
                     call.callConv = CallingConvention::Default;
@@ -526,7 +539,8 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 bool valid =
                     call.op == LirOpcode::Call && found != available.end() && !call.isCVariadic && !call.isVolatile;
                 if (valid) {
-                    const auto &callee = found->second;
+                    prepare();
+                    const auto &callee = *found->second;
                     valid = call.type == callee.returnType && call.srcs.size() == callee.params.size() &&
                             (!callee.returnType.IsOpaque() || call.dst == LirNoReg) && Cost(callee) <= budget &&
                             Cost(callee) <= packageBudget && function.blocks.size() + callee.blocks.size() + 1 <= 4096;
@@ -550,8 +564,8 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     ++position;
                     continue;
                 }
-                const auto cost = Cost(found->second);
-                Inline(function, block, position, found->second, next, types);
+                const auto cost = Cost(*found->second);
+                Inline(function, block, position, *found->second, next, types);
                 budget -= cost;
                 packageBudget -= cost;
                 functionChanged = true;
@@ -562,7 +576,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
             changed = true;
         }
         if (const auto size = remaining[index] == 0 ? Eligible(function, references) : std::nullopt) {
-            available.emplace(index, function);
+            available.emplace(index, &function);
             sizes.emplace(index, *size);
         }
     }

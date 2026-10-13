@@ -1,7 +1,8 @@
 #include "Optimization/LirReachability.h"
 
 #include <algorithm>
-#include <set>
+#include <array>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -11,7 +12,17 @@
 namespace Rux::Optimization {
 namespace {
 using DeclarationList = std::vector<LirDeclarationId>;
-using SymbolIndex = std::unordered_map<std::string, DeclarationList>;
+
+/// Hashes a symbol however it is spelled, so a lookup by `std::string_view` builds no string.
+struct SymbolHash {
+    using is_transparent = void;
+
+    [[nodiscard]] std::size_t operator()(const std::string_view symbol) const noexcept {
+        return std::hash<std::string_view>{}(symbol);
+    }
+};
+
+using SymbolIndex = std::unordered_map<std::string, DeclarationList, SymbolHash, std::equal_to<>>;
 
 struct PackageIndex {
     SymbolIndex functions;
@@ -73,11 +84,11 @@ std::string_view NormalizeSymbol(std::string_view symbol) {
 /// @return nullptr when nothing in the package matches
 const DeclarationList *FindSymbol(const SymbolIndex &index, std::string_view symbol) {
     symbol = NormalizeSymbol(symbol);
-    if (const auto found = index.find(std::string(symbol)); found != index.end()) {
+    if (const auto found = index.find(symbol); found != index.end()) {
         return &found->second;
     }
     if (const auto separator = symbol.rfind("::"); separator != std::string_view::npos) {
-        if (const auto found = index.find(std::string(symbol.substr(separator + 2))); found != index.end()) {
+        if (const auto found = index.find(symbol.substr(separator + 2)); found != index.end()) {
             return &found->second;
         }
     }
@@ -90,19 +101,46 @@ public:
         : package(inputPackage)
         , artifactKind(inputArtifactKind)
         , index(BuildIndex(inputPackage)) {
+        for (auto &modules : seen)
+            modules.resize(package.modules.size());
+        for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
+            const auto &module = package.modules[moduleIndex];
+            Seen(LirDeclarationKind::Function)[moduleIndex].resize(module.funcs.size());
+            Seen(LirDeclarationKind::Constant)[moduleIndex].resize(module.consts.size());
+            Seen(LirDeclarationKind::Vtable)[moduleIndex].resize(module.vtables.size());
+            Seen(LirDeclarationKind::ExternVariable)[moduleIndex].resize(module.externVars.size());
+            Seen(LirDeclarationKind::Global)[moduleIndex].resize(module.globals.size());
+        }
     }
 
+    /// The reachable declarations in ascending order: by kind, then module, then position.
     DeclarationList Run() {
         AddRoots();
         while (next < worklist.size()) {
             Visit(worklist[next++]);
         }
-        return {seen.begin(), seen.end()};
+        DeclarationList reachable;
+        reachable.reserve(worklist.size());
+        for (std::size_t kind = 0; kind < seen.size(); ++kind)
+            for (std::size_t moduleIndex = 0; moduleIndex < seen[kind].size(); ++moduleIndex)
+                for (std::size_t declarationIndex = 0; declarationIndex < seen[kind][moduleIndex].size();
+                     ++declarationIndex)
+                    if (seen[kind][moduleIndex][declarationIndex])
+                        reachable.push_back({static_cast<LirDeclarationKind>(kind), moduleIndex, declarationIndex});
+        return reachable;
     }
 
 private:
+    using SeenFlags = std::vector<std::vector<bool>>;
+
+    SeenFlags &Seen(const LirDeclarationKind kind) {
+        return seen[static_cast<std::size_t>(kind)];
+    }
+
     void Add(const LirDeclarationId declaration) {
-        if (seen.insert(declaration).second) {
+        auto flag = Seen(declaration.kind)[declaration.moduleIndex][declaration.declarationIndex];
+        if (!flag) {
+            flag = true;
             worklist.push_back(declaration);
         }
     }
@@ -182,7 +220,7 @@ private:
                 }
                 // Code generation calls the stack-trace printer from every panic and failed assertion.
                 else if (instruction.op == LirOpcode::Panic || instruction.op == LirOpcode::Assert) {
-                    Add(index.functions, std::string(kBacktraceFunctionName));
+                    Add(index.functions, kBacktraceFunctionName);
                 }
                 else if (instruction.op == LirOpcode::GlobalAddr || instruction.op == LirOpcode::ThreadLocalAddr) {
                     Add(index.all, instruction.strArg);
@@ -221,7 +259,8 @@ private:
     ArtifactKind artifactKind;
     PackageIndex index;
     DeclarationList worklist;
-    std::set<LirDeclarationId> seen;
+    // Indexed by kind, module and position; the kinds are the enumerators of LirDeclarationKind in order.
+    std::array<SeenFlags, 5> seen;
     std::size_t next = 0;
 };
 } // namespace
