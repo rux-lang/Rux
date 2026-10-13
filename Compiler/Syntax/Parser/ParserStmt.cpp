@@ -134,6 +134,7 @@ StmtPtr Parser::ParseStmt() {
                   TokenKind::ExternKeyword})) {
         auto ds = std::make_unique<DeclStmt>();
         ds->location = loc;
+        bodiesNeedConditionalFolding = true;
         ds->decl = ParseDecl();
         return ds;
     }
@@ -237,6 +238,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     auto s = std::make_unique<IfStmt>();
     s->location = loc;
     s->isCompileTime = isCompileTime;
+    bodiesNeedConditionalFolding = bodiesNeedConditionalFolding || isCompileTime;
     structInitAllowed = false;
     auto subject = ParseRequiredExpr(isCompileTime ? "after 'when'" : "after 'if'");
     structInitAllowed = true;

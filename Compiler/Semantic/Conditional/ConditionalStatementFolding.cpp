@@ -19,6 +19,10 @@ public:
 
     void Run(const std::vector<Module *> &modules) {
         for (auto *module : modules) {
+            // A module with no `when` statement and no nested declaration in any block has nothing to fold or register
+            // there, and walking every expression of every body is most of what folding costs.
+            if (!module->bodiesNeedConditionalFolding)
+                continue;
             currentFile = module->name;
             currentModulePath = FilePathToModulePath(module->name);
             currentDeclModulePath.clear();

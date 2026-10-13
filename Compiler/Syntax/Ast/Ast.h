@@ -929,6 +929,10 @@ struct ExternBlockDecl : Decl {
 struct Module {
     std::string name; // source file name
     std::vector<DeclPtr> items;
+    /// Whether a block holds a `when` statement or a nested declaration, the only statements conditional folding acts
+    /// on inside bodies. The parser clears it for a module with neither, so folding can skip its bodies; a module built
+    /// any other way keeps the default and is always walked.
+    bool bodiesNeedConditionalFolding = true;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
 };
 

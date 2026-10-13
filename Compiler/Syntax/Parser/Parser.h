@@ -47,6 +47,8 @@ private:
     std::vector<ParserDiagnostic> diagnostics;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
     bool structInitAllowed = true; ///< disabled inside if/while/for/match conditions
+    /// Whether a block so far held a `when` statement or a nested declaration (`Module::bodiesNeedConditionalFolding`).
+    bool bodiesNeedConditionalFolding = false;
 
     // Token helpers
     [[nodiscard]] const Token &Peek(std::size_t ahead = 0) const noexcept;
