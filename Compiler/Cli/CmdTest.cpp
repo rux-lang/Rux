@@ -39,6 +39,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const Reporter output(stdout, reporterOptions);
     const Reporter diagnostics(stderr, reporterOptions);
     bool isRelease = false;
+    bool useBuildCache = true;
     std::size_t jobs = 1;
     std::string_view target;
     std::map<std::string, std::string> defines;
@@ -59,6 +60,10 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
         if (arg == "--release") {
             isRelease = true;
+            continue;
+        }
+        if (arg == "--no-cache") {
+            useBuildCache = false;
             continue;
         }
         if (arg == "--target" && i + 1 < args.size()) {
@@ -261,6 +266,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     compileOptions.defines = defines;
     compileOptions.localPackageRoots = localPackageRoots;
     compileOptions.localNamespaces = localNamespaces;
+    compileOptions.useBuildCache = useBuildCache;
     // Packages built side by side share the cores rather than each starting a thread per core.
     compileOptions.jobs = std::max<std::size_t>(1, std::thread::hardware_concurrency() / jobs);
     std::vector<TestOutcome> outcomes(testPackages.size());

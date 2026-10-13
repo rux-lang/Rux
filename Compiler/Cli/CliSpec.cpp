@@ -194,6 +194,8 @@ constexpr std::array remove_exs = {"Json"sv, "Random"sv};
 constexpr std::array run_usage = {"[options] [-- args...]"sv};
 constexpr std::array run_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Compile even when an earlier build of the same inputs is still up to date"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv}};
 constexpr std::array run_exs = {""sv, "--release"sv, "-- --port 8080"sv};
 
@@ -202,6 +204,8 @@ constexpr std::array test_usage = {"[options] [-- <test arguments>...]"sv};
 constexpr std::array test_opts = {
     OptionDoc{.flags = "--jobs <N>"sv, .desc = "Run up to N test packages concurrently (default: 1)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Compile every test package even when an earlier build is still up to date"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Build and run the tests for the specified target platform"sv}};
 constexpr std::array test_exs = {""sv, "--release"sv, "-- Parser"sv, "-- --exact Parser::ReadsNumbers"sv};

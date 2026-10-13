@@ -28,6 +28,7 @@ using namespace System;
 int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opts) {
     const Reporter tool(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     bool isRelease = false;
+    bool useBuildCache = true;
     std::vector<std::string_view> runArgs;
     std::map<std::string, std::string> defines;
     bool passThroughMode = false;
@@ -43,6 +44,10 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         }
         if (arg == "--release") {
             isRelease = true;
+            continue;
+        }
+        if (arg == "--no-cache") {
+            useBuildCache = false;
             continue;
         }
         if (arg == "--define" && i + 1 < args.size()) {
@@ -129,6 +134,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     copts.target = Target::TargetTriple::Host();
     copts.profile = profile;
     copts.defines = std::move(defines);
+    copts.useBuildCache = useBuildCache;
     ConfigureCompileDiagnostics(copts, tool);
     if (opts.verbose) {
         copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(tool, progress); };
