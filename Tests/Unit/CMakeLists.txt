@@ -132,6 +132,7 @@ set(RUX_TEST_SOURCES
     MoveConsumptionTests.cpp
     MoveLifecycleTests.cpp
     MoveCleanupTests.cpp
+    OptimizerParallelTests.cpp
     OptimizerRegressionTests.cpp
     OperandWideningLoweringTests.cpp
     SoftFloatLoweringTests.cpp

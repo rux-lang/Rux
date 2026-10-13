@@ -817,16 +817,12 @@ std::string_view LirLoopVersioning::Name() const noexcept {
     return "lir-loop-versioning";
 }
 
-PassChange LirLoopVersioning::Run(LirPackage &package, const PassContext &context) {
-    if (context.iteration != 0)
-        return PassChange::None;
+PassChange LirLoopVersioning::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     bool changed = false;
     // Each round versions one loop; a versioned loop's entry becomes a guard branch, which no later round accepts as
     // a preheader, so repeating reaches the function's other loops without revisiting one.
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            for (int round = 0; round < 8 && Version(function); ++round)
-                changed = true;
+    for (int round = 0; round < 8 && Version(function); ++round)
+        changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

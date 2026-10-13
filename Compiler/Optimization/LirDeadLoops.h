@@ -10,9 +10,10 @@ namespace Rux::Optimization {
 /// on every iteration, so it ends. Running it or not leaves the program in the same state; its entry edges go
 /// straight to its exit instead. Such loops remain where inlining drops elements that need no cleanup: the loop that
 /// visits every element of an array of plain values reads each one and discards it.
-class LirDeadLoops final : public LirPass {
+class LirDeadLoops final : public LirFunctionPass {
 public:
     [[nodiscard]] std::string_view Name() const noexcept override;
-    PassChange Run(LirPackage &package, const PassContext &context) override;
+    [[nodiscard]] PassChange RunFunction(LirFunc &function, std::size_t moduleIndex,
+                                         const PassContext &context) const override;
 };
 } // namespace Rux::Optimization

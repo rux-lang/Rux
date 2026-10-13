@@ -9,13 +9,33 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+namespace Rux::Parallel {
+class WorkerPool;
+} // namespace Rux::Parallel
+
 namespace Rux::Optimization {
+namespace Detail {
+/**
+ * @brief Run LIR passes to a fixed point function by function.
+ *
+ * Consecutive function passes form a segment that every function runs through on its own, on the pool's threads when
+ * one is given. A function that went through a whole iteration unchanged is skipped until a package pass rewrites it,
+ * because running the same passes on the same body would leave it unchanged again. The IR, diagnostics and statistics
+ * match running each pass over the whole package in turn.
+ */
+[[nodiscard]] PassRunReport RunLirPasses(LirPackage &package, const std::vector<std::unique_ptr<LirPass>> &passes,
+                                         const std::unordered_set<std::string> &disabledPasses, bool collectStatistics,
+                                         BuildProfile profile, std::size_t fixedPointLimit, std::string_view irName,
+                                         Parallel::WorkerPool *pool);
+} // namespace Detail
+
 /**
  * @brief Runs an ordered list of passes over one IR form until it stops changing.
  *
@@ -62,6 +82,11 @@ public:
         collectStatistics = statistics;
     }
 
+    /// Threads LIR function passes may run on; null runs them on the calling thread. The result never depends on it.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        workerPool = inputPool;
+    }
+
     /// The configured passes in run order, for the `--stats` report.
     [[nodiscard]] std::vector<std::string_view> PassNames() const {
         std::vector<std::string_view> names;
@@ -80,6 +105,12 @@ public:
      * failure: it settles immediately and reports no change.
      */
     [[nodiscard]] PassRunReport Run(Ir &ir) {
+        if constexpr (std::is_same_v<Ir, LirPackage>) {
+            // Snapshots show the package between passes, which only the pass-at-a-time order below produces.
+            if (!observer)
+                return Detail::RunLirPasses(ir, passes, disabledPasses, collectStatistics, profile, fixedPointLimit,
+                                            irName, workerPool);
+        }
         PassRunReport report;
         const auto observe = [&](const std::string_view name, const std::size_t iteration, const std::size_t index) {
             if (observer && !observer(ir, name, iteration, index)) {
@@ -167,6 +198,7 @@ private:
     std::unordered_set<std::string> disabledPasses;
     bool collectStatistics = false;
     Observer observer;
+    Parallel::WorkerPool *workerPool = nullptr;
 
     [[nodiscard]] static std::size_t InstructionCount(const Ir &ir) {
         std::size_t count = 0;
@@ -210,6 +242,7 @@ public:
     /// Validate diagnostic bisection options. Required normalization and verification cannot be disabled.
     [[nodiscard]] std::vector<Diagnostic> Configure(std::span<const std::string> disabled, bool statistics);
     void SetObservers(HirPassPipeline::Observer hirObserver, LirPassPipeline::Observer lirObserver);
+    void SetWorkerPool(Parallel::WorkerPool *pool) noexcept;
 
 private:
     OptimizationPipeline(BuildProfile profile, std::size_t fixedPointLimit);

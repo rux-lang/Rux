@@ -350,20 +350,14 @@ std::string_view LirLoopInvariants::Name() const noexcept {
     return "lir-loop-invariants";
 }
 
-PassChange LirLoopInvariants::Run(LirPackage &package, const PassContext &context) {
+void LirLoopInvariants::Prepare(const LirPackage &package) {
+    constantNames = ConstantNames(package);
+}
+
+PassChange LirLoopInvariants::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     // This bounded motion phase runs once; reaching its budget leaves code in place, never drives nonconvergence.
-    if (context.iteration != 0) {
-        return PassChange::None;
-    }
-    bool changed = false;
-    const auto constantNames = ConstantNames(package);
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            const bool preheaders = InsertPreheaders(function);
-            const bool hoisted = Hoist(function, constantNames);
-            changed = preheaders || hoisted || changed;
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+    const bool preheaders = InsertPreheaders(function);
+    const bool hoisted = Hoist(function, constantNames);
+    return preheaders || hoisted ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

@@ -170,15 +170,11 @@ std::string_view LirPointerInduction::Name() const noexcept {
     return "lir-pointer-induction";
 }
 
-PassChange LirPointerInduction::Run(LirPackage &package, const PassContext &context) {
-    if (context.iteration != 0)
-        return PassChange::None;
+PassChange LirPointerInduction::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     bool changed = false;
     // A reduced loop has no index-based address left to reduce, so repeating reaches the function's other loops.
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            for (int round = 0; round < 8 && Reduce(function); ++round)
-                changed = true;
+    for (int round = 0; round < 8 && Reduce(function); ++round)
+        changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

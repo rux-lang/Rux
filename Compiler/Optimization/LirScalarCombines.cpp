@@ -276,13 +276,7 @@ std::string_view LirScalarCombines::Name() const noexcept {
     return "lir-scalar-combines";
 }
 
-PassChange LirScalarCombines::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            changed = Combine(function) || changed;
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+PassChange LirScalarCombines::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    return Combine(function) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

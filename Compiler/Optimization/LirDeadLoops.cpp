@@ -185,13 +185,11 @@ std::string_view LirDeadLoops::Name() const noexcept {
     return "lir-dead-loop-elimination";
 }
 
-PassChange LirDeadLoops::Run(LirPackage &package, const PassContext &) {
+PassChange LirDeadLoops::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     bool changed = false;
     // A removed loop is unreachable, and cleanup deletes it; no round sees it again.
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            for (int round = 0; round < 8 && Remove(function); ++round)
-                changed = true;
+    for (int round = 0; round < 8 && Remove(function); ++round)
+        changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

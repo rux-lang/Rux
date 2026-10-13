@@ -234,8 +234,8 @@ std::string_view LirScalarReplacement::Name() const noexcept {
     return "lir-scalar-replacement";
 }
 
-PassChange LirScalarReplacement::Run(LirPackage &package, const PassContext &) {
-    Shapes structs;
+void LirScalarReplacement::Prepare(const LirPackage &package) {
+    structs.clear();
     std::unordered_set<std::string> ambiguous;
     for (const auto &module : package.modules) {
         for (const auto &declaration : module.structs) {
@@ -259,10 +259,9 @@ PassChange LirScalarReplacement::Run(LirPackage &package, const PassContext &) {
     }
     for (const auto &name : ambiguous)
         structs.erase(name);
-    bool changed = false;
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            changed = ReplaceFields(function, structs) || changed;
-    return changed ? PassChange::Changed : PassChange::None;
+}
+
+PassChange LirScalarReplacement::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    return ReplaceFields(function, structs) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

@@ -2,10 +2,12 @@
 
 #include "Driver/CompilerDriver.h"
 #include "Driver/DependencyGraph.h"
+#include "Parallel/WorkerPool.h"
 #include "Semantic/Model/SemanticModel.h"
 #include "SourceModel/SourceFile.h"
 #include "SourceModel/SourceText.h"
 
+#include <memory>
 #include <unordered_map>
 
 namespace Rux::Driver {
@@ -34,6 +36,8 @@ private:
                                                                    std::size_t lineNumber) const;
 
     void InitializeCompileTimeContext();
+    /// The compilation's worker threads, started on first use.
+    [[nodiscard]] Parallel::WorkerPool &Workers();
 
     /// Pipeline phases. Each returns false when the pipeline cannot continue.
     bool LexAndParseSources();
@@ -62,6 +66,7 @@ private:
     std::vector<std::string> loadedModuleNames; // parallel: source name per dep entry
     std::unordered_map<std::string, SourceText> loadedSourceTexts;
     std::optional<SemanticModel> semanticModel;
+    std::unique_ptr<Parallel::WorkerPool> workers;
 };
 
 } // namespace Rux::Driver

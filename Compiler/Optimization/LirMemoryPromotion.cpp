@@ -290,14 +290,11 @@ std::string_view LirMemoryPromotion::Name() const noexcept {
     return "lir-memory-promotion";
 }
 
-PassChange LirMemoryPromotion::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    const ConcreteReferenceTypes references(package);
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            changed = Promote(function, references) || changed;
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+void LirMemoryPromotion::Prepare(const LirPackage &package) {
+    references.emplace(package);
+}
+
+PassChange LirMemoryPromotion::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    return Promote(function, *references) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

@@ -312,30 +312,18 @@ std::string_view LirFrameAddressPlacement::Name() const noexcept {
     return "lir-frame-address-placement";
 }
 
-PassChange LirFrameAddressPlacement::Run(LirPackage &package, const PassContext &context) {
-    if (context.iteration != 0) {
-        return PassChange::None;
-    }
-    bool changed = false;
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            changed = PlaceFrameAddresses(function) || changed;
-            changed = PlacePatternAddresses(function) || changed;
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+PassChange LirFrameAddressPlacement::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    const bool frames = PlaceFrameAddresses(function);
+    const bool patterns = PlacePatternAddresses(function);
+    return frames || patterns ? PassChange::Changed : PassChange::None;
 }
 
 std::string_view LirSsaVerifier::Name() const noexcept {
     return "lir-ssa-verifier";
 }
 
-PassChange LirSsaVerifier::Run(LirPackage &package, const PassContext &context) {
-    for (const auto &module : package.modules) {
-        for (const auto &function : module.funcs) {
-            Verify(function, context);
-        }
-    }
+PassChange LirSsaVerifier::RunFunction(LirFunc &function, const std::size_t, const PassContext &context) const {
+    Verify(function, context);
     return PassChange::None;
 }
 } // namespace Rux::Optimization

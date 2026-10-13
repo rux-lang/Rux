@@ -11,9 +11,14 @@ namespace Rux::Optimization {
 /// slice's data pointer and length in registers across stores the function makes through any other pointer, which
 /// alias analysis alone could not allow, since the caller's value may be reachable through those pointers too.
 /// A parameter whose address is used for anything but field reads and call arguments keeps its loads.
-class LirViewParameters final : public LirPass {
+class LirViewParameters final : public LirFunctionPass {
 public:
     [[nodiscard]] std::string_view Name() const noexcept override;
-    PassChange Run(LirPackage &package, const PassContext &context) override;
+    [[nodiscard]] PassChange RunFunction(LirFunc &function, std::size_t moduleIndex,
+                                         const PassContext &context) const override;
+
+    [[nodiscard]] bool Enabled(const PassContext &context) const override {
+        return context.iteration == 0;
+    }
 };
 } // namespace Rux::Optimization

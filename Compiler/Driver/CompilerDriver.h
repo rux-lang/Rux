@@ -57,6 +57,8 @@ struct CompileOptions {
     bool emitSymbols = false;
     bool collectOptimizationStatistics = false;
     std::vector<std::string> disabledOptimizationPasses;
+    /// Threads one compilation may use; 0 means one per logical core. The artifact never depends on it.
+    std::size_t jobs = 0;
 
     /// Optional presentation hook. The driver always retains diagnostics in CompileResult and supplies already-loaded
     /// source text to a callback so a CLI can render context without rereading files.

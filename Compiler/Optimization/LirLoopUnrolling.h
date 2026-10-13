@@ -4,9 +4,14 @@
 
 namespace Rux::Optimization {
 /// Duplicates a small straight-line unsigned loop body in execution order, retaining a scalar tail.
-class LirLoopUnrolling final : public LirPass {
+class LirLoopUnrolling final : public LirFunctionPass {
 public:
     [[nodiscard]] std::string_view Name() const noexcept override;
-    PassChange Run(LirPackage &package, const PassContext &context) override;
+    [[nodiscard]] PassChange RunFunction(LirFunc &function, std::size_t moduleIndex,
+                                         const PassContext &context) const override;
+
+    [[nodiscard]] bool Enabled(const PassContext &context) const override {
+        return context.iteration == 0;
+    }
 };
 } // namespace Rux::Optimization

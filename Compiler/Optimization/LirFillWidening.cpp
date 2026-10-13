@@ -295,13 +295,11 @@ std::string_view LirFillWidening::Name() const noexcept {
     return "lir-fill-widening";
 }
 
-PassChange LirFillWidening::Run(LirPackage &package, const PassContext &) {
+PassChange LirFillWidening::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     bool changed = false;
     // A widened loop starts its element loop at the word loop's index, never at zero, so no round revisits it.
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            for (int round = 0; round < 8 && Widen(function); ++round)
-                changed = true;
+    for (int round = 0; round < 8 && Widen(function); ++round)
+        changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

@@ -535,12 +535,8 @@ std::string_view LirCfgVerifier::Name() const noexcept {
     return "lir-cfg-verifier";
 }
 
-PassChange LirCfgVerifier::Run(LirPackage &package, const PassContext &context) {
-    for (const auto &module : package.modules) {
-        for (const auto &function : module.funcs) {
-            ValidateFunction(function, context);
-        }
-    }
+PassChange LirCfgVerifier::RunFunction(LirFunc &function, const std::size_t, const PassContext &context) const {
+    ValidateFunction(function, context);
     return PassChange::None;
 }
 
@@ -548,36 +544,26 @@ std::string_view LirCfgCleanup::Name() const noexcept {
     return "lir-cfg-cleanup";
 }
 
-PassChange LirCfgCleanup::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            if (function.isExtern || function.isAsm) {
-                continue;
-            }
-            const bool folded = FoldTerminators(function);
-            const bool threaded = ThreadConstantBranches(function);
-            const bool removed = RemoveUnreachableBlocks(function);
-            if (folded || threaded) {
-                RemoveStalePhiPredecessors(function);
-            }
-            changed = folded || threaded || removed || changed;
-        }
+PassChange LirCfgCleanup::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (function.isExtern || function.isAsm) {
+        return PassChange::None;
     }
-    return changed ? PassChange::Changed : PassChange::None;
+    const bool folded = FoldTerminators(function);
+    const bool threaded = ThreadConstantBranches(function);
+    const bool removed = RemoveUnreachableBlocks(function);
+    if (folded || threaded) {
+        RemoveStalePhiPredecessors(function);
+    }
+    return folded || threaded || removed ? PassChange::Changed : PassChange::None;
 }
 
 std::string_view LirBlockCoalescing::Name() const noexcept {
     return "lir-block-coalescing";
 }
 
-PassChange LirBlockCoalescing::Run(LirPackage &package, const PassContext &) {
+PassChange LirBlockCoalescing::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     // Every iteration: a later inlining round leaves the jump chains of the bodies it copies, and a function those
     // chains keep looking large would not be inlined in turn.
-    bool changed = false;
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            changed = CoalesceBlocks(function) || changed;
-    return changed ? PassChange::Changed : PassChange::None;
+    return CoalesceBlocks(function) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

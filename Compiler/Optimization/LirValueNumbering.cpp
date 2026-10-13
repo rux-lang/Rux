@@ -317,14 +317,11 @@ std::string_view LirValueNumbering::Name() const noexcept {
     return "lir-local-value-numbering";
 }
 
-PassChange LirValueNumbering::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    const auto constantNames = ConstantNames(package);
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            changed = Number(function, constantNames) || changed;
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+void LirValueNumbering::Prepare(const LirPackage &package) {
+    constantNames = ConstantNames(package);
+}
+
+PassChange LirValueNumbering::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    return Number(function, constantNames) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

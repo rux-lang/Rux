@@ -126,13 +126,7 @@ std::string_view LirViewParameters::Name() const noexcept {
     return "lir-view-parameters";
 }
 
-PassChange LirViewParameters::Run(LirPackage &package, const PassContext &context) {
-    if (context.iteration != 0)
-        return PassChange::None;
-    bool changed = false;
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            changed = Snapshot(function) || changed;
-    return changed ? PassChange::Changed : PassChange::None;
+PassChange LirViewParameters::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    return Snapshot(function) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

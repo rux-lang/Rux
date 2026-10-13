@@ -23,6 +23,11 @@ public:
 
     PassChange Run(LirPackage &package, const PassContext &context) override;
 
+    /// Pruning removes whole declarations and rewrites no function body.
+    [[nodiscard]] bool ReportsChangedFunctions() const noexcept override {
+        return true;
+    }
+
 private:
     ArtifactKind artifactKind;
 };

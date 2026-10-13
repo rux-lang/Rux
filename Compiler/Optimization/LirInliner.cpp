@@ -506,6 +506,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                          !instruction.srcs.empty() && local.contains(instruction.srcs[0])))
                         local.insert(instruction.dst);
         std::size_t budget = 2048;
+        bool functionChanged = false;
         for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
             for (std::size_t position = 0; position < function.blocks[block].instrs.size();) {
                 auto &call = function.blocks[block].instrs[position];
@@ -517,7 +518,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     call.op = LirOpcode::Sqrt;
                     call.strArg.clear();
                     call.callConv = CallingConvention::Default;
-                    changed = true;
+                    functionChanged = true;
                     ++position;
                     continue;
                 }
@@ -553,8 +554,12 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 Inline(function, block, position, found->second, next, types);
                 budget -= cost;
                 packageBudget -= cost;
-                changed = true;
+                functionChanged = true;
             }
+        }
+        if (functionChanged) {
+            context.NoteChanged(function);
+            changed = true;
         }
         if (const auto size = remaining[index] == 0 ? Eligible(function, references) : std::nullopt) {
             available.emplace(index, function);

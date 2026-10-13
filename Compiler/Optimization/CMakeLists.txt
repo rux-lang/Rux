@@ -24,4 +24,4 @@ rux_add_component(RuxOptimization
     LirReachability.cpp
     LirViewParameters.cpp
     Pipeline.cpp)
-target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir RuxUnicode)
+target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxDiagnostics RuxHir RuxLir RuxParallel RuxUnicode)

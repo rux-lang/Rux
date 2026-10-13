@@ -97,6 +97,12 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
     compileTimeContext.buildInfo = BuildInfo(std::string(CompilerBuild::compilerVersion), buildTimestamp);
 }
 
+Parallel::WorkerPool &CompilerDriver::Impl::Workers() {
+    if (!workers)
+        workers = std::make_unique<Parallel::WorkerPool>(Parallel::ResolveJobs(opts.jobs));
+    return *workers;
+}
+
 void CompilerDriver::Impl::Emit(const Diagnostic &diag) {
     Diagnostic contextual = diag;
     if (currentPhase) {
@@ -543,6 +549,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     if (EmitAll(optimizationPipeline.Configure(opts.disabledOptimizationPasses, opts.collectOptimizationStatistics))) {
         return false;
     }
+    optimizationPipeline.SetWorkerPool(&Workers());
     if (opts.dumpOptimizationPasses) {
         // Retain each invocation independently: stale files from a longer earlier pipeline must not masquerade as
         // snapshots of this build. Refuse an existing destination instead of overwriting another invocation.

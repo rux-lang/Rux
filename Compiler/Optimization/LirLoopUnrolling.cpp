@@ -778,18 +778,12 @@ std::string_view LirLoopUnrolling::Name() const noexcept {
     return "lir-loop-unrolling";
 }
 
-PassChange LirLoopUnrolling::Run(LirPackage &package, const PassContext &context) {
-    if (context.iteration != 0)
-        return PassChange::None;
-    bool changed = false;
+PassChange LirLoopUnrolling::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     // The unrolled copy is skipped by its label and the original keeps a third header predecessor, which no round
     // accepts, so repeating reaches the function's other loops without unrolling one twice.
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs) {
-            changed = HoistHeaderConstants(function) || changed;
-            for (int round = 0; round < 8 && Unroll(function); ++round)
-                changed = true;
-        }
+    bool changed = HoistHeaderConstants(function);
+    for (int round = 0; round < 8 && Unroll(function); ++round)
+        changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

@@ -9,9 +9,10 @@ namespace Rux::Optimization {
 /// same bytes it would store as eight-byte words holding copies of `v`. A new loop writes those words up to the last
 /// whole word below the limit and hands its index to the original loop, which finishes the remainder element by
 /// element. Every byte receives the value it received before, in the same order within each word, and nothing is read.
-class LirFillWidening final : public LirPass {
+class LirFillWidening final : public LirFunctionPass {
 public:
     [[nodiscard]] std::string_view Name() const noexcept override;
-    PassChange Run(LirPackage &package, const PassContext &context) override;
+    [[nodiscard]] PassChange RunFunction(LirFunc &function, std::size_t moduleIndex,
+                                         const PassContext &context) const override;
 };
 } // namespace Rux::Optimization

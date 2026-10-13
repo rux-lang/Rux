@@ -77,10 +77,11 @@ std::string_view LirConstantMemory::Name() const noexcept {
     return "lir-constant-memory";
 }
 
-PassChange LirConstantMemory::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    for (auto &module : package.modules) {
-        std::unordered_map<std::string, const LirConstDecl *> constants;
+void LirConstantMemory::Prepare(const LirPackage &package) {
+    moduleConstants.clear();
+    moduleConstants.reserve(package.modules.size());
+    for (const auto &module : package.modules) {
+        auto &constants = moduleConstants.emplace_back();
         std::unordered_set<std::string> ambiguous;
         for (const auto &constant : module.consts)
             if (!constants.emplace(constant.name, &constant).second)
@@ -91,10 +92,12 @@ PassChange LirConstantMemory::Run(LirPackage &package, const PassContext &) {
             ambiguous.insert(external.name);
         for (const auto &name : ambiguous)
             constants.erase(name);
-        for (auto &function : module.funcs)
-            if (!function.isExtern && !function.isAsm)
-                changed = Fold(function, constants) || changed;
     }
-    return changed ? PassChange::Changed : PassChange::None;
+}
+
+PassChange LirConstantMemory::RunFunction(LirFunc &function, const std::size_t moduleIndex, const PassContext &) const {
+    if (function.isExtern || function.isAsm)
+        return PassChange::None;
+    return Fold(function, moduleConstants[moduleIndex]) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

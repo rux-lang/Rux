@@ -208,12 +208,10 @@ std::string_view LirIfConversion::Name() const noexcept {
     return "lir-if-conversion";
 }
 
-PassChange LirIfConversion::Run(LirPackage &package, const PassContext &) {
+PassChange LirIfConversion::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
     bool changed = false;
-    for (auto &module : package.modules)
-        for (auto &function : module.funcs)
-            for (int round = 0; round < 16 && Convert(function); ++round)
-                changed = true;
+    for (int round = 0; round < 16 && Convert(function); ++round)
+        changed = true;
     return changed ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

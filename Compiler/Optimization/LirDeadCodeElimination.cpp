@@ -350,15 +350,9 @@ std::string_view LirDeadCodeElimination::Name() const noexcept {
     return "lir-dead-code-elimination";
 }
 
-PassChange LirDeadCodeElimination::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            if (!function.isExtern && !function.isAsm) {
-                changed = EliminateFromFunction(function) || changed;
-            }
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+PassChange LirDeadCodeElimination::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (function.isExtern || function.isAsm)
+        return PassChange::None;
+    return EliminateFromFunction(function) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization
