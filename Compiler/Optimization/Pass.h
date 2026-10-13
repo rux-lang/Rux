@@ -12,6 +12,10 @@
 #include <utility>
 #include <vector>
 
+namespace Rux::Parallel {
+class WorkerPool;
+} // namespace Rux::Parallel
+
 namespace Rux::Optimization {
 /// Whether a pass rewrote the IR it was given. This is what drives the pipeline's fixed-point loop, so a pass that
 /// reports `None` after rewriting something will have its change silently left un-propagated.
@@ -53,6 +57,8 @@ struct PassContext {
     LirPruningStats *lirPruning = nullptr;
     /// Functions a package-wide pass rewrote, so the pipeline knows which ones the passes after it must revisit.
     std::vector<const LirFunc *> *changedFunctions = nullptr;
+    /// Threads a package-wide pass may spread independent work over; null means the calling thread only.
+    Parallel::WorkerPool *pool = nullptr;
 
     /// Report a compiler bug found while optimizing. Silently drops the message when no pipeline is collecting
     /// diagnostics.

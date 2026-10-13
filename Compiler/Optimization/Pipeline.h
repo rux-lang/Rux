@@ -138,7 +138,8 @@ public:
         report.reachedFixedPoint = false;
         for (std::size_t iteration = 0; iteration < fixedPointLimit; ++iteration) {
             PassChange iterationChange = PassChange::None;
-            const PassContext context{profile, iteration, fixedPointLimit, &report.diagnostics, &report.lirPruning};
+            const PassContext context{profile, iteration, fixedPointLimit, &report.diagnostics, &report.lirPruning,
+                                      nullptr, workerPool};
             for (std::size_t passIndex = 0; passIndex < passes.size(); ++passIndex) {
                 const auto &pass = passes[passIndex];
                 if (!disabledPasses.empty() && disabledPasses.contains(std::string(pass->Name())))

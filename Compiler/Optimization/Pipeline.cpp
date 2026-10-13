@@ -94,7 +94,8 @@ PassRunReport Detail::RunLirPasses(LirPackage &package, const std::vector<std::u
     std::unordered_set<std::string> changedBefore;
     bool everythingChanged = true;
     for (std::size_t iteration = 0; iteration < fixedPointLimit; ++iteration) {
-        const PassContext context{profile, iteration, fixedPointLimit, &report.diagnostics, &report.lirPruning};
+        const PassContext context{profile, iteration, fixedPointLimit, &report.diagnostics, &report.lirPruning,
+                                  nullptr, pool};
         std::unordered_set<std::string> changedNow;
         bool everythingNow = everythingChanged;
         bool unreportedChange = false;
@@ -184,6 +185,7 @@ PassRunReport Detail::RunLirPasses(LirPackage &package, const std::vector<std::u
                     PassContext passContext = context;
                     passContext.diagnostics = &outcome.diagnostics;
                     passContext.lirPruning = nullptr;
+                    passContext.pool = nullptr;
                     const auto before = collectStatistics ? CountInstructions(*slot.function) : 0;
                     const auto start =
                         collectStatistics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -349,6 +351,7 @@ void OptimizationPipeline::SetObservers(HirPassPipeline::Observer hirObserver, L
 }
 
 void OptimizationPipeline::SetWorkerPool(Parallel::WorkerPool *pool) noexcept {
+    hir.SetWorkerPool(pool);
     lir.SetWorkerPool(pool);
 }
 

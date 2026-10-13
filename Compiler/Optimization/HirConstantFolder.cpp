@@ -1,5 +1,6 @@
 #include "Optimization/HirConstantFolder.h"
 
+#include "Parallel/WorkerPool.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
@@ -26,12 +27,23 @@ std::string_view HirConstantFolder::Name() const noexcept {
     return "hir-constant-folder";
 }
 
-PassChange HirConstantFolder::Run(HirPackage &package, const PassContext &) {
+PassChange HirConstantFolder::Run(HirPackage &package, const PassContext &context) {
     changed = false;
     scopes.clear();
-    for (auto &module : package.modules) {
-        OptimizeModule(module);
+    if (context.pool == nullptr) {
+        for (auto &module : package.modules) {
+            OptimizeModule(module);
+        }
+        return changed ? PassChange::Changed : PassChange::None;
     }
+    // Facts never outlive one function or constant, so modules fold independently, each with its own folder.
+    std::vector<char> moduleChanged(package.modules.size(), 0);
+    context.pool->ForEach(package.modules.size(), [&](const std::size_t index) {
+        HirConstantFolder folder;
+        folder.OptimizeModule(package.modules[index]);
+        moduleChanged[index] = folder.changed ? 1 : 0;
+    });
+    changed = std::ranges::any_of(moduleChanged, [](const char flag) { return flag != 0; });
     return changed ? PassChange::Changed : PassChange::None;
 }
 
