@@ -1159,7 +1159,8 @@ bool AssemblyInstructionPrinter::EmitWideArithmetic(const LirInstr &instruction)
     case LirOpcode::Shl:
     case LirOpcode::Shr:
     case LirOpcode::Lshr: {
-        // One bit per pass through every word, the count reduced modulo the width.
+        // Whole words while 64 or more of the count remain, then every word by the rest with shld/shrd, the count
+        // reduced modulo the width.
         CopyWide(source(0), destination, size);
         if (const auto physical = framePlan.PhysicalRegisters().find(instruction.srcs[1]);
             physical != framePlan.PhysicalRegisters().end()) {
@@ -1169,27 +1170,59 @@ bool AssemblyInstructionPrinter::EmitWideArithmetic(const LirInstr &instruction)
         else {
             Instruction("mov", "rcx, " + Rbp("qword", source(1)));
         }
+        const bool arithmetic = instruction.op == LirOpcode::Shr && wideType.IsSigned();
         Instruction("and", std::format("rcx, {}", size * 8 - 1));
-        Instruction("test", "rcx, rcx");
-        const std::string loop = Label("wide_shift");
+        const std::string wordLoop = Label("wide_shift_words");
+        const std::string bits = Label("wide_shift_bits");
         const std::string done = Label("wide_shift_done");
-        Instruction("je", done);
-        modulePrinter.TextLabel(loop);
+        modulePrinter.TextLabel(wordLoop);
+        Instruction("cmp", "rcx, 64");
+        Instruction("jb", bits);
         if (instruction.op == LirOpcode::Shl) {
-            for (int index = 0; index < words; ++index) {
-                Instruction(index == 0 ? "shl" : "rcl", word(destination, index) + ", 1");
+            for (int index = words - 1; index > 0; --index) {
+                Instruction("mov", "rax, " + word(destination, index - 1));
+                Instruction("mov", word(destination, index) + ", rax");
             }
+            Instruction("mov", "eax, 0");
+            Instruction("mov", word(destination, 0) + ", rax");
         }
         else {
-            for (int index = words - 1; index >= 0; --index) {
-                const bool top = index == words - 1;
-                const std::string_view opcode =
-                    top ? (instruction.op == LirOpcode::Shr && wideType.IsSigned() ? "sar" : "shr") : "rcr";
-                Instruction(opcode, word(destination, index) + ", 1");
+            for (int index = 0; index < words - 1; ++index) {
+                Instruction("mov", "rax, " + word(destination, index + 1));
+                Instruction("mov", word(destination, index) + ", rax");
             }
+            Instruction("mov", "rax, " + word(destination, words - 1));
+            if (arithmetic) {
+                Instruction("sar", "rax, 63");
+            }
+            else {
+                Instruction("mov", "eax, 0");
+            }
+            Instruction("mov", word(destination, words - 1) + ", rax");
         }
-        Instruction("dec", "rcx");
-        Instruction("jne", loop);
+        Instruction("sub", "rcx, 64");
+        Instruction("jmp", wordLoop);
+        modulePrinter.TextLabel(bits);
+        Instruction("test", "rcx, rcx");
+        Instruction("je", done);
+        if (instruction.op == LirOpcode::Shl) {
+            for (int index = words - 1; index > 0; --index) {
+                Instruction("mov", "rax, " + word(destination, index));
+                Instruction("mov", "r10, " + word(destination, index - 1));
+                Instruction("shld", "rax, r10, cl");
+                Instruction("mov", word(destination, index) + ", rax");
+            }
+            Instruction("shl", word(destination, 0) + ", cl");
+        }
+        else {
+            for (int index = 0; index < words - 1; ++index) {
+                Instruction("mov", "rax, " + word(destination, index));
+                Instruction("mov", "r10, " + word(destination, index + 1));
+                Instruction("shrd", "rax, r10, cl");
+                Instruction("mov", word(destination, index) + ", rax");
+            }
+            Instruction(arithmetic ? "sar" : "shr", word(destination, words - 1) + ", cl");
+        }
         modulePrinter.TextLabel(done);
         return true;
     }

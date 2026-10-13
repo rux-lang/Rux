@@ -1,0 +1,77 @@
+// Wide integer shifts by a count known only at run time, at every count of every width.
+// A wide shift moves whole words while 64 or more of the count remain and then shifts every word by the rest,
+// carrying bits across words, so the counts either side of each word boundary take different paths. The reference
+// is the same value shifted one bit at a time, and one-bit shifts are checked against addition and halving.
+
+import Core::Assert;
+import Core::{ int128, int512, uint128, uint512 };
+
+func CheckUint128(value: uint128) {
+    Assert((value >> 1) << 1 == (value >> 1) + (value >> 1), "a one-bit uint128 left shift doubles");
+    Assert(value >> 1 == value / 2u128, "a one-bit uint128 right shift halves");
+    var left = value;
+    var right = value;
+    var count: uint = 0;
+    while count < 128 {
+        Assert(value << count == left, "uint128 left shift by a run-time count");
+        Assert(value >> count == right, "uint128 right shift by a run-time count");
+        left = left << 1;
+        right = right >> 1;
+        count = count + 1;
+    }
+}
+
+func CheckInt128(value: int128) {
+    var right = value;
+    var logical = value;
+    var count: uint = 0;
+    while count < 128 {
+        Assert(value >> count == right, "int128 arithmetic right shift by a run-time count");
+        Assert(value >>> count == logical, "int128 logical right shift by a run-time count");
+        right = right >> 1;
+        logical = logical >>> 1;
+        count = count + 1;
+    }
+    Assert(value < 0i128 && value >> 127 == -1i128 || value >= 0i128 && value >> 127 == 0i128,
+           "an arithmetic right shift by the whole width less one leaves only the sign");
+}
+
+func CheckUint512(value: uint512) {
+    var left = value;
+    var right = value;
+    var count: uint = 0;
+    while count < 512 {
+        Assert(value << count == left, "uint512 left shift by a run-time count");
+        Assert(value >> count == right, "uint512 right shift by a run-time count");
+        left = left << 1;
+        right = right >> 1;
+        count = count + 1;
+    }
+}
+
+func CheckInt512(value: int512) {
+    var right = value;
+    var count: uint = 0;
+    while count < 512 {
+        Assert(value >> count == right, "int512 arithmetic right shift by a run-time count");
+        right = right >> 1;
+        count = count + 1;
+    }
+}
+
+func Main() -> int {
+    CheckUint128(0xF0E1D2C3B4A5968778695A4B3C2D1E0Fu128);
+    CheckUint128(1u128);
+    CheckUint128(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFu128);
+    CheckInt128(-0x0123456789ABCDEF0FEDCBA987654321i128);
+    CheckInt128(0x0123456789ABCDEF0FEDCBA987654321i128);
+    CheckUint512((0xF0E1D2C3B4A59687u512 << 448) | (0x78695A4B3C2D1E0Fu512 << 200) | 0x0123456789ABCDEFu512);
+    CheckInt512(-(0x0123456789ABCDEFu512 << 300) as int512 - 77i512);
+    CheckInt512((0x0123456789ABCDEFu512 << 300) as int512 + 77i512);
+    // The count is reduced modulo the width.
+    var count: uint = 130;
+    Assert(1u128 << count == 4u128, "a uint128 count past the width wraps");
+    count = 513;
+    Assert(1u512 << count == 2u512, "a uint512 count past the width wraps");
+    return 0;
+}

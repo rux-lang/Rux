@@ -351,40 +351,72 @@ bool AArch64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
         const A64Reg amount = hooks.ReadOperand(instruction.srcs[1], TypeOfReg(instruction.srcs[1]), A64::Xn(kCount));
         Must(encoder.AndImm(A64::Xn(kCount), amount, static_cast<std::uint64_t>(size * 8 - 1)),
              "a wide-integer shift count");
-        Must(encoder.Cmp(A64::Xn(kCount), A64::Xzr), "a wide-integer shift count");
-        const std::uint32_t done = BranchIf(A64Condition::Eq);
-        const std::uint32_t loop = encoder.Size();
+        // Whole words while 64 or more of the count remain, then every word by the rest at once, each taking the
+        // bits its neighbour shifts out: at most `words` passes instead of one per bit.
+        const bool arithmetic = instruction.op == LirOpcode::Shr && wideType.IsSigned();
+        const auto slot = [&](const int word) { return static_cast<std::int64_t>(destination) + word * 8; };
+        Must(encoder.LoadImm64(A64::Xn(kHigh), 64), "a wide-integer shift count");
+        const std::uint32_t wordLoop = encoder.Size();
+        Must(encoder.Cmp(A64::Xn(kCount), A64::Xn(kHigh)), "a wide-integer shift count");
+        const std::uint32_t bits = BranchIf(A64Condition::Cc);
         if (instruction.op == LirOpcode::Shl) {
             for (int word = words - 1; word > 0; --word) {
-                hooks.LoadScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(destination) + word * 8, 8, false);
-                hooks.LoadScalar(A64::Xn(kRight), A64::Fp, static_cast<std::int64_t>(destination) + (word - 1) * 8, 8,
-                                 false);
-                Must(encoder.Extr(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kRight), 63), "a wide-integer left shift");
-                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(destination) + word * 8, 8);
+                hooks.LoadScalar(A64::Xn(kValue), A64::Fp, slot(word - 1), 8, false);
+                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(word), 8);
             }
-            hooks.LoadScalar(A64::Xn(kValue), A64::Fp, destination, 8, false);
-            Must(encoder.Lsl(A64::Xn(kValue), A64::Xn(kValue), 1), "a wide-integer left shift");
-            hooks.StoreScalar(A64::Xn(kValue), A64::Fp, destination, 8);
+            Must(encoder.LoadImm64(A64::Xn(kValue), 0), "a wide-integer left shift");
+            hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(0), 8);
         }
         else {
             for (int word = 0; word < words - 1; ++word) {
-                hooks.LoadScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(destination) + word * 8, 8, false);
-                hooks.LoadScalar(A64::Xn(kRight), A64::Fp, static_cast<std::int64_t>(destination) + (word + 1) * 8, 8,
-                                 false);
-                Must(encoder.Extr(A64::Xn(kValue), A64::Xn(kRight), A64::Xn(kValue), 1), "a wide-integer right shift");
-                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(destination) + word * 8, 8);
+                hooks.LoadScalar(A64::Xn(kValue), A64::Fp, slot(word + 1), 8, false);
+                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(word), 8);
             }
-            hooks.LoadScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(destination) + (words - 1) * 8, 8,
-                             false);
-            Must(instruction.op == LirOpcode::Shr && wideType.IsSigned()
-                     ? encoder.Asr(A64::Xn(kValue), A64::Xn(kValue), 1)
-                     : encoder.Lsr(A64::Xn(kValue), A64::Xn(kValue), 1),
-                 "a wide-integer right shift");
-            hooks.StoreScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(destination) + (words - 1) * 8, 8);
+            if (arithmetic) {
+                hooks.LoadScalar(A64::Xn(kValue), A64::Fp, slot(words - 1), 8, false);
+                Must(encoder.Asr(A64::Xn(kValue), A64::Xn(kValue), 63), "a wide-integer right shift");
+                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(words - 1), 8);
+            }
+            else {
+                Must(encoder.LoadImm64(A64::Xn(kValue), 0), "a wide-integer right shift");
+                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(words - 1), 8);
+            }
         }
-        Must(encoder.SubImm(A64::Xn(kCount), A64::Xn(kCount), 1), "a wide-integer shift count");
-        Must(encoder.Cbnz(A64::Xn(kCount), static_cast<std::int64_t>(loop) - encoder.Size()),
-             "a wide-integer shift loop");
+        Must(encoder.SubImm(A64::Xn(kCount), A64::Xn(kCount), 64), "a wide-integer shift count");
+        Must(encoder.B(static_cast<std::int64_t>(wordLoop) - encoder.Size()), "a wide-integer shift loop");
+        PatchConditionalBranch(bits);
+        Must(encoder.Cmp(A64::Xn(kCount), A64::Xzr), "a wide-integer shift count");
+        const std::uint32_t done = BranchIf(A64Condition::Eq);
+        // What a word takes from its neighbour is the neighbour shifted the other way by the rest of 64.
+        Must(encoder.Sub(A64::Xn(kLow), A64::Xn(kHigh), A64::Xn(kCount)), "a wide-integer shift count");
+        if (instruction.op == LirOpcode::Shl) {
+            for (int word = words - 1; word > 0; --word) {
+                hooks.LoadScalar(A64::Xn(kValue), A64::Fp, slot(word), 8, false);
+                hooks.LoadScalar(A64::Xn(kRight), A64::Fp, slot(word - 1), 8, false);
+                Must(encoder.Lslv(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kCount)), "a wide-integer left shift");
+                Must(encoder.Lsrv(A64::Xn(kRight), A64::Xn(kRight), A64::Xn(kLow)), "a wide-integer left shift");
+                Must(encoder.Orr(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kRight)), "a wide-integer left shift");
+                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(word), 8);
+            }
+            hooks.LoadScalar(A64::Xn(kValue), A64::Fp, slot(0), 8, false);
+            Must(encoder.Lslv(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kCount)), "a wide-integer left shift");
+            hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(0), 8);
+        }
+        else {
+            for (int word = 0; word < words - 1; ++word) {
+                hooks.LoadScalar(A64::Xn(kValue), A64::Fp, slot(word), 8, false);
+                hooks.LoadScalar(A64::Xn(kRight), A64::Fp, slot(word + 1), 8, false);
+                Must(encoder.Lsrv(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kCount)), "a wide-integer right shift");
+                Must(encoder.Lslv(A64::Xn(kRight), A64::Xn(kRight), A64::Xn(kLow)), "a wide-integer right shift");
+                Must(encoder.Orr(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kRight)), "a wide-integer right shift");
+                hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(word), 8);
+            }
+            hooks.LoadScalar(A64::Xn(kValue), A64::Fp, slot(words - 1), 8, false);
+            Must(arithmetic ? encoder.Asrv(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kCount))
+                            : encoder.Lsrv(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kCount)),
+                 "a wide-integer right shift");
+            hooks.StoreScalar(A64::Xn(kValue), A64::Fp, slot(words - 1), 8);
+        }
         PatchConditionalBranch(done);
         return true;
     }
