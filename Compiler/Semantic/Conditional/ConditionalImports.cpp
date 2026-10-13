@@ -10,7 +10,7 @@
 namespace Rux {
 void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration, const std::vector<Module *> &modules,
                                                          const Module &source, const bool external) {
-    if (const auto *constant = dynamic_cast<const ConstDecl *>(&declaration)) {
+    if (const auto *constant = AstCast<const ConstDecl>(&declaration)) {
         if (!constant->intrinsicName.empty()) {
             intrinsicBindings[constant->name] = constant->intrinsicName;
             ruxImports.insert(constant->name);
@@ -19,11 +19,11 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
                 const StructDecl *type = nullptr;
                 const auto find = [&](this auto &&self, const std::vector<DeclPtr> &items) -> void {
                     for (const auto &item : items) {
-                        if (const auto *structure = dynamic_cast<const StructDecl *>(item.get());
+                        if (const auto *structure = AstCast<const StructDecl>(item.get());
                             structure && structure->name == constant->intrinsicName) {
                             type = structure;
                         }
-                        else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item.get())) {
+                        else if (const auto *nested = AstCast<const ModuleDecl>(item.get())) {
                             self(nested->items);
                         }
                     }
@@ -41,7 +41,7 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
         }
         return;
     }
-    if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         ruxImports.insert(enumeration->name);
         auto &variants = enumVariants[enumeration->name];
         variants.clear();
@@ -53,18 +53,18 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
         }
         return;
     }
-    if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+    if (const auto *extension = AstCast<const ImplDecl>(&declaration)) {
         // A package sees its own extensions of a primitive without importing them.
         if (const PrimitiveInfo *primitive = FindPrimitive(extension->typeName); primitive && !external) {
             BindPrimitiveExtension(*extension, std::string(primitive->name), modules, source, false);
         }
         return;
     }
-    const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration);
+    const auto *alias = AstCast<const TypeAliasDecl>(&declaration);
     if (!alias) {
         return;
     }
-    const auto *named = dynamic_cast<const NamedTypeExpr *>(alias->type.get());
+    const auto *named = AstCast<const NamedTypeExpr>(alias->type.get());
     if (!named || !named->typeArgs.empty()) {
         return;
     }
@@ -79,12 +79,12 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
     else {
         for (const Module *module : modules) {
             const auto collect = [&](this auto &&self, const Decl *item) -> void {
-                if (const auto *extension = dynamic_cast<const ImplDecl *>(item)) {
+                if (const auto *extension = AstCast<const ImplDecl>(item)) {
                     if (extension->typeName == target) {
                         BindPrimitiveExtension(*extension, alias->name, modules, *module, external);
                     }
                 }
-                else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item);
+                else if (const auto *nested = AstCast<const ModuleDecl>(item);
                          nested && (!external || nested->isPublic)) {
                     for (const auto &child : nested->items)
                         self(child.get());
@@ -150,13 +150,13 @@ void ConditionalEvaluator::Impl::BindPrimitiveExtensions(const TypeRef::Kind kin
     for (const Module *module : modules) {
         const auto collect = [&](this auto &&self, const std::vector<DeclPtr> &items) -> void {
             for (const auto &item : items) {
-                if (const auto *extension = dynamic_cast<const ImplDecl *>(item.get())) {
+                if (const auto *extension = AstCast<const ImplDecl>(item.get())) {
                     if (const PrimitiveInfo *primitive = FindPrimitive(extension->typeName);
                         primitive && primitive->kind == kind) {
                         BindPrimitiveExtension(*extension, std::string(primitive->name), modules, *module, true);
                     }
                 }
-                else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item.get());
+                else if (const auto *nested = AstCast<const ModuleDecl>(item.get());
                          nested && nested->isPublic) {
                     self(nested->items);
                 }
@@ -183,7 +183,7 @@ void ConditionalEvaluator::Impl::ImportDeclarations(const UseDecl &use) {
     for (const Module *module : imported) {
         const auto visit = [&](this auto &&self, const std::vector<DeclPtr> &items, const std::size_t depth) -> void {
             for (const auto &item : items) {
-                const auto *extension = dynamic_cast<const ImplDecl *>(item.get());
+                const auto *extension = AstCast<const ImplDecl>(item.get());
                 if (extension && depth == modulePath.size()) {
                     const PrimitiveInfo *primitive = FindPrimitive(extension->typeName);
                     const auto imports = [&](const std::string &name) {
@@ -199,20 +199,20 @@ void ConditionalEvaluator::Impl::ImportDeclarations(const UseDecl &use) {
                     continue;
                 }
                 if (depth < modulePath.size()) {
-                    if (const auto *nested = dynamic_cast<const ModuleDecl *>(item.get());
+                    if (const auto *nested = AstCast<const ModuleDecl>(item.get());
                         nested && nested->name == modulePath[depth]) {
                         self(nested->items, depth + 1);
                     }
                     continue;
                 }
                 std::string name;
-                if (const auto *constant = dynamic_cast<const ConstDecl *>(item.get())) {
+                if (const auto *constant = AstCast<const ConstDecl>(item.get())) {
                     name = constant->name;
                 }
-                else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(item.get())) {
+                else if (const auto *alias = AstCast<const TypeAliasDecl>(item.get())) {
                     name = alias->name;
                 }
-                else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(item.get())) {
+                else if (const auto *enumeration = AstCast<const EnumDecl>(item.get())) {
                     name = enumeration->name;
                 }
                 if (use.kind == UseDecl::Kind::Glob || std::ranges::contains(names, name)) {
@@ -241,7 +241,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
         return std::nullopt;
     }
     if (!constant.intrinsicName.empty()) {
-        const auto *named = constant.type ? dynamic_cast<const NamedTypeExpr *>(constant.type->get()) : nullptr;
+        const auto *named = constant.type ? AstCast<const NamedTypeExpr>(constant.type->get()) : nullptr;
         const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
         if (type && type->IsFloat()) {
             const auto *primitive = FindPrimitive(type->kind);

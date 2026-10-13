@@ -160,13 +160,13 @@ void AnalysisContext::ResolveModuleSignatures(const Module &module) {
 }
 
 void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
+    if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
         if (Symbol *symbol = globalScope.Lookup(function->name)) {
             symbol->type =
                 MakeFuncType(function->params, function->returnType, TypeParameterNames(function->typeParams));
         }
     }
-    else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+    else if (const auto *extension = AstCast<const ImplDecl>(&declaration)) {
         // CheckImplDecl reports the block; resolving its signatures would only repeat that its element is undefined.
         if (!UndefinedSliceElement(*extension).empty()) {
             return;
@@ -178,7 +178,7 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
         // A native target is rejected where the extension is checked, so it binds no methods here.
         const bool canResolve = extension->extendedType && !IsNativeTypeExpr(*extension->extendedType) &&
                                 ((symbol && symbol->kind == Symbol::Kind::Type) ||
-                                 !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get()));
+                                 !AstCast<const NamedTypeExpr>(extension->extendedType.get()));
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;
@@ -193,23 +193,23 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
             (void)MakeFuncType(method->params, method->returnType, parameters);
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         if (Symbol *symbol = globalScope.Lookup(enumeration->name)) {
             symbol->type = EnumType(*enumeration);
         }
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&declaration)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&declaration)) {
         if (Symbol *symbol = globalScope.Lookup(externFunction->name)) {
             symbol->type =
                 MakeFuncType(externFunction->params, externFunction->returnType, {}, externFunction->isVariadic);
         }
     }
-    else if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&declaration)) {
+    else if (const auto *block = AstCast<const ExternBlockDecl>(&declaration)) {
         for (const auto &item : block->items) {
             ResolveDeclSignature(*item);
         }
     }
-    else if (const auto *nested = dynamic_cast<const ModuleDecl *>(&declaration)) {
+    else if (const auto *nested = AstCast<const ModuleDecl>(&declaration)) {
         Scope &moduleScope = programIndex.ModuleScopeFor(nested->name, globalScope);
         for (const auto &item : nested->items) {
             ResolveDeclSignatureInScope(*item, moduleScope);
@@ -228,13 +228,13 @@ void AnalysisContext::ResolveModuleSignaturesInScope(const Module &module, Scope
 }
 
 void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope &scope) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
+    if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
         if (Symbol *symbol = scope.Lookup(function->name)) {
             symbol->type =
                 MakeFuncType(function->params, function->returnType, TypeParameterNames(function->typeParams));
         }
     }
-    else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+    else if (const auto *extension = AstCast<const ImplDecl>(&declaration)) {
         // CheckImplDecl reports the block; resolving its signatures would only repeat that its element is undefined.
         if (!UndefinedSliceElement(*extension).empty()) {
             return;
@@ -246,7 +246,7 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
         // A native target is rejected where the extension is checked, so it binds no methods here.
         const bool canResolve = extension->extendedType && !IsNativeTypeExpr(*extension->extendedType) &&
                                 ((symbol && symbol->kind == Symbol::Kind::Type) ||
-                                 !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get()));
+                                 !AstCast<const NamedTypeExpr>(extension->extendedType.get()));
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;
@@ -261,23 +261,23 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
             (void)MakeFuncType(method->params, method->returnType, parameters);
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         if (Symbol *symbol = scope.Lookup(enumeration->name)) {
             symbol->type = EnumType(*enumeration);
         }
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&declaration)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&declaration)) {
         if (Symbol *symbol = scope.Lookup(externFunction->name)) {
             symbol->type =
                 MakeFuncType(externFunction->params, externFunction->returnType, {}, externFunction->isVariadic);
         }
     }
-    else if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&declaration)) {
+    else if (const auto *block = AstCast<const ExternBlockDecl>(&declaration)) {
         for (const auto &item : block->items) {
             ResolveDeclSignatureInScope(*item, scope);
         }
     }
-    else if (const auto *nested = dynamic_cast<const ModuleDecl *>(&declaration)) {
+    else if (const auto *nested = AstCast<const ModuleDecl>(&declaration)) {
         Scope &moduleScope = programIndex.ModuleScopeFor(nested->name, scope);
         for (const auto &item : nested->items) {
             ResolveDeclSignatureInScope(*item, moduleScope);

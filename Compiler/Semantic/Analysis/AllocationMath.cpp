@@ -71,7 +71,7 @@ void AnalysisContext::ValidateCheckedArithmeticIntrinsic(const FuncDecl &declara
         }
     }
     const TypeRef result = ResolveType(*declaration.params[2].type);
-    const auto *pointer = dynamic_cast<const PointerTypeExpr *>(declaration.params[2].type.get());
+    const auto *pointer = AstCast<const PointerTypeExpr>(declaration.params[2].type.get());
     if (!pointer || !pointer->pointeeMut || result.kind != TypeRef::Kind::Pointer || result.inner.empty() ||
         result.inner.front().kind != TypeRef::Kind::UInt64) {
         reject(std::format("parameter '{}' has type '{}'", declaration.params[2].name, result.ToString()));

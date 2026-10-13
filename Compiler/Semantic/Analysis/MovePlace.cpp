@@ -13,19 +13,19 @@ std::string ReadableCanonical(const std::string &value) {
 }
 
 std::string CanonicalIndex(const Expr &expression, const IndexIsOperatorCall &isOperatorCall) {
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return CanonicalIndex(*move->operand, isOperatorCall);
     }
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         return "$" + identifier->name;
     }
-    if (dynamic_cast<const SelfExpr *>(&expression)) {
+    if (AstCast<const SelfExpr>(&expression)) {
         return "$self";
     }
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         return "#" + literal->token.text;
     }
-    if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
+    if (const auto *path = AstCast<const PathExpr>(&expression)) {
         std::string value = "%";
         for (std::size_t index = 0; index < path->segments.size(); ++index) {
             if (index != 0) {
@@ -35,11 +35,11 @@ std::string CanonicalIndex(const Expr &expression, const IndexIsOperatorCall &is
         }
         return value;
     }
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         const std::string object = CanonicalIndex(*field->object, isOperatorCall);
         return object.empty() ? std::string{} : object + "." + field->field;
     }
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         // A call has no stable identity to name, so an operator index leaves the whole path unknown rather than
         // reading as the projection its spelling resembles.
         if (isOperatorCall && isOperatorCall(*index)) {
@@ -49,11 +49,11 @@ std::string CanonicalIndex(const Expr &expression, const IndexIsOperatorCall &is
         const std::string subscript = CanonicalIndex(*index->index, isOperatorCall);
         return object.empty() || subscript.empty() ? std::string{} : object + "[" + subscript + "]";
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         const std::string operand = CanonicalIndex(*unary->operand, isOperatorCall);
         return operand.empty() ? std::string{} : std::format("u{}({})", static_cast<unsigned int>(unary->op), operand);
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         const std::string left = CanonicalIndex(*binary->left, isOperatorCall);
         const std::string right = CanonicalIndex(*binary->right, isOperatorCall);
         return left.empty() || right.empty()
@@ -64,16 +64,16 @@ std::string CanonicalIndex(const Expr &expression, const IndexIsOperatorCall &is
 }
 
 MovePlace AnalyzeImpl(const Expr &expression, const IndexIsOperatorCall &isOperatorCall) {
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return AnalyzeImpl(*move->operand, isOperatorCall);
     }
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         return {MovePlace::RootKind::Named, identifier->name, &expression, {}};
     }
-    if (dynamic_cast<const SelfExpr *>(&expression)) {
+    if (AstCast<const SelfExpr>(&expression)) {
         return {MovePlace::RootKind::Self, "self", &expression, {}};
     }
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         MovePlace place = AnalyzeImpl(*field->object, isOperatorCall);
         if (place.rootKind == MovePlace::RootKind::Temporary) {
             place.rootExpression = &expression;
@@ -81,7 +81,7 @@ MovePlace AnalyzeImpl(const Expr &expression, const IndexIsOperatorCall &isOpera
         place.projections.push_back({MovePlace::Projection::Kind::Field, field->field, field->location});
         return place;
     }
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         // The operator returns a value, so this computes fresh storage rather than reaching into the object. Reading
         // it as a projection would make `<- v[i]` a partial move of `v`, and a borrow of `v` reach the result.
         if (isOperatorCall && isOperatorCall(*index)) {
@@ -95,7 +95,7 @@ MovePlace AnalyzeImpl(const Expr &expression, const IndexIsOperatorCall &isOpera
             {MovePlace::Projection::Kind::Index, CanonicalIndex(*index->index, isOperatorCall), index->location});
         return place;
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression); unary && unary->op == TokenKind::Star) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression); unary && unary->op == TokenKind::Star) {
         return {MovePlace::RootKind::Dereference, CanonicalIndex(*unary->operand, isOperatorCall), &expression, {}};
     }
     return {MovePlace::RootKind::Temporary, {}, &expression, {}};

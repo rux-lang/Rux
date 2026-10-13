@@ -287,10 +287,10 @@ void AstToHirContext::AppendCurrentScopeCleanups(HirBlock &block) const {
 
 std::uint64_t AstToHirContext::BindingId(const HirExpr &expression) const {
     std::string_view name;
-    if (const auto *variable = dynamic_cast<const HirVarExpr *>(&expression)) {
+    if (const auto *variable = HirCast<const HirVarExpr>(&expression)) {
         name = variable->name;
     }
-    else if (dynamic_cast<const HirSelfExpr *>(&expression)) {
+    else if (HirCast<const HirSelfExpr>(&expression)) {
         name = "self";
     }
     if (name.empty()) {
@@ -319,7 +319,7 @@ std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const AssignExpr 
     }
     HirDropAction action{0, "<place>", target.type, glue->symbol, assignment.location};
     action.destroysTarget = true;
-    if (const auto *owner = dynamic_cast<const IdentExpr *>(replacement->owner)) {
+    if (const auto *owner = AstCast<const IdentExpr>(replacement->owner)) {
         const HirSymbol *symbol = currentScope->Lookup(owner->name);
         // A value with a droppable part is droppable itself, so its binding always has a drop flag to consult.
         if (!symbol || symbol->kind != HirSymbol::Kind::Var || symbol->bindingId == 0) {
@@ -399,7 +399,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.type = std::move(type);
         globalScope.Define(std::move(symbol));
     };
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Func;
         symbol.name = function->name;
@@ -409,23 +409,23 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.funcOverloads.push_back(function);
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+    else if (const auto *structDecl = AstCast<const StructDecl>(&decl)) {
         structDecls[NominalName(*structDecl)] = structDecl;
         simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(NominalName(*structDecl)));
     }
-    else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (const auto *enumDecl = AstCast<const EnumDecl>(&decl)) {
         enumDecls[NominalName(*enumDecl)] = enumDecl;
         simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
     }
-    else if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
         unionDecls[NominalName(*unionDecl)] = unionDecl;
         simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(NominalName(*unionDecl)));
     }
-    else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    else if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
         simple(HirSymbol::Kind::Interface, interfaceDecl->name, TypeRef::MakeNamed(NominalName(*interfaceDecl)));
         interfaceDecls[NominalName(*interfaceDecl)] = interfaceDecl;
     }
-    else if (const auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
+    else if (const auto *constDecl = AstCast<const ConstDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Const;
         symbol.name = constDecl->name;
@@ -433,7 +433,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.intrinsicName = constDecl->intrinsicName;
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *globalDecl = dynamic_cast<const GlobalDecl *>(&decl)) {
+    else if (const auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Var;
         symbol.name = globalDecl->name;
@@ -441,10 +441,10 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.isMut = true;
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    else if (const auto *aliasDecl = AstCast<const TypeAliasDecl>(&decl)) {
         simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Func;
         symbol.name = externFunction->name;
@@ -452,24 +452,24 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.isNoReturn = externFunction->isNoReturn;
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *externVariable = dynamic_cast<const ExternVarDecl *>(&decl)) {
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Var;
         symbol.name = externVariable->name;
         symbol.isMut = true;
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : externBlock->items) {
             CollectDecl(*item);
         }
     }
-    else if (const auto *moduleDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
         for (const auto &item : moduleDecl->items) {
             CollectDecl(*item);
         }
     }
-    else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (const auto *implDecl = AstCast<const ImplDecl>(&decl)) {
         const TypeRef *receiver = implDecl->extendedType ? model.TryGetType(*implDecl->extendedType) : nullptr;
         const std::string typeName = receiver ? NamedBaseTypeName(*receiver) : BaseTypeName(implDecl->typeName);
         for (const auto &method : implDecl->methods) {
@@ -583,7 +583,7 @@ HirModule AstToHirContext::LowerModule(const Module &module) {
 }
 
 void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         if (!function->intrinsicName.empty() && !function->body && !function->isAsm) {
             return;
         }
@@ -607,49 +607,49 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         }
         module.funcs.push_back(std::move(loweredFunction));
     }
-    else if (const auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+    else if (const auto *structDecl = AstCast<const StructDecl>(&decl)) {
         module.structs.push_back(LowerStruct(*structDecl));
     }
-    else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (const auto *enumDecl = AstCast<const EnumDecl>(&decl)) {
         module.enums.push_back(LowerEnum(*enumDecl));
     }
-    else if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
         module.unions.push_back(LowerUnion(*unionDecl));
     }
-    else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    else if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
         // A generic interface only constrains type parameters, so no value of it is ever laid out or dispatched.
         if (interfaceDecl->typeParams.empty()) {
             module.interfaces.push_back(LowerInterface(*interfaceDecl));
         }
     }
-    else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (const auto *implDecl = AstCast<const ImplDecl>(&decl)) {
         if (ImplTypeParams(*implDecl).empty()) {
             module.impls.push_back(LowerImpl(*implDecl));
         }
     }
-    else if (const auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
+    else if (const auto *constDecl = AstCast<const ConstDecl>(&decl)) {
         if (constDecl->intrinsicName.empty()) {
             module.consts.push_back(LowerConst(*constDecl));
         }
     }
-    else if (const auto *globalDecl = dynamic_cast<const GlobalDecl *>(&decl)) {
+    else if (const auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
         module.globals.push_back(LowerGlobal(*globalDecl));
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&decl)) {
         module.externFuncs.push_back(LowerExternFunc(*externFunction));
     }
-    else if (const auto *externVariable = dynamic_cast<const ExternVarDecl *>(&decl)) {
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&decl)) {
         module.externVars.push_back(LowerExternVar(*externVariable));
     }
-    else if (const auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : externBlock->items) {
             LowerTopLevelDecl(*item, module);
         }
     }
-    else if (const auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    else if (const auto *aliasDecl = AstCast<const TypeAliasDecl>(&decl)) {
         module.typeAliases.push_back(LowerTypeAlias(*aliasDecl));
     }
-    else if (const auto *moduleDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
         const std::string savedModulePath = currentModulePath;
         const std::string savedDeclModulePath = declModulePath;
         currentModulePath = currentModulePath.empty() ? moduleDecl->name : currentModulePath + "::" + moduleDecl->name;

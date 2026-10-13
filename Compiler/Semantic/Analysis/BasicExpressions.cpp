@@ -138,11 +138,11 @@ TokenKind BinaryOperation(const TokenKind op) noexcept {
 }
 
 bool IsAssignablePlace(const Expr &expression) noexcept {
-    if (dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const SelfExpr *>(&expression) ||
-        dynamic_cast<const FieldExpr *>(&expression) || dynamic_cast<const IndexExpr *>(&expression)) {
+    if (AstCast<const IdentExpr>(&expression) || AstCast<const SelfExpr>(&expression) ||
+        AstCast<const FieldExpr>(&expression) || AstCast<const IndexExpr>(&expression)) {
         return true;
     }
-    const auto *unary = dynamic_cast<const UnaryExpr *>(&expression);
+    const auto *unary = AstCast<const UnaryExpr>(&expression);
     return unary && unary->op == TokenKind::Star;
 }
 
@@ -205,18 +205,18 @@ void AnalysisContext::ValidateCharLiteral(const Token &literal, const SourceLoca
 }
 
 std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &expression) {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         if (!negatedIntegerLiterals.contains(literal)) {
             ValidateSuffixedIntegerLiteral(*literal, false);
         }
         ValidateCharLiteral(literal->token, literal->location);
         return LiteralType(literal->token);
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         // A minus and the literal under it are one written value, so the magnitude is checked against the negative
         // end of the range rather than the positive one: `-128i8` is in range where `128i8` is not.
         if (unary->op == TokenKind::Minus) {
-            if (const auto *operand = dynamic_cast<const LiteralExpr *>(unary->operand.get())) {
+            if (const auto *operand = AstCast<const LiteralExpr>(unary->operand.get())) {
                 negatedIntegerLiterals.insert(operand);
                 ValidateSuffixedIntegerLiteral(*operand, true);
             }
@@ -253,8 +253,8 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             // A reference already reads and writes its referent, so the operator is only ever a leftover from pointer
             // code. Naming the operand without it is the whole fix, and the referent type keeps the rest of the
             // expression from failing twice.
-            const auto *name = dynamic_cast<const IdentExpr *>(unary->operand.get());
-            const bool receiver = dynamic_cast<const SelfExpr *>(unary->operand.get()) != nullptr;
+            const auto *name = AstCast<const IdentExpr>(unary->operand.get());
+            const bool receiver = AstCast<const SelfExpr>(unary->operand.get()) != nullptr;
             const std::string spelled = name ? name->name : receiver ? "self" : "";
             std::string help = "remove the '*'";
             if (!spelled.empty()) {
@@ -274,15 +274,15 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         return CheckUnary(unary->op, operandType, unary->location);
     }
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         const TypeRef operandType = CheckExpr(*move->operand);
         ConsumeExplicitValue(*move->operand, operandType, move->location);
         return operandType;
     }
-    if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+    if (const auto *tryExpression = AstCast<const TryExpr>(&expression)) {
         return CheckTryExpression(*tryExpression);
     }
-    if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         TypeRef operandType = CheckExpr(*postfix->operand);
         bool isAssignable = false;
         if (const Symbol *reference = ReferenceWriteTarget(*postfix->operand, false, false)) {
@@ -298,7 +298,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         return operandType;
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         if (binary->op == TokenKind::QuestionQuestion) {
             return CheckCoalesceExpression(*binary);
         }
@@ -309,12 +309,12 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         // That reading is only a mistake once `B` turns out to name a type, so it is caught here rather than by the
         // parser, with the grouping the author meant.
         if (binary->op == TokenKind::Pipe &&
-            (dynamic_cast<const IsExpr *>(binary->left.get()) || dynamic_cast<const CastExpr *>(binary->left.get()))) {
-            const auto *name = dynamic_cast<const IdentExpr *>(binary->right.get());
+            (AstCast<const IsExpr>(binary->left.get()) || AstCast<const CastExpr>(binary->left.get()))) {
+            const auto *name = AstCast<const IdentExpr>(binary->right.get());
             const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
             if (symbol && symbol->kind == Symbol::Kind::Type) {
-                const auto *isTest = dynamic_cast<const IsExpr *>(binary->left.get());
-                const auto *cast = dynamic_cast<const CastExpr *>(binary->left.get());
+                const auto *isTest = AstCast<const IsExpr>(binary->left.get());
+                const auto *cast = AstCast<const CastExpr>(binary->left.get());
                 const bool test = isTest != nullptr;
                 const std::string first =
                     ParserDumpDetail::DeclarationPrinter::TypeString(test ? isTest->type.get() : cast->type.get());
@@ -328,7 +328,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         TypeRef right = CheckExpr(*binary->right);
         return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location, binary);
     }
-    if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+    if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
         const bool simpleAssignment = assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow;
         // A write through a reference reads the reference itself, so its name is checked as a use rather than as a
@@ -339,20 +339,20 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         // node lets the target check resolve the setter while it already holds the object and index types, so
         // neither is checked twice, and leaves every other index in the expression a read.
         const IndexExpr *savedAssignmentIndex = indexAssignmentTarget;
-        indexAssignmentTarget = simpleAssignment ? dynamic_cast<const IndexExpr *>(assignment->target.get()) : nullptr;
+        indexAssignmentTarget = simpleAssignment ? AstCast<const IndexExpr>(assignment->target.get()) : nullptr;
         TypeRef target = CheckExpr(*assignment->target);
         indexAssignmentTarget = savedAssignmentIndex;
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         TypeRef value = CheckExpr(*assignment->value);
         // `a = b = 7` reads as a chain, but the inner assignment is a statement-like expression with no value.
-        if (const auto *inner = dynamic_cast<const AssignExpr *>(assignment->value.get())) {
+        if (const auto *inner = AstCast<const AssignExpr>(assignment->value.get())) {
             EmitError(inner->location, "an assignment produces no value and cannot be chained", {},
                       "assign each target in its own statement");
             checkingPlainAssignmentTarget = savedAssignmentTarget;
             return TypeRef::MakeOpaque();
         }
         checkingPlainAssignmentTarget = simpleAssignment && !writtenReference;
-        if (const auto *indexTarget = dynamic_cast<const IndexExpr *>(assignment->target.get());
+        if (const auto *indexTarget = AstCast<const IndexExpr>(assignment->target.get());
             indexTarget && indexAssignments.contains(indexTarget)) {
             FinishIndexedAssignment(*assignment, target, value);
             checkingPlainAssignmentTarget = savedAssignmentTarget;
@@ -468,7 +468,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         return TypeRef::MakeOpaque();
     }
-    if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         const TypeRef operandType = ReadBorrowedScalar(*cast->operand, CheckExpr(*cast->operand));
         TypeRef targetType = ResolveType(*cast->type);
         // An unsubstituted type parameter is not yet any particular type, so whether it can be cast is a question only
@@ -972,7 +972,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 if (IsUnsuffixedIntegerLiteral(expression)) {
                     return true;
                 }
-                const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression);
+                const auto *construct = AstCast<const NativeConstructExpr>(&expression);
                 return construct && construct->operand && contextual(*construct->operand);
             };
             const auto completes = [&](const Expr &expression, const TypeRef &type, const TypeRef &other) {
@@ -1020,11 +1020,11 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             // so `pair == (3, true)` builds the literal as the other operand's type, the way a scalar literal is.
             TypeRef compared = left;
             if (left != right) {
-                if (dynamic_cast<const TupleExpr *>(&rightExpression) &&
+                if (AstCast<const TupleExpr>(&rightExpression) &&
                     CanAssignExprTo(rightExpression, right, left)) {
                     compared = left;
                 }
-                else if (dynamic_cast<const TupleExpr *>(&leftExpression) &&
+                else if (AstCast<const TupleExpr>(&leftExpression) &&
                          CanAssignExprTo(leftExpression, left, right)) {
                     compared = right;
                 }
@@ -1324,7 +1324,7 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
 }
 
 bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&place)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&place)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
         if (!symbol) {
             return false;
@@ -1337,11 +1337,11 @@ bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
     // The receiver is a parameter like any other. A receiver taken by value is a copy the method may not rewrite unless
     // it was declared `var self: T`; a receiver taken by reference is decided by what the reference points at, which
     // the branches below read off the pointer.
-    if (dynamic_cast<const SelfExpr *>(&place)) {
+    if (AstCast<const SelfExpr>(&place)) {
         const Symbol *symbol = currentScope->Lookup("self");
         return symbol != nullptr && !symbol->isMut;
     }
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
+    if (const auto *field = AstCast<const FieldExpr>(&place)) {
         const bool savedProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*field->object);
@@ -1352,7 +1352,7 @@ bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
         }
         return PlaceIsImmutable(*field->object);
     }
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
+    if (const auto *index = AstCast<const IndexExpr>(&place)) {
         if (IsIndexOperatorCall(*index)) {
             // The operator's result is a temporary, so nothing about the receiver's mutability describes it.
             return false;
@@ -1372,7 +1372,7 @@ bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
         }
         return PlaceIsImmutable(*index->object);
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&place); unary && unary->op == TokenKind::Star) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&place); unary && unary->op == TokenKind::Star) {
         const TypeRef pointer = CheckExpr(*unary->operand);
         return pointer.kind == TypeRef::Kind::Pointer && !pointer.inner.empty() && !pointer.inner[0].isMut;
     }
@@ -1380,7 +1380,7 @@ bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
 }
 
 bool AnalysisContext::PlaceIsWritable(const Expr &place, const TypeRef &placeType) {
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&place); unary && unary->op == TokenKind::Star) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&place); unary && unary->op == TokenKind::Star) {
         return placeType.isMut;
     }
     return !PlaceIsImmutable(place);
@@ -1404,7 +1404,7 @@ std::optional<std::string> AnalysisContext::ImmutableBindingHelp(const Symbol &b
 }
 
 void AnalysisContext::CheckMutability(const Expr &target) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&target)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&target)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
         if (!symbol) {
             return;
@@ -1424,20 +1424,20 @@ void AnalysisContext::CheckMutability(const Expr &target) {
             }
         }
     }
-    else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&target); unary && unary->op == TokenKind::Star) {
+    else if (const auto *unary = AstCast<const UnaryExpr>(&target); unary && unary->op == TokenKind::Star) {
         const TypeRef pointer = CheckExpr(*unary->operand);
         if (pointer.kind == TypeRef::Kind::Pointer && !pointer.inner.empty() && !pointer.inner[0].isMut) {
             EmitError(target.location,
                       std::format("cannot modify data through read-only pointer '{}'", pointer.ToString()));
         }
     }
-    else if (dynamic_cast<const SelfExpr *>(&target)) {
+    else if (AstCast<const SelfExpr>(&target)) {
         if (const Symbol *symbol = currentScope->Lookup("self"); symbol && !symbol->isMut) {
             EmitError(target.location, "cannot modify immutable receiver 'self'", {"a receiver is immutable"},
                       ImmutableBindingHelp(*symbol));
         }
     }
-    else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
+    else if (const auto *field = AstCast<const FieldExpr>(&target)) {
         const TypeRef objectType = CheckExpr(*field->object);
         if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
             !objectType.inner.empty()) {
@@ -1453,7 +1453,7 @@ void AnalysisContext::CheckMutability(const Expr &target) {
             CheckMutability(*field->object);
         }
     }
-    else if (const auto *index = dynamic_cast<const IndexExpr *>(&target); index && !IsIndexOperatorCall(*index)) {
+    else if (const auto *index = AstCast<const IndexExpr>(&target); index && !IsIndexOperatorCall(*index)) {
         const TypeRef objectType = CheckExpr(*index->object);
         if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
             !objectType.inner.empty()) {
@@ -1524,10 +1524,10 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
 
 const Symbol *AnalysisContext::ReferenceWriteTarget(const Expr &target, const bool replaces, const bool rebinds) const {
     const Symbol *symbol = nullptr;
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&target)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&target)) {
         symbol = currentScope->Lookup(identifier->name);
     }
-    else if (dynamic_cast<const SelfExpr *>(&target)) {
+    else if (AstCast<const SelfExpr>(&target)) {
         symbol = currentScope->Lookup("self");
     }
     if (!symbol || symbol->kind != Symbol::Kind::Var || symbol->type.kind != TypeRef::Kind::Reference ||
@@ -1576,10 +1576,10 @@ void AnalysisContext::RecordPlaceReplacement(const AssignExpr &assignment, const
     const Expr *place = assignment.target.get();
     while (true) {
         const Expr *object = nullptr;
-        if (const auto *field = dynamic_cast<const FieldExpr *>(place)) {
+        if (const auto *field = AstCast<const FieldExpr>(place)) {
             object = field->object.get();
         }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(place); index && !IsIndexOperatorCall(*index)) {
+        else if (const auto *index = AstCast<const IndexExpr>(place); index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
         if (!object) {
@@ -1601,7 +1601,7 @@ void AnalysisContext::RecordPlaceReplacement(const AssignExpr &assignment, const
     if (place == assignment.target.get()) {
         return;
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(place);
+    const auto *identifier = AstCast<const IdentExpr>(place);
     if (!identifier) {
         return;
     }

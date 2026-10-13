@@ -103,59 +103,59 @@ namespace Rux::AstToHirDetail {
 namespace {
 /// Name an expression's kind for an internal-error message, so a lowering failure says which node it could not handle.
 std::string_view ExpressionKind(const Expr &expression) {
-    if (dynamic_cast<const LiteralExpr *>(&expression))
+    if (AstCast<const LiteralExpr>(&expression))
         return "literal";
-    if (dynamic_cast<const IdentExpr *>(&expression))
+    if (AstCast<const IdentExpr>(&expression))
         return "identifier";
-    if (dynamic_cast<const SelfExpr *>(&expression))
+    if (AstCast<const SelfExpr>(&expression))
         return "self";
-    if (dynamic_cast<const PathExpr *>(&expression))
+    if (AstCast<const PathExpr>(&expression))
         return "path";
-    if (dynamic_cast<const TypeQueryExpr *>(&expression))
+    if (AstCast<const TypeQueryExpr>(&expression))
         return "sizeof";
-    if (dynamic_cast<const EnumShorthandExpr *>(&expression))
+    if (AstCast<const EnumShorthandExpr>(&expression))
         return "enum shorthand";
-    if (dynamic_cast<const IntrinsicExpr *>(&expression))
+    if (AstCast<const IntrinsicExpr>(&expression))
         return "intrinsic";
-    if (dynamic_cast<const UnaryExpr *>(&expression))
+    if (AstCast<const UnaryExpr>(&expression))
         return "unary";
-    if (dynamic_cast<const MoveExpr *>(&expression))
+    if (AstCast<const MoveExpr>(&expression))
         return "move";
-    if (dynamic_cast<const TryExpr *>(&expression))
+    if (AstCast<const TryExpr>(&expression))
         return "propagation";
-    if (dynamic_cast<const PostfixExpr *>(&expression))
+    if (AstCast<const PostfixExpr>(&expression))
         return "postfix";
-    if (dynamic_cast<const BinaryExpr *>(&expression))
+    if (AstCast<const BinaryExpr>(&expression))
         return "binary";
-    if (dynamic_cast<const AssignExpr *>(&expression))
+    if (AstCast<const AssignExpr>(&expression))
         return "assignment";
-    if (dynamic_cast<const TernaryExpr *>(&expression))
+    if (AstCast<const TernaryExpr>(&expression))
         return "ternary";
-    if (dynamic_cast<const RangeExpr *>(&expression))
+    if (AstCast<const RangeExpr>(&expression))
         return "range";
-    if (dynamic_cast<const CallExpr *>(&expression))
+    if (AstCast<const CallExpr>(&expression))
         return "call";
-    if (dynamic_cast<const IndexExpr *>(&expression))
+    if (AstCast<const IndexExpr>(&expression))
         return "index";
-    if (dynamic_cast<const FieldExpr *>(&expression))
+    if (AstCast<const FieldExpr>(&expression))
         return "field";
-    if (dynamic_cast<const StructInitExpr *>(&expression))
+    if (AstCast<const StructInitExpr>(&expression))
         return "struct initializer";
-    if (dynamic_cast<const ArrayExpr *>(&expression))
+    if (AstCast<const ArrayExpr>(&expression))
         return "array";
-    if (dynamic_cast<const ArrayRepeatExpr *>(&expression))
+    if (AstCast<const ArrayRepeatExpr>(&expression))
         return "array repeat";
-    if (dynamic_cast<const SpreadExpr *>(&expression))
+    if (AstCast<const SpreadExpr>(&expression))
         return "spread";
-    if (dynamic_cast<const TupleExpr *>(&expression))
+    if (AstCast<const TupleExpr>(&expression))
         return "tuple";
-    if (dynamic_cast<const CastExpr *>(&expression))
+    if (AstCast<const CastExpr>(&expression))
         return "cast";
-    if (dynamic_cast<const IsExpr *>(&expression))
+    if (AstCast<const IsExpr>(&expression))
         return "type check";
-    if (dynamic_cast<const BlockExpr *>(&expression))
+    if (AstCast<const BlockExpr>(&expression))
         return "block";
-    if (dynamic_cast<const MatchExpr *>(&expression))
+    if (AstCast<const MatchExpr>(&expression))
         return "match";
     return "unknown";
 }
@@ -331,7 +331,7 @@ HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, std::ve
             }
             else if (IsNullLiteral(*argument.source) && expectedType.kind == TypeRef::Kind::Pointer) {
                 argument.value->type = expectedType;
-                if (auto *literal = dynamic_cast<HirLiteralExpr *>(argument.value.get())) {
+                if (auto *literal = HirCast<HirLiteralExpr>(argument.value.get())) {
                     literal->value = "0";
                 }
             }
@@ -521,28 +521,28 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     if (HirExprPtr aggregate = LowerAggregateExpr(expr)) {
         return finish(std::move(aggregate));
     }
-    if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
+    if (auto *e = AstCast<const CallExpr>(&expr)) {
         return finish(LowerCallExpr(*e));
     }
-    if (auto *e = dynamic_cast<const BlockExpr *>(&expr)) {
+    if (auto *e = AstCast<const BlockExpr>(&expr)) {
         auto he = std::make_unique<HirBlockExpr>();
         he->location = e->location;
         he->block = LowerBlock(*e->block);
         return finish(std::move(he));
     }
-    if (dynamic_cast<const NativeConstructExpr *>(&expr) || dynamic_cast<const NoneExpr *>(&expr)) {
+    if (AstCast<const NativeConstructExpr>(&expr) || AstCast<const NoneExpr>(&expr)) {
         return finish(LowerPendingNative(expr));
     }
-    if (const auto *e = dynamic_cast<const DivergeExpr *>(&expr)) {
+    if (const auto *e = AstCast<const DivergeExpr>(&expr)) {
         return LowerDiverge(*e);
     }
-    if (const auto *e = dynamic_cast<const CatchExpr *>(&expr)) {
+    if (const auto *e = AstCast<const CatchExpr>(&expr)) {
         return finish(LowerCatch(*e));
     }
-    if (const auto *e = dynamic_cast<const MappedTryExpr *>(&expr)) {
+    if (const auto *e = AstCast<const MappedTryExpr>(&expr)) {
         return finish(LowerMappedTry(*e));
     }
-    if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
+    if (auto *e = AstCast<const SpreadExpr>(&expr)) {
         return finish(LowerExpr(*e->operand));
     }
 

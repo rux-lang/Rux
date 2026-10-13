@@ -128,7 +128,7 @@ std::string_view OperatorName(const TokenKind op) {
 } // namespace
 
 std::optional<std::uint32_t> ConditionalEvaluator::Impl::SignedIntegerWidth(const Expr &expr) const {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expr)) {
         if (literal->token.kind != TokenKind::IntLiteral) {
             return std::nullopt;
         }
@@ -147,13 +147,13 @@ std::optional<std::uint32_t> ConditionalEvaluator::Impl::SignedIntegerWidth(cons
             return 64;
         return context.target.pointer_size * 8;
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expr)) {
         return SignedIntegerWidth(*unary->operand);
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expr)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expr)) {
         return SignedIntegerWidth(*binary->left);
     }
-    if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (const auto *ident = AstCast<const IdentExpr>(&expr)) {
         if (const auto width = constSignedIntegerWidths.find(ident->name); width != constSignedIntegerWidths.end()) {
             return width->second;
         }
@@ -165,7 +165,7 @@ std::optional<std::uint32_t> ConditionalEvaluator::Impl::SignedIntegerWidth(cons
 }
 
 std::optional<std::uint32_t> ConditionalEvaluator::Impl::UnsignedIntegerWidth(const Expr &expr) const {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expr)) {
         if (literal->token.kind != TokenKind::IntLiteral) {
             return std::nullopt;
         }
@@ -182,13 +182,13 @@ std::optional<std::uint32_t> ConditionalEvaluator::Impl::UnsignedIntegerWidth(co
             return context.target.pointer_size * 8;
         return std::nullopt;
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expr)) {
         return UnsignedIntegerWidth(*unary->operand);
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expr)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expr)) {
         return UnsignedIntegerWidth(*binary->left);
     }
-    if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (const auto *ident = AstCast<const IdentExpr>(&expr)) {
         if (const auto width = constUnsignedIntegerWidths.find(ident->name);
             width != constUnsignedIntegerWidths.end()) {
             return width->second;

@@ -41,10 +41,10 @@ enum class MemoryOrderKind : std::uint8_t {
 
 /// The order an argument names, when it is written as `.Case` or `MemoryOrder::Case`; nullopt for any other expression.
 [[nodiscard]] inline std::optional<MemoryOrderKind> MemoryOrderOf(const Expr &argument) noexcept {
-    if (const auto *shorthand = dynamic_cast<const EnumShorthandExpr *>(&argument)) {
+    if (const auto *shorthand = AstCast<const EnumShorthandExpr>(&argument)) {
         return MemoryOrderCase(shorthand->variant);
     }
-    if (const auto *path = dynamic_cast<const PathExpr *>(&argument);
+    if (const auto *path = AstCast<const PathExpr>(&argument);
         path && path->segments.size() >= 2 && path->segments[path->segments.size() - 2] == "MemoryOrder") {
         return MemoryOrderCase(path->segments.back());
     }

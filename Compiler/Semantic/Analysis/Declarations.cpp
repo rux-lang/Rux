@@ -196,7 +196,7 @@ void AnalysisContext::CheckStructDecl(const StructDecl &d) {
         if (!seen.insert(field.name).second) {
             EmitError(field.location, std::format("duplicate field '{}' in struct '{}'", field.name, d.name));
         }
-        const auto *array = dynamic_cast<const ArrayTypeExpr *>(field.type.get());
+        const auto *array = AstCast<const ArrayTypeExpr>(field.type.get());
         const bool isFlexibleTail = array && !array->size && i + 1 == d.fields.size();
         ValidateArrayType(*field.type, isFlexibleTail);
         ValidateStoredType(ResolveType(*field.type), field.location,
@@ -374,7 +374,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     }
     // A native form or the unit has no declaring package to own a method set or an interface implementation.
     if (const TypeExpr *target = d.extendedType.get();
-        target && (IsNativeTypeExpr(*target) || (dynamic_cast<const TupleTypeExpr *>(target) &&
+        target && (IsNativeTypeExpr(*target) || (AstCast<const TupleTypeExpr>(target) &&
                                                  static_cast<const TupleTypeExpr *>(target)->elements.empty()))) {
         EmitError(d.location, std::format("cannot extend native type '{}'", d.typeName),
                   {"a sum, optional, fallible, or unit type has no declaring package to own methods or interface "
@@ -384,7 +384,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         return;
     }
     const bool receiverMayResolve =
-        extendedSymbol != nullptr || !dynamic_cast<const NamedTypeExpr *>(d.extendedType.get());
+        extendedSymbol != nullptr || !AstCast<const NamedTypeExpr>(d.extendedType.get());
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
     const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || extendedType.IsSlice();
     if (!isSliceReceiver && !extendedSymbol) {
@@ -419,7 +419,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         }
         else {
             // A generic interface is implemented for particular type arguments, and any other is named bare.
-            if (const auto *interface = dynamic_cast<const InterfaceDecl *>(ifaceSym->declaration)) {
+            if (const auto *interface = AstCast<const InterfaceDecl>(ifaceSym->declaration)) {
                 const std::size_t expected = interface->typeParams.size();
                 if (d.interfaceTypeArgs.size() != expected) {
                     EmitError(d.location, expected == 0
@@ -448,7 +448,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
                               {std::format("interface '{}' requires method '{}'", *d.interfaceName, required)});
                 }
             }
-            if (const auto *interface = dynamic_cast<const InterfaceDecl *>(ifaceSym->declaration)) {
+            if (const auto *interface = AstCast<const InterfaceDecl>(ifaceSym->declaration)) {
                 for (const auto &requirement : interface->methods) {
                     for (const auto &m : d.methods) {
                         if (m->name == requirement->name) {
@@ -504,8 +504,8 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
 /// element type: an element that names nothing would have to be a type parameter, and a slice declares none to
 /// borrow, so such a block is reported as what it is rather than as a typo, and only once.
 std::string AnalysisContext::UndefinedSliceElement(const ImplDecl &d) const {
-    const auto *slice = dynamic_cast<const SliceTypeExpr *>(d.extendedType.get());
-    const auto *element = slice ? dynamic_cast<const NamedTypeExpr *>(slice->element.get()) : nullptr;
+    const auto *slice = AstCast<const SliceTypeExpr>(d.extendedType.get());
+    const auto *element = slice ? AstCast<const NamedTypeExpr>(slice->element.get()) : nullptr;
     if (!element || !element->typeArgs.empty() || currentScope->Lookup(element->name) ||
         PrimitiveTypeFromName(element->name)) {
         return {};
@@ -525,16 +525,16 @@ void AnalysisContext::CheckModuleDecl(const ModuleDecl &d) {
 // An element of a constant array must reduce to a literal, since the array
 // is laid out in read-only data rather than evaluated at each use.
 bool AnalysisContext::IsConstArrayElement(const Expr &e) const {
-    if (const auto *cast = dynamic_cast<const CastExpr *>(&e)) {
+    if (const auto *cast = AstCast<const CastExpr>(&e)) {
         return IsConstArrayElement(*cast->operand);
     }
-    if (dynamic_cast<const LiteralExpr *>(&e)) {
+    if (AstCast<const LiteralExpr>(&e)) {
         return true;
     }
-    if (const auto *u = dynamic_cast<const UnaryExpr *>(&e)) {
+    if (const auto *u = AstCast<const UnaryExpr>(&e)) {
         return u->op == TokenKind::Minus && IsConstArrayElement(*u->operand);
     }
-    if (const auto *ident = dynamic_cast<const IdentExpr *>(&e)) {
+    if (const auto *ident = AstCast<const IdentExpr>(&e)) {
         const Symbol *sym = currentScope->Lookup(ident->name);
         return sym && sym->kind == Symbol::Kind::Const;
     }
@@ -547,12 +547,12 @@ bool AnalysisContext::IsConstArrayElement(const Expr &e) const {
 bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const Decl &owner) {
     const auto reject = [&](const Expr &part, std::string message) {
         std::string help;
-        if (const auto *global = dynamic_cast<const GlobalDecl *>(&owner)) {
+        if (const auto *global = AstCast<const GlobalDecl>(&owner)) {
             help = std::format("initialize '{}' from literals, operators, casts, and constants, and assign it from a "
                                "function at run time",
                                global->name);
         }
-        else if (const auto *constant = dynamic_cast<const ConstDecl *>(&owner);
+        else if (const auto *constant = AstCast<const ConstDecl>(&owner);
                  constant && localConstants.contains(constant)) {
             help = std::format("declare '{}' with 'let' to compute it at run time", constant->name);
         }
@@ -568,18 +568,18 @@ bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const 
     };
     const auto isRuntimeSymbol = [](const Symbol *symbol) { return symbol && symbol->kind == Symbol::Kind::Var; };
 
-    if (dynamic_cast<const LiteralExpr *>(&expression) || dynamic_cast<const TypeQueryExpr *>(&expression) ||
-        dynamic_cast<const IntrinsicExpr *>(&expression) || dynamic_cast<const EnumShorthandExpr *>(&expression) ||
-        dynamic_cast<const NoneExpr *>(&expression)) {
+    if (AstCast<const LiteralExpr>(&expression) || AstCast<const TypeQueryExpr>(&expression) ||
+        AstCast<const IntrinsicExpr>(&expression) || AstCast<const EnumShorthandExpr>(&expression) ||
+        AstCast<const NoneExpr>(&expression)) {
         return true;
     }
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         if (isRuntimeSymbol(currentScope->Lookup(identifier->name))) {
             return reject(expression, std::format("'{}' is not a compile-time constant", identifier->name));
         }
         return true;
     }
-    if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
+    if (const auto *path = AstCast<const PathExpr>(&expression)) {
         // Associated constants, cases, and functions are all compile-time; only a module path can reach a variable.
         const Symbol *current = path->segments.empty() ? nullptr : currentScope->Lookup(path->segments[0]);
         for (std::size_t i = 1; current && i < path->segments.size(); ++i) {
@@ -593,69 +593,69 @@ bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const 
         }
         return true;
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         if (unary->op != TokenKind::Minus && unary->op != TokenKind::Plus && unary->op != TokenKind::Tilde &&
             unary->op != TokenKind::Bang) {
             return reject(expression, "a reference or an address is not a compile-time value");
         }
         return check(unary->operand.get());
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         return check(binary->left.get()) && check(binary->right.get());
     }
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression)) {
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
         return check(ternary->condition.get()) && check(ternary->thenExpr.get()) && check(ternary->elseExpr.get());
     }
-    if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         return check(cast->operand.get());
     }
-    if (const auto *test = dynamic_cast<const IsExpr *>(&expression)) {
+    if (const auto *test = AstCast<const IsExpr>(&expression)) {
         return check(test->operand.get());
     }
-    if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+    if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         return check(range->lo.get()) && check(range->hi.get());
     }
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         return check(field->object.get());
     }
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         if (IsIndexOperatorCall(*index)) {
             return reject(expression, "a call to an index operator is not a compile-time value");
         }
         return check(index->object.get()) && check(index->index.get());
     }
-    if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         return std::ranges::all_of(initializer->fields,
                                    [&](const StructInitExpr::Field &field) { return check(field.value.get()); });
     }
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         return checkAll(array->elements);
     }
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         return check(repeat->value.get());
     }
-    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         return checkAll(tuple->elements);
     }
-    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         return check(construct->operand.get());
     }
-    if (const auto *call = dynamic_cast<const CallExpr *>(&expression)) {
+    if (const auto *call = AstCast<const CallExpr>(&expression)) {
         // A case with a payload is constructed, not called, and a method of a compiler-supplied value such as
         // `#config.Get` is answered while compiling.
-        bool compileTime = dynamic_cast<const EnumShorthandExpr *>(call->callee.get()) != nullptr;
+        bool compileTime = AstCast<const EnumShorthandExpr>(call->callee.get()) != nullptr;
         std::string callee = "the function";
-        if (const auto *path = dynamic_cast<const PathExpr *>(call->callee.get())) {
+        if (const auto *path = AstCast<const PathExpr>(call->callee.get())) {
             const Symbol *first = path->segments.empty() ? nullptr : currentScope->Lookup(path->segments[0]);
             compileTime = path->segments.size() == 2 && first && first->kind == Symbol::Kind::Type &&
                           LookupCase(first->name, path->segments[1]).has_value();
             callee = std::format("'{}'", JoinPathSegments(path->segments, 0, path->segments.size()));
         }
-        else if (const auto *identifier = dynamic_cast<const IdentExpr *>(call->callee.get())) {
+        else if (const auto *identifier = AstCast<const IdentExpr>(call->callee.get())) {
             callee = std::format("'{}'", identifier->name);
         }
-        else if (const auto *method = dynamic_cast<const FieldExpr *>(call->callee.get())) {
-            const auto *object = dynamic_cast<const IdentExpr *>(method->object.get());
+        else if (const auto *method = AstCast<const FieldExpr>(call->callee.get())) {
+            const auto *object = AstCast<const IdentExpr>(method->object.get());
             const Symbol *root = object ? currentScope->Lookup(object->name) : nullptr;
             compileTime = root && root->kind == Symbol::Kind::Const && !root->intrinsicName.empty();
             callee = std::format("'{}'", method->field);
@@ -738,9 +738,9 @@ void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
     }
     const bool compileTime = valueType.IsUnknown() || CheckCompileTimeInitializer(*d.value, d);
     if (compileTime && (constType.IsSlice() || constType.kind == TypeRef::Kind::Array)) {
-        const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());
-        const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(d.value.get());
-        const bool isText = dynamic_cast<const LiteralExpr *>(d.value.get()) != nullptr;
+        const auto *array = AstCast<const ArrayExpr>(d.value.get());
+        const auto *repeat = AstCast<const ArrayRepeatExpr>(d.value.get());
+        const bool isText = AstCast<const LiteralExpr>(d.value.get()) != nullptr;
         if (!isText && !array && !repeat) {
             EmitError(d.value->location,
                       "a constant sequence must be initialized with an array literal or a string literal");
@@ -790,8 +790,8 @@ void AnalysisContext::CheckGlobalDecl(const GlobalDecl &d) {
     }
     const bool compileTime = valueType.IsUnknown() || CheckCompileTimeInitializer(*d.value, d);
     if (compileTime && globalType.kind == TypeRef::Kind::Array) {
-        const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());
-        const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(d.value.get());
+        const auto *array = AstCast<const ArrayExpr>(d.value.get());
+        const auto *repeat = AstCast<const ArrayRepeatExpr>(d.value.get());
         if (!array && !repeat) {
             EmitError(d.value->location, "a module variable array must be initialized with an array literal");
         }

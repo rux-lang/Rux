@@ -271,7 +271,7 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
         return;
     }
     const Symbol *symbol = currentScope->Lookup(std::string(root->name));
-    const auto *structure = symbol ? dynamic_cast<const StructDecl *>(symbol->declaration) : nullptr;
+    const auto *structure = symbol ? AstCast<const StructDecl>(symbol->declaration) : nullptr;
     if (!structure) {
         const auto indexed = structDecls.find(NominalTypeName(std::string(root->name)));
         structure = indexed == structDecls.end() ? nullptr : indexed->second;

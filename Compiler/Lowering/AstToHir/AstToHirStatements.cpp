@@ -13,14 +13,14 @@ namespace {
 /// Whether a `let` pattern binds a name anywhere. Semantic analysis admits only names, `_`, tuples and structures
 /// there.
 bool LetPatternBindsName(const Pattern &pattern) {
-    if (dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (AstCast<const IdentPattern>(&pattern)) {
         return true;
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         return std::ranges::any_of(tuple->elements,
                                    [](const PatternPtr &element) { return LetPatternBindsName(*element); });
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         return std::ranges::any_of(
             structure->fields, [](const StructPattern::Field &field) { return LetPatternBindsName(*field.pattern); });
     }
@@ -29,11 +29,11 @@ bool LetPatternBindsName(const Pattern &pattern) {
 } // namespace
 
 bool AstToHirContext::IsDiagnosticIntrinsicCall(const Expr &expression) const {
-    const auto *call = dynamic_cast<const CallExpr *>(&expression);
+    const auto *call = AstCast<const CallExpr>(&expression);
     if (!call) {
         return false;
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(call->callee.get());
+    const auto *identifier = AstCast<const IdentExpr>(call->callee.get());
     if (!identifier) {
         return false;
     }
@@ -46,11 +46,11 @@ HirBlock AstToHirContext::LowerBlock(const Block &block) {
     loweredBlock.location = block.location;
     PushScope();
     for (const auto &statement : block.stmts) {
-        if (const auto *expressionStatement = dynamic_cast<const ExprStmt *>(statement.get());
+        if (const auto *expressionStatement = AstCast<const ExprStmt>(statement.get());
             expressionStatement && IsDiagnosticIntrinsicCall(*expressionStatement->expr)) {
             continue;
         }
-        if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(statement.get())) {
+        if (const auto *deferStatement = AstCast<const DeferStmt>(statement.get())) {
             if (!deferStack.empty() && deferStatement->deferredStmt) {
                 deferStack.back().push_back(deferStatement);
             }
@@ -115,14 +115,14 @@ HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLo
 }
 
 HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
-    if (const auto *statement = dynamic_cast<const ExprStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ExprStmt>(&stmt)) {
         auto lowered = std::make_unique<HirExprStmt>();
         lowered->location = statement->location;
         lowered->expr = LowerExpr(*statement->expr);
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const LetStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const LetStmt>(&stmt)) {
         auto lowered = std::make_unique<HirLetStmt>();
         lowered->location = statement->location;
         lowered->isMut = statement->isMut;
@@ -179,7 +179,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const IfStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const IfStmt>(&stmt)) {
         auto lowered = std::make_unique<HirIfStmt>();
         lowered->location = statement->location;
         lowered->condition = LowerExpr(*statement->condition);
@@ -197,7 +197,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const WhileStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const WhileStmt>(&stmt)) {
         auto lowered = std::make_unique<HirWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
@@ -208,7 +208,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const DoWhileStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const DoWhileStmt>(&stmt)) {
         auto lowered = std::make_unique<HirDoWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
@@ -219,7 +219,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const LoopStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const LoopStmt>(&stmt)) {
         auto lowered = std::make_unique<HirLoopStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
@@ -229,7 +229,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const ForStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ForStmt>(&stmt)) {
         // A subject the iterator convention drives is desugared into the calls that drive it. An array, a slice and a
         // range keep the direct loop, which the back ends already lower without any call at all.
         if (const ResolvedIteration *iteration = model.TryGetIteration(*statement);
@@ -271,7 +271,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const MatchStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const MatchStmt>(&stmt)) {
         auto lowered = std::make_unique<HirMatchStmt>();
         lowered->location = statement->location;
         lowered->exhaustive = model.IsExhaustiveMatch(*statement);
@@ -296,7 +296,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const ReturnStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ReturnStmt>(&stmt)) {
         HirExprPtr value = statement->value ? LowerExprAs(**statement->value, currentReturnType) : nullptr;
         if (!value && CompletesWithoutValue(currentReturnType)) {
             value = CompletionValue(currentReturnType, statement->location);
@@ -304,11 +304,11 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return LowerFunctionReturn(std::move(value), statement->location);
     }
 
-    if (const auto *statement = dynamic_cast<const FailStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const FailStmt>(&stmt)) {
         return LowerFail(statement->value.get(), statement->location);
     }
 
-    if (const auto *statement = dynamic_cast<const BreakStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const BreakStmt>(&stmt)) {
         auto lowered = std::make_unique<HirBreakStmt>();
         lowered->location = stmt.location;
         lowered->label = statement->label;
@@ -316,7 +316,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const ContinueStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ContinueStmt>(&stmt)) {
         auto lowered = std::make_unique<HirContinueStmt>();
         lowered->location = stmt.location;
         lowered->label = statement->label;
@@ -324,20 +324,20 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const DeferStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const DeferStmt>(&stmt)) {
         auto lowered = std::make_unique<HirExprStmt>();
         lowered->location = statement->location;
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const DeclStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const DeclStmt>(&stmt)) {
         auto lowered = std::make_unique<HirLocalDecl>();
         lowered->location = statement->location;
         CollectDecl(*statement->decl);
-        if (const auto *function = dynamic_cast<const FuncDecl *>(statement->decl.get())) {
+        if (const auto *function = AstCast<const FuncDecl>(statement->decl.get())) {
             lowered->description = std::format("func {}", function->name);
         }
-        else if (const auto *constant = dynamic_cast<const ConstDecl *>(statement->decl.get())) {
+        else if (const auto *constant = AstCast<const ConstDecl>(statement->decl.get())) {
             lowered->description = std::format("const {}", constant->name);
             HirConst loweredConstant = LowerConst(*constant);
             lowered->hasConstant = true;
@@ -345,7 +345,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
             lowered->constantType = std::move(loweredConstant.type);
             lowered->constantValue = std::move(loweredConstant.value);
         }
-        else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(statement->decl.get())) {
+        else if (const auto *alias = AstCast<const TypeAliasDecl>(statement->decl.get())) {
             lowered->description = std::format("type {}", alias->name);
         }
         else {
@@ -362,7 +362,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
 
 HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable,
                                                const bool discardsParts) {
-    if (dynamic_cast<const WildcardPattern *>(&pattern)) {
+    if (AstCast<const WildcardPattern>(&pattern)) {
         auto lowered = std::make_unique<HirWildcardPattern>();
         lowered->location = pattern.location;
         // The destructure owns its whole initializer, so a part bound to nobody has no other owner left and is
@@ -372,7 +372,7 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
         }
         return lowered;
     }
-    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         auto lowered = std::make_unique<HirBindingPattern>();
         lowered->location = identifier->location;
         lowered->name = identifier->name;
@@ -393,7 +393,7 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
         Define(std::move(symbol));
         return lowered;
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         auto lowered = std::make_unique<HirTuplePattern>();
         lowered->location = tuple->location;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
@@ -407,7 +407,7 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
     }
     // Inside a case payload a structure pattern may test its fields, so only a destructuring `let`, where every part is
     // irrefutable, takes one apart here.
-    const auto *structPattern = discardsParts ? dynamic_cast<const StructPattern *>(&pattern) : nullptr;
+    const auto *structPattern = discardsParts ? AstCast<const StructPattern>(&pattern) : nullptr;
     if (structPattern) {
         // A structure pattern that binds nothing takes nothing out, so the value is discarded whole and a destructor
         // its type declares runs on it.
@@ -459,12 +459,12 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
     if (HirPatternPtr native = LowerNativePattern(pattern, subjectType)) {
         return native;
     }
-    if (dynamic_cast<const WildcardPattern *>(&pattern)) {
+    if (AstCast<const WildcardPattern>(&pattern)) {
         auto lowered = std::make_unique<HirWildcardPattern>();
         lowered->location = pattern.location;
         return lowered;
     }
-    if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+    if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
         auto lowered = std::make_unique<HirLiteralPattern>();
         lowered->location = literal->location;
         lowered->type = LiteralType(literal->value);
@@ -488,7 +488,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         }
         return lowered;
     }
-    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         auto lowered = std::make_unique<HirBindingPattern>();
         lowered->location = identifier->location;
         lowered->name = identifier->name;
@@ -506,7 +506,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         Define(std::move(symbol));
         return lowered;
     }
-    if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+    if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         auto lowered = std::make_unique<HirRangePattern>();
         lowered->location = range->location;
         lowered->inclusive = range->inclusive;
@@ -514,7 +514,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         lowered->hi = LowerPattern(*range->hi);
         return lowered;
     }
-    if (const auto *enumPattern = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumPattern = AstCast<const EnumPattern>(&pattern)) {
         auto lowered = std::make_unique<HirEnumPattern>();
         lowered->location = enumPattern->location;
         lowered->path = enumPattern->path;
@@ -620,7 +620,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         }
         return lowered;
     }
-    if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structPattern = AstCast<const StructPattern>(&pattern)) {
         auto lowered = std::make_unique<HirStructPattern>();
         lowered->location = structPattern->location;
         lowered->typeName = NamedBaseTypeName(subjectType);
@@ -651,7 +651,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         }
         return lowered;
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         auto lowered = std::make_unique<HirTuplePattern>();
         lowered->location = tuple->location;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
@@ -662,7 +662,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         }
         return lowered;
     }
-    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         auto lowered = std::make_unique<HirGuardedPattern>();
         lowered->location = guarded->location;
         lowered->inner = LowerPattern(*guarded->inner, subjectType);

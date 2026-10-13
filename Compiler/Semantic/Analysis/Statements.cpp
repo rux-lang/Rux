@@ -18,19 +18,19 @@ namespace {
 /// A stable textual key for a pattern, so two arms written differently but matching the same values compare equal. This
 /// is what lets a duplicate or already-covered arm be reported without implementing full pattern subsumption.
 std::string PatternKey(const Pattern &pattern) {
-    if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+    if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
         if (literal->value.kind == TokenKind::CharLiteral) {
             return "character:" + std::to_string(Lexer::DecodeCharLiteralCodePoint(literal->value.text).value_or(0));
         }
         return "literal:" + literal->value.text;
     }
-    if (dynamic_cast<const WildcardPattern *>(&pattern) || dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (AstCast<const WildcardPattern>(&pattern) || AstCast<const IdentPattern>(&pattern)) {
         return "_";
     }
-    if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+    if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         return "range:" + PatternKey(*range->lo) + (range->inclusive ? "..=" : "..") + PatternKey(*range->hi);
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         std::string key = "tuple:(";
         for (const auto &element : tuple->elements) {
             const std::string elementKey = PatternKey(*element);
@@ -41,7 +41,7 @@ std::string PatternKey(const Pattern &pattern) {
         }
         return key + ")";
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         std::string key = "struct:" + structure->typeName + "{";
         for (const auto &field : structure->fields) {
             const std::string fieldKey = PatternKey(*field.pattern);
@@ -52,7 +52,7 @@ std::string PatternKey(const Pattern &pattern) {
         }
         return key + "}";
     }
-    if (const auto *enumerator = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumerator = AstCast<const EnumPattern>(&pattern)) {
         std::string key = "enum:";
         for (const auto &segment : enumerator->path) {
             key += segment + "::";
@@ -81,15 +81,15 @@ std::string PatternKey(const Pattern &pattern) {
 /// Whether the pattern is irrefutable, which makes any arm after it unreachable and completes an exhaustiveness check
 /// whatever the subject type is.
 bool PatternMatchesEveryValue(const Pattern &pattern) {
-    if (dynamic_cast<const WildcardPattern *>(&pattern) || dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (AstCast<const WildcardPattern>(&pattern) || AstCast<const IdentPattern>(&pattern)) {
         return true;
     }
     // A tuple or structure pattern takes its subject apart without testing it when every part it names is irrefutable.
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         return std::ranges::all_of(tuple->elements,
                                    [](const PatternPtr &element) { return PatternMatchesEveryValue(*element); });
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         return std::ranges::all_of(structure->fields, [](const StructPattern::Field &field) {
             return PatternMatchesEveryValue(*field.pattern);
         });
@@ -244,26 +244,26 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
 }
 
 void AnalysisContext::CheckStatement(const Stmt &statement) {
-    if (const auto *expressionStatement = dynamic_cast<const ExprStmt *>(&statement)) {
+    if (const auto *expressionStatement = AstCast<const ExprStmt>(&statement)) {
         CheckFallibleDiscard(CheckExpr(*expressionStatement->expr), expressionStatement->location);
-        if (const auto *call = dynamic_cast<const CallExpr *>(expressionStatement->expr.get())) {
+        if (const auto *call = AstCast<const CallExpr>(expressionStatement->expr.get())) {
             const auto binding = callableBindings.find(call);
             const auto *function = binding == callableBindings.end()
                                      ? nullptr
-                                     : dynamic_cast<const FuncDecl *>(binding->second.selectedDeclaration);
-            const auto *callee = dynamic_cast<const IdentExpr *>(call->callee.get());
+                                     : AstCast<const FuncDecl>(binding->second.selectedDeclaration);
+            const auto *callee = AstCast<const IdentExpr>(call->callee.get());
             const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
             if ((function && function->isNoReturn) || (symbol && symbol->intrinsicName == "Panic")) {
                 trackedFlowReachable = false;
             }
         }
     }
-    else if (const auto *letStatement = dynamic_cast<const LetStmt *>(&statement)) {
+    else if (const auto *letStatement = AstCast<const LetStmt>(&statement)) {
         if (letStatement->type) {
             ValidateArrayType(**letStatement->type, false);
         }
         if (letStatement->init && letStatement->type &&
-            dynamic_cast<const ReferenceTypeExpr *>(letStatement->type->get())) {
+            AstCast<const ReferenceTypeExpr>(letStatement->type->get())) {
             RejectSubsetViewUse(*letStatement->init, letStatement->location, "be stored as a reference");
         }
         // The annotation is resolved first so that an initializer whose parts take their type from it, such as the
@@ -287,7 +287,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         const bool incompleteNative = !letStatement->type && initializerType.MentionsIncompleteNative();
         if (incompleteNative) {
             const bool isNone = initializerType.IsNoneValue();
-            const bool discarded = dynamic_cast<const WildcardPattern *>(letStatement->pattern.get()) != nullptr;
+            const bool discarded = AstCast<const WildcardPattern>(letStatement->pattern.get()) != nullptr;
             EmitError(letStatement->location,
                       std::format("cannot infer the type of '{}' from {}", discarded ? "_" : letStatement->name,
                                   isNone ? "'none'" : "a native constructor with an unknown channel"),
@@ -376,7 +376,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
 
         if (letStatement->pattern) {
             // `_` names nothing, so binding a fallible to it discards it as surely as an expression statement does.
-            if (dynamic_cast<const WildcardPattern *>(letStatement->pattern.get()) && declarationType.IsFallible()) {
+            if (AstCast<const WildcardPattern>(letStatement->pattern.get()) && declarationType.IsFallible()) {
                 EmitError(letStatement->location,
                           std::format("fallible result of type '{}' is discarded", declarationType.ToString()),
                           {"binding a fallible to '_' does not handle its failure"},
@@ -400,7 +400,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             RegisterReferenceBinding(*defined, *letStatement->init, declarationType);
         }
     }
-    else if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
+    else if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
         TypeRef condition = ReadBorrowedScalar(*ifStatement->condition, CheckExpr(*ifStatement->condition));
         if (!condition.IsUnknown() && !condition.IsBool()) {
             EmitError(ifStatement->condition->location,
@@ -434,7 +434,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         MergeTrackedFlows(exits);
     }
-    else if (const auto *whileStatement = dynamic_cast<const WhileStmt *>(&statement)) {
+    else if (const auto *whileStatement = AstCast<const WhileStmt>(&statement)) {
         if (!whileStatement->label.empty()) {
             EnterLoopLabel(whileStatement->label, whileStatement->location);
         }
@@ -448,7 +448,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         const TrackedFlow loopEntry = SaveTrackedFlow();
         TrackedLoop loop = CheckTrackedLoopBody(*whileStatement->body, whileStatement->label);
         const TrackedFlow bodyExit = SaveTrackedFlow();
-        const auto *literal = dynamic_cast<const LiteralExpr *>(whileStatement->condition.get());
+        const auto *literal = AstCast<const LiteralExpr>(whileStatement->condition.get());
         const bool alwaysTrue =
             literal && literal->token.kind == TokenKind::BoolLiteral && literal->token.text == "true";
         const bool alwaysFalse =
@@ -466,7 +466,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             ExitLoopLabel(whileStatement->label);
         }
     }
-    else if (const auto *doWhileStatement = dynamic_cast<const DoWhileStmt *>(&statement)) {
+    else if (const auto *doWhileStatement = AstCast<const DoWhileStmt>(&statement)) {
         if (!doWhileStatement->label.empty()) {
             EnterLoopLabel(doWhileStatement->label, doWhileStatement->location);
         }
@@ -493,7 +493,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                 doWhileStatement->condition->location,
                 std::format("condition for 'do-while' must have type 'bool', but found '{}'", condition.ToString()));
         }
-        const auto *literal = dynamic_cast<const LiteralExpr *>(doWhileStatement->condition.get());
+        const auto *literal = AstCast<const LiteralExpr>(doWhileStatement->condition.get());
         const bool alwaysTrue =
             literal && literal->token.kind == TokenKind::BoolLiteral && literal->token.text == "true";
         std::vector<TrackedFlow> exits = std::move(loop.breaks);
@@ -506,7 +506,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             ExitLoopLabel(doWhileStatement->label);
         }
     }
-    else if (const auto *loopStatement = dynamic_cast<const LoopStmt *>(&statement)) {
+    else if (const auto *loopStatement = AstCast<const LoopStmt>(&statement)) {
         if (!loopStatement->label.empty()) {
             EnterLoopLabel(loopStatement->label, loopStatement->location);
         }
@@ -516,7 +516,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             ExitLoopLabel(loopStatement->label);
         }
     }
-    else if (const auto *forStatement = dynamic_cast<const ForStmt *>(&statement)) {
+    else if (const auto *forStatement = AstCast<const ForStmt>(&statement)) {
         TypeRef iterableType = CheckExpr(*forStatement->iterable);
         const TrackedFlow loopEntry = SaveTrackedFlow();
         TypeRef elementType = TypeRef::MakeUnknown();
@@ -561,7 +561,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         exits.insert(exits.end(), loop.continues.begin(), loop.continues.end());
         MergeTrackedFlows(exits);
     }
-    else if (const auto *matchStatement = dynamic_cast<const MatchStmt *>(&statement)) {
+    else if (const auto *matchStatement = AstCast<const MatchStmt>(&statement)) {
         const TypeRef expressionType = CheckExpr(*matchStatement->subject);
         const TypeRef subjectType = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
                                       ? expressionType.inner.front()
@@ -587,7 +587,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             currentPatternBorrow = savedBorrow;
             // A bare-expression arm of a match statement is an expression statement: its value is discarded.
             const TypeRef armType = CheckExpr(*arm.body);
-            if (!dynamic_cast<const BlockExpr *>(arm.body.get()) && !IsDivergingExpression(*arm.body)) {
+            if (!AstCast<const BlockExpr>(arm.body.get()) && !IsDivergingExpression(*arm.body)) {
                 CheckFallibleDiscard(armType, arm.body->location);
             }
             PopScope();
@@ -610,26 +610,26 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         MergeTrackedFlows(exits);
     }
-    else if (const auto *failStatement = dynamic_cast<const FailStmt *>(&statement)) {
+    else if (const auto *failStatement = AstCast<const FailStmt>(&statement)) {
         CheckFail(failStatement->value.get(), failStatement->location);
     }
-    else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
+    else if (const auto *returnStatement = AstCast<const ReturnStmt>(&statement)) {
         CheckReturn(returnStatement->value ? returnStatement->value->get() : nullptr, returnStatement->location);
     }
-    else if (const auto *breakStatement = dynamic_cast<const BreakStmt *>(&statement)) {
+    else if (const auto *breakStatement = AstCast<const BreakStmt>(&statement)) {
         CheckLoopExit(false, breakStatement->label, statement.location);
     }
-    else if (const auto *continueStatement = dynamic_cast<const ContinueStmt *>(&statement)) {
+    else if (const auto *continueStatement = AstCast<const ContinueStmt>(&statement)) {
         CheckLoopExit(true, continueStatement->label, statement.location);
     }
-    else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
-        if (const auto *global = dynamic_cast<const GlobalDecl *>(declarationStatement->decl.get())) {
+    else if (const auto *declarationStatement = AstCast<const DeclStmt>(&statement)) {
+        if (const auto *global = AstCast<const GlobalDecl>(declarationStatement->decl.get())) {
             EmitError(global->location,
                       std::format("module variable '{}' must be declared at module scope", global->name), {},
                       "declare a local with 'var' and no 'pub', or move the declaration out of the function");
             return;
         }
-        if (const auto *constant = dynamic_cast<const ConstDecl *>(declarationStatement->decl.get())) {
+        if (const auto *constant = AstCast<const ConstDecl>(declarationStatement->decl.get())) {
             localConstants.insert(constant);
         }
         programIndex.CollectDeclaration(
@@ -637,7 +637,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             [this](const TypeExpr &type) { return ResolveType(type); }, &currentPackage);
         CheckDecl(*declarationStatement->decl);
     }
-    else if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(&statement)) {
+    else if (const auto *deferStatement = AstCast<const DeferStmt>(&statement)) {
         if (deferStatement->deferredStmt) {
             CheckStatement(*deferStatement->deferredStmt);
         }
@@ -732,11 +732,11 @@ void AnalysisContext::CheckLoopExit(const bool isContinue, const std::string &la
 }
 
 bool AnalysisContext::IsDivergingExpression(const Expr &expression) const {
-    if (dynamic_cast<const DivergeExpr *>(&expression)) {
+    if (AstCast<const DivergeExpr>(&expression)) {
         return true;
     }
-    const auto *call = dynamic_cast<const CallExpr *>(&expression);
-    const auto *callee = call ? dynamic_cast<const IdentExpr *>(call->callee.get()) : nullptr;
+    const auto *call = AstCast<const CallExpr>(&expression);
+    const auto *callee = call ? AstCast<const IdentExpr>(call->callee.get()) : nullptr;
     const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
     return symbol &&
            (symbol->intrinsicName == "Panic" ||
@@ -763,7 +763,7 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
         patternTypes.insert_or_assign(&pattern, type);
         NoteGenericBodyType(type);
     }
-    if (const auto *identifierPattern = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifierPattern = AstCast<const IdentPattern>(&pattern)) {
         CheckFreeBindingName(identifierPattern->name, identifierPattern->location, type);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
@@ -773,8 +773,8 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
         symbol.isMut = isMutable;
         DefineTrackedLocal(std::move(symbol), true);
     }
-    else if (dynamic_cast<const WildcardPattern *>(&pattern)) {}
-    else if (const auto *tuplePattern = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (AstCast<const WildcardPattern>(&pattern)) {}
+    else if (const auto *tuplePattern = AstCast<const TuplePattern>(&pattern)) {
         if (type.kind != TypeRef::Kind::Tuple) {
             if (!type.IsUnknown()) {
                 EmitError(tuplePattern->location,
@@ -800,7 +800,7 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
             CheckLetPattern(*tuplePattern->elements[index], TypeRef::MakeUnknown(), isMutable);
         }
     }
-    else if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structPattern = AstCast<const StructPattern>(&pattern)) {
         // A destructuring `let` owns its whole initializer, so a structure pattern in it always takes the value apart.
         const std::vector<TypeRef> fieldTypes = CheckStructPatternShape(*structPattern, type, true);
         for (std::size_t index = 0; index < structPattern->fields.size(); ++index) {
@@ -882,11 +882,11 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         NoteGenericBodyType(subjectType);
         NoteDeferredNativeType(subjectType);
     }
-    if (const auto *typedPattern = dynamic_cast<const TypedPattern *>(&pattern)) {
+    if (const auto *typedPattern = AstCast<const TypedPattern>(&pattern)) {
         CheckTypedPattern(*typedPattern, subjectType);
         return;
     }
-    if (const auto *presencePattern = dynamic_cast<const PresencePattern *>(&pattern)) {
+    if (const auto *presencePattern = AstCast<const PresencePattern>(&pattern)) {
         // `p?` is exactly `.Some(p)`: it needs an optional at its position and checks `p` against the payload.
         TypeRef payload = TypeRef::MakeUnknown();
         if (subjectType.IsOptional()) {
@@ -905,7 +905,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
         return;
     }
-    if (dynamic_cast<const NonePattern *>(&pattern)) {
+    if (AstCast<const NonePattern>(&pattern)) {
         if (!subjectType.IsUnknown() && !subjectType.IsOptional()) {
             const std::string nominal =
                 subjectType.kind == TypeRef::Kind::Named ? BaseTypeName(subjectType.name) : std::string();
@@ -922,10 +922,10 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
         return;
     }
-    const bool bindsWhole = dynamic_cast<const IdentPattern *>(&pattern) != nullptr ||
-                            dynamic_cast<const WildcardPattern *>(&pattern) != nullptr ||
-                            dynamic_cast<const GuardedPattern *>(&pattern) != nullptr;
-    if (subjectType.IsSum() && !bindsWhole && !dynamic_cast<const RangePattern *>(&pattern)) {
+    const bool bindsWhole = AstCast<const IdentPattern>(&pattern) != nullptr ||
+                            AstCast<const WildcardPattern>(&pattern) != nullptr ||
+                            AstCast<const GuardedPattern>(&pattern) != nullptr;
+    if (subjectType.IsSum() && !bindsWhole && !AstCast<const RangePattern>(&pattern)) {
         // A sum member is selected by what the pattern names: a qualified case or struct names its member, a literal
         // or a tuple its member's type. The pattern is then checked against that member, and keeps the sum as its own
         // type so coverage and lowering see where the selection happens.
@@ -945,7 +945,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         return;
     }
     if (subjectType.IsOptional() || subjectType.IsFallible()) {
-        const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern);
+        const auto *enumeration = AstCast<const EnumPattern>(&pattern);
         if (enumeration && enumeration->path.size() == 1) {
             CheckNativeCasePattern(*enumeration, subjectType);
             return;
@@ -963,7 +963,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
             return;
         }
     }
-    if (const auto *identifierPattern = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifierPattern = AstCast<const IdentPattern>(&pattern)) {
         CheckFreeBindingName(identifierPattern->name, identifierPattern->location, subjectType);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
@@ -974,7 +974,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         RecordPatternBinding(pattern, symbol, false);
         DefineTrackedLocal(std::move(symbol), true);
     }
-    else if (const auto *literalPattern = dynamic_cast<const LiteralPattern *>(&pattern)) {
+    else if (const auto *literalPattern = AstCast<const LiteralPattern>(&pattern)) {
         ValidateCharLiteral(literalPattern->value, literalPattern->location);
         const TypeRef literalType = LiteralType(literalPattern->value);
         const bool compatibleNumeric = literalType.IsNumeric() && subjectType.IsNumeric();
@@ -985,7 +985,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                                   subjectType.ToString()));
         }
     }
-    else if (const auto *guardedPattern = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    else if (const auto *guardedPattern = AstCast<const GuardedPattern>(&pattern)) {
         CheckPattern(*guardedPattern->inner, subjectType);
         // The guard runs with the arm's bindings in place but before the arm is chosen, so it reads them as an
         // ordinary expression and must leave them for whichever arm runs next.
@@ -998,7 +998,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
         CheckGuardKeepsBindings(*guardedPattern);
     }
-    else if (const auto *rangePattern = dynamic_cast<const RangePattern *>(&pattern)) {
+    else if (const auto *rangePattern = AstCast<const RangePattern>(&pattern)) {
         if (!subjectType.IsUnknown() && !subjectType.IsNumeric() && !subjectType.IsChar()) {
             EmitError(rangePattern->location,
                       std::format("range pattern cannot match value of type '{}'", subjectType.ToString()));
@@ -1006,7 +1006,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         CheckPattern(*rangePattern->lo, subjectType);
         CheckPattern(*rangePattern->hi, subjectType);
     }
-    else if (const auto *tuplePattern = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (const auto *tuplePattern = AstCast<const TuplePattern>(&pattern)) {
         if (!subjectType.IsUnknown() && subjectType.kind != TypeRef::Kind::Tuple) {
             EmitError(tuplePattern->location,
                       std::format("tuple pattern cannot match value of type '{}'", subjectType.ToString()));
@@ -1023,14 +1023,14 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
             CheckPattern(*tuplePattern->elements[index], elementType);
         }
     }
-    else if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structPattern = AstCast<const StructPattern>(&pattern)) {
         const std::vector<TypeRef> fieldTypes =
             CheckStructPatternShape(*structPattern, subjectType, currentPatternTakesParts);
         for (std::size_t index = 0; index < structPattern->fields.size(); ++index) {
             CheckPattern(*structPattern->fields[index].pattern, fieldTypes[index]);
         }
     }
-    else if (const auto *enumPattern = dynamic_cast<const EnumPattern *>(&pattern)) {
+    else if (const auto *enumPattern = AstCast<const EnumPattern>(&pattern)) {
         std::string enumName;
         std::string variantName;
         const EnumDecl *enumDeclaration = nullptr;
@@ -1115,7 +1115,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         // A payload binds like a `let`, but it sits inside a match arm, so a refutable sub-pattern such as a literal,
         // a range or a tuple holding one is checked as a match pattern rather than refused as an unsupported binding.
         const auto checkPayload = [&](const Pattern &payload, const TypeRef &type) {
-            if (dynamic_cast<const IdentPattern *>(&payload) || dynamic_cast<const WildcardPattern *>(&payload)) {
+            if (AstCast<const IdentPattern>(&payload) || AstCast<const WildcardPattern>(&payload)) {
                 CheckLetPattern(payload, type, false);
             }
             else {
@@ -1185,7 +1185,7 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
         }
         if (coveredAll) {
             // An `else` arm covers whatever remains, possibly nothing, so it is never reported.
-            if (!dynamic_cast<const WildcardPattern *>(pattern)) {
+            if (!AstCast<const WildcardPattern>(pattern)) {
                 EmitError(pattern->location, "match arm is unreachable because an earlier pattern matches every value");
             }
             continue;
@@ -1194,7 +1194,7 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
         if (!key.empty() && !seen.insert(key).second) {
             EmitError(pattern->location, "duplicate pattern in match");
         }
-        if (const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
+        if (const auto *enumerator = AstCast<const EnumPattern>(pattern);
             enumerator && !enumerator->path.empty()) {
             const std::string &variantName = enumerator->path.back();
             if (const auto resolved = LookupCase(BaseTypeName(subjectType.name), variantName);
@@ -1253,7 +1253,7 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
         bool hasTrue = false;
         bool hasFalse = false;
         for (const Pattern *pattern : patterns) {
-            const auto *literal = dynamic_cast<const LiteralPattern *>(pattern);
+            const auto *literal = AstCast<const LiteralPattern>(pattern);
             hasTrue = hasTrue || (literal && literal->value.text == "true");
             hasFalse = hasFalse || (literal && literal->value.text == "false");
         }
@@ -1274,7 +1274,7 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
     }
     std::unordered_set<std::string> covered;
     for (const Pattern *pattern : patterns) {
-        const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
+        const auto *enumerator = AstCast<const EnumPattern>(pattern);
         if (enumerator && !enumerator->path.empty()) {
             const std::string &variantName = enumerator->path.back();
             if (const auto resolved = LookupCase(enumName, variantName);
@@ -1292,7 +1292,7 @@ bool AnalysisContext::MatchesWholeSubject(const Pattern &pattern, const TypeRef 
         return true;
     }
     // A typed pattern whose annotation is exactly the subject's type binds the whole subject, on every form.
-    const auto *typed = dynamic_cast<const TypedPattern *>(&pattern);
+    const auto *typed = AstCast<const TypedPattern>(&pattern);
     const TypeRef *annotation = typed ? TypedPatternAnnotation(*typed) : nullptr;
     return annotation && !subjectType.IsUnknown() && *annotation == subjectType;
 }
@@ -1305,23 +1305,23 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
     expressionReturns = [&](const Expr &expression) {
         // An arm written as `return value` or `fail error` leaves the function; `break` and `continue` only leave a
         // loop. A call to `Panic` or a no-return function never comes back either.
-        if (const auto *leave = dynamic_cast<const DivergeExpr *>(&expression)) {
+        if (const auto *leave = AstCast<const DivergeExpr>(&expression)) {
             return leave->kind == DivergeExpr::Kind::Return || leave->kind == DivergeExpr::Kind::Fail;
         }
-        if (dynamic_cast<const CallExpr *>(&expression) && IsDivergingExpression(expression)) {
+        if (AstCast<const CallExpr>(&expression) && IsDivergingExpression(expression)) {
             return true;
         }
-        const auto *blockExpression = dynamic_cast<const BlockExpr *>(&expression);
+        const auto *blockExpression = AstCast<const BlockExpr>(&expression);
         return blockExpression && blockReturns(*blockExpression->block);
     };
     containsBreak = [&](const Block &candidate, const std::string_view label, const bool allowUnlabeled) {
         for (const auto &inner : candidate.stmts) {
-            if (const auto *exit = dynamic_cast<const BreakStmt *>(inner.get())) {
+            if (const auto *exit = AstCast<const BreakStmt>(inner.get())) {
                 if ((allowUnlabeled && exit->label.empty()) || (!label.empty() && exit->label == label)) {
                     return true;
                 }
             }
-            else if (const auto *conditional = dynamic_cast<const IfStmt *>(inner.get())) {
+            else if (const auto *conditional = AstCast<const IfStmt>(inner.get())) {
                 if (containsBreak(*conditional->thenBlock, label, allowUnlabeled) ||
                     (conditional->elseBlock && containsBreak(*conditional->elseBlock, label, allowUnlabeled)) ||
                     std::ranges::any_of(conditional->elseIfs, [&](const auto &branch) {
@@ -1330,30 +1330,30 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
                     return true;
                 }
             }
-            else if (const auto *match = dynamic_cast<const MatchStmt *>(inner.get())) {
+            else if (const auto *match = AstCast<const MatchStmt>(inner.get())) {
                 if (std::ranges::any_of(match->arms, [&](const auto &arm) {
-                        const auto *body = dynamic_cast<const BlockExpr *>(arm.body.get());
+                        const auto *body = AstCast<const BlockExpr>(arm.body.get());
                         return body && containsBreak(*body->block, label, allowUnlabeled);
                     })) {
                     return true;
                 }
             }
-            else if (const auto *nestedWhile = dynamic_cast<const WhileStmt *>(inner.get())) {
+            else if (const auto *nestedWhile = AstCast<const WhileStmt>(inner.get())) {
                 if (containsBreak(*nestedWhile->body, label, false)) {
                     return true;
                 }
             }
-            else if (const auto *nestedDo = dynamic_cast<const DoWhileStmt *>(inner.get())) {
+            else if (const auto *nestedDo = AstCast<const DoWhileStmt>(inner.get())) {
                 if (containsBreak(*nestedDo->body, label, false)) {
                     return true;
                 }
             }
-            else if (const auto *nestedLoop = dynamic_cast<const LoopStmt *>(inner.get())) {
+            else if (const auto *nestedLoop = AstCast<const LoopStmt>(inner.get())) {
                 if (containsBreak(*nestedLoop->body, label, false)) {
                     return true;
                 }
             }
-            else if (const auto *nestedFor = dynamic_cast<const ForStmt *>(inner.get())) {
+            else if (const auto *nestedFor = AstCast<const ForStmt>(inner.get())) {
                 if (containsBreak(*nestedFor->body, label, false)) {
                     return true;
                 }
@@ -1363,18 +1363,18 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
     };
     statementReturns = [&](const Stmt &statement) {
         // `fail` leaves the function through its failure channel, so no path continues past it.
-        if (dynamic_cast<const ReturnStmt *>(&statement) || dynamic_cast<const FailStmt *>(&statement)) {
+        if (AstCast<const ReturnStmt>(&statement) || AstCast<const FailStmt>(&statement)) {
             return true;
         }
-        if (const auto *expression = dynamic_cast<const ExprStmt *>(&statement)) {
-            const auto *call = dynamic_cast<const CallExpr *>(expression->expr.get());
-            const auto *callee = call ? dynamic_cast<const IdentExpr *>(call->callee.get()) : nullptr;
+        if (const auto *expression = AstCast<const ExprStmt>(&statement)) {
+            const auto *call = AstCast<const CallExpr>(expression->expr.get());
+            const auto *callee = call ? AstCast<const IdentExpr>(call->callee.get()) : nullptr;
             const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
             return symbol && (symbol->intrinsicName == "Panic" ||
                               std::ranges::any_of(symbol->funcOverloads,
                                                   [](const FuncDecl *function) { return function->isNoReturn; }));
         }
-        if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
+        if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
             if (!ifStatement->elseBlock || !blockReturns(*ifStatement->thenBlock) ||
                 !blockReturns(*ifStatement->elseBlock)) {
                 return false;
@@ -1382,7 +1382,7 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
             return std::ranges::all_of(ifStatement->elseIfs,
                                        [&](const auto &branch) { return branch.block && blockReturns(*branch.block); });
         }
-        if (const auto *match = dynamic_cast<const MatchStmt *>(&statement)) {
+        if (const auto *match = AstCast<const MatchStmt>(&statement)) {
             std::vector<const Pattern *> patterns;
             patterns.reserve(match->arms.size());
             for (const auto &arm : match->arms) {
@@ -1392,17 +1392,17 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
             return type != patternTypes.end() && MatchPatternsAreExhaustive(patterns, type->second) &&
                    std::ranges::all_of(match->arms, [&](const auto &arm) { return expressionReturns(*arm.body); });
         }
-        if (const auto *whileStatement = dynamic_cast<const WhileStmt *>(&statement)) {
-            const auto *condition = dynamic_cast<const LiteralExpr *>(whileStatement->condition.get());
+        if (const auto *whileStatement = AstCast<const WhileStmt>(&statement)) {
+            const auto *condition = AstCast<const LiteralExpr>(whileStatement->condition.get());
             return condition && condition->token.kind == TokenKind::BoolLiteral && condition->token.text == "true" &&
                    !containsBreak(*whileStatement->body, whileStatement->label, true);
         }
-        if (const auto *doWhileStatement = dynamic_cast<const DoWhileStmt *>(&statement)) {
-            const auto *condition = dynamic_cast<const LiteralExpr *>(doWhileStatement->condition.get());
+        if (const auto *doWhileStatement = AstCast<const DoWhileStmt>(&statement)) {
+            const auto *condition = AstCast<const LiteralExpr>(doWhileStatement->condition.get());
             return condition && condition->token.kind == TokenKind::BoolLiteral && condition->token.text == "true" &&
                    !containsBreak(*doWhileStatement->body, doWhileStatement->label, true);
         }
-        if (const auto *loop = dynamic_cast<const LoopStmt *>(&statement)) {
+        if (const auto *loop = AstCast<const LoopStmt>(&statement)) {
             return !containsBreak(*loop->body, loop->label, true);
         }
         return false;

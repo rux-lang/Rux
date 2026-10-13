@@ -53,11 +53,11 @@ std::optional<KnownDivisor> KnownDivisorOf(const HirExpr &divisor, const TypeRef
     }
     const HirExpr *operand = &divisor;
     bool negative = false;
-    if (const auto *unary = dynamic_cast<const HirUnaryExpr *>(operand); unary && unary->op == TokenKind::Minus) {
+    if (const auto *unary = HirCast<const HirUnaryExpr>(operand); unary && unary->op == TokenKind::Minus) {
         negative = true;
         operand = unary->operand.get();
     }
-    const auto *literal = dynamic_cast<const HirLiteralExpr *>(operand);
+    const auto *literal = HirCast<const HirLiteralExpr>(operand);
     if (!literal) {
         return std::nullopt;
     }
@@ -118,13 +118,13 @@ void HirToLirContext::EmitDivisionChecks(const LirReg dividend, const LirReg div
 }
 
 LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
-    if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirLiteralExpr>(&expr)) {
         if (IsStringSliceLiteral(*e)) {
             return LowerStringLiteralSlice(*e);
         }
         return EmitConst(e->value, e->type);
     }
-    if (auto *e = dynamic_cast<const HirVarExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirVarExpr>(&expr)) {
         if (const auto it = localConsts.find(e->name); it != localConsts.end()) {
             const TypeRef &constType = it->second.type.IsUnknown() ? e->type : it->second.type;
             LirReg value = LowerExpr(*it->second.value);
@@ -155,7 +155,7 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         return EmitNamedLoad(e->name, e->type);
     }
-    if (dynamic_cast<const HirSelfExpr *>(&expr)) {
+    if (HirCast<const HirSelfExpr>(&expr)) {
         auto it = locals.find("self");
         if (it != locals.end()) {
             if (IsInterfaceType(expr.type)) {
@@ -165,7 +165,7 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         return EmitNamedLoad("self", expr.type);
     }
-    if (auto *e = dynamic_cast<const HirPathExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirPathExpr>(&expr)) {
         std::string path;
         for (std::size_t i = 0; i < e->segments.size(); ++i) {
             if (i) {
@@ -184,52 +184,52 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         return EmitNamedLoad(path, e->type);
     }
-    if (auto *e = dynamic_cast<const HirUnaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirUnaryExpr>(&expr)) {
         return LowerUnary(*e);
     }
-    if (auto *e = dynamic_cast<const HirPostfixExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirPostfixExpr>(&expr)) {
         return LowerPostfix(*e);
     }
-    if (auto *e = dynamic_cast<const HirBinaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirBinaryExpr>(&expr)) {
         return LowerBinary(*e);
     }
-    if (auto *e = dynamic_cast<const HirVariantEqualityExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirVariantEqualityExpr>(&expr)) {
         return LowerVariantEquality(*e);
     }
-    if (auto *e = dynamic_cast<const HirAggregateEqualityExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirAggregateEqualityExpr>(&expr)) {
         return LowerAggregateEquality(*e);
     }
-    if (auto *e = dynamic_cast<const HirCopyExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirCopyExpr>(&expr)) {
         return LowerCopy(*e);
     }
-    if (auto *e = dynamic_cast<const HirMoveExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirMoveExpr>(&expr)) {
         return LowerMove(*e);
     }
-    if (auto *e = dynamic_cast<const HirAssignExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirAssignExpr>(&expr)) {
         return LowerAssign(*e);
     }
-    if (auto *e = dynamic_cast<const HirTernaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirTernaryExpr>(&expr)) {
         return LowerTernary(*e);
     }
-    if (auto *e = dynamic_cast<const HirMatchExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirMatchExpr>(&expr)) {
         return LowerMatchExpr(*e);
     }
-    if (auto *e = dynamic_cast<const HirEnumConstructExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirEnumConstructExpr>(&expr)) {
         return LowerEnumConstruct(*e);
     }
-    if (auto *e = dynamic_cast<const HirCallExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirCallExpr>(&expr)) {
         return LowerCall(*e);
     }
-    if (auto *e = dynamic_cast<const HirCoerceToInterfaceExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirCoerceToInterfaceExpr>(&expr)) {
         return LowerCoerceToInterface(*e);
     }
-    if (auto *e = dynamic_cast<const HirArrayToSliceExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirArrayToSliceExpr>(&expr)) {
         return LowerArrayToSlice(*e);
     }
-    if (auto *e = dynamic_cast<const HirInterfaceCallExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirInterfaceCallExpr>(&expr)) {
         return LowerInterfaceCall(*e);
     }
-    if (auto *e = dynamic_cast<const HirIndexExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirIndexExpr>(&expr)) {
         if (e->index->type.IsRange()) {
             return LowerRangeIndex(*e);
         }
@@ -239,7 +239,7 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         return EmitLoad(ptr, e->type);
     }
-    if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirFieldExpr>(&expr)) {
         const TypeRef &objectValueType =
             e->object->type.kind == TypeRef::Kind::Reference && !e->object->type.inner.empty()
                 ? e->object->type.inner.front()
@@ -259,16 +259,16 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         return EmitLoad(ptr, e->type);
     }
-    if (auto *e = dynamic_cast<const HirStructInitExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirStructInitExpr>(&expr)) {
         return LowerStructInit(*e);
     }
-    if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirArrayExpr>(&expr)) {
         return LowerArray(*e);
     }
-    if (auto *e = dynamic_cast<const HirTupleExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirTupleExpr>(&expr)) {
         return LowerTuple(*e);
     }
-    if (auto *e = dynamic_cast<const HirCastExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirCastExpr>(&expr)) {
         const LirReg value = LowerExpr(*e->operand);
         const TypeRef &sourceType = e->operand->type;
         if (e->type.IsChar() && !CharacterCastAlwaysValid(sourceType, e->type)) {
@@ -303,13 +303,13 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         return EmitCast(value, sourceType, e->type);
     }
-    if (auto *e = dynamic_cast<const HirIsExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirIsExpr>(&expr)) {
         // Should only be reached for interface types (rejected by
         // sema). Return false as a safe fallback.
         LowerExpr(*e->operand);
         return EmitConst("false", TypeRef::MakeBool());
     }
-    if (auto *e = dynamic_cast<const HirBlockExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirBlockExpr>(&expr)) {
         LowerBlock(e->block);
         if (IsTerminated()) {
             return LirNoReg;
@@ -321,7 +321,7 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         return EmitConst("0", e->type);
     }
-    if (auto *e = dynamic_cast<const HirRangeExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirRangeExpr>(&expr)) {
         return LowerRange(*e);
     }
     return EmitConst("0", expr.type);
@@ -522,11 +522,11 @@ LirReg HirToLirContext::EmitVariantEquality(const TypeRef &type, const std::vect
 }
 
 LirReg HirToLirContext::EqualityOperandStorage(const HirExpr &operand, const TypeRef &type) {
-    const auto *unary = dynamic_cast<const HirUnaryExpr *>(&operand);
-    const bool addressable = dynamic_cast<const HirVarExpr *>(&operand) ||
-                             dynamic_cast<const HirSelfExpr *>(&operand) ||
-                             dynamic_cast<const HirFieldExpr *>(&operand) ||
-                             dynamic_cast<const HirIndexExpr *>(&operand) || (unary && unary->op == TokenKind::Star);
+    const auto *unary = HirCast<const HirUnaryExpr>(&operand);
+    const bool addressable = HirCast<const HirVarExpr>(&operand) ||
+                             HirCast<const HirSelfExpr>(&operand) ||
+                             HirCast<const HirFieldExpr>(&operand) ||
+                             HirCast<const HirIndexExpr>(&operand) || (unary && unary->op == TokenKind::Star);
     if (addressable) {
         return LowerLValue(operand);
     }
@@ -842,7 +842,7 @@ LirReg HirToLirContext::LowerAtomicBuiltin(const HirCallExpr &e, const std::stri
 }
 
 LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
-    if (const auto *callee = dynamic_cast<const HirVarExpr *>(e.callee.get())) {
+    if (const auto *callee = HirCast<const HirVarExpr>(e.callee.get())) {
         if (callee->name == "__builtin_debug_assert_disabled") {
             return LirNoReg;
         }
@@ -857,7 +857,7 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
             const LirReg condition = LowerExpr(*e.args[0]);
             const LirReg message = LowerLValue(*e.args[1]);
             std::string messageText;
-            if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(e.args[1].get());
+            if (const auto *literal = HirCast<const HirLiteralExpr>(e.args[1].get());
                 literal && IsStringSliceLiteral(*literal)) {
                 messageText = literal->value;
             }
@@ -881,7 +881,7 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
 
             const LirReg message = LowerLValue(*e.args[0]);
             std::string messageText;
-            if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(e.args[0].get());
+            if (const auto *literal = HirCast<const HirLiteralExpr>(e.args[0].get());
                 literal && IsStringSliceLiteral(*literal)) {
                 messageText = literal->value;
             }
@@ -911,7 +911,7 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
     ci.dst = dst;
     ci.type = e.type;
     ci.srcs = std::move(argRegs);
-    if (auto *v = dynamic_cast<const HirVarExpr *>(e.callee.get()); v && !locals.contains(v->name)) {
+    if (auto *v = HirCast<const HirVarExpr>(e.callee.get()); v && !locals.contains(v->name)) {
         // Direct call to a named function. A same-named local would be a
         // function-pointer variable and is handled by the indirect path.
         ci.op = LirOpcode::Call;
@@ -924,7 +924,7 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
         // relocate against the imported symbol.
         ci.strArg = SymbolFor(v->name);
     }
-    else if (auto *p = dynamic_cast<const HirPathExpr *>(e.callee.get())) {
+    else if (auto *p = HirCast<const HirPathExpr>(e.callee.get())) {
         ci.op = LirOpcode::Call;
         // Module qualifiers are compile-time only; the binary symbol is
         // just the final segment (e.g. Math::Add → "Add").
@@ -984,7 +984,7 @@ void HirToLirContext::EmitIndexCheck(const LirReg index, const HirExpr &indexExp
         return;
     }
     // Semantic analysis already rejected a literal index past a fixed array's end, so one that reached here is in it.
-    if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(&indexExpr); literal && storage.constantLength) {
+    if (const auto *literal = HirCast<const HirLiteralExpr>(&indexExpr); literal && storage.constantLength) {
         const std::string_view digits = literal->value;
         if (!digits.empty() && digits.size() <= 18 &&
             std::ranges::all_of(digits, [](const char c) { return c >= '0' && c <= '9'; }) &&
@@ -1032,7 +1032,7 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
     const TypeRef &rangeType = e.index->type;
     LirReg rangeSlot = LirNoReg;
     if (rangeType.RangeHasStart() || rangeType.RangeHasEnd()) {
-        if (const auto *literal = dynamic_cast<const HirRangeExpr *>(e.index.get())) {
+        if (const auto *literal = HirCast<const HirRangeExpr>(e.index.get())) {
             rangeSlot = LowerRange(*literal);
         }
         else {
@@ -1081,12 +1081,12 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
 LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
     // A receiver taken by value is a local like any other, and its slot is where a write through it has to land. This
     // never came up while every receiver was a pointer, because a write went through the pointer rather than to `self`.
-    if (dynamic_cast<const HirSelfExpr *>(&expr)) {
+    if (HirCast<const HirSelfExpr>(&expr)) {
         if (const auto it = locals.find("self"); it != locals.end()) {
             return it->second;
         }
     }
-    if (auto *e = dynamic_cast<const HirVarExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirVarExpr>(&expr)) {
         auto it = locals.find(e->name);
         if (it != locals.end()) {
             return it->second;
@@ -1120,46 +1120,46 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         Emit(std::move(i));
         return ptr;
     }
-    if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirArrayExpr>(&expr)) {
         LirReg slot = EmitAlloca(e->type);
         StoreArrayInit(*e, slot);
         return slot;
     }
-    if (auto *e = dynamic_cast<const HirArrayToSliceExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirArrayToSliceExpr>(&expr)) {
         return LowerArrayToSlice(*e);
     }
-    if (auto *e = dynamic_cast<const HirTupleExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirTupleExpr>(&expr)) {
         LirReg slot = EmitAlloca(e->type);
         StoreTupleInit(*e, slot);
         return slot;
     }
-    if (auto *e = dynamic_cast<const HirRangeExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirRangeExpr>(&expr)) {
         return LowerRange(*e);
     }
-    if (auto *e = dynamic_cast<const HirTernaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirTernaryExpr>(&expr)) {
         LirReg slot = EmitAlloca(e->type);
         StoreTernaryInit(*e, slot, e->type);
         return slot;
     }
-    if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirFieldExpr>(&expr)) {
         const bool indirect =
             e->object->type.kind == TypeRef::Kind::Pointer || e->object->type.kind == TypeRef::Kind::Reference;
         LirReg base = indirect ? LowerExpr(*e->object) : LowerLValue(*e->object);
         return EmitFieldPtr(base, e->field, e->type);
     }
 
-    if (auto *e = dynamic_cast<const HirIndexExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirIndexExpr>(&expr)) {
         if (e->index->type.IsRange()) {
             return LowerRangeIndex(*e);
         }
         return LowerElementPtr(*e);
     }
-    if (auto *e = dynamic_cast<const HirUnaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirUnaryExpr>(&expr)) {
         if (e->op == TokenKind::Star) {
             return LowerExpr(*e->operand); // pointer dereference
         }
     }
-    if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirLiteralExpr>(&expr)) {
         // String literals: return the alloca slot directly instead of
         // spilling through the 16-byte fallback (which would misread
         // the alloca vreg's 8-byte pointer slot as the slice value).

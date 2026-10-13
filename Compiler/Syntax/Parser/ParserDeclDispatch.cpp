@@ -182,7 +182,7 @@ Param Parser::ParseParam(const bool allowVariadic) {
         parameter.isVariadic = true;
         parameter.name = "...";
         parameter.type = std::make_unique<NamedTypeExpr>();
-        dynamic_cast<NamedTypeExpr *>(parameter.type.get())->name = "...";
+        AstCast<NamedTypeExpr>(parameter.type.get())->name = "...";
         return parameter;
     }
 

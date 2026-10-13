@@ -15,7 +15,7 @@ std::string TypeText(const TypeExpr *type) {
 std::string UngroupedTypeText(const TypeExpr *type) {
     if (!type)
         return "?";
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(type)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(type)) {
         std::string text = named->name;
         if (!named->typeArgs.empty()) {
             text += '<';
@@ -28,7 +28,7 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text;
     }
-    if (const auto *path = dynamic_cast<const PathTypeExpr *>(type)) {
+    if (const auto *path = AstCast<const PathTypeExpr>(type)) {
         std::string text;
         for (std::size_t i = 0; i < path->segments.size(); ++i) {
             if (i != 0)
@@ -37,23 +37,23 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text;
     }
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
+    if (const auto *array = AstCast<const ArrayTypeExpr>(type)) {
         return TypeText(array->element.get()) + (array->size ? "[N]" : "[]");
     }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(type)) {
+    if (const auto *slice = AstCast<const SliceTypeExpr>(type)) {
         return std::string(slice->elementMut ? "var " : "") + TypeText(slice->element.get()) + "[..]";
     }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(type)) {
+    if (const auto *range = AstCast<const RangeTypeExpr>(type)) {
         return (range->start ? TypeText(range->start.get()) : std::string()) + (range->inclusive ? "..=" : "..") +
                (range->end ? TypeText(range->end.get()) : std::string());
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(type)) {
         return std::string("*") + (pointer->pointeeMut ? "var " : "") + TypeText(pointer->pointee.get());
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(type)) {
         return std::string("&") + (reference->pointeeMut ? "var " : "") + TypeText(reference->pointee.get());
     }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(type)) {
+    if (const auto *tuple = AstCast<const TupleTypeExpr>(type)) {
         std::string text = "(";
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
             if (i != 0)
@@ -62,9 +62,9 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text + ")";
     }
-    if (dynamic_cast<const SelfTypeExpr *>(type))
+    if (AstCast<const SelfTypeExpr>(type))
         return "self";
-    if (const auto *function = dynamic_cast<const FunctionTypeExpr *>(type)) {
+    if (const auto *function = AstCast<const FunctionTypeExpr>(type)) {
         std::string text = "func(";
         for (std::size_t i = 0; i < function->params.size(); ++i) {
             if (i != 0)
@@ -76,7 +76,7 @@ std::string UngroupedTypeText(const TypeExpr *type) {
             text += " -> " + TypeText(function->returnType->get());
         return text;
     }
-    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(type)) {
+    if (const auto *sum = AstCast<const SumTypeExpr>(type)) {
         std::string text;
         for (std::size_t index = 0; index < sum->members.size(); ++index) {
             if (index != 0) {
@@ -86,10 +86,10 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text;
     }
-    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(type)) {
+    if (const auto *optional = AstCast<const OptionalTypeExpr>(type)) {
         return TypeText(optional->payload.get()) + "?";
     }
-    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(type)) {
+    if (const auto *fallible = AstCast<const FallibleTypeExpr>(type)) {
         return (fallible->success ? TypeText(fallible->success.get()) + " ! " : std::string("! ")) +
                TypeText(fallible->error.get());
     }
@@ -155,87 +155,87 @@ std::string ExternFunctionSignature(const ExternFuncDecl &function) {
 }
 
 std::string DeclName(const Decl &decl) {
-    if (const auto *value = dynamic_cast<const FuncDecl *>(&decl))
+    if (const auto *value = AstCast<const FuncDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const StructDecl *>(&decl))
+    if (const auto *value = AstCast<const StructDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
+    if (const auto *value = AstCast<const EnumDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const UnionDecl *>(&decl))
+    if (const auto *value = AstCast<const UnionDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const InterfaceDecl *>(&decl))
+    if (const auto *value = AstCast<const InterfaceDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const ModuleDecl *>(&decl))
+    if (const auto *value = AstCast<const ModuleDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const ConstDecl *>(&decl))
+    if (const auto *value = AstCast<const ConstDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const GlobalDecl *>(&decl))
+    if (const auto *value = AstCast<const GlobalDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
+    if (const auto *value = AstCast<const TypeAliasDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl))
+    if (const auto *value = AstCast<const ExternFuncDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const ExternVarDecl *>(&decl))
+    if (const auto *value = AstCast<const ExternVarDecl>(&decl))
         return value->name;
-    if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))
+    if (const auto *value = AstCast<const ImplDecl>(&decl))
         return "extend-" + value->typeName;
     return {};
 }
 
 std::string DeclKind(const Decl &decl) {
-    if (dynamic_cast<const FuncDecl *>(&decl))
+    if (AstCast<const FuncDecl>(&decl))
         return "function";
-    if (dynamic_cast<const StructDecl *>(&decl))
+    if (AstCast<const StructDecl>(&decl))
         return "struct";
-    if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
+    if (const auto *value = AstCast<const EnumDecl>(&decl))
         return value->IsVariant() ? "variant" : "enum";
-    if (dynamic_cast<const UnionDecl *>(&decl))
+    if (AstCast<const UnionDecl>(&decl))
         return "union";
-    if (dynamic_cast<const InterfaceDecl *>(&decl))
+    if (AstCast<const InterfaceDecl>(&decl))
         return "interface";
-    if (dynamic_cast<const ModuleDecl *>(&decl))
+    if (AstCast<const ModuleDecl>(&decl))
         return "module";
-    if (dynamic_cast<const ConstDecl *>(&decl))
+    if (AstCast<const ConstDecl>(&decl))
         return "constant";
-    if (dynamic_cast<const GlobalDecl *>(&decl))
+    if (AstCast<const GlobalDecl>(&decl))
         return "variable";
-    if (dynamic_cast<const TypeAliasDecl *>(&decl))
+    if (AstCast<const TypeAliasDecl>(&decl))
         return "type alias";
-    if (dynamic_cast<const ExternFuncDecl *>(&decl) || dynamic_cast<const ExternVarDecl *>(&decl))
+    if (AstCast<const ExternFuncDecl>(&decl) || AstCast<const ExternVarDecl>(&decl))
         return "extern";
-    if (dynamic_cast<const ImplDecl *>(&decl))
+    if (AstCast<const ImplDecl>(&decl))
         return "extension";
     return "declaration";
 }
 
 std::string DeclSignature(const Decl &decl) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl))
+    if (const auto *function = AstCast<const FuncDecl>(&decl))
         return FunctionSignature(*function);
-    if (const auto *value = dynamic_cast<const StructDecl *>(&decl))
+    if (const auto *value = AstCast<const StructDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "struct " + value->name + TypeParams(value->typeParams);
-    if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
+    if (const auto *value = AstCast<const EnumDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + (value->IsVariant() ? "variant " : "enum ") + value->name +
                TypeParams(value->typeParams);
-    if (const auto *value = dynamic_cast<const UnionDecl *>(&decl))
+    if (const auto *value = AstCast<const UnionDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "union " + value->name;
-    if (const auto *value = dynamic_cast<const InterfaceDecl *>(&decl))
+    if (const auto *value = AstCast<const InterfaceDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "interface " + value->name;
-    if (const auto *value = dynamic_cast<const ModuleDecl *>(&decl))
+    if (const auto *value = AstCast<const ModuleDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "module " + value->name;
-    if (const auto *value = dynamic_cast<const ConstDecl *>(&decl))
+    if (const auto *value = AstCast<const ConstDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "const " + value->name +
                (value->type ? ": " + TypeText(value->type->get()) : "");
-    if (const auto *value = dynamic_cast<const GlobalDecl *>(&decl))
+    if (const auto *value = AstCast<const GlobalDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + (value->isThreadLocal ? "thread var " : "var ") +
                value->name + ": " + TypeText(value->type.get());
-    if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
+    if (const auto *value = AstCast<const TypeAliasDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "type " + value->name + " = " + TypeText(value->type.get());
-    if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))
+    if (const auto *value = AstCast<const ImplDecl>(&decl))
         return "extend " + value->typeName;
-    if (const auto *value = dynamic_cast<const ExternVarDecl *>(&decl))
+    if (const auto *value = AstCast<const ExternVarDecl>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "extern " + value->name + ": " +
                TypeText(value->type.get());
-    if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl))
+    if (const auto *value = AstCast<const ExternFuncDecl>(&decl))
         return ExternFunctionSignature(*value);
     return DeclName(decl);
 }
@@ -272,7 +272,7 @@ bool Visible(const Decl &decl, const bool includePrivate, const bool containingM
              const std::unordered_set<std::string> &publicTypes) {
     if (includePrivate)
         return true;
-    if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+    if (const auto *extension = AstCast<const ImplDecl>(&decl)) {
         const std::string typeName = extension->typeName.substr(0, extension->typeName.find('<'));
         // A built-in primitive is public everywhere; its documented extension is the entry for the API it adds.
         const bool documentedPrimitive = FindPrimitive(typeName) && extension->documentation.Present();
@@ -280,7 +280,7 @@ bool Visible(const Decl &decl, const bool includePrivate, const bool containingM
                (std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; }) ||
                 std::ranges::any_of(extension->constants, [](const auto &constant) { return constant->isPublic; }));
     }
-    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    if (const auto *block = AstCast<const ExternBlockDecl>(&decl)) {
         return containingModulesPublic &&
                std::ranges::any_of(block->items, [](const auto &item) { return item->isPublic; });
     }
@@ -289,7 +289,7 @@ bool Visible(const Decl &decl, const bool includePrivate, const bool containingM
 
 void CollectPublicTypes(const Decl &decl, const bool containingModulesPublic,
                         std::unordered_set<std::string> &publicTypes, const std::string &prefix) {
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         const bool modulePublic = containingModulesPublic && module->isPublic;
         const std::string qualified = prefix.empty() ? module->name : prefix + "::" + module->name;
         for (const auto &item : module->items) {
@@ -298,8 +298,8 @@ void CollectPublicTypes(const Decl &decl, const bool containingModulesPublic,
         return;
     }
     if (!containingModulesPublic || !decl.isPublic ||
-        !(dynamic_cast<const StructDecl *>(&decl) || dynamic_cast<const EnumDecl *>(&decl) ||
-          dynamic_cast<const UnionDecl *>(&decl) || dynamic_cast<const InterfaceDecl *>(&decl))) {
+        !(AstCast<const StructDecl>(&decl) || AstCast<const EnumDecl>(&decl) ||
+          AstCast<const UnionDecl>(&decl) || AstCast<const InterfaceDecl>(&decl))) {
         return;
     }
     const std::string name = DeclName(decl);

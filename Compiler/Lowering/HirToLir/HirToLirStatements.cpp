@@ -7,7 +7,7 @@
 namespace Rux::HirToLirDetail {
 
 void HirToLirContext::LowerStmt(const HirStmt &stmt) {
-    if (auto *s = dynamic_cast<const HirLetStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirLetStmt>(&stmt)) {
         LirReg slot = EmitAlloca(s->type);
         if (!s->pattern) {
             locals[s->name] = slot;
@@ -33,17 +33,17 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirDropStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirDropStmt>(&stmt)) {
         EmitCleanup(s->action);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirExprStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirExprStmt>(&stmt)) {
         LowerExpr(*s->expr);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirReturnStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirReturnStmt>(&stmt)) {
         if (s->value) {
             LirReg val = LowerExpr(**s->value);
             // The returned value is in hand and its binding is already released, so every cleanup below leaves it
@@ -66,7 +66,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirBreakStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirBreakStmt>(&stmt)) {
         EmitCleanups(s->cleanups);
         if (!s->label.empty()) {
             Jump(labelTargets.at(s->label).breakTarget);
@@ -77,7 +77,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirContinueStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirContinueStmt>(&stmt)) {
         EmitCleanups(s->cleanups);
         if (!s->label.empty()) {
             Jump(labelTargets.at(s->label).continueTarget);
@@ -88,41 +88,41 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirIfStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirIfStmt>(&stmt)) {
         LowerIf(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirWhileStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirWhileStmt>(&stmt)) {
         LowerWhile(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirDoWhileStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirDoWhileStmt>(&stmt)) {
         LowerDoWhile(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirLoopStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirLoopStmt>(&stmt)) {
         LowerLoop(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirForStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirForStmt>(&stmt)) {
         LowerFor(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirScopeStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirScopeStmt>(&stmt)) {
         LowerBlock(s->block);
         return;
     }
-    if (auto *s = dynamic_cast<const HirMatchStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirMatchStmt>(&stmt)) {
         LowerMatch(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirLocalDecl *>(&stmt)) {
+    if (auto *s = HirCast<const HirLocalDecl>(&stmt)) {
         if (s->hasConstant) {
             localConsts[s->constantName] = {s->constantValue.get(), s->constantType};
         }
@@ -277,7 +277,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
     if (isRange) {
         // Get a slot holding the range struct
         LirReg iterSlot;
-        if (auto *re = dynamic_cast<const HirRangeExpr *>(s.iterable.get())) {
+        if (auto *re = HirCast<const HirRangeExpr>(s.iterable.get())) {
             iterSlot = LowerRange(*re);
         }
         else {

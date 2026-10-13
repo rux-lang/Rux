@@ -31,7 +31,7 @@ TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
     fallible->location = loc;
     fallible->success = std::move(success);
     fallible->error = ParseSumType("add the error type after '!'");
-    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(fallible->error.get());
+    if (const auto *optional = AstCast<const OptionalTypeExpr>(fallible->error.get());
         optional && !optional->parenthesized) {
         EmitError(optional->location, "an optional error type must be grouped",
                   "write 'T ! (E?)' for an optional error, or '(T ! E)?' for an optional result");
@@ -65,11 +65,11 @@ TypeExprPtr Parser::ParseSumType(std::optional<std::string> help) {
         if (!member || member->parenthesized) {
             continue;
         }
-        if (dynamic_cast<const OptionalTypeExpr *>(member)) {
+        if (AstCast<const OptionalTypeExpr>(member)) {
             EmitError(member->location, "an optional sum member must be grouped",
                       "write 'A | (B?)' for an optional member, or '(A | B)?' for an optional sum");
         }
-        else if (index > 0 && dynamic_cast<const FunctionTypeExpr *>(member)) {
+        else if (index > 0 && AstCast<const FunctionTypeExpr>(member)) {
             EmitError(member->location, "a function type in a sum must be grouped",
                       "write '(func() -> T) | U' so the return type ends before the next member");
         }
@@ -100,11 +100,11 @@ TypeExprPtr Parser::ParseRangeType(std::optional<std::string> help) {
 
     if (Match(TokenKind::VarKeyword)) {
         auto element = ParsePostfixType("add the slice type after 'var'");
-        if (auto *slice = dynamic_cast<SliceTypeExpr *>(element.get())) {
+        if (auto *slice = AstCast<SliceTypeExpr>(element.get())) {
             slice->elementMut = true;
         }
-        else if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(element.get());
-                 optional && dynamic_cast<const SliceTypeExpr *>(optional->payload.get())) {
+        else if (const auto *optional = AstCast<const OptionalTypeExpr>(element.get());
+                 optional && AstCast<const SliceTypeExpr>(optional->payload.get())) {
             EmitError(loc, "'var' in a type qualifies only a slice's elements",
                       "write '(var T[..])?' for an optional writable slice");
         }
@@ -488,7 +488,7 @@ static std::string NormalizePrimitiveName(const std::string &name) {
 }
 
 std::string ImplTypeName(const TypeExpr &type) {
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(&type)) {
         std::string result = NormalizePrimitiveName(named->name);
         if (!named->typeArgs.empty()) {
             result += "<";
@@ -502,23 +502,23 @@ std::string ImplTypeName(const TypeExpr &type) {
         }
         return result;
     }
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+    if (const auto *array = AstCast<const ArrayTypeExpr>(&type)) {
         return ImplTypeName(*array->element) + (array->size ? "[N]" : "[]");
     }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+    if (const auto *slice = AstCast<const SliceTypeExpr>(&type)) {
         return (slice->elementMut ? "var " : "") + ImplTypeName(*slice->element) + "[..]";
     }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+    if (const auto *range = AstCast<const RangeTypeExpr>(&type)) {
         return (range->start ? ImplTypeName(*range->start) : "") + (range->inclusive ? "..=" : "..") +
                (range->end ? ImplTypeName(*range->end) : "");
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(&type)) {
         return (pointer->pointeeMut ? "*var " : "*") + ImplTypeName(*pointer->pointee);
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(&type)) {
         return (reference->pointeeMut ? "&var " : "&") + ImplTypeName(*reference->pointee);
     }
-    if (const auto *path = dynamic_cast<const PathTypeExpr *>(&type)) {
+    if (const auto *path = AstCast<const PathTypeExpr>(&type)) {
         std::string result;
         for (std::size_t index = 0; index < path->segments.size(); ++index) {
             if (index != 0) {
@@ -532,21 +532,21 @@ std::string ImplTypeName(const TypeExpr &type) {
     const auto grouped = [](const TypeExpr *child) {
         return child->parenthesized ? "(" + ImplTypeName(*child) + ")" : ImplTypeName(*child);
     };
-    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(&type)) {
+    if (const auto *sum = AstCast<const SumTypeExpr>(&type)) {
         std::string result;
         for (std::size_t index = 0; index < sum->members.size(); ++index) {
             result += (index != 0 ? " | " : "") + grouped(sum->members[index].get());
         }
         return result;
     }
-    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(&type)) {
+    if (const auto *optional = AstCast<const OptionalTypeExpr>(&type)) {
         return grouped(optional->payload.get()) + "?";
     }
-    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(&type)) {
+    if (const auto *fallible = AstCast<const FallibleTypeExpr>(&type)) {
         return (fallible->success ? grouped(fallible->success.get()) + " ! " : std::string("! ")) +
                grouped(fallible->error.get());
     }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type); tuple && tuple->elements.empty()) {
+    if (const auto *tuple = AstCast<const TupleTypeExpr>(&type); tuple && tuple->elements.empty()) {
         return "()";
     }
     return "?";

@@ -8,7 +8,7 @@
 namespace Rux::SemanticDetail {
 void AnalysisContext::ValidatePublicType(const TypeExpr &type, const std::string_view subject,
                                          const std::unordered_set<std::string> &typeParameters) {
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(&type)) {
         if (!typeParameters.contains(named->name)) {
             if (const Symbol *symbol = currentScope->Lookup(named->name);
                 symbol && symbol->ownerPackage != "<builtin>" && !symbol->isEffectivelyPublic &&
@@ -24,19 +24,19 @@ void AnalysisContext::ValidatePublicType(const TypeExpr &type, const std::string
         }
         return;
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(&type)) {
         ValidatePublicType(*pointer->pointee, subject, typeParameters);
     }
-    else if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+    else if (const auto *reference = AstCast<const ReferenceTypeExpr>(&type)) {
         ValidatePublicType(*reference->pointee, subject, typeParameters);
     }
-    else if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+    else if (const auto *array = AstCast<const ArrayTypeExpr>(&type)) {
         ValidatePublicType(*array->element, subject, typeParameters);
     }
-    else if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+    else if (const auto *slice = AstCast<const SliceTypeExpr>(&type)) {
         ValidatePublicType(*slice->element, subject, typeParameters);
     }
-    else if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+    else if (const auto *range = AstCast<const RangeTypeExpr>(&type)) {
         if (range->start) {
             ValidatePublicType(*range->start, subject, typeParameters);
         }
@@ -44,12 +44,12 @@ void AnalysisContext::ValidatePublicType(const TypeExpr &type, const std::string
             ValidatePublicType(*range->end, subject, typeParameters);
         }
     }
-    else if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
+    else if (const auto *tuple = AstCast<const TupleTypeExpr>(&type)) {
         for (const auto &element : tuple->elements) {
             ValidatePublicType(*element, subject, typeParameters);
         }
     }
-    else if (const auto *function = dynamic_cast<const FunctionTypeExpr *>(&type)) {
+    else if (const auto *function = AstCast<const FunctionTypeExpr>(&type)) {
         for (const auto &parameter : function->params) {
             ValidatePublicType(*parameter, subject, typeParameters);
         }
@@ -124,10 +124,10 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
     if (info == declarationInfos.end() || !info->second.isEffectivelyPublic) {
         return;
     }
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
+    if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
         ValidatePublicFunction(*function, std::format("public function '{}'", function->name));
     }
-    else if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
+    else if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
         std::unordered_set<std::string> parameters;
         for (const TypeParameter &parameter : structure->typeParams) {
             parameters.insert(parameter.name);
@@ -141,7 +141,7 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
             }
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         std::unordered_set<std::string> parameters;
         for (const TypeParameter &parameter : enumeration->typeParams) {
             parameters.insert(parameter.name);
@@ -165,14 +165,14 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
             }
         }
     }
-    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
+    else if (const auto *unionType = AstCast<const UnionDecl>(&declaration)) {
         for (const UnionDecl::Field &field : unionType->fields) {
             if (field.isPublic) {
                 ValidatePublicType(*field.type, std::format("public union field '{}.{}'", unionType->name, field.name));
             }
         }
     }
-    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
+    else if (const auto *interface = AstCast<const InterfaceDecl>(&declaration)) {
         // A generic interface's requirements name its type parameters, which are no type of the program's, however
         // a type the program declares may be spelled.
         const std::vector<std::string> savedTypeParameters = currentTypeParams;
@@ -185,7 +185,7 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
         }
         currentTypeParams = savedTypeParameters;
     }
-    else if (const auto *constant = dynamic_cast<const ConstDecl *>(&declaration)) {
+    else if (const auto *constant = AstCast<const ConstDecl>(&declaration)) {
         if (constant->type) {
             ValidatePublicType(**constant->type, std::format("public constant '{}'", constant->name));
         }
@@ -193,13 +193,13 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
             ValidatePublicResolvedType(symbol->type, declaration, std::format("public constant '{}'", constant->name));
         }
     }
-    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&declaration)) {
+    else if (const auto *global = AstCast<const GlobalDecl>(&declaration)) {
         ValidatePublicType(*global->type, std::format("public module variable '{}'", global->name));
     }
-    else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
+    else if (const auto *alias = AstCast<const TypeAliasDecl>(&declaration)) {
         ValidatePublicType(*alias->type, std::format("public type alias '{}'", alias->name));
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&declaration)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&declaration)) {
         for (const Param &parameter : externFunction->params) {
             ValidatePublicType(*parameter.type, std::format("public extern function '{}'", externFunction->name));
         }
@@ -208,7 +208,7 @@ void AnalysisContext::ValidatePublicDeclaration(const Decl &declaration) {
                                std::format("public extern function '{}'", externFunction->name));
         }
     }
-    else if (const auto *variable = dynamic_cast<const ExternVarDecl *>(&declaration)) {
+    else if (const auto *variable = AstCast<const ExternVarDecl>(&declaration)) {
         ValidatePublicType(*variable->type, std::format("public extern variable '{}'", variable->name));
     }
 }

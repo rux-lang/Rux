@@ -119,10 +119,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             shared.inner.front().isMut = false;
             if (CanAssignExprTo(argument, argumentType, shared) && PlaceIsImmutable(argument)) {
                 const Expr *root = &argument;
-                while (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+                while (const auto *field = AstCast<const FieldExpr>(root)) {
                     root = field->object.get();
                 }
-                const auto *identifier = dynamic_cast<const IdentExpr *>(root);
+                const auto *identifier = AstCast<const IdentExpr>(root);
                 const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
                 const std::string subject = !identifier ? std::string("an immutable value")
                                           : root == &argument
@@ -221,7 +221,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             return accepted;
         }
         const Param &variadicParameter = *parameters.back();
-        if (argTypes.size() == fixedCount + 1 && dynamic_cast<const SpreadExpr *>(e->args[fixedCount].get())) {
+        if (argTypes.size() == fixedCount + 1 && AstCast<const SpreadExpr>(e->args[fixedCount].get())) {
             // The spread operand converts to the variadic slice by the ordinary argument rules, so an array or a
             // writable slice of the element type is spread as the read-only slice.
             const TypeRef sliceType = TypeRef::MakeSlice(*variadicElement);
@@ -234,7 +234,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             return accepted;
         }
         for (std::size_t index = fixedCount; index < argTypes.size(); ++index) {
-            if (dynamic_cast<const SpreadExpr *>(e->args[index].get())) {
+            if (AstCast<const SpreadExpr>(e->args[index].get())) {
                 accepted = false;
                 EmitError(e->args[index]->location,
                           std::format("spread argument to '{}' must be the only argument for variadic parameter '{}'",
@@ -249,7 +249,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
         return accepted;
     };
-    if (auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
+    if (auto *ident = AstCast<const IdentExpr>(e->callee.get())) {
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
         // `#Error`/`#Warn` emit a diagnostic here rather than resolving as
@@ -466,7 +466,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
     }
 
-    if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
+    if (auto *field = AstCast<const FieldExpr>(e->callee.get())) {
         TypeRef receiverType = CheckExpr(*field->object);
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
@@ -540,11 +540,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (!method->intrinsicName.empty() && e->args.size() == 1 && e->args[0]) {
                 const std::string root = NamedBaseTypeName(receiverType);
                 const Expr &argument = *e->args[0];
-                const auto *literal = dynamic_cast<const LiteralExpr *>(&argument);
-                const auto *path = dynamic_cast<const PathExpr *>(&argument);
+                const auto *literal = AstCast<const LiteralExpr>(&argument);
+                const auto *path = AstCast<const PathExpr>(&argument);
                 const bool stringLiteral = literal && literal->token.kind == TokenKind::StringLiteral;
                 const bool caseName =
-                    dynamic_cast<const EnumShorthandExpr *>(&argument) || (path && path->segments.size() == 2);
+                    AstCast<const EnumShorthandExpr>(&argument) || (path && path->segments.size() == 2);
                 const bool targetFeature = root == "Target";
                 if ((root == "Target" || root == "Compiler" || root == "Config") &&
                     !(targetFeature ? caseName : stringLiteral)) {
@@ -630,7 +630,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
     }
 
-    if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get())) {
+    if (auto *path = AstCast<const PathExpr>(e->callee.get())) {
         if (path->segments.size() == 2) {
             Symbol *first = currentScope->Lookup(path->segments[0]);
             if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
@@ -829,10 +829,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         const std::size_t paramCount = calleeType.inner.size() - 1;
         const bool arityOk = calleeType.isVariadic ? argTypes.size() >= paramCount : argTypes.size() == paramCount;
         std::string callableName = "function value";
-        if (const auto *identifier = dynamic_cast<const IdentExpr *>(e->callee.get())) {
+        if (const auto *identifier = AstCast<const IdentExpr>(e->callee.get())) {
             callableName = identifier->name;
         }
-        else if (const auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && !path->segments.empty()) {
+        else if (const auto *path = AstCast<const PathExpr>(e->callee.get()); path && !path->segments.empty()) {
             callableName = path->segments.back();
         }
         if (!arityOk) {
@@ -905,11 +905,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 /// Resolves a direct or module-qualified callee without emitting diagnostics. Expression checking remains responsible
 /// for invalid names and paths; this lookup only recovers declaration metadata absent from a function TypeRef.
 Symbol *AnalysisContext::LookupCalleeSymbol(const Expr &callee) const {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&callee)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&callee)) {
         return currentScope->Lookup(identifier->name);
     }
 
-    const auto *path = dynamic_cast<const PathExpr *>(&callee);
+    const auto *path = AstCast<const PathExpr>(&callee);
     if (!path || path->segments.empty()) {
         return nullptr;
     }
@@ -948,7 +948,7 @@ void AnalysisContext::RecordFunctionBinding(const CallExpr &call, const FuncDecl
         // a call through the type, `Pair::Sum(pair, ...)`: a method call passes it before the argument list, and an
         // interface or constrained call passes the value the operation is called on, whether or not the requirement
         // spells out `self`.
-        const bool throughType = dynamic_cast<const PathExpr *>(call.callee.get()) != nullptr;
+        const bool throughType = AstCast<const PathExpr>(call.callee.get()) != nullptr;
         const bool passesReceiver = (dispatch == ResolvedCallableBinding::DispatchKind::Method && !throughType) ||
                                     dispatch == ResolvedCallableBinding::DispatchKind::Interface ||
                                     dispatch == ResolvedCallableBinding::DispatchKind::Constrained;

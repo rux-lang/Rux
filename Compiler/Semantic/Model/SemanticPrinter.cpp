@@ -23,7 +23,7 @@ std::string UngroupedTypeText(const TypeExpr *type) {
     if (!type) {
         return "?";
     }
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(type)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(type)) {
         std::string text = named->name;
         if (!named->typeArgs.empty()) {
             text += '<';
@@ -37,7 +37,7 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text;
     }
-    if (const auto *path = dynamic_cast<const PathTypeExpr *>(type)) {
+    if (const auto *path = AstCast<const PathTypeExpr>(type)) {
         std::string text;
         for (std::size_t index = 0; index < path->segments.size(); ++index) {
             if (index != 0) {
@@ -47,23 +47,23 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text;
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(type)) {
         return std::string(pointer->pointeeMut ? "*var " : "*") + TypeText(pointer->pointee.get());
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(type)) {
         return std::string(reference->pointeeMut ? "&var " : "&") + TypeText(reference->pointee.get());
     }
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
+    if (const auto *array = AstCast<const ArrayTypeExpr>(type)) {
         return TypeText(array->element.get()) + (array->size ? "[N]" : "[]");
     }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(type)) {
+    if (const auto *slice = AstCast<const SliceTypeExpr>(type)) {
         return std::string(slice->elementMut ? "var " : "") + TypeText(slice->element.get()) + "[..]";
     }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(type)) {
+    if (const auto *range = AstCast<const RangeTypeExpr>(type)) {
         return (range->start ? TypeText(range->start.get()) : std::string()) + (range->inclusive ? "..=" : "..") +
                (range->end ? TypeText(range->end.get()) : std::string());
     }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(type)) {
+    if (const auto *tuple = AstCast<const TupleTypeExpr>(type)) {
         std::string text = "(";
         for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
             if (index != 0) {
@@ -73,10 +73,10 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text + (tuple->elements.size() == 1 ? ",)" : ")");
     }
-    if (dynamic_cast<const SelfTypeExpr *>(type)) {
+    if (AstCast<const SelfTypeExpr>(type)) {
         return "self";
     }
-    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(type)) {
+    if (const auto *sum = AstCast<const SumTypeExpr>(type)) {
         std::string text;
         for (std::size_t index = 0; index < sum->members.size(); ++index) {
             if (index != 0) {
@@ -86,10 +86,10 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         }
         return text;
     }
-    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(type)) {
+    if (const auto *optional = AstCast<const OptionalTypeExpr>(type)) {
         return TypeText(optional->payload.get()) + "?";
     }
-    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(type)) {
+    if (const auto *fallible = AstCast<const FallibleTypeExpr>(type)) {
         return (fallible->success ? TypeText(fallible->success.get()) + " ! " : std::string("! ")) +
                TypeText(fallible->error.get());
     }
@@ -167,7 +167,7 @@ bool SemanticPrinter::Dump(const SemanticModel &result, const std::filesystem::p
             continue;
         }
         for (const auto &item : module->items) {
-            functionCount += dynamic_cast<const FuncDecl *>(item.get()) != nullptr ? 1 : 0;
+            functionCount += AstCast<const FuncDecl>(item.get()) != nullptr ? 1 : 0;
         }
     }
     out << std::format("Function signatures ({} total)\n", functionCount);
@@ -181,7 +181,7 @@ bool SemanticPrinter::Dump(const SemanticModel &result, const std::filesystem::p
                 continue;
             }
             for (const auto &item : module->items) {
-                if (const auto *function = dynamic_cast<const FuncDecl *>(item.get())) {
+                if (const auto *function = AstCast<const FuncDecl>(item.get())) {
                     out << FunctionSignature(*function) << '\n';
                 }
             }

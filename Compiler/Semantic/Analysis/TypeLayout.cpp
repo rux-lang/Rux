@@ -397,41 +397,41 @@ void AnalysisContext::RecordResolvedTypeLayouts() {
 }
 
 void AnalysisContext::CheckDecl(const Decl &decl) {
-    if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (auto *fn = AstCast<const FuncDecl>(&decl)) {
         if (const Symbol *symbol = currentScope->LookupLocal(fn->name); symbol && symbol->kind == Symbol::Kind::Func) {
             ValidateFunctionSignature(*fn, symbol->funcOverloads);
         }
         CheckFuncDecl(*fn);
     }
-    else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+    else if (auto *structDecl = AstCast<const StructDecl>(&decl)) {
         CheckStructDecl(*structDecl);
     }
-    else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (auto *enumDecl = AstCast<const EnumDecl>(&decl)) {
         CheckEnumDecl(*enumDecl);
     }
-    else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
         CheckUnionDecl(*unionDecl);
     }
-    else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    else if (auto *ifaceDecl = AstCast<const InterfaceDecl>(&decl)) {
         CheckInterfaceDecl(*ifaceDecl);
     }
-    else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (auto *implDecl = AstCast<const ImplDecl>(&decl)) {
         CheckImplDecl(*implDecl);
     }
-    else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+    else if (auto *modDecl = AstCast<const ModuleDecl>(&decl)) {
         CheckModuleDecl(*modDecl);
     }
-    else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
+    else if (auto *constDecl = AstCast<const ConstDecl>(&decl)) {
         (void)CheckNamedConstant(*constDecl);
     }
-    else if (auto *globalDecl = dynamic_cast<const GlobalDecl *>(&decl)) {
+    else if (auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
         CheckGlobalDecl(*globalDecl);
     }
-    else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    else if (auto *aliasDecl = AstCast<const TypeAliasDecl>(&decl)) {
         ValidateArrayType(*aliasDecl->type);
         ResolveType(*aliasDecl->type);
     }
-    else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+    else if (auto *externFn = AstCast<const ExternFuncDecl>(&decl)) {
         if (externFn->dll.empty()) {
             EmitError(externFn->location, std::format("extern function '{}' must specify a "
                                                       "source DLL via "
@@ -456,16 +456,16 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
             }
         }
     }
-    else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
+    else if (auto *externVar = AstCast<const ExternVarDecl>(&decl)) {
         ValidateArrayType(*externVar->type);
         ValidateStoredType(ResolveType(*externVar->type), externVar->location, "extern variable");
     }
-    else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    else if (auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
         for (auto &item : externBlock->items) {
             CheckDecl(*item);
         }
     }
-    else if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
+    else if (auto *useDecl = AstCast<const UseDecl>(&decl)) {
         // A module-level import was bound before signatures were resolved; binding it again picks up the resolved
         // types of what it names, but must not report the problems of the first binding a second time.
         const std::size_t before = diags.size();

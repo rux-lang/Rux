@@ -9,7 +9,7 @@
 namespace Rux::SemanticDetail {
 namespace {
 bool IsBlockArm(const Expr &body) {
-    return dynamic_cast<const BlockExpr *>(&body) != nullptr;
+    return AstCast<const BlockExpr>(&body) != nullptr;
 }
 
 /// Whether a block arm ends by leaving the enclosing loop, which leaves the arm as surely as a return does.
@@ -18,7 +18,7 @@ bool EndsWithLoopExit(const Block &block) {
         return false;
     }
     const Stmt &last = *block.stmts.back();
-    return dynamic_cast<const BreakStmt *>(&last) != nullptr || dynamic_cast<const ContinueStmt *>(&last) != nullptr;
+    return AstCast<const BreakStmt>(&last) != nullptr || AstCast<const ContinueStmt>(&last) != nullptr;
 }
 } // namespace
 

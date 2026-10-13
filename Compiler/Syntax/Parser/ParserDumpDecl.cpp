@@ -58,7 +58,7 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
 }
 
 std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(type)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(type)) {
         std::string result = named->name;
         if (!named->typeArgs.empty()) {
             result += "<";
@@ -72,7 +72,7 @@ std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
         }
         return result;
     }
-    if (const auto *path = dynamic_cast<const PathTypeExpr *>(type)) {
+    if (const auto *path = AstCast<const PathTypeExpr>(type)) {
         std::string result;
         for (std::size_t index = 0; index < path->segments.size(); ++index) {
             if (index) {
@@ -86,45 +86,45 @@ std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
     const auto bracketElement = [&](const TypeExpr *element) {
         std::string text = TypeString(element);
         if (element && !element->parenthesized &&
-            (dynamic_cast<const PointerTypeExpr *>(element) || dynamic_cast<const ReferenceTypeExpr *>(element) ||
-             dynamic_cast<const RangeTypeExpr *>(element))) {
+            (AstCast<const PointerTypeExpr>(element) || AstCast<const ReferenceTypeExpr>(element) ||
+             AstCast<const RangeTypeExpr>(element))) {
             text = "(" + text + ")";
         }
         return text;
     };
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
+    if (const auto *array = AstCast<const ArrayTypeExpr>(type)) {
         std::string result = bracketElement(array->element.get()) + "[";
         if (array->size) {
             result += "N"; // size is an Expr, not easily stringified
         }
         return result + "]";
     }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(type)) {
+    if (const auto *slice = AstCast<const SliceTypeExpr>(type)) {
         return (slice->elementMut ? "var " : "") + bracketElement(slice->element.get()) + "[..]";
     }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(type)) {
+    if (const auto *range = AstCast<const RangeTypeExpr>(type)) {
         return (range->start ? TypeString(range->start.get()) : "") + (range->inclusive ? "..=" : "..") +
                (range->end ? TypeString(range->end.get()) : "");
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(type)) {
         std::string pointee = TypeString(pointer->pointee.get());
         if (pointer->pointee && !pointer->pointee->parenthesized &&
-            (dynamic_cast<const ArrayTypeExpr *>(pointer->pointee.get()) ||
-             dynamic_cast<const SliceTypeExpr *>(pointer->pointee.get()))) {
+            (AstCast<const ArrayTypeExpr>(pointer->pointee.get()) ||
+             AstCast<const SliceTypeExpr>(pointer->pointee.get()))) {
             pointee = "(" + pointee + ")";
         }
         return (pointer->pointeeMut ? "*var " : "*") + pointee;
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(type)) {
         std::string pointee = TypeString(reference->pointee.get());
         if (reference->pointee && !reference->pointee->parenthesized &&
-            (dynamic_cast<const ArrayTypeExpr *>(reference->pointee.get()) ||
-             dynamic_cast<const SliceTypeExpr *>(reference->pointee.get()))) {
+            (AstCast<const ArrayTypeExpr>(reference->pointee.get()) ||
+             AstCast<const SliceTypeExpr>(reference->pointee.get()))) {
             pointee = "(" + pointee + ")";
         }
         return (reference->pointeeMut ? "&var " : "&") + pointee;
     }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(type)) {
+    if (const auto *tuple = AstCast<const TupleTypeExpr>(type)) {
         std::string result = "(";
         for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
             if (index) {
@@ -137,10 +137,10 @@ std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
         }
         return result + ")";
     }
-    if (dynamic_cast<const SelfTypeExpr *>(type)) {
+    if (AstCast<const SelfTypeExpr>(type)) {
         return "self";
     }
-    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(type)) {
+    if (const auto *sum = AstCast<const SumTypeExpr>(type)) {
         std::string result;
         for (std::size_t index = 0; index < sum->members.size(); ++index) {
             if (index) {
@@ -150,10 +150,10 @@ std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
         }
         return result;
     }
-    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(type)) {
+    if (const auto *optional = AstCast<const OptionalTypeExpr>(type)) {
         return TypeString(optional->payload.get()) + "?";
     }
-    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(type)) {
+    if (const auto *fallible = AstCast<const FallibleTypeExpr>(type)) {
         return (fallible->success ? TypeString(fallible->success.get()) + " ! " : "! ") +
                TypeString(fallible->error.get());
     }
@@ -161,46 +161,46 @@ std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
 }
 
 void DeclarationPrinter::Print(const Decl &decl) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         PrintFuncDecl(*function);
     }
-    else if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+    else if (const auto *structure = AstCast<const StructDecl>(&decl)) {
         PrintStructDecl(*structure);
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&decl)) {
         PrintEnumDecl(*enumeration);
     }
-    else if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
         PrintUnionDecl(*unionDecl);
     }
-    else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    else if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
         PrintInterfaceDecl(*interfaceDecl);
     }
-    else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (const auto *implementation = AstCast<const ImplDecl>(&decl)) {
         PrintImplDecl(*implementation);
     }
-    else if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    else if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         PrintModuleDecl(*module);
     }
-    else if (const auto *use = dynamic_cast<const UseDecl *>(&decl)) {
+    else if (const auto *use = AstCast<const UseDecl>(&decl)) {
         PrintUseDecl(*use);
     }
-    else if (const auto *constant = dynamic_cast<const ConstDecl *>(&decl)) {
+    else if (const auto *constant = AstCast<const ConstDecl>(&decl)) {
         PrintConstDecl(*constant);
     }
-    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&decl)) {
+    else if (const auto *global = AstCast<const GlobalDecl>(&decl)) {
         PrintGlobalDecl(*global);
     }
-    else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    else if (const auto *alias = AstCast<const TypeAliasDecl>(&decl)) {
         PrintTypeAliasDecl(*alias);
     }
-    else if (const auto *externalFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+    else if (const auto *externalFunction = AstCast<const ExternFuncDecl>(&decl)) {
         PrintExternFuncDecl(*externalFunction);
     }
-    else if (const auto *externalVariable = dynamic_cast<const ExternVarDecl *>(&decl)) {
+    else if (const auto *externalVariable = AstCast<const ExternVarDecl>(&decl)) {
         PrintExternVarDecl(*externalVariable);
     }
-    else if (const auto *when = dynamic_cast<const WhenDecl *>(&decl)) {
+    else if (const auto *when = AstCast<const WhenDecl>(&decl)) {
         PrintWhenDecl(*when);
     }
 }

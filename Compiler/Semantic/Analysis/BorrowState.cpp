@@ -22,11 +22,11 @@ NameSet AnalyzeBlockLiveness(const Block &block, NameSet liveAfter, LiveAfterMap
 void RecordBlockLastUses(const Block &block, LastUseMap &result);
 
 void CollectPatternUses(const Pattern &pattern, NameSet &uses) {
-    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         CollectPatternUses(*guarded->inner, uses);
         CollectExpressionUses(*guarded->guard, uses);
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         for (const auto &argument : enumeration->args) {
             CollectPatternUses(*argument, uses);
         }
@@ -34,12 +34,12 @@ void CollectPatternUses(const Pattern &pattern, NameSet &uses) {
             CollectPatternUses(*argument.pattern, uses);
         }
     }
-    else if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         for (const auto &field : structure->fields) {
             CollectPatternUses(*field.pattern, uses);
         }
     }
-    else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         for (const auto &element : tuple->elements) {
             CollectPatternUses(*element, uses);
         }
@@ -47,63 +47,63 @@ void CollectPatternUses(const Pattern &pattern, NameSet &uses) {
 }
 
 void CollectExpressionUses(const Expr &expression, NameSet &uses) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         uses.insert(identifier->name);
     }
-    else if (dynamic_cast<const SelfExpr *>(&expression)) {
+    else if (AstCast<const SelfExpr>(&expression)) {
         uses.insert("self");
     }
-    else if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression)) {
+    else if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression)) {
         for (const auto &argument : intrinsic->args) {
             CollectExpressionUses(*argument, uses);
         }
     }
-    else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    else if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         CollectExpressionUses(*unary->operand, uses);
     }
-    else if (const auto *propagation = dynamic_cast<const TryExpr *>(&expression)) {
+    else if (const auto *propagation = AstCast<const TryExpr>(&expression)) {
         CollectExpressionUses(*propagation->operand, uses);
     }
-    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
         CollectExpressionUses(*mapped->operand, uses);
         if (mapped->mapper) {
             CollectExpressionUses(*mapped->mapper, uses);
         }
     }
-    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+    else if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         if (construct->operand) {
             CollectExpressionUses(*construct->operand, uses);
         }
     }
-    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+    else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         if (diverge->value) {
             CollectExpressionUses(*diverge->value, uses);
         }
     }
-    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
         CollectExpressionUses(*recovery->subject, uses);
         for (const auto &arm : recovery->arms) {
             CollectPatternUses(*arm.pattern, uses);
             CollectExpressionUses(*arm.body, uses);
         }
     }
-    else if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    else if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         CollectExpressionUses(*postfix->operand, uses);
     }
-    else if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    else if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         CollectExpressionUses(*binary->left, uses);
         CollectExpressionUses(*binary->right, uses);
     }
-    else if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+    else if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         CollectExpressionUses(*assignment->target, uses);
         CollectExpressionUses(*assignment->value, uses);
     }
-    else if (const auto *conditional = dynamic_cast<const TernaryExpr *>(&expression)) {
+    else if (const auto *conditional = AstCast<const TernaryExpr>(&expression)) {
         CollectExpressionUses(*conditional->condition, uses);
         CollectExpressionUses(*conditional->thenExpr, uses);
         CollectExpressionUses(*conditional->elseExpr, uses);
     }
-    else if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+    else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         if (range->lo) {
             CollectExpressionUses(*range->lo, uses);
         }
@@ -111,51 +111,51 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
             CollectExpressionUses(*range->hi, uses);
         }
     }
-    else if (const auto *call = dynamic_cast<const CallExpr *>(&expression)) {
+    else if (const auto *call = AstCast<const CallExpr>(&expression)) {
         CollectExpressionUses(*call->callee, uses);
         for (const auto &argument : call->args) {
             CollectExpressionUses(*argument, uses);
         }
     }
-    else if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    else if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         CollectExpressionUses(*index->object, uses);
         CollectExpressionUses(*index->index, uses);
     }
-    else if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    else if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         CollectExpressionUses(*field->object, uses);
     }
-    else if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    else if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         for (const auto &initializedField : initializer->fields) {
             CollectExpressionUses(*initializedField.value, uses);
         }
     }
-    else if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    else if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         for (const auto &element : array->elements) {
             CollectExpressionUses(*element, uses);
         }
     }
-    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    else if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         CollectExpressionUses(*repeat->value, uses);
     }
-    else if (const auto *spread = dynamic_cast<const SpreadExpr *>(&expression)) {
+    else if (const auto *spread = AstCast<const SpreadExpr>(&expression)) {
         CollectExpressionUses(*spread->operand, uses);
     }
-    else if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    else if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         for (const auto &element : tuple->elements) {
             CollectExpressionUses(*element, uses);
         }
     }
-    else if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    else if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         CollectExpressionUses(*cast->operand, uses);
     }
-    else if (const auto *test = dynamic_cast<const IsExpr *>(&expression)) {
+    else if (const auto *test = AstCast<const IsExpr>(&expression)) {
         CollectExpressionUses(*test->operand, uses);
     }
-    else if (const auto *block = dynamic_cast<const BlockExpr *>(&expression)) {
+    else if (const auto *block = AstCast<const BlockExpr>(&expression)) {
         LiveAfterMap ignored;
         AddAll(uses, AnalyzeBlockLiveness(*block->block, {}, ignored));
     }
-    else if (const auto *match = dynamic_cast<const MatchExpr *>(&expression)) {
+    else if (const auto *match = AstCast<const MatchExpr>(&expression)) {
         CollectExpressionUses(*match->subject, uses);
         for (const auto &arm : match->arms) {
             CollectPatternUses(*arm.pattern, uses);
@@ -175,14 +175,14 @@ NameSet ExpressionUses(const Expr *expression) {
 NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter, LiveAfterMap &result) {
     result.insert_or_assign(&statement, liveAfter);
     NameSet live = liveAfter;
-    if (const auto *expression = dynamic_cast<const ExprStmt *>(&statement)) {
+    if (const auto *expression = AstCast<const ExprStmt>(&statement)) {
         AddAll(live, ExpressionUses(expression->expr.get()));
     }
-    else if (const auto *binding = dynamic_cast<const LetStmt *>(&statement)) {
+    else if (const auto *binding = AstCast<const LetStmt>(&statement)) {
         live.erase(binding->name);
         AddAll(live, ExpressionUses(binding->init.get()));
     }
-    else if (const auto *conditional = dynamic_cast<const IfStmt *>(&statement)) {
+    else if (const auto *conditional = AstCast<const IfStmt>(&statement)) {
         NameSet branches;
         if (conditional->elseBlock) {
             AddAll(branches, AnalyzeBlockLiveness(*conditional->elseBlock, liveAfter, result));
@@ -198,7 +198,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         AddAll(branches, ExpressionUses(conditional->condition.get()));
         AddAll(live, branches);
     }
-    else if (const auto *whileLoop = dynamic_cast<const WhileStmt *>(&statement)) {
+    else if (const auto *whileLoop = AstCast<const WhileStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         AddAll(loopLive, ExpressionUses(whileLoop->condition.get()));
         for (;;) {
@@ -212,7 +212,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *doWhileLoop = dynamic_cast<const DoWhileStmt *>(&statement)) {
+    else if (const auto *doWhileLoop = AstCast<const DoWhileStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         AddAll(loopLive, ExpressionUses(doWhileLoop->condition.get()));
         for (;;) {
@@ -226,7 +226,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *infiniteLoop = dynamic_cast<const LoopStmt *>(&statement)) {
+    else if (const auto *infiniteLoop = AstCast<const LoopStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         for (;;) {
             NameSet next = liveAfter;
@@ -238,7 +238,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *forLoop = dynamic_cast<const ForStmt *>(&statement)) {
+    else if (const auto *forLoop = AstCast<const ForStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         for (;;) {
             NameSet next = liveAfter;
@@ -253,7 +253,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *match = dynamic_cast<const MatchStmt *>(&statement)) {
+    else if (const auto *match = AstCast<const MatchStmt>(&statement)) {
         for (const auto &arm : match->arms) {
             NameSet armLive = liveAfter;
             AddAll(armLive, ExpressionUses(arm.body.get()));
@@ -262,7 +262,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         AddAll(live, ExpressionUses(match->subject.get()));
     }
-    else if (const auto *returned = dynamic_cast<const ReturnStmt *>(&statement)) {
+    else if (const auto *returned = AstCast<const ReturnStmt>(&statement)) {
         live.clear();
         AddAll(live, ExpressionUses(returned->value ? returned->value->get() : nullptr));
     }
@@ -277,64 +277,64 @@ NameSet AnalyzeBlockLiveness(const Block &block, NameSet liveAfter, LiveAfterMap
 }
 
 void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, LastUseMap &result) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         auto &offset = offsets[identifier->name];
         offset = std::max(offset, identifier->location.offset);
     }
-    else if (dynamic_cast<const SelfExpr *>(&expression)) {
+    else if (AstCast<const SelfExpr>(&expression)) {
         auto &offset = offsets["self"];
         offset = std::max(offset, expression.location.offset);
     }
-    else if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression)) {
+    else if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression)) {
         for (const auto &argument : intrinsic->args) {
             RecordExpressionLastUses(*argument, offsets, result);
         }
     }
-    else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    else if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         RecordExpressionLastUses(*unary->operand, offsets, result);
     }
-    else if (const auto *propagation = dynamic_cast<const TryExpr *>(&expression)) {
+    else if (const auto *propagation = AstCast<const TryExpr>(&expression)) {
         RecordExpressionLastUses(*propagation->operand, offsets, result);
     }
-    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
         RecordExpressionLastUses(*mapped->operand, offsets, result);
         if (mapped->mapper) {
             RecordExpressionLastUses(*mapped->mapper, offsets, result);
         }
     }
-    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+    else if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         if (construct->operand) {
             RecordExpressionLastUses(*construct->operand, offsets, result);
         }
     }
-    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+    else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         if (diverge->value) {
             RecordExpressionLastUses(*diverge->value, offsets, result);
         }
     }
-    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
         RecordExpressionLastUses(*recovery->subject, offsets, result);
         for (const auto &arm : recovery->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
         }
     }
-    else if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    else if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         RecordExpressionLastUses(*postfix->operand, offsets, result);
     }
-    else if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    else if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         RecordExpressionLastUses(*binary->left, offsets, result);
         RecordExpressionLastUses(*binary->right, offsets, result);
     }
-    else if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+    else if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         RecordExpressionLastUses(*assignment->target, offsets, result);
         RecordExpressionLastUses(*assignment->value, offsets, result);
     }
-    else if (const auto *conditional = dynamic_cast<const TernaryExpr *>(&expression)) {
+    else if (const auto *conditional = AstCast<const TernaryExpr>(&expression)) {
         RecordExpressionLastUses(*conditional->condition, offsets, result);
         RecordExpressionLastUses(*conditional->thenExpr, offsets, result);
         RecordExpressionLastUses(*conditional->elseExpr, offsets, result);
     }
-    else if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+    else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         if (range->lo) {
             RecordExpressionLastUses(*range->lo, offsets, result);
         }
@@ -342,50 +342,50 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
             RecordExpressionLastUses(*range->hi, offsets, result);
         }
     }
-    else if (const auto *call = dynamic_cast<const CallExpr *>(&expression)) {
+    else if (const auto *call = AstCast<const CallExpr>(&expression)) {
         RecordExpressionLastUses(*call->callee, offsets, result);
         for (const auto &argument : call->args) {
             RecordExpressionLastUses(*argument, offsets, result);
         }
     }
-    else if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    else if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         RecordExpressionLastUses(*index->object, offsets, result);
         RecordExpressionLastUses(*index->index, offsets, result);
     }
-    else if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    else if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         RecordExpressionLastUses(*field->object, offsets, result);
     }
-    else if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    else if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         for (const auto &initializedField : initializer->fields) {
             RecordExpressionLastUses(*initializedField.value, offsets, result);
         }
     }
-    else if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    else if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         for (const auto &element : array->elements) {
             RecordExpressionLastUses(*element, offsets, result);
         }
     }
-    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    else if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         RecordExpressionLastUses(*repeat->value, offsets, result);
     }
-    else if (const auto *spread = dynamic_cast<const SpreadExpr *>(&expression)) {
+    else if (const auto *spread = AstCast<const SpreadExpr>(&expression)) {
         RecordExpressionLastUses(*spread->operand, offsets, result);
     }
-    else if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    else if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         for (const auto &element : tuple->elements) {
             RecordExpressionLastUses(*element, offsets, result);
         }
     }
-    else if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    else if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         RecordExpressionLastUses(*cast->operand, offsets, result);
     }
-    else if (const auto *test = dynamic_cast<const IsExpr *>(&expression)) {
+    else if (const auto *test = AstCast<const IsExpr>(&expression)) {
         RecordExpressionLastUses(*test->operand, offsets, result);
     }
-    else if (const auto *block = dynamic_cast<const BlockExpr *>(&expression)) {
+    else if (const auto *block = AstCast<const BlockExpr>(&expression)) {
         RecordBlockLastUses(*block->block, result);
     }
-    else if (const auto *match = dynamic_cast<const MatchExpr *>(&expression)) {
+    else if (const auto *match = AstCast<const MatchExpr>(&expression)) {
         RecordExpressionLastUses(*match->subject, offsets, result);
         for (const auto &arm : match->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
@@ -403,15 +403,15 @@ void RemoveBlockUsesFromOffsets(const Block &block, LastUseOffsets &offsets) {
 
 void RecordStatementLastUses(const Stmt &statement, LastUseMap &result) {
     LastUseOffsets &offsets = result[&statement];
-    if (const auto *expression = dynamic_cast<const ExprStmt *>(&statement)) {
+    if (const auto *expression = AstCast<const ExprStmt>(&statement)) {
         RecordExpressionLastUses(*expression->expr, offsets, result);
     }
-    else if (const auto *binding = dynamic_cast<const LetStmt *>(&statement)) {
+    else if (const auto *binding = AstCast<const LetStmt>(&statement)) {
         if (binding->init) {
             RecordExpressionLastUses(*binding->init, offsets, result);
         }
     }
-    else if (const auto *conditional = dynamic_cast<const IfStmt *>(&statement)) {
+    else if (const auto *conditional = AstCast<const IfStmt>(&statement)) {
         RecordExpressionLastUses(*conditional->condition, offsets, result);
         RecordBlockLastUses(*conditional->thenBlock, result);
         RemoveBlockUsesFromOffsets(*conditional->thenBlock, offsets);
@@ -425,32 +425,32 @@ void RecordStatementLastUses(const Stmt &statement, LastUseMap &result) {
             RemoveBlockUsesFromOffsets(*conditional->elseBlock, offsets);
         }
     }
-    else if (const auto *whileLoop = dynamic_cast<const WhileStmt *>(&statement)) {
+    else if (const auto *whileLoop = AstCast<const WhileStmt>(&statement)) {
         RecordExpressionLastUses(*whileLoop->condition, offsets, result);
         RecordBlockLastUses(*whileLoop->body, result);
         RemoveBlockUsesFromOffsets(*whileLoop->body, offsets);
     }
-    else if (const auto *doWhileLoop = dynamic_cast<const DoWhileStmt *>(&statement)) {
+    else if (const auto *doWhileLoop = AstCast<const DoWhileStmt>(&statement)) {
         RecordBlockLastUses(*doWhileLoop->body, result);
         RecordExpressionLastUses(*doWhileLoop->condition, offsets, result);
         RemoveBlockUsesFromOffsets(*doWhileLoop->body, offsets);
     }
-    else if (const auto *infiniteLoop = dynamic_cast<const LoopStmt *>(&statement)) {
+    else if (const auto *infiniteLoop = AstCast<const LoopStmt>(&statement)) {
         RecordBlockLastUses(*infiniteLoop->body, result);
         RemoveBlockUsesFromOffsets(*infiniteLoop->body, offsets);
     }
-    else if (const auto *forLoop = dynamic_cast<const ForStmt *>(&statement)) {
+    else if (const auto *forLoop = AstCast<const ForStmt>(&statement)) {
         RecordExpressionLastUses(*forLoop->iterable, offsets, result);
         RecordBlockLastUses(*forLoop->body, result);
         RemoveBlockUsesFromOffsets(*forLoop->body, offsets);
     }
-    else if (const auto *match = dynamic_cast<const MatchStmt *>(&statement)) {
+    else if (const auto *match = AstCast<const MatchStmt>(&statement)) {
         RecordExpressionLastUses(*match->subject, offsets, result);
         for (const auto &arm : match->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
         }
     }
-    else if (const auto *returned = dynamic_cast<const ReturnStmt *>(&statement); returned && returned->value) {
+    else if (const auto *returned = AstCast<const ReturnStmt>(&statement); returned && returned->value) {
         RecordExpressionLastUses(**returned->value, offsets, result);
     }
 }
@@ -571,11 +571,11 @@ void AnalysisContext::EndBorrowScope(const Scope &scope) {
 const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) const {
     const Expr *root = &expression;
     while (true) {
-        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
             root = field->object.get();
             continue;
         }
-        if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+        if (const auto *index = AstCast<const IndexExpr>(root)) {
             // An operator index produces a fresh value, so no reference the object was reached through aliases it.
             if (IsIndexOperatorCall(*index)) {
                 return nullptr;
@@ -585,11 +585,11 @@ const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) cons
         }
         break;
     }
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(root)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
         return symbol && symbol->type.kind == TypeRef::Kind::Reference ? symbol : nullptr;
     }
-    if (dynamic_cast<const SelfExpr *>(root)) {
+    if (AstCast<const SelfExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup("self");
         return symbol && symbol->type.kind == TypeRef::Kind::Reference ? symbol : nullptr;
     }
@@ -662,7 +662,7 @@ void AnalysisContext::RegisterReferenceBinding(const Symbol &alias, const Expr &
 
 void AnalysisContext::RegisterReferenceAssignment(const Expr &target, const Expr &initializer,
                                                   const TypeRef &referenceType) {
-    const auto *identifier = dynamic_cast<const IdentExpr *>(&target);
+    const auto *identifier = AstCast<const IdentExpr>(&target);
     Symbol *alias = identifier ? currentScope->Lookup(identifier->name) : nullptr;
     if (!alias || alias->type.kind != TypeRef::Kind::Reference) {
         return;

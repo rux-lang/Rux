@@ -49,28 +49,28 @@ namespace {
 /// initializer is an expression (`const Sum = 2 + 3`) still has a literal to lay out.
 [[nodiscard]] std::optional<Optimization::TypedConstant>
 FoldConstElement(const HirExpr &e, const std::unordered_map<std::string, const HirConst *> &constants) {
-    if (const auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
+    if (const auto *lit = HirCast<const HirLiteralExpr>(&e)) {
         std::string_view text = lit->value;
         if (const auto parts = SplitIntegerLiteral(text); parts && !lit->type.IsFloat()) {
             text.remove_suffix(parts->suffix.size());
         }
         return Optimization::ParseConstant(text, FoldingType(lit->type));
     }
-    if (const auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
+    if (const auto *v = HirCast<const HirVarExpr>(&e)) {
         const auto it = constants.find(v->name);
         return it != constants.end() && it->second->value ? FoldConstElement(*it->second->value, constants)
                                                           : std::nullopt;
     }
-    if (const auto *u = dynamic_cast<const HirUnaryExpr *>(&e)) {
+    if (const auto *u = HirCast<const HirUnaryExpr>(&e)) {
         const auto operand = FoldConstElement(*u->operand, constants);
         return operand ? Optimization::EvaluateUnary(u->op, *operand) : std::nullopt;
     }
-    if (const auto *b = dynamic_cast<const HirBinaryExpr *>(&e)) {
+    if (const auto *b = HirCast<const HirBinaryExpr>(&e)) {
         const auto left = FoldConstElement(*b->left, constants);
         const auto right = left ? FoldConstElement(*b->right, constants) : std::nullopt;
         return right ? Optimization::EvaluateBinary(b->op, *left, *right) : std::nullopt;
     }
-    if (const auto *c = dynamic_cast<const HirCastExpr *>(&e)) {
+    if (const auto *c = HirCast<const HirCastExpr>(&e)) {
         const auto operand = FoldConstElement(*c->operand, constants);
         return operand ? Optimization::CastConstant(*operand, FoldingType(c->targetType)) : std::nullopt;
     }
@@ -1068,13 +1068,13 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
 
 /// Render a simple constant expression to a printable string.
 std::string HirToLirContext::PrintConstExpr(const HirExpr &e) {
-    if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
+    if (auto *lit = HirCast<const HirLiteralExpr>(&e)) {
         return lit->value;
     }
-    if (auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
+    if (auto *v = HirCast<const HirVarExpr>(&e)) {
         return v->name;
     }
-    if (auto *b = dynamic_cast<const HirBinaryExpr *>(&e)) {
+    if (auto *b = HirCast<const HirBinaryExpr>(&e)) {
         return PrintConstExpr(*b->left) + " op " + PrintConstExpr(*b->right);
     }
     return "<const>";
@@ -1084,15 +1084,15 @@ std::string HirToLirContext::PrintConstExpr(const HirExpr &e) {
 /// it stands for. A named constant computed from an expression, or an element the lowering wrapped in a cast, is folded
 /// to the literal of its value. The semantic analyzer rejects anything else before we get here.
 std::optional<std::string> HirToLirContext::PrintConstElement(const HirExpr &e) const {
-    if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
+    if (auto *lit = HirCast<const HirLiteralExpr>(&e)) {
         return lit->value;
     }
-    if (auto *u = dynamic_cast<const HirUnaryExpr *>(&e); u && u->op == TokenKind::Minus) {
+    if (auto *u = HirCast<const HirUnaryExpr>(&e); u && u->op == TokenKind::Minus) {
         if (const auto inner = PrintConstElement(*u->operand)) {
             return inner->starts_with('-') ? inner->substr(1) : "-" + *inner;
         }
     }
-    if (auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
+    if (auto *v = HirCast<const HirVarExpr>(&e)) {
         if (const auto it = globalConsts.find(v->name); it != globalConsts.end()) {
             return PrintConstElement(*it->second->value);
         }
@@ -1108,7 +1108,7 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
     if (!IsViewType(c.type) && !IsArrayType(c.type)) {
         return;
     }
-    if (auto *lit = dynamic_cast<const HirLiteralExpr *>(c.value.get()); lit && IsStringSliceLiteral(*lit)) {
+    if (auto *lit = HirCast<const HirLiteralExpr>(c.value.get()); lit && IsStringSliceLiteral(*lit)) {
         cd.isTextSlice = true;
         cd.hasSequenceData = true;
         cd.text = lit->value;
@@ -1116,10 +1116,10 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
         return;
     }
     const HirExpr *value = c.value.get();
-    if (const auto *view = dynamic_cast<const HirArrayToSliceExpr *>(value)) {
+    if (const auto *view = HirCast<const HirArrayToSliceExpr>(value)) {
         value = view->value.get();
     }
-    if (auto *arr = dynamic_cast<const HirArrayExpr *>(value)) {
+    if (auto *arr = HirCast<const HirArrayExpr>(value)) {
         std::vector<std::string> elements;
         const std::size_t count =
             arr->repeatedElement ? static_cast<std::size_t>(arr->repeatCount) : arr->elements.size();
@@ -1164,7 +1164,7 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
                                                std::vector<LirConstScalar> &scalars) const {
     // A pointer constant has a layout only as the literal `null` spells; an address is a relocation, not bytes.
     if (type.kind == TypeRef::Kind::Pointer) {
-        const auto *literal = dynamic_cast<const HirLiteralExpr *>(&value);
+        const auto *literal = HirCast<const HirLiteralExpr>(&value);
         if (!literal || !SplitIntegerLiteral(literal->value)) {
             return false;
         }
@@ -1189,7 +1189,7 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
         return true;
     }
     // A constant initialized from another stands for that one's value.
-    if (const auto *name = dynamic_cast<const HirVarExpr *>(&value)) {
+    if (const auto *name = HirCast<const HirVarExpr>(&value)) {
         const auto it = globalConsts.find(name->name);
         return it != globalConsts.end() && it->second->value &&
                CollectConstValueScalars(*it->second->value, type, path, scalars);
@@ -1200,12 +1200,12 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
         path.pop_back();
         return collected;
     };
-    if (const auto *init = dynamic_cast<const HirStructInitExpr *>(&value); init && type.kind == TypeRef::Kind::Named) {
+    if (const auto *init = HirCast<const HirStructInitExpr>(&value); init && type.kind == TypeRef::Kind::Named) {
         return std::ranges::all_of(init->fields, [&](const HirStructInitField &field) {
             return field.value && member(*field.value, field.value->type, field.name);
         });
     }
-    if (const auto *tuple = dynamic_cast<const HirTupleExpr *>(&value);
+    if (const auto *tuple = HirCast<const HirTupleExpr>(&value);
         tuple && type.kind == TypeRef::Kind::Tuple && tuple->elements.size() == type.inner.size()) {
         for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
             if (!tuple->elements[index] || !member(*tuple->elements[index], type.inner[index], std::to_string(index))) {
@@ -1214,7 +1214,7 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
         }
         return true;
     }
-    if (const auto *array = dynamic_cast<const HirArrayExpr *>(&value);
+    if (const auto *array = HirCast<const HirArrayExpr>(&value);
         array && type.kind == TypeRef::Kind::Array && !type.inner.empty() && type.arrayLength) {
         const std::size_t count =
             array->repeatedElement ? static_cast<std::size_t>(array->repeatCount) : array->elements.size();

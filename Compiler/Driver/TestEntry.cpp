@@ -27,14 +27,14 @@ struct DiscoveredTest {
 
 /// Whether `type` is `! TestFailure` or `! Test::TestFailure`.
 [[nodiscard]] bool IsTestFailureResult(const TypeExpr &type) {
-    const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(&type);
+    const auto *fallible = AstCast<const FallibleTypeExpr>(&type);
     if (fallible == nullptr || fallible->success != nullptr || fallible->error == nullptr) {
         return false;
     }
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(fallible->error.get())) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(fallible->error.get())) {
         return named->name == "TestFailure" && named->typeArgs.empty();
     }
-    if (const auto *path = dynamic_cast<const PathTypeExpr *>(fallible->error.get())) {
+    if (const auto *path = AstCast<const PathTypeExpr>(fallible->error.get())) {
         return path->segments.size() == 2 && path->segments[0] == "Test" && path->segments[1] == "TestFailure";
     }
     return false;
@@ -78,25 +78,25 @@ struct TestCollector {
 
     void Items(const std::vector<DeclPtr> &items, std::vector<std::string> &modulePath) const {
         for (const auto &item : items) {
-            if (const auto *function = dynamic_cast<const FuncDecl *>(item.get())) {
+            if (const auto *function = AstCast<const FuncDecl>(item.get())) {
                 Function(*function, modulePath);
             }
-            else if (const auto *module = dynamic_cast<const ModuleDecl *>(item.get())) {
+            else if (const auto *module = AstCast<const ModuleDecl>(item.get())) {
                 modulePath.push_back(module->name);
                 Items(module->items, modulePath);
                 modulePath.pop_back();
             }
-            else if (const auto *extension = dynamic_cast<const ImplDecl *>(item.get())) {
+            else if (const auto *extension = AstCast<const ImplDecl>(item.get())) {
                 for (const auto &method : extension->methods) {
                     if (method->isTest) {
                         Problem(method->location, "a '#Test' function must be declared outside 'extend' blocks");
                     }
                 }
             }
-            else if (const auto *conditional = dynamic_cast<const WhenDecl *>(item.get())) {
+            else if (const auto *conditional = AstCast<const WhenDecl>(item.get())) {
                 for (const auto &branch : conditional->branches) {
                     for (const auto &nested : branch.items) {
-                        const auto *branchFunction = dynamic_cast<const FuncDecl *>(nested.get());
+                        const auto *branchFunction = AstCast<const FuncDecl>(nested.get());
                         if (branchFunction != nullptr && branchFunction->isTest) {
                             Problem(branchFunction->location, "a '#Test' function cannot be declared inside 'when'",
                                     "use '#build' or '#target' checks inside the test body instead");
@@ -124,7 +124,7 @@ struct TestCollector {
 [[nodiscard]] bool DeclaresMain(const std::vector<ParseResult> &modules) {
     for (const auto &result : modules) {
         for (const auto &item : result.module.items) {
-            const auto *function = dynamic_cast<const FuncDecl *>(item.get());
+            const auto *function = AstCast<const FuncDecl>(item.get());
             if (function != nullptr && function->name == "Main") {
                 return true;
             }

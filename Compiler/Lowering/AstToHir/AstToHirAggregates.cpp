@@ -101,7 +101,7 @@ HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression, const Valu
         // A copy whose plan is a plain load would leave the subject reading the named storage itself, and the arms
         // would destroy parts its owner still holds. A droppable value gets storage of its own.
         if (const ValueCopy *copy = model.TryGetCopy(expression);
-            copy && !dynamic_cast<const HirCopyExpr *>(lowered.get()) && model.TryGetDropGlue(lowered->type)) {
+            copy && !HirCast<const HirCopyExpr>(lowered.get()) && model.TryGetDropGlue(lowered->type)) {
             auto copied = std::make_unique<HirCopyExpr>();
             copied->location = lowered->location;
             copied->type = lowered->type;
@@ -299,14 +299,14 @@ HirExprPtr AstToHirContext::LowerCompilerParamCall(const std::string &root, cons
     }
     const auto *argumentExpression = call.args[0].get();
     std::string argument;
-    if (const auto *variant = dynamic_cast<const EnumShorthandExpr *>(argumentExpression)) {
+    if (const auto *variant = AstCast<const EnumShorthandExpr>(argumentExpression)) {
         argument = variant->variant;
     }
-    else if (const auto *path = dynamic_cast<const PathExpr *>(argumentExpression);
+    else if (const auto *path = AstCast<const PathExpr>(argumentExpression);
              path && path->segments.size() == 2) {
         argument = path->segments[1];
     }
-    else if (const auto *literal = dynamic_cast<const LiteralExpr *>(argumentExpression);
+    else if (const auto *literal = AstCast<const LiteralExpr>(argumentExpression);
              literal && literal->token.kind == TokenKind::StringLiteral) {
         argument = LowerLiteralValue(*literal);
     }
@@ -351,10 +351,10 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         if (expression.args.size() != 1 || !expression.args[0]) {
             return {};
         }
-        if (const auto *variant = dynamic_cast<const EnumShorthandExpr *>(expression.args[0].get())) {
+        if (const auto *variant = AstCast<const EnumShorthandExpr>(expression.args[0].get())) {
             return variant->variant;
         }
-        if (const auto *literal = dynamic_cast<const LiteralExpr *>(expression.args[0].get());
+        if (const auto *literal = AstCast<const LiteralExpr>(expression.args[0].get());
             literal && literal->token.kind == TokenKind::StringLiteral) {
             return LowerLiteralValue(*literal);
         }
@@ -541,16 +541,16 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
 
 HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &targetType) {
     // A native destination builds its levels explicitly, by the route analysis accepted.
-    if (IsNativeType(targetType) || dynamic_cast<const NativeConstructExpr *>(&expression) ||
-        dynamic_cast<const NoneExpr *>(&expression)) {
+    if (IsNativeType(targetType) || AstCast<const NativeConstructExpr>(&expression) ||
+        AstCast<const NoneExpr>(&expression)) {
         return LowerNativeAs(expression, targetType);
     }
 
     // A signed literal is one contextual value. Lowering its positive magnitude at the default int width before
     // negating it loses high words, and cannot represent the magnitude of the target's most negative value.
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression);
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression);
         unary && unary->op == TokenKind::Minus && UnsuffixedIntegerLiteralFits(expression, targetType)) {
-        if (const auto *literal = dynamic_cast<const LiteralExpr *>(unary->operand.get());
+        if (const auto *literal = AstCast<const LiteralExpr>(unary->operand.get());
             literal && literal->token.kind == TokenKind::IntLiteral) {
             return CompilerLiteral(expression.location, targetType, "-" + LowerLiteralValue(*literal));
         }
@@ -558,7 +558,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 
     // Analysis has accepted both arms against this context. Materialize that width before the merge: converting
     // the merged value afterwards cannot recover high words already discarded by an untyped literal's default int.
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression);
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expression);
         ternary && (targetType.IsNumeric() || targetType.IsBool() || targetType.IsChar()) &&
         !model.HasBorrowedScalarRead(expression)) {
         auto lowered = std::make_unique<HirTernaryExpr>();
@@ -572,7 +572,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 
     // Every bool width holds the same two values, so a bool literal is written at the width it is wanted at rather
     // than at `bool`'s and converted afterwards.
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression);
         literal && literal->token.kind == TokenKind::BoolLiteral && targetType.IsBool()) {
         return CompilerLiteral(expression.location, targetType, literal->token.text);
     }
@@ -582,7 +582,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     }
 
     // A range literal accepted against a range type builds each bound at that type's element type.
-    if (const auto *range = dynamic_cast<const RangeExpr *>(&expression);
+    if (const auto *range = AstCast<const RangeExpr>(&expression);
         range && targetType.IsRange() && !targetType.inner.empty()) {
         auto lowered = std::make_unique<HirRangeExpr>();
         lowered->location = range->location;
@@ -598,13 +598,13 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     }
 
     // Analysis accepted an unprefixed character literal at the expected width, so it is that width's code unit.
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression);
         literal && literal->token.kind == TokenKind::CharLiteral && literal->token.text.starts_with('\'') &&
         targetType.IsChar()) {
         return CompilerLiteral(expression.location, targetType, DecodeCharLiteral(literal->token.text));
     }
 
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression);
+    if (const auto *array = AstCast<const ArrayExpr>(&expression);
         array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
         auto lowered = std::make_unique<HirArrayExpr>();
         lowered->location = array->location;
@@ -623,12 +623,12 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         return lowered;
     }
 
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression);
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression);
         repeat && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
         return LowerArrayRepeatAs(*repeat, targetType.inner[0], targetType);
     }
 
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         if (const auto sliceElement = SliceElementType(targetType)) {
             auto lowered = std::make_unique<HirArrayExpr>();
             lowered->location = array->location;
@@ -655,7 +655,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         }
     }
 
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         if (const auto sliceElement = SliceElementType(targetType)) {
             const TypeRef resolved = ResolvedExpressionType(*repeat);
             const std::uint64_t count = resolved.arrayLength.value_or(0);
@@ -671,7 +671,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         }
     }
 
-    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression);
+    if (const auto *tuple = AstCast<const TupleExpr>(&expression);
         tuple && targetType.kind == TypeRef::Kind::Tuple && tuple->elements.size() == targetType.inner.size()) {
         auto lowered = std::make_unique<HirTupleExpr>();
         lowered->location = tuple->location;
@@ -815,14 +815,14 @@ std::unique_ptr<HirArrayExpr> AstToHirContext::LowerArrayRepeatAs(const ArrayRep
 }
 
 HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
-    if (const auto *sizeOf = dynamic_cast<const TypeQueryExpr *>(&expression)) {
+    if (const auto *sizeOf = AstCast<const TypeQueryExpr>(&expression)) {
         return CompilerLiteral(sizeOf->location, ResolvedExpressionType(*sizeOf),
                                std::to_string(ResolvedTypeQuery(*sizeOf)));
     }
-    if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression)) {
+    if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression)) {
         return LowerIntrinsicExpr(*intrinsic);
     }
-    if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(*initializer); enumDecl && variant) {
             if (!variant->namedFields.empty()) {
                 auto lowered = std::make_unique<HirEnumConstructExpr>();
@@ -881,7 +881,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         }
         return lowered;
     }
-    if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
+    if (const auto *path = AstCast<const PathExpr>(&expression)) {
         if (const ConstDecl *constant = model.TryGetAssociatedConstant(expression)) {
             if (const auto *value = model.TryGetConstantValue(*constant)) {
                 return CompilerLiteral(path->location, value->type, value->literal);
@@ -945,7 +945,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         lowered->type = ResolvedExpressionType(*path);
         return lowered;
     }
-    if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+    if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         auto lowered = std::make_unique<HirRangeExpr>();
         lowered->location = range->location;
         lowered->inclusive = range->inclusive;
@@ -966,14 +966,14 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         lowered->type = ResolvedExpressionType(*range);
         return lowered;
     }
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         const TypeRef type = ResolvedExpressionType(*repeat);
         const TypeRef elementType = type.kind == TypeRef::Kind::Array && !type.inner.empty()
                                       ? type.inner[0]
                                       : ResolvedExpressionType(*repeat->value);
         return LowerArrayRepeatAs(*repeat, elementType, type);
     }
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         auto lowered = std::make_unique<HirArrayExpr>();
         lowered->location = array->location;
         lowered->type = ResolvedExpressionType(*array);
@@ -994,7 +994,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         }
         return lowered;
     }
-    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         auto lowered = std::make_unique<HirTupleExpr>();
         lowered->location = tuple->location;
         lowered->type = ResolvedExpressionType(*tuple);
@@ -1012,7 +1012,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         }
         return lowered;
     }
-    if (const auto *match = dynamic_cast<const MatchExpr *>(&expression)) {
+    if (const auto *match = AstCast<const MatchExpr>(&expression)) {
         auto lowered = std::make_unique<HirMatchExpr>();
         lowered->location = match->location;
         lowered->type = ResolvedExpressionType(*match);
@@ -1031,7 +1031,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             // An arm converts to the match's type the way analysis accepted it, which materializes a contextual
             // literal at that width; a diverging arm yields nothing.
             const bool scalar = lowered->type.IsNumeric() || lowered->type.IsBool() || lowered->type.IsChar();
-            if ((IsNativeType(lowered->type) || scalar) && !dynamic_cast<const DivergeExpr *>(arm.body.get())) {
+            if ((IsNativeType(lowered->type) || scalar) && !AstCast<const DivergeExpr>(arm.body.get())) {
                 loweredArm.body = ConvertScalar(LowerExprAs(*arm.body, lowered->type), lowered->type);
             }
             else {

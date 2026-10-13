@@ -561,7 +561,7 @@ ExprPtr Parser::ParsePostfix() {
         if (Match(TokenKind::ColonColon)) {
             const std::string seg = ExpectBefore(TokenKind::Ident, "a path segment after '::'").text;
             // Build or extend a PathExpr
-            if (auto *path = dynamic_cast<PathExpr *>(left.get())) {
+            if (auto *path = AstCast<PathExpr>(left.get())) {
                 path->segments.push_back(seg);
             }
             else {
@@ -570,7 +570,7 @@ ExprPtr Parser::ParsePostfix() {
                 auto p = std::make_unique<PathExpr>();
                 // A path starts where its first segment does, so a diagnostic about the whole name points there.
                 p->location = loc;
-                if (auto *ident = dynamic_cast<IdentExpr *>(left.get())) {
+                if (auto *ident = AstCast<IdentExpr>(left.get())) {
                     p->location = ident->location;
                     p->segments.push_back(ident->name);
                 }
@@ -581,7 +581,7 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Qualified initializer: Enum::Variant { field: value, ... }
         if (structInitAllowed && Check(TokenKind::LeftBrace)) {
-            if (const auto *path = dynamic_cast<const PathExpr *>(left.get())) {
+            if (const auto *path = AstCast<const PathExpr>(left.get())) {
                 auto e = std::make_unique<StructInitExpr>();
                 e->location = loc;
                 for (std::size_t i = 0; i < path->segments.size(); ++i) {
@@ -1093,7 +1093,7 @@ PatternPtr Parser::ParseMatchArmPattern() {
     }
 
     auto pattern = ParseRequiredPattern("at the start of the match arm");
-    if (dynamic_cast<const WildcardPattern *>(pattern.get())) {
+    if (AstCast<const WildcardPattern>(pattern.get())) {
         EmitError(loc, "use 'else' for the default match arm");
     }
     return pattern;
@@ -1123,7 +1123,7 @@ PatternPtr Parser::ParsePresenceSuffix(PatternPtr inner) {
         if (Peek().precededBySpace) {
             EmitError(CurrentLocation(), "a presence suffix must touch its pattern", "remove the space before '?'");
         }
-        if (dynamic_cast<const TypedPattern *>(inner.get())) {
+        if (AstCast<const TypedPattern>(inner.get())) {
             EmitError(CurrentLocation(), "a presence suffix cannot follow a typed pattern",
                       "write '.Some(v: A)' to match a present member by type");
         }
@@ -1151,7 +1151,7 @@ PatternPtr Parser::ParsePatternImpl() {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
         constexpr std::string_view rangeSuffixHelp = "write '.Some(lo..hi)' to match a present value in a range";
-        if (dynamic_cast<const PresencePattern *>(inner.get())) {
+        if (AstCast<const PresencePattern>(inner.get())) {
             EmitError(inner->location, "a range bound cannot take a presence suffix", std::string(rangeSuffixHelp));
         }
         const std::string operatorText = Advance().text;

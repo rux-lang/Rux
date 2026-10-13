@@ -58,7 +58,7 @@ template <typename Range, typename Projection, typename Predicate>
 } // namespace
 
 bool AnalysisContext::IsIndexOperatorCall(const Expr &expression) const {
-    const auto *index = dynamic_cast<const IndexExpr *>(&expression);
+    const auto *index = AstCast<const IndexExpr>(&expression);
     return index && (indexOperators.contains(index) || indexAssignments.contains(index));
 }
 
@@ -180,11 +180,11 @@ bool AnalysisContext::SameStoragePlace(const Expr &left, const Expr &right) cons
 const IndexExpr *AnalysisContext::IndexOperatorInPlace(const Expr &place) const {
     const Expr *root = &place;
     while (true) {
-        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
             root = field->object.get();
             continue;
         }
-        if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+        if (const auto *index = AstCast<const IndexExpr>(root)) {
             if (indexOperators.contains(index)) {
                 return index;
             }
@@ -625,7 +625,7 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
 }
 
 std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &expression) {
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         const bool wasProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*index->object);
@@ -765,7 +765,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return TypeRef::MakeUnknown();
     }
 
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         const bool wasProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
         // The outermost field of a chain that starts at a local names the part read, which may have been written on
@@ -774,11 +774,11 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         if (!partReadPath) {
             std::string path = field->field;
             const Expr *object = field->object.get();
-            while (const auto *inner = dynamic_cast<const FieldExpr *>(object)) {
+            while (const auto *inner = AstCast<const FieldExpr>(object)) {
                 path = inner->field + "." + path;
                 object = inner->object.get();
             }
-            if (dynamic_cast<const IdentExpr *>(object)) {
+            if (AstCast<const IdentExpr>(object)) {
                 partReadPath = std::move(path);
             }
         }
@@ -903,7 +903,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return TypeRef::MakeUnknown();
     }
 
-    if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         CheckStructInitExpression(*initializer);
         if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(initializer->typeName); enumDecl && variant) {
             return EnumType(*enumDecl);
@@ -918,7 +918,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return type.IsRange() || type.IsSlice() ? type : TypeRef::MakeNamed(typeName);
     }
 
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         // An array literal whose destination fixes the element type converts each element to it, so the elements
         // of `let values: (int32 | bool)[2] = [1i32, true]` need not agree with each other, only with the annotation.
         if (const std::optional<TypeRef> expectedElement = ExpectedArrayElementType(*array)) {
@@ -984,7 +984,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return arrayType;
     }
 
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         const TypeRef elementType = ReadBorrowedScalar(*repeat->value, CheckExpr(*repeat->value));
         const std::optional<std::uint64_t> count = EvalArrayLength(*repeat->count);
         if (!count) {
@@ -998,7 +998,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return arrayType;
     }
 
-    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         std::vector<TypeRef> elementTypes;
         for (const auto &element : tuple->elements) {
             const TypeRef type = ReadBorrowedScalar(*element, CheckExpr(*element));

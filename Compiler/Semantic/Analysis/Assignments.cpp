@@ -39,12 +39,12 @@ TypeRef AnalysisContext::ReadBorrowedScalar(const Expr &expression, const TypeRe
 
 namespace {
 bool IsUnprefixedCharLiteral(const Expr &expression) {
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    const auto *literal = AstCast<const LiteralExpr>(&expression);
     return literal && literal->token.kind == TokenKind::CharLiteral && literal->token.text.starts_with('\'');
 }
 
 bool UnprefixedCharLiteralFits(const Expr &expression, const TypeRef &target) {
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    const auto *literal = AstCast<const LiteralExpr>(&expression);
     const std::optional<std::uint32_t> codePoint =
         literal ? Lexer::DecodeCharLiteralCodePoint(literal->token.text) : std::nullopt;
     return codePoint && IsOneCharacterOf(target.kind, *codePoint);
@@ -57,7 +57,7 @@ TypeRef AnalysisContext::CheckedExpressionType(const Expr &expression) {
 }
 
 bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
-    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {
         return CanConstructNative(*construct, targetType);
     }
     if (targetType.kind == TypeRef::Kind::Reference) {
@@ -76,10 +76,10 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         // An index that resolved to a declared `[]` is a call whose result is a temporary, so it is not a place a
         // reference can borrow, however much it looks like one.
         const bool addressable =
-            dynamic_cast<const IdentExpr *>(&expr) || dynamic_cast<const SelfExpr *>(&expr) ||
-            dynamic_cast<const FieldExpr *>(&expr) ||
-            (dynamic_cast<const IndexExpr *>(&expr) && !IsIndexOperatorCall(expr)) ||
-            (dynamic_cast<const UnaryExpr *>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
+            AstCast<const IdentExpr>(&expr) || AstCast<const SelfExpr>(&expr) ||
+            AstCast<const FieldExpr>(&expr) ||
+            (AstCast<const IndexExpr>(&expr) && !IsIndexOperatorCall(expr)) ||
+            (AstCast<const UnaryExpr>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
         if (!addressable) {
             return false;
         }
@@ -91,7 +91,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             sliceElement->isMut = false;
             // An array literal is fresh storage, so it may be viewed either way; a named array may be viewed
             // writably only from a place that can be written.
-            if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr)) {
+            if (const auto *array = AstCast<const ArrayExpr>(&expr)) {
                 for (const auto &element : array->elements) {
                     const TypeRef elementType = CheckedExpressionType(*element);
                     if (!CanAssignExprTo(*element, elementType, *sliceElement)) {
@@ -100,7 +100,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
                 }
                 return true;
             }
-            if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr)) {
+            if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expr)) {
                 const TypeRef elementType = CheckedExpressionType(*repeat->value);
                 return CanAssignExprTo(*repeat->value, elementType, *sliceElement);
             }
@@ -115,7 +115,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
     }
 
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr);
+    if (const auto *array = AstCast<const ArrayExpr>(&expr);
         array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
         if (array->elements.size() != *targetType.arrayLength) {
             return false;
@@ -129,7 +129,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         return true;
     }
 
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr);
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expr);
         repeat && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
         if (exprType.kind != TypeRef::Kind::Array || exprType.arrayLength != targetType.arrayLength) {
             return false;
@@ -142,7 +142,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
     // each element use the same assignment rules as a scalar expression
     // (notably range-checked unsuffixed integer literals), and naturally
     // handles nested tuple literals as well.
-    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expr);
+    if (const auto *tuple = AstCast<const TupleExpr>(&expr);
         tuple && exprType.kind == TypeRef::Kind::Tuple && targetType.kind == TypeRef::Kind::Tuple) {
         if (tuple->elements.size() != targetType.inner.size() || exprType.inner.size() != targetType.inner.size()) {
             return false;
@@ -157,7 +157,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
 
     // A range literal is contextually typed bound by bound, like a tuple, so `let r: int32..int32 = 1..5;` gives
     // each unsuffixed bound the annotation's element type. The shape (which bounds exist, inclusive or not) must match.
-    if (const auto *range = dynamic_cast<const RangeExpr *>(&expr);
+    if (const auto *range = AstCast<const RangeExpr>(&expr);
         range && exprType.IsRange() && targetType.IsRange() && exprType.kind == targetType.kind &&
         !targetType.inner.empty()) {
         const TypeRef &element = targetType.inner.front();
@@ -198,7 +198,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         return checked != expressionTypes.end() ? checked->second : CheckExpr(arm);
     };
 
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expr)) {
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expr)) {
         const TypeRef thenType = checkedType(*ternary->thenExpr);
         const TypeRef elseType = checkedType(*ternary->elseExpr);
         if (CanAssignExprTo(*ternary->thenExpr, thenType, targetType) &&
@@ -211,7 +211,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
     // `.Some(v)` in another both take the expected type, as does an unsuffixed `0` taking `int32`. The match then has
     // that type: converting its provisional type as a whole would treat an open `opaque?` as absence whichever arm ran,
     // and would read a literal arm at the default `int` width.
-    if (const auto *match = dynamic_cast<const MatchExpr *>(&expr);
+    if (const auto *match = AstCast<const MatchExpr>(&expr);
         match && !targetType.IsUnknown() &&
         (MentionsNativeType(targetType) || exprType.MentionsIncompleteNative() || targetType.IsNumeric() ||
          targetType.IsBool() || targetType.IsChar())) {
@@ -325,7 +325,7 @@ bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &ex
 
     // An unsuffixed literal has no width of its own yet. It descends through presence and success levels, which it can
     // only enter as a present or successful value, and then targets a sum by its literal kind, never by its value.
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const auto *literal = AstCast<const LiteralExpr>(&expr);
     const bool floatLiteral =
         literal && literal->token.kind == TokenKind::FloatLiteral && NumericLiteralSuffix(literal->token.text).empty();
     if (IsUnsuffixedIntegerLiteral(expr) || floatLiteral) {
@@ -373,7 +373,7 @@ std::optional<std::uint64_t> AnalysisContext::EvalArrayLength(const Expr &expr) 
 // Validate array extents AnalysisContext::and reject flexible arrays everywhere except the
 // final, top-level field of a struct. A nested T[] is never a tail field.
 void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail) {
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+    if (const auto *array = AstCast<const ArrayTypeExpr>(&type)) {
         if (!array->size) {
             if (!allowFlexibleTail) {
                 EmitError(array->location, "flexible array type is only allowed as the final field of a struct");
@@ -382,7 +382,7 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         else if (!EvalArrayLength(*array->size)) {
             // A range where the length goes is the nearest miss to the slice spelling, so it is answered as one.
             std::optional<std::string> help;
-            if (dynamic_cast<const RangeExpr *>(array->size.get())) {
+            if (AstCast<const RangeExpr>(array->size.get())) {
                 help = "write 'T[..]' for a slice";
             }
             EmitError(array->size->location, "array length must be a non-negative compile-time integer", {},
@@ -391,11 +391,11 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         ValidateArrayType(*array->element);
         return;
     }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+    if (const auto *slice = AstCast<const SliceTypeExpr>(&type)) {
         ValidateArrayType(*slice->element);
         return;
     }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+    if (const auto *range = AstCast<const RangeTypeExpr>(&type)) {
         if (range->start) {
             ValidateArrayType(*range->start);
         }
@@ -404,21 +404,21 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         }
         return;
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(&type)) {
         ValidateArrayType(*pointer->pointee);
         return;
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(&type)) {
         ValidateArrayType(*reference->pointee);
         return;
     }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
+    if (const auto *tuple = AstCast<const TupleTypeExpr>(&type)) {
         for (const auto &element : tuple->elements) {
             ValidateArrayType(*element);
         }
         return;
     }
-    if (const auto *function = dynamic_cast<const FunctionTypeExpr *>(&type)) {
+    if (const auto *function = AstCast<const FunctionTypeExpr>(&type)) {
         for (const auto &param : function->params) {
             ValidateArrayType(*param);
         }
@@ -427,7 +427,7 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         }
         return;
     }
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(&type)) {
         for (const auto &arg : named->typeArgs) {
             ValidateArrayType(*arg);
         }

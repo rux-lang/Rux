@@ -64,13 +64,13 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
         const LirReg payloadSlot = EmitIndexPtr(slot, offsetReg, TypeRef::MakeChar8());
         PushPartialCleanupFrame(e.failureCleanups, index, slot);
         // A zero-sized payload has no data bytes to write, and the unit value has nothing to evaluate either.
-        const auto *unit = dynamic_cast<const HirTupleExpr *>(payloadExpr.get());
+        const auto *unit = HirCast<const HirTupleExpr>(payloadExpr.get());
         if (size != 0 || !unit || !unit->elements.empty()) {
             LirReg payload = LowerExpr(*payloadExpr);
             // A tuple or array literal lowers to the address of the storage it was built in, not to its value, so the
             // value is loaded from there before it is stored as the payload.
-            const bool builtAtAddress = dynamic_cast<const HirTupleExpr *>(payloadExpr.get()) ||
-                                        dynamic_cast<const HirArrayExpr *>(payloadExpr.get());
+            const bool builtAtAddress = HirCast<const HirTupleExpr>(payloadExpr.get()) ||
+                                        HirCast<const HirArrayExpr>(payloadExpr.get());
             if (size != 0 && builtAtAddress && !IsTerminated()) {
                 payload = EmitLoad(payload, payloadExpr->type);
             }
@@ -87,7 +87,7 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
 LirReg HirToLirContext::BorrowedNativeSubjectSlot(const HirExpr &subject) {
     // A native subject read through a reference is matched where it lies, so a binding of one of its payloads names
     // the referenced storage rather than a copy of it.
-    const auto *dereference = dynamic_cast<const HirUnaryExpr *>(&subject);
+    const auto *dereference = HirCast<const HirUnaryExpr>(&subject);
     const TypeRef &type = subject.type;
     if (!dereference || dereference->op != TokenKind::Star || !dereference->operand ||
         dereference->operand->type.kind != TypeRef::Kind::Reference ||
@@ -98,25 +98,25 @@ LirReg HirToLirContext::BorrowedNativeSubjectSlot(const HirExpr &subject) {
 }
 
 bool HirToLirContext::PatternBindsAnything(const HirPattern &pattern) {
-    if (dynamic_cast<const HirBindingPattern *>(&pattern)) {
+    if (HirCast<const HirBindingPattern>(&pattern)) {
         return true;
     }
-    if (const auto *enumeration = dynamic_cast<const HirEnumPattern *>(&pattern)) {
+    if (const auto *enumeration = HirCast<const HirEnumPattern>(&pattern)) {
         return std::ranges::any_of(enumeration->args,
                                    [](const HirPatternPtr &argument) { return PatternBindsAnything(*argument); });
     }
-    if (const auto *structure = dynamic_cast<const HirStructPattern *>(&pattern)) {
+    if (const auto *structure = HirCast<const HirStructPattern>(&pattern)) {
         return std::ranges::any_of(
             structure->fields, [](const HirStructPatternField &field) { return PatternBindsAnything(*field.pattern); });
     }
-    if (const auto *tuple = dynamic_cast<const HirTuplePattern *>(&pattern)) {
+    if (const auto *tuple = HirCast<const HirTuplePattern>(&pattern)) {
         return std::ranges::any_of(tuple->elements,
                                    [](const HirPatternPtr &element) { return PatternBindsAnything(*element); });
     }
-    if (const auto *guarded = dynamic_cast<const HirGuardedPattern *>(&pattern)) {
+    if (const auto *guarded = HirCast<const HirGuardedPattern>(&pattern)) {
         return guarded->inner && PatternBindsAnything(*guarded->inner);
     }
-    if (const auto *subset = dynamic_cast<const HirNativeSubsetPattern *>(&pattern)) {
+    if (const auto *subset = HirCast<const HirNativeSubsetPattern>(&pattern)) {
         return subset->binding != nullptr;
     }
     return false;
@@ -166,14 +166,14 @@ std::optional<std::uint32_t> HirToLirContext::UntakenSubjectBlock(const HirExpr 
 }
 
 bool HirToLirContext::PatternTakesEveryValue(const HirPattern &pattern) {
-    if (dynamic_cast<const HirWildcardPattern *>(&pattern) || dynamic_cast<const HirBindingPattern *>(&pattern)) {
+    if (HirCast<const HirWildcardPattern>(&pattern) || HirCast<const HirBindingPattern>(&pattern)) {
         return true;
     }
-    if (const auto *tuple = dynamic_cast<const HirTuplePattern *>(&pattern)) {
+    if (const auto *tuple = HirCast<const HirTuplePattern>(&pattern)) {
         return std::ranges::all_of(tuple->elements,
                                    [](const HirPatternPtr &element) { return PatternTakesEveryValue(*element); });
     }
-    if (const auto *structure = dynamic_cast<const HirStructPattern *>(&pattern)) {
+    if (const auto *structure = HirCast<const HirStructPattern>(&pattern)) {
         return std::ranges::all_of(structure->fields, [](const HirStructPatternField &field) {
             return PatternTakesEveryValue(*field.pattern);
         });
@@ -206,7 +206,7 @@ LirReg HirToLirContext::LowerNativeSubsetPattern(const HirNativeSubsetPattern &p
         const LirReg above = EmitBinary(LirOpcode::CmpGt, tag, member, TypeRef::MakeBool());
         narrowedTag = EmitBinary(LirOpcode::Add, narrowedTag, EmitCast(above, TypeRef::MakeBool(), tagType), tagType);
     }
-    const auto *binding = dynamic_cast<const HirBindingPattern *>(pattern.binding.get());
+    const auto *binding = HirCast<const HirBindingPattern>(pattern.binding.get());
     if (!binding || subjectSlot == LirNoReg) {
         return matched;
     }
@@ -248,10 +248,10 @@ LirReg HirToLirContext::LowerNativeSubsetPattern(const HirNativeSubsetPattern &p
 bool HirToLirContext::ArmsDestructure(const std::vector<HirMatchArm> &arms) {
     return std::ranges::any_of(arms, [](const HirMatchArm &arm) {
         const HirPattern *pattern = arm.pattern.get();
-        while (const auto *guarded = dynamic_cast<const HirGuardedPattern *>(pattern)) {
+        while (const auto *guarded = HirCast<const HirGuardedPattern>(pattern)) {
             pattern = guarded->inner.get();
         }
-        return dynamic_cast<const HirTuplePattern *>(pattern) || dynamic_cast<const HirStructPattern *>(pattern);
+        return HirCast<const HirTuplePattern>(pattern) || HirCast<const HirStructPattern>(pattern);
     });
 }
 
@@ -310,7 +310,7 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
     };
 
     std::vector<Part> parts;
-    if (const auto *tuple = dynamic_cast<const HirTuplePattern *>(&pattern)) {
+    if (const auto *tuple = HirCast<const HirTuplePattern>(&pattern)) {
         for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
             const TypeRef elementType = type.kind == TypeRef::Kind::Tuple && index < type.inner.size()
                                           ? type.inner[index]
@@ -318,7 +318,7 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
             parts.push_back({tuple->elements[index].get(), std::to_string(index), elementType});
         }
     }
-    else if (const auto *structure = dynamic_cast<const HirStructPattern *>(&pattern)) {
+    else if (const auto *structure = HirCast<const HirStructPattern>(&pattern)) {
         for (const HirStructPatternField &field : structure->fields) {
             parts.push_back({field.pattern.get(), field.name, field.type});
         }
@@ -335,14 +335,14 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
             residual->emplace_back(partAddress, part.type);
             residualPayloads = nullptr;
         }
-        if (const auto *binding = dynamic_cast<const HirBindingPattern *>(part.pattern)) {
+        if (const auto *binding = HirCast<const HirBindingPattern>(part.pattern)) {
             bindings.push_back({binding, partAddress, part.type});
         }
-        else if (dynamic_cast<const HirTuplePattern *>(part.pattern) ||
-                 dynamic_cast<const HirStructPattern *>(part.pattern)) {
+        else if (HirCast<const HirTuplePattern>(part.pattern) ||
+                 HirCast<const HirStructPattern>(part.pattern)) {
             EmitDestructuringChecks(*part.pattern, partAddress, part.type, mismatch, bindings);
         }
-        else if (!dynamic_cast<const HirWildcardPattern *>(part.pattern)) {
+        else if (!HirCast<const HirWildcardPattern>(part.pattern)) {
             const LirReg matched =
                 LowerPattern(*part.pattern, MatchSubjectValue(partAddress, part.type), part.type, nullptr, partAddress);
             if (!mismatch) {
@@ -359,7 +359,7 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
 void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
     LirReg subjectSlot = BorrowedNativeSubjectSlot(*s.subject);
     const std::vector<LirReg> *subjectPayload = nullptr;
-    if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(s.subject.get())) {
+    if (auto *subjectVar = HirCast<const HirVarExpr>(s.subject.get())) {
         if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {
             subjectSlot = localIt->second;
             // An addressable variant finds its payload from the subject's own storage. Cached payload addresses
@@ -427,7 +427,7 @@ std::optional<std::uint32_t> HirToLirContext::UnmatchedBlock(const bool exhausti
         return std::nullopt;
     }
     const HirPattern &last = *arms.back().pattern;
-    if (dynamic_cast<const HirWildcardPattern *>(&last) || dynamic_cast<const HirBindingPattern *>(&last)) {
+    if (HirCast<const HirWildcardPattern>(&last) || HirCast<const HirBindingPattern>(&last)) {
         return std::nullopt;
     }
     return NewBlock("match.unmatched");
@@ -446,14 +446,14 @@ void HirToLirContext::EmitUnmatchedTrap(const std::optional<std::uint32_t> block
 ///
 /// Returns a bool register: 1 if the pattern matches `subjectVal`. Side-effects: binds pattern variables into locals.
 void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, const TypeRef &subjectType) {
-    if (const auto *wildcard = dynamic_cast<const HirWildcardPattern *>(&pat)) {
+    if (const auto *wildcard = HirCast<const HirWildcardPattern>(&pat)) {
         if (!wildcard->discardGlue.empty()) {
             EmitDropGlueCall(wildcard->discardGlue, subjectPtr);
         }
         return;
     }
 
-    if (auto *p = dynamic_cast<const HirBindingPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirBindingPattern>(&pat)) {
         const TypeRef bindType = p->type.IsUnknown() ? subjectType : p->type;
         LirReg bindSlot = EmitAlloca(bindType);
         locals[p->name] = bindSlot;
@@ -463,7 +463,7 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
         return;
     }
 
-    if (auto *p = dynamic_cast<const HirTuplePattern *>(&pat)) {
+    if (auto *p = HirCast<const HirTuplePattern>(&pat)) {
         for (std::size_t i = 0; i < p->elements.size(); ++i) {
             TypeRef elemType = TypeRef::MakeUnknown();
             if (subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size()) {
@@ -476,7 +476,7 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
     }
 
     // Each field carries its own type, substituted for a generic structure, and the omitted ones follow as wildcards.
-    if (const auto *p = dynamic_cast<const HirStructPattern *>(&pat)) {
+    if (const auto *p = HirCast<const HirStructPattern>(&pat)) {
         for (const HirStructPatternField &field : p->fields) {
             const LirReg fieldPtr = EmitFieldPtr(subjectPtr, field.name, field.type);
             BindLetPattern(*field.pattern, fieldPtr, field.type);
@@ -486,14 +486,14 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
 
 LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, const TypeRef &subjectType,
                                      const std::vector<LirReg> *enumPayload, LirReg subjectSlot) {
-    if (dynamic_cast<const HirWildcardPattern *>(&pat)) {
+    if (HirCast<const HirWildcardPattern>(&pat)) {
         return EmitConst("1", TypeRef::MakeBool());
     }
-    if (auto *p = dynamic_cast<const HirLiteralPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirLiteralPattern>(&pat)) {
         LirReg lit = EmitConst(p->value, p->type);
         return EmitBinary(LirOpcode::CmpEq, subjectVal, lit, TypeRef::MakeBool());
     }
-    if (auto *p = dynamic_cast<const HirBindingPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirBindingPattern>(&pat)) {
         // A borrowed native payload is named where it lies, so writing through the binding writes the subject.
         if (p->alias && subjectSlot != LirNoReg) {
             // The payload's address is a byte offset into the subject; field access needs it typed as the payload.
@@ -509,15 +509,15 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
         MarkBindingLive(p->bindingId, true);
         return EmitConst("1", TypeRef::MakeBool());
     }
-    if (auto *p = dynamic_cast<const HirRangePattern *>(&pat)) {
+    if (auto *p = HirCast<const HirRangePattern>(&pat)) {
         LirReg lo = LirNoReg, hi = LirNoReg;
-        if (auto *lit = dynamic_cast<const HirLiteralPattern *>(p->lo.get())) {
+        if (auto *lit = HirCast<const HirLiteralPattern>(p->lo.get())) {
             lo = EmitConst(lit->value, subjectType);
         }
         else {
             lo = EmitConst("0", subjectType);
         }
-        if (auto *lit = dynamic_cast<const HirLiteralPattern *>(p->hi.get())) {
+        if (auto *lit = HirCast<const HirLiteralPattern>(p->hi.get())) {
             hi = EmitConst(lit->value, subjectType);
         }
         else {
@@ -529,7 +529,7 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
         return EmitBinary(LirOpcode::And, cmpLo, cmpHi, TypeRef::MakeBool());
     }
 
-    if (auto *p = dynamic_cast<const HirEnumPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirEnumPattern>(&pat)) {
         // Read the tag back at the width it was stored. A C-like enum is stored at its declared base type, so reading
         // it as a full word picked up whatever happened to sit beside it, and the mask below only cleared that when
         // the base type was at least as wide as the mask -- which is why matching an int8- or int16-based enum
@@ -627,15 +627,15 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
         return result;
     }
 
-    if (dynamic_cast<const HirStructPattern *>(&pat) || dynamic_cast<const HirTuplePattern *>(&pat)) {
+    if (HirCast<const HirStructPattern>(&pat) || HirCast<const HirTuplePattern>(&pat)) {
         return LowerDestructuringPattern(pat, subjectVal, subjectType, subjectSlot);
     }
 
-    if (auto *p = dynamic_cast<const HirNativeSubsetPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirNativeSubsetPattern>(&pat)) {
         return LowerNativeSubsetPattern(*p, subjectVal, subjectSlot);
     }
 
-    if (auto *p = dynamic_cast<const HirGuardedPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirGuardedPattern>(&pat)) {
         const LirReg inner = LowerPattern(*p->inner, subjectVal, subjectType, enumPayload, subjectSlot);
         const std::uint32_t guardBlock = NewBlock("pattern.guard");
         const std::uint32_t mismatchBlock = NewBlock("pattern.guard.mismatch");
@@ -716,43 +716,43 @@ void HirToLirContext::StoreTernaryInit(const HirTernaryExpr &e, LirReg slot, con
 }
 
 void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, const TypeRef &type) {
-    if (auto *copy = dynamic_cast<const HirCopyExpr *>(&expr)) {
+    if (auto *copy = HirCast<const HirCopyExpr>(&expr)) {
         StoreCopyIntoSlot(*copy, slot);
         return;
     }
-    if (auto *move = dynamic_cast<const HirMoveExpr *>(&expr)) {
+    if (auto *move = HirCast<const HirMoveExpr>(&expr)) {
         StoreMoveIntoSlot(*move, slot);
         return;
     }
-    if (auto *init = dynamic_cast<const HirStructInitExpr *>(&expr)) {
+    if (auto *init = HirCast<const HirStructInitExpr>(&expr)) {
         StoreStructInit(*init, slot);
         return;
     }
-    if (auto *arrayExpr = dynamic_cast<const HirArrayExpr *>(&expr)) {
+    if (auto *arrayExpr = HirCast<const HirArrayExpr>(&expr)) {
         StoreArrayInit(*arrayExpr, slot);
         return;
     }
-    if (auto *initTupleExpr = dynamic_cast<const HirTupleExpr *>(&expr)) {
+    if (auto *initTupleExpr = HirCast<const HirTupleExpr>(&expr)) {
         StoreTupleInit(*initTupleExpr, slot);
         return;
     }
-    if (auto *initRangeExpr = dynamic_cast<const HirRangeExpr *>(&expr)) {
+    if (auto *initRangeExpr = HirCast<const HirRangeExpr>(&expr)) {
         StoreRangeInit(*initRangeExpr, slot);
         return;
     }
-    if (auto *initTernaryExpr = dynamic_cast<const HirTernaryExpr *>(&expr)) {
+    if (auto *initTernaryExpr = HirCast<const HirTernaryExpr>(&expr)) {
         StoreTernaryInit(*initTernaryExpr, slot, type);
         return;
     }
-    if (auto *initMatchExpr = dynamic_cast<const HirMatchExpr *>(&expr)) {
+    if (auto *initMatchExpr = HirCast<const HirMatchExpr>(&expr)) {
         StoreMatchInit(*initMatchExpr, slot, type);
         return;
     }
-    if (auto *initEnumExpr = dynamic_cast<const HirEnumConstructExpr *>(&expr)) {
+    if (auto *initEnumExpr = HirCast<const HirEnumConstructExpr>(&expr)) {
         StoreEnumConstructIntoSlot(*initEnumExpr, slot);
         return;
     }
-    if (auto *initBlockExpr = dynamic_cast<const HirBlockExpr *>(&expr)) {
+    if (auto *initBlockExpr = HirCast<const HirBlockExpr>(&expr)) {
         LowerBlock(initBlockExpr->block);
         // A block that left the function reaches no slot. Storing anything after its terminator would put an
         // instruction in a block the verifier has already closed.
@@ -764,12 +764,12 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         }
         return;
     }
-    if (auto *initLitExpr = dynamic_cast<const HirLiteralExpr *>(&expr);
+    if (auto *initLitExpr = HirCast<const HirLiteralExpr>(&expr);
         initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
         StoreStringLiteralSlice(*initLitExpr, slot);
         return;
     }
-    if (auto *coerce = dynamic_cast<const HirArrayToSliceExpr *>(&expr)) {
+    if (auto *coerce = HirCast<const HirArrayToSliceExpr>(&expr)) {
         StoreArrayToSlice(*coerce, slot);
         return;
     }
@@ -783,7 +783,7 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         return;
     }
 
-    if (auto *coerce = dynamic_cast<const HirCoerceToInterfaceExpr *>(&expr)) {
+    if (auto *coerce = HirCast<const HirCoerceToInterfaceExpr>(&expr)) {
         StoreCoerceToInterface(*coerce, slot);
         return;
     }
@@ -1074,7 +1074,7 @@ LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
 void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const TypeRef &type) {
     LirReg subjectSlot = BorrowedNativeSubjectSlot(*e.subject);
     const std::vector<LirReg> *subjectPayload = nullptr;
-    if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(e.subject.get())) {
+    if (auto *subjectVar = HirCast<const HirVarExpr>(e.subject.get())) {
         if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {
             subjectSlot = localIt->second;
             // An addressable variant finds its payload from the subject's own storage. Cached payload addresses

@@ -129,11 +129,11 @@ void AnalysisContext::CheckFormatArguments(const CallExpr &call, const FuncDecl 
     }
     // A spread hands over a slice whose length is a run-time value.
     for (std::size_t index = fixedCount; index < call.args.size(); ++index) {
-        if (dynamic_cast<const SpreadExpr *>(call.args[index].get())) {
+        if (AstCast<const SpreadExpr>(call.args[index].get())) {
             return;
         }
     }
-    const auto *literal = dynamic_cast<const LiteralExpr *>(call.args[formatIndex].get());
+    const auto *literal = AstCast<const LiteralExpr>(call.args[formatIndex].get());
     if (!literal || literal->token.kind != TokenKind::StringLiteral) {
         return;
     }

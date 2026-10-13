@@ -91,7 +91,7 @@ void AnalysisContext::EmitDiagnosticIntrinsic(const std::string &intrinsicName, 
         EmitError(location, std::format("'{}' expects exactly one string argument", intrinsicName));
         return;
     }
-    const auto *literal = dynamic_cast<const LiteralExpr *>(call.args[0].get());
+    const auto *literal = AstCast<const LiteralExpr>(call.args[0].get());
     if (!literal || literal->token.kind != TokenKind::StringLiteral) {
         EmitError(call.args[0]->location, std::format("'{}' message must be a string literal", intrinsicName));
         return;
@@ -314,10 +314,10 @@ std::optional<std::pair<std::int64_t, std::int64_t>> AnalysisContext::SignedInte
 /// exact however wide the target is.
 bool AnalysisContext::UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeRef &target) const {
     bool negative = false;
-    const LiteralExpr *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const LiteralExpr *literal = AstCast<const LiteralExpr>(&expr);
     if (!literal) {
-        if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr); unary && unary->op == TokenKind::Minus) {
-            literal = dynamic_cast<const LiteralExpr *>(unary->operand.get());
+        if (const auto *unary = AstCast<const UnaryExpr>(&expr); unary && unary->op == TokenKind::Minus) {
+            literal = AstCast<const LiteralExpr>(unary->operand.get());
         }
         if (!literal) {
             return false;
@@ -340,18 +340,18 @@ bool AnalysisContext::UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeR
 }
 
 bool AnalysisContext::IsNullLiteral(const Expr &expr) {
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const auto *literal = AstCast<const LiteralExpr>(&expr);
     return literal && literal->token.kind == TokenKind::NullKeyword;
 }
 
 bool AnalysisContext::IsUnsuffixedIntegerLiteral(const Expr &expr) {
-    const LiteralExpr *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const LiteralExpr *literal = AstCast<const LiteralExpr>(&expr);
     if (!literal) {
-        const auto *unary = dynamic_cast<const UnaryExpr *>(&expr);
+        const auto *unary = AstCast<const UnaryExpr>(&expr);
         if (!unary || unary->op != TokenKind::Minus) {
             return false;
         }
-        literal = dynamic_cast<const LiteralExpr *>(unary->operand.get());
+        literal = AstCast<const LiteralExpr>(unary->operand.get());
     }
     return literal && literal->token.kind == TokenKind::IntLiteral && NumericLiteralSuffix(literal->token.text).empty();
 }
@@ -369,11 +369,11 @@ std::string AnalysisContext::ImmutableAddressOfHint(const Expr &expr, const Type
     if (targetType.kind != TypeRef::Kind::Pointer || targetType.inner.empty() || !targetType.inner[0].isMut) {
         return {};
     }
-    const auto *addressOf = dynamic_cast<const UnaryExpr *>(&expr);
+    const auto *addressOf = AstCast<const UnaryExpr>(&expr);
     if (!addressOf || addressOf->op != TokenKind::At) {
         return {};
     }
-    const auto *ident = dynamic_cast<const IdentExpr *>(addressOf->operand.get());
+    const auto *ident = AstCast<const IdentExpr>(addressOf->operand.get());
     if (!ident) {
         return ": the addressed place is immutable and yields a read-only '*T'";
     }
@@ -391,7 +391,7 @@ std::string AnalysisContext::ImmutableAddressOfHint(const Expr &expr, const Type
 // names the character the way the prefixed form's own diagnostic does rather than reporting its default 'char32'.
 std::optional<std::string> AnalysisContext::UnfitCharacterLiteralMessage(const Expr &expression,
                                                                          const TypeRef &targetType) {
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    const auto *literal = AstCast<const LiteralExpr>(&expression);
     if (!literal || literal->token.kind != TokenKind::CharLiteral || !literal->token.text.starts_with('\'') ||
         !targetType.IsChar()) {
         return std::nullopt;
@@ -420,7 +420,7 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
     }
     // A literal's code units live in the read-only section the linker places them in, so the one view that can name
     // them is a read-only one; the refusal says why rather than reporting a mismatch of writability.
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    if (const auto *literal = AstCast<const LiteralExpr>(&expr);
         literal && literal->token.kind == TokenKind::StringLiteral && targetType.IsWritableSlice()) {
         return std::format("cannot assign string literal to '{}' because literal text is stored in a read-only section",
                            targetType.ToString());
@@ -428,10 +428,10 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
     if (const std::string hint = ImmutableAddressOfHint(expr, targetType); !hint.empty()) {
         return fallback + hint;
     }
-    if (dynamic_cast<const NoneExpr *>(&expr)) {
+    if (AstCast<const NoneExpr>(&expr)) {
         return std::format("'none' needs an expected optional type, but found '{}'", targetType.ToString());
     }
-    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {
         const std::string_view name = construct->kind == NativeConstructExpr::Kind::Some    ? "Some"
                                     : construct->kind == NativeConstructExpr::Kind::Success ? "Success"
                                                                                             : "Failure";
@@ -487,7 +487,7 @@ FoldedInteger FoldIntegerExpression(const Expr &expr, const Leaf &leaf) {
     using I = std::int64_t;
     using U = std::uint64_t;
 
-    if (const auto *un = dynamic_cast<const UnaryExpr *>(&expr)) {
+    if (const auto *un = AstCast<const UnaryExpr>(&expr)) {
         const auto v = FoldIntegerExpression(*un->operand, leaf);
         if (!v) {
             return std::nullopt;
@@ -504,7 +504,7 @@ FoldedInteger FoldIntegerExpression(const Expr &expr, const Leaf &leaf) {
         }
     }
 
-    if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr)) {
+    if (const auto *bin = AstCast<const BinaryExpr>(&expr)) {
         const auto l = FoldIntegerExpression(*bin->left, leaf);
         const auto r = FoldIntegerExpression(*bin->right, leaf);
         if (!l || !r) {
@@ -571,7 +571,7 @@ FoldedInteger WordValue(const std::optional<std::uint64_t> value) {
 // checking.
 std::optional<std::int64_t> AnalysisContext::EvalConstInt(const Expr &expr) {
     return FoldIntegerExpression(expr, [](const Expr &leaf) -> FoldedInteger {
-        const auto *literal = dynamic_cast<const LiteralExpr *>(&leaf);
+        const auto *literal = AstCast<const LiteralExpr>(&leaf);
         if (!literal || literal->token.kind != TokenKind::IntLiteral ||
             !NumericLiteralSuffix(literal->token.text).empty()) {
             return std::nullopt;
@@ -594,7 +594,7 @@ std::optional<std::int64_t> AnalysisContext::EvalConstInteger(const Expr &expr, 
         if (!symbol || symbol->kind != Symbol::Kind::Const || !symbol->intrinsicName.empty()) {
             return std::nullopt;
         }
-        const auto *declaration = dynamic_cast<const ConstDecl *>(symbol->declaration);
+        const auto *declaration = AstCast<const ConstDecl>(symbol->declaration);
         if (!declaration || !declaration->value || !active.insert(declaration).second) {
             return std::nullopt;
         }
@@ -609,14 +609,14 @@ std::optional<std::int64_t> AnalysisContext::EvalConstInteger(const Expr &expr, 
         return value;
     };
     return FoldIntegerExpression(expr, [&](const Expr &leaf) -> FoldedInteger {
-        if (const auto *literal = dynamic_cast<const LiteralExpr *>(&leaf)) {
+        if (const auto *literal = AstCast<const LiteralExpr>(&leaf)) {
             return literal->token.kind == TokenKind::IntLiteral ? WordValue(ParseIntegerLiteralValue(literal->token))
                                                                 : std::nullopt;
         }
-        if (const auto *identifier = dynamic_cast<const IdentExpr *>(&leaf)) {
+        if (const auto *identifier = AstCast<const IdentExpr>(&leaf)) {
             return constant(scope.Lookup(identifier->name));
         }
-        if (const auto *path = dynamic_cast<const PathExpr *>(&leaf); path && path->segments.size() >= 2) {
+        if (const auto *path = AstCast<const PathExpr>(&leaf); path && path->segments.size() >= 2) {
             const Symbol *current = scope.Lookup(path->segments[0]);
             for (std::size_t i = 1; current && i < path->segments.size(); ++i) {
                 if (current->kind != Symbol::Kind::Module || !current->moduleScope) {
@@ -629,8 +629,8 @@ std::optional<std::int64_t> AnalysisContext::EvalConstInteger(const Expr &expr, 
             }
             return constant(current);
         }
-        if (const auto *cast = dynamic_cast<const CastExpr *>(&leaf)) {
-            const auto *named = dynamic_cast<const NamedTypeExpr *>(cast->type.get());
+        if (const auto *cast = AstCast<const CastExpr>(&leaf)) {
+            const auto *named = AstCast<const NamedTypeExpr>(cast->type.get());
             const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
             const FoldedInteger value = EvalConstInteger(*cast->operand, scope, active);
             if (!type || !type->IsInteger() || !value || !ConstantFitsTarget(*value, *type)) {
@@ -658,7 +658,7 @@ bool AnalysisContext::ConstantFitsTarget(std::int64_t value, const TypeRef &targ
 }
 
 std::optional<WideInteger> AnalysisContext::EvalConstCharCastValue(const Expr &expr) {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expr)) {
         if (literal->token.kind == TokenKind::CharLiteral) {
             if (const auto codePoint = Lexer::DecodeCharLiteralCodePoint(literal->token.text)) {
                 return WideInteger::FromUnsigned(*codePoint, WideInteger::MaxBits);

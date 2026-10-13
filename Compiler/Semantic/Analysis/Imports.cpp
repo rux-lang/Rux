@@ -36,11 +36,11 @@ void AnalysisContext::ApplyModuleImportsInScope(const Module &mod, Scope &scope)
 }
 
 void AnalysisContext::ApplyDeclImports(const Decl &decl) {
-    if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
+    if (auto *useDecl = AstCast<const UseDecl>(&decl)) {
         CheckUseDecl(*useDecl);
         appliedImports.insert(useDecl);
     }
-    else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+    else if (auto *modDecl = AstCast<const ModuleDecl>(&decl)) {
         Scope *savedScope = currentScope;
         currentScope = &ModuleScopeFor(modDecl->name, *currentScope);
         for (const auto &item : modDecl->items) {
@@ -314,25 +314,25 @@ void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,
     };
 
     auto visitType = [&](this auto &&self, const TypeExpr &type) -> void {
-        if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
+        if (const auto *named = AstCast<const NamedTypeExpr>(&type)) {
             importNamedType(named->name);
             for (const auto &arg : named->typeArgs) {
                 self(*arg);
             }
         }
-        else if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(&type)) {
+        else if (const auto *ptr = AstCast<const PointerTypeExpr>(&type)) {
             self(*ptr->pointee);
         }
-        else if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+        else if (const auto *reference = AstCast<const ReferenceTypeExpr>(&type)) {
             self(*reference->pointee);
         }
-        else if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+        else if (const auto *array = AstCast<const ArrayTypeExpr>(&type)) {
             self(*array->element);
         }
-        else if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+        else if (const auto *slice = AstCast<const SliceTypeExpr>(&type)) {
             self(*slice->element);
         }
-        else if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+        else if (const auto *range = AstCast<const RangeTypeExpr>(&type)) {
             if (range->start) {
                 self(*range->start);
             }
@@ -340,12 +340,12 @@ void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,
                 self(*range->end);
             }
         }
-        else if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
+        else if (const auto *tuple = AstCast<const TupleTypeExpr>(&type)) {
             for (const auto &elem : tuple->elements) {
                 self(*elem);
             }
         }
-        else if (const auto *fn = dynamic_cast<const FunctionTypeExpr *>(&type)) {
+        else if (const auto *fn = AstCast<const FunctionTypeExpr>(&type)) {
             for (const auto &param : fn->params) {
                 self(*param);
             }

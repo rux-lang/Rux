@@ -32,8 +32,8 @@ std::optional<TypeRef::Kind> AnalysisContext::PrimitiveProviders(const Symbol &s
             }
             break;
         }
-        const auto *alias = dynamic_cast<const TypeAliasDecl *>(candidate->declaration);
-        const auto *named = alias ? dynamic_cast<const NamedTypeExpr *>(alias->type.get()) : nullptr;
+        const auto *alias = AstCast<const TypeAliasDecl>(candidate->declaration);
+        const auto *named = alias ? AstCast<const NamedTypeExpr>(alias->type.get()) : nullptr;
         const auto info = alias ? declarationInfos.find(alias) : declarationInfos.end();
         if (!named || !named->typeArgs.empty() || info == declarationInfos.end() || !info->second.scope ||
             !visited.insert(alias).second) {

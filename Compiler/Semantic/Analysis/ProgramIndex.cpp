@@ -29,7 +29,7 @@ std::string BaseTypeName(const std::string &name) {
 ///
 /// @return nullopt when `type` is not such a name
 std::optional<TypeRef> ProvisionalRepresentation(const TypeExpr &type) {
-    const auto *named = dynamic_cast<const NamedTypeExpr *>(&type);
+    const auto *named = AstCast<const NamedTypeExpr>(&type);
     if (!named || !named->typeArgs.empty()) {
         return std::nullopt;
     }
@@ -246,7 +246,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         if (function.returnType)
             typeOwners.emplace(function.returnType->get(), owner);
     };
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
+    if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
         for (const auto &field : structure->fields)
             ownType(field.type.get());
         for (const auto &parameter : structure->typeParams) {
@@ -254,7 +254,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                 ownType(bound.get());
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         ownType(enumeration->baseType.get());
         for (const auto &parameter : enumeration->typeParams) {
             for (const auto &bound : parameter.bounds)
@@ -267,27 +267,27 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                 ownType(field.type.get());
         }
     }
-    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
+    else if (const auto *unionType = AstCast<const UnionDecl>(&declaration)) {
         for (const auto &field : unionType->fields)
             ownType(field.type.get());
     }
-    else if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
+    else if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
         ownFunctionTypes(*function);
     }
-    else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&declaration)) {
+    else if (const auto *implementation = AstCast<const ImplDecl>(&declaration)) {
         ownType(implementation->extendedType.get());
         for (const auto &method : implementation->methods)
             ownFunctionTypes(*method);
     }
-    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
+    else if (const auto *interface = AstCast<const InterfaceDecl>(&declaration)) {
         for (const auto &method : interface->methods) {
             ownFunctionTypes(*method, interface);
         }
     }
-    else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
+    else if (const auto *alias = AstCast<const TypeAliasDecl>(&declaration)) {
         ownType(alias->type.get());
     }
-    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&declaration)) {
+    else if (const auto *global = AstCast<const GlobalDecl>(&declaration)) {
         ownType(global->type.get());
     }
     auto defineSimple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind publicKind,
@@ -308,7 +308,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         }
     };
 
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
+    if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
         functionScopes[function] = &scope;
         functionSources[function] = sourceName;
         functions[function->name].push_back(function);
@@ -334,23 +334,23 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                 {SemanticSymbol::Kind::Func, function->name, sourceName, function->location, {}, false});
         }
     }
-    else if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
+    else if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
         structs[structure->name] = structure;
         nominalDeclarations.emplace_back(structure->name, structure);
         defineSimple(Symbol::Kind::Type, structure->name, SemanticSymbol::Kind::Type, "struct");
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         enums[enumeration->name] = enumeration;
         nominalDeclarations.emplace_back(enumeration->name, enumeration);
         defineSimple(Symbol::Kind::Type, enumeration->name, SemanticSymbol::Kind::Type,
                      enumeration->IsVariant() ? "variant" : "enum");
     }
-    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
+    else if (const auto *unionType = AstCast<const UnionDecl>(&declaration)) {
         unions[unionType->name] = unionType;
         nominalDeclarations.emplace_back(unionType->name, unionType);
         defineSimple(Symbol::Kind::Type, unionType->name, SemanticSymbol::Kind::Type, "union");
     }
-    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
+    else if (const auto *interface = AstCast<const InterfaceDecl>(&declaration)) {
         interfaces[interface->name] = interface;
         nominalDeclarations.emplace_back(interface->name, interface);
         Symbol symbol;
@@ -370,7 +370,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                      "interface", false});
         }
     }
-    else if (const auto *constant = dynamic_cast<const ConstDecl *>(&declaration)) {
+    else if (const auto *constant = AstCast<const ConstDecl>(&declaration)) {
         Symbol symbol;
         symbol.kind = Symbol::Kind::Const;
         symbol.name = constant->name;
@@ -391,7 +391,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
     }
-    else if (const auto *global = dynamic_cast<const GlobalDecl *>(&declaration)) {
+    else if (const auto *global = AstCast<const GlobalDecl>(&declaration)) {
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
         symbol.name = global->name;
@@ -410,7 +410,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
     }
-    else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
+    else if (const auto *alias = AstCast<const TypeAliasDecl>(&declaration)) {
         Symbol symbol;
         symbol.kind = Symbol::Kind::Type;
         symbol.name = alias->name;
@@ -428,7 +428,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&declaration)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&declaration)) {
         externFunctions.push_back(externFunction);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Func;
@@ -444,15 +444,15 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                      externFunction->location, "extern", false});
         }
     }
-    else if (const auto *externVariable = dynamic_cast<const ExternVarDecl *>(&declaration)) {
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&declaration)) {
         defineSimple(Symbol::Kind::Var, externVariable->name, SemanticSymbol::Kind::Var, "extern", true);
     }
-    else if (const auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&declaration)) {
+    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&declaration)) {
         for (const auto &item : externBlock->items) {
             CollectDeclaration(*item, scope, sourceName, resolveType, packageName, modulePath, containingModulesPublic);
         }
     }
-    else if (const auto *module = dynamic_cast<const ModuleDecl *>(&declaration)) {
+    else if (const auto *module = AstCast<const ModuleDecl>(&declaration)) {
         const std::string childPath = JoinModulePath(modulePath, module->name);
         Scope *moduleScope = nullptr;
         if (Symbol *existing = scope.Lookup(module->name);
@@ -485,7 +485,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                isEffectivelyPublic);
         }
     }
-    else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&declaration)) {
+    else if (const auto *implementation = AstCast<const ImplDecl>(&declaration)) {
         implementations.push_back(implementation);
         for (const auto &member : implementation->constants) {
             declarationInfos.insert_or_assign(
@@ -551,11 +551,11 @@ const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::TypeOwner(con
 const std::string &SemanticProgramIndex::NominalName(const Decl &declaration) const {
     if (const auto identity = nominalNames.find(&declaration); identity != nominalNames.end())
         return identity->second;
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration))
+    if (const auto *structure = AstCast<const StructDecl>(&declaration))
         return structure->name;
-    if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration))
+    if (const auto *enumeration = AstCast<const EnumDecl>(&declaration))
         return enumeration->name;
-    if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration))
+    if (const auto *unionType = AstCast<const UnionDecl>(&declaration))
         return unionType->name;
     return static_cast<const InterfaceDecl &>(declaration).name;
 }
@@ -576,13 +576,13 @@ void SemanticProgramIndex::FinalizeNominalIdentities() {
         const std::string identity =
             owners[name].size() > 1 ? JoinModulePath(JoinModulePath(info.ownerPackage, info.modulePath), name) : name;
         nominalNames.emplace(declaration, identity);
-        if (const auto *structure = dynamic_cast<const StructDecl *>(declaration))
+        if (const auto *structure = AstCast<const StructDecl>(declaration))
             structs[identity] = structure;
-        else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(declaration))
+        else if (const auto *enumeration = AstCast<const EnumDecl>(declaration))
             enums[identity] = enumeration;
-        else if (const auto *unionType = dynamic_cast<const UnionDecl *>(declaration))
+        else if (const auto *unionType = AstCast<const UnionDecl>(declaration))
             unions[identity] = unionType;
-        else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(declaration))
+        else if (const auto *interface = AstCast<const InterfaceDecl>(declaration))
             interfaces[identity] = interface;
         if (Symbol *symbol = info.scope->LookupLocal(name)) {
             symbol->type = TypeRef::MakeNamed(identity);

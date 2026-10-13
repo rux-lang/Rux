@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace Rux {
@@ -935,6 +936,19 @@ struct Module {
     bool bodiesNeedConditionalFolding = true;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
 };
+
+/**
+ * @brief `dynamic_cast` to a concrete node type.
+ *
+ * Every concrete node type derives directly from one of the node bases (`Expr`, `Stmt`, `Decl`, `TypeExpr`, `Pattern`)
+ * and nothing derives from it, so a node is a `T` exactly when its dynamic type is `T`. Comparing type identities is
+ * far cheaper than the general hierarchy walk `dynamic_cast` performs, which had been the largest single cost of
+ * semantic analysis.
+ */
+template <typename T, typename Node>
+[[nodiscard]] inline T *AstCast(Node *node) noexcept {
+    return node != nullptr && typeid(*node) == typeid(T) ? static_cast<T *>(node) : nullptr;
+}
 
 inline ArrayTypeExpr::~ArrayTypeExpr() = default;
 inline BlockExpr::~BlockExpr() = default;

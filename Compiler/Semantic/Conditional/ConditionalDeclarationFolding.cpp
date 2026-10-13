@@ -107,15 +107,15 @@ private:
             if (!decl) {
                 continue;
             }
-            if (auto *function = dynamic_cast<ExternFuncDecl *>(decl.get())) {
+            if (auto *function = AstCast<ExternFuncDecl>(decl.get())) {
                 ResolveLinkConstant(function->dllConst, function->dll, function->location, "library name");
                 ResolveLinkConstant(function->symbolNameConst, function->symbolName, function->location, "symbol name");
             }
-            else if (auto *block = dynamic_cast<ExternBlockDecl *>(decl.get())) {
+            else if (auto *block = AstCast<ExternBlockDecl>(decl.get())) {
                 ResolveLinkConstant(block->dllConst, block->dll, block->location, "library name");
                 ResolveLinkConstants(block->items);
             }
-            else if (auto *module = dynamic_cast<ModuleDecl *>(decl.get())) {
+            else if (auto *module = AstCast<ModuleDecl>(decl.get())) {
                 ResolveLinkConstants(module->items);
             }
         }
@@ -130,7 +130,7 @@ private:
             if (!decl) {
                 continue;
             }
-            auto *when = dynamic_cast<WhenDecl *>(decl.get());
+            auto *when = AstCast<WhenDecl>(decl.get());
             if (when && when->matchSubject) {
                 const int idx = SelectMatchArm(*when->matchSubject, BorrowArmPatterns(when->branches), when->location);
                 if (idx >= 0) {
@@ -152,7 +152,7 @@ private:
                 continue;
             }
             if (!when) {
-                if (auto *module = dynamic_cast<ModuleDecl *>(decl.get())) {
+                if (auto *module = AstCast<ModuleDecl>(decl.get())) {
                     const std::string savedModule = currentModulePath;
                     currentModulePath =
                         currentModulePath.empty() ? module->name : currentModulePath + "::" + module->name;
@@ -161,7 +161,7 @@ private:
                     currentModulePath = savedModule;
                     SyncEvaluatorContext();
                 }
-                else if (auto *impl = dynamic_cast<ImplDecl *>(decl.get())) {
+                else if (auto *impl = AstCast<ImplDecl>(decl.get())) {
                     ResolveImplConditionals(*impl);
                 }
                 retained.emplace_back(resolved.size(), &decl);
@@ -202,12 +202,12 @@ private:
                     if (!item) {
                         continue;
                     }
-                    if (auto *constant = dynamic_cast<ConstDecl *>(item.get())) {
+                    if (auto *constant = AstCast<ConstDecl>(item.get())) {
                         item.release();
                         impl.constants.emplace_back(constant);
                         continue;
                     }
-                    auto *method = dynamic_cast<FuncDecl *>(item.get());
+                    auto *method = AstCast<FuncDecl>(item.get());
                     if (!method) {
                         EmitError(item->location,
                                   "only methods and constants can be declared inside an 'extend' block");

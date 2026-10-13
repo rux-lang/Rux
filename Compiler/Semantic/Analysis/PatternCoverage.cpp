@@ -270,11 +270,11 @@ private:
 
 /// Whether a pattern is an `else` arm: the parser writes `else` as the only top-level wildcard a match arm can have.
 bool IsElseArm(const Pattern &pattern) {
-    return dynamic_cast<const WildcardPattern *>(&pattern) != nullptr;
+    return AstCast<const WildcardPattern>(&pattern) != nullptr;
 }
 
 const Pattern &UnguardedPattern(const Pattern &pattern) {
-    const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern);
+    const auto *guarded = AstCast<const GuardedPattern>(&pattern);
     return guarded && guarded->inner ? *guarded->inner : pattern;
 }
 
@@ -311,10 +311,10 @@ void AnalysisContext::RecordPatternBinding(const Pattern &pattern, Symbol &symbo
 bool AnalysisContext::RejectSubsetViewUse(const Expr &expression, const SourceLocation location,
                                           const std::string_view use) {
     const Expr *named = &expression;
-    if (const auto *move = dynamic_cast<const MoveExpr *>(named)) {
+    if (const auto *move = AstCast<const MoveExpr>(named)) {
         named = move->operand.get();
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(named);
+    const auto *identifier = AstCast<const IdentExpr>(named);
     const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
     if (!symbol || !symbol->isSubsetView) {
         return false;
@@ -335,27 +335,27 @@ void AnalysisContext::CheckGuardKeepsBindings(const GuardedPattern &pattern) {
                 self(*child);
             }
         };
-        if (const auto *identifier = dynamic_cast<const IdentPattern *>(&candidate)) {
+        if (const auto *identifier = AstCast<const IdentPattern>(&candidate)) {
             names.emplace_back(identifier->name, identifier->location);
         }
-        else if (const auto *typed = dynamic_cast<const TypedPattern *>(&candidate)) {
+        else if (const auto *typed = AstCast<const TypedPattern>(&candidate)) {
             if (!typed->name.empty()) {
                 names.emplace_back(typed->name, typed->location);
             }
         }
-        else if (const auto *presence = dynamic_cast<const PresencePattern *>(&candidate)) {
+        else if (const auto *presence = AstCast<const PresencePattern>(&candidate)) {
             visit(presence->inner);
         }
-        else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&candidate)) {
+        else if (const auto *enumeration = AstCast<const EnumPattern>(&candidate)) {
             std::ranges::for_each(enumeration->args, visit);
             for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
                 visit(argument.pattern);
             }
         }
-        else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&candidate)) {
+        else if (const auto *tuple = AstCast<const TuplePattern>(&candidate)) {
             std::ranges::for_each(tuple->elements, visit);
         }
-        else if (const auto *structure = dynamic_cast<const StructPattern *>(&candidate)) {
+        else if (const auto *structure = AstCast<const StructPattern>(&candidate)) {
             for (const StructPattern::Field &field : structure->fields) {
                 visit(field.pattern);
             }
@@ -474,7 +474,7 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
         return std::nullopt;
     };
 
-    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         if (enumeration->path.size() < 2) {
             // An unqualified case on a sum names no member; offer the qualified spelling when one member has the case.
             const std::string &caseName = enumeration->path.empty() ? std::string() : enumeration->path.front();
@@ -496,10 +496,10 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
         }
         return single(membersNamed(enumeration->path.front()), variantName, "variant");
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         return single(membersNamed(structure->typeName), structure->typeName, "type");
     }
-    if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+    if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
         const Token &token = literal->value;
         const bool unsuffixedInteger =
             token.kind == TokenKind::IntLiteral && NumericLiteralSuffix(std::string_view(token.text)).empty();
@@ -529,7 +529,7 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
         *help = "add a literal suffix, or select the member with a typed pattern first";
         return std::nullopt;
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         std::vector<std::size_t> found;
         for (std::size_t index = 0; index < sum.inner.size(); ++index) {
             const TypeRef &member = sum.inner[index];
@@ -641,28 +641,28 @@ void AnalysisContext::DefinePatternBindings(const Pattern &pattern) {
             DefinePatternBindings(*child);
         }
     };
-    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         define(identifier->name, identifier->location);
     }
-    else if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+    else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         define(typed->name, typed->location);
     }
-    else if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         visit(guarded->inner);
     }
-    else if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         visit(presence->inner);
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         std::ranges::for_each(enumeration->args, visit);
         for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
             visit(argument.pattern);
         }
     }
-    else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         std::ranges::for_each(tuple->elements, visit);
     }
-    else if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         for (const StructPattern::Field &field : structure->fields) {
             visit(field.pattern);
         }
@@ -808,30 +808,30 @@ public:
         if (type.IsUnknown()) {
             return {};
         }
-        if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+        if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
             return guarded->inner ? Translate(*guarded->inner, type) : Space{};
         }
-        if (dynamic_cast<const WildcardPattern *>(&pattern) || dynamic_cast<const IdentPattern *>(&pattern)) {
+        if (AstCast<const WildcardPattern>(&pattern) || AstCast<const IdentPattern>(&pattern)) {
             return {};
         }
-        if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+        if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
             return TranslateTyped(*typed, type);
         }
-        if (dynamic_cast<const NonePattern *>(&pattern)) {
+        if (AstCast<const NonePattern>(&pattern)) {
             return type.IsOptional() ? Space::Of(0, {}) : Space{};
         }
-        if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+        if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
             if (!type.IsOptional() || !presence->inner) {
                 return {};
             }
             return Space::Of(1, {Translate(*presence->inner, type.inner.front())});
         }
-        if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+        if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
             if (const std::optional<Space> native = TranslateNativeCase(*enumeration, type)) {
                 return *native;
             }
         }
-        if (type.IsSum() && !dynamic_cast<const RangePattern *>(&pattern)) {
+        if (type.IsSum() && !AstCast<const RangePattern>(&pattern)) {
             std::string issue;
             std::optional<std::string> help;
             const std::optional<std::size_t> member = analysis.SumMemberOfPattern(pattern, type, &issue, &help);
@@ -841,19 +841,19 @@ public:
             }
             return Space::Of(*member, {Translate(pattern, type.inner[*member])});
         }
-        if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+        if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
             return TranslateNominalCase(*enumeration, type);
         }
-        if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+        if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
             if (type.IsBool() && literal->value.kind == TokenKind::BoolLiteral) {
                 return Space::Of(literal->value.text == "true" ? 1 : 0, {});
             }
             return Space::Value("literal:" + literal->value.text);
         }
-        if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+        if (const auto *range = AstCast<const RangePattern>(&pattern)) {
             return Space::Value(std::format("range:{}", static_cast<const void *>(range)));
         }
-        if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+        if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
             if (type.kind != TypeRef::Kind::Tuple || type.inner.size() != tuple->elements.size()) {
                 return {};
             }
@@ -864,11 +864,11 @@ public:
             }
             return Space::Of(0, std::move(fields));
         }
-        if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+        if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
             // A struct is open to coverage: it completes its position only when every field pattern matches anything.
             const bool irrefutable = std::ranges::all_of(structure->fields, [](const StructPattern::Field &field) {
-                return !field.pattern || dynamic_cast<const WildcardPattern *>(field.pattern.get()) ||
-                       dynamic_cast<const IdentPattern *>(field.pattern.get());
+                return !field.pattern || AstCast<const WildcardPattern>(field.pattern.get()) ||
+                       AstCast<const IdentPattern>(field.pattern.get());
             });
             return irrefutable ? Space{} : Space::Value(std::format("struct:{}", static_cast<const void *>(structure)));
         }
@@ -1049,7 +1049,7 @@ bool AnalysisContext::NativeMatchCoverage(const std::vector<const Pattern *> &pa
         if (!pattern) {
             continue;
         }
-        const bool guarded = dynamic_cast<const GuardedPattern *>(pattern) != nullptr;
+        const bool guarded = AstCast<const GuardedPattern>(pattern) != nullptr;
         const bool invalidBefore = translator.sawInvalidSelection;
         translator.sawInvalidSelection = false;
         const Space space = translator.Translate(UnguardedPattern(*pattern), subjectType);
@@ -1092,7 +1092,7 @@ std::optional<std::string> AnalysisContext::MissingMatchValues(const std::vector
     std::vector<Row> rows;
     for (const Pattern *pattern : patterns) {
         // A guarded arm may refuse any value it matches, so it covers nothing.
-        if (pattern && !dynamic_cast<const GuardedPattern *>(pattern)) {
+        if (pattern && !AstCast<const GuardedPattern>(pattern)) {
             rows.push_back(Row{translator.Translate(*pattern, subjectType)});
         }
     }
@@ -1140,25 +1140,25 @@ bool AnalysisContext::PatternContains(const Pattern &pattern, const Pattern &tar
         return true;
     }
     const auto contains = [&](const PatternPtr &child) { return child && PatternContains(*child, target); };
-    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         return contains(guarded->inner);
     }
-    if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         return contains(presence->inner);
     }
-    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         return std::ranges::any_of(enumeration->args, contains) ||
                std::ranges::any_of(enumeration->namedArgs,
                                    [&](const EnumPattern::NamedArg &argument) { return contains(argument.pattern); });
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         return std::ranges::any_of(tuple->elements, contains);
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         return std::ranges::any_of(structure->fields,
                                    [&](const StructPattern::Field &field) { return contains(field.pattern); });
     }
-    if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+    if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         return contains(range->lo) || contains(range->hi);
     }
     return false;

@@ -398,7 +398,7 @@ TypeRef AnalysisContext::CheckShortCircuitExpression(const BinaryExpr &expressio
     const TypeRef right = CheckExpr(*expression.right);
     const TrackedFlow evaluatedExit = SaveTrackedFlow();
 
-    const auto *literal = dynamic_cast<const LiteralExpr *>(expression.left.get());
+    const auto *literal = AstCast<const LiteralExpr>(expression.left.get());
     const bool hasConstantLeft = literal && literal->token.kind == TokenKind::BoolLiteral;
     const bool evaluatesRight =
         hasConstantLeft && ((expression.op == TokenKind::AmpAmp && literal->token.text == "true") ||
@@ -461,32 +461,32 @@ TypeRef AnalysisContext::CheckTernaryExpression(const TernaryExpr &expression) {
 /// pattern or a tuple pattern takes a piece of the subject and gives it a name. That is the difference between
 /// looking at a value and taking it apart.
 bool PatternBindsValue(const Pattern &pattern) {
-    if (dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (AstCast<const IdentPattern>(&pattern)) {
         return true;
     }
     // `v: T` binds its selection, while `_: T` only selects; `p?` binds whatever `p` binds.
-    if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+    if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         return !typed->name.empty();
     }
-    if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         return presence->inner && PatternBindsValue(*presence->inner);
     }
-    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         return std::ranges::any_of(enumeration->args,
                                    [](const PatternPtr &argument) { return PatternBindsValue(*argument); }) ||
                std::ranges::any_of(enumeration->namedArgs, [](const EnumPattern::NamedArg &named) {
                    return PatternBindsValue(*named.pattern);
                });
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         return std::ranges::any_of(structure->fields,
                                    [](const StructPattern::Field &field) { return PatternBindsValue(*field.pattern); });
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         return std::ranges::any_of(tuple->elements,
                                    [](const PatternPtr &element) { return PatternBindsValue(*element); });
     }
-    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         return guarded->inner && PatternBindsValue(*guarded->inner);
     }
     return false;
@@ -507,7 +507,7 @@ template <typename Arm>
 bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                                           const SourceLocation location) {
     // `<-value` records its transfer on the moved operand rather than on itself.
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&subject)) {
+    if (const auto *move = AstCast<const MoveExpr>(&subject)) {
         const bool handedOver = valueConsumptions.contains(move->operand.get());
         if (handedOver) {
             ownedMatchSubjects.insert(&subject);
@@ -544,7 +544,7 @@ void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expres
         bool hasTrue = false;
         bool hasFalse = false;
         for (const Pattern *pattern : patterns) {
-            const auto *literal = dynamic_cast<const LiteralPattern *>(pattern);
+            const auto *literal = AstCast<const LiteralPattern>(pattern);
             hasTrue = hasTrue || (literal && literal->value.text == "true");
             hasFalse = hasFalse || (literal && literal->value.text == "false");
         }
@@ -622,8 +622,8 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         if (!coveredAll) {
             exits.push_back(SaveTrackedFlow());
         }
-        coveredAll = coveredAll || dynamic_cast<const WildcardPattern *>(arm.pattern.get()) != nullptr ||
-                     dynamic_cast<const IdentPattern *>(arm.pattern.get()) != nullptr;
+        coveredAll = coveredAll || AstCast<const WildcardPattern>(arm.pattern.get()) != nullptr ||
+                     AstCast<const IdentPattern>(arm.pattern.get()) != nullptr;
 
         if (armType.IsUnknown()) {
             continue;
@@ -695,7 +695,7 @@ void AnalysisContext::RecordCheckedExpression(const Expr &expression, const Type
     if (!loopCheckedExpressions.empty()) {
         loopCheckedExpressions.back().push_back(&expression);
     }
-    if (!dynamic_cast<const IdentExpr *>(&expression)) {
+    if (!AstCast<const IdentExpr>(&expression)) {
         moveStates.Declare(MoveStateTracker::Temporary(&expression), MoveStateTracker::State::Initialized,
                            expression.location);
     }
@@ -714,13 +714,13 @@ void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLoca
     };
     const Expr *root = &target;
     while (true) {
-        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
             leavesStorage = leavesStorage || leaves(*field->object);
             fields.push_back(field->field);
             root = field->object.get();
             continue;
         }
-        if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+        if (const auto *index = AstCast<const IndexExpr>(root)) {
             // An operator index assigns nothing back to the object, so the walk stops rather than marking it written.
             if (IsIndexOperatorCall(*index)) {
                 return;
@@ -733,7 +733,7 @@ void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLoca
         break;
     }
 
-    const auto *identifier = dynamic_cast<const IdentExpr *>(root);
+    const auto *identifier = AstCast<const IdentExpr>(root);
     if (!identifier) {
         return;
     }
@@ -801,10 +801,10 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
     const Expr *place = &target;
     while (true) {
         const Expr *object = nullptr;
-        if (const auto *field = dynamic_cast<const FieldExpr *>(place)) {
+        if (const auto *field = AstCast<const FieldExpr>(place)) {
             object = field->object.get();
         }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(place); index && !IsIndexOperatorCall(*index)) {
+        else if (const auto *index = AstCast<const IndexExpr>(place); index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
         if (!object) {
@@ -820,7 +820,7 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
     if (place == &target) {
         return;
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(place);
+    const auto *identifier = AstCast<const IdentExpr>(place);
     if (!identifier) {
         return;
     }
@@ -904,15 +904,15 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
 
 std::optional<MoveStateTracker::Issue> AnalysisContext::MoveTrackedExpression(const Expr &expression,
                                                                               const SourceLocation location) {
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return MoveTrackedExpression(*move->operand, location);
     }
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         if (Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
             return moveStates.Move(MoveStateTracker::Local(symbol), location);
         }
     }
-    if (dynamic_cast<const SelfExpr *>(&expression)) {
+    if (AstCast<const SelfExpr>(&expression)) {
         if (Symbol *symbol = currentScope->Lookup("self"); symbol && symbol->kind == Symbol::Kind::Var) {
             return moveStates.Move(MoveStateTracker::Local(symbol), location);
         }
@@ -928,10 +928,10 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     // next reader, in any function, holding a value that has gone.
     const Expr *root = &expression;
     while (true) {
-        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
             root = field->object.get();
         }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(root); index && !IsIndexOperatorCall(*index)) {
+        else if (const auto *index = AstCast<const IndexExpr>(root); index && !IsIndexOperatorCall(*index)) {
             root = index->object.get();
         }
         else {
@@ -946,10 +946,10 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     }
     const auto usesReferenceStorage = [&](this auto &&self, const Expr &candidate) -> bool {
         const Expr *object = nullptr;
-        if (const auto *field = dynamic_cast<const FieldExpr *>(&candidate)) {
+        if (const auto *field = AstCast<const FieldExpr>(&candidate)) {
             object = field->object.get();
         }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate);
+        else if (const auto *index = AstCast<const IndexExpr>(&candidate);
                  index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
@@ -964,14 +964,14 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     };
     const auto usesRawPointerStorage = [&](this auto &&self, const Expr &candidate) -> bool {
         const Expr *object = nullptr;
-        if (const auto *field = dynamic_cast<const FieldExpr *>(&candidate)) {
+        if (const auto *field = AstCast<const FieldExpr>(&candidate)) {
             object = field->object.get();
         }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate);
+        else if (const auto *index = AstCast<const IndexExpr>(&candidate);
                  index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
-        else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&candidate);
+        else if (const auto *unary = AstCast<const UnaryExpr>(&candidate);
                  unary && unary->op == TokenKind::Star) {
             object = unary->operand.get();
         }
@@ -1051,7 +1051,7 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     }
     // A `<-value` node performs and records its transfer while it is checked. The surrounding by-value context must
     // not try to consume the same source a second time.
-    if (dynamic_cast<const MoveExpr *>(&expression)) {
+    if (AstCast<const MoveExpr>(&expression)) {
         return;
     }
     if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
@@ -1111,7 +1111,7 @@ bool AnalysisContext::IsFreshTemporarySource(const Expr &expression, const TypeR
         return false;
     }
     // `<-value` records its own transfer, which leaves nothing for a copy to read afterwards.
-    if (dynamic_cast<const MoveExpr *>(&expression)) {
+    if (AstCast<const MoveExpr>(&expression)) {
         return true;
     }
     const MovePlace place = AnalyzeMovePlace(expression);

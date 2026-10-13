@@ -333,7 +333,7 @@ void PlanRoutes(const Decl &decl, const std::string &moduleName, const std::stri
     if (!Visible(decl, includePrivate, containingModulesPublic, publicTypes)) {
         return;
     }
-    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    if (const auto *block = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : block->items) {
             PlanRoutes(*item, moduleName, source, includePrivate, findings, publicTypes, prefix,
                        containingModulesPublic);
@@ -374,7 +374,7 @@ void PlanRoutes(const Decl &decl, const std::string &moduleName, const std::stri
     AddReference(findings, qualified, href);
     AddReference(findings, moduleName + "::" + qualified, href);
 
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         for (const auto &item : module->items) {
             PlanRoutes(*item, moduleName, source, includePrivate, findings, publicTypes, qualified,
                        containingModulesPublic && module->isPublic);
@@ -388,7 +388,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 const bool containingModulesPublic = true) {
     if (!Visible(decl, includePrivate, containingModulesPublic, publicTypes))
         return;
-    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    if (const auto *block = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : block->items) {
             RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, publicTypes, prefix,
                        containingModulesPublic);
@@ -410,7 +410,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
          << "</code></pre><div class=\"location\">" << EscapeHtml(source) << ':' << decl.location.line << "</div>"
          << RenderDocumentation(decl.documentation, findings);
 
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+    if (const auto *structure = AstCast<const StructDecl>(&decl)) {
         for (const auto &field : structure->fields) {
             if (!includePrivate && !field.isPublic)
                 continue;
@@ -419,7 +419,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                  << "</code>" << RenderDocumentation(field.documentation, findings) << "</section>";
         }
     }
-    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (const auto *unionType = AstCast<const UnionDecl>(&decl)) {
         for (const auto &field : unionType->fields) {
             if (!includePrivate && !field.isPublic)
                 continue;
@@ -428,7 +428,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                  << "</code>" << RenderDocumentation(field.documentation, findings) << "</section>";
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&decl)) {
         for (const auto &variant : enumeration->variants) {
             const std::string_view kind = enumeration->IsVariant() ? "variant case" : "enum member";
             html << "<section class=\"member\"><div class=\"member-kind\">" << kind << "</div><h4>"
@@ -443,14 +443,14 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
             html << "</section>";
         }
     }
-    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    else if (const auto *interface = AstCast<const InterfaceDecl>(&decl)) {
         for (const auto &method : interface->methods) {
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
                  << EscapeHtml(FunctionSignature(*method)) << "</code>"
                  << RenderDocumentation(method->documentation, findings) << "</section>";
         }
     }
-    else if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (const auto *extension = AstCast<const ImplDecl>(&decl)) {
         for (const auto &constant : extension->constants) {
             if (!includePrivate && !constant->isPublic) {
                 continue;
@@ -468,7 +468,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
         }
     }
     html << "</article>";
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         for (const auto &item : module->items) {
             RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, publicTypes, qualified,
                        containingModulesPublic && module->isPublic);

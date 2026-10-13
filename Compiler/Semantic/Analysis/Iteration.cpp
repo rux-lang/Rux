@@ -30,10 +30,10 @@ constexpr std::string_view kIterateMethod = "Iterate";
     if (!receiver) {
         return false;
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(receiver->type.get())) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(receiver->type.get())) {
         return reference->pointeeMut;
     }
-    const auto *pointer = dynamic_cast<const PointerTypeExpr *>(receiver->type.get());
+    const auto *pointer = AstCast<const PointerTypeExpr>(receiver->type.get());
     return pointer != nullptr && pointer->pointeeMut;
 }
 } // namespace

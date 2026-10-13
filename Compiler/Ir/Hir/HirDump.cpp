@@ -58,16 +58,16 @@ static std::string PrintExpr(const HirExpr &expr) {
 }
 
 static std::string PrintExprCore(const HirExpr &expr) {
-    if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirLiteralExpr>(&expr)) {
         return e->value;
     }
-    if (auto *e = dynamic_cast<const HirVarExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirVarExpr>(&expr)) {
         return e->name;
     }
-    if (dynamic_cast<const HirSelfExpr *>(&expr)) {
+    if (HirCast<const HirSelfExpr>(&expr)) {
         return "self";
     }
-    if (auto *e = dynamic_cast<const HirPathExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirPathExpr>(&expr)) {
         std::string s;
         for (std::size_t i = 0; i < e->segments.size(); ++i) {
             if (i) {
@@ -77,45 +77,45 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return s;
     }
-    if (auto *e = dynamic_cast<const HirUnaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirUnaryExpr>(&expr)) {
         return std::string(OpStr(e->op)) + PrintExpr(*e->operand);
     }
-    if (auto *e = dynamic_cast<const HirPostfixExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirPostfixExpr>(&expr)) {
         return PrintExpr(*e->operand) + (e->op == TokenKind::PlusPlus ? "++" : "--");
     }
-    if (auto *e = dynamic_cast<const HirBinaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirBinaryExpr>(&expr)) {
         return std::format("({} {} {})", PrintExpr(*e->left), OpStr(e->op), PrintExpr(*e->right));
     }
-    if (auto *e = dynamic_cast<const HirVariantEqualityExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirVariantEqualityExpr>(&expr)) {
         return std::format("variant-{}({}, {})", e->negated ? "ne" : "eq", PrintExpr(*e->left), PrintExpr(*e->right));
     }
-    if (auto *e = dynamic_cast<const HirAggregateEqualityExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirAggregateEqualityExpr>(&expr)) {
         return std::format("aggregate-{}({}, {})", e->negated ? "ne" : "eq", PrintExpr(*e->left), PrintExpr(*e->right));
     }
-    if (auto *e = dynamic_cast<const HirCopyExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirCopyExpr>(&expr)) {
         const std::string operation = e->plan.customCallee.empty() ? "generated" : e->plan.customCallee;
         return std::format("copy<{}>({})", operation, PrintExpr(*e->value));
     }
-    if (auto *e = dynamic_cast<const HirMoveExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirMoveExpr>(&expr)) {
         const std::string operation = e->plan.customCallee.empty() ? "generated" : e->plan.customCallee;
         return std::format("move-construct<{}>({})", operation, PrintExpr(*e->value));
     }
-    if (auto *e = dynamic_cast<const HirAssignExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirAssignExpr>(&expr)) {
         std::string assignment = std::format("{} {} {}", PrintExpr(*e->target), OpStr(e->op), PrintExpr(*e->value));
         if (e->overwriteCleanup) {
             assignment = std::format("overwrite<{}>({})", e->overwriteCleanup->glueSymbol, assignment);
         }
         return assignment;
     }
-    if (auto *e = dynamic_cast<const HirTernaryExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirTernaryExpr>(&expr)) {
         return std::format("{} ? {} : {}", PrintExpr(*e->condition), PrintExpr(*e->thenExpr), PrintExpr(*e->elseExpr));
     }
-    if (auto *e = dynamic_cast<const HirRangeExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirRangeExpr>(&expr)) {
         std::string lo = e->lo ? PrintExpr(*e->lo) : "";
         std::string hi = e->hi ? PrintExpr(*e->hi) : "";
         return lo + (e->inclusive ? "..." : "..") + hi;
     }
-    if (auto *e = dynamic_cast<const HirCallExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirCallExpr>(&expr)) {
         std::string s = PrintExpr(*e->callee) + "(";
         for (std::size_t i = 0; i < e->args.size(); ++i) {
             if (i) {
@@ -125,13 +125,13 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return s + ")";
     }
-    if (auto *e = dynamic_cast<const HirIndexExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirIndexExpr>(&expr)) {
         return std::format("{}[{}]", PrintExpr(*e->object), PrintExpr(*e->index));
     }
-    if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirFieldExpr>(&expr)) {
         return std::format("{}.{}", PrintExpr(*e->object), e->field);
     }
-    if (auto *e = dynamic_cast<const HirStructInitExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirStructInitExpr>(&expr)) {
         std::string s = e->typeName + " { ";
         for (std::size_t i = 0; i < e->fields.size(); ++i) {
             if (i) {
@@ -141,7 +141,7 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return s + " }" + PrintFailureCleanups(e->failureCleanups);
     }
-    if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirArrayExpr>(&expr)) {
         if (e->repeatedElement) {
             return std::format("[{}; {}]", PrintExpr(*e->repeatedElement), e->repeatCount);
         }
@@ -154,7 +154,7 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return s + "]" + PrintFailureCleanups(e->failureCleanups);
     }
-    if (auto *e = dynamic_cast<const HirTupleExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirTupleExpr>(&expr)) {
         std::string s = "(";
         for (std::size_t i = 0; i < e->elements.size(); ++i) {
             if (i) {
@@ -164,13 +164,13 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return s + ")" + PrintFailureCleanups(e->failureCleanups);
     }
-    if (auto *e = dynamic_cast<const HirCastExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirCastExpr>(&expr)) {
         return std::format("{} as {}", PrintExpr(*e->operand), e->targetType.ToString());
     }
-    if (auto *e = dynamic_cast<const HirIsExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirIsExpr>(&expr)) {
         return std::format("{} is {}", PrintExpr(*e->operand), e->checkType.ToString());
     }
-    if (auto *e = dynamic_cast<const HirMatchExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirMatchExpr>(&expr)) {
         std::string s = "match " + PrintExpr(*e->subject) + " { ";
         for (std::size_t i = 0; i < e->arms.size(); ++i) {
             if (i) {
@@ -180,7 +180,7 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return s + " }";
     }
-    if (auto *e = dynamic_cast<const HirEnumConstructExpr *>(&expr)) {
+    if (auto *e = HirCast<const HirEnumConstructExpr>(&expr)) {
         std::string s = "#(";
         for (std::size_t i = 0; i < e->payloads.size(); ++i) {
             if (i) {
@@ -190,28 +190,28 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return s + ")#" + e->discriminant + PrintFailureCleanups(e->failureCleanups);
     }
-    if (dynamic_cast<const HirBlockExpr *>(&expr)) {
+    if (HirCast<const HirBlockExpr>(&expr)) {
         return "{ ... }";
     }
     return "<expr>";
 }
 
 static std::string PrintPattern(const HirPattern &pat) {
-    if (dynamic_cast<const HirWildcardPattern *>(&pat)) {
+    if (HirCast<const HirWildcardPattern>(&pat)) {
         return "_";
     }
-    if (auto *p = dynamic_cast<const HirLiteralPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirLiteralPattern>(&pat)) {
         return p->value;
     }
-    if (auto *p = dynamic_cast<const HirBindingPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirBindingPattern>(&pat)) {
         return p->name;
     }
-    if (auto *p = dynamic_cast<const HirRangePattern *>(&pat)) {
+    if (auto *p = HirCast<const HirRangePattern>(&pat)) {
         std::string lo = p->lo ? PrintPattern(*p->lo) : "";
         std::string hi = p->hi ? PrintPattern(*p->hi) : "";
         return lo + (p->inclusive ? "..." : "..") + hi;
     }
-    if (auto *p = dynamic_cast<const HirEnumPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirEnumPattern>(&pat)) {
         std::string s;
         for (std::size_t i = 0; i < p->path.size(); ++i) {
             if (i) {
@@ -232,7 +232,7 @@ static std::string PrintPattern(const HirPattern &pat) {
         return s;
     }
 
-    if (auto *p = dynamic_cast<const HirStructPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirStructPattern>(&pat)) {
         std::string s = p->typeName + " { ";
         for (std::size_t i = 0; i < p->fields.size(); ++i) {
             if (i) {
@@ -242,7 +242,7 @@ static std::string PrintPattern(const HirPattern &pat) {
         }
         return s + " }";
     }
-    if (auto *p = dynamic_cast<const HirTuplePattern *>(&pat)) {
+    if (auto *p = HirCast<const HirTuplePattern>(&pat)) {
         std::string s = "(";
         for (std::size_t i = 0; i < p->elements.size(); ++i) {
             if (i) {
@@ -252,10 +252,10 @@ static std::string PrintPattern(const HirPattern &pat) {
         }
         return s + ")";
     }
-    if (auto *p = dynamic_cast<const HirGuardedPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirGuardedPattern>(&pat)) {
         return PrintPattern(*p->inner) + " if " + PrintExpr(*p->guard);
     }
-    if (auto *p = dynamic_cast<const HirNativeSubsetPattern *>(&pat)) {
+    if (auto *p = HirCast<const HirNativeSubsetPattern>(&pat)) {
         return (p->binding ? PrintPattern(*p->binding) : std::string("_")) + ": " + p->subsetType.ToString();
     }
     return "_";
@@ -279,11 +279,11 @@ static void DumpBlock(std::ostream &out, const HirBlock &block, const std::strin
 }
 
 static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &indent) {
-    if (auto *s = dynamic_cast<const HirExprStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirExprStmt>(&stmt)) {
         out << indent << PrintExpr(*s->expr) << '\n';
         return;
     }
-    if (auto *s = dynamic_cast<const HirLetStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirLetStmt>(&stmt)) {
         out << std::format("{}{} {}: {}", indent, s->isMut ? "var" : "let",
                            s->pattern ? PrintPattern(*s->pattern) : s->name, s->type.ToString());
         if (s->init) {
@@ -292,12 +292,12 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         out << '\n';
         return;
     }
-    if (auto *s = dynamic_cast<const HirDropStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirDropStmt>(&stmt)) {
         out << std::format("{}drop-if-live #{} {}: {} using {}\n", indent, s->action.bindingId, s->action.name,
                            s->action.type.ToString(), s->action.glueSymbol);
         return;
     }
-    if (auto *s = dynamic_cast<const HirIfStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirIfStmt>(&stmt)) {
         out << std::format("{}if {}\n", indent, PrintExpr(*s->condition));
         DumpBlock(out, s->thenBlock, indent + "  ");
         for (const auto &elif : s->elseIfs) {
@@ -310,33 +310,33 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         }
         return;
     }
-    if (auto *s = dynamic_cast<const HirWhileStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirWhileStmt>(&stmt)) {
         out << std::format("{}while {}\n", indent, PrintExpr(*s->condition));
         DumpBlock(out, s->body, indent + "  ");
         return;
     }
-    if (auto *s = dynamic_cast<const HirDoWhileStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirDoWhileStmt>(&stmt)) {
         out << std::format("{}do\n", indent);
         DumpBlock(out, s->body, indent + "  ");
         out << std::format("{}while {}\n", indent, PrintExpr(*s->condition));
         return;
     }
-    if (auto *s = dynamic_cast<const HirLoopStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirLoopStmt>(&stmt)) {
         out << std::format("{}loop\n", indent);
         DumpBlock(out, s->body, indent + "  ");
         return;
     }
-    if (auto *s = dynamic_cast<const HirForStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirForStmt>(&stmt)) {
         out << std::format("{}for {} in {}\n", indent, s->variable, PrintExpr(*s->iterable));
         DumpBlock(out, s->body, indent + "  ");
         return;
     }
-    if (auto *s = dynamic_cast<const HirScopeStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirScopeStmt>(&stmt)) {
         out << indent << "scope\n";
         DumpBlock(out, s->block, indent + "  ");
         return;
     }
-    if (auto *s = dynamic_cast<const HirMatchStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirMatchStmt>(&stmt)) {
         out << std::format("{}match {}\n", indent, PrintExpr(*s->subject));
         for (const auto &arm : s->arms) {
             out << std::format("{}  {} =>\n", indent, PrintPattern(*arm.pattern));
@@ -345,7 +345,7 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         }
         return;
     }
-    if (auto *s = dynamic_cast<const HirReturnStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirReturnStmt>(&stmt)) {
         if (s->value) {
             out << std::format("{}return {}\n", indent, PrintExpr(**s->value));
         }
@@ -355,17 +355,17 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         DumpCleanups(out, s->cleanups, indent + "  ");
         return;
     }
-    if (auto *s = dynamic_cast<const HirBreakStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirBreakStmt>(&stmt)) {
         out << indent << (s->label.empty() ? "break" : "break " + s->label) << "\n";
         DumpCleanups(out, s->cleanups, indent + "  ");
         return;
     }
-    if (auto *s = dynamic_cast<const HirContinueStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirContinueStmt>(&stmt)) {
         out << indent << (s->label.empty() ? "continue" : "continue " + s->label) << "\n";
         DumpCleanups(out, s->cleanups, indent + "  ");
         return;
     }
-    if (auto *s = dynamic_cast<const HirLocalDecl *>(&stmt)) {
+    if (auto *s = HirCast<const HirLocalDecl>(&stmt)) {
         out << std::format("{}[local {}]\n", indent, s->description);
         return;
     }

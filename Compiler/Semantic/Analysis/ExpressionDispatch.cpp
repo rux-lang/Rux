@@ -26,7 +26,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return *basicType;
     }
 
-    if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (auto *e = AstCast<const IdentExpr>(&expr)) {
         if (defaultValueParameters.contains(e->name)) {
             EmitError(e->location, std::format("a default value cannot refer to parameter '{}'", e->name), {},
                       "add an overload without this parameter that passes the value it should default to");
@@ -37,7 +37,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             if (sym->kind == Symbol::Kind::Const && sym->declaration) {
                 constantReferences[e] = static_cast<const ConstDecl *>(sym->declaration);
             }
-            else if (const auto *global = dynamic_cast<const GlobalDecl *>(sym->declaration);
+            else if (const auto *global = AstCast<const GlobalDecl>(sym->declaration);
                      global && sym->kind == Symbol::Kind::Var) {
                 globalReferences[e] = global;
             }
@@ -60,7 +60,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return TypeRef::MakeUnknown();
     }
 
-    if (dynamic_cast<const SelfExpr *>(&expr)) {
+    if (AstCast<const SelfExpr>(&expr)) {
         if (defaultValueParameters.contains("self")) {
             EmitError(expr.location, "a default value cannot refer to parameter 'self'");
             return TypeRef::MakeUnknown();
@@ -71,7 +71,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
     }
 
-    if (auto *e = dynamic_cast<const PathExpr *>(&expr)) {
+    if (auto *e = AstCast<const PathExpr>(&expr)) {
         if (e->segments.empty()) {
             return TypeRef::MakeUnknown();
         }
@@ -190,18 +190,18 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         if (current->kind == Symbol::Kind::Const && current->declaration) {
             constantReferences[e] = static_cast<const ConstDecl *>(current->declaration);
         }
-        else if (const auto *global = dynamic_cast<const GlobalDecl *>(current->declaration);
+        else if (const auto *global = AstCast<const GlobalDecl>(current->declaration);
                  global && current->kind == Symbol::Kind::Var) {
             globalReferences[e] = global;
         }
         return ReadTrackedSymbol(*current, e->location);
     }
 
-    if (auto *e = dynamic_cast<const TypeQueryExpr *>(&expr)) {
+    if (auto *e = AstCast<const TypeQueryExpr>(&expr)) {
         return CheckTypeQueryExpression(*e);
     }
 
-    if (dynamic_cast<const IntrinsicExpr *>(&expr)) {
+    if (AstCast<const IntrinsicExpr>(&expr)) {
         const auto *e = static_cast<const IntrinsicExpr *>(&expr);
         using K = IntrinsicExpr::Kind;
         const bool takesArgument = e->kind == K::TargetFeature || e->kind == K::CompilerHasFeature ||
@@ -210,7 +210,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             if (e->args.size() != 1 || !e->args[0]) {
                 EmitError(e->location, "compile-time intrinsic expects exactly one argument");
             }
-            else if (e->kind == K::TargetFeature && dynamic_cast<const EnumShorthandExpr *>(e->args[0].get())) {
+            else if (e->kind == K::TargetFeature && AstCast<const EnumShorthandExpr>(e->args[0].get())) {
                 // `.AVX2` is given its meaning by #target.HasFeature.
             }
             else {
@@ -250,7 +250,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
 
     // A diverging body is checked exactly as the statement it spells, and produces no value of its own.
-    if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expr)) {
+    if (const auto *diverge = AstCast<const DivergeExpr>(&expr)) {
         switch (diverge->kind) {
         case DivergeExpr::Kind::Return:
             CheckReturn(diverge->value.get(), diverge->location);
@@ -268,7 +268,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
 
     // A native constructor names the level it builds. `.Some(v)` infers its payload from a typed operand; the channel
     // `.Success` or `.Failure` leaves open is supplied by the expected type, so its type stays incomplete until then.
-    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {
         const TypeRef operand = construct->operand ? CheckExpr(*construct->operand) : TypeRef::MakeUnknown();
         if (operand.IsUnknown()) {
             return operand;
@@ -288,20 +288,20 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
     }
 
-    if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expr)) {
+    if (const auto *mapped = AstCast<const MappedTryExpr>(&expr)) {
         return CheckMappedTry(*mapped);
     }
-    if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expr)) {
+    if (const auto *recovery = AstCast<const CatchExpr>(&expr)) {
         return CheckCatchExpression(*recovery);
     }
 
     // `none` has a placeholder type until its context completes it, so its conversion is checked like any other
     // value's.
-    if (dynamic_cast<const NoneExpr *>(&expr)) {
+    if (AstCast<const NoneExpr>(&expr)) {
         return TypeRef::MakeNoneValue();
     }
 
-    if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
+    if (const auto *e = AstCast<const EnumShorthandExpr>(&expr)) {
         // The bare `.Variant` shorthand is not part of the language; the
         // variant must always be written out in full. The message names the
         // enums and variants in scope that declare a case of that name.
@@ -339,11 +339,11 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return TypeRef::MakeUnknown();
     }
 
-    if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {
+    if (auto *e = AstCast<const TernaryExpr>(&expr)) {
         return CheckTernaryExpression(*e);
     }
 
-    if (auto *e = dynamic_cast<const RangeExpr *>(&expr)) {
+    if (auto *e = AstCast<const RangeExpr>(&expr)) {
         TypeRef loType = e->lo ? CheckExpr(*e->lo) : TypeRef::MakeUnknown();
         TypeRef hiType = e->hi ? CheckExpr(*e->hi) : TypeRef::MakeUnknown();
         if ((!loType.IsUnknown() && !loType.IsNumeric()) || (!hiType.IsUnknown() && !hiType.IsNumeric())) {
@@ -369,7 +369,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return TypeRef::MakeRange(elemType, e->lo != nullptr, e->hi != nullptr, e->inclusive);
     }
 
-    if (const auto *e = dynamic_cast<const CallExpr *>(&expr)) {
+    if (const auto *e = AstCast<const CallExpr>(&expr)) {
         return CheckCallExpression(*e);
     }
 
@@ -377,7 +377,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return *aggregateType;
     }
 
-    if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {
+    if (auto *e = AstCast<const IsExpr>(&expr)) {
         TypeRef operandType = CheckExpr(*e->operand);
         const TypeRef testedType = ResolveType(*e->type);
         const std::string ifaceName = NamedBaseTypeName(testedType);
@@ -394,16 +394,16 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         CheckMembershipTest(*e, operandType, testedType);
         return TypeRef::MakeBool();
     }
-    if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {
+    if (auto *e = AstCast<const MatchExpr>(&expr)) {
         return CheckMatchExpression(*e);
     }
 
-    if (auto *e = dynamic_cast<const BlockExpr *>(&expr)) {
+    if (auto *e = AstCast<const BlockExpr>(&expr)) {
         CheckBlock(*e->block);
         return TypeRef::MakeUnknown();
     }
 
-    if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
+    if (auto *e = AstCast<const SpreadExpr>(&expr)) {
         return CheckExpr(*e->operand);
     }
 

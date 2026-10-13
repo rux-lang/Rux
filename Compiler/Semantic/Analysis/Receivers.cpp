@@ -23,7 +23,7 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
         // Resolving the receiver is what records its type for lowering, so it happens either way; `self` written as a
         // type, which is how an interface names a receiver it has no concrete type for, keeps the enclosing meaning.
         const TypeRef declared = ResolveType(*receiver->type);
-        if (!dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+        if (!AstCast<const SelfTypeExpr>(receiver->type.get())) {
             currentSelfType = declared;
             CheckReceiverType(declaration, *receiver, declared);
         }
@@ -179,7 +179,7 @@ bool AnalysisContext::CheckWritableReceiver(const CallExpr &call, const Expr &re
     if (!PlaceIsImmutable(receiver)) {
         return true;
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(&receiver);
+    const auto *identifier = AstCast<const IdentExpr>(&receiver);
     const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
     EmitError(call.location,
               identifier ? std::format("cannot call '{}' on immutable '{}'", methodName, identifier->name)
@@ -204,19 +204,19 @@ bool AnalysisContext::CheckRequirementReceiverMutability(const CallExpr &call, c
 /// receiver can only be a borrow of that value: `&Self` to read it or `&var Self` to write it.
 void AnalysisContext::ValidateRequirementReceiver(const FuncDecl &requirement, const std::string &interfaceName) {
     const Param *receiver = requirement.Receiver();
-    if (!receiver || !receiver->type || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+    if (!receiver || !receiver->type || AstCast<const SelfTypeExpr>(receiver->type.get())) {
         return;
     }
     // A legacy pointer receiver, and `self` written as the type, still name the implementing value during migration.
     const TypeExpr *pointee = nullptr;
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(receiver->type.get())) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(receiver->type.get())) {
         pointee = reference->pointee.get();
     }
-    else if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(receiver->type.get())) {
+    else if (const auto *pointer = AstCast<const PointerTypeExpr>(receiver->type.get())) {
         pointee = pointer->pointee.get();
     }
-    const auto *named = dynamic_cast<const NamedTypeExpr *>(pointee);
-    if (dynamic_cast<const SelfTypeExpr *>(pointee) ||
+    const auto *named = AstCast<const NamedTypeExpr>(pointee);
+    if (AstCast<const SelfTypeExpr>(pointee) ||
         (named && named->name == SelfTypeName && named->typeArgs.empty())) {
         return;
     }

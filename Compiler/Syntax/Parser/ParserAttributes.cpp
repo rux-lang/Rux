@@ -427,28 +427,28 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     decl->allowedLints.insert(decl->allowedLints.end(), attrs.allowedLints.begin(), attrs.allowedLints.end());
 
     const bool namesATypeRule = std::ranges::find(attrs.allowedLints, "naming.type") != attrs.allowedLints.end();
-    if (namesATypeRule && !dynamic_cast<TypeAliasDecl *>(decl.get()) && !dynamic_cast<StructDecl *>(decl.get()) &&
-        !dynamic_cast<EnumDecl *>(decl.get()) && !dynamic_cast<UnionDecl *>(decl.get())) {
+    if (namesATypeRule && !AstCast<TypeAliasDecl>(decl.get()) && !AstCast<StructDecl>(decl.get()) &&
+        !AstCast<EnumDecl>(decl.get()) && !AstCast<UnionDecl>(decl.get())) {
         EmitError(attrs.allowLocation, "'#Allow(\"naming.type\")' can only be applied to a type declaration");
     }
     // A raw binding keeps the spelling the platform published, and for a constant that is a C macro's own name --
     // `SEEK_SET`, `O_RDONLY`, `FILE_ATTRIBUTE_NORMAL` -- which no reader porting code would recognize renamed.
     const bool namesAConstRule = std::ranges::find(attrs.allowedLints, "naming.const") != attrs.allowedLints.end();
-    if (namesAConstRule && !dynamic_cast<ConstDecl *>(decl.get())) {
+    if (namesAConstRule && !AstCast<ConstDecl>(decl.get())) {
         EmitError(attrs.allowLocation, "'#Allow(\"naming.const\")' can only be applied to a constant declaration");
     }
-    if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
+    if (attrs.usedLink && !AstCast<ExternFuncDecl>(decl.get()) && !AstCast<ExternBlockDecl>(decl.get())) {
         EmitError(attrs.linkLocation, "'#Link' can only be applied to an extern function or extern block");
     }
 
     if (attrs.usedNoReturn) {
-        if (auto *function = dynamic_cast<FuncDecl *>(decl.get())) {
+        if (auto *function = AstCast<FuncDecl>(decl.get())) {
             function->isNoReturn = true;
             if (function->returnType) {
                 EmitError(attrs.noReturnLocation, "'#NoReturn' function cannot declare a return type");
             }
         }
-        else if (auto *externFunction = dynamic_cast<ExternFuncDecl *>(decl.get())) {
+        else if (auto *externFunction = AstCast<ExternFuncDecl>(decl.get())) {
             externFunction->isNoReturn = true;
             if (externFunction->returnType) {
                 EmitError(attrs.noReturnLocation, "'#NoReturn' function cannot declare a return type");
@@ -460,7 +460,7 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     }
 
     if (attrs.usedTest) {
-        if (auto *function = dynamic_cast<FuncDecl *>(decl.get())) {
+        if (auto *function = AstCast<FuncDecl>(decl.get())) {
             function->isTest = true;
             if (!function->typeParams.empty()) {
                 EmitError(attrs.testLocation, "a '#Test' function cannot be generic");
@@ -480,8 +480,8 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
         }
     }
 
-    if (attrs.usedAbi && !dynamic_cast<FuncDecl *>(decl.get()) && !dynamic_cast<ExternFuncDecl *>(decl.get()) &&
-        !dynamic_cast<ExternBlockDecl *>(decl.get())) {
+    if (attrs.usedAbi && !AstCast<FuncDecl>(decl.get()) && !AstCast<ExternFuncDecl>(decl.get()) &&
+        !AstCast<ExternBlockDecl>(decl.get())) {
         EmitError(attrs.abiLocation, "'#Abi' can only be applied to a function or extern block");
     }
 

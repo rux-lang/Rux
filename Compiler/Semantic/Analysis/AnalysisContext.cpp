@@ -17,15 +17,15 @@ namespace {
 /// than a reportable case. `null` is the exception the invariant already allows: it carries no type of its own, and
 /// lowering gives it the one its context asks for without ever making that query.
 [[nodiscard]] bool LoweringRequiresType(const Expr &expression) {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         return literal->token.kind != TokenKind::NullKeyword;
     }
-    return dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const SelfExpr *>(&expression) ||
-           dynamic_cast<const UnaryExpr *>(&expression) || dynamic_cast<const MoveExpr *>(&expression) ||
-           dynamic_cast<const PostfixExpr *>(&expression) || dynamic_cast<const BinaryExpr *>(&expression) ||
-           dynamic_cast<const AssignExpr *>(&expression) || dynamic_cast<const TernaryExpr *>(&expression) ||
-           dynamic_cast<const IndexExpr *>(&expression) || dynamic_cast<const FieldExpr *>(&expression) ||
-           dynamic_cast<const CastExpr *>(&expression) || dynamic_cast<const IsExpr *>(&expression);
+    return AstCast<const IdentExpr>(&expression) || AstCast<const SelfExpr>(&expression) ||
+           AstCast<const UnaryExpr>(&expression) || AstCast<const MoveExpr>(&expression) ||
+           AstCast<const PostfixExpr>(&expression) || AstCast<const BinaryExpr>(&expression) ||
+           AstCast<const AssignExpr>(&expression) || AstCast<const TernaryExpr>(&expression) ||
+           AstCast<const IndexExpr>(&expression) || AstCast<const FieldExpr>(&expression) ||
+           AstCast<const CastExpr>(&expression) || AstCast<const IsExpr>(&expression);
 }
 } // namespace
 
@@ -303,29 +303,29 @@ AnalysisContext::CaseTypeDeclaration AnalysisContext::CaseTypeNamed(const std::s
 namespace {
 /// Whether `expression` names `Self` anywhere inside it, following indirection, arrays and type arguments.
 [[nodiscard]] bool MentionsSelf(const TypeExpr &expression) {
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&expression)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(&expression)) {
         if (named->name == SelfTypeName) {
             return true;
         }
         return std::ranges::any_of(named->typeArgs,
                                    [](const TypeExprPtr &argument) { return MentionsSelf(*argument); });
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&expression)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(&expression)) {
         return MentionsSelf(*pointer->pointee);
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&expression)) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(&expression)) {
         return MentionsSelf(*reference->pointee);
     }
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&expression)) {
+    if (const auto *array = AstCast<const ArrayTypeExpr>(&expression)) {
         return MentionsSelf(*array->element);
     }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&expression)) {
+    if (const auto *slice = AstCast<const SliceTypeExpr>(&expression)) {
         return MentionsSelf(*slice->element);
     }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&expression)) {
+    if (const auto *range = AstCast<const RangeTypeExpr>(&expression)) {
         return (range->start && MentionsSelf(*range->start)) || (range->end && MentionsSelf(*range->end));
     }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&expression)) {
+    if (const auto *tuple = AstCast<const TupleTypeExpr>(&expression)) {
         return std::ranges::any_of(tuple->elements, [](const TypeExprPtr &element) { return MentionsSelf(*element); });
     }
     return std::ranges::any_of(NativeTypeChildren(expression),
@@ -351,10 +351,10 @@ bool AnalysisContext::DeclaresWritableReceiver(const FuncDecl &method) {
     if (!receiver || !receiver->type) {
         return false;
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(receiver->type.get())) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(receiver->type.get())) {
         return reference->pointeeMut;
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(receiver->type.get())) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(receiver->type.get())) {
         return pointer->pointeeMut;
     }
     return false;
@@ -373,7 +373,7 @@ void AnalysisContext::EmitGenericArityError(const TypeExpr &expression, std::str
 std::optional<TypeRef> AnalysisContext::ResolveStructTypeReference(const TypeExpr &expression, const std::string &name,
                                                                    const std::vector<TypeRef> &typeArguments) {
     const Symbol *symbol = currentScope ? currentScope->Lookup(name) : nullptr;
-    const auto *declaration = symbol ? dynamic_cast<const StructDecl *>(symbol->declaration) : nullptr;
+    const auto *declaration = symbol ? AstCast<const StructDecl>(symbol->declaration) : nullptr;
     if (!declaration) {
         const auto indexed = structDecls.find(NominalTypeName(name));
         if (indexed == structDecls.end()) {
@@ -687,7 +687,7 @@ std::optional<std::vector<TypeRef>> AnalysisContext::BoundParameterTypes(
     }
     // One spread argument hands over the whole slice; any other trailing argument is one element of it.
     const bool singleSpread = call && argumentCount == fixedTypes.size() + 1 && call->args.size() == argumentCount &&
-                              dynamic_cast<const SpreadExpr *>(call->args[fixedTypes.size()].get());
+                              AstCast<const SpreadExpr>(call->args[fixedTypes.size()].get());
     for (std::size_t index = bound.size(); index < argumentCount; ++index) {
         bound.push_back(singleSpread ? TypeRef::MakeSlice(*variadicElement) : *variadicElement);
     }

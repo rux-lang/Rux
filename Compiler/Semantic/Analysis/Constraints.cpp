@@ -13,7 +13,7 @@ namespace {
 /// The bound as the reader wrote it. A bound is a plain interface name, so anything with a type argument list or a
 /// module path is reported at its own spelling rather than silently reduced to the last segment.
 [[nodiscard]] const NamedTypeExpr *BoundName(const TypeExpr &bound) {
-    return dynamic_cast<const NamedTypeExpr *>(&bound);
+    return AstCast<const NamedTypeExpr>(&bound);
 }
 } // namespace
 

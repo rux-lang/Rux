@@ -271,7 +271,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
             binding.dispatch == ResolvedCallableBinding::DispatchKind::Constrained) {
             continue;
         }
-        const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
+        const auto *function = AstCast<const FuncDecl>(binding.selectedDeclaration);
         if (function &&
             (binding.dispatch == ResolvedCallableBinding::DispatchKind::Method ||
              binding.dispatch == ResolvedCallableBinding::DispatchKind::Constructor) &&
@@ -314,7 +314,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
 TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
     const std::size_t diagnosticStart = diags.size();
     TypeRef type = CheckExprImpl(expr);
-    if (const auto *call = dynamic_cast<const CallExpr *>(&expr)) {
+    if (const auto *call = AstCast<const CallExpr>(&expr)) {
         const bool hasNewError =
             std::ranges::any_of(diags.begin() + static_cast<std::ptrdiff_t>(diagnosticStart), diags.end(),
                                 [](const SemanticDiagnostic &diagnostic) {

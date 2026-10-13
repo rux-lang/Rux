@@ -309,7 +309,7 @@ void ConditionalEvaluator::Impl::RegisterDeclarations(const std::vector<DeclPtr>
         if (module->name != currentFile)
             continue;
         for (const auto &declaration : decls) {
-            if (declaration && !dynamic_cast<const WhenDecl *>(declaration.get())) {
+            if (declaration && !AstCast<const WhenDecl>(declaration.get())) {
                 selectedDeclarations.emplace_back(declaration.get(), module);
             }
         }
@@ -323,13 +323,13 @@ void ConditionalEvaluator::Impl::BindLocalDeclarations() {
     for (const bool extensions : {true, false}) {
         // A package's own nested modules hold its declarations too; another package's are reached by import paths.
         const auto bind = [&](this auto &&self, const Decl &declaration, const Module &module) -> void {
-            if (const auto *nested = dynamic_cast<const ModuleDecl *>(&declaration)) {
+            if (const auto *nested = AstCast<const ModuleDecl>(&declaration)) {
                 for (const auto &item : nested->items) {
                     if (item)
                         self(*item, module);
                 }
             }
-            else if ((dynamic_cast<const ImplDecl *>(&declaration) != nullptr) == extensions) {
+            else if ((AstCast<const ImplDecl>(&declaration) != nullptr) == extensions) {
                 BindImportedDeclaration(declaration, localModules, module, false);
             }
         };
@@ -408,7 +408,7 @@ void ConditionalEvaluator::Impl::RegisterConstantImpl(const ConstDecl &decl) {
     if (!decl.type) {
         return;
     }
-    const auto *named = dynamic_cast<const NamedTypeExpr *>(decl.type->get());
+    const auto *named = AstCast<const NamedTypeExpr>(decl.type->get());
     if (!named) {
         return;
     }
@@ -440,7 +440,7 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
         if (!decl) {
             continue;
         }
-        if (const auto *constDecl = dynamic_cast<const ConstDecl *>(decl.get())) {
+        if (const auto *constDecl = AstCast<const ConstDecl>(decl.get())) {
             // An `intrinsic #target: Target;` brings the intrinsic into
             // scope locally, just as importing it from Rux would.
             if (!constDecl->intrinsicName.empty()) {
@@ -450,7 +450,7 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
             }
             RegisterConstantImpl(*constDecl);
         }
-        else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(decl.get())) {
+        else if (const auto *enumDecl = AstCast<const EnumDecl>(decl.get())) {
             if (enumDecl->form == EnumDecl::Form::Variant) {
                 programVariantNames.insert(enumDecl->name);
             }
@@ -462,7 +462,7 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
                 }
             }
         }
-        else if (const auto *module = dynamic_cast<const ModuleDecl *>(decl.get())) {
+        else if (const auto *module = AstCast<const ModuleDecl>(decl.get())) {
             CollectCompileTimeDecls(module->items);
         }
         // Constants inside an unresolved `when` are registered when its
@@ -485,10 +485,10 @@ void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
 
 void ConditionalEvaluator::Impl::CollectRuxImports(const std::vector<DeclPtr> &decls) {
     for (const auto &decl : decls) {
-        if (const auto *use = dynamic_cast<const UseDecl *>(decl.get())) {
+        if (const auto *use = AstCast<const UseDecl>(decl.get())) {
             ImportDeclarations(*use);
         }
-        else if (const auto *module = dynamic_cast<const ModuleDecl *>(decl.get())) {
+        else if (const auto *module = AstCast<const ModuleDecl>(decl.get())) {
             CollectRuxImports(module->items);
         }
     }
@@ -556,7 +556,7 @@ bool ConditionalEvaluator::Impl::TargetHasFeature(const std::string_view name) c
 }
 
 std::optional<std::string_view> ConditionalEvaluator::Impl::CompilerParamRoot(const Expr &expr) const {
-    const auto *ident = dynamic_cast<const IdentExpr *>(&expr);
+    const auto *ident = AstCast<const IdentExpr>(&expr);
     if (!ident) {
         return std::nullopt;
     }
@@ -568,7 +568,7 @@ std::optional<std::string_view> ConditionalEvaluator::Impl::CompilerParamRoot(co
 /// `pub` is refused here exactly as it is when the same field is read as a value.
 bool ConditionalEvaluator::Impl::CompilerParamFieldIsAccessible(const Expr &root, const std::string_view field,
                                                                 const SourceLocation location) {
-    const auto *identifier = dynamic_cast<const IdentExpr *>(&root);
+    const auto *identifier = AstCast<const IdentExpr>(&root);
     const auto type = identifier ? externalIntrinsicTypes.find(identifier->name) : externalIntrinsicTypes.end();
     if (type == externalIntrinsicTypes.end()) {
         return true;
@@ -667,7 +667,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamFie
 }
 
 std::optional<ParsedSemanticVersion> ConditionalEvaluator::Impl::EvalSemanticVersion(const Expr &expr) {
-    if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (const auto *ident = AstCast<const IdentExpr>(&expr)) {
         const auto it = constExprs.find(ident->name);
         if (it == constExprs.end() || !constsInProgress.insert(ident->name).second) {
             return std::nullopt;
@@ -677,9 +677,9 @@ std::optional<ParsedSemanticVersion> ConditionalEvaluator::Impl::EvalSemanticVer
         return value;
     }
 
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expr); field && field->field == "version") {
+    if (const auto *field = AstCast<const FieldExpr>(&expr); field && field->field == "version") {
         if (const auto root = CompilerParamRoot(*field->object); root && *root == "Compiler") {
-            const auto *ident = dynamic_cast<const IdentExpr *>(field->object.get());
+            const auto *ident = AstCast<const IdentExpr>(field->object.get());
             if (ident && !RequireRuxImport(ident->name, ident->location)) {
                 return std::nullopt;
             }
@@ -687,8 +687,8 @@ std::optional<ParsedSemanticVersion> ConditionalEvaluator::Impl::EvalSemanticVer
         }
     }
 
-    if (const auto *call = dynamic_cast<const CallExpr *>(&expr)) {
-        const auto *identifier = dynamic_cast<const IdentExpr *>(call->callee.get());
+    if (const auto *call = AstCast<const CallExpr>(&expr)) {
+        const auto *identifier = AstCast<const IdentExpr>(call->callee.get());
         const bool typeConstructor = identifier && identifier->name == "SemanticVersion";
         if (typeConstructor && call->args.size() == 3) {
             ParsedSemanticVersion version;
@@ -714,7 +714,7 @@ std::optional<ParsedSemanticVersion> ConditionalEvaluator::Impl::EvalSemanticVer
         }
     }
 
-    const auto *init = dynamic_cast<const StructInitExpr *>(&expr);
+    const auto *init = AstCast<const StructInitExpr>(&expr);
     if (!init || init->typeName != "SemanticVersion") {
         return std::nullopt;
     }
@@ -805,8 +805,8 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamCal
 }
 
 std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &expr) {
-    if (const auto *query = dynamic_cast<const TypeQueryExpr *>(&expr)) {
-        const auto *named = dynamic_cast<const NamedTypeExpr *>(query->type.get());
+    if (const auto *query = AstCast<const TypeQueryExpr>(&expr)) {
+        const auto *named = AstCast<const NamedTypeExpr>(query->type.get());
         const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
         if (!type) {
             return std::nullopt;
@@ -816,8 +816,8 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
                              : PrimitiveAlign(type->kind, static_cast<std::uint32_t>(context.target.pointer_size));
         return value ? std::optional<Value>{Value{static_cast<std::uint64_t>(*value)}} : std::nullopt;
     }
-    if (const auto *cast = dynamic_cast<const CastExpr *>(&expr)) {
-        const auto *named = dynamic_cast<const NamedTypeExpr *>(cast->type.get());
+    if (const auto *cast = AstCast<const CastExpr>(&expr)) {
+        const auto *named = AstCast<const NamedTypeExpr>(cast->type.get());
         const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
         const auto value = Eval(*cast->operand);
         if (!type || !value || !(type->IsInteger() || type->IsChar())) {
@@ -861,7 +861,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         const std::uint64_t word = bits.Extended(64, type->IsSigned()).Word64(0);
         return type->IsSigned() ? Value{static_cast<std::int64_t>(word)} : Value{word};
     }
-    if (const auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
+    if (const auto *e = AstCast<const LiteralExpr>(&expr)) {
         switch (e->token.kind) {
         case TokenKind::BoolLiteral:
             return Value{e->token.text == "true"};
@@ -900,15 +900,15 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         }
     }
 
-    if (const auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (const auto *e = AstCast<const IdentExpr>(&expr)) {
         return EvalConstantReference(*e);
     }
 
-    if (const auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
-        if (const auto *version = dynamic_cast<const FieldExpr *>(e->object.get());
+    if (const auto *e = AstCast<const FieldExpr>(&expr)) {
+        if (const auto *version = AstCast<const FieldExpr>(e->object.get());
             version && version->field == "version") {
             if (const auto root = CompilerParamRoot(*version->object); root && *root == "Compiler") {
-                const auto *ident = dynamic_cast<const IdentExpr *>(version->object.get());
+                const auto *ident = AstCast<const IdentExpr>(version->object.get());
                 if (ident && !RequireRuxImport(ident->name, ident->location)) {
                     return std::nullopt;
                 }
@@ -926,7 +926,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             }
         }
         if (const auto root = CompilerParamRoot(*e->object)) {
-            const auto *ident = dynamic_cast<const IdentExpr *>(e->object.get());
+            const auto *ident = AstCast<const IdentExpr>(e->object.get());
             if (ident && !RequireRuxImport(ident->name, ident->location)) {
                 return std::nullopt;
             }
@@ -935,15 +935,15 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             }
             return EvalCompilerParamField(*root, e->field, e->object->location);
         }
-        if (const auto *identifier = dynamic_cast<const IdentExpr *>(e->object.get());
+        if (const auto *identifier = AstCast<const IdentExpr>(e->object.get());
             identifier && identifier->name.starts_with("#")) {
             (void)RequireRuxImport(identifier->name, identifier->location);
         }
         return std::nullopt;
     }
 
-    if (const auto *e = dynamic_cast<const CallExpr *>(&expr)) {
-        if (const auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
+    if (const auto *e = AstCast<const CallExpr>(&expr)) {
+        if (const auto *field = AstCast<const FieldExpr>(e->callee.get())) {
             if (const auto left = EvalSemanticVersion(*field->object)) {
                 if (e->args.size() != 1 || !e->args[0]) {
                     EmitError(e->location, "semantic version comparison expects exactly one argument");
@@ -969,7 +969,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
                     return Value{comparison >= 0};
             }
             if (const auto root = CompilerParamRoot(*field->object)) {
-                const auto *ident = dynamic_cast<const IdentExpr *>(field->object.get());
+                const auto *ident = AstCast<const IdentExpr>(field->object.get());
                 if (ident && !RequireRuxImport(ident->name, ident->location)) {
                     return std::nullopt;
                 }
@@ -979,7 +979,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         return std::nullopt;
     }
 
-    if (const auto *e = dynamic_cast<const IntrinsicExpr *>(&expr)) {
+    if (const auto *e = AstCast<const IntrinsicExpr>(&expr)) {
         using K = IntrinsicExpr::Kind;
         switch (e->kind) {
         case K::Line:
@@ -1082,13 +1082,13 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         }
     }
 
-    if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
+    if (const auto *e = AstCast<const EnumShorthandExpr>(&expr)) {
         // An empty case type marks a shorthand; the comparison then rejects
         // it and asks for the fully-qualified form.
         return Value{EnumValue{"", e->variant}};
     }
 
-    if (const auto *e = dynamic_cast<const PathExpr *>(&expr)) {
+    if (const auto *e = AstCast<const PathExpr>(&expr)) {
         if (e->segments.size() == 2) {
             const std::string &head = e->segments[0];
             auto binding =
@@ -1133,7 +1133,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         return std::nullopt;
     }
 
-    if (const auto *e = dynamic_cast<const UnaryExpr *>(&expr)) {
+    if (const auto *e = AstCast<const UnaryExpr>(&expr)) {
         const auto operand = Eval(*e->operand);
         if (!operand) {
             return std::nullopt;
@@ -1197,7 +1197,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         }
     }
 
-    if (const auto *e = dynamic_cast<const BinaryExpr *>(&expr)) {
+    if (const auto *e = AstCast<const BinaryExpr>(&expr)) {
         return EvalBinary(*e);
     }
 

@@ -152,7 +152,7 @@ struct Context {
 
 /// The built-in primitive an `extend` block extends, or nullptr for any other declaration.
 const PrimitiveInfo *ExtendedPrimitive(const Decl &decl) {
-    const auto *extension = dynamic_cast<const ImplDecl *>(&decl);
+    const auto *extension = AstCast<const ImplDecl>(&decl);
     return extension ? FindPrimitive(extension->typeName) : nullptr;
 }
 
@@ -369,20 +369,20 @@ void WriteValue(JsonWriter &json, Context &context, const ConstDecl &constant, c
 
 const std::vector<TypeParameter> &DeclTypeParams(const Decl &decl) {
     static const std::vector<TypeParameter> none;
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         return function->typeParams;
     }
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+    if (const auto *structure = AstCast<const StructDecl>(&decl)) {
         return structure->typeParams;
     }
-    if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+    if (const auto *enumeration = AstCast<const EnumDecl>(&decl)) {
         return enumeration->typeParams;
     }
     return none;
 }
 
 std::string ItemKind(const Decl &decl) {
-    if (dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    if (AstCast<const TypeAliasDecl>(&decl)) {
         return "type";
     }
     if (ExtendedPrimitive(decl)) {
@@ -503,7 +503,7 @@ void WriteMembers(JsonWriter &json, Context &context, const Decl &decl, const st
     const std::string typeName = ItemName(decl);
     const bool includePrivate = context.options.includePrivate;
     json.BeginArray();
-    if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    if (const auto *interface = AstCast<const InterfaceDecl>(&decl)) {
         for (const auto &method : interface->methods) {
             WriteFunctionMember(json, context, *method, typeName, std::nullopt, true, source.display);
         }
@@ -524,12 +524,12 @@ void WriteMembers(JsonWriter &json, Context &context, const Decl &decl, const st
             }
             std::ranges::stable_sort(members, {}, [](const Decl *member) { return member->location.offset; });
             for (const Decl *member : members) {
-                if (const auto *function = dynamic_cast<const FuncDecl *>(member)) {
+                if (const auto *function = AstCast<const FuncDecl>(member)) {
                     WriteFunctionMember(json, context, *function, typeName, extension->interfaceName, false,
                                         extensionSource->display);
                 }
                 else {
-                    WriteConstantMember(json, context, *dynamic_cast<const ConstDecl *>(member),
+                    WriteConstantMember(json, context, *AstCast<const ConstDecl>(member),
                                         extension->interfaceName, *extensionSource);
                 }
             }
@@ -615,12 +615,12 @@ void WriteItem(JsonWriter &json, Context &context, const Decl &decl, const std::
         }
         displayName += '>';
     }
-    const auto *structure = dynamic_cast<const StructDecl *>(&decl);
-    const auto *unionType = dynamic_cast<const UnionDecl *>(&decl);
-    const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl);
-    const auto *constant = dynamic_cast<const ConstDecl *>(&decl);
-    const bool type = structure || unionType || enumeration || dynamic_cast<const InterfaceDecl *>(&decl) ||
-                      dynamic_cast<const TypeAliasDecl *>(&decl) || ExtendedPrimitive(decl);
+    const auto *structure = AstCast<const StructDecl>(&decl);
+    const auto *unionType = AstCast<const UnionDecl>(&decl);
+    const auto *enumeration = AstCast<const EnumDecl>(&decl);
+    const auto *constant = AstCast<const ConstDecl>(&decl);
+    const bool type = structure || unionType || enumeration || AstCast<const InterfaceDecl>(&decl) ||
+                      AstCast<const TypeAliasDecl>(&decl) || ExtendedPrimitive(decl);
 
     json.BeginObject();
     json.Key("kind");
@@ -702,20 +702,20 @@ void WriteItems(JsonWriter &json, Context &context, const Decl &decl, const std:
     if (!Visible(decl, context.options.includePrivate, containingModulesPublic, unconsulted)) {
         return;
     }
-    if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+    if (const auto *extension = AstCast<const ImplDecl>(&decl)) {
         const auto anchor = context.primitiveAnchors.find(ItemName(decl));
         if (anchor != context.primitiveAnchors.end() && anchor->second == extension) {
             WriteItem(json, context, decl, moduleName, source, {});
         }
         return;
     }
-    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    if (const auto *block = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : block->items) {
             WriteItems(json, context, *item, moduleName, source, prefix, containingModulesPublic);
         }
         return;
     }
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         for (const auto &item : module->items) {
             WriteItems(json, context, *item, moduleName, source, Qualify(prefix, module->name),
                        containingModulesPublic && module->isPublic);
@@ -729,13 +729,13 @@ void WriteItems(JsonWriter &json, Context &context, const Decl &decl, const std:
 }
 
 void CollectExtensions(Context &context, const Decl &decl, const SourceFile &source, const std::string &prefix = {}) {
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         for (const auto &item : module->items) {
             CollectExtensions(context, *item, source, Qualify(prefix, module->name));
         }
         return;
     }
-    if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+    if (const auto *extension = AstCast<const ImplDecl>(&decl)) {
         if (const PrimitiveInfo *primitive = ExtendedPrimitive(decl)) {
             const std::string name(primitive->name);
             context.extensions[name].push_back({extension, &source});

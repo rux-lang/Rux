@@ -98,7 +98,7 @@ const std::vector<TypeParameter> *AstToHirContext::AggregateTypeParams(const std
 
 std::vector<std::string> AstToHirContext::ImplTypeParams(const ImplDecl &decl) const {
     std::vector<std::string> params;
-    const auto *target = dynamic_cast<const NamedTypeExpr *>(decl.extendedType.get());
+    const auto *target = AstCast<const NamedTypeExpr>(decl.extendedType.get());
     if (!target) {
         return params;
     }
@@ -109,7 +109,7 @@ std::vector<std::string> AstToHirContext::ImplTypeParams(const ImplDecl &decl) c
 
     const std::size_t count = std::min(typeParams->size(), target->typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
-        const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
+        const auto *arg = AstCast<const NamedTypeExpr>(target->typeArgs[i].get());
         if (arg && arg->typeArgs.empty() && arg->name == (*typeParams)[i].name) {
             params.push_back(arg->name);
         }
@@ -397,7 +397,7 @@ std::optional<std::uint64_t> AstToHirContext::LookupConstInteger(const std::stri
 }
 
 void AstToHirContext::RegisterConstInteger(const std::string &name, const HirExpr &value) {
-    const auto *literal = dynamic_cast<const HirLiteralExpr *>(&value);
+    const auto *literal = HirCast<const HirLiteralExpr>(&value);
     if (!literal) {
         return;
     }
@@ -512,10 +512,10 @@ std::optional<std::pair<std::int64_t, std::int64_t>> AstToHirContext::SignedInte
 /// decoder, so both are exact at every width.
 bool AstToHirContext::UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeRef &target) const {
     bool negative = false;
-    const LiteralExpr *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const LiteralExpr *literal = AstCast<const LiteralExpr>(&expr);
     if (!literal) {
-        if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr); unary && unary->op == TokenKind::Minus) {
-            literal = dynamic_cast<const LiteralExpr *>(unary->operand.get());
+        if (const auto *unary = AstCast<const UnaryExpr>(&expr); unary && unary->op == TokenKind::Minus) {
+            literal = AstCast<const LiteralExpr>(unary->operand.get());
         }
         if (!literal) {
             return false;
@@ -537,7 +537,7 @@ bool AstToHirContext::UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeR
 }
 
 bool AstToHirContext::IsNullLiteral(const Expr &expr) {
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const auto *literal = AstCast<const LiteralExpr>(&expr);
     return literal && literal->token.kind == TokenKind::NullKeyword;
 }
 
@@ -604,7 +604,7 @@ TypeRef AstToHirContext::ResolveType(const TypeExpr &expr) {
 
 TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                                                      const std::unordered_map<std::string, TypeRef> &substitutions) {
-    if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const NamedTypeExpr>(&expr)) {
         if (t->typeArgs.empty()) {
             if (auto it = substitutions.find(t->name); it != substitutions.end()) {
                 return RestoreEnumLayoutMarkers(it->second);
@@ -635,24 +635,24 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         NoteStructInstantiation(named);
         return named;
     }
-    if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const PointerTypeExpr>(&expr)) {
         TypeRef pointee = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointee.isMut = pointee.isMut || t->pointeeMut;
         return TypeRef::MakePointer(std::move(pointee));
     }
-    if (auto *t = dynamic_cast<const ReferenceTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const ReferenceTypeExpr>(&expr)) {
         TypeRef pointee = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointee.isMut = pointee.isMut || t->pointeeMut;
         return TypeRef::MakeReference(std::move(pointee));
     }
-    if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const ArrayTypeExpr>(&expr)) {
         return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
                                   ResolvedType(expr).arrayLength);
     }
-    if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const SliceTypeExpr>(&expr)) {
         return TypeRef::MakeSlice(ResolveTypeWithSubstitution(*t->element, substitutions), t->elementMut);
     }
-    if (auto *t = dynamic_cast<const RangeTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const RangeTypeExpr>(&expr)) {
         // Semantic analysis has already accepted the two bounds as one element type, so either spells it.
         if (!t->start && !t->end) {
             return TypeRef::MakeRangeFull();
@@ -660,14 +660,14 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         TypeRef element = ResolveTypeWithSubstitution(t->start ? *t->start : *t->end, substitutions);
         return TypeRef::MakeRange(std::move(element), t->start != nullptr, t->end != nullptr, t->inclusive);
     }
-    if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const TupleTypeExpr>(&expr)) {
         std::vector<TypeRef> elems;
         for (auto &elem : t->elements) {
             elems.push_back(ResolveTypeWithSubstitution(*elem, substitutions));
         }
         return TypeRef::MakeTuple(std::move(elems));
     }
-    if (auto *t = dynamic_cast<const FunctionTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const FunctionTypeExpr>(&expr)) {
         std::vector<TypeRef> paramTypes;
         paramTypes.reserve(t->params.size());
         for (const auto &param : t->params) {
@@ -685,10 +685,10 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         for (const TypeExpr *child : NativeTypeChildren(expr)) {
             children.push_back(ResolveTypeWithSubstitution(*child, substitutions));
         }
-        if (dynamic_cast<const SumTypeExpr *>(&expr)) {
+        if (AstCast<const SumTypeExpr>(&expr)) {
             return TypeRef::MakeSum(std::move(children));
         }
-        if (dynamic_cast<const OptionalTypeExpr *>(&expr)) {
+        if (AstCast<const OptionalTypeExpr>(&expr)) {
             return TypeRef::MakeOptional(std::move(children.front()));
         }
         const bool hasSuccess = static_cast<const FallibleTypeExpr &>(expr).success != nullptr;

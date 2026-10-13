@@ -288,7 +288,7 @@ HirExprPtr AstToHirContext::LowerNativeConstruct(const NativeConstructExpr &cons
 }
 
 HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef &targetType) {
-    if (dynamic_cast<const NativeConstructExpr *>(&expression) || dynamic_cast<const NoneExpr *>(&expression)) {
+    if (AstCast<const NativeConstructExpr>(&expression) || AstCast<const NoneExpr>(&expression)) {
         // Lowered through the ordinary path so the constructor's own consumption facts still apply, with the
         // destination it is built as.
         const std::optional<TypeRef> saved = std::exchange(pendingNativeTarget, targetType);
@@ -299,10 +299,10 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
 
     // An unsuffixed literal has no width of its own: it descends through presence and success levels and takes the one
     // member of its literal kind in the sum it reaches.
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
-    const auto *negated = dynamic_cast<const UnaryExpr *>(&expression);
+    const auto *literal = AstCast<const LiteralExpr>(&expression);
+    const auto *negated = AstCast<const UnaryExpr>(&expression);
     if (!literal && negated && negated->op == TokenKind::Minus) {
-        literal = dynamic_cast<const LiteralExpr *>(negated->operand.get());
+        literal = AstCast<const LiteralExpr>(negated->operand.get());
     }
     const bool unsuffixedNumber =
         literal && (literal->token.kind == TokenKind::IntLiteral || literal->token.kind == TokenKind::FloatLiteral) &&
@@ -351,7 +351,7 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
 
     // A conditional chooses between two values that each convert on their own path, so a constructor or `none` in an
     // arm is built directly as the destination.
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression)) {
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
         auto lowered = std::make_unique<HirTernaryExpr>();
         lowered->location = ternary->location;
         lowered->type = targetType;
@@ -543,20 +543,20 @@ HirPatternPtr AstToHirContext::LowerNativeSelection(const TypeRef &subjectType, 
 
 HirPatternPtr AstToHirContext::LowerNativePattern(const Pattern &pattern, const TypeRef &subjectType) {
     const SourceLocation location = pattern.location;
-    if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+    if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         const TypeRef *recorded = model.TryGetTypedPatternType(*typed);
         const TypeRef annotation = recorded ? SubstituteCurrentType(*recorded) : subjectType;
         return LowerNativeSelection(subjectType, annotation, typed->name, &pattern, location);
     }
-    if (dynamic_cast<const NonePattern *>(&pattern)) {
+    if (AstCast<const NonePattern>(&pattern)) {
         return NativeCasePattern(subjectType, NativeAbsentTag, std::nullopt, nullptr, location);
     }
-    if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         const TypeRef payload = subjectType.IsOptional() ? subjectType.inner.front() : TypeRef::MakeUnknown();
         return NativeCasePattern(subjectType, NativePresentTag, payload, LowerPattern(*presence->inner, payload),
                                  location);
     }
-    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern);
+    if (const auto *enumeration = AstCast<const EnumPattern>(&pattern);
         enumeration && enumeration->path.size() == 1 && enumeration->args.size() == 1 &&
         (subjectType.IsOptional() || subjectType.IsFallible())) {
         const std::string &name = enumeration->path.front();
@@ -720,7 +720,7 @@ HirExprPtr AstToHirContext::LowerMappedTry(const MappedTryExpr &expression) {
         binder = std::move(bound);
     }
     failing.pattern = NativeCasePattern(operandType, NativeFailureTag, error, std::move(binder), location);
-    if (dynamic_cast<const DivergeExpr *>(expression.mapper.get())) {
+    if (AstCast<const DivergeExpr>(expression.mapper.get())) {
         failing.body = LowerExpr(*expression.mapper);
     }
     else {
@@ -770,7 +770,7 @@ HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
         PushScope();
         const bool savedOwnership = patternBindingsOwnPayload;
         patternBindingsOwnPayload = armsOwnPayload;
-        const auto *guarded = dynamic_cast<const GuardedPattern *>(arm.pattern.get());
+        const auto *guarded = AstCast<const GuardedPattern>(arm.pattern.get());
         const Pattern &errorPattern = guarded && guarded->inner ? *guarded->inner : *arm.pattern;
         HirPatternPtr inner = LowerPattern(errorPattern, error);
         HirPatternPtr failure = NativeCasePattern(subjectType, NativeFailureTag, error, std::move(inner), location);
@@ -784,7 +784,7 @@ HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
         recovery.pattern = std::move(failure);
         patternBindingsOwnPayload = savedOwnership;
         const bool leaves =
-            dynamic_cast<const DivergeExpr *>(arm.body.get()) || dynamic_cast<const BlockExpr *>(arm.body.get());
+            AstCast<const DivergeExpr>(arm.body.get()) || AstCast<const BlockExpr>(arm.body.get());
         recovery.body = leaves ? LowerExpr(*arm.body) : LowerExprAs(*arm.body, lowered->type);
         recovery.cleanups = CurrentScopeCleanups();
         PopScope();
@@ -842,7 +842,7 @@ HirExprPtr AstToHirContext::LowerNativeCoalesce(const BinaryExpr &expression) {
     HirMatchArm absent;
     absent.location = location;
     absent.pattern = NativeCasePattern(operandType, NativeAbsentTag, std::nullopt, nullptr, location);
-    absent.body = dynamic_cast<const DivergeExpr *>(expression.right.get()) ? LowerExpr(*expression.right)
+    absent.body = AstCast<const DivergeExpr>(expression.right.get()) ? LowerExpr(*expression.right)
                                                                             : LowerExprAs(*expression.right, payload);
 
     auto lowered = std::make_unique<HirMatchExpr>();
@@ -953,7 +953,7 @@ HirFunc AstToHirContext::FallibleEntryWrapper(const HirFunc &body) {
 HirExprPtr AstToHirContext::LowerPendingNative(const Expr &expression) {
     const TypeRef targetType = pendingNativeTarget ? *pendingNativeTarget : ResolvedExpressionType(expression);
     pendingNativeTarget.reset();
-    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         return LowerNativeConstruct(*construct, targetType);
     }
     return LowerNoneAs(targetType, expression.location);

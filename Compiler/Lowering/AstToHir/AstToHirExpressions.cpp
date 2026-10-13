@@ -92,18 +92,18 @@ TypeRef AstToHirContext::RestoreEnumLayoutMarkers(TypeRef type) const {
 TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
     const TypeRef *type = model.TryGetType(expression);
     if (!type) {
-        assert(!dynamic_cast<const LiteralExpr *>(&expression) && "literal is missing a semantic type fact");
-        assert(!dynamic_cast<const IdentExpr *>(&expression) && "identifier is missing a semantic type fact");
-        assert(!dynamic_cast<const SelfExpr *>(&expression) && "self expression is missing a semantic type fact");
-        assert(!dynamic_cast<const UnaryExpr *>(&expression) && "unary expression is missing a semantic type fact");
-        assert(!dynamic_cast<const PostfixExpr *>(&expression) && "postfix expression is missing a semantic type fact");
-        assert(!dynamic_cast<const BinaryExpr *>(&expression) && "binary expression is missing a semantic type fact");
-        assert(!dynamic_cast<const AssignExpr *>(&expression) && "assignment is missing a semantic type fact");
-        assert(!dynamic_cast<const TernaryExpr *>(&expression) && "ternary expression is missing a semantic type fact");
-        assert(!dynamic_cast<const IndexExpr *>(&expression) && "index expression is missing a semantic type fact");
-        assert(!dynamic_cast<const FieldExpr *>(&expression) && "field expression is missing a semantic type fact");
-        assert(!dynamic_cast<const CastExpr *>(&expression) && "cast expression is missing a semantic type fact");
-        assert(!dynamic_cast<const IsExpr *>(&expression) && "type check is missing a semantic type fact");
+        assert(!AstCast<const LiteralExpr>(&expression) && "literal is missing a semantic type fact");
+        assert(!AstCast<const IdentExpr>(&expression) && "identifier is missing a semantic type fact");
+        assert(!AstCast<const SelfExpr>(&expression) && "self expression is missing a semantic type fact");
+        assert(!AstCast<const UnaryExpr>(&expression) && "unary expression is missing a semantic type fact");
+        assert(!AstCast<const PostfixExpr>(&expression) && "postfix expression is missing a semantic type fact");
+        assert(!AstCast<const BinaryExpr>(&expression) && "binary expression is missing a semantic type fact");
+        assert(!AstCast<const AssignExpr>(&expression) && "assignment is missing a semantic type fact");
+        assert(!AstCast<const TernaryExpr>(&expression) && "ternary expression is missing a semantic type fact");
+        assert(!AstCast<const IndexExpr>(&expression) && "index expression is missing a semantic type fact");
+        assert(!AstCast<const FieldExpr>(&expression) && "field expression is missing a semantic type fact");
+        assert(!AstCast<const CastExpr>(&expression) && "cast expression is missing a semantic type fact");
+        assert(!AstCast<const IsExpr>(&expression) && "type check is missing a semantic type fact");
         assert(false && "accepted expression is missing a required semantic type fact");
         std::abort();
     }
@@ -176,10 +176,10 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->name = model.TryGetSymbolIdentity(*global)->linkerName;
         return lowered;
     }
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return LowerExpr(*move->operand);
     }
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         auto lowered = std::make_unique<HirLiteralExpr>();
         lowered->location = literal->location;
         lowered->type = ResolvedExpressionType(*literal);
@@ -187,7 +187,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         if (HirExprPtr compilerValue = LowerCompilerParamIdentifier(*identifier)) {
             return compilerValue;
         }
@@ -198,14 +198,14 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (dynamic_cast<const SelfExpr *>(&expression)) {
+    if (AstCast<const SelfExpr>(&expression)) {
         auto lowered = std::make_unique<HirSelfExpr>();
         lowered->location = expression.location;
         lowered->type = ResolvedExpressionType(expression);
         return lowered;
     }
 
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         auto lowered = std::make_unique<HirUnaryExpr>();
         lowered->location = unary->location;
         lowered->op = unary->op;
@@ -214,11 +214,11 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+    if (const auto *tryExpression = AstCast<const TryExpr>(&expression)) {
         return LowerTryExpr(*tryExpression);
     }
 
-    if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         auto lowered = std::make_unique<HirPostfixExpr>();
         lowered->location = postfix->location;
         lowered->op = postfix->op;
@@ -227,7 +227,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         if (binary->op == TokenKind::QuestionQuestion) {
             return LowerCoalesceExpr(*binary);
         }
@@ -264,10 +264,10 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
             const TypeRef rightType = rightFact ? SubstituteCurrentType(*rightFact) : TypeRef::MakeUnknown();
             if (leftFact && rightFact && (MentionsNativeType(leftType) || MentionsNativeType(rightType))) {
                 std::function<bool(const Expr &)> contextual = [&](const Expr &operand) {
-                    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&operand)) {
+                    if (const auto *construct = AstCast<const NativeConstructExpr>(&operand)) {
                         return construct->operand != nullptr && contextual(*construct->operand);
                     }
-                    const auto *literal = dynamic_cast<const LiteralExpr *>(&operand);
+                    const auto *literal = AstCast<const LiteralExpr>(&operand);
                     return literal &&
                            (literal->token.kind == TokenKind::IntLiteral ||
                             literal->token.kind == TokenKind::FloatLiteral) &&
@@ -340,8 +340,8 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
-        if (const auto *index = dynamic_cast<const IndexExpr *>(assignment->target.get())) {
+    if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
+        if (const auto *index = AstCast<const IndexExpr>(assignment->target.get())) {
             if (const ResolvedIndexAssignment *resolved = model.TryGetIndexAssignment(*index)) {
                 return LowerIndexAssignment(*assignment, *index, *resolved);
             }
@@ -363,7 +363,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression)) {
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
         auto lowered = std::make_unique<HirTernaryExpr>();
         lowered->location = ternary->location;
         lowered->condition = LowerExpr(*ternary->condition);
@@ -375,7 +375,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         if (const ResolvedIndexOperator *resolved = model.TryGetIndexOperator(*index)) {
             return LowerIndexOperatorCall(*index, *resolved);
         }
@@ -387,7 +387,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         if (HirExprPtr compilerValue = LowerCompilerParamFieldExpression(*field)) {
             return compilerValue;
         }
@@ -399,7 +399,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         auto lowered = std::make_unique<HirCastExpr>();
         lowered->location = cast->location;
         lowered->targetType = ResolvedExpressionType(*cast);
@@ -409,7 +409,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *typeCheck = dynamic_cast<const IsExpr *>(&expression)) {
+    if (const auto *typeCheck = AstCast<const IsExpr>(&expression)) {
         if (HirExprPtr membership = LowerNativeMembership(*typeCheck)) {
             return membership;
         }
