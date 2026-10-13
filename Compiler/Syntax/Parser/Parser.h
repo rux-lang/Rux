@@ -49,6 +49,8 @@ private:
     bool structInitAllowed = true; ///< disabled inside if/while/for/match conditions
     /// Whether a block so far held a `when` statement or a nested declaration (`Module::bodiesNeedConditionalFolding`).
     bool bodiesNeedConditionalFolding = false;
+    /// Whether a block so far declared anything but a constant (`Module::bodiesDeclareItems`).
+    bool bodiesDeclareItems = false;
 
     // Token helpers
     [[nodiscard]] const Token &Peek(std::size_t ahead = 0) const noexcept;

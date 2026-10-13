@@ -169,19 +169,34 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         identity += declaration->name;
         symbolIdentities.emplace(declaration, ResolvedSymbolIdentity{std::move(identity)});
     }
-    std::unordered_map<std::string, std::unordered_set<std::string>> owners;
+    // Whether each function shares its name with another of its module, counted once per name: asking for every
+    // function apart compares it with every function of its name, which is quadratic in a name many modules use.
+    std::unordered_map<const FuncDecl *, bool> overloadedInModule;
+    for (const auto &[name, declarations] : functionsByName) {
+        (void)name;
+        std::unordered_map<std::string_view, std::size_t> perModule;
+        for (const auto *declaration : declarations) {
+            ++perModule[functionModulePaths.at(declaration)];
+        }
+        for (const auto *declaration : declarations) {
+            overloadedInModule.emplace(declaration, perModule.at(functionModulePaths.at(declaration)) > 1);
+        }
+    }
+    const auto isOverloadedInModule = [&](const FuncDecl &declaration) {
+        const auto known = overloadedInModule.find(&declaration);
+        return known != overloadedInModule.end() ? known->second : FunctionIsOverloadedInModule(declaration);
+    };
+    const auto localFunctionName = [&](const FuncDecl &declaration) {
+        return isOverloadedInModule(declaration) ? MangleFunctionWithParams(declaration) : declaration.name;
+    };
+    std::unordered_map<std::string, std::unordered_set<std::string_view>> owners;
     for (const auto &[name, declarations] : functionsByName) {
         (void)name;
         for (const auto *declaration : declarations) {
-            const std::string local =
-                FunctionIsOverloadedInModule(*declaration) ? MangleFunctionWithParams(*declaration) : declaration->name;
-            owners[local].insert(functionModulePaths.at(declaration));
+            owners[localFunctionName(*declaration)].insert(functionModulePaths.at(declaration));
         }
     }
 
-    const auto localFunctionName = [&](const FuncDecl &declaration) {
-        return FunctionIsOverloadedInModule(declaration) ? MangleFunctionWithParams(declaration) : declaration.name;
-    };
     const auto qualifyFunctionName = [&](const FuncDecl &declaration, std::string name) {
         const auto *owner = programIndex.InfoFor(declaration);
         if (declaration.name == "Main" && owner) {
@@ -189,9 +204,9 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
                 return name;
             return functionModulePaths.at(&declaration) + "::" + name;
         }
-        const std::string local = localFunctionName(declaration);
         const std::string &modulePath = functionModulePaths.at(&declaration);
-        if (owners[local].size() > 1 && !modulePath.empty()) {
+        const auto local = owners.find(localFunctionName(declaration));
+        if (local != owners.end() && local->second.size() > 1 && !modulePath.empty()) {
             return modulePath + "::" + name;
         }
         return name;
@@ -249,11 +264,31 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         vtableIdentities.insert_or_assign(implementation, std::move(identity));
     }
 
-    for (auto &[reference, binding] : functionReferenceBindings) {
-        (void)reference;
+    // Every binding is named on its own from what is settled above, so the bindings are spread over the workers.
+    const auto forEachBinding = [this]<typename Map>(Map &bindings, const auto &name) {
+        std::vector<typename Map::mapped_type *> pending;
+        pending.reserve(bindings.size());
+        for (auto &[_, binding] : bindings)
+            pending.push_back(&binding);
+        constexpr std::size_t chunk = 512;
+        const std::size_t chunks = (pending.size() + chunk - 1) / chunk;
+        const auto run = [&](const std::size_t index) {
+            const std::size_t end = std::min(pending.size(), (index + 1) * chunk);
+            for (std::size_t item = index * chunk; item < end; ++item)
+                name(*pending[item]);
+        };
+        if (workers != nullptr && chunks > 1) {
+            workers->ForEach(chunks, run);
+        }
+        else {
+            for (std::size_t index = 0; index < chunks; ++index)
+                run(index);
+        }
+    };
+    forEachBinding(functionReferenceBindings, [&](ResolvedCallableBinding &binding) {
         const auto &function = static_cast<const FuncDecl &>(*binding.selectedDeclaration);
         binding.linkerNameBase = qualifyFunctionName(function, function.name);
-        binding.linkerNameHasOverloadSignature = FunctionIsOverloadedInModule(function);
+        binding.linkerNameHasOverloadSignature = isOverloadedInModule(function);
         if (binding.linkerNameHasOverloadSignature) {
             for (const auto &parameter : function.params) {
                 binding.linkerOverloadTypes.push_back(IdentityParameterType(parameter, binding.substitutions));
@@ -261,15 +296,14 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         }
         binding.linkerSpecializationParameters = TypeParameterNames(function.typeParams);
         binding.linkerName = binding.LinkerNameFor(binding.substitutions);
-    }
-    for (auto &[call, binding] : callableBindings) {
-        (void)call;
+    });
+    forEachBinding(callableBindings, [&](ResolvedCallableBinding &binding) {
         if (!binding.selectedDeclaration || binding.dispatch == ResolvedCallableBinding::DispatchKind::Interface ||
             binding.dispatch == ResolvedCallableBinding::DispatchKind::Indirect ||
             binding.dispatch == ResolvedCallableBinding::DispatchKind::EnumVariant ||
             // A constrained call has one target per instantiation; lowering names it from the witness instead.
             binding.dispatch == ResolvedCallableBinding::DispatchKind::Constrained) {
-            continue;
+            return;
         }
         const auto *function = AstCast<const FuncDecl>(binding.selectedDeclaration);
         if (function &&
@@ -278,7 +312,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
             binding.receiverType) {
             binding.linkerName = MethodLinkerName(*function, *binding.receiverType, binding.substitutions);
             RecordMethodIdentityRecipe(binding, *function);
-            continue;
+            return;
         }
         if (function && !function->typeParams.empty()) {
             // A generic function's monomorphized name is its own name plus its type arguments, which two
@@ -291,7 +325,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
             // `Clamp__T_T_T`, and calls would still name an unqualified `Clamp_int_int_int` after fixing only the
             // declaration identity.
             binding.linkerNameBase = qualifyFunctionName(*function, function->name);
-            binding.linkerNameHasOverloadSignature = FunctionIsOverloadedInModule(*function);
+            binding.linkerNameHasOverloadSignature = isOverloadedInModule(*function);
             if (binding.linkerNameHasOverloadSignature) {
                 for (const auto &parameter : function->params) {
                     if (!parameter.isVariadic) {
@@ -301,13 +335,13 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
             }
             binding.linkerSpecializationParameters = TypeParameterNames(function->typeParams);
             binding.linkerName = binding.LinkerNameFor(binding.substitutions);
-            continue;
+            return;
         }
         if (const auto identity = symbolIdentities.find(binding.selectedDeclaration);
             identity != symbolIdentities.end()) {
             binding.linkerName = identity->second.linkerName;
         }
-    }
+    });
 }
 
 // Expressions

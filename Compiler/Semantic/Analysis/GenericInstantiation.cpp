@@ -131,14 +131,8 @@ void AnalysisContext::NoteGenericBodyType(const TypeRef &type) {
     genericBodyTypes[currentFunctionDecl].try_emplace(type.ToString(), type);
 }
 
-void AnalysisContext::QueueDropMethodInstantiations() {
-    for (const auto &[expression, type] : expressionTypes) {
-        QueueDropMethodInstantiation(type);
-    }
-    for (const auto &[node, type] : typeNodeTypes) {
-        QueueDropMethodInstantiation(type);
-    }
-    for (const auto &[pattern, type] : patternTypes) {
+void AnalysisContext::QueueDropMethodInstantiations(const std::vector<TypeRef> &recordedTypes) {
+    for (const TypeRef &type : recordedTypes) {
         QueueDropMethodInstantiation(type);
     }
 }

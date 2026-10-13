@@ -934,6 +934,10 @@ struct Module {
     /// on inside bodies. The parser clears it for a module with neither, so folding can skip its bodies; a module built
     /// any other way keeps the default and is always walked.
     bool bodiesNeedConditionalFolding = true;
+    /// Whether a block declares anything but a constant: a function, type, extension or module inside a body joins the
+    /// package's declaration indexes when it is checked, so modules holding one cannot be checked independently. True
+    /// unless the parser saw none.
+    bool bodiesDeclareItems = true;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
 };
 

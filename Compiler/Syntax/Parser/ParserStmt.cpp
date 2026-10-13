@@ -136,6 +136,7 @@ StmtPtr Parser::ParseStmt() {
         ds->location = loc;
         bodiesNeedConditionalFolding = true;
         ds->decl = ParseDecl();
+        bodiesDeclareItems = bodiesDeclareItems || (ds->decl && !AstCast<const ConstDecl>(ds->decl.get()));
         return ds;
     }
 

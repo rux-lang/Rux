@@ -246,20 +246,14 @@ const FuncDecl *AnalysisContext::LookupSourceSpecialOperation(const TypeRef &typ
     return nullptr;
 }
 
-void AnalysisContext::RecordResolvedTypeProperties() {
+void AnalysisContext::RecordResolvedTypeProperties(const std::vector<TypeRef> &recordedTypes) {
     const auto record = [&](const TypeRef &type) {
         const TypeProperties properties = ClassifyTypeProperties(type);
         if (!properties.IsResolved()) {
             typeProperties.insert_or_assign(type.ToString(), properties);
         }
     };
-    for (const auto &[_, type] : expressionTypes) {
-        record(type);
-    }
-    for (const auto &[_, type] : typeNodeTypes) {
-        record(type);
-    }
-    for (const auto &[_, type] : patternTypes) {
+    for (const TypeRef &type : recordedTypes) {
         record(type);
     }
     for (const auto &[name, declaration] : structDecls) {

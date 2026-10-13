@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Parallel/WorkerPool.h"
 #include "Semantic/Model/SemanticModel.h"
 
 #include <map>
@@ -63,7 +64,19 @@ public:
         conditionalsResolved = true;
     }
 
+    /// Threads the bodies of modules may be checked on; null checks them on the calling thread. The model never
+    /// depends on it: a package whose analysis reports anything is analyzed again on one thread, so diagnostics come
+    /// out exactly as a single analysis orders them.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        pool = inputPool;
+    }
+
 private:
+    /// Check module bodies on several analysis contexts at once and merge them; false when the package cannot be
+    /// analyzed that way or analysis reported anything, leaving `facts`, `diags` and `symbols` to be rebuilt.
+    [[nodiscard]] bool AnalyzeInParallel(std::vector<const Module *> &constModules, SemanticFacts &facts);
+
+    Parallel::WorkerPool *pool = nullptr;
     bool conditionalsResolved = false;
     std::vector<Module *> modules;
     std::vector<DepPackage> deps;

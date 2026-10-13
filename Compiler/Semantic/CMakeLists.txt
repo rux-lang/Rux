@@ -2,6 +2,7 @@
 
 rux_add_component(RuxSemantic
     Analysis/Imports.cpp
+    Analysis/ParallelAbsorb.cpp
     Analysis/AssociatedConstants.cpp
     Analysis/Intrinsics.cpp
     Analysis/TypeResolution.cpp
@@ -47,4 +48,4 @@ rux_add_component(RuxSemantic
     Analysis/Receivers.cpp
     Analysis/TypeProperties.cpp
 )
-target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics)
+target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics RuxParallel)

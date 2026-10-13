@@ -60,7 +60,42 @@ public:
     AnalysisContext(const AnalysisContext &) = delete;
     AnalysisContext &operator=(const AnalysisContext &) = delete;
 
+    /// Analyze every module on the calling thread: the phases below, in order, over every module.
     void Run();
+
+    // The phases of Run, so modules' bodies can be checked by several contexts at once (see SemanticAnalyzer). Every
+    // context runs all of the Begin phases; each checks the bodies of its own range of modules; one context that
+    // checked no body then merges the others' records in module order and finishes.
+
+    /// Index declarations, then apply the dependencies' imports, resolve their signatures and precheck their
+    /// declarations.
+    void BeginDependencies();
+    /// Check the bodies of dependency modules [begin, end), counting every dependency's modules in order.
+    void CheckDependencyModules(std::size_t begin, std::size_t end);
+    /// Apply the package's own imports, resolve its signatures and precheck its declarations.
+    void BeginUserModules();
+    /// Check the bodies of the package's own modules [begin, end).
+    void CheckUserModules(std::size_t begin, std::size_t end);
+    /// Validate generic instantiations and record layouts, destructors and symbol identities.
+    void Finish();
+    [[nodiscard]] std::size_t DependencyModuleCount() const;
+
+    /// What a context's bodies recorded beyond the shared Begin phases.
+    struct BodyRecords;
+    /// Take this context's own records out of it, judged against `shared`, a context that ran only the Begin phases
+    /// and has not changed since. Runs on this context's thread; `shared` is only read. Records may point into this
+    /// context's scopes, so it must outlive the context they are merged into.
+    [[nodiscard]] BodyRecords ExtractBodyRecords(const AnalysisContext &shared);
+    /// Merge workers' records into this context, which ran only the Begin phases: `records` in the order of the
+    /// workers' module ranges, each kind as one context checking every module in order would have left it. Independent
+    /// maps merge on `pool`'s threads.
+    void AbsorbBodyRecords(std::vector<BodyRecords> &records, Parallel::WorkerPool *pool);
+
+    /// Threads Finish may spread independent work over; null runs it all on the calling thread.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        workers = inputPool;
+    }
+
     [[nodiscard]] std::unordered_map<const Decl *, bool> EffectiveVisibilities() const;
     /// The effectively public declarations the package being compiled owns itself.
     [[nodiscard]] std::unordered_set<const Decl *> ExportedDeclarations() const;
@@ -585,6 +620,8 @@ private:
     std::vector<SemanticDiagnostic> &diags;
     const CompileTimeContext &context;
     const PackageImportBindings &imports;
+    /// The facts this context records into, so a parallel analysis can extract and merge what its bodies recorded.
+    SemanticFacts &outputFacts;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_set<const Expr *> &borrowedScalarReads;
     std::unordered_set<const Expr *> &referenceWrites;
@@ -1095,22 +1132,33 @@ private:
     void PrecheckModule(const Module &module);
     void PrecheckModuleInScope(const Module &module, Scope &scope);
     void PrecheckDecl(const Decl &declaration);
+    /// Bind a module's imports again once signatures and prechecked declarations are resolved, so the copies they put
+    /// in scope carry resolved types before any body is checked; CheckDecl then leaves those imports alone. Imports are
+    /// bound exactly twice however many modules a context checks, which keeps every context's scopes alike.
+    void RefreshModuleImports(const Module &module);
+    void RefreshModuleImportsInScope(const Module &module, Scope &scope);
+    void RefreshDeclImports(const Decl &declaration);
+    void ReapplyUseDecl(const UseDecl &useDecl);
+    std::unordered_set<const UseDecl *> refreshedImports;
     /// Declarations `PrecheckDecl` checked, which `CheckDecl` then leaves alone.
     std::unordered_set<const Decl *> precheckedDeclarations;
     /// Queues the destructor of every droppable type recorded, so its body is analyzed at each type it will
     /// be built for. Nothing in the source calls a destructor -- the generated glue does -- so without this a body
     /// reachable no other way is lowered having never been analyzed, and anything it deferred until its type
     /// arguments were known is never answered.
-    void QueueDropMethodInstantiations();
+    void QueueDropMethodInstantiations(const std::vector<TypeRef> &recordedTypes);
     /// Queues the destructor instantiation a droppable `type` needs, if its destructor is generic.
     void QueueDropMethodInstantiation(const TypeRef &type);
     /// Records a type the body of the function being checked holds, when it names a type parameter.
     void NoteGenericBodyType(const TypeRef &type);
 
     void ValidatePendingGenericInstantiations();
-    void RecordResolvedTypeLayouts();
-    void RecordResolvedTypeProperties();
-    void SynthesizeResolvedDropGlue();
+    /// Every type recorded for an expression, a type node or a pattern, one per spelling, in the order first met. The
+    /// passes of Finish depend only on a type's spelling, and most recorded types repeat.
+    [[nodiscard]] std::vector<TypeRef> DistinctRecordedTypes() const;
+    void RecordResolvedTypeLayouts(const std::vector<TypeRef> &recordedTypes);
+    void RecordResolvedTypeProperties(const std::vector<TypeRef> &recordedTypes);
+    void SynthesizeResolvedDropGlue(const std::vector<TypeRef> &recordedTypes);
     [[nodiscard]] std::vector<DropGlueStep> BuildDropGlueSteps(const TypeRef &type,
                                                                std::unordered_set<std::string> &activeTypes);
     [[nodiscard]] bool TypeHasDirectDestructor(const std::string &baseName) const;
@@ -1216,6 +1264,45 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
     std::unordered_map<const FuncDecl *, std::vector<DeferredEnumInstantiation>> deferredEnumInstantiations;
     std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
+    /// Where each phase left the instantiation queue, so absorbed workers' entries go where a single context would
+    /// have queued them.
+    std::size_t instantiationsAfterDependencyBegin = 0;
+    std::size_t instantiationsAfterDependencyBodies = 0;
+    std::size_t instantiationsAfterUserBegin = 0;
+    Parallel::WorkerPool *workers = nullptr;
+
+public:
+    struct BodyRecords {
+        SemanticFacts facts;
+        std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
+        std::unordered_map<const GlobalDecl *, TypeRef> checkedGlobalTypes;
+        std::unordered_set<const ConstDecl *> localConstants;
+        /// Where each of `localConstants` was declared; its scope belongs to the context that checked it.
+        std::vector<std::pair<const Decl *, SemanticProgramIndex::DeclarationInfo>> localConstantInfos;
+        std::unordered_map<const Expr *, TypeRef> expectedExpressionTypes;
+        std::unordered_set<const NativeConstructExpr *> consumedConstructorOperands;
+        std::unordered_map<const Pattern *, bool> nativeMatchExhaustive;
+        std::unordered_map<const Pattern *, std::optional<std::string>> tupleMatchMissing;
+        std::unordered_set<const LiteralExpr *> negatedIntegerLiterals;
+        std::unordered_map<const FuncDecl *, std::unordered_map<std::string, TypeRef>> genericBodyTypes;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredAtomicCheck>> deferredAtomicChecks;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredScalarRead>> deferredScalarReads;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredOutcomeCheck>> deferredOutcomeChecks;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredMatchCheck>> deferredMatchChecks;
+        std::unordered_map<const FuncDecl *, std::vector<TypeRef>> deferredNativeTypes;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredMembershipCheck>> deferredMembershipChecks;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
+        std::unordered_map<const FuncDecl *, std::vector<DeferredEnumInstantiation>> deferredEnumInstantiations;
+        /// Instantiations queued while checking dependency bodies and the package's own bodies.
+        std::vector<PendingGenericInstantiation> dependencyInstantiations;
+        std::vector<PendingGenericInstantiation> userInstantiations;
+    };
+
+private:
     std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
     std::unordered_set<const FuncDecl *> reportedRunawayInstantiations;
     std::unordered_set<std::string> activeLayoutTypes;

@@ -56,6 +56,7 @@ ParseResult Parser::Parse() {
 
     mod.documentationIssues = std::move(documentationIssues);
     mod.bodiesNeedConditionalFolding = bodiesNeedConditionalFolding;
+    mod.bodiesDeclareItems = bodiesDeclareItems;
     return ParseResult{std::move(mod), std::move(diagnostics)};
 }
 

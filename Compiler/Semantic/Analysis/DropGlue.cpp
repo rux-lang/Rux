@@ -197,7 +197,7 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
     return steps;
 }
 
-void AnalysisContext::SynthesizeResolvedDropGlue() {
+void AnalysisContext::SynthesizeResolvedDropGlue(const std::vector<TypeRef> &recordedTypes) {
     dropGluePlans.clear();
     const auto synthesize = [&](const TypeRef &type) {
         const std::string key = type.ToString();
@@ -210,13 +210,7 @@ void AnalysisContext::SynthesizeResolvedDropGlue() {
             dropGluePlans.emplace(key, DropGluePlan{type, DropGlueSymbol(type), std::move(steps)});
         }
     };
-    for (const auto &[_, type] : expressionTypes) {
-        synthesize(type);
-    }
-    for (const auto &[_, type] : typeNodeTypes) {
-        synthesize(type);
-    }
-    for (const auto &[_, type] : patternTypes) {
+    for (const TypeRef &type : recordedTypes) {
         synthesize(type);
     }
     for (const TypeRef &type : instantiatedTypes) {

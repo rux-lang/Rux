@@ -645,6 +645,7 @@ bool CompilerDriver::Impl::Analyze() {
                               compileTimeContext, dependencyGraph->Bindings());
     // LoadDependencies folded every package's conditionals while it decided which imports to load.
     analyzer.SetConditionalsResolved();
+    analyzer.SetWorkerPool(&Workers());
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
     if (opts.dumpSema) {

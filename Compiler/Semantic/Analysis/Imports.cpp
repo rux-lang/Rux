@@ -50,6 +50,56 @@ void AnalysisContext::ApplyDeclImports(const Decl &decl) {
     }
 }
 
+void AnalysisContext::ReapplyUseDecl(const UseDecl &useDecl) {
+    // A module-level import was bound before signatures were resolved; binding it again picks up the resolved types of
+    // what it names, but must not report the problems of the first binding a second time.
+    const std::size_t before = diags.size();
+    CheckUseDecl(useDecl);
+    if (appliedImports.contains(&useDecl)) {
+        const auto repeated = [&](const SemanticDiagnostic &diagnostic) {
+            return std::ranges::any_of(diags.begin(), diags.begin() + static_cast<std::ptrdiff_t>(before),
+                                       [&](const SemanticDiagnostic &earlier) {
+                                           return earlier.sourceName == diagnostic.sourceName &&
+                                                  earlier.location.line == diagnostic.location.line &&
+                                                  earlier.location.column == diagnostic.location.column &&
+                                                  earlier.message == diagnostic.message;
+                                       });
+        };
+        const auto removed =
+            std::ranges::remove_if(diags.begin() + static_cast<std::ptrdiff_t>(before), diags.end(), repeated);
+        diags.erase(removed.begin(), removed.end());
+    }
+}
+
+void AnalysisContext::RefreshModuleImports(const Module &module) {
+    currentFile = module.name;
+    for (const auto &declaration : module.items) {
+        RefreshDeclImports(*declaration);
+    }
+}
+
+void AnalysisContext::RefreshModuleImportsInScope(const Module &module, Scope &scope) {
+    Scope *savedScope = currentScope;
+    currentScope = &scope;
+    RefreshModuleImports(module);
+    currentScope = savedScope;
+}
+
+void AnalysisContext::RefreshDeclImports(const Decl &declaration) {
+    if (const auto *useDecl = AstCast<const UseDecl>(&declaration)) {
+        ReapplyUseDecl(*useDecl);
+        refreshedImports.insert(useDecl);
+    }
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&declaration)) {
+        Scope *savedScope = currentScope;
+        currentScope = &ModuleScopeFor(moduleDecl->name, *currentScope);
+        for (const auto &item : moduleDecl->items) {
+            RefreshDeclImports(*item);
+        }
+        currentScope = savedScope;
+    }
+}
+
 Scope &AnalysisContext::ModuleScopeFor(const std::string &name, Scope &parent) {
     return programIndex.ModuleScopeFor(name, parent);
 }

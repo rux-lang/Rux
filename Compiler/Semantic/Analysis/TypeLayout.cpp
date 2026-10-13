@@ -371,24 +371,24 @@ std::optional<ResolvedTypeLayout> AnalysisContext::LayoutOfTypeExpression(const 
     return LayoutOfTypeExpr(expr);
 }
 
-void AnalysisContext::RecordResolvedTypeLayouts() {
+void AnalysisContext::RecordResolvedTypeLayouts(const std::vector<TypeRef> &recordedTypes) {
+    // A layout depends only on the spelling, so each spelling is laid out once. Laying out resolves types, which
+    // records more, so the types are gathered first.
+    std::unordered_set<std::string> spellings;
     std::vector<TypeRef> resolvedTypes;
-    resolvedTypes.reserve(typeNodeTypes.size() + expressionTypes.size() + patternTypes.size());
-    for (const auto &[_, type] : typeNodeTypes) {
-        resolvedTypes.push_back(type);
-    }
-    for (const auto &[_, type] : expressionTypes) {
-        resolvedTypes.push_back(type);
-    }
-    for (const auto &[_, type] : patternTypes) {
-        resolvedTypes.push_back(type);
+    const auto record = [&](const TypeRef &type) {
+        if (spellings.insert(type.ToString()).second)
+            resolvedTypes.push_back(type);
+    };
+    for (const TypeRef &type : recordedTypes) {
+        record(type);
     }
     for (const auto &[_, binding] : callableBindings) {
         for (const auto &[__, type] : binding.substitutions) {
-            resolvedTypes.push_back(type);
+            record(type);
         }
         if (binding.receiverType) {
-            resolvedTypes.push_back(*binding.receiverType);
+            record(*binding.receiverType);
         }
     }
     for (const TypeRef &type : resolvedTypes) {
@@ -469,24 +469,8 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         }
     }
     else if (auto *useDecl = AstCast<const UseDecl>(&decl)) {
-        // A module-level import was bound before signatures were resolved; binding it again picks up the resolved
-        // types of what it names, but must not report the problems of the first binding a second time.
-        const std::size_t before = diags.size();
-        CheckUseDecl(*useDecl);
-        if (appliedImports.contains(useDecl)) {
-            const auto repeated = [&](const SemanticDiagnostic &diagnostic) {
-                return std::ranges::any_of(diags.begin(), diags.begin() + static_cast<std::ptrdiff_t>(before),
-                                           [&](const SemanticDiagnostic &earlier) {
-                                               return earlier.sourceName == diagnostic.sourceName &&
-                                                      earlier.location.line == diagnostic.location.line &&
-                                                      earlier.location.column == diagnostic.location.column &&
-                                                      earlier.message == diagnostic.message;
-                                           });
-            };
-            const auto removed =
-                std::ranges::remove_if(diags.begin() + static_cast<std::ptrdiff_t>(before), diags.end(), repeated);
-            diags.erase(removed.begin(), removed.end());
-        }
+        if (!refreshedImports.contains(useDecl))
+            ReapplyUseDecl(*useDecl);
     }
     ValidatePublicDeclaration(decl);
 }

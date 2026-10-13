@@ -111,6 +111,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output)
     , diags(inputs.diagnostics)
     , context(inputs.context)
     , imports(inputs.imports)
+    , outputFacts(output)
     , expressionTypes(output.expressionTypes)
     , borrowedScalarReads(output.borrowedScalarReads)
     , referenceWrites(output.referenceWrites)
@@ -752,6 +753,21 @@ TypeRef AnalysisContext::EnumVariantConstructorType(const EnumDecl &declaration,
 }
 
 void AnalysisContext::Run() {
+    BeginDependencies();
+    CheckDependencyModules(0, DependencyModuleCount());
+    BeginUserModules();
+    CheckUserModules(0, modules.size());
+    Finish();
+}
+
+std::size_t AnalysisContext::DependencyModuleCount() const {
+    std::size_t count = 0;
+    for (const auto &package : deps)
+        count += package.modules.size();
+    return count;
+}
+
+void AnalysisContext::BeginDependencies() {
     IndexDeclarations();
 
     for (auto &package : deps) {
@@ -775,9 +791,27 @@ void AnalysisContext::Run() {
     for (auto &package : deps) {
         currentPackage = package.name;
         for (auto &entry : package.modules) {
-            CheckModuleInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
+            RefreshModuleImportsInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
         }
     }
+    instantiationsAfterDependencyBegin = pendingGenericInstantiations.size();
+}
+
+void AnalysisContext::CheckDependencyModules(const std::size_t begin, const std::size_t end) {
+    std::size_t index = 0;
+    for (auto &package : deps) {
+        for (auto &entry : package.modules) {
+            if (index >= begin && index < end) {
+                currentPackage = package.name;
+                CheckModuleInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
+            }
+            ++index;
+        }
+    }
+    instantiationsAfterDependencyBodies = pendingGenericInstantiations.size();
+}
+
+void AnalysisContext::BeginUserModules() {
     for (const Module *module : modules) {
         currentPackage = packageName;
         ApplyModuleImports(*module);
@@ -792,13 +826,51 @@ void AnalysisContext::Run() {
     }
     for (const Module *module : modules) {
         currentPackage = packageName;
-        CheckModule(*module);
+        RefreshModuleImports(*module);
     }
-    QueueDropMethodInstantiations();
+    instantiationsAfterUserBegin = pendingGenericInstantiations.size();
+}
+
+void AnalysisContext::CheckUserModules(const std::size_t begin, const std::size_t end) {
+    for (std::size_t index = begin; index < end && index < modules.size(); ++index) {
+        currentPackage = packageName;
+        CheckModule(*modules[index]);
+    }
+}
+
+std::vector<TypeRef> AnalysisContext::DistinctRecordedTypes() const {
+    std::unordered_set<std::string> spellings;
+    std::vector<TypeRef> types;
+    const auto add = [&](const TypeRef &type) {
+        if (spellings.insert(type.ToString()).second)
+            types.push_back(type);
+    };
+    for (const auto &[_, type] : expressionTypes)
+        add(type);
+    for (const auto &[_, type] : typeNodeTypes)
+        add(type);
+    for (const auto &[_, type] : patternTypes)
+        add(type);
+    return types;
+}
+
+void AnalysisContext::Finish() {
+    // Gathered again only when a pass recorded more types: validating instantiations checks their bodies.
+    std::vector<TypeRef> recordedTypes;
+    std::size_t recordedCount = 0;
+    const auto distinctTypes = [&]() -> const std::vector<TypeRef> & {
+        const std::size_t count = expressionTypes.size() + typeNodeTypes.size() + patternTypes.size();
+        if (recordedTypes.empty() || count != recordedCount) {
+            recordedTypes = DistinctRecordedTypes();
+            recordedCount = count;
+        }
+        return recordedTypes;
+    };
+    QueueDropMethodInstantiations(distinctTypes());
     ValidatePendingGenericInstantiations();
-    RecordResolvedTypeProperties();
-    SynthesizeResolvedDropGlue();
-    RecordResolvedTypeLayouts();
+    RecordResolvedTypeProperties(distinctTypes());
+    SynthesizeResolvedDropGlue(distinctTypes());
+    RecordResolvedTypeLayouts(distinctTypes());
     BuildFinalSymbolIdentities();
 }
 } // namespace Rux::SemanticDetail

@@ -174,6 +174,11 @@ public:
         return declarationInfos;
     }
 
+    /// Record what another index learned about a declaration, such as a constant a function body declares.
+    void AdoptDeclarationInfo(const Decl &declaration, DeclarationInfo info) {
+        declarationInfos.insert_or_assign(&declaration, std::move(info));
+    }
+
 private:
     /// Define a package item, rejecting a name a built-in type already holds in any enclosing scope.
     bool DefineItem(Scope &scope, const Symbol &symbol, const std::string &sourceName);
