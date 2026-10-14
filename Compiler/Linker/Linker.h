@@ -45,6 +45,11 @@ public:
 
     /// Leave out of an image every function its entry point and exports do not reach (`RcuGarbageCollection.h`). The
     /// driver asks for it, so a module can keep functions it compiled for other modules that turn out not to need them.
+    /// Threads the link graph may be built on; null builds it on the calling thread. The image never depends on it.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        pool = inputPool;
+    }
+
     void SetCollectGarbage(bool enabled) noexcept {
         collectGarbage = enabled;
     }
@@ -60,6 +65,7 @@ private:
     std::optional<RcuLinkGraph> graph;
     bool emitSymbols = false;
     bool collectGarbage = false;
+    Parallel::WorkerPool *pool = nullptr;
 
     void Error(std::string msg, std::vector<std::string> notes = {});
 

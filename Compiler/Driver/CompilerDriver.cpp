@@ -1147,6 +1147,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                   targetArch);
     linker.SetEmitSymbols(opts.emitSymbols);
     linker.SetCollectGarbage(true);
+    linker.SetWorkerPool(&Workers());
     if (!linker.Link(artifactPath)) {
         for (const auto &err : linker.Errors()) {
             Emit(ErrorDiagnostic(err.message, err.notes));

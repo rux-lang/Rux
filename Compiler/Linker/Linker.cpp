@@ -152,7 +152,7 @@ std::vector<std::string> Linker::RelocationNotes(const RcuLinkReference &referen
 }
 
 bool Linker::BuildGraph() {
-    graph = RcuLinkGraph::Build(objects, packageName, artifactKind, targetArch);
+    graph = RcuLinkGraph::Build(objects, packageName, artifactKind, targetArch, pool);
     for (const RcuLinkDiagnostic &diagnostic : graph->Diagnostics()) {
         switch (diagnostic.kind) {
         case RcuLinkDiagnosticKind::UnsupportedArchitecture:

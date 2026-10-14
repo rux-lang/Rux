@@ -20,4 +20,4 @@ rux_add_component(RuxLinker
     Pe/PeWriter.cpp
     Elf/ElfWriter.cpp
     MachO/MachOWriter.cpp)
-target_link_libraries(RuxLinker PUBLIC RuxObjectRcu RuxSystem RuxArchive RuxCrypto)
+target_link_libraries(RuxLinker PUBLIC RuxObjectRcu RuxSystem RuxArchive RuxCrypto RuxParallel)
