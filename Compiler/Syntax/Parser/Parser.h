@@ -52,11 +52,32 @@ private:
     /// Whether a block so far declared anything but a constant (`Module::bodiesDeclareItems`).
     bool bodiesDeclareItems = false;
 
-    // Token helpers
-    [[nodiscard]] const Token &Peek(std::size_t ahead = 0) const noexcept;
-    const Token &Advance() noexcept;
-    [[nodiscard]] bool Check(TokenKind kind) const noexcept;
-    [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
+    // Token helpers, defined here because every level of every expression asks them, from every parser file.
+    [[nodiscard]] const Token &Peek(const std::size_t ahead = 0) const noexcept {
+        const std::size_t index = pos + ahead;
+        return index < tokens.size() ? tokens[index] : tokens.back(); // the last token is the EOF sentinel
+    }
+
+    const Token &Advance() noexcept {
+        if (!IsAtEnd()) {
+            ++pos;
+        }
+        return tokens[pos - 1];
+    }
+
+    [[nodiscard]] bool Check(const TokenKind kind) const noexcept {
+        return Peek().kind == kind;
+    }
+
+    [[nodiscard]] bool CheckAny(const std::initializer_list<TokenKind> kinds) const noexcept {
+        const TokenKind current = Peek().kind;
+        for (const auto kind : kinds) {
+            if (current == kind) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// Whether the current token closes a generic argument list. A `>>` or `>>>` written where two or three of them
     /// end at once is a run of closers rather than a shift, and only the parser knows which it is looking at.
@@ -65,15 +86,31 @@ private:
     /// Consumes one closing `>`. A longer run is narrowed in place rather than advanced past, leaving the rest for
     /// the enclosing list to close with.
     void ConsumeCloseAngle() noexcept;
-    bool Match(TokenKind kind) noexcept;
+
+    bool Match(const TokenKind kind) noexcept {
+        if (!Check(kind)) {
+            return false;
+        }
+        Advance();
+        return true;
+    }
+
     const Token &Expect(TokenKind kind, std::string_view message);
     /// Grammar-aware diagnostics name both the role of a missing token and the token that prevented it from being
     /// parsed.
     const Token &ExpectBefore(TokenKind kind, std::string_view expected, std::optional<std::string> help = {});
     bool ConsumeBodyStart(std::string_view role);
-    [[nodiscard]] bool IsAtEnd() const noexcept;
+
+    [[nodiscard]] bool IsAtEnd() const noexcept {
+        return Peek().kind == TokenKind::EndOfFile;
+    }
+
     [[nodiscard]] const Token &Previous() const noexcept;
-    [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
+
+    [[nodiscard]] SourceLocation CurrentLocation() const noexcept {
+        return Peek().location;
+    }
+
     [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
     /// Assumes the current token is '{'. True when the brace opens compile-time match arms (`pattern => ...`) rather
     /// than an ordinary `when`/block body, i.e. a top-level '=>' appears before any top-level ';' or the closing '}'.
