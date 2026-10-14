@@ -202,8 +202,19 @@ PassRunReport Detail::RunLirPasses(LirPackage &package, const std::vector<std::u
                         break;
                 }
             };
-            if (pool != nullptr)
-                pool->ForEach(slots.size(), runSlot);
+            if (pool != nullptr) {
+                // The largest functions first, so one large function handed out last does not leave every other thread
+                // waiting for it. Outcomes are kept by slot, so the order they are computed in changes nothing.
+                std::vector<std::pair<std::size_t, std::size_t>> bySize(slots.size());
+                for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex) {
+                    std::size_t size = 0;
+                    for (const auto &block : slots[slotIndex].function->blocks)
+                        size += block.instrs.size();
+                    bySize[slotIndex] = {size, slotIndex};
+                }
+                std::ranges::stable_sort(bySize, std::greater<>{}, &std::pair<std::size_t, std::size_t>::first);
+                pool->ForEach(slots.size(), [&](const std::size_t index) { runSlot(bySize[index].second); });
+            }
             else
                 for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
                     runSlot(slotIndex);
