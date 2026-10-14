@@ -372,3 +372,18 @@ TEST_CASE("Natural loops and spill priorities distinguish nesting and respect wo
     const auto priorities = ComputeSpillPriorities(function, {{10, 0, 100, 2, type}, {11, 0, 100, 2, type}});
     CHECK_GT(priorities.at(10), priorities.at(11) * 7);
 }
+
+TEST_CASE("A function whose edges all lead forward has no loop to look for") {
+    auto function = FuncOf({Define(10, {})}, 10);
+    function.blocks.resize(4);
+    function.blocks[0].term = Term(LirTermKind::Branch, 1, 2, 10);
+    function.blocks[1].term = Term(LirTermKind::Jump, 3);
+    function.blocks[2].term = Term(LirTermKind::Jump, 3);
+    function.blocks[3].term = Term(LirTermKind::Return);
+    CHECK_FALSE(MayHaveLoops(function));
+    // An edge back to its own block or an earlier one may close a cycle, whether or not it forms a natural loop.
+    function.blocks[2].term = Term(LirTermKind::Jump, 2);
+    CHECK(MayHaveLoops(function));
+    function.blocks[2].term = Term(LirTermKind::Jump, 1);
+    CHECK(MayHaveLoops(function));
+}

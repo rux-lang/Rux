@@ -779,6 +779,8 @@ std::string_view LirLoopUnrolling::Name() const noexcept {
 }
 
 PassChange LirLoopUnrolling::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (!MayHaveLoops(function))
+        return PassChange::None;
     // The unrolled copy is skipped by its label and the original keeps a third header predecessor, which no round
     // accepts, so repeating reaches the function's other loops without unrolling one twice.
     bool changed = HoistHeaderConstants(function);

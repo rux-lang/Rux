@@ -171,6 +171,8 @@ std::string_view LirPointerInduction::Name() const noexcept {
 }
 
 PassChange LirPointerInduction::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (!MayHaveLoops(function))
+        return PassChange::None;
     bool changed = false;
     // A reduced loop has no index-based address left to reduce, so repeating reaches the function's other loops.
     for (int round = 0; round < 8 && Reduce(function); ++round)

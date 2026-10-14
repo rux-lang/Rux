@@ -2,10 +2,43 @@
 
 #include "Ir/Lir/Dominance.h"
 
+#include <cstdint>
 #include <map>
 #include <unordered_set>
 
 namespace Rux {
+/// Whether `function` can have a natural loop at all. A cycle among blocks needs at least one edge to a block at or
+/// before its source in block order, so without such an edge there is no loop, and a loop pass can skip the function
+/// before building its dominator tree.
+inline bool MayHaveLoops(const LirFunc &function) {
+    for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        const auto &term = function.blocks[block].term;
+        if (!term)
+            continue;
+        switch (term->kind) {
+        case LirTermKind::Jump:
+            if (term->trueTarget <= block)
+                return true;
+            break;
+        case LirTermKind::Branch:
+            if (term->trueTarget <= block || term->falseTarget <= block)
+                return true;
+            break;
+        case LirTermKind::Switch:
+            if (term->defaultTarget <= block)
+                return true;
+            for (const auto &switchCase : term->cases)
+                if (switchCase.target <= block)
+                    return true;
+            break;
+        case LirTermKind::Return:
+        case LirTermKind::Unreachable:
+            break;
+        }
+    }
+    return false;
+}
+
 /// Immutable natural-loop membership. Rebuild after CFG changes. Irreducible cycles are intentionally not natural
 /// loops. A work limit keeps deeply nested/generated CFGs bounded; clients must check complete before using results.
 struct LirNaturalLoops {

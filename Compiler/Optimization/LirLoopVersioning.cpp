@@ -818,6 +818,8 @@ std::string_view LirLoopVersioning::Name() const noexcept {
 }
 
 PassChange LirLoopVersioning::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (!MayHaveLoops(function))
+        return PassChange::None;
     bool changed = false;
     // Each round versions one loop; a versioned loop's entry becomes a guard branch, which no later round accepts as
     // a preheader, so repeating reaches the function's other loops without revisiting one.

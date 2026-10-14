@@ -1,6 +1,7 @@
 #include "Optimization/LirIfConversion.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Optimization/RegisterTable.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -59,18 +60,21 @@ bool Convert(LirFunc &function) {
     for (const auto &[header, members] : loops.members)
         looped.insert(members.begin(), members.end());
 
-    std::unordered_map<LirReg, TypeRef> types;
-    std::unordered_map<LirReg, const LirInstr *> definitions;
+    // Both point at the function's own parameters and instructions, which stay put until a conversion, after which
+    // the pass returns.
+    const std::size_t registers = RegisterCountHint(function);
+    RegisterTable<const TypeRef *> types(registers);
+    RegisterTable<const LirInstr *> definitions(registers);
     LirReg next = 0;
     for (const auto &parameter : function.params) {
-        types.emplace(parameter.reg, parameter.type);
+        types.Insert(parameter.reg, &parameter.type);
         next = std::max(next, parameter.reg + 1);
     }
     for (const auto &block : function.blocks)
         for (const auto &instruction : block.instrs)
             if (instruction.dst != LirNoReg) {
-                types.emplace(instruction.dst, instruction.type);
-                definitions.emplace(instruction.dst, &instruction);
+                types.Insert(instruction.dst, &instruction.type);
+                definitions.Insert(instruction.dst, &instruction);
                 next = std::max(next, instruction.dst + 1);
             }
 
@@ -78,8 +82,8 @@ bool Convert(LirFunc &function) {
         const auto &term = function.blocks[head].term;
         if (!term || term->kind != LirTermKind::Branch || !looped.contains(head))
             continue;
-        const auto condition = types.find(term->cond);
-        if (condition == types.end() || !condition->second.IsBool())
+        const TypeRef *const *condition = types.Find(term->cond);
+        if (condition == nullptr || !(*condition)->IsBool())
             continue;
         for (const bool taken : {true, false}) {
             const auto side = taken ? term->trueTarget : term->falseTarget;
@@ -132,21 +136,20 @@ bool Convert(LirFunc &function) {
                 Merged value{phi.dst, phi.type, LirNoReg, LirNoReg};
                 for (const auto &[reg, predecessor] : phi.phiPreds)
                     (predecessor == side ? value.updated : value.kept) = reg;
-                const auto found = definitions.find(value.updated);
-                const auto *sum = found == definitions.end() ? nullptr : found->second;
+                const LirInstr *const *found = definitions.Find(value.updated);
+                const auto *sum = found == nullptr ? nullptr : *found;
                 if (sum && sum->op == LirOpcode::Add && sum->srcs.size() == 2 &&
                     sum->type.ToString() == phi.type.ToString() &&
                     (sum->srcs[0] == value.kept || sum->srcs[1] == value.kept)) {
                     value.addend = sum->srcs[0] == value.kept ? sum->srcs[1] : sum->srcs[0];
-                    const auto addend = definitions.find(value.addend);
-                    value.one = addend != definitions.end() && addend->second->op == LirOpcode::Const &&
-                                addend->second->strArg == "1";
+                    const LirInstr *const *addend = definitions.Find(value.addend);
+                    value.one = addend != nullptr && (*addend)->op == LirOpcode::Const && (*addend)->strArg == "1";
                 }
                 merged.push_back(std::move(value));
             }
 
             const auto conditionReg = term->cond;
-            const auto conditionType = condition->second;
+            const TypeRef conditionType = **condition;
             auto &instrs = function.blocks[head].instrs;
             for (auto &instruction : function.blocks[side].instrs)
                 instrs.push_back(std::move(instruction));
@@ -209,6 +212,9 @@ std::string_view LirIfConversion::Name() const noexcept {
 }
 
 PassChange LirIfConversion::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    // Only a branch inside a loop is converted.
+    if (!MayHaveLoops(function))
+        return PassChange::None;
     bool changed = false;
     for (int round = 0; round < 16 && Convert(function); ++round)
         changed = true;

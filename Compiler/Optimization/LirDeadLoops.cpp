@@ -186,6 +186,8 @@ std::string_view LirDeadLoops::Name() const noexcept {
 }
 
 PassChange LirDeadLoops::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (!MayHaveLoops(function))
+        return PassChange::None;
     bool changed = false;
     // A removed loop is unreachable, and cleanup deletes it; no round sees it again.
     for (int round = 0; round < 8 && Remove(function); ++round)

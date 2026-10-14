@@ -1,6 +1,7 @@
 #include "Optimization/LirInliner.h"
 
 #include "Optimization/ReferenceTypes.h"
+#include "Optimization/RegisterTable.h"
 
 #include <algorithm>
 #include <functional>
@@ -114,9 +115,9 @@ std::optional<Size> Eligible(const LirFunc &function, const ConcreteReferenceTyp
         if (returned == function.blocks.front().instrs.end() || returned->type != function.returnType)
             return std::nullopt;
     }
-    std::unordered_set<LirReg> definitions;
+    RegisterTable<bool> definitions(RegisterCountHint(function));
     for (const auto &parameter : function.params) {
-        if (!definitions.insert(parameter.reg).second) {
+        if (!definitions.Insert(parameter.reg, true)) {
             return std::nullopt;
         }
     }
@@ -133,7 +134,7 @@ std::optional<Size> Eligible(const LirFunc &function, const ConcreteReferenceTyp
             returns = true;
         }
         for (const auto &instruction : block.instrs) {
-            if (instruction.dst != LirNoReg && !definitions.insert(instruction.dst).second) {
+            if (instruction.dst != LirNoReg && !definitions.Insert(instruction.dst, true)) {
                 return std::nullopt;
             }
             if (instruction.op == LirOpcode::Load && !instruction.strArg.empty()) {
@@ -187,18 +188,18 @@ std::optional<Size> Eligible(const LirFunc &function, const ConcreteReferenceTyp
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
             for (const auto source : instruction.srcs) {
-                if (!definitions.contains(source)) {
+                if (!definitions.Contains(source)) {
                     return std::nullopt;
                 }
             }
             for (const auto &[source, predecessor] : instruction.phiPreds) {
-                if (!definitions.contains(source) || predecessor >= function.blocks.size()) {
+                if (!definitions.Contains(source) || predecessor >= function.blocks.size()) {
                     return std::nullopt;
                 }
             }
         }
-        if ((block.term->cond != LirNoReg && !definitions.contains(block.term->cond)) ||
-            (block.term->retVal && !definitions.contains(*block.term->retVal))) {
+        if ((block.term->cond != LirNoReg && !definitions.Contains(block.term->cond)) ||
+            (block.term->retVal && !definitions.Contains(*block.term->retVal))) {
             return std::nullopt;
         }
     }

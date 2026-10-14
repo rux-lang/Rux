@@ -193,6 +193,9 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer ||
                type.kind == TypeRef::Kind::Reference;
     };
+    // Reused from block to block: even an empty table allocates with some standard libraries.
+    MemoryFacts loads;
+    ValueTable values;
     while (!visits.empty()) {
         const auto visit = visits.back();
         visits.pop_back();
@@ -208,8 +211,11 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         // Exact memory facts cross only a unique incoming edge, never a join or loop header. Each child owns its
         // mutable copy, so a write on a sibling path cannot clear or populate this path's facts. FP computations
         // remain block-local; integer/address expressions may also follow the general dominator tree.
-        MemoryFacts loads = visit.memory ? *visit.memory : MemoryFacts{};
-        ValueTable values;
+        if (visit.memory)
+            loads = *visit.memory;
+        else
+            loads.clear();
+        values.clear();
         for (std::size_t index = 0; index < block.instrs.size(); ++index) {
             auto &instruction = block.instrs[index];
             for (auto &source : instruction.srcs) {

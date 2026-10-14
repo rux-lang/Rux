@@ -299,6 +299,8 @@ std::string_view LirFillWidening::Name() const noexcept {
 }
 
 PassChange LirFillWidening::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (!MayHaveLoops(function))
+        return PassChange::None;
     bool changed = false;
     // A widened loop starts its element loop at the word loop's index, never at zero, so no round revisits it.
     for (int round = 0; round < 8 && Widen(function); ++round)

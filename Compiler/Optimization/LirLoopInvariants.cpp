@@ -355,6 +355,8 @@ void LirLoopInvariants::Prepare(const LirPackage &package) {
 }
 
 PassChange LirLoopInvariants::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (!MayHaveLoops(function))
+        return PassChange::None;
     // This bounded motion phase runs once; reaching its budget leaves code in place, never drives nonconvergence.
     const bool preheaders = InsertPreheaders(function);
     const bool hoisted = Hoist(function, constantNames);

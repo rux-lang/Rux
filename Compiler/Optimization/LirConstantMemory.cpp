@@ -1,5 +1,6 @@
 #include "Optimization/LirConstantMemory.h"
 
+#include "Optimization/RegisterTable.h"
 #include "Unicode/Utf.h"
 
 #include <unordered_map>
@@ -26,19 +27,18 @@ std::optional<std::size_t> Length(const LirConstDecl &constant) {
 }
 
 bool Fold(LirFunc &function, const std::unordered_map<std::string, const LirConstDecl *> &constants) {
-    std::unordered_map<LirReg, const LirInstr *> definitions;
-    std::unordered_set<LirReg> parameters;
+    // A parameter is defined by no instruction, so it stands in the table with none.
+    RegisterTable<const LirInstr *> definitions(RegisterCountHint(function));
     for (const auto &parameter : function.params)
-        if (!parameters.insert(parameter.reg).second)
+        if (!definitions.Insert(parameter.reg, nullptr))
             return false;
     for (const auto &block : function.blocks)
         for (const auto &instruction : block.instrs)
-            if (instruction.dst != LirNoReg &&
-                (parameters.contains(instruction.dst) || !definitions.emplace(instruction.dst, &instruction).second))
+            if (instruction.dst != LirNoReg && !definitions.Insert(instruction.dst, &instruction))
                 return false;
     const auto get = [&](const LirReg reg) -> const LirInstr * {
-        const auto found = definitions.find(reg);
-        return found == definitions.end() ? nullptr : found->second;
+        const LirInstr *const *found = definitions.Find(reg);
+        return found == nullptr ? nullptr : *found;
     };
     bool changed = false;
     for (auto &block : function.blocks) {
@@ -97,6 +97,9 @@ void LirConstantMemory::Prepare(const LirPackage &package) {
 
 PassChange LirConstantMemory::RunFunction(LirFunc &function, const std::size_t moduleIndex, const PassContext &) const {
     if (function.isExtern || function.isAsm)
+        return PassChange::None;
+    // Only a load of a constant's length folds, and a module without constants has none.
+    if (moduleConstants[moduleIndex].empty())
         return PassChange::None;
     return Fold(function, moduleConstants[moduleIndex]) ? PassChange::Changed : PassChange::None;
 }
