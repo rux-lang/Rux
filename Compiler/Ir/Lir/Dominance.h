@@ -2,8 +2,11 @@
 
 #include "Ir/Lir/ControlFlow.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <limits>
-#include <utility>
+#include <span>
+#include <vector>
 
 namespace Rux {
 /// Immutable CFG analysis. Reconstruct after changing edges or block indices; instruction-only edits do not affect it.
@@ -12,36 +15,50 @@ public:
     static constexpr std::uint32_t Invalid = std::numeric_limits<std::uint32_t>::max();
 
     explicit LirDominance(const LirControlFlow &cfg)
-        : immediate(cfg.successors.size(), Invalid)
-        , order(cfg.successors.size(), Invalid) {
-        if (cfg.successors.empty()) {
+        : blocks(static_cast<std::uint32_t>(cfg.successors.size())) {
+        // One block holds the immediate dominators, the reverse-postorder positions, the order itself and the walk's
+        // stack: this is built for nearly every function in every pass that asks about dominance.
+        storage.assign(static_cast<std::size_t>(blocks) * 5, Invalid);
+        if (blocks == 0) {
             return;
         }
-        std::vector<bool> visited(cfg.successors.size(), false);
-        std::vector<std::pair<std::uint32_t, std::size_t>> stack{{0, 0}};
-        visited[0] = true;
-        while (!stack.empty()) {
-            auto &[block, successor] = stack.back();
-            if (successor == cfg.successors[block].size()) {
-                reversePostorder.push_back(block);
-                stack.pop_back();
+        std::uint32_t *const immediate = Immediate();
+        std::uint32_t *const order = Order();
+        std::uint32_t *const postorder = storage.data() + 2 * static_cast<std::size_t>(blocks);
+        std::uint32_t *const stack = storage.data() + 3 * static_cast<std::size_t>(blocks);
+        // The walk's stack holds a block and the next successor to try; a block is pushed once, when first reached.
+        std::uint32_t depth = 0;
+        const auto push = [&](const std::uint32_t block) {
+            order[block] = 0;
+            stack[2 * depth] = block;
+            stack[2 * depth + 1] = 0;
+            ++depth;
+        };
+        push(0);
+        while (depth != 0) {
+            const std::uint32_t block = stack[2 * (depth - 1)];
+            std::uint32_t &successor = stack[2 * (depth - 1) + 1];
+            const auto successors = cfg.successors[block];
+            if (successor == successors.size()) {
+                postorder[count++] = block;
+                --depth;
                 continue;
             }
-            const auto next = cfg.successors[block][successor++];
-            if (!visited[next]) {
-                visited[next] = true;
-                stack.emplace_back(next, 0);
+            const auto next = successors[successor++];
+            if (order[next] == Invalid) {
+                push(next);
             }
         }
-        std::ranges::reverse(reversePostorder);
-        for (std::uint32_t index = 0; index < reversePostorder.size(); ++index) {
-            order[reversePostorder[index]] = index;
+        std::reverse(postorder, postorder + count);
+        for (std::uint32_t index = 0; index < count; ++index) {
+            order[postorder[index]] = index;
         }
         immediate[0] = 0;
         bool changed = true;
         while (changed) {
             changed = false;
-            for (const auto block : reversePostorder) {
+            for (std::uint32_t index = 0; index < count; ++index) {
+                const std::uint32_t block = postorder[index];
                 if (block == 0) {
                     continue;
                 }
@@ -60,8 +77,9 @@ public:
     }
 
     [[nodiscard]] bool Dominates(const std::uint32_t dominator, std::uint32_t block) const {
-        if (dominator >= order.size() || block >= order.size() || order[dominator] == Invalid ||
-            order[block] == Invalid) {
+        const std::uint32_t *const order = Order();
+        const std::uint32_t *const immediate = Immediate();
+        if (dominator >= blocks || block >= blocks || order[dominator] == Invalid || order[block] == Invalid) {
             return false;
         }
         while (order[block] > order[dominator]) {
@@ -70,20 +88,40 @@ public:
         return block == dominator;
     }
 
-    [[nodiscard]] const std::vector<std::uint32_t> &ReversePostorder() const {
-        return reversePostorder;
+    /// The blocks reachable from the entry, in reverse postorder.
+    [[nodiscard]] std::span<const std::uint32_t> ReversePostorder() const {
+        return {storage.data() + 2 * static_cast<std::size_t>(blocks), count};
     }
 
-    [[nodiscard]] const std::vector<std::uint32_t> &ImmediateDominators() const {
-        return immediate;
+    /// Each block's immediate dominator, `Invalid` for an unreachable block; the entry is its own.
+    [[nodiscard]] std::span<const std::uint32_t> ImmediateDominators() const {
+        return {storage.data(), blocks};
     }
 
 private:
-    std::vector<std::uint32_t> immediate;
-    std::vector<std::uint32_t> order;
-    std::vector<std::uint32_t> reversePostorder;
+    std::uint32_t blocks = 0;
+    std::uint32_t count = 0;
+    std::vector<std::uint32_t> storage;
+
+    [[nodiscard]] std::uint32_t *Immediate() {
+        return storage.data();
+    }
+
+    [[nodiscard]] const std::uint32_t *Immediate() const {
+        return storage.data();
+    }
+
+    [[nodiscard]] std::uint32_t *Order() {
+        return storage.data() + blocks;
+    }
+
+    [[nodiscard]] const std::uint32_t *Order() const {
+        return storage.data() + blocks;
+    }
 
     [[nodiscard]] std::uint32_t Intersect(std::uint32_t left, std::uint32_t right) const {
+        const std::uint32_t *const order = Order();
+        const std::uint32_t *const immediate = Immediate();
         while (left != right) {
             while (order[left] > order[right]) {
                 left = immediate[left];
