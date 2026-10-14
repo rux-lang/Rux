@@ -1,6 +1,7 @@
 #include "Driver/ModuleCache.h"
 
 #include "Driver/BuildCache.h"
+#include "Lexer/Lexer.h"
 
 #include <algorithm>
 #include <atomic>
@@ -139,6 +140,60 @@ void PutU64(std::vector<std::uint8_t> &out, const std::uint64_t value) {
 }
 } // namespace
 
+namespace {
+/// A range of source whose positions other modules' code can hold. `whenReadingSource` marks one that holds them only
+/// where its tokens read `#source`, as a constant's value does: other modules inline the value, not its code.
+struct PositionedRange {
+    std::uint32_t begin = 0;
+    std::uint32_t end = 0;
+    bool whenReadingSource = false;
+};
+
+bool HasDefaultArguments(const FuncDecl &function) {
+    return std::ranges::any_of(function.params, [](const Param &param) { return param.defaultValue.has_value(); });
+}
+
+/// Collect the ranges of `items`, each running from an item to the next, whose positions reach other modules: a generic
+/// function or extension, whose bodies other modules instantiate; a function with default arguments, which its callers
+/// lower; and a constant, or an extension's associated constant, whose value may read `#source`.
+void CollectPositionedRanges(const std::vector<DeclPtr> &items, const std::uint32_t end,
+                             std::vector<PositionedRange> &ranges) {
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        if (!items[index])
+            continue;
+        const Decl &item = *items[index];
+        const std::uint32_t begin = item.location.offset;
+        std::uint32_t next = end;
+        for (std::size_t later = index + 1; later < items.size(); ++later)
+            if (items[later]) {
+                next = items[later]->location.offset;
+                break;
+            }
+        if (const auto *nested = AstCast<const ModuleDecl>(&item)) {
+            CollectPositionedRanges(nested->items, next, ranges);
+        }
+        else if (const auto *function = AstCast<const FuncDecl>(&item)) {
+            if (!function->typeParams.empty() || HasDefaultArguments(*function))
+                ranges.push_back({begin, next, false});
+        }
+        else if (const auto *extension = AstCast<const ImplDecl>(&item)) {
+            const auto *named = AstCast<const NamedTypeExpr>(extension->extendedType.get());
+            const bool generic = named == nullptr || !named->typeArgs.empty() ||
+                                 std::ranges::any_of(extension->methods, [](const std::unique_ptr<FuncDecl> &method) {
+                                     return method && (!method->typeParams.empty() || HasDefaultArguments(*method));
+                                 });
+            if (generic)
+                ranges.push_back({begin, next, false});
+            else if (!extension->constants.empty())
+                ranges.push_back({begin, next, true});
+        }
+        else if (AstCast<const ConstDecl>(&item)) {
+            ranges.push_back({begin, next, true});
+        }
+    }
+}
+} // namespace
+
 std::string ModuleInterface(const Module &module, const std::string_view source) {
     if (module.bodiesDeclareItems)
         return std::string(source);
@@ -147,17 +202,55 @@ std::string ModuleInterface(const Module &module, const std::string_view source)
         if (item)
             CollectPrivateBodies(*item, bodies);
     std::ranges::sort(bodies);
+    std::vector<PositionedRange> ranges;
+    CollectPositionedRanges(module.items, static_cast<std::uint32_t>(source.size()), ranges);
+    std::ranges::sort(ranges, {}, &PositionedRange::begin);
+    const LexerResult lexed = Lexer::TokenizeSource(source, module.name);
+    if (lexed.HasErrors())
+        return std::string(source);
+    const auto &tokens = lexed.tokens;
+    // A constant's positions count only when it reads `#source`.
+    std::erase_if(ranges, [&](const PositionedRange &range) {
+        if (!range.whenReadingSource)
+            return false;
+        for (std::size_t index = 0; index + 1 < tokens.size(); ++index) {
+            const Token &token = tokens[index];
+            if (token.location.offset >= range.begin && token.location.offset < range.end &&
+                token.kind == TokenKind::Hash && tokens[index + 1].kind == TokenKind::Ident &&
+                tokens[index + 1].text == "source")
+                return false;
+        }
+        return true;
+    });
+    // Each token as its kind and spelling, so comments, layout and the bodies other modules never see change nothing;
+    // where other modules' code holds positions, each token's position too; and whether a `?` is separated from what
+    // comes before it, which decides what it means.
     std::string interface;
     interface.reserve(source.size());
-    std::size_t copied = 0;
-    for (const auto &[begin, end] : bodies) {
-        if (begin < copied || end > source.size())
+    std::size_t body = 0;
+    std::size_t range = 0;
+    std::optional<std::size_t> skipped;
+    for (const Token &token : tokens) {
+        if (token.kind == TokenKind::EndOfFile || token.kind == TokenKind::DocComment)
             continue;
-        interface.append(source.substr(copied, begin - copied));
-        interface += "{}";
-        copied = end;
+        const std::uint32_t offset = token.location.offset;
+        while (body < bodies.size() && bodies[body].second < offset)
+            ++body;
+        if (body < bodies.size() && offset >= bodies[body].first && offset <= bodies[body].second) {
+            if (skipped != body)
+                interface += "{}\n";
+            skipped = body;
+            continue;
+        }
+        while (range < ranges.size() && ranges[range].end <= offset)
+            ++range;
+        interface += std::format("{} {}", static_cast<int>(token.kind), token.text);
+        if (range < ranges.size() && offset >= ranges[range].begin)
+            interface += std::format(" @{}:{}", token.location.line, token.location.column);
+        if (token.kind == TokenKind::Question || token.kind == TokenKind::QuestionQuestion)
+            interface += token.precededBySpace ? " spaced" : " joined";
+        interface += '\n';
     }
-    interface.append(source.substr(copied));
     return interface;
 }
 

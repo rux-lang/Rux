@@ -9,9 +9,9 @@
 // too. Such a module is analyzed and lowered for its declarations only, which is all the modules compiled again need of
 // it.
 //
-// The program's declarations are summed up by its interface hash: every module's source with the bodies of its
-// non-generic functions left out (`ModuleInterface`). Editing a body therefore recompiles that module alone, while
-// editing a signature, a type, a constant or a generic body recompiles them all.
+// The program's declarations are summed up by its interface hash: every module's tokens with the bodies of its
+// non-generic functions left out (`ModuleInterface`). Editing a body, a comment or the layout therefore recompiles that
+// module alone, while editing a signature, a type, a constant or a generic body recompiles them all.
 //
 // A build keeps one pack per profile and target under `Temp/Cache`, holding the entries of all its modules, written
 // whole after a successful build in a single rename.
@@ -30,8 +30,11 @@
 #include <vector>
 
 namespace Rux::Driver {
-/// `source` with the body of every non-generic function and method `module` declares replaced by `{}`: what other
-/// modules can depend on. A module whose bodies declare items into the program's indexes is its whole source.
+/// What other modules can depend on of `module`: its tokens, with the body of every non-generic function and method
+/// left out, by kind and spelling, so comments and layout do not count; plus the position of every token where other
+/// modules' code holds positions (generic functions and extensions, functions with default arguments, and constants
+/// whose value reads `#source`). A module whose bodies declare items into the program's indexes, or that does not
+/// lex, is its whole source.
 [[nodiscard]] std::string ModuleInterface(const Module &module, std::string_view source);
 
 /// What a build recorded about one module.

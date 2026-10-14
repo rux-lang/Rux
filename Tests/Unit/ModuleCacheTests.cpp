@@ -23,7 +23,7 @@ std::string InterfaceOf(const std::string &source) {
 }
 } // namespace
 
-TEST_CASE("a module's interface leaves out only the bodies of non-generic functions") {
+TEST_CASE("a module's interface leaves out the bodies of non-generic functions, comments and layout") {
     const std::string source = R"(pub struct Point { x: int32; y: int32; }
 
 pub func Sum(p: Point) -> int32 {
@@ -45,24 +45,25 @@ pub module Inner {
 }
 )";
     const std::string interface = InterfaceOf(source);
-    CHECK(interface.contains("pub struct Point { x: int32; y: int32; }"));
-    CHECK(interface.contains("pub func Sum(p: Point) -> int32 {}"));
-    CHECK(interface.contains("pub func Identity<T>(value: T) -> T {\n    return value;\n}"));
-    CHECK(interface.contains("pub func Twice(self: &Point) -> int32 {}"));
-    CHECK(interface.contains("pub func Answer() -> int32 {}"));
-    CHECK_FALSE(interface.contains("p.x + p.y"));
-    CHECK_FALSE(interface.contains("self.x * 2"));
+    CHECK(interface.contains("Point"));
+    CHECK(interface.contains("Twice"));
+    CHECK_FALSE(interface.contains("Answer() -> int32 { return 42; }"));
+    const auto replaced = [&](std::string_view from, std::string_view to) {
+        std::string edited = source;
+        edited.replace(edited.find(from), from.size(), to);
+        return InterfaceOf(edited);
+    };
 
-    // Editing a body leaves the interface as it was; editing a signature or a generic body does not.
-    std::string edited = source;
-    edited.replace(edited.find("p.x + p.y"), 9, "p.y + p.x");
-    CHECK(InterfaceOf(edited) == interface);
-    std::string signature = source;
-    signature.replace(signature.find("Sum(p: Point)"), 13, "Sum(q: Point)");
-    CHECK(InterfaceOf(signature) != interface);
-    std::string generic = source;
-    generic.replace(generic.find("return value;"), 13, "return  value;");
-    CHECK(InterfaceOf(generic) != interface);
+    // Editing a body leaves the interface as it was, and so does a comment or a change of layout where other modules
+    // hold no positions.
+    CHECK(replaced("p.x + p.y", "p.y + p.x") == interface);
+    CHECK(replaced("self.x * 2", "2 * self.x") == interface);
+    CHECK(replaced("extend Point {", "// Doubles.\nextend   Point {") == interface);
+    CHECK(replaced("pub module Inner {", "pub   module Inner\n{") == interface);
+    // A signature is part of it, and so is where a generic body lies, since other modules' code holds its positions.
+    CHECK(replaced("Sum(p: Point)", "Sum(q: Point)") != interface);
+    CHECK(replaced("return value;", "return  value;") != interface);
+    CHECK(replaced("pub func Sum", "// Adds.\npub func Sum") != interface);
 }
 
 TEST_CASE("module packs round-trip their entries and refuse damaged files") {
@@ -159,8 +160,8 @@ func Main() -> int {
 }
 
 TEST_CASE("compiler driver writes the same artifact for every job count, clean or reusing modules") {
-    // Enough modules for analysis, lowering and optimization to split them across threads, each with a type, a method,
-    // a generic instantiated at its own use, and a constant declared inside a body.
+    // Enough modules for analysis, lowering and optimization to split them across threads, each with a type, a
+    // method, a generic instantiated at its own use, and a constant declared inside a body.
     DependencyFixture fixture;
     std::vector<Diagnostic> diagnostics;
     const auto part = [](const int index, const int step) {
@@ -299,8 +300,8 @@ TEST_CASE("compiler driver never keeps a module that holds the build's time") {
 }
 
 TEST_CASE("dependency packages come from the shared package cache whatever the project keeps") {
-    // The dependency declares an overload no checked code calls, whose name spells a parameter type only resolving the
-    // skipped function records; the package is reused only when the names it was kept under are the program's.
+    // The dependency declares an overload no checked code calls, whose name spells a parameter type only resolving
+    // the skipped function records; the package is reused only when the names it was kept under are the program's.
     DependencyFixture fixture;
     fixture.SetDependencySource(R"(
 pub module Api {
@@ -353,8 +354,9 @@ pub module Api {
     CHECK(reused == 1);
     CHECK(clean == build(false).first);
 
-    // A program that declares a type of the dependency's name gives the dependency's declarations other names, so the
-    // kept package does not link into it: it is compiled again, and kept as another variant the next build reuses.
+    // A program that declares a type of the dependency's name gives the dependency's declarations other names, so
+    // the kept package does not link into it: it is compiled again, and kept as another variant the next build
+    // reuses.
     fixture.SetApplicationSource(R"(
 import Dependency::Api::Answer;
 
