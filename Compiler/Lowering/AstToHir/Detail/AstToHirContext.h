@@ -80,6 +80,14 @@ protected:
     const std::unordered_set<const Module *> *declarationOnlyModules = nullptr;
     /// Whether the module being lowered is one of `declarationOnlyModules`.
     bool declarationOnly = false;
+    /// Whether the module, or the constant, being lowered has read the build's time. Reading it is bookkeeping, not a
+    /// change to what lowering does, so reading from a const member records it too.
+    mutable bool readsBuildTime = false;
+    /// The build's time, noting that the code being lowered depends on it.
+    [[nodiscard]] std::int64_t BuildTimestamp() const {
+        readsBuildTime = true;
+        return context.buildInfo.Timestamp();
+    }
     HirScope globalScope;
     HirScope *currentScope;
     std::vector<std::unique_ptr<HirScope>> ownedScopes;
@@ -345,6 +353,7 @@ private:
     [[nodiscard]] HirInterface LowerInterface(const InterfaceDecl &decl);
     [[nodiscard]] HirImplBlock LowerImpl(const ImplDecl &decl);
     [[nodiscard]] HirConst LowerConst(const ConstDecl &decl);
+    [[nodiscard]] HirConst LowerConstValue(const ConstDecl &decl);
     [[nodiscard]] HirExternFunc LowerExternFunc(const ExternFuncDecl &decl);
     [[nodiscard]] HirGlobal LowerGlobal(const GlobalDecl &decl);
     [[nodiscard]] HirExprPtr LowerProcessStartFrame(const CallExpr &call);

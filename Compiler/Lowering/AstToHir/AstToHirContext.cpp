@@ -545,6 +545,7 @@ void AstToHirContext::BeginModule(const Module &module) {
 HirModule AstToHirContext::LowerModule(const Module &module) {
     BeginModule(module);
     declarationOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
+    readsBuildTime = false;
     HirModule loweredModule;
     loweredModule.name = module.name;
     for (const auto &declaration : module.items) {
@@ -572,6 +573,7 @@ HirModule AstToHirContext::LowerModule(const Module &module) {
     }
     pendingStructInstantiations.clear();
     seenStructInstantiations.clear();
+    loweredModule.readsBuildTime = readsBuildTime;
     return loweredModule;
 }
 

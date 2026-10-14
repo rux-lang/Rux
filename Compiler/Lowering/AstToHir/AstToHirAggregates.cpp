@@ -40,8 +40,8 @@ bool UtcTime(const std::time_t time, std::tm &out) {
 
 /// Render the build timestamp for a compile-time `Build` value. Reads the timestamp from the context rather than the
 /// clock, which is what lets a reproducible build pin it.
-std::string FormatBuildTime(const CompileTimeContext &context, const char *format) {
-    const std::time_t value = static_cast<std::time_t>(context.buildInfo.Timestamp());
+std::string FormatBuildTime(const std::int64_t timestamp, const char *format) {
+    const std::time_t value = static_cast<std::time_t>(timestamp);
     std::tm utc{};
     if (!UtcTime(value, utc)) {
         return {};
@@ -225,11 +225,11 @@ HirExprPtr AstToHirContext::LowerCompilerParamField(const std::string &root, con
         if (field == "outputKind")
             return compilerEnum("OutputKind", static_cast<std::int64_t>(context.outputKind));
         if (field == "timestamp")
-            return CompilerLiteral(location, TypeRef::MakeUInt64(), std::to_string(context.buildInfo.Timestamp()));
+            return CompilerLiteral(location, TypeRef::MakeUInt64(), std::to_string(BuildTimestamp()));
         if (field == "date")
-            return CompilerString(location, FormatBuildTime(context, "%Y-%m-%d"));
+            return CompilerString(location, FormatBuildTime(BuildTimestamp(), "%Y-%m-%d"));
         if (field == "time")
-            return CompilerString(location, FormatBuildTime(context, "%H:%M:%S"));
+            return CompilerString(location, FormatBuildTime(BuildTimestamp(), "%H:%M:%S"));
     }
     if (root == "Compiler" && field == "version") {
         const ParsedSemanticVersion version =
@@ -387,11 +387,11 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         break;
     case Kind::Date:
         type = TypeRef::MakeText(TypeRef::Kind::Char8);
-        value = FormatBuildTime(context, "%Y-%m-%d");
+        value = FormatBuildTime(BuildTimestamp(), "%Y-%m-%d");
         break;
     case Kind::Time:
         type = TypeRef::MakeText(TypeRef::Kind::Char8);
-        value = FormatBuildTime(context, "%H:%M:%S");
+        value = FormatBuildTime(BuildTimestamp(), "%H:%M:%S");
         break;
     case Kind::Module:
         type = TypeRef::MakeText(TypeRef::Kind::Char8);
@@ -442,7 +442,7 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         break;
     case Kind::BuildTimestamp:
         type = TypeRef::MakeUInt64();
-        value = std::to_string(context.buildInfo.Timestamp());
+        value = std::to_string(BuildTimestamp());
         break;
     case Kind::CompilerHasFeature:
         type = TypeRef::MakeBool();

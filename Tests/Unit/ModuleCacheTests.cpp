@@ -245,3 +245,55 @@ func Main() -> int {{
     }
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("compiler driver never keeps a module that holds the build's time") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = TempDirectory() / ("rux-build-time-test-" + std::to_string(nonce));
+    const auto appRoot = root / "App";
+    std::filesystem::create_directories(appRoot / "Src");
+    std::error_code copyError;
+    std::filesystem::create_directories(root / "Packages", copyError);
+    std::filesystem::copy(std::filesystem::path(RUX_ROOT_DIR) / "Packages" / "Core", root / "Packages" / "Core",
+                          std::filesystem::copy_options::recursive, copyError);
+    REQUIRE_FALSE(copyError);
+    const auto write = [](const std::filesystem::path &path, const std::string_view text) {
+        std::ofstream output(path, std::ios::binary);
+        output << text;
+        REQUIRE(output.good());
+    };
+    write(appRoot / "Rux.toml", "[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
+                                "Type = \"Executable\"\n\n[Dependencies]\nCore = { Path = \"../Packages/Core\" }\n");
+    write(appRoot / "Src" / "Stamp.rux", "import Core::#build;\n\nmodule App::Stamp {\n"
+                                         "    pub func Seconds() -> uint64 {\n        return #build.timestamp;\n"
+                                         "    }\n}\n");
+    write(appRoot / "Src" / "Main.rux", "import App::Stamp::Seconds;\n\nfunc Main() -> int {\n"
+                                        "    return Seconds() > 0u64 ? 0 : 1;\n}\n");
+    const auto manifest = Manifest::Load(appRoot / "Rux.toml");
+    REQUIRE(manifest.Ok());
+    std::vector<Diagnostic> diagnostics;
+    const auto build = [&](const std::int64_t timestamp, const bool cache) {
+        CompileOptions options;
+        options.manifestPath = appRoot / "Rux.toml";
+        options.manifest = *manifest.manifest;
+        options.target = Target::TargetTriple::Host();
+        options.buildTimestamp = timestamp;
+        options.useBuildCache = cache;
+        options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &) {
+            diagnostics.push_back(diagnostic);
+        };
+        const auto result = CompilerDriver(options).Compile();
+        REQUIRE(result.ok);
+        return std::pair{ReadBinaryFile(result.primaryArtifactPath), result.stats.localReusedFiles};
+    };
+    static_cast<void>(build(1'000'000'000, true));
+    // A later build at another time reuses every module but the one holding the time, and its artifact is the one a
+    // full build at that time writes.
+    for (const auto &entry : std::filesystem::directory_iterator(appRoot / "Temp" / "Cache"))
+        if (entry.path().extension() == ".record")
+            std::filesystem::remove(entry.path(), copyError);
+    const auto [later, reused] = build(2'000'000'000, true);
+    CHECK(reused == 1);
+    CHECK(later == build(2'000'000'000, false).first);
+    CHECK(diagnostics.empty());
+    std::filesystem::remove_all(root, copyError);
+}

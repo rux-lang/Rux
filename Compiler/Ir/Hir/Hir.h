@@ -709,6 +709,8 @@ struct HirConst {
     TypeRef type;
     HirExprPtr value;
     SourceLocation location;
+    /// The value holds the build's time (`#build.timestamp`, `date` or `time`), so code that inlines it does too.
+    bool readsBuildTime = false;
 };
 
 // var Name: Type = expr; at module scope. `name` is the linker name every reference uses.
@@ -772,6 +774,9 @@ struct HirModule {
     std::vector<HirExternFunc> externFuncs;
     std::vector<HirExternVar> externVars;
     std::vector<HirTypeAlias> typeAliases;
+    /// Code of this module holds the build's time, which changes with every build that does not pin it, so its
+    /// compiled code is never kept for another build.
+    bool readsBuildTime = false;
 };
 
 struct HirTypeLayout {

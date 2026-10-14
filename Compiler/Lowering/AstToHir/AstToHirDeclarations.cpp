@@ -542,6 +542,15 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
 }
 
 HirConst AstToHirContext::LowerConst(const ConstDecl &d) {
+    // The constant reads the build's time when its own value does; the module it is lowered in reads it too.
+    const bool moduleReadsBuildTime = std::exchange(readsBuildTime, false);
+    HirConst hc = LowerConstValue(d);
+    hc.readsBuildTime = readsBuildTime;
+    readsBuildTime = moduleReadsBuildTime || readsBuildTime;
+    return hc;
+}
+
+HirConst AstToHirContext::LowerConstValue(const ConstDecl &d) {
     HirConst hc;
     hc.name = d.name;
     if (const auto *identity = model.TryGetSymbolIdentity(d)) {

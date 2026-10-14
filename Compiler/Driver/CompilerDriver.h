@@ -62,6 +62,8 @@ struct CompileOptions {
     /// Reuse the artifact of an earlier identical build when nothing it read has changed (see Driver/BuildCache.h).
     /// Inspection output, statistics and check-only runs always compile.
     bool useBuildCache = true;
+    /// The build's time, in seconds since the Unix epoch, instead of `SOURCE_DATE_EPOCH` or the clock.
+    std::optional<std::int64_t> buildTimestamp;
 
     /// Optional presentation hook. The driver always retains diagnostics in CompileResult and supplies already-loaded
     /// source text to a callback so a CLI can render context without rereading files.

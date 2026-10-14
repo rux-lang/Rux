@@ -90,7 +90,10 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
 
     std::int64_t buildTimestamp =
         static_cast<std::int64_t>(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
-    if (const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH")) {
+    if (opts.buildTimestamp) {
+        buildTimestamp = *opts.buildTimestamp;
+    }
+    else if (const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH")) {
         std::int64_t parsed = 0;
         const auto result = std::from_chars(epoch->data(), epoch->data() + epoch->size(), parsed);
         if (result.ec != std::errc{} || result.ptr != epoch->data() + epoch->size() || parsed < 0) {
@@ -204,6 +207,8 @@ bool CompilerDriver::Impl::VerifyReusedArtifact(const std::filesystem::path &art
     const auto reused = read(artifactPath);
     CompileOptions fresh = opts;
     fresh.useBuildCache = false;
+    // At the same time, so code that holds the build's time compiles the same.
+    fresh.buildTimestamp = compileTimeContext.buildInfo.Timestamp();
     fresh.emitDiagnostic = nullptr;
     fresh.emitProgress = nullptr;
     const auto compiled = CompilerDriver(std::move(fresh)).Compile();
@@ -862,6 +867,15 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     if (EmitAll(hirLowering.Diagnostics())) {
         return false;
     }
+    // Code that holds the build's time is never kept for another build. A constant holding it may be inlined into any
+    // module, so then no module is.
+    const bool constantReadsBuildTime = std::ranges::any_of(hirPackage.modules, [](const HirModule &module) {
+        return std::ranges::any_of(module.consts, &HirConst::readsBuildTime);
+    });
+    std::vector<bool> readsBuildTime;
+    readsBuildTime.reserve(hirPackage.modules.size());
+    for (const HirModule &module : hirPackage.modules)
+        readsBuildTime.push_back(constantReadsBuildTime || module.readsBuildTime);
     if (opts.dumpHir) {
         const auto hirPath = root / "Temp" / "Hir" / "hir.txt";
         if (!WriteInspectionOutput(InspectionKind::Hir, hirPath,
@@ -1193,7 +1207,8 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                 continue;
             }
             const auto key = moduleReuse.keys.find(module);
-            if (key == moduleReuse.keys.end() || freshObjects[index].empty() || reported.contains(module->name))
+            if (key == moduleReuse.keys.end() || freshObjects[index].empty() || reported.contains(module->name) ||
+                (index < readsBuildTime.size() && readsBuildTime[index]))
                 continue;
             const bool fails = index < moduleFailures.size() && moduleFailures[index] != 0;
             const auto &digest = moduleReuse.digests.at(module);
