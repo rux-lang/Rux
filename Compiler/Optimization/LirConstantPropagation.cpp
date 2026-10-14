@@ -41,7 +41,8 @@ KnownValue Resolve(const Values &values, const LirReg reg) {
     constexpr std::size_t kInline = 16;
     std::array<LirReg, kInline> recent{};
     std::size_t count = 0;
-    std::unordered_set<LirReg> visited;
+    // Built only when a chain outgrows the array: even an empty set allocates with some standard libraries.
+    std::optional<std::unordered_set<LirReg>> visited;
     const auto visit = [&](const LirReg candidate) {
         if (count < kInline) {
             if (std::find(recent.begin(), recent.begin() + static_cast<std::ptrdiff_t>(count), candidate) !=
@@ -50,9 +51,9 @@ KnownValue Resolve(const Values &values, const LirReg reg) {
             recent[count++] = candidate;
             return true;
         }
-        if (visited.empty())
-            visited.insert(recent.begin(), recent.end());
-        return visited.insert(candidate).second;
+        if (!visited)
+            visited.emplace(recent.begin(), recent.end());
+        return visited->insert(candidate).second;
     };
     LirReg current = reg;
     while (visit(current)) {
@@ -68,9 +69,9 @@ KnownValue Resolve(const Values &values, const LirReg reg) {
         }
         current = *found->second.copy;
     }
-    const LirReg smallest = visited.empty()
+    const LirReg smallest = !visited
                               ? *std::min_element(recent.begin(), recent.begin() + static_cast<std::ptrdiff_t>(count))
-                              : *std::ranges::min_element(visited);
+                              : *std::ranges::min_element(*visited);
     return KnownValue{std::nullopt, smallest};
 }
 

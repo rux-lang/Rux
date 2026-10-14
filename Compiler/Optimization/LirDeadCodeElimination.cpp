@@ -176,66 +176,70 @@ std::vector<std::int32_t> FindLocalAllocas(const LirFunc &function, const std::s
     return slots;
 }
 
-std::vector<std::uint32_t> Successors(const LirBlock &block, const std::size_t blockCount) {
-    std::vector<std::uint32_t> successors;
-    if (!block.term) {
-        return successors;
-    }
-    const auto append = [&](const std::uint32_t target) {
-        if (target < blockCount && std::ranges::find(successors, target) == successors.end()) {
-            successors.push_back(target);
-        }
+/// Call `visit` with each block `block` can branch to; a target named twice is visited twice.
+template <typename Visit>
+void ForEachSuccessor(const LirBlock &block, const std::size_t blockCount, Visit &&visit) {
+    if (!block.term)
+        return;
+    const auto visitValid = [&](const std::uint32_t target) {
+        if (target < blockCount)
+            visit(target);
     };
     switch (block.term->kind) {
     case LirTermKind::Jump:
-        append(block.term->trueTarget);
+        visitValid(block.term->trueTarget);
         break;
     case LirTermKind::Branch:
-        append(block.term->trueTarget);
-        append(block.term->falseTarget);
+        visitValid(block.term->trueTarget);
+        visitValid(block.term->falseTarget);
         break;
     case LirTermKind::Switch:
-        append(block.term->defaultTarget);
-        for (const auto &switchCase : block.term->cases) {
-            append(switchCase.target);
-        }
+        visitValid(block.term->defaultTarget);
+        for (const auto &switchCase : block.term->cases)
+            visitValid(switchCase.target);
         break;
     case LirTermKind::Return:
     case LirTermKind::Unreachable:
         break;
     }
-    return successors;
 }
 
-/// A set of local slots, one bit each.
-class SlotSet {
+/// Sets of local slots, one bit each, one fixed-size row of words per block, all in one allocation.
+class SlotRows {
 public:
-    explicit SlotSet(const std::size_t slots)
-        : words((slots + 63) / 64, 0) {
+    SlotRows(const std::size_t rows, const std::size_t slots)
+        : width((slots + 63) / 64)
+        , words(rows * width, 0) {
     }
 
-    void Insert(const std::size_t slot) {
-        words[slot / 64] |= std::uint64_t{1} << (slot % 64);
+    [[nodiscard]] std::uint64_t *Row(const std::size_t row) {
+        return words.data() + row * width;
     }
 
-    void Erase(const std::size_t slot) {
-        words[slot / 64] &= ~(std::uint64_t{1} << (slot % 64));
+    [[nodiscard]] const std::uint64_t *Row(const std::size_t row) const {
+        return words.data() + row * width;
     }
 
-    [[nodiscard]] bool Contains(const std::size_t slot) const {
-        return ((words[slot / 64] >> (slot % 64)) & 1U) != 0;
+    [[nodiscard]] std::size_t Width() const {
+        return width;
     }
-
-    void Union(const SlotSet &other) {
-        for (std::size_t word = 0; word < words.size(); ++word)
-            words[word] |= other.words[word];
-    }
-
-    bool operator==(const SlotSet &) const = default;
 
 private:
+    std::size_t width;
     std::vector<std::uint64_t> words;
 };
+
+void InsertSlot(std::uint64_t *row, const std::size_t slot) {
+    row[slot / 64] |= std::uint64_t{1} << (slot % 64);
+}
+
+void EraseSlot(std::uint64_t *row, const std::size_t slot) {
+    row[slot / 64] &= ~(std::uint64_t{1} << (slot % 64));
+}
+
+bool ContainsSlot(const std::uint64_t *row, const std::size_t slot) {
+    return ((row[slot / 64] >> (slot % 64)) & 1U) != 0;
+}
 
 /// The local slot `instruction` loads directly, or -1.
 std::int32_t LoadedSlot(const LirInstr &instruction, const std::vector<std::int32_t> &slots) {
@@ -251,45 +255,59 @@ std::int32_t StoredSlot(const LirInstr &instruction, const std::vector<std::int3
              : -1;
 }
 
-/// Walk one block backwards, updating which slots hold a value that is still read later. Backwards is the natural
-/// direction because liveness is about the future: a slot becomes live at a load and dies at the store above it.
-void TransferStorageLiveness(const LirBlock &block, const std::vector<std::int32_t> &slots, SlotSet &live) {
-    for (auto instruction = block.instrs.rbegin(); instruction != block.instrs.rend(); ++instruction) {
-        if (const auto loaded = LoadedSlot(*instruction, slots); loaded >= 0)
-            live.Insert(static_cast<std::size_t>(loaded));
-        else if (const auto stored = StoredSlot(*instruction, slots); stored >= 0)
-            live.Erase(static_cast<std::size_t>(stored));
-    }
-}
-
-/// Stores whose value no later load can read, one flag per instruction of each block, found by iterating liveness
-/// across the control-flow graph until it settles. The iteration is bounded so a malformed graph cannot spin here.
-std::vector<std::vector<char>> FindDeadStores(const LirFunc &function, const std::vector<std::int32_t> &slots,
-                                              const std::size_t slotCount) {
+/// Stores whose value no later load can read, one flag per instruction numbered from `blockStart`, found by iterating
+/// liveness across the control-flow graph until it settles. The iteration is bounded so a malformed graph cannot spin
+/// here.
+std::vector<char> FindDeadStores(const LirFunc &function, const std::vector<std::int32_t> &slots,
+                                 const std::size_t slotCount, const std::vector<std::size_t> &blockStart) {
     const std::size_t blockCount = function.blocks.size();
-    std::vector<std::vector<char>> deadStores(blockCount);
-    for (std::size_t blockIndex = 0; blockIndex < blockCount; ++blockIndex)
-        deadStores[blockIndex].assign(function.blocks[blockIndex].instrs.size(), 0);
+    std::vector<char> deadStores(blockStart.back(), 0);
     if (slotCount == 0)
         return deadStores;
-    std::vector<std::vector<std::uint32_t>> successors(blockCount);
-    for (std::size_t blockIndex = 0; blockIndex < blockCount; ++blockIndex)
-        successors[blockIndex] = Successors(function.blocks[blockIndex], blockCount);
-    std::vector<SlotSet> liveIn(blockCount, SlotSet(slotCount));
-    std::vector<SlotSet> liveOut(blockCount, SlotSet(slotCount));
+    // A slot is live on entry to a block when the block's first access to it is a load (`reads`), and passes through
+    // from the block's exit when the block does not access it at all, which is what a first access that is a store
+    // (`writes`) rules out. Liveness flows backwards: a slot becomes live at a load and dies at the store above it.
+    SlotRows reads(blockCount, slotCount);
+    SlotRows writes(blockCount, slotCount);
+    for (std::size_t blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
+        std::uint64_t *read = reads.Row(blockIndex);
+        std::uint64_t *written = writes.Row(blockIndex);
+        for (const auto &instruction : function.blocks[blockIndex].instrs) {
+            if (const auto loaded = LoadedSlot(instruction, slots); loaded >= 0) {
+                if (!ContainsSlot(written, static_cast<std::size_t>(loaded)))
+                    InsertSlot(read, static_cast<std::size_t>(loaded));
+            }
+            else if (const auto stored = StoredSlot(instruction, slots); stored >= 0) {
+                if (!ContainsSlot(read, static_cast<std::size_t>(stored)))
+                    InsertSlot(written, static_cast<std::size_t>(stored));
+            }
+        }
+    }
+    const std::size_t width = reads.Width();
+    SlotRows liveIn(blockCount, slotCount);
+    SlotRows liveOut(blockCount, slotCount);
+    std::vector<std::uint64_t> outgoing(width);
     const std::size_t limit = std::max<std::size_t>(1, blockCount * slotCount + 1);
     for (std::size_t iteration = 0; iteration < limit; ++iteration) {
         bool changed = false;
         for (std::size_t blockIndex = blockCount; blockIndex-- > 0;) {
-            SlotSet outgoing(slotCount);
-            for (const std::uint32_t successor : successors[blockIndex])
-                outgoing.Union(liveIn[successor]);
-            SlotSet incoming = outgoing;
-            TransferStorageLiveness(function.blocks[blockIndex], slots, incoming);
-            if (outgoing != liveOut[blockIndex] || incoming != liveIn[blockIndex]) {
-                liveOut[blockIndex] = std::move(outgoing);
-                liveIn[blockIndex] = std::move(incoming);
-                changed = true;
+            std::ranges::fill(outgoing, 0);
+            ForEachSuccessor(function.blocks[blockIndex], blockCount, [&](const std::uint32_t successor) {
+                const std::uint64_t *in = liveIn.Row(successor);
+                for (std::size_t word = 0; word < width; ++word)
+                    outgoing[word] |= in[word];
+            });
+            std::uint64_t *out = liveOut.Row(blockIndex);
+            std::uint64_t *in = liveIn.Row(blockIndex);
+            const std::uint64_t *read = reads.Row(blockIndex);
+            const std::uint64_t *written = writes.Row(blockIndex);
+            for (std::size_t word = 0; word < width; ++word) {
+                const std::uint64_t incoming = read[word] | (outgoing[word] & ~written[word]);
+                if (outgoing[word] != out[word] || incoming != in[word]) {
+                    out[word] = outgoing[word];
+                    in[word] = incoming;
+                    changed = true;
+                }
             }
         }
         if (!changed) {
@@ -297,19 +315,20 @@ std::vector<std::vector<char>> FindDeadStores(const LirFunc &function, const std
         }
     }
 
+    std::vector<std::uint64_t> live(width);
     for (std::size_t blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
-        SlotSet live = liveOut[blockIndex];
+        std::copy_n(liveOut.Row(blockIndex), width, live.begin());
         const auto &instructions = function.blocks[blockIndex].instrs;
         for (std::size_t position = instructions.size(); position-- > 0;) {
             const auto &instruction = instructions[position];
             if (const auto loaded = LoadedSlot(instruction, slots); loaded >= 0) {
-                live.Insert(static_cast<std::size_t>(loaded));
+                InsertSlot(live.data(), static_cast<std::size_t>(loaded));
             }
             else if (const auto stored = StoredSlot(instruction, slots); stored >= 0) {
                 // A volatile store is required to happen, so no later read decides whether it survives.
-                if (!live.Contains(static_cast<std::size_t>(stored)) && !instruction.isVolatile)
-                    deadStores[blockIndex][position] = 1;
-                live.Erase(static_cast<std::size_t>(stored));
+                if (!ContainsSlot(live.data(), static_cast<std::size_t>(stored)) && !instruction.isVolatile)
+                    deadStores[blockStart[blockIndex] + position] = 1;
+                EraseSlot(live.data(), static_cast<std::size_t>(stored));
             }
         }
     }
@@ -336,18 +355,19 @@ bool EliminateFromFunction(LirFunc &function) {
     const std::size_t registerBound = RegisterBound(function);
     std::size_t slotCount = 0;
     const auto slots = FindLocalAllocas(function, registerBound, slotCount);
-    const auto deadStores = FindDeadStores(function, slots, slotCount);
 
     // Instructions are numbered in block order; a register's definition is the last instruction that writes it.
     std::vector<std::size_t> blockStart(function.blocks.size() + 1, 0);
     for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex)
         blockStart[blockIndex + 1] = blockStart[blockIndex] + function.blocks[blockIndex].instrs.size();
+    const auto deadStores = FindDeadStores(function, slots, slotCount, blockStart);
     std::vector<const LirInstr *> instructionAt(blockStart.back());
     constexpr std::size_t kNoDefinition = ~std::size_t{0};
     std::vector<std::size_t> definitions(registerBound, kNoDefinition);
     std::vector<char> neededRegisters(registerBound, 0);
     std::vector<char> neededInstructions(blockStart.back(), 0);
     std::vector<LirReg> worklist;
+    worklist.reserve(registerBound);
     const auto needRegister = [&](const LirReg reg) {
         if (reg != LirNoReg && neededRegisters[reg] == 0) {
             neededRegisters[reg] = 1;
@@ -371,7 +391,7 @@ bool EliminateFromFunction(LirFunc &function) {
             if (instruction.dst != LirNoReg) {
                 definitions[instruction.dst] = number;
             }
-            if (IsRequiredEffect(instruction, slots, deadStores[blockIndex][position] != 0)) {
+            if (IsRequiredEffect(instruction, slots, deadStores[number] != 0)) {
                 neededInstructions[number] = 1;
                 needUses(instruction);
             }
@@ -402,7 +422,7 @@ bool EliminateFromFunction(LirFunc &function) {
         auto &block = function.blocks[blockIndex];
         const std::size_t start = blockStart[blockIndex];
         const auto removed = [&](const std::size_t position) {
-            return deadStores[blockIndex][position] != 0 || neededInstructions[start + position] == 0;
+            return deadStores[start + position] != 0 || neededInstructions[start + position] == 0;
         };
         bool blockChanged = false;
         for (std::size_t position = 0; position < block.instrs.size() && !blockChanged; ++position)

@@ -1,6 +1,7 @@
 #include "Optimization/LirSsaVerifier.h"
 
 #include "Ir/Lir/Dominance.h"
+#include "Optimization/RegisterTable.h"
 
 #include <deque>
 #include <format>
@@ -81,6 +82,59 @@ bool PlaceFrameAddresses(LirFunc &function) {
     return true;
 }
 
+/// Whether some register of pointer type, defined in a reachable block, is used in a block its definition does not
+/// dominate: the only case the placement below moves anything for. Most functions have none, and finding that out
+/// needs no map of every register's uses.
+bool HasMisplacedAddress(const LirFunc &function, const LirControlFlow &cfg, const LirDominance &dominance) {
+    struct Defined {
+        std::uint32_t block = 0;
+        bool instruction = false;
+        TypeRef::Kind kind = TypeRef::Kind::Unknown;
+    };
+
+    // The first definition of a register counts, and a parameter's type comes before any instruction's.
+    RegisterTable<Defined> defined(RegisterCountHint(function));
+    for (const auto &parameter : function.params)
+        defined.Insert(parameter.reg, {0, false, parameter.type.kind});
+    for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        for (const auto &instruction : function.blocks[block].instrs) {
+            if (instruction.dst == LirNoReg)
+                continue;
+            const auto kind = instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer : instruction.type.kind;
+            if (const Defined *found = defined.Find(instruction.dst)) {
+                if (!found->instruction)
+                    defined.Assign(instruction.dst, {block, true, found->kind});
+                continue;
+            }
+            defined.Insert(instruction.dst, {block, true, kind});
+        }
+    }
+    const auto misplaced = [&](const LirReg reg, const std::uint32_t block) {
+        const Defined *found = defined.Find(reg);
+        return found != nullptr && found->instruction && found->kind == TypeRef::Kind::Pointer &&
+               cfg.reachable[found->block] && !dominance.Dominates(found->block, block);
+    };
+    for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        if (!cfg.reachable[block])
+            continue;
+        const auto &instructions = function.blocks[block].instrs;
+        for (const auto &instruction : instructions) {
+            for (const auto source : instruction.srcs)
+                if (misplaced(source, block))
+                    return true;
+            for (const auto &[source, predecessor] : instruction.phiPreds)
+                if (predecessor < function.blocks.size() && cfg.reachable[predecessor] &&
+                    misplaced(source, predecessor))
+                    return true;
+        }
+        if (const auto &term = function.blocks[block].term) {
+            if (misplaced(term->cond, block) || (term->retVal && misplaced(*term->retVal, block)))
+                return true;
+        }
+    }
+    return false;
+}
+
 // A borrowed pattern binding (or a residual payload to destroy) can carry an address across its boolean match
 // merge. Materialize that pure address at the common dominator. Never speculate the payload load or destructor.
 bool PlacePatternAddresses(LirFunc &function) {
@@ -91,6 +145,8 @@ bool PlacePatternAddresses(LirFunc &function) {
     const LirDominance dominance(cfg);
     bool changed = false;
     for (;;) {
+        if (!HasMisplacedAddress(function, cfg, dominance))
+            break;
         using Location = std::pair<std::uint32_t, std::size_t>;
         std::map<LirReg, Location> definitions;
         std::unordered_set<LirReg> parameters;
@@ -107,8 +163,8 @@ bool PlacePatternAddresses(LirFunc &function) {
                 const auto &instruction = instructions[index];
                 if (instruction.dst != LirNoReg) {
                     definitions.emplace(instruction.dst, Location{block, index});
-                    types.emplace(instruction.dst, instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer
-                                                                                       : instruction.type.kind);
+                    types.emplace(instruction.dst,
+                                  instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer : instruction.type.kind);
                 }
                 if (!cfg.reachable[block]) {
                     continue;
@@ -233,11 +289,11 @@ void Verify(const LirFunc &function, const PassContext &context) {
         context.ReportInternalError(std::format("internal LIR SSA error in function '{}', block {}, register %{}: {}",
                                                 function.name, block, reg, reason));
     };
-    std::unordered_map<LirReg, Definition> definitions;
+    RegisterTable<Definition> definitions(RegisterCountHint(function));
     // The pointer types allocations' addresses have, which the function holds nowhere itself.
     std::deque<TypeRef> addressTypes;
     for (const auto &parameter : function.params) {
-        if (!definitions.emplace(parameter.reg, Definition{0, 0, true, &parameter.type}).second) {
+        if (!definitions.Insert(parameter.reg, Definition{0, 0, true, &parameter.type})) {
             report(parameter.reg, 0, "more than one definition");
         }
     }
@@ -251,7 +307,7 @@ void Verify(const LirFunc &function, const PassContext &context) {
             const TypeRef *type = &instruction.type;
             if (instruction.op == LirOpcode::Alloca)
                 type = &addressTypes.emplace_back(TypeRef::MakePointer(instruction.type));
-            if (!definitions.emplace(instruction.dst, Definition{block, index, false, type}).second) {
+            if (!definitions.Insert(instruction.dst, Definition{block, index, false, type})) {
                 report(instruction.dst, block, "more than one definition");
             }
         }
@@ -261,12 +317,12 @@ void Verify(const LirFunc &function, const PassContext &context) {
             report(reg, block, "missing operand");
             return;
         }
-        const auto found = definitions.find(reg);
-        if (found == definitions.end()) {
+        const Definition *found = definitions.Find(reg);
+        if (found == nullptr) {
             report(reg, block, "use has no definition");
             return;
         }
-        const auto &definition = found->second;
+        const auto &definition = *found;
         if (definition.parameter || !cfg.reachable[block]) {
             return;
         }
@@ -282,8 +338,8 @@ void Verify(const LirFunc &function, const PassContext &context) {
             if (instruction.op == LirOpcode::Sqrt &&
                 (instruction.dst == LirNoReg || instruction.srcs.size() != 1 ||
                  (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64) ||
-                 (instruction.srcs.size() == 1 && definitions.contains(instruction.srcs[0]) &&
-                  *definitions.at(instruction.srcs[0]).type != instruction.type))) {
+                 (instruction.srcs.size() == 1 && definitions.Contains(instruction.srcs[0]) &&
+                  *definitions.Find(instruction.srcs[0])->type != instruction.type))) {
                 report(instruction.dst, block, "sqrt requires one same-type float32/float64 operand and a result");
             }
             for (const auto source : instruction.srcs) {
@@ -293,11 +349,11 @@ void Verify(const LirFunc &function, const PassContext &context) {
                 if (predecessor < function.blocks.size()) {
                     use(source, predecessor, function.blocks[predecessor].instrs.size());
                 }
-                if (const auto definition = definitions.find(source);
-                    definition != definitions.end() && *definition->second.type != instruction.type) {
+                if (const Definition *definition = definitions.Find(source);
+                    definition != nullptr && *definition->type != instruction.type) {
                     report(source, block,
-                           std::format("phi operand type '{}' differs from result '{}'",
-                                       definition->second.type->ToString(), instruction.type.ToString()));
+                           std::format("phi operand type '{}' differs from result '{}'", definition->type->ToString(),
+                                       instruction.type.ToString()));
                 }
             }
         }
