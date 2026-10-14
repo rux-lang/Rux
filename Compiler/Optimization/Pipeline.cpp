@@ -60,6 +60,16 @@ struct FunctionSlot {
     LirFunc *function = nullptr;
 };
 
+/// The bit `LirFunc::verifiedSinceChange` keeps for a verifier pass, or zero for any other pass.
+std::uint8_t VerifierBit(const LirPass &pass) {
+    const std::string_view name = pass.Name();
+    if (name == "lir-cfg-verifier")
+        return 1;
+    if (name == "lir-ssa-verifier")
+        return 2;
+    return 0;
+}
+
 void RecordInstructionDelta(PassStatistics &measurement, const std::int64_t delta) {
     if (delta > 0)
         measurement.instructionsAdded += static_cast<std::size_t>(delta);
@@ -89,6 +99,10 @@ PassRunReport Detail::RunLirPasses(LirPackage &package, const std::vector<std::u
     };
 
     report.reachedFixedPoint = false;
+    // Nothing is verified yet: whatever the IR went through before, the verifiers see every function at least once.
+    for (auto &module : package.modules)
+        for (auto &function : module.funcs)
+            function.verifiedSinceChange = 0;
     // Functions that changed in the previous iteration; every other function is settled. Before the first iteration,
     // and after a package pass that changed the IR without saying where, every function counts as changed.
     std::unordered_set<std::string> changedBefore;
@@ -132,12 +146,18 @@ PassRunReport Detail::RunLirPasses(LirPackage &package, const std::vector<std::u
                     iterationChanged = true;
                     report.change = PassChange::Changed;
                     if (pass.ReportsChangedFunctions()) {
-                        for (const auto *function : rewritten)
+                        for (const auto *function : rewritten) {
                             changedNow.insert(function->name);
+                            // The package is the pipeline's to change, so the function is too.
+                            const_cast<LirFunc *>(function)->verifiedSinceChange = 0;
+                        }
                     }
                     else {
                         everythingNow = true;
                         unreportedChange = true;
+                        for (auto &module : package.modules)
+                            for (auto &function : module.funcs)
+                                function.verifiedSinceChange = 0;
                     }
                 }
                 for (std::size_t i = diagnosticStart; i < report.diagnostics.size(); ++i)
@@ -182,6 +202,10 @@ PassRunReport Detail::RunLirPasses(LirPackage &package, const std::vector<std::u
                 for (std::size_t member = 0; member < members.size(); ++member) {
                     const auto &pass = static_cast<const LirFunctionPass &>(*passes[members[member]]);
                     auto &outcome = results[member];
+                    // A verifier that already checked the function since it last changed has nothing new to see.
+                    const std::uint8_t verifier = VerifierBit(pass);
+                    if (verifier != 0 && (slot.function->verifiedSinceChange & verifier) != 0)
+                        continue;
                     PassContext passContext = context;
                     passContext.diagnostics = &outcome.diagnostics;
                     passContext.lirPruning = nullptr;
@@ -200,6 +224,10 @@ PassRunReport Detail::RunLirPasses(LirPackage &package, const std::vector<std::u
                     }
                     if (HasError(outcome.diagnostics))
                         break;
+                    if (outcome.changed)
+                        slot.function->verifiedSinceChange = 0;
+                    else if (verifier != 0)
+                        slot.function->verifiedSinceChange |= verifier;
                 }
             };
             if (pool != nullptr) {

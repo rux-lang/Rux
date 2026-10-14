@@ -351,6 +351,9 @@ struct LirFunc {
     std::vector<LirBlock> blocks;  // empty for extern declarations
     bool isAsm = false;            // raw x86-64 assembly function
     std::vector<AsmInstr> asmBody; // instructions when isAsm
+    /// Pipeline bookkeeping: one bit per LIR verifier that checked the function since a pass last changed it, so an
+    /// unchanged function is not verified again. Passes leave it alone; the pipeline clears it on every change.
+    std::uint8_t verifiedSinceChange = 0;
 };
 
 // Type declarations (passed through from HIR)
