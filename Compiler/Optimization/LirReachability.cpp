@@ -303,8 +303,8 @@ LirModuleReferences CollectModuleReferences(const LirModule &module) {
     for (const auto &constant : module.consts) {
         auto &declaration = constants.emplace_back(LirDeclarationReferences{constant.name, constant.isExported, {}});
         Reference(declaration, LirSymbolReference::Scope::Data, constant.value);
-        for (const auto &element : constant.elements)
-            Reference(declaration, LirSymbolReference::Scope::Data, element);
+        // A sequence's elements are scalar literals the code generators write as bytes, never names, so they refer to
+        // nothing; a generated table holds thousands of them.
     }
     auto &vtables = result.declarations[static_cast<std::size_t>(LirDeclarationKind::Vtable)];
     for (const auto &vtable : module.vtables) {
