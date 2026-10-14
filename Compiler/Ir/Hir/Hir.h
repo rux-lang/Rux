@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lexer/Token.h"
+#include "SourceModel/DynamicType.h"
 #include "SourceModel/SourceLocation.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
@@ -78,6 +79,8 @@ struct HirBlock {
 struct HirPattern {
     SourceLocation location;
     virtual ~HirPattern() = default;
+    /// The node's dynamic type once a cast asked for it (`HirCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // _
@@ -162,6 +165,8 @@ struct HirExpr {
     /// so a path that consumes a local cannot destroy the same value again at scope exit.
     std::uint64_t consumedBindingId = 0;
     virtual ~HirExpr() = default;
+    /// The node's dynamic type once a cast asked for it (`HirCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // 42, 3.14, "hello", 'A', true, null
@@ -471,6 +476,8 @@ struct HirEnumConstructExpr : HirExpr {
 struct HirStmt {
     SourceLocation location;
     virtual ~HirStmt() = default;
+    /// The node's dynamic type once a cast asked for it (`HirCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // expr;
@@ -800,6 +807,6 @@ inline HirBlockExpr::~HirBlockExpr() = default;
 /// far more cheaply.
 template <typename T, typename Node>
 [[nodiscard]] inline T *HirCast(Node *node) noexcept {
-    return node != nullptr && &typeid(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
+    return node != nullptr && DynamicTypeOf(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
 }
 } // namespace Rux

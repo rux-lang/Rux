@@ -71,6 +71,12 @@ const NumericLiteralSuffixInfo *FindNumericLiteralSuffix(const std::string_view 
 }
 
 std::string_view NumericLiteralSuffixOf(const std::string_view text) noexcept {
+    // Every suffix starts with a letter, so a literal without one, as most are, has none.
+    if (std::ranges::none_of(text, [](const char character) {
+            return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z');
+        })) {
+        return {};
+    }
     // A hexadecimal tail such as `f8` is digits when the entire token is a valid base-prefixed integer, not a float
     // suffix. A real suffix introduces a character outside that base (`0xFFu8`) and therefore reaches the table.
     if (IsCompleteBaseLiteral(text)) {

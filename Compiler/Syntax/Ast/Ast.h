@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lexer/Token.h"
+#include "SourceModel/DynamicType.h"
 #include "Syntax/DocumentationComment.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
@@ -34,6 +35,8 @@ struct TypeExpr {
     /// requires it in some positions, such as an optional sum member `A | (B?)`, so the parser keeps the fact.
     bool parenthesized = false;
     virtual ~TypeExpr() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // int32, String, MyStruct
@@ -160,6 +163,8 @@ struct Block {
 struct Pattern {
     SourceLocation location;
     virtual ~Pattern() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // _
@@ -242,6 +247,8 @@ struct GuardedPattern : Pattern {
 struct Expr {
     SourceLocation location;
     virtual ~Expr() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // 42, 3.14, "hello", 'A', true, null
@@ -520,6 +527,8 @@ struct DivergeExpr : Expr {
 struct Stmt {
     SourceLocation location;
     virtual ~Stmt() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // expr;
@@ -653,6 +662,8 @@ struct Decl {
     /// variants owned by that type.
     std::vector<std::string> allowedLints;
     virtual ~Decl() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 struct Param {
@@ -954,7 +965,7 @@ struct Module {
  */
 template <typename T, typename Node>
 [[nodiscard]] inline T *AstCast(Node *node) noexcept {
-    return node != nullptr && &typeid(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
+    return node != nullptr && DynamicTypeOf(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
 }
 
 inline ArrayTypeExpr::~ArrayTypeExpr() = default;
