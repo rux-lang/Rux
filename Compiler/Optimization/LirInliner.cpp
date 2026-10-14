@@ -401,7 +401,6 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
         return PassChange::None;
     }
     std::vector<LirFunc *> functions;
-    std::vector<const LirModule *> owners;
     std::vector<std::size_t> ownerIndex;
     std::unordered_map<std::string, std::size_t> names;
     std::unordered_set<std::string> ambiguous;
@@ -418,17 +417,25 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
             if (!function.isExtern)
                 moduleNames[moduleIndex].emplace(function.name, functions.size());
             functions.push_back(&function);
-            owners.push_back(&module);
             ownerIndex.push_back(moduleIndex);
         }
     }
     for (const auto &name : ambiguous) {
         names.erase(name);
     }
+    // Inlining stays inside a module: what a module compiles to depends only on its own source and the declarations
+    // of the rest of the program, never on another module's bodies, so a module whose source did not change can be
+    // reused from an earlier build as it is. Only a call to an assembly square root, whose body is part of its
+    // module's interface, is recognized across modules.
     const auto resolve = [&](const std::size_t caller, const std::string &name) -> std::optional<std::size_t> {
         const auto &local = moduleNames[ownerIndex[caller]];
         if (const auto found = local.find(name); found != local.end())
             return found->second;
+        return std::nullopt;
+    };
+    const auto resolveAnywhere = [&](const std::size_t caller, const std::string &name) -> std::optional<std::size_t> {
+        if (const auto found = resolve(caller, name))
+            return found;
         if (const auto found = names.find(name); found != names.end())
             return found->second;
         return std::nullopt;
@@ -478,7 +485,8 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
     // Callees are kept by address: a function is finished, and never changed again this round, before it is offered.
     std::unordered_map<std::size_t, const LirFunc *> available;
     std::unordered_map<std::size_t, Size> sizes;
-    std::size_t packageBudget = 50000;
+    // The growth budget is a module's own, for the same reason inlining stays inside one.
+    std::vector<std::size_t> moduleBudgets(package.modules.size(), 50000);
     bool changed = false;
     for (const auto index : order) {
         auto &function = *functions[index];
@@ -522,12 +530,14 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 auto &call = function.blocks[block].instrs[position];
                 const auto target =
                     call.op == LirOpcode::Call ? resolve(index, call.strArg) : std::optional<std::size_t>{};
-                const bool squareRoot = target && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
-                                        NativeSquareRoot(*functions[*target]) && call.srcs.size() == 1;
+                const auto rooted =
+                    call.op == LirOpcode::Call ? resolveAnywhere(index, call.strArg) : std::optional<std::size_t>{};
+                const bool squareRoot = rooted && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
+                                        NativeSquareRoot(*functions[*rooted]) && call.srcs.size() == 1;
                 if (squareRoot)
                     prepare();
                 if (squareRoot && types.contains(call.srcs[0]) && types.at(call.srcs[0]) == call.type &&
-                    call.type == functions[*target]->returnType) {
+                    call.type == functions[*rooted]->returnType) {
                     call.op = LirOpcode::Sqrt;
                     call.strArg.clear();
                     call.callConv = CallingConvention::Default;
@@ -543,15 +553,8 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                     const auto &callee = *found->second;
                     valid = call.type == callee.returnType && call.srcs.size() == callee.params.size() &&
                             (!callee.returnType.IsOpaque() || call.dst == LirNoReg) && Cost(callee) <= budget &&
-                            Cost(callee) <= packageBudget && function.blocks.size() + callee.blocks.size() + 1 <= 4096;
-                    if (valid && owners[*target] != owners[index]) {
-                        // A named data lookup is module-relative. Copy it only within its original module;
-                        // moving it across modules requires explicit symbol qualification first.
-                        for (const auto &calleeBlock : callee.blocks)
-                            for (const auto &instruction : calleeBlock.instrs)
-                                if (instruction.op == LirOpcode::GlobalAddr)
-                                    valid = false;
-                    }
+                            Cost(callee) <= moduleBudgets[ownerIndex[index]] &&
+                            function.blocks.size() + callee.blocks.size() + 1 <= 4096;
                     for (std::size_t i = 0; valid && i < call.srcs.size(); ++i) {
                         valid = types.contains(call.srcs[i]) &&
                                 ArgumentMatches(types.at(call.srcs[i]), callee.params[i].type);
@@ -567,7 +570,7 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
                 const auto cost = Cost(*found->second);
                 Inline(function, block, position, *found->second, next, types);
                 budget -= cost;
-                packageBudget -= cost;
+                moduleBudgets[ownerIndex[index]] -= cost;
                 functionChanged = true;
             }
         }

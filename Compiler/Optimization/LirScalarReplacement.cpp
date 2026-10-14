@@ -244,7 +244,10 @@ void LirScalarReplacement::Prepare(const LirPackage &package) {
             Fields shape;
             for (const auto &field : declaration.fields)
                 shape.emplace(field.name, field.type);
-            if (!structs.emplace(declaration.name, std::move(shape)).second)
+            // A generic instance is declared by every module that uses it, always with the same fields, so only a
+            // second declaration of a different shape makes a name ambiguous.
+            const auto [existing, inserted] = structs.emplace(declaration.name, shape);
+            if (!inserted && existing->second != shape)
                 ambiguous.insert(declaration.name);
         }
         // Never resolve a coincident short name to a struct when another category owns it.
