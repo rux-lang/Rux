@@ -4,6 +4,7 @@
 #include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantEvaluator.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -43,8 +44,32 @@ std::string Constant(const std::uint64_t value) {
     return std::to_string(value);
 }
 
+/// Whether some block could be the body of a loop Widen rewrites: one that jumps back to a header branching into it,
+/// stores a value a word can repeat, and is counted by a word-sized phi in the header. Most functions have none, and
+/// finding that out costs far less than the control flow, dominance and loops Widen builds to match the rest.
+bool HasFillCandidate(const LirFunc &function) {
+    for (std::uint32_t body = 0; body < function.blocks.size(); ++body) {
+        const auto &back = function.blocks[body].term;
+        if (!back || back->kind != LirTermKind::Jump || back->trueTarget >= function.blocks.size())
+            continue;
+        const auto &header = function.blocks[back->trueTarget];
+        if (!header.term || header.term->kind != LirTermKind::Branch || header.term->trueTarget != body)
+            continue;
+        const bool stores = std::ranges::any_of(function.blocks[body].instrs, [](const LirInstr &instruction) {
+            return instruction.op == LirOpcode::Store && ElementSize(instruction.type) != 0;
+        });
+        const bool counted = std::ranges::any_of(header.instrs, [](const LirInstr &instruction) {
+            return instruction.op == LirOpcode::Phi && Word(instruction.type);
+        });
+        if (stores && counted)
+            return true;
+    }
+    return false;
+}
+
 bool Widen(LirFunc &function) {
-    if (function.isExtern || function.isAsm || function.blocks.size() < 3 || function.blocks.size() > 4096)
+    if (function.isExtern || function.isAsm || function.blocks.size() < 3 || function.blocks.size() > 4096 ||
+        !HasFillCandidate(function))
         return false;
     const LirControlFlow cfg(function);
     const LirDominance dominance(cfg);
