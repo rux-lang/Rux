@@ -2,6 +2,7 @@
 
 #include "Ir/Lir/Dominance.h"
 
+#include <deque>
 #include <format>
 #include <map>
 #include <unordered_map>
@@ -13,7 +14,8 @@ struct Definition {
     std::uint32_t block;
     std::size_t position;
     bool parameter;
-    TypeRef type;
+    /// The function's own type for the register, or the pointer type an allocation's address has; never copied.
+    const TypeRef *type;
 };
 
 bool PlaceFrameAddresses(LirFunc &function) {
@@ -92,11 +94,12 @@ bool PlacePatternAddresses(LirFunc &function) {
         using Location = std::pair<std::uint32_t, std::size_t>;
         std::map<LirReg, Location> definitions;
         std::unordered_set<LirReg> parameters;
-        std::unordered_map<LirReg, TypeRef> types;
+        // Only the kind of a register's type is asked about here.
+        std::unordered_map<LirReg, TypeRef::Kind> types;
         std::map<LirReg, std::vector<Location>> uses;
         for (const auto &parameter : function.params) {
             parameters.insert(parameter.reg);
-            types.emplace(parameter.reg, parameter.type);
+            types.emplace(parameter.reg, parameter.type.kind);
         }
         for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
             const auto &instructions = function.blocks[block].instrs;
@@ -104,9 +107,8 @@ bool PlacePatternAddresses(LirFunc &function) {
                 const auto &instruction = instructions[index];
                 if (instruction.dst != LirNoReg) {
                     definitions.emplace(instruction.dst, Location{block, index});
-                    types.emplace(instruction.dst, instruction.op == LirOpcode::Alloca
-                                                       ? TypeRef::MakePointer(instruction.type)
-                                                       : instruction.type);
+                    types.emplace(instruction.dst, instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer
+                                                                                       : instruction.type.kind);
                 }
                 if (!cfg.reachable[block]) {
                     continue;
@@ -131,7 +133,7 @@ bool PlacePatternAddresses(LirFunc &function) {
         bool moved = false;
         for (const auto &[reg, locations] : uses) {
             const auto definition = definitions.find(reg);
-            if (definition == definitions.end() || types.at(reg).kind != TypeRef::Kind::Pointer) {
+            if (definition == definitions.end() || types.at(reg) != TypeRef::Kind::Pointer) {
                 continue;
             }
             auto target = definition->second.first;
@@ -187,7 +189,7 @@ bool PlacePatternAddresses(LirFunc &function) {
                         (instruction.op == LirOpcode::FieldPtr || instruction.op == LirOpcode::IndexPtr ||
                          (instruction.op == LirOpcode::Cast && instruction.srcs.size() == 1 &&
                           types.contains(instruction.srcs[0]) &&
-                          types.at(instruction.srcs[0]).kind == TypeRef::Kind::Pointer));
+                          types.at(instruction.srcs[0]) == TypeRef::Kind::Pointer));
                     const bool offset = instruction.op == LirOpcode::Const && instruction.type.IsInteger();
                     if (instruction.isVolatile || (!address && !offset)) {
                         return false;
@@ -232,8 +234,10 @@ void Verify(const LirFunc &function, const PassContext &context) {
                                                 function.name, block, reg, reason));
     };
     std::unordered_map<LirReg, Definition> definitions;
+    // The pointer types allocations' addresses have, which the function holds nowhere itself.
+    std::deque<TypeRef> addressTypes;
     for (const auto &parameter : function.params) {
-        if (!definitions.emplace(parameter.reg, Definition{0, 0, true, parameter.type}).second) {
+        if (!definitions.emplace(parameter.reg, Definition{0, 0, true, &parameter.type}).second) {
             report(parameter.reg, 0, "more than one definition");
         }
     }
@@ -244,8 +248,9 @@ void Verify(const LirFunc &function, const PassContext &context) {
             if (instruction.dst == LirNoReg) {
                 continue;
             }
-            const auto type =
-                instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
+            const TypeRef *type = &instruction.type;
+            if (instruction.op == LirOpcode::Alloca)
+                type = &addressTypes.emplace_back(TypeRef::MakePointer(instruction.type));
             if (!definitions.emplace(instruction.dst, Definition{block, index, false, type}).second) {
                 report(instruction.dst, block, "more than one definition");
             }
@@ -278,7 +283,7 @@ void Verify(const LirFunc &function, const PassContext &context) {
                 (instruction.dst == LirNoReg || instruction.srcs.size() != 1 ||
                  (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64) ||
                  (instruction.srcs.size() == 1 && definitions.contains(instruction.srcs[0]) &&
-                  definitions.at(instruction.srcs[0]).type != instruction.type))) {
+                  *definitions.at(instruction.srcs[0]).type != instruction.type))) {
                 report(instruction.dst, block, "sqrt requires one same-type float32/float64 operand and a result");
             }
             for (const auto source : instruction.srcs) {
@@ -289,10 +294,10 @@ void Verify(const LirFunc &function, const PassContext &context) {
                     use(source, predecessor, function.blocks[predecessor].instrs.size());
                 }
                 if (const auto definition = definitions.find(source);
-                    definition != definitions.end() && definition->second.type != instruction.type) {
+                    definition != definitions.end() && *definition->second.type != instruction.type) {
                     report(source, block,
                            std::format("phi operand type '{}' differs from result '{}'",
-                                       definition->second.type.ToString(), instruction.type.ToString()));
+                                       definition->second.type->ToString(), instruction.type.ToString()));
                 }
             }
         }

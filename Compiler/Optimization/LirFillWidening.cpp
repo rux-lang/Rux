@@ -67,9 +67,12 @@ bool Widen(LirFunc &function) {
         for (const auto &instruction : function.blocks[block].instrs) {
             if (instruction.dst == LirNoReg)
                 continue;
-            const auto type =
-                instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
-            if (!definitions.emplace(instruction.dst, Definition{&instruction, block, type}).second)
+            if (!definitions
+                     .emplace(instruction.dst,
+                              Definition{&instruction, block,
+                                         instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type)
+                                                                             : instruction.type})
+                     .second)
                 return false;
             next = std::max(next, instruction.dst + 1);
         }
