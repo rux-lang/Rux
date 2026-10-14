@@ -232,6 +232,15 @@ func Main() -> int {{
         CHECK(reused == 6);
         CHECK(edited == build(1, false));
         CHECK(edited != serial);
+        // A generic body is part of what other modules see of a module, so editing one compiles every module again.
+        auto generic = part(3, 9);
+        const auto takeSecond = generic.find("return second;");
+        REQUIRE(takeSecond != std::string::npos);
+        generic.replace(takeSecond, std::string_view("return second;").size(), "return first;");
+        fixture.SetApplicationFile("Part3.rux", generic);
+        const auto interfaceEdited = build(8, true);
+        CHECK(reused == 0);
+        CHECK(interfaceEdited == build(1, false));
         fixture.SetApplicationFile("Part3.rux", part(3, 4));
     }
     CHECK(diagnostics.empty());
