@@ -358,9 +358,13 @@ void AnalysisContext::CheckModule(const Module &module) {
 
 void AnalysisContext::PrecheckModule(const Module &module) {
     currentFile = module.name;
+    // A reused module's constants are checked when something checked here reads them: its own code is reused, so
+    // nothing else needs them, and a generated table can hold many thousands of elements.
+    checkingDeclarationsOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
     for (const auto &declaration : module.items) {
         PrecheckDecl(*declaration);
     }
+    checkingDeclarationsOnly = false;
 }
 
 void AnalysisContext::PrecheckModuleInScope(const Module &module, Scope &scope) {
@@ -381,6 +385,8 @@ void AnalysisContext::PrecheckDecl(const Decl &declaration) {
         CheckUnionDecl(*unionDecl);
     }
     else if (const auto *constDecl = AstCast<const ConstDecl>(&declaration)) {
+        if (checkingDeclarationsOnly)
+            return;
         (void)CheckNamedConstant(*constDecl);
     }
     else if (const auto *globalDecl = AstCast<const GlobalDecl>(&declaration)) {

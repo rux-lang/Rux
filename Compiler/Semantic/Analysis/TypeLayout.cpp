@@ -434,7 +434,9 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         CheckModuleDecl(*modDecl);
     }
     else if (auto *constDecl = AstCast<const ConstDecl>(&decl)) {
-        (void)CheckNamedConstant(*constDecl);
+        // A reused module's constant waits for something checked to read it, as in PrecheckModule.
+        if (!checkingDeclarationsOnly || currentFunctionDecl != nullptr)
+            (void)CheckNamedConstant(*constDecl);
     }
     else if (auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
         CheckGlobalDecl(*globalDecl);

@@ -418,7 +418,9 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Const;
         symbol.name = constDecl->name;
-        symbol.type = constDecl->type ? ResolveType(**constDecl->type) : TypeRef{};
+        // A reused module's constant that nothing read was never checked, so its type was never resolved either.
+        symbol.type =
+            constDecl->type && model.TryGetSymbolIdentity(*constDecl) ? ResolveType(**constDecl->type) : TypeRef{};
         symbol.intrinsicName = constDecl->intrinsicName;
         globalScope.Define(std::move(symbol));
     }
@@ -619,7 +621,8 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         }
     }
     else if (const auto *constDecl = AstCast<const ConstDecl>(&decl)) {
-        if (constDecl->intrinsicName.empty()) {
+        // A reused module's constant was checked only if something read it, and only then does anything need it.
+        if (constDecl->intrinsicName.empty() && (!declarationOnly || model.TryGetSymbolIdentity(*constDecl))) {
             module.consts.push_back(LowerConst(*constDecl));
         }
     }
