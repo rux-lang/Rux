@@ -2,8 +2,13 @@
 
 #include "Ir/Lir/Dominance.h"
 #include "Optimization/ConstantAddresses.h"
+#include "Optimization/RegisterTable.h"
 
+#include <cstddef>
+#include <functional>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -41,14 +46,25 @@ bool Pure(const LirOpcode op) {
     }
 }
 
-using LiteralKeys = std::unordered_map<LirReg, std::string>;
+using LiteralKeys = RegisterTable<std::string>;
 /// The source of each conversion between two integer types of one width and signedness, such as `uint` and `uint64`:
 /// the value's bits do not change, so an operand read through it is the same operand.
-using SameBits = std::unordered_map<LirReg, LirReg>;
+using SameBits = RegisterTable<LirReg>;
 
-std::string Key(const LirInstr &instruction, const LiteralKeys &literals, const SameBits &sameBits = {}) {
-    std::string key;
-    key.reserve(48 + instruction.strArg.size());
+struct KeyHash {
+    using is_transparent = void;
+
+    [[nodiscard]] std::size_t operator()(const std::string_view key) const noexcept {
+        return std::hash<std::string_view>{}(key);
+    }
+};
+
+/// Available values by key. Keyed by text so a lookup can use the one buffer every key is built in.
+using ValueTable = std::unordered_map<std::string, LirReg, KeyHash, std::equal_to<>>;
+
+/// Write the key of `instruction` to `key`, replacing what it held: equal keys mean equal values.
+void BuildKey(std::string &key, const LirInstr &instruction, const LiteralKeys *literals, const SameBits *sameBits) {
+    key.clear();
     key += std::to_string(static_cast<unsigned>(instruction.op));
     key += ':';
     // A primitive is spelled by its kind alone, so its kind stands in for the spelling; no spelling starts with '#'.
@@ -69,40 +85,44 @@ std::string Key(const LirInstr &instruction, const LiteralKeys &literals, const 
     key += instruction.strArg;
     for (auto source : instruction.srcs) {
         // Only an operand is looked through; the instruction's own type still separates different results.
-        if (instruction.op != LirOpcode::Cast)
+        if (instruction.op != LirOpcode::Cast && sameBits != nullptr)
             for (int depth = 0; depth < 4; ++depth) {
-                const auto found = sameBits.find(source);
-                if (found == sameBits.end())
+                const LirReg *found = sameBits->Find(source);
+                if (found == nullptr)
                     break;
-                source = found->second;
+                source = *found;
             }
-        if (const auto literal = literals.find(source); literal != literals.end()) {
-            key += ":c" + std::to_string(literal->second.size()) + ":" + literal->second;
+        if (const std::string *literal = literals == nullptr ? nullptr : literals->Find(source)) {
+            key += ":c";
+            key += std::to_string(literal->size());
+            key += ':';
+            key += *literal;
         }
         else {
-            key += ":r" + std::to_string(source);
+            key += ":r";
+            key += std::to_string(source);
         }
     }
-    return key;
 }
 
 bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNames) {
     // A load from read-only constant data is a pure value of its address, so it is shared like arithmetic.
     const std::unordered_set<LirReg> constantAddresses = ConstantAddresses(function, constantNames);
-    std::unordered_set<LirReg> definitions;
-    std::unordered_map<LirReg, TypeRef> types;
-    LiteralKeys literals;
+    // The type each register is defined with. It points at the function's own parameters and instructions, which stay
+    // where they are until every block is visited: instructions found redundant are only marked, and removed at the
+    // end.
+    const std::size_t registers = RegisterCountHint(function);
+    RegisterTable<const TypeRef *> types(registers);
+    LiteralKeys literals(registers);
     for (const auto &parameter : function.params) {
-        types.emplace(parameter.reg, parameter.type);
-        if (!definitions.insert(parameter.reg).second) {
+        if (!types.Insert(parameter.reg, &parameter.type)) {
             return false;
         }
     }
+    std::string key;
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
-            if (instruction.dst != LirNoReg)
-                types.emplace(instruction.dst, instruction.type);
-            if (instruction.dst != LirNoReg && !definitions.insert(instruction.dst).second) {
+            if (instruction.dst != LirNoReg && !types.Insert(instruction.dst, &instruction.type)) {
                 return false;
             }
             if (instruction.dst != LirNoReg && instruction.op == LirOpcode::Const && !instruction.isVolatile &&
@@ -110,30 +130,31 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
                 (instruction.type.IsInteger() || instruction.type.IsBool() || instruction.type.IsChar())) {
                 // Preserve local constant definitions while recognizing equal typed operands. Own the text:
                 // instruction storage is replaced during traversal, so retaining instruction pointers is unsafe.
-                literals.emplace(instruction.dst, Key(instruction, {}));
+                BuildKey(key, instruction, nullptr, nullptr);
+                literals.Insert(instruction.dst, key);
             }
         }
     }
-    SameBits sameBits;
+    SameBits sameBits(registers);
     for (const auto &block : function.blocks)
         for (const auto &instruction : block.instrs) {
             if (instruction.op != LirOpcode::Cast || instruction.isVolatile || instruction.srcs.size() != 1 ||
-                instruction.dst == LirNoReg || !types.contains(instruction.srcs[0]))
+                instruction.dst == LirNoReg || !types.Contains(instruction.srcs[0]))
                 continue;
-            const TypeRef &from = types.at(instruction.srcs[0]);
+            const TypeRef &from = **types.Find(instruction.srcs[0]);
             const TypeRef &to = instruction.type;
             if (from.IsInteger() && to.IsInteger() && from.IsSigned() == to.IsSigned() && from.SizeInBytes() &&
                 from.SizeInBytes() == to.SizeInBytes())
-                sameBits.emplace(instruction.dst, instruction.srcs[0]);
+                sameBits.Insert(instruction.dst, instruction.srcs[0]);
         }
-    std::unordered_map<LirReg, LirReg> copies;
+    RegisterTable<LirReg> copies(registers);
     const auto resolve = [&](LirReg reg) {
-        for (std::size_t depth = 0; depth < copies.size(); ++depth) {
-            const auto found = copies.find(reg);
-            if (found == copies.end()) {
+        for (std::size_t depth = 0; depth < copies.Size(); ++depth) {
+            const LirReg *found = copies.Find(reg);
+            if (found == nullptr) {
                 break;
             }
-            reg = found->second;
+            reg = *found;
         }
         return reg;
     };
@@ -147,7 +168,7 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
             children[parents[block]].push_back(block);
     }
 
-    using MemoryFacts = std::unordered_map<std::string, LirReg>;
+    using MemoryFacts = ValueTable;
 
     struct Visit {
         std::uint32_t block;
@@ -162,8 +183,11 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         if (block == 0 || parents[block] == LirDominance::Invalid)
             visits.push_back({block, false, 0});
     }
-    std::unordered_map<std::string, LirReg> dominating;
-    std::vector<std::string> scopedKeys;
+    ValueTable dominating;
+    // Keys of `dominating` entries in scope, viewing the entries' own keys, which stay put until the entry is erased.
+    std::vector<std::string_view> scopedKeys;
+    // Instructions found redundant, by block, removed once every block is visited.
+    std::vector<std::vector<bool>> redundant(function.blocks.size());
     std::size_t memoryBudget = 65536;
     const auto stableType = [](const TypeRef &type) {
         return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer ||
@@ -174,7 +198,7 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         visits.pop_back();
         if (visit.exiting) {
             while (scopedKeys.size() > visit.checkpoint) {
-                dominating.erase(scopedKeys.back());
+                dominating.erase(dominating.find(scopedKeys.back()));
                 scopedKeys.pop_back();
             }
             continue;
@@ -185,10 +209,9 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         // mutable copy, so a write on a sibling path cannot clear or populate this path's facts. FP computations
         // remain block-local; integer/address expressions may also follow the general dominator tree.
         MemoryFacts loads = visit.memory ? *visit.memory : MemoryFacts{};
-        std::unordered_map<std::string, LirReg> values;
-        std::vector<LirInstr> retained;
-        retained.reserve(block.instrs.size());
-        for (auto &instruction : block.instrs) {
+        ValueTable values;
+        for (std::size_t index = 0; index < block.instrs.size(); ++index) {
+            auto &instruction = block.instrs[index];
             for (auto &source : instruction.srcs) {
                 source = resolve(source);
             }
@@ -203,19 +226,23 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
             // constants. Sharing them globally needlessly lengthens allocation intervals and hides those forms.
             const bool stable = pure && instruction.op != LirOpcode::Const && stableType(instruction.type) &&
                                 std::ranges::all_of(instruction.srcs, [&](const LirReg source) {
-                                    return types.contains(source) && stableType(types.at(source));
+                                    const TypeRef *const *type = types.Find(source);
+                                    return type != nullptr && stableType(**type);
                                 });
             if (instruction.dst != LirNoReg && (pure || load)) {
                 auto &available = load && !constantLoad ? loads : stable ? dominating : values;
-                const auto key = Key(instruction, literals, sameBits);
-                const auto [entry, inserted] = available.emplace(key, instruction.dst);
-                if (!inserted) {
-                    copies[instruction.dst] = entry->second;
+                BuildKey(key, instruction, &literals, &sameBits);
+                if (const auto found = available.find(std::string_view(key)); found != available.end()) {
+                    copies.Assign(instruction.dst, found->second);
                     changed = true;
+                    if (redundant[visit.block].empty())
+                        redundant[visit.block].resize(block.instrs.size(), false);
+                    redundant[visit.block][index] = true;
                     continue;
                 }
+                const auto entry = available.emplace(key, instruction.dst).first;
                 if (stable)
-                    scopedKeys.push_back(key);
+                    scopedKeys.emplace_back(entry->first);
             }
             // No alias promise is made about pointers. Any possible write or ordering effect ends load reuse.
             // Reusing an already executed load never introduces a new speculative access or erases the first trap.
@@ -231,17 +258,17 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
             // A typed store establishes one exact address/value pair. Every later possible write or ordering
             // effect invalidates it. Do not forward aggregate bytes or values requiring storage conversion.
             if (instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 && instruction.strArg.empty() &&
-                !instruction.isVolatile && stableType(instruction.type) && types.contains(instruction.srcs[0]) &&
-                types.at(instruction.srcs[0]) == instruction.type) {
+                !instruction.isVolatile && stableType(instruction.type) && types.Contains(instruction.srcs[0]) &&
+                **types.Find(instruction.srcs[0]) == instruction.type) {
                 LirInstr forwarded;
                 forwarded.op = LirOpcode::Load;
                 forwarded.type = instruction.type;
                 forwarded.srcs = {instruction.srcs[1]};
-                loads.emplace(Key(forwarded, literals), instruction.srcs[0]);
+                BuildKey(key, forwarded, &literals, nullptr);
+                if (!loads.contains(std::string_view(key)))
+                    loads.emplace(key, instruction.srcs[0]);
             }
-            retained.push_back(std::move(instruction));
         }
-        block.instrs = std::move(retained);
         std::shared_ptr<const MemoryFacts> snapshot;
         if (!loads.empty() && loads.size() <= 128 && loads.size() <= memoryBudget)
             snapshot = std::make_shared<const MemoryFacts>(std::move(loads));
@@ -254,6 +281,19 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
             }
             visits.push_back({child, false, 0, std::move(incoming)});
         }
+    }
+    for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
+        if (redundant[blockIndex].empty())
+            continue;
+        auto &instructions = function.blocks[blockIndex].instrs;
+        std::size_t kept = 0;
+        for (std::size_t index = 0; index < instructions.size(); ++index)
+            if (!redundant[blockIndex][index]) {
+                if (kept != index)
+                    instructions[kept] = std::move(instructions[index]);
+                ++kept;
+            }
+        instructions.erase(instructions.begin() + static_cast<std::ptrdiff_t>(kept), instructions.end());
     }
     for (auto &block : function.blocks) {
         for (auto &instruction : block.instrs) {

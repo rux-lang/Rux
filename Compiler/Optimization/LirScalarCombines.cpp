@@ -1,6 +1,7 @@
 #include "Optimization/LirScalarCombines.h"
 
 #include "Optimization/ConstantEvaluator.h"
+#include "Optimization/RegisterTable.h"
 
 #include <algorithm>
 #include <bit>
@@ -14,51 +15,30 @@ struct UnsignedRange {
     std::uint64_t maximum;
 };
 
-/// The instruction defining each register of one function, pointing at the function's own instructions. Registers are
-/// numbered from zero upwards in a function, so a table by number holds them without a node per register; a number far
-/// past the function's size, which only hand-built IR uses, goes to a map instead.
+/// The instruction defining each register of one function, pointing at the function's own instructions.
 class Definitions {
 public:
     explicit Definitions(const std::size_t expected)
-        : limit(expected * 4 + 64) {
+        : table(expected) {
     }
 
     [[nodiscard]] const LirInstr *Find(const LirReg reg) const {
-        if (reg < table.size())
-            return table[reg];
-        if (reg < limit)
-            return nullptr;
-        const auto found = sparse.find(reg);
-        return found == sparse.end() ? nullptr : found->second;
+        const LirInstr *const *found = table.Find(reg);
+        return found == nullptr ? nullptr : *found;
     }
 
     /// Record `instruction` as the definition of `reg`; false when `reg` already has one.
     bool Insert(const LirReg reg, const LirInstr *instruction) {
-        if (reg >= limit)
-            return sparse.emplace(reg, instruction).second;
-        if (reg >= table.size())
-            table.resize(static_cast<std::size_t>(reg) + 1, nullptr);
-        if (table[reg] != nullptr)
-            return false;
-        table[reg] = instruction;
-        return true;
+        return table.Insert(reg, instruction);
     }
 
     /// Record `instruction` as the definition of `reg`, replacing any earlier one.
     void Assign(const LirReg reg, const LirInstr *instruction) {
-        if (reg >= limit) {
-            sparse.insert_or_assign(reg, instruction);
-            return;
-        }
-        if (reg >= table.size())
-            table.resize(static_cast<std::size_t>(reg) + 1, nullptr);
-        table[reg] = instruction;
+        table.Assign(reg, instruction);
     }
 
 private:
-    std::size_t limit;
-    std::vector<const LirInstr *> table;
-    std::unordered_map<LirReg, const LirInstr *> sparse;
+    RegisterTable<const LirInstr *> table;
 };
 
 std::optional<std::uint64_t> UnsignedMaximum(const TypeRef &type) {
@@ -175,12 +155,9 @@ std::optional<bool> CompareRanges(const LirOpcode opcode, const UnsignedRange le
 }
 
 bool Combine(LirFunc &function) {
-    std::size_t instructions = function.params.size();
-    for (const auto &block : function.blocks)
-        instructions += block.instrs.size();
     // The definitions point at the function's own instructions, which stay as they are until every block is rewritten:
     // the rewritten blocks are installed only at the end, so every lookup sees the instructions as the pass found them.
-    Definitions definitions(instructions);
+    Definitions definitions(RegisterCountHint(function));
     std::vector<LirInstr> parameters(function.params.size());
     LirReg next = 0;
     for (std::size_t index = 0; index < function.params.size(); ++index) {
