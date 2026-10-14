@@ -106,11 +106,11 @@ bool AnalysisContext::CanConvertToInterface(const TypeRef &argument, const TypeR
 }
 
 AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output)
-    : AnalysisContext(std::move(inputs), output, nullptr) {
+    : AnalysisContext(inputs, output, nullptr) {
 }
 
 AnalysisContext::AnalysisContext(const AnalysisContext &base, AnalysisInputs inputs, SemanticFacts &output)
-    : AnalysisContext(std::move(inputs), output, &base) {
+    : AnalysisContext(inputs, output, &base) {
     // Only the state that outlives a function is copied, so the base must be between functions.
     assert(base.currentFunctionDecl == nullptr && base.currentScope == &base.globalScope &&
            "a context is copied between functions");
