@@ -67,14 +67,14 @@ struct FunctionTable {
 std::vector<FunctionTable> FunctionTables(const RcuFile &object) {
     std::vector<FunctionTable> tables;
     for (const RcuSymbol &symbol : object.symbols)
-        if (symbol.sectionIdx < object.sections.size() && std::string_view(symbol.name).starts_with(kFunctionTablePrefix))
+        if (symbol.sectionIdx < object.sections.size() &&
+            std::string_view(symbol.name).starts_with(kFunctionTablePrefix))
             tables.push_back({symbol.sectionIdx, symbol.value, symbol.value + symbol.size});
     return tables;
 }
 } // namespace
 
-bool CollectUnreachableFunctions(std::vector<RcuFile> &objects, const RcuLinkGraph &graph,
-                                 const std::uint8_t padding) {
+bool CollectUnreachableFunctions(std::vector<RcuFile> &objects, const RcuLinkGraph &graph, const std::uint8_t padding) {
     std::vector<ObjectAtoms> atoms;
     atoms.reserve(objects.size());
     for (const RcuFile &object : objects)
@@ -97,7 +97,8 @@ bool CollectUnreachableFunctions(std::vector<RcuFile> &objects, const RcuLinkGra
     tables.reserve(objects.size());
     for (const RcuFile &object : objects)
         tables.push_back(FunctionTables(object));
-    const auto inFunctionTable = [&](const std::size_t objectIndex, const std::size_t section, const std::uint32_t offset) {
+    const auto inFunctionTable = [&](const std::size_t objectIndex, const std::size_t section,
+                                     const std::uint32_t offset) {
         return std::ranges::any_of(tables[objectIndex], [&](const FunctionTable &table) {
             return table.section == section && offset >= table.start && offset < table.end;
         });
@@ -202,7 +203,8 @@ bool CollectUnreachableFunctions(std::vector<RcuFile> &objects, const RcuLinkGra
                     reloc.sectionOffset = *offset;
                 }
                 // Only a function table refers to a dropped function from what is kept; its slot stays zero.
-                const auto symbol = reloc.symbolIndex < renumbered.size() ? renumbered[reloc.symbolIndex] : std::nullopt;
+                const auto symbol =
+                    reloc.symbolIndex < renumbered.size() ? renumbered[reloc.symbolIndex] : std::nullopt;
                 if (!symbol)
                     continue;
                 reloc.symbolIndex = *symbol;

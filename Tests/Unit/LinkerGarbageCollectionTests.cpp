@@ -23,7 +23,8 @@ TEST_CASE("garbage collection drops unreached functions and keeps what the roots
     text.type = RcuSecType::Text;
     text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
     text.alignment = 16;
-    // Main [0, 8) calls Used; Dead [16, 24) is called by nothing; Used [32, 40); Pointed [48, 56) is only named by data.
+    // Main [0, 8) calls Used; Dead [16, 24) is called by nothing; Used [32, 40); Pointed [48, 56) is only named by
+    // data.
     text.data.assign(56, 0x90);
     text.data[0] = 0xE8;
     text.relocs.push_back({1, 2, RcuRelType::Rel32, -4});
@@ -43,8 +44,8 @@ TEST_CASE("garbage collection drops unreached functions and keeps what the roots
     object.symbols.push_back({"Dead", "", 16, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     object.symbols.push_back({"Used", "", 32, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     object.symbols.push_back({"Pointed", "", 48, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
-    object.symbols.push_back({std::string(kFunctionTablePrefix) + "0", "", 0, 16, RCU_RODATA_IDX, RcuSymKind::Const,
-                              RcuSymVis::Global});
+    object.symbols.push_back(
+        {std::string(kFunctionTablePrefix) + "0", "", 0, 16, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Global});
     object.symbols.push_back({"Pointer", "", 16, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
 
     std::vector<RcuFile> objects{object};

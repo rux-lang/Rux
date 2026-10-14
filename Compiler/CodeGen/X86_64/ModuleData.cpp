@@ -306,8 +306,8 @@ void X86_64ModuleEmitter::EmitFunctionTables() {
         AddRodataReloc(nameSlot, names[index], RcuRelType::Abs64);
         pushWord(functionRanges[index].name.size());
     }
-    (void)moduleBuilder.DefineSymbol(dataSyms.at(backtrace.table), RcuModuleSection::RoData,
-                                     tableOff, static_cast<uint32_t>(RodataData().size()) - tableOff);
+    (void)moduleBuilder.DefineSymbol(dataSyms.at(backtrace.table), RcuModuleSection::RoData, tableOff,
+                                     static_cast<uint32_t>(RodataData().size()) - tableOff);
     if (!backtrace.IsProgram()) {
         return;
     }

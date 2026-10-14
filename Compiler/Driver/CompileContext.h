@@ -99,6 +99,7 @@ private:
         ModulePack pack;
         /// The key of every module read from a source file; a generated module has none and is always compiled.
         std::unordered_map<const Module *, std::string> keys;
+
         /// What the keys were made of, recorded with the module so the next build can take it over.
         struct SourceDigests {
             std::uintmax_t size = 0;
@@ -106,6 +107,7 @@ private:
             std::string source;
             std::string interface;
         };
+
         std::unordered_map<const Module *, SourceDigests> digests;
         /// Modules this build reuses the objects of, and their entries in `pack`.
         std::unordered_set<const Module *> declarationOnly;
@@ -113,6 +115,7 @@ private:
         /// Modules an attempt found needed differently than when they were recorded, which are compiled again.
         std::set<std::string> fresh;
     };
+
     ModuleReuse moduleReuse;
     /// Set by `GenerateArtifact` when a reused module has to be compiled after all, which analyzes the program again.
     bool retryWithFreshModules = false;

@@ -34,13 +34,12 @@
 #include <charconv>
 #include <chrono>
 #include <format>
-#include <iterator>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-
 
 namespace Rux::Driver {
 using namespace Target;
@@ -184,8 +183,8 @@ void CompilerDriver::Impl::PrepareModuleReuse() {
     for (std::size_t index = 0; index < modules.size(); ++index) {
         if (digests[index].source.empty())
             continue;
-        moduleReuse.keys.emplace(modules[index], HashText(std::format("{}\n{}\n{}", programKey,
-                                                                      modules[index]->name, digests[index].source)));
+        moduleReuse.keys.emplace(modules[index], HashText(std::format("{}\n{}\n{}", programKey, modules[index]->name,
+                                                                      digests[index].source)));
         moduleReuse.digests.emplace(modules[index], std::move(digests[index]));
     }
     moduleReuse.enabled = true;
@@ -917,8 +916,8 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     lirLowering.SetWorkerPool(&Workers());
     lirLowering.SetProgramModule(true);
     // A reused module is not lowered again, so whether it can fail is what was recorded with it.
-    lirLowering.SetExternalFailures(std::ranges::any_of(
-        moduleReuse.cached, [](const auto &entry) { return entry.second->fails; }));
+    lirLowering.SetExternalFailures(
+        std::ranges::any_of(moduleReuse.cached, [](const auto &entry) { return entry.second->fails; }));
     auto lirPackage = lirLowering.Generate();
     if (EmitAll(lirLowering.Diagnostics())) {
         return false;
@@ -1182,10 +1181,9 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                 continue;
             const bool fails = index < moduleFailures.size() && moduleFailures[index] != 0;
             const auto &digest = moduleReuse.digests.at(module);
-            pack.Put(module->name,
-                     {key->second, release ? roots[index] : std::vector<Optimization::LirModuleRoot>{},
-                      std::move(references[index]), fails, std::move(freshObjects[index]), digest.size,
-                      digest.modified, digest.source, digest.interface});
+            pack.Put(module->name, {key->second, release ? roots[index] : std::vector<Optimization::LirModuleRoot>{},
+                                    std::move(references[index]), fails, std::move(freshObjects[index]), digest.size,
+                                    digest.modified, digest.source, digest.interface});
         }
         static_cast<void>(pack.Write(ModulePackPath()));
     }

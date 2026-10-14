@@ -70,10 +70,10 @@ PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &con
         auto &module = package.modules[moduleIndex];
         static const std::vector<LirModuleRoot> noRoots;
         const LirReachabilityResult reachability =
-            wholePackage ? *wholePackage
-                         : LirReachabilityAnalysis::RunModule(
-                               package, moduleIndex,
-                               moduleIndex < moduleRoots->size() ? (*moduleRoots)[moduleIndex] : noRoots);
+            wholePackage
+                ? *wholePackage
+                : LirReachabilityAnalysis::RunModule(
+                      package, moduleIndex, moduleIndex < moduleRoots->size() ? (*moduleRoots)[moduleIndex] : noRoots);
         changed = Prune(
                       module.funcs,
                       [&](const std::size_t index) {

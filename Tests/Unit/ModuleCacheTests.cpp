@@ -67,7 +67,8 @@ pub module Inner {
 
 TEST_CASE("module packs round-trip their entries and refuse damaged files") {
     const auto directory =
-        TempDirectory() / ("rux-module-pack-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        TempDirectory() /
+        ("rux-module-pack-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     const auto path = directory / "Release-test.modules";
     Driver::CachedModule entry;
     entry.key = "key";
@@ -78,7 +79,8 @@ TEST_CASE("module packs round-trip their entries and refuse damaged files") {
     entry.interfaceDigest = "interface";
     entry.fails = true;
     entry.object = {1, 2, 3, 0, 255};
-    auto &functions = entry.references.declarations[static_cast<std::size_t>(Optimization::LirDeclarationKind::Function)];
+    auto &functions =
+        entry.references.declarations[static_cast<std::size_t>(Optimization::LirDeclarationKind::Function)];
     functions.push_back({"Main", false, {{Optimization::LirSymbolReference::Scope::Function, "Helper"}}});
     functions.push_back({"Helper", true, {{Optimization::LirSymbolReference::Scope::Data, "Table"}}});
 

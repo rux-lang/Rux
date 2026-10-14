@@ -4,11 +4,13 @@
 #include "System/X86CpuFeatures.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <thread>
 #include <vector>
 
 #if RUX_OS_LINUX
+    #include <sched.h>
     #include <sys/auxv.h>
     #include <sys/sysinfo.h>
     #include <unistd.h>
@@ -18,6 +20,8 @@
     #include <sys/sysctl.h>
     #include <unistd.h>
 #elif RUX_OS_FREEBSD
+    #include <sys/cpuset.h>
+    #include <sys/param.h>
     #include <sys/sysctl.h>
     #include <unistd.h>
 #endif
@@ -298,5 +302,32 @@ MemoryInfo GetRuntimeMemoryInfo() noexcept {
 
 bool HostSupports(CpuFeatures f) noexcept {
     return CachedCpuInfo().features.Has(f);
+}
+
+std::size_t AffinityCoreCount() noexcept {
+#if RUX_OS_WINDOWS
+    // A process mask describes one processor group; on a machine with several, threads may use them all.
+    if (GetActiveProcessorGroupCount() > 1)
+        return 0;
+    DWORD_PTR processMask = 0;
+    DWORD_PTR systemMask = 0;
+    if (GetProcessAffinityMask(GetCurrentProcess(), &processMask, &systemMask) == 0)
+        return 0;
+    return static_cast<std::size_t>(std::popcount(static_cast<std::uint64_t>(processMask)));
+#elif RUX_OS_LINUX
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof(set), &set) != 0)
+        return 0;
+    return static_cast<std::size_t>(CPU_COUNT(&set));
+#elif RUX_OS_FREEBSD
+    cpuset_t set;
+    CPU_ZERO(&set);
+    if (cpuset_getaffinity(CPU_LEVEL_WHICH, CPU_WHICH_PID, -1, sizeof(set), &set) != 0)
+        return 0;
+    return static_cast<std::size_t>(CPU_COUNT(&set));
+#else
+    return 0;
+#endif
 }
 } // namespace Rux::System

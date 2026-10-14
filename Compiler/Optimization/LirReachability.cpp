@@ -181,7 +181,8 @@ private:
     void Add(const LirDeclarationId declaration, const std::optional<std::size_t> from) {
         if (roots && from != declaration.moduleIndex)
             (*roots)[declaration.moduleIndex].insert({declaration.kind, Declaration(declaration).name});
-        auto flag = seen[static_cast<std::size_t>(declaration.kind)][declaration.moduleIndex][declaration.declarationIndex];
+        auto flag =
+            seen[static_cast<std::size_t>(declaration.kind)][declaration.moduleIndex][declaration.declarationIndex];
         if (!flag) {
             flag = true;
             worklist.push_back(declaration);

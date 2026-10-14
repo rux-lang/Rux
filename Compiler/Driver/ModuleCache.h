@@ -66,6 +66,7 @@ public:
     [[nodiscard]] const CachedModule *Find(const std::string &module, std::string_view key) const;
     /// The entry of `module` whatever it was recorded under.
     [[nodiscard]] const CachedModule *FindAny(const std::string &module) const;
+
     [[nodiscard]] std::size_t Size() const noexcept {
         return entries.size();
     }

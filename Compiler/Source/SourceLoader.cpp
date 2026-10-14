@@ -62,9 +62,9 @@ SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir, Pa
             read(index);
     for (std::size_t index = 0; index < paths.size(); ++index) {
         if (!files[index]) {
-            result.diagnostics.push_back(ErrorDiagnostic(
-                std::format("cannot read source file '{}'", paths[index].string()), {},
-                "check that the file is readable"));
+            result.diagnostics.push_back(
+                ErrorDiagnostic(std::format("cannot read source file '{}'", paths[index].string()), {},
+                                "check that the file is readable"));
             continue;
         }
         result.files.push_back(std::move(*files[index]));

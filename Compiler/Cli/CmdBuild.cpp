@@ -206,8 +206,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             // Each cell writes its own profile and target's artifact, so cells are built side by side, sharing the
             // threads the build may use, and reported in order. What a cell reports is held until its turn, so reports
             // never interleave; progress lines are only shown when cells are built one at a time.
-            const std::size_t threads =
-                jobs != 0 ? jobs : Parallel::DefaultJobs();
+            const std::size_t threads = jobs != 0 ? jobs : Parallel::DefaultJobs();
             const std::size_t concurrent = opts.verbose ? 1 : std::clamp<std::size_t>(matrix.size(), 1, threads);
             std::vector<std::optional<BuildCellReport>> cellReports(matrix.size());
             std::vector<std::vector<std::string>> held(matrix.size());
