@@ -1,9 +1,8 @@
 #include "Optimization/LirDeadLoops.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantEvaluator.h"
-
-#include <unordered_map>
 
 namespace Rux::Optimization {
 namespace {
@@ -57,19 +56,20 @@ bool Remove(LirFunc &function) {
     const LirNaturalLoops loops(cfg, dominance);
     if (!loops.complete)
         return false;
-    std::unordered_map<LirReg, std::uint32_t> owners;
-    std::unordered_map<LirReg, const LirInstr *> definitions;
+    const std::size_t registers = RegisterCountHint(function);
+    LirRegisterTable<std::uint32_t> owners(registers);
+    LirRegisterTable<const LirInstr *> definitions(registers);
     for (const auto &parameter : function.params)
-        owners.emplace(parameter.reg, 0);
+        owners.Insert(parameter.reg, 0);
     for (std::uint32_t block = 0; block < function.blocks.size(); ++block)
         for (const auto &instruction : function.blocks[block].instrs)
             if (instruction.dst != LirNoReg) {
-                owners.emplace(instruction.dst, block);
-                definitions.emplace(instruction.dst, &instruction);
+                owners.Insert(instruction.dst, block);
+                definitions.Insert(instruction.dst, &instruction);
             }
     const auto get = [&](const LirReg reg) -> const LirInstr * {
-        const auto found = definitions.find(reg);
-        return found == definitions.end() ? nullptr : found->second;
+        const auto *found = definitions.Find(reg);
+        return found == nullptr ? nullptr : *found;
     };
     for (const auto &[header, members] : loops.members) {
         if (header == 0)
@@ -98,8 +98,8 @@ bool Remove(LirFunc &function) {
             continue;
         // No value the loop computes is read outside it.
         const auto local = [&](const LirReg reg) {
-            const auto found = owners.find(reg);
-            return found != owners.end() && members.contains(found->second) && definitions.contains(reg);
+            const auto *found = owners.Find(reg);
+            return found != nullptr && members.contains(*found) && definitions.Contains(reg);
         };
         bool escapes = false;
         for (std::uint32_t block = 0; block < function.blocks.size() && !escapes; ++block) {
@@ -140,9 +140,9 @@ bool Remove(LirFunc &function) {
             if (!test || test->op != LirOpcode::CmpLt || test->srcs.size() != 2)
                 continue;
             const auto *counter = get(test->srcs[0]);
-            const auto limit = owners.find(test->srcs[1]);
-            if (!counter || counter->op != LirOpcode::Phi || owners.at(counter->dst) != header ||
-                !Word(counter->type) || limit == owners.end() || members.contains(limit->second))
+            const auto *limit = owners.Find(test->srcs[1]);
+            if (!counter || counter->op != LirOpcode::Phi || *owners.Find(counter->dst) != header ||
+                !Word(counter->type) || limit == nullptr || members.contains(*limit))
                 continue;
             for (const auto &[value, predecessor] : counter->phiPreds) {
                 if (predecessor != latch)

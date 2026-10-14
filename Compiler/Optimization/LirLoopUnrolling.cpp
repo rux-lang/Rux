@@ -1,6 +1,7 @@
 #include "Optimization/LirLoopUnrolling.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
@@ -75,12 +76,12 @@ bool Unroll(LirFunc &function) {
     const LirNaturalLoops loops(cfg, dominance);
     if (!loops.complete)
         return false;
-    std::unordered_map<LirReg, const LirInstr *> definitions;
-    std::unordered_map<LirReg, std::uint32_t> owners;
+    LirRegisterTable<const LirInstr *> definitions(RegisterCountHint(function));
+    LirRegisterTable<std::uint32_t> owners(RegisterCountHint(function));
     std::size_t instructionCount = 0;
     LirReg next = 0;
     for (const auto &parameter : function.params) {
-        definitions.emplace(parameter.reg, nullptr);
+        definitions.Insert(parameter.reg, nullptr);
         next = std::max(next, parameter.reg + 1);
     }
     for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
@@ -90,15 +91,15 @@ bool Unroll(LirFunc &function) {
         for (const auto &instruction : function.blocks[block].instrs) {
             if (instruction.dst == LirNoReg)
                 continue;
-            if (!definitions.emplace(instruction.dst, &instruction).second)
+            if (!definitions.Insert(instruction.dst, &instruction))
                 return false;
-            owners.emplace(instruction.dst, block);
+            owners.Insert(instruction.dst, block);
             next = std::max(next, instruction.dst + 1);
         }
     }
     const auto definition = [&](const LirReg value) -> const LirInstr * {
-        const auto found = definitions.find(value);
-        return found == definitions.end() ? nullptr : found->second;
+        const auto found = definitions.Find(value);
+        return found == nullptr ? nullptr : *found;
     };
     std::size_t workRemaining = 200000;
     for (const auto &[header, members] : loops.members) {
@@ -124,7 +125,7 @@ bool Unroll(LirFunc &function) {
             continue;
         const auto *comparison = definition(head.term->cond);
         if (!comparison || comparison->op != LirOpcode::CmpLt || comparison->srcs.size() != 2 ||
-            owners.at(comparison->dst) != header)
+            owners.At(comparison->dst) != header)
             continue;
         if (std::ranges::any_of(source.instrs, [&](const auto &i) {
                 return std::ranges::find(i.srcs, comparison->dst) != i.srcs.end();
@@ -137,8 +138,8 @@ bool Unroll(LirFunc &function) {
             phi && (phi->type.kind == TypeRef::Kind::UInt || phi->type.kind == TypeRef::Kind::UInt64);
         const bool signedInduction =
             phi && (phi->type.kind == TypeRef::Kind::Int || phi->type.kind == TypeRef::Kind::Int64);
-        if (!phi || phi->op != LirOpcode::Phi || owners.at(induction) != header ||
-            (!unsignedInduction && !signedInduction) || (owners.contains(limit) && members.contains(owners.at(limit))))
+        if (!phi || phi->op != LirOpcode::Phi || owners.At(induction) != header ||
+            (!unsignedInduction && !signedInduction) || (owners.Contains(limit) && members.contains(owners.At(limit))))
             continue;
         std::vector<LirInstr> phis;
         bool valid = true;
@@ -175,13 +176,13 @@ bool Unroll(LirFunc &function) {
             continue;
         const auto *increment = definition(back->first);
         if (!increment || increment->op != LirOpcode::Add || increment->type != phi->type ||
-            increment->srcs.size() != 2 || increment->srcs[0] != induction || owners.at(increment->dst) != body)
+            increment->srcs.size() != 2 || increment->srcs[0] != induction || owners.At(increment->dst) != body)
             continue;
         const auto *one = definition(increment->srcs[1]);
         if (!one || one->op != LirOpcode::Const || one->type != phi->type || one->strArg != "1")
             continue;
         // Only header phis may export body-defined values. The original header remains the sole normal exit.
-        const auto bodyValue = [&](const LirReg value) { return owners.contains(value) && owners.at(value) == body; };
+        const auto bodyValue = [&](const LirReg value) { return owners.Contains(value) && owners.At(value) == body; };
         for (std::uint32_t block = 0; block < function.blocks.size() && valid; ++block) {
             if (block == body)
                 continue;
@@ -343,7 +344,7 @@ bool Unroll(LirFunc &function) {
             return instruction->op == LirOpcode::Add ? *amount : -*amount;
         };
         const auto outsideLoop = [&](const LirReg reg) {
-            return !owners.contains(reg) || (owners.at(reg) != header && owners.at(reg) != body);
+            return !owners.Contains(reg) || (owners.At(reg) != header && owners.At(reg) != body);
         };
         const auto floatType = [&](const LirReg reg) -> std::optional<TypeRef> {
             if (const auto *instruction = definition(reg))
@@ -362,13 +363,13 @@ bool Unroll(LirFunc &function) {
             if (outsideLoop(reg))
                 return true;
             const auto *instruction = definition(reg);
-            return instruction && instruction->op == LirOpcode::Const && owners.at(reg) == body;
+            return instruction && instruction->op == LirOpcode::Const && owners.At(reg) == body;
         };
         const auto addressOf = [&](const LirReg address) -> std::optional<Access> {
             const auto *instruction = definition(address);
-            if (!instruction || !owners.contains(address) || !pointerToDouble(instruction->type))
+            if (!instruction || !owners.Contains(address) || !pointerToDouble(instruction->type))
                 return std::nullopt;
-            if (owners.at(address) == header && instruction->op == LirOpcode::Phi) {
+            if (owners.At(address) == header && instruction->op == LirOpcode::Phi) {
                 LirReg stepped = LirNoReg;
                 LirReg entry = LirNoReg;
                 for (const auto &[value, predecessor] : instruction->phiPreds)
@@ -382,7 +383,7 @@ bool Unroll(LirFunc &function) {
                     return std::nullopt;
                 return Access{0, false, address, true, entry};
             }
-            if (owners.at(address) == body && instruction->op == LirOpcode::IndexPtr && instruction->srcs.size() == 2 &&
+            if (owners.At(address) == body && instruction->op == LirOpcode::IndexPtr && instruction->srcs.size() == 2 &&
                 outsideLoop(instruction->srcs[0]))
                 if (const auto offset = offsetOf(instruction->srcs[1]))
                     return Access{0, false, instruction->srcs[0], false, LirNoReg, *offset, address};

@@ -1,6 +1,7 @@
 #include "Optimization/LirLoopVersioning.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantEvaluator.h"
 
 #include <functional>
@@ -63,10 +64,10 @@ bool Version(LirFunc &function) {
     const LirNaturalLoops loops(cfg, dominance);
     if (!loops.complete)
         return false;
-    std::unordered_map<LirReg, Definition> definitions;
+    LirRegisterTable<Definition> definitions(RegisterCountHint(function));
     LirReg next = 0;
     for (const auto &parameter : function.params) {
-        if (!definitions.emplace(parameter.reg, Definition{nullptr, 0, parameter.type}).second)
+        if (!definitions.Insert(parameter.reg, Definition{nullptr, 0, parameter.type}))
             return false;
         next = std::max(next, parameter.reg + 1);
     }
@@ -74,14 +75,14 @@ bool Version(LirFunc &function) {
         for (const auto &instruction : function.blocks[block].instrs) {
             if (instruction.dst == LirNoReg)
                 continue;
-            if (!definitions.emplace(instruction.dst, Definition{&instruction, block, instruction.type}).second)
+            if (!definitions.Insert(instruction.dst, Definition{&instruction, block, instruction.type}))
                 return false;
             next = std::max(next, instruction.dst + 1);
         }
     }
     const auto get = [&](const LirReg reg) -> const LirInstr * {
-        const auto found = definitions.find(reg);
-        return found == definitions.end() ? nullptr : found->second.instruction;
+        const auto found = definitions.Find(reg);
+        return found == nullptr ? nullptr : found->instruction;
     };
     // A branch condition seen through phis with one incoming value, which cleanup leaves after threading a
     // short-circuit operand.
@@ -95,8 +96,8 @@ bool Version(LirFunc &function) {
         return nullptr;
     };
     const auto word = [&](const LirReg reg) {
-        const auto found = definitions.find(reg);
-        return found != definitions.end() && Word(found->second.type);
+        const auto found = definitions.Find(reg);
+        return found != nullptr && Word(found->type);
     };
     const auto strip = [&](LirReg reg) {
         for (std::size_t depth = 0; depth < 8; ++depth) {
@@ -137,7 +138,7 @@ bool Version(LirFunc &function) {
                 comparison->isVolatile || comparison->srcs.size() != 2)
                 continue;
             const auto *counter = get(comparison->srcs[0]);
-            if (!counter || counter->op != LirOpcode::Phi || definitions.at(comparison->srcs[0]).block != header)
+            if (!counter || counter->op != LirOpcode::Phi || definitions.At(comparison->srcs[0]).block != header)
                 continue;
             if (!test || dominance.Dominates(block, controlling)) {
                 test = comparison;
@@ -153,15 +154,15 @@ bool Version(LirFunc &function) {
         const bool inclusive = test->op == LirOpcode::CmpLe;
         const auto *phi = get(induction);
         const auto signedWord = [&](const LirReg reg) {
-            const auto found = definitions.find(reg);
-            return found != definitions.end() && SignedWord(found->second.type);
+            const auto found = definitions.Find(reg);
+            return found != nullptr && SignedWord(found->type);
         };
         // A signed induction value counts up by one from a non-negative constant, so every value it takes in the
         // loop is non-negative and below the limit, and converting it to an unsigned index changes nothing.
         const bool signedInduction =
-            signedWord(induction) && signedWord(limit) && definitions.at(induction).type == definitions.at(limit).type;
+            signedWord(induction) && signedWord(limit) && definitions.At(induction).type == definitions.At(limit).type;
         if ((!signedInduction && (!word(induction) || !word(limit))) || !phi || phi->op != LirOpcode::Phi ||
-            phi->phiPreds.size() != 2 || definitions.at(induction).block != header ||
+            phi->phiPreds.size() != 2 || definitions.At(induction).block != header ||
             cfg.predecessors[header].size() != 2)
             continue;
         auto preheader = LirDominance::Invalid;
@@ -199,7 +200,7 @@ bool Version(LirFunc &function) {
         const auto *step = get(increment);
         if (!step || step->op != LirOpcode::Add || step->isVolatile || step->type != phi->type ||
             step->srcs.size() != 2 || step->srcs[0] != induction ||
-            !dominance.Dominates(definitions.at(increment).block, latch)) {
+            !dominance.Dominates(definitions.At(increment).block, latch)) {
             counted = false;
         }
         else {
@@ -223,18 +224,18 @@ bool Version(LirFunc &function) {
         const auto loopConstant = [&](const LirReg reg) {
             const auto *instruction = get(reg);
             return instruction && instruction->op == LirOpcode::Const && !instruction->isVolatile &&
-                   instruction->srcs.empty() && members.contains(definitions.at(reg).block);
+                   instruction->srcs.empty() && members.contains(definitions.At(reg).block);
         };
         const auto invariant = [&](const LirReg reg) {
-            const auto found = definitions.find(reg);
-            return found != definitions.end() && Word(found->second.type) &&
-                   ((!members.contains(found->second.block) && dominance.Dominates(found->second.block, preheader)) ||
+            const auto found = definitions.Find(reg);
+            return found != nullptr && Word(found->type) &&
+                   ((!members.contains(found->block) && dominance.Dominates(found->block, preheader)) ||
                     loopConstant(reg));
         };
         const auto invariantLimit = [&](const LirReg reg) {
-            const auto found = definitions.find(reg);
-            return found != definitions.end() &&
-                   ((!members.contains(found->second.block) && dominance.Dominates(found->second.block, preheader)) ||
+            const auto found = definitions.Find(reg);
+            return found != nullptr &&
+                   ((!members.contains(found->block) && dominance.Dominates(found->block, preheader)) ||
                     loopConstant(reg));
         };
         if (signedInduction ? !invariantLimit(limit) : !invariant(limit))
@@ -255,12 +256,12 @@ bool Version(LirFunc &function) {
             if (!instruction || instruction->isVolatile)
                 return std::nullopt;
             if (instruction->op == LirOpcode::Cast && instruction->srcs.size() == 1) {
-                const auto found = definitions.find(instruction->srcs[0]);
-                if (found == definitions.end())
+                const auto found = definitions.Find(instruction->srcs[0]);
+                if (found == nullptr)
                     return std::nullopt;
-                if (found->second.type.kind == TypeRef::Kind::UInt8)
+                if (found->type.kind == TypeRef::Kind::UInt8)
                     return 0xFF;
-                if (found->second.type.kind == TypeRef::Kind::UInt16)
+                if (found->type.kind == TypeRef::Kind::UInt16)
                     return 0xFFFF;
                 return std::nullopt;
             }
@@ -421,8 +422,8 @@ bool Version(LirFunc &function) {
         // Values the loop defines and code after it reads, directly or through a phi on an edge that leaves a block
         // outside the loop. Once the fast copy exists, both copies reach those readers.
         const auto local = [&](const LirReg reg) {
-            const auto found = definitions.find(reg);
-            return found != definitions.end() && members.contains(found->second.block);
+            const auto found = definitions.Find(reg);
+            return found != nullptr && members.contains(found->block);
         };
         std::vector<LirReg> liveOut;
         const auto note = [&](const LirReg reg) {
@@ -510,13 +511,13 @@ bool Version(LirFunc &function) {
         };
         // The value as the preheader sees it: a constant defined inside the loop is recreated there.
         const auto outside = [&](const LirReg value) {
-            const auto &definition = definitions.at(value);
+            const auto &definition = definitions.At(value);
             if (definition.instruction && definition.instruction->op == LirOpcode::Const &&
                 members.contains(definition.block))
                 return emit(LirOpcode::Const, definition.type, {}, definition.instruction->strArg);
             return value;
         };
-        const auto widen = [&](const LirReg value) { return widenFrom(outside(value), definitions.at(value).type); };
+        const auto widen = [&](const LirReg value) { return widenFrom(outside(value), definitions.At(value).type); };
         const auto limit64 = widen(limit);
         auto count = limit64;
         LirReg guard = LirNoReg;
@@ -645,7 +646,7 @@ bool Version(LirFunc &function) {
             }
             if (counted && stride != 1)
                 fastLimit = minimum(fastLimit, constant(std::numeric_limits<std::uint64_t>::max() - (stride - 1)));
-            const auto &countType = definitions.at(induction).type;
+            const auto &countType = definitions.At(induction).type;
             const auto fastCountLimit = emit(LirOpcode::Cast, countType, {fastLimit}, TypeRef::MakeUInt64().ToString());
             auto &fastHeader = clones[static_cast<std::size_t>(std::ranges::find(ordered, header) - ordered.begin())];
             for (auto &instruction : fastHeader.instrs)
@@ -700,11 +701,11 @@ bool Version(LirFunc &function) {
                 LirReg last = outside(limit);
                 if (check.constantOffset != 0) {
                     const auto amount =
-                        emit(LirOpcode::Const, definitions.at(limit).type, {}, std::to_string(check.constantOffset));
-                    last = emit(LirOpcode::Add, definitions.at(limit).type, {last, amount});
+                        emit(LirOpcode::Const, definitions.At(limit).type, {}, std::to_string(check.constantOffset));
+                    last = emit(LirOpcode::Add, definitions.At(limit).type, {last, amount});
                 }
                 safe =
-                    emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {widenFrom(last, definitions.at(limit).type), bound});
+                    emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {widenFrom(last, definitions.At(limit).type), bound});
             }
             else if (check.offset == LirNoReg) {
                 safe = emit(LirOpcode::CmpLe, TypeRef::MakeBool(), {count, bound});
@@ -770,7 +771,7 @@ bool Version(LirFunc &function) {
                 LirInstr merge;
                 merge.op = LirOpcode::Phi;
                 merge.dst = next++;
-                merge.type = definitions.at(value).type;
+                merge.type = definitions.At(value).type;
                 const auto result = merge.dst;
                 atStart.emplace(block, result);
                 merges.emplace(block, std::move(merge));

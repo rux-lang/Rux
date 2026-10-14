@@ -1,6 +1,7 @@
 #include "Optimization/LirPointerInduction.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Ir/Lir/RegisterTable.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -25,12 +26,12 @@ bool Reduce(LirFunc &function) {
     const LirNaturalLoops loops(cfg, dominance);
     if (!loops.complete)
         return false;
-    std::unordered_map<LirReg, const LirInstr *> definitions;
-    std::unordered_map<LirReg, std::uint32_t> owners;
+    LirRegisterTable<const LirInstr *> definitions(RegisterCountHint(function));
+    LirRegisterTable<std::uint32_t> owners(RegisterCountHint(function));
     LirReg next = 0;
     std::size_t instructionCount = 0;
     for (const auto &parameter : function.params) {
-        if (!definitions.emplace(parameter.reg, nullptr).second)
+        if (!definitions.Insert(parameter.reg, nullptr))
             return false;
         next = std::max(next, parameter.reg + 1);
     }
@@ -41,17 +42,17 @@ bool Reduce(LirFunc &function) {
         for (const auto &instruction : function.blocks[block].instrs) {
             if (instruction.dst == LirNoReg)
                 continue;
-            if (!definitions.emplace(instruction.dst, &instruction).second)
+            if (!definitions.Insert(instruction.dst, &instruction))
                 return false;
-            owners.emplace(instruction.dst, block);
+            owners.Insert(instruction.dst, block);
             next = std::max(next, instruction.dst + 1);
         }
     }
     if (next > LirNoReg - 32)
         return false;
     const auto definition = [&](const LirReg value) -> const LirInstr * {
-        const auto found = definitions.find(value);
-        return found == definitions.end() ? nullptr : found->second;
+        const auto found = definitions.Find(value);
+        return found == nullptr ? nullptr : *found;
     };
     std::size_t budget = 200000;
     for (const auto &[header, members] : loops.members) {
@@ -74,7 +75,7 @@ bool Reduce(LirFunc &function) {
             continue;
         const auto induction = comparison->srcs[0];
         const auto *phi = definition(induction);
-        if (!phi || phi->op != LirOpcode::Phi || owners.at(induction) != header || phi->phiPreds.size() != 2 ||
+        if (!phi || phi->op != LirOpcode::Phi || owners.At(induction) != header || phi->phiPreds.size() != 2 ||
             (phi->type.kind != TypeRef::Kind::UInt && phi->type.kind != TypeRef::Kind::UInt64))
             continue;
         const auto back = std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second == body; });
@@ -84,15 +85,15 @@ bool Reduce(LirFunc &function) {
             continue;
         const auto *increment = definition(back->first);
         if (!increment || increment->isVolatile || increment->op != LirOpcode::Add || increment->type != phi->type ||
-            increment->srcs.size() != 2 || increment->srcs[0] != induction || owners.at(increment->dst) != body)
+            increment->srcs.size() != 2 || increment->srcs[0] != induction || owners.At(increment->dst) != body)
             continue;
         const auto *one = definition(increment->srcs[1]);
         if (!one || one->isVolatile || one->op != LirOpcode::Const || one->type != phi->type || one->strArg != "1")
             continue;
         const auto invariant = [&](const LirReg value) {
-            return definitions.contains(value) &&
-                   (!owners.contains(value) ||
-                    (!members.contains(owners.at(value)) && dominance.Dominates(owners.at(value), preheader)));
+            return definitions.Contains(value) &&
+                   (!owners.Contains(value) ||
+                    (!members.contains(owners.At(value)) && dominance.Dominates(owners.At(value), preheader)));
         };
 
         struct Candidate {
@@ -110,7 +111,7 @@ bool Reduce(LirFunc &function) {
                 continue;
             const auto *index = definition(address.srcs[1]);
             if (!index || index->isVolatile || index->op != LirOpcode::Add || index->type != phi->type ||
-                index->srcs.size() != 2 || owners.at(index->dst) != body)
+                index->srcs.size() != 2 || owners.At(index->dst) != body)
                 continue;
             const auto offset = index->srcs[0] == induction ? index->srcs[1]
                               : index->srcs[1] == induction ? index->srcs[0]

@@ -2,16 +2,17 @@
 
 #include "Ir/Lir/Lir.h"
 
+#include <cassert>
 #include <cstddef>
 #include <optional>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace Rux {
 /// A value per register of one function. Registers are numbered from zero upwards in a function, so a table by number
 /// holds them without a node per register; a number far past the function's size, which only hand-built IR uses, goes
-/// to a map instead so a stray large number cannot make the table huge.
+/// to a short list instead so a stray large number cannot make the table huge. Nothing is allocated until a register
+/// gets a value: an empty standard hash map allocates, and passes build these tables for every function.
 template <typename Value>
 class LirRegisterTable {
 public:
@@ -26,8 +27,10 @@ public:
                 return nullptr;
             return &*table[reg];
         }
-        const auto found = sparse.find(reg);
-        return found == sparse.end() ? nullptr : &found->second;
+        for (const auto &[key, value] : sparse)
+            if (key == reg)
+                return &value;
+        return nullptr;
     }
 
     [[nodiscard]] Value *Find(const LirReg reg) {
@@ -38,14 +41,23 @@ public:
         return Find(reg) != nullptr;
     }
 
+    /// The value of a register that has one.
+    [[nodiscard]] const Value &At(const LirReg reg) const {
+        const Value *value = Find(reg);
+        assert(value != nullptr && "register has no value in the table");
+        return *value;
+    }
+
     /// Record `value` for `reg` unless it already has one.
     ///
     /// @return false when `reg` already had a value, which is kept
     bool Insert(const LirReg reg, Value value) {
         if (reg >= limit) {
-            const bool inserted = sparse.emplace(reg, std::move(value)).second;
-            count += inserted ? 1 : 0;
-            return inserted;
+            if (Find(reg) != nullptr)
+                return false;
+            sparse.emplace_back(reg, std::move(value));
+            ++count;
+            return true;
         }
         auto &slot = Slot(reg);
         if (slot)
@@ -58,12 +70,43 @@ public:
     /// Record `value` for `reg`, replacing any earlier one.
     void Assign(const LirReg reg, Value value) {
         if (reg >= limit) {
-            count += sparse.insert_or_assign(reg, std::move(value)).second ? 1 : 0;
+            if (Value *existing = Find(reg)) {
+                *existing = std::move(value);
+                return;
+            }
+            sparse.emplace_back(reg, std::move(value));
+            ++count;
             return;
         }
         auto &slot = Slot(reg);
         count += slot ? 0 : 1;
         slot = std::move(value);
+    }
+
+    /// The value of `reg`, given a default one first if it has none.
+    Value &Ref(const LirReg reg) {
+        if (Value *existing = Find(reg))
+            return *existing;
+        Insert(reg, Value{});
+        return *Find(reg);
+    }
+
+    /// Forget the value of `reg`, if it has one.
+    void Erase(const LirReg reg) {
+        if (reg >= limit) {
+            for (auto entry = sparse.begin(); entry != sparse.end(); ++entry) {
+                if (entry->first == reg) {
+                    sparse.erase(entry);
+                    --count;
+                    return;
+                }
+            }
+            return;
+        }
+        if (reg < table.size() && table[reg]) {
+            table[reg].reset();
+            --count;
+        }
     }
 
     /// How many registers have a value.
@@ -81,7 +124,7 @@ private:
     std::size_t limit;
     std::size_t count = 0;
     std::vector<std::optional<Value>> table;
-    std::unordered_map<LirReg, Value> sparse;
+    std::vector<std::pair<LirReg, Value>> sparse;
 };
 
 /// The number of instructions and parameters of a function: the size a register table of it is built for.

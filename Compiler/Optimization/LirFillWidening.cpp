@@ -1,6 +1,7 @@
 #include "Optimization/LirFillWidening.h"
 
 #include "Ir/Lir/NaturalLoops.h"
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantEvaluator.h"
 
 #include <array>
@@ -57,29 +58,27 @@ bool Widen(LirFunc &function) {
         TypeRef type;
     };
 
-    std::unordered_map<LirReg, Definition> definitions;
+    LirRegisterTable<Definition> definitions(RegisterCountHint(function));
     LirReg next = 0;
     for (const auto &parameter : function.params) {
-        definitions.emplace(parameter.reg, Definition{nullptr, 0, parameter.type});
+        definitions.Insert(parameter.reg, Definition{nullptr, 0, parameter.type});
         next = std::max(next, parameter.reg + 1);
     }
     for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
         for (const auto &instruction : function.blocks[block].instrs) {
             if (instruction.dst == LirNoReg)
                 continue;
-            if (!definitions
-                     .emplace(instruction.dst,
-                              Definition{&instruction, block,
-                                         instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type)
-                                                                             : instruction.type})
-                     .second)
+            if (!definitions.Insert(instruction.dst, Definition{&instruction, block,
+                                                                instruction.op == LirOpcode::Alloca
+                                                                    ? TypeRef::MakePointer(instruction.type)
+                                                                    : instruction.type}))
                 return false;
             next = std::max(next, instruction.dst + 1);
         }
     }
     const auto get = [&](const LirReg reg) -> const LirInstr * {
-        const auto found = definitions.find(reg);
-        return found == definitions.end() ? nullptr : found->second.instruction;
+        const auto found = definitions.Find(reg);
+        return found == nullptr ? nullptr : found->instruction;
     };
     const auto constantOf = [&](const LirReg reg) -> std::optional<std::uint64_t> {
         const auto *instruction = get(reg);
@@ -123,11 +122,11 @@ bool Widen(LirFunc &function) {
             continue;
         const auto limit = test->srcs[1];
         const auto outside = [&](const LirReg reg) {
-            const auto found = definitions.find(reg);
-            return found != definitions.end() && !members.contains(found->second.block) &&
-                   (found->second.instruction == nullptr || dominance.Dominates(found->second.block, preheader));
+            const auto found = definitions.Find(reg);
+            return found != nullptr && !members.contains(found->block) &&
+                   (found->instruction == nullptr || dominance.Dominates(found->block, preheader));
         };
-        if (!outside(limit) || definitions.at(limit).type != phi->type)
+        if (!outside(limit) || definitions.At(limit).type != phi->type)
             continue;
         auto start = LirNoReg;
         auto increment = LirNoReg;
@@ -178,8 +177,8 @@ bool Widen(LirFunc &function) {
         // Nothing the loop computes is read after it.
         bool escapes = false;
         const auto local = [&](const LirReg reg) {
-            const auto found = definitions.find(reg);
-            return found != definitions.end() && found->second.instruction && members.contains(found->second.block);
+            const auto found = definitions.Find(reg);
+            return found != nullptr && found->instruction && members.contains(found->block);
         };
         for (std::uint32_t block = 0; block < function.blocks.size() && !escapes; ++block) {
             if (members.contains(block))
