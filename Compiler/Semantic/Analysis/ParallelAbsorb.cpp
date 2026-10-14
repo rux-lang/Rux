@@ -73,31 +73,33 @@ std::size_t TotalSize(Records &records, Member member) {
     return total;
 }
 
-/// A later module's record replaces an earlier one.
+/// A later module's record replaces an earlier one. The records' entries move over node by node; the few whose key the
+/// target already holds stay behind in the record and replace the target's afterwards.
 template <typename Map, typename Records, typename Member>
 void MergeLaterWins(Map &target, Records &records, Member member) {
     target.reserve(target.size() + TotalSize<Map>(records, member));
-    for (auto &record : records)
-        for (auto &[key, value] : std::invoke(member, record))
+    for (auto &record : records) {
+        auto &source = std::invoke(member, record);
+        target.merge(source);
+        for (auto &[key, value] : source)
             target.insert_or_assign(key, std::move(value));
+    }
 }
 
-/// A cache keeps whatever was entered first, and earlier modules enter first.
+/// A cache keeps whatever was entered first, and earlier modules enter first: an entry whose key the target already
+/// holds stays behind in the record.
 template <typename Map, typename Records, typename Member>
 void MergeFirstWins(Map &target, Records &records, Member member) {
     target.reserve(target.size() + TotalSize<Map>(records, member));
     for (auto &record : records)
-        for (auto &[key, value] : std::invoke(member, record))
-            target.try_emplace(key, std::move(value));
+        target.merge(std::invoke(member, record));
 }
 
 template <typename Set, typename Records, typename Member>
 void MergeSet(Set &target, Records &records, Member member) {
     target.reserve(target.size() + TotalSize<Set>(records, member));
-    for (auto &record : records) {
-        const auto &elements = std::invoke(member, record);
-        target.insert(elements.begin(), elements.end());
-    }
+    for (auto &record : records)
+        target.merge(std::invoke(member, record));
 }
 
 template <typename Map, typename Records, typename Member>
