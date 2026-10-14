@@ -1,8 +1,8 @@
 #include "Optimization/LirValueNumbering.h"
 
 #include "Ir/Lir/Dominance.h"
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantAddresses.h"
-#include "Optimization/RegisterTable.h"
 
 #include <cstddef>
 #include <functional>
@@ -46,10 +46,10 @@ bool Pure(const LirOpcode op) {
     }
 }
 
-using LiteralKeys = RegisterTable<std::string>;
+using LiteralKeys = LirRegisterTable<std::string>;
 /// The source of each conversion between two integer types of one width and signedness, such as `uint` and `uint64`:
 /// the value's bits do not change, so an operand read through it is the same operand.
-using SameBits = RegisterTable<LirReg>;
+using SameBits = LirRegisterTable<LirReg>;
 
 struct KeyHash {
     using is_transparent = void;
@@ -112,7 +112,7 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
     // where they are until every block is visited: instructions found redundant are only marked, and removed at the
     // end.
     const std::size_t registers = RegisterCountHint(function);
-    RegisterTable<const TypeRef *> types(registers);
+    LirRegisterTable<const TypeRef *> types(registers);
     LiteralKeys literals(registers);
     for (const auto &parameter : function.params) {
         if (!types.Insert(parameter.reg, &parameter.type)) {
@@ -147,7 +147,7 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
                 from.SizeInBytes() == to.SizeInBytes())
                 sameBits.Insert(instruction.dst, instruction.srcs[0]);
         }
-    RegisterTable<LirReg> copies(registers);
+    LirRegisterTable<LirReg> copies(registers);
     const auto resolve = [&](LirReg reg) {
         for (std::size_t depth = 0; depth < copies.Size(); ++depth) {
             const LirReg *found = copies.Find(reg);

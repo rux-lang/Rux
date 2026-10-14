@@ -1,8 +1,8 @@
 #include "Optimization/LirMemoryPromotion.h"
 
 #include "Ir/Lir/ControlFlow.h"
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ReferenceTypes.h"
-#include "Optimization/RegisterTable.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -15,7 +15,7 @@
 
 namespace Rux::Optimization {
 namespace {
-using Copies = RegisterTable<LirReg>;
+using Copies = LirRegisterTable<LirReg>;
 
 LirReg Resolve(const Copies &copies, LirReg reg) {
     for (std::size_t depth = 0; depth < copies.Size(); ++depth) {
@@ -85,7 +85,7 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
     };
 
     const std::size_t registers = RegisterCountHint(function);
-    RegisterTable<Defined> types(registers);
+    LirRegisterTable<Defined> types(registers);
     // Ordered by register: promotion numbers its new registers slot by slot in this order.
     std::map<LirReg, const TypeRef *> slots;
     LirReg next = 0;
@@ -175,7 +175,7 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
 
     std::vector<Slot> promoted;
     promoted.reserve(slots.size());
-    RegisterTable<std::uint32_t> slotIndex(registers);
+    LirRegisterTable<std::uint32_t> slotIndex(registers);
     for (const auto &[reg, type] : slots) {
         slotIndex.Insert(reg, static_cast<std::uint32_t>(promoted.size()));
         auto &slot = promoted.emplace_back();

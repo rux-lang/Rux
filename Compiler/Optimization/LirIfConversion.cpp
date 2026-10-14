@@ -1,7 +1,7 @@
 #include "Optimization/LirIfConversion.h"
 
 #include "Ir/Lir/NaturalLoops.h"
-#include "Optimization/RegisterTable.h"
+#include "Ir/Lir/RegisterTable.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -63,8 +63,8 @@ bool Convert(LirFunc &function) {
     // Both point at the function's own parameters and instructions, which stay put until a conversion, after which
     // the pass returns.
     const std::size_t registers = RegisterCountHint(function);
-    RegisterTable<const TypeRef *> types(registers);
-    RegisterTable<const LirInstr *> definitions(registers);
+    LirRegisterTable<const TypeRef *> types(registers);
+    LirRegisterTable<const LirInstr *> definitions(registers);
     LirReg next = 0;
     for (const auto &parameter : function.params) {
         types.Insert(parameter.reg, &parameter.type);

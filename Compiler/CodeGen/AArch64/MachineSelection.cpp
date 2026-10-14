@@ -365,13 +365,17 @@ bool Selector::Eligible() const {
 void Selector::ComputeLastUses() {
     const LirControlFlow cfg(func);
     const LirLiveness liveness(func, cfg);
+    // A register is live at the current point of the walk when it is marked with the block's number plus one.
+    LirRegisterTable<std::uint32_t> live(RegisterCountHint(func));
     for (std::size_t block = 0; block < func.blocks.size(); ++block) {
-        std::unordered_set<LirReg> live = liveness.liveOut[block];
+        const auto mark = static_cast<std::uint32_t>(block + 1);
+        for (const auto reg : liveness.liveOut[block])
+            live.Assign(reg, mark);
         const auto &term = func.blocks[block].term;
         if (term) {
-            live.insert(term->cond);
+            live.Assign(term->cond, mark);
             if (term->retVal)
-                live.insert(*term->retVal);
+                live.Assign(*term->retVal, mark);
         }
         const auto &instructions = func.blocks[block].instrs;
         for (std::size_t reverse = instructions.size(); reverse > 0; --reverse) {
@@ -379,13 +383,13 @@ void Selector::ComputeLastUses() {
             if (instruction.op == LirOpcode::Phi)
                 continue;
             for (const auto source : instruction.srcs) {
-                if (!live.contains(source)) {
+                if (const std::uint32_t *marked = live.Find(source); marked == nullptr || *marked != mark) {
                     lastUses[&instruction].push_back(source);
-                    live.insert(source);
+                    live.Assign(source, mark);
                 }
             }
             if (instruction.dst != LirNoReg)
-                live.erase(instruction.dst);
+                live.Assign(instruction.dst, 0);
         }
     }
 }

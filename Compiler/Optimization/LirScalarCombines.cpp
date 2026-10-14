@@ -1,7 +1,7 @@
 #include "Optimization/LirScalarCombines.h"
 
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantEvaluator.h"
-#include "Optimization/RegisterTable.h"
 
 #include <algorithm>
 #include <bit>
@@ -38,7 +38,7 @@ public:
     }
 
 private:
-    RegisterTable<const LirInstr *> table;
+    LirRegisterTable<const LirInstr *> table;
 };
 
 std::optional<std::uint64_t> UnsignedMaximum(const TypeRef &type) {

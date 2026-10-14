@@ -1,7 +1,7 @@
 #include "Optimization/LirInliner.h"
 
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ReferenceTypes.h"
-#include "Optimization/RegisterTable.h"
 
 #include <algorithm>
 #include <functional>
@@ -115,7 +115,7 @@ std::optional<Size> Eligible(const LirFunc &function, const ConcreteReferenceTyp
         if (returned == function.blocks.front().instrs.end() || returned->type != function.returnType)
             return std::nullopt;
     }
-    RegisterTable<bool> definitions(RegisterCountHint(function));
+    LirRegisterTable<bool> definitions(RegisterCountHint(function));
     for (const auto &parameter : function.params) {
         if (!definitions.Insert(parameter.reg, true)) {
             return std::nullopt;

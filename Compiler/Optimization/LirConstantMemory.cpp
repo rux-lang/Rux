@@ -1,6 +1,6 @@
 #include "Optimization/LirConstantMemory.h"
 
-#include "Optimization/RegisterTable.h"
+#include "Ir/Lir/RegisterTable.h"
 #include "Unicode/Utf.h"
 
 #include <unordered_map>
@@ -28,7 +28,7 @@ std::optional<std::size_t> Length(const LirConstDecl &constant) {
 
 bool Fold(LirFunc &function, const std::unordered_map<std::string, const LirConstDecl *> &constants) {
     // A parameter is defined by no instruction, so it stands in the table with none.
-    RegisterTable<const LirInstr *> definitions(RegisterCountHint(function));
+    LirRegisterTable<const LirInstr *> definitions(RegisterCountHint(function));
     for (const auto &parameter : function.params)
         if (!definitions.Insert(parameter.reg, nullptr))
             return false;

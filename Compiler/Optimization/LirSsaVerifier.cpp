@@ -1,7 +1,7 @@
 #include "Optimization/LirSsaVerifier.h"
 
 #include "Ir/Lir/Dominance.h"
-#include "Optimization/RegisterTable.h"
+#include "Ir/Lir/RegisterTable.h"
 
 #include <deque>
 #include <format>
@@ -93,7 +93,7 @@ bool HasMisplacedAddress(const LirFunc &function, const LirControlFlow &cfg, con
     };
 
     // The first definition of a register counts, and a parameter's type comes before any instruction's.
-    RegisterTable<Defined> defined(RegisterCountHint(function));
+    LirRegisterTable<Defined> defined(RegisterCountHint(function));
     for (const auto &parameter : function.params)
         defined.Insert(parameter.reg, {0, false, parameter.type.kind});
     for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
@@ -289,7 +289,7 @@ void Verify(const LirFunc &function, const PassContext &context) {
         context.ReportInternalError(std::format("internal LIR SSA error in function '{}', block {}, register %{}: {}",
                                                 function.name, block, reg, reason));
     };
-    RegisterTable<Definition> definitions(RegisterCountHint(function));
+    LirRegisterTable<Definition> definitions(RegisterCountHint(function));
     // The pointer types allocations' addresses have, which the function holds nowhere itself.
     std::deque<TypeRef> addressTypes;
     for (const auto &parameter : function.params) {

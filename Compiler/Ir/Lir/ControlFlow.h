@@ -1,10 +1,11 @@
 #pragma once
 
 #include "Ir/Lir/Lir.h"
+#include "Ir/Lir/RegisterTable.h"
 
 #include <algorithm>
 #include <cstdint>
-#include <unordered_set>
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -68,7 +69,8 @@ struct LirControlFlow {
 
 /// Phi operands are reads on predecessor edges. The snapshot is invalid after any instruction change.
 struct LirLiveness {
-    using Registers = std::unordered_set<LirReg>;
+    /// Sorted, without duplicates.
+    using Registers = std::vector<LirReg>;
     std::vector<Registers> liveIn;
     std::vector<Registers> liveOut;
 
@@ -77,11 +79,17 @@ struct LirLiveness {
         , liveOut(function.blocks.size()) {
         const auto count = function.blocks.size();
         std::vector<Registers> uses(count), defs(count), edgeUses(count);
+        // The block most recently seen defining each register, plus one, which tells a read of a value the block
+        // defined earlier from a read of one live on entry.
+        LirRegisterTable<std::uint32_t> definedIn(RegisterCountHint(function));
         for (std::size_t block = 0; block < count; ++block) {
+            const auto mark = static_cast<std::uint32_t>(block + 1);
             const auto read = [&](const LirReg reg) {
-                if (reg != LirNoReg && !defs[block].contains(reg)) {
-                    uses[block].insert(reg);
-                }
+                if (reg == LirNoReg)
+                    return;
+                const std::uint32_t *defined = definedIn.Find(reg);
+                if (defined == nullptr || *defined != mark)
+                    uses[block].push_back(reg);
             };
             for (const auto &instruction : function.blocks[block].instrs) {
                 for (const auto reg : instruction.srcs) {
@@ -89,11 +97,12 @@ struct LirLiveness {
                 }
                 for (const auto &[reg, predecessor] : instruction.phiPreds) {
                     if (reg != LirNoReg && predecessor < count) {
-                        edgeUses[predecessor].insert(reg);
+                        edgeUses[predecessor].push_back(reg);
                     }
                 }
                 if (instruction.dst != LirNoReg) {
-                    defs[block].insert(instruction.dst);
+                    definedIn.Assign(instruction.dst, mark);
+                    defs[block].push_back(instruction.dst);
                 }
             }
             if (const auto &term = function.blocks[block].term) {
@@ -103,28 +112,38 @@ struct LirLiveness {
                 }
             }
         }
+        const auto normalize = [](Registers &registers) {
+            std::ranges::sort(registers);
+            registers.erase(std::ranges::unique(registers).begin(), registers.end());
+        };
+        for (std::size_t block = 0; block < count; ++block) {
+            normalize(uses[block]);
+            normalize(defs[block]);
+            normalize(edgeUses[block]);
+        }
         std::vector<std::uint32_t> work;
         std::vector<bool> queued(count, true);
         for (std::uint32_t block = 0; block < count; ++block) {
             work.push_back(block);
         }
+        Registers outgoing, incoming, scratch;
         while (!work.empty()) {
             const auto block = work.back();
             work.pop_back();
             queued[block] = false;
-            Registers outgoing = edgeUses[block];
+            outgoing = edgeUses[block];
             for (const auto next : cfg.successors[block]) {
-                outgoing.insert(liveIn[next].begin(), liveIn[next].end());
+                scratch.clear();
+                std::ranges::set_union(outgoing, liveIn[next], std::back_inserter(scratch));
+                std::swap(outgoing, scratch);
             }
-            Registers incoming = uses[block];
-            for (const auto reg : outgoing) {
-                if (!defs[block].contains(reg)) {
-                    incoming.insert(reg);
-                }
-            }
-            liveOut[block] = std::move(outgoing);
+            scratch.clear();
+            std::ranges::set_difference(outgoing, defs[block], std::back_inserter(scratch));
+            incoming.clear();
+            std::ranges::set_union(uses[block], scratch, std::back_inserter(incoming));
+            liveOut[block] = outgoing;
             if (incoming != liveIn[block]) {
-                liveIn[block] = std::move(incoming);
+                liveIn[block] = incoming;
                 for (const auto pred : cfg.predecessors[block]) {
                     if (!queued[pred]) {
                         queued[pred] = true;

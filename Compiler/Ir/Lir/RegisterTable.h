@@ -8,15 +8,15 @@
 #include <utility>
 #include <vector>
 
-namespace Rux::Optimization {
+namespace Rux {
 /// A value per register of one function. Registers are numbered from zero upwards in a function, so a table by number
 /// holds them without a node per register; a number far past the function's size, which only hand-built IR uses, goes
 /// to a map instead so a stray large number cannot make the table huge.
 template <typename Value>
-class RegisterTable {
+class LirRegisterTable {
 public:
     /// @param expected roughly how many registers the function defines, usually its instruction count
-    explicit RegisterTable(const std::size_t expected)
+    explicit LirRegisterTable(const std::size_t expected)
         : limit(expected * 4 + 64) {
     }
 
@@ -87,4 +87,4 @@ inline std::size_t RegisterCountHint(const LirFunc &function) {
         count += block.instrs.size();
     return count;
 }
-} // namespace Rux::Optimization
+} // namespace Rux
