@@ -150,6 +150,8 @@ struct FallibleTypeExpr : TypeExpr {
 
 struct Block {
     SourceLocation location;
+    /// Where the token after the closing brace starts, so `location` to `end` covers the whole block.
+    SourceLocation end;
     std::vector<StmtPtr> stmts;
 };
 

@@ -566,6 +566,7 @@ HirPackage AstToHirLowering::Generate() {
     diagnostics.clear();
     AstToHirDetail::AstToHirContext lowering(semanticModel, semanticModel.modules, semanticModel.compileTimeContext,
                                              diagnostics);
+    lowering.SetDeclarationOnlyModules(&declarationOnlyModules);
     return lowering.Run(pool);
 }
 

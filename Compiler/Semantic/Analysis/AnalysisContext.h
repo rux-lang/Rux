@@ -34,6 +34,10 @@ struct AnalysisInputs {
     std::vector<SemanticSymbol> &symbols;
     const CompileTimeContext &context;
     const PackageImportBindings &imports;
+    /// Modules whose non-generic function bodies are not checked, because the build reuses their compiled code.
+    /// Everything else in them is: declarations, signatures and default arguments, and every generic body, which
+    /// other modules instantiate.
+    const std::unordered_set<const Module *> *declarationOnlyModules = nullptr;
 };
 
 /// Whether a pattern binds anything a value can be taken out into: a looked-at value is not taken apart.
@@ -620,6 +624,9 @@ private:
     std::vector<SemanticDiagnostic> &diags;
     const CompileTimeContext &context;
     const PackageImportBindings &imports;
+    const std::unordered_set<const Module *> *declarationOnlyModules = nullptr;
+    /// Whether the module being checked is one of `declarationOnlyModules`.
+    bool checkingDeclarationsOnly = false;
     /// The facts this context records into, so a parallel analysis can extract and merge what its bodies recorded.
     SemanticFacts &outputFacts;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
@@ -1304,6 +1311,9 @@ public:
 
 private:
     std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
+    /// Queue the destructor of every type a drop glue plan destroys through it, which no checked body may have named.
+    void QueueDropGlueDestructors();
+    [[nodiscard]] std::size_t ValidatedInstantiationCount() const;
     std::unordered_set<const FuncDecl *> reportedRunawayInstantiations;
     std::unordered_set<std::string> activeLayoutTypes;
 

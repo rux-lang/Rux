@@ -136,7 +136,9 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
             EmitError(d.location, std::format("function '{}' has no body", d.name));
         }
     }
-    else {
+    else if (!checkingDeclarationsOnly || !currentTypeParams.empty()) {
+        // A generic body is checked even in a module whose code is reused: other modules instantiate it from what
+        // checking it recorded.
         CheckFunctionBody(*d.body, d, retType);
     }
 

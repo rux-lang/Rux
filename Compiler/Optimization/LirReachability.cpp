@@ -299,9 +299,18 @@ LirModuleReferences CollectModuleReferences(const LirModule &module) {
 
 std::vector<std::vector<LirModuleRoot>> ModuleRoots(const std::span<const LirModuleReferences> modules,
                                                     const ArtifactKind artifactKind) {
+    std::vector<const LirModuleReferences *> pointers;
+    pointers.reserve(modules.size());
+    for (const auto &module : modules)
+        pointers.push_back(&module);
+    return ModuleRoots(pointers, artifactKind);
+}
+
+std::vector<std::vector<LirModuleRoot>> ModuleRoots(const std::span<const LirModuleReferences *const> modules,
+                                                    const ArtifactKind artifactKind) {
     Graph graph;
     for (std::size_t moduleIndex = 0; moduleIndex < modules.size(); ++moduleIndex) {
-        graph.modules.push_back(&modules[moduleIndex]);
+        graph.modules.push_back(modules[moduleIndex]);
         graph.moduleIndices.push_back(moduleIndex);
     }
     ReachabilityWalker walker(std::move(graph));

@@ -68,10 +68,18 @@ public:
     /// Lower every module, on `pool`'s threads when one is given; the package never depends on it.
     [[nodiscard]] HirPackage Run(Parallel::WorkerPool *pool = nullptr);
 
+    /// Modules lowered without the bodies of their non-generic functions (`AstToHirLowering`).
+    void SetDeclarationOnlyModules(const std::unordered_set<const Module *> *inputModules) noexcept {
+        declarationOnlyModules = inputModules;
+    }
+
 protected:
     const SemanticModel &model;
     const std::vector<const Module *> &modules;
     const CompileTimeContext &context;
+    const std::unordered_set<const Module *> *declarationOnlyModules = nullptr;
+    /// Whether the module being lowered is one of `declarationOnlyModules`.
+    bool declarationOnly = false;
     HirScope globalScope;
     HirScope *currentScope;
     std::vector<std::unique_ptr<HirScope>> ownedScopes;

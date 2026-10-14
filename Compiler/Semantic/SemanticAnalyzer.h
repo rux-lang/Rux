@@ -6,6 +6,8 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Rux {
@@ -71,6 +73,12 @@ public:
         pool = inputPool;
     }
 
+    /// Check only the declarations and generic bodies of these modules, not the bodies of their non-generic functions:
+    /// the build reuses what those compiled to. The modules must belong to this analysis and outlive it.
+    void SetDeclarationOnlyModules(std::unordered_set<const Module *> inputModules) {
+        declarationOnlyModules = std::move(inputModules);
+    }
+
 private:
     /// Check module bodies on several analysis contexts at once and merge them; false when the package cannot be
     /// analyzed that way or analysis reported anything, leaving `facts`, `diags` and `symbols` to be rebuilt.
@@ -83,6 +91,7 @@ private:
     std::string packageName;
     CompileTimeContext compileTimeContext;
     PackageImportBindings imports;
+    std::unordered_set<const Module *> declarationOnlyModules;
     std::vector<SemanticDiagnostic> diags;
     std::vector<SemanticSymbol> symbols;
 };

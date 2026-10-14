@@ -38,6 +38,7 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
     }
 
     ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close {}", role));
+    block->end = CurrentLocation();
     return block;
 }
 

@@ -349,9 +349,11 @@ void AnalysisContext::ValidateFunctionSignature(const FuncDecl &declaration,
 
 void AnalysisContext::CheckModule(const Module &module) {
     currentFile = module.name;
+    checkingDeclarationsOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
     for (const auto &declaration : module.items) {
         CheckDecl(*declaration);
     }
+    checkingDeclarationsOnly = false;
 }
 
 void AnalysisContext::PrecheckModule(const Module &module) {

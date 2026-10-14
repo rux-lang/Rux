@@ -35,6 +35,9 @@ struct BuildStats {
     std::size_t dependencyTokens = 0;
     std::uintmax_t localSourceSize = 0;
     std::uintmax_t dependencySourceSize = 0;
+    /// Source files whose compiled code an earlier build recorded and this one reused (Driver/ModuleCache.h).
+    std::size_t localReusedFiles = 0;
+    std::size_t dependencyReusedFiles = 0;
     std::uintmax_t executableSize = 0;
     std::uintmax_t peakMemoryBytes = 0;
     std::size_t prunedFunctionDefinitions = 0;

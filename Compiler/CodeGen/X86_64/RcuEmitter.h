@@ -8,6 +8,7 @@
 #include "Target/Target.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Rux {
@@ -36,6 +37,12 @@ public:
         backtraces = enabled;
     }
 
+    /// Emit only the modules whose entry is true, leaving an empty object in the place of every other one, whose object
+    /// the caller already holds. Every module is emitted when this is empty.
+    void SetEmittedModules(std::vector<bool> modules) {
+        emittedModules = std::move(modules);
+    }
+
     /// Diagnostics accumulated during generation (e.g. errors encoding an `asm func` body). Populated by Generate();
     /// check after calling it.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
@@ -49,6 +56,7 @@ private:
     BuildInfo buildInfo;
     bool machineSelection = false;
     bool backtraces = false;
+    std::vector<bool> emittedModules;
     Parallel::WorkerPool *pool = nullptr;
     mutable std::vector<Diagnostic> diagnostics;
 };

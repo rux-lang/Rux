@@ -2,13 +2,17 @@
 
 #include "Driver/CompilerDriver.h"
 #include "Driver/DependencyGraph.h"
+#include "Driver/ModuleCache.h"
 #include "Parallel/WorkerPool.h"
 #include "Semantic/Model/SemanticModel.h"
 #include "SourceModel/SourceFile.h"
 #include "SourceModel/SourceText.h"
 
 #include <memory>
+#include <set>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace Rux::Driver {
 
@@ -48,6 +52,17 @@ private:
     void RecordBuild(const std::filesystem::path &artifactPath,
                      const std::vector<std::filesystem::path> &secondaryArtifactPaths);
 
+    /// Reuse of compiled modules (Driver/ModuleCache.h): whether this compilation may reuse them, where its pack
+    /// lives, keying every parsed module, and choosing the modules whose recorded objects this build links.
+    [[nodiscard]] bool ModuleCacheEligible() const;
+    [[nodiscard]] std::filesystem::path ModulePackPath() const;
+    void PrepareModuleReuse();
+    void SelectReusedModules();
+    /// Whether `RUX_VERIFY_MODULE_CACHE` asks every build that reuses modules to be checked against a fresh one.
+    [[nodiscard]] static bool VerifyingModuleReuse();
+    /// Compile the package again reusing nothing and report an internal error unless the artifact is the same.
+    bool VerifyReusedArtifact(const std::filesystem::path &artifactPath);
+
     /// Pipeline phases. Each returns false when the pipeline cannot continue.
     bool LexAndParseSources();
     /// In a test build, adds a generated `Main` that runs the package's `#Test()` functions. Defined in
@@ -78,6 +93,23 @@ private:
     std::unordered_map<std::string, std::pair<std::uintmax_t, std::int64_t>> loadedSourceStamps;
     std::optional<SemanticModel> semanticModel;
     std::unique_ptr<Parallel::WorkerPool> workers;
+
+    struct ModuleReuse {
+        bool enabled = false;
+        ModulePack pack;
+        /// The key of every module read from a source file; a generated module has none and is always compiled.
+        std::unordered_map<const Module *, std::string> keys;
+        /// Modules this build reuses the objects of, and their entries in `pack`.
+        std::unordered_set<const Module *> declarationOnly;
+        std::unordered_map<const Module *, const CachedModule *> cached;
+        /// Modules an attempt found needed differently than when they were recorded, which are compiled again.
+        std::set<std::string> fresh;
+    };
+    ModuleReuse moduleReuse;
+    /// Set by `GenerateArtifact` when a reused module has to be compiled after all, which analyzes the program again.
+    bool retryWithFreshModules = false;
+    /// While the program is analyzed again: diagnostics the first analysis already reported are not repeated.
+    bool repeatingAnalysis = false;
 };
 
 } // namespace Rux::Driver

@@ -150,7 +150,9 @@ std::string RenderSourceSection(const BuildStats &stats, const Reporting::Style 
         {"Tokens", FormatNumber(stats.localTokens), FormatNumber(stats.dependencyTokens),
          FormatNumber(stats.localTokens + stats.dependencyTokens)},
         {"Size", FormatSize(stats.localSourceSize), FormatSize(stats.dependencySourceSize),
-         FormatSize(stats.localSourceSize + stats.dependencySourceSize)}};
+         FormatSize(stats.localSourceSize + stats.dependencySourceSize)},
+        {"Reused", FormatNumber(stats.localReusedFiles), FormatNumber(stats.dependencyReusedFiles),
+         FormatNumber(stats.localReusedFiles + stats.dependencyReusedFiles)}};
 
     std::string rendered(style.Bold());
     rendered += "Source";

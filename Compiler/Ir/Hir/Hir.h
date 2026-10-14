@@ -608,6 +608,9 @@ struct HirFunc {
     TypeRef returnType;
     std::optional<HirBlock> body;  // absent for interface/extern signatures
     std::vector<AsmInstr> asmBody; // instructions when isAsm; body is absent
+    /// A function of a module whose compiled code the build reuses: only its signature is lowered, so later stages
+    /// know how to call it, and no code is generated for it.
+    bool isDeclarationOnly = false;
     SourceLocation location;
     /// The logical source file and the user-facing function name a compiler-inserted runtime check reports, the same
     /// pair a `Panic` call written in this body names.

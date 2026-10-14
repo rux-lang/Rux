@@ -258,5 +258,7 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
         currentFile = savedFile;
         currentScope = savedScope;
     }
+    // Every entry was taken out above, so a later round validates only what is queued after this one.
+    pendingGenericInstantiations.clear();
 }
 } // namespace Rux::SemanticDetail

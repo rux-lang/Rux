@@ -28,8 +28,11 @@ public:
     HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics);
 
     /// Lower `hir`, lowering modules on `pool`'s threads when one is given; the result never depends on it.
+    /// `externalFailures` says that code lowered elsewhere can fail, and `moduleFailures`, when given, receives per
+    /// module whether its code can.
     [[nodiscard]] LirPackage Run(const HirPackage &hir, Parallel::WorkerPool *pool = nullptr,
-                                 bool programModule = false);
+                                 bool programModule = false, bool externalFailures = false,
+                                 std::vector<char> *moduleFailures = nullptr);
 
 private:
     struct LocalConstValue {

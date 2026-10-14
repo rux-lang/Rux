@@ -40,11 +40,24 @@ public:
         programModule = enabled;
     }
 
+    /// Whether code this package is linked with but does not lower can panic or fail an assertion, which calls for the
+    /// stack-trace printer as much as code it lowers does.
+    void SetExternalFailures(const bool present) noexcept {
+        externalFailures = present;
+    }
+
+    /// After `Generate`: per module, whether its code can panic or fail an assertion.
+    [[nodiscard]] const std::vector<char> &ModuleFailures() const noexcept {
+        return moduleFailures;
+    }
+
 private:
     HirPackage hir;
     TargetContext target;
     std::vector<Diagnostic> diagnostics;
     Parallel::WorkerPool *pool = nullptr;
     bool programModule = false;
+    bool externalFailures = false;
+    std::vector<char> moduleFailures;
 };
 } // namespace Rux

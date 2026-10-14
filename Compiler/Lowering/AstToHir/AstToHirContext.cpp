@@ -59,6 +59,7 @@ AstToHirContext::AstToHirContext(const AstToHirContext &prepared, std::vector<Di
     : model(prepared.model)
     , modules(prepared.modules)
     , context(prepared.context)
+    , declarationOnlyModules(prepared.declarationOnlyModules)
     , globalScope(prepared.globalScope)
     , currentScope(&globalScope)
     , structDecls(prepared.structDecls)
@@ -541,6 +542,7 @@ void AstToHirContext::BeginModule(const Module &module) {
 
 HirModule AstToHirContext::LowerModule(const Module &module) {
     BeginModule(module);
+    declarationOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
     HirModule loweredModule;
     loweredModule.name = module.name;
     for (const auto &declaration : module.items) {
@@ -553,6 +555,7 @@ HirModule AstToHirContext::LowerModule(const Module &module) {
     }
     monomorphizedFuncs.clear();
     generatedMonomorphizedFuncNames.clear();
+    declarationOnly = false;
 
     // Lowering an instantiation's fields resolves types of its own, so the queue is walked by index rather than
     // iterated: entries appended along the way are lowered in the same pass.

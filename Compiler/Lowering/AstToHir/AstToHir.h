@@ -5,6 +5,8 @@
 #include "Parallel/WorkerPool.h"
 #include "Semantic/Model/SemanticModel.h"
 
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Rux {
@@ -32,9 +34,16 @@ public:
         pool = inputPool;
     }
 
+    /// Lower only the declarations of these modules and the signatures of their non-generic functions, whose compiled
+    /// code the build reuses; analysis checked no body of theirs but the generic ones.
+    void SetDeclarationOnlyModules(std::unordered_set<const Module *> inputModules) {
+        declarationOnlyModules = std::move(inputModules);
+    }
+
 private:
     const SemanticModel &semanticModel;
     std::vector<Diagnostic> diagnostics;
     Parallel::WorkerPool *pool = nullptr;
+    std::unordered_set<const Module *> declarationOnlyModules;
 };
 } // namespace Rux

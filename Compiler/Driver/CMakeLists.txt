@@ -8,6 +8,7 @@ target_link_libraries(RuxDriverModel PUBLIC RuxBuildInfo RuxTarget RuxTokens)
 rux_add_component(RuxDriver
     BuildCache.cpp
     CompilerDriver.cpp
+    ModuleCache.cpp
     DependencyGraph.cpp
     BuildPlan.cpp
     BuildTarget.cpp

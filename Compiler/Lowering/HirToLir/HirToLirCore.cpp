@@ -84,7 +84,9 @@ HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagno
     softFloatPolicy.arch = target.arch;
 }
 
-LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *pool, const bool programModule) {
+LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *pool, const bool programModule,
+                                const bool externalFailures, std::vector<char> *moduleFailuresOut) {
+    std::vector<char> moduleFailures(hir.modules.size(), 0);
     typeLayouts = &hir.typeLayouts;
     globalConsts.clear();
     for (const auto &mod : hir.modules) {
@@ -185,8 +187,13 @@ LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *poo
         for (const auto &c : mod.consts)
             sharedConstantName = !constantNames.insert(c.name).second || sharedConstantName;
     if (pool == nullptr || pool->Jobs() == 1 || sharedConstantName) {
-        for (std::size_t index = 0; index < hir.modules.size(); ++index)
+        for (std::size_t index = 0; index < hir.modules.size(); ++index) {
+            const bool failedBefore = emittedRuntimeFailure;
+            emittedRuntimeFailure = false;
             pkg.modules[index] = LowerSelfContainedModule(hir.modules[index]);
+            moduleFailures[index] = emittedRuntimeFailure ? 1 : 0;
+            emittedRuntimeFailure = failedBefore || emittedRuntimeFailure;
+        }
     }
     else {
         // Each thread lowers with its own copy of the package tables built above. What one module leaves behind for
@@ -194,7 +201,6 @@ LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *poo
         // package is the same as lowering the modules one after another.
         std::vector<std::optional<HirToLirContext>> workers(pool->Jobs());
         std::vector<std::vector<Diagnostic>> moduleDiagnostics(hir.modules.size());
-        std::vector<char> moduleFailures(hir.modules.size(), 0);
         pool->ForEachOnWorker(hir.modules.size(), [&](const std::size_t index, const std::size_t worker) {
             auto &context = workers[worker];
             if (!context)
@@ -212,7 +218,9 @@ LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *poo
     }
     // A program that can panic gets the stack-trace printer its failure paths call, once: in the program module after
     // every source module, or in the last source module.
-    if (emittedRuntimeFailure && (programModule || !pkg.modules.empty())) {
+    if (moduleFailuresOut != nullptr)
+        *moduleFailuresOut = moduleFailures;
+    if ((emittedRuntimeFailure || externalFailures) && (programModule || !pkg.modules.empty())) {
         if (programModule) {
             pkg.modules.emplace_back().name = std::string(kProgramModuleName);
         }
@@ -1087,7 +1095,8 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
     for (const auto &f : mod.funcs) {
         // Generic declarations remain useful in HIR inspection, but have no runtime layout until instantiated.
         // Emitting their symbolic bodies can manufacture scalar casts for aggregate or zero-sized payloads.
-        if (f.typeParams.empty())
+        // A declaration-only function compiles to nothing: its module's code is reused from an earlier build.
+        if (f.typeParams.empty() && !f.isDeclarationOnly)
             lm.funcs.push_back(LowerFunc(f));
     }
     for (const auto &impl : mod.impls) {
@@ -1095,7 +1104,8 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
             BuilderFailure("implementation method and linker-name tables have different sizes");
         }
         for (std::size_t i = 0; i < std::min(impl.methods.size(), impl.methodLinkerNames.size()); ++i) {
-            lm.funcs.push_back(LowerFunc(impl.methods[i], impl.methodLinkerNames[i]));
+            if (!impl.methods[i].isDeclarationOnly)
+                lm.funcs.push_back(LowerFunc(impl.methods[i], impl.methodLinkerNames[i]));
         }
         if (!impl.vtableLabel.empty()) {
             LirVtable vt;
@@ -1376,7 +1386,7 @@ HirToLirLowering::HirToLirLowering(HirPackage inputHir, TargetContext inputTarge
 LirPackage HirToLirLowering::Generate() {
     diagnostics.clear();
     HirToLirDetail::HirToLirContext lowering(target, diagnostics);
-    return lowering.Run(hir, pool, programModule);
+    return lowering.Run(hir, pool, programModule, externalFailures, &moduleFailures);
 }
 
 const std::vector<Diagnostic> &HirToLirLowering::Diagnostics() const noexcept {

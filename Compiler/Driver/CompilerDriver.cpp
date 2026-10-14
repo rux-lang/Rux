@@ -5,6 +5,7 @@
 #include "Driver/BuildCache.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompileContext.h"
+#include "Driver/ModuleCache.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Hir/HirPrinter.h"
 #include "Ir/Lir/Lir.h"
@@ -15,6 +16,7 @@
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Object/Rcu/Rcu.h"
 #include "Object/Rcu/RcuDumper.h"
+#include "Object/Rcu/RcuSerialization.h"
 #include "Object/Rcu/RcuWriter.h"
 #include "Optimization/Pipeline.h"
 #include "Package/Registry.h"
@@ -27,10 +29,13 @@
 #include "System/Os.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <charconv>
 #include <chrono>
 #include <format>
+#include <iterator>
+#include <fstream>
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
@@ -108,6 +113,121 @@ std::filesystem::path CompilerDriver::Impl::BuildRecordPath() const {
     return root / "Temp" / "Cache" /
            std::format("{}-{}{}{}.record", ToString(opts.profile), opts.target.CanonicalName(),
                        opts.isTest ? "-test" : "", opts.checkOnly ? "-check" : "");
+}
+
+bool CompilerDriver::Impl::ModuleCacheEligible() const {
+    // A check compiles nothing, and inspection output shows the IR of every module.
+    return opts.useBuildCache && !opts.checkOnly && !opts.captureFrontend && !opts.dumpTokens && !opts.dumpAst &&
+           !opts.dumpSema && !opts.dumpHir && !opts.dumpLir && !opts.dumpOptimizationPasses && !opts.dumpAsm &&
+           !opts.dumpRcu;
+}
+
+std::filesystem::path CompilerDriver::Impl::ModulePackPath() const {
+    auto path = BuildRecordPath();
+    path.replace_extension(".modules");
+    return path;
+}
+
+void CompilerDriver::Impl::PrepareModuleReuse() {
+    if (!ModuleCacheEligible())
+        return;
+    std::vector<const Module *> modules;
+    modules.reserve(depParseResults.size() + parseResults.size());
+    for (const auto &parsed : depParseResults)
+        modules.push_back(&parsed.module);
+    for (const auto &parsed : parseResults)
+        modules.push_back(&parsed.module);
+    std::vector<std::string> sourceDigests(modules.size());
+    std::vector<std::string> interfaceDigests(modules.size());
+    Workers().ForEach(modules.size(), [&](const std::size_t index) {
+        const auto text = loadedSourceTexts.find(modules[index]->name);
+        if (text == loadedSourceTexts.end())
+            return;
+        sourceDigests[index] = HashText(text->second.Text());
+        interfaceDigests[index] = HashText(ModuleInterface(*modules[index], text->second.Text()));
+    });
+    // The program's interface: what every module declares, in name order, under the request this build serves.
+    std::vector<std::size_t> byName(modules.size());
+    for (std::size_t index = 0; index < byName.size(); ++index)
+        byName[index] = index;
+    std::ranges::sort(byName, {}, [&](const std::size_t index) { return std::string_view(modules[index]->name); });
+    std::string program = BuildKey() + "\n";
+    for (const std::size_t index : byName)
+        program += std::format("{} {}\n", interfaceDigests[index].empty() ? "-" : interfaceDigests[index],
+                               modules[index]->name);
+    const std::string programKey = HashText(program);
+    moduleReuse.keys.clear();
+    for (std::size_t index = 0; index < modules.size(); ++index)
+        if (!sourceDigests[index].empty())
+            moduleReuse.keys.emplace(modules[index], HashText(std::format("{}\n{}\n{}", programKey,
+                                                                          modules[index]->name,
+                                                                          sourceDigests[index])));
+    moduleReuse.pack = ModulePack::Read(ModulePackPath());
+    moduleReuse.enabled = true;
+    SelectReusedModules();
+}
+
+bool CompilerDriver::Impl::VerifyingModuleReuse() {
+    const auto value = System::GetEnv("RUX_VERIFY_MODULE_CACHE");
+    return value.has_value() && !value->empty() && *value != "0";
+}
+
+bool CompilerDriver::Impl::VerifyReusedArtifact(const std::filesystem::path &artifactPath) {
+    const auto read = [](const std::filesystem::path &path) {
+        std::ifstream stream(path, std::ios::binary);
+        return std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    };
+    const auto reused = read(artifactPath);
+    CompileOptions fresh = opts;
+    fresh.useBuildCache = false;
+    fresh.emitDiagnostic = nullptr;
+    fresh.emitProgress = nullptr;
+    const auto compiled = CompilerDriver(std::move(fresh)).Compile();
+    if (!compiled.ok) {
+        Emit(ErrorDiagnostic("module cache verification: the package does not compile without reusing modules"));
+        return false;
+    }
+    const auto expected = read(compiled.primaryArtifactPath);
+    // A PE image carries the time it was linked at, which is the one difference two links may have.
+    std::size_t stampOffset = std::string::npos;
+    if (expected.size() > 0x40 && expected[0] == 'M' && expected[1] == 'Z') {
+        std::uint32_t peOffset = 0;
+        for (int index = 0; index < 4; ++index)
+            peOffset |= static_cast<std::uint32_t>(static_cast<unsigned char>(expected[0x3C + index])) << (8 * index);
+        stampOffset = peOffset + 8;
+    }
+    bool same = reused.size() == expected.size();
+    for (std::size_t index = 0; same && index < reused.size(); ++index)
+        same = reused[index] == expected[index] || (index >= stampOffset && index < stampOffset + 4);
+    if (!same) {
+        Emit(ErrorDiagnostic(
+            std::format("module cache verification: reusing {} modules produced a different artifact than compiling "
+                        "every module",
+                        moduleReuse.cached.size()),
+            {std::format("artifact: '{}'", artifactPath.string())}));
+        return false;
+    }
+    return true;
+}
+
+void CompilerDriver::Impl::SelectReusedModules() {
+    moduleReuse.declarationOnly.clear();
+    moduleReuse.cached.clear();
+    // `RUX_VERIFY_MODULE_CACHE=user` compiles the package's own modules on every build and reuses its dependencies,
+    // which is how most edits are rebuilt.
+    std::unordered_set<const Module *> own;
+    if (System::GetEnv("RUX_VERIFY_MODULE_CACHE") == std::optional<std::string>("user"))
+        for (const auto &parsed : parseResults)
+            own.insert(&parsed.module);
+    for (const auto &[module, key] : moduleReuse.keys) {
+        // A body that declares items adds to the program's indexes, so such a module is always analyzed whole.
+        if (module->bodiesDeclareItems || moduleReuse.fresh.contains(module->name) || own.contains(module))
+            continue;
+        if (const CachedModule *entry = moduleReuse.pack.Find(module->name, key)) {
+            moduleReuse.declarationOnly.insert(module);
+            moduleReuse.cached.emplace(module, entry);
+        }
+    }
 }
 
 std::string CompilerDriver::Impl::BuildKey() const {
@@ -205,6 +325,11 @@ Parallel::WorkerPool &CompilerDriver::Impl::Workers() {
 }
 
 void CompilerDriver::Impl::Emit(const Diagnostic &diag) {
+    if (repeatingAnalysis && std::ranges::any_of(diagnostics, [&](const Diagnostic &earlier) {
+            return earlier.severity == diag.severity && earlier.sourceName == diag.sourceName &&
+                   earlier.location == diag.location && earlier.message == diag.message;
+        }))
+        return;
     Diagnostic contextual = diag;
     if (currentPhase) {
         contextual.notes.push_back("compiler phase: " + std::string(CompilePhaseName(*currentPhase)));
@@ -344,7 +469,7 @@ CompileResult CompilerDriver::Impl::Compile() {
         finish();
         return result;
     }
-    if (BuildCacheEligible() && ReuseRecordedBuild(result)) {
+    if (BuildCacheEligible() && !VerifyingModuleReuse() && ReuseRecordedBuild(result)) {
         finish();
         return result;
     }
@@ -367,6 +492,7 @@ CompileResult CompilerDriver::Impl::Compile() {
         finish();
         return result;
     }
+    PrepareModuleReuse();
     if (!Analyze()) {
         finish();
         return result;
@@ -385,7 +511,24 @@ CompileResult CompilerDriver::Impl::Compile() {
     }
 
     std::filesystem::path artifactPath;
-    if (!GenerateArtifact(artifactPath, result.secondaryArtifactPaths)) {
+    while (!GenerateArtifact(artifactPath, result.secondaryArtifactPaths)) {
+        if (!retryWithFreshModules) {
+            finish();
+            return result;
+        }
+        // A reused module is needed differently than when it was compiled: analyze the program again, compiling it.
+        retryWithFreshModules = false;
+        repeatingAnalysis = true;
+        SelectReusedModules();
+        result.secondaryArtifactPaths.clear();
+        if (!Analyze()) {
+            finish();
+            return result;
+        }
+    }
+
+    if (moduleReuse.enabled && !moduleReuse.cached.empty() && VerifyingModuleReuse() &&
+        !VerifyReusedArtifact(artifactPath)) {
         finish();
         return result;
     }
@@ -406,7 +549,7 @@ CompileResult CompilerDriver::Impl::Compile() {
 
 bool CompilerDriver::Impl::LexAndParseSources() {
     BeginPhase(CompilePhase::LoadingSources, opts.manifest.package.name.Text(), root / "Src");
-    auto loadResult = SourceLoader::Load(root);
+    auto loadResult = SourceLoader::Load(root, &Workers());
     const auto sourceFiles = RememberSources(loadResult.files);
     stats.localFiles = sourceFiles.size();
     for (const auto &file : sourceFiles) {
@@ -536,7 +679,7 @@ bool CompilerDriver::Impl::LoadDependencies() {
             return modulesOf(loaded->second);
         loadingPackages.insert(name);
         BeginPhase(CompilePhase::LoadingDependency, importName, selected->Root());
-        auto loaded = SourceLoader::Load(selected->Root());
+        auto loaded = SourceLoader::Load(selected->Root(), &Workers());
         const auto files = RememberSources(loaded.files);
         stats.dependencyFiles += files.size();
         if (EmitAll(loaded.diagnostics)) {
@@ -655,6 +798,8 @@ bool CompilerDriver::Impl::Analyze() {
     // LoadDependencies folded every package's conditionals while it decided which imports to load.
     analyzer.SetConditionalsResolved();
     analyzer.SetWorkerPool(&Workers());
+    if (moduleReuse.enabled)
+        analyzer.SetDeclarationOnlyModules(moduleReuse.declarationOnly);
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
     if (opts.dumpSema) {
@@ -679,6 +824,8 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     BeginPhase(CompilePhase::LoweringToHir, opts.manifest.package.name.Text());
     AstToHirLowering hirLowering(*semanticModel);
     hirLowering.SetWorkerPool(&Workers());
+    if (moduleReuse.enabled)
+        hirLowering.SetDeclarationOnlyModules(moduleReuse.declarationOnly);
     auto hirPackage = hirLowering.Generate();
     if (EmitAll(hirLowering.Diagnostics())) {
         return false;
@@ -738,19 +885,58 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
     lirLowering.SetWorkerPool(&Workers());
     lirLowering.SetProgramModule(true);
+    // A reused module is not lowered again, so whether it can fail is what was recorded with it.
+    lirLowering.SetExternalFailures(std::ranges::any_of(
+        moduleReuse.cached, [](const auto &entry) { return entry.second->fails; }));
     auto lirPackage = lirLowering.Generate();
     if (EmitAll(lirLowering.Diagnostics())) {
         return false;
     }
     BeginPhase(CompilePhase::OptimizingLir, opts.manifest.package.name.Text());
-    if (compileTimeContext.profile == BuildProfile::Release) {
+    // The source module each LIR module was lowered from, in package order, and the recorded entry of every one whose
+    // object this build reuses. The program module that follows them is compiled on every build.
+    const std::size_t moduleCount = lirPackage.modules.size();
+    std::vector<const Module *> sourceModules(moduleCount, nullptr);
+    std::vector<const CachedModule *> reused(moduleCount, nullptr);
+    for (std::size_t index = 0; index < std::min(moduleCount, semanticModel->modules.size()); ++index) {
+        sourceModules[index] = semanticModel->modules[index];
+        if (const auto found = moduleReuse.cached.find(sourceModules[index]); found != moduleReuse.cached.end())
+            reused[index] = found->second;
+    }
+    std::unordered_set<const Module *> ownModules;
+    for (const auto &parsed : parseResults)
+        ownModules.insert(&parsed.module);
+    stats.localReusedFiles = 0;
+    stats.dependencyReusedFiles = 0;
+    for (std::size_t index = 0; index < moduleCount; ++index)
+        if (reused[index] != nullptr)
+            ++(ownModules.contains(sourceModules[index]) ? stats.localReusedFiles : stats.dependencyReusedFiles);
+    const bool release = compileTimeContext.profile == BuildProfile::Release;
+    std::vector<Optimization::LirModuleReferences> references(moduleCount);
+    std::vector<std::vector<Optimization::LirModuleRoot>> roots;
+    if (release) {
         // Each module is pruned from what the rest of the program needs of it, as the unoptimized code says, so its
-        // optimized code never depends on how the other modules were optimized.
-        std::vector<Optimization::LirModuleReferences> references(lirPackage.modules.size());
-        Workers().ForEach(lirPackage.modules.size(), [&](const std::size_t index) {
-            references[index] = Optimization::CollectModuleReferences(lirPackage.modules[index]);
+        // optimized code never depends on how the other modules were optimized. A reused module was not lowered
+        // again, so what its code references is what was recorded with it.
+        std::vector<const Optimization::LirModuleReferences *> moduleReferences(moduleCount);
+        Workers().ForEach(moduleCount, [&](const std::size_t index) {
+            if (reused[index] == nullptr)
+                references[index] = Optimization::CollectModuleReferences(lirPackage.modules[index]);
+            moduleReferences[index] = reused[index] != nullptr ? &reused[index]->references : &references[index];
         });
-        optimizationPipeline.SetModuleRoots(Optimization::ModuleRoots(references, artifactKind));
+        roots = Optimization::ModuleRoots(moduleReferences, artifactKind);
+        bool stale = false;
+        for (std::size_t index = 0; index < moduleCount; ++index) {
+            if (reused[index] != nullptr && ModuleRootsDigest(roots[index]) != reused[index]->roots) {
+                moduleReuse.fresh.insert(sourceModules[index]->name);
+                stale = true;
+            }
+        }
+        if (stale) {
+            retryWithFreshModules = true;
+            return false;
+        }
+        optimizationPipeline.SetModuleRoots(roots);
     }
     const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
     stats.optimizationPasses.insert(stats.optimizationPasses.end(), lirOptimization.passStatistics.begin(),
@@ -801,6 +987,9 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
 
     // RCU object generation
     BeginPhase(CompilePhase::EmittingObjects, opts.manifest.package.name.Text());
+    std::vector<bool> emitted(moduleCount, true);
+    for (std::size_t index = 0; index < moduleCount; ++index)
+        emitted[index] = reused[index] == nullptr;
     std::vector<RcuFile> rcuFiles;
     std::vector<Diagnostic> codegenDiagnostics;
     if (isAArch64) {
@@ -809,6 +998,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         aarch64Emitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
         aarch64Emitter.SetWorkerPool(&Workers());
         aarch64Emitter.SetBacktraces(true);
+        aarch64Emitter.SetEmittedModules(emitted);
         rcuFiles = aarch64Emitter.Generate();
         codegenDiagnostics = aarch64Emitter.Diagnostics();
     }
@@ -818,6 +1008,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         rcuEmitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
         rcuEmitter.SetWorkerPool(&Workers());
         rcuEmitter.SetBacktraces(true);
+        rcuEmitter.SetEmittedModules(emitted);
         rcuFiles = rcuEmitter.Generate();
         codegenDiagnostics = rcuEmitter.Diagnostics();
     }
@@ -830,6 +1021,35 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         if (hasError) {
             return false;
         }
+    }
+    if (moduleReuse.enabled) {
+        // The objects of reused modules come from the pack; one that no longer reads back is compiled again.
+        std::atomic<bool> unreadable = false;
+        Workers().ForEach(moduleCount, [&](const std::size_t index) {
+            if (reused[index] == nullptr)
+                return;
+            if (auto object = DeserializeRcuFile(reused[index]->object))
+                rcuFiles[index] = std::move(*object);
+            else {
+                unreadable = true;
+            }
+        });
+        if (unreadable) {
+            for (std::size_t index = 0; index < moduleCount; ++index)
+                if (reused[index] != nullptr)
+                    moduleReuse.fresh.insert(sourceModules[index]->name);
+            retryWithFreshModules = true;
+            return false;
+        }
+    }
+    // What this build records of the modules it compiled, encoded before the linker takes the objects.
+    std::vector<std::vector<std::uint8_t>> freshObjects(moduleCount);
+    if (moduleReuse.enabled) {
+        Workers().ForEach(moduleCount, [&](const std::size_t index) {
+            if (reused[index] == nullptr && sourceModules[index] != nullptr &&
+                moduleReuse.keys.contains(sourceModules[index]))
+                freshObjects[index] = SerializeRcuFile(rcuFiles[index]);
+        });
     }
     if (opts.dumpRcu) {
         bool inspectionErrors = false;
@@ -879,6 +1099,30 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         secondaryArtifactPaths.push_back(binDir / StaticLibraryFileName(opts.manifest.package.name.Text(), targetOs));
     }
     stats.linking = ElapsedMs(linkingStart);
+    if (moduleReuse.enabled) {
+        // Record every module this build has an object of, except one something was reported about: reusing it would
+        // not report that again.
+        std::unordered_set<std::string_view> reported;
+        for (const auto &diagnostic : diagnostics)
+            reported.insert(diagnostic.sourceName);
+        ModulePack pack;
+        for (std::size_t index = 0; index < moduleCount; ++index) {
+            const Module *module = sourceModules[index];
+            if (module == nullptr)
+                continue;
+            if (reused[index] != nullptr) {
+                pack.Put(module->name, *reused[index]);
+                continue;
+            }
+            const auto key = moduleReuse.keys.find(module);
+            if (key == moduleReuse.keys.end() || freshObjects[index].empty() || reported.contains(module->name))
+                continue;
+            const bool fails = index < lirLowering.ModuleFailures().size() && lirLowering.ModuleFailures()[index] != 0;
+            pack.Put(module->name, {key->second, release ? ModuleRootsDigest(roots[index]) : std::string{},
+                                    std::move(references[index]), fails, std::move(freshObjects[index])});
+        }
+        static_cast<void>(pack.Write(ModulePackPath()));
+    }
     return true;
 }
 } // namespace Rux::Driver

@@ -81,6 +81,8 @@ struct LirModuleRoot {
 /// it, so a module pruned this way depends on the rest of the program only through its roots.
 [[nodiscard]] std::vector<std::vector<LirModuleRoot>> ModuleRoots(std::span<const LirModuleReferences> modules,
                                                                   ArtifactKind artifactKind);
+[[nodiscard]] std::vector<std::vector<LirModuleRoot>> ModuleRoots(std::span<const LirModuleReferences *const> modules,
+                                                                  ArtifactKind artifactKind);
 
 /// The declarations the analysis proved reachable, held sorted so membership is a binary search: pruning asks this
 /// question once per declaration in the package.

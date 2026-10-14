@@ -34,15 +34,19 @@ constexpr std::array<uint32_t, 256> Crc32cTable = [] {
     return table;
 }();
 
+} // namespace
+
 /// The Castagnoli CRC-32 guarding an RCU container. Deliberately not the IEEE polynomial the ZIP format uses, so the
 /// two checksums are not interchangeable.
-uint32_t Crc32c(const std::vector<uint8_t> &data) {
+std::uint32_t RcuChecksum(const std::span<const std::uint8_t> bytes) {
     uint32_t crc = 0xFFFF'FFFFu;
-    for (uint8_t b : data) {
+    for (uint8_t b : bytes) {
         crc = Crc32cTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
     }
     return crc ^ 0xFFFF'FFFFu;
 }
+
+namespace {
 
 // Binary writer
 class BinaryWriter {
@@ -238,7 +242,7 @@ private:
         }
 
         // CRC-32C
-        uint32_t crc = Crc32c(out);
+        uint32_t crc = RcuChecksum(out);
         Patch32At(out, checksumPatch, crc);
 
         return out;

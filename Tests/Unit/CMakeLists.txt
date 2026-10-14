@@ -173,6 +173,7 @@ set(RUX_TEST_SOURCES
     ReporterTests.cpp
     ReportingTests.cpp
     RcuModuleBuilderTests.cpp
+    ModuleCacheTests.cpp
     RcuTests.cpp
     RuntimeCheckLoweringTests.cpp
     RuntimeFailureTests.cpp

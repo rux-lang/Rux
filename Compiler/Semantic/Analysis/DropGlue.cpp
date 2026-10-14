@@ -197,6 +197,25 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
     return steps;
 }
 
+void AnalysisContext::QueueDropGlueDestructors() {
+    const auto queue = [&](this const auto &self, const std::vector<DropGlueStep> &steps) -> void {
+        for (const DropGlueStep &step : steps) {
+            if (step.kind == DropGlueStep::Kind::InvokeDrop)
+                QueueDropMethodInstantiation(step.type);
+            self(step.children);
+        }
+    };
+    for (const auto &[_, plan] : dropGluePlans)
+        queue(plan.steps);
+}
+
+std::size_t AnalysisContext::ValidatedInstantiationCount() const {
+    std::size_t count = 0;
+    for (const auto &[_, keys] : validatedGenericInstantiations)
+        count += keys.size();
+    return count;
+}
+
 void AnalysisContext::SynthesizeResolvedDropGlue(const std::vector<TypeRef> &recordedTypes) {
     dropGluePlans.clear();
     const auto synthesize = [&](const TypeRef &type) {

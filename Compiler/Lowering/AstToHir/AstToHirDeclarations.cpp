@@ -295,7 +295,10 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         Define(sym);
     }
     std::optional<HirBlock> body;
-    if (d.body) {
+    // A non-generic function of a module whose code is reused keeps only its signature: analysis did not check its
+    // body, and nothing is generated for it.
+    const bool signatureOnly = declarationOnly && substitutions.empty() && d.typeParams.empty() && d.body;
+    if (d.body && !signatureOnly) {
         body = LowerBlock(*d.body);
         // Falling off the end of a function that completes without a value returns its completion, with the same
         // destruction of what the function still owns as any other return.
@@ -318,6 +321,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.params = LowerParams(d.params);
     hf.returnType = retType;
     hf.body = std::move(body);
+    hf.isDeclarationOnly = signatureOnly;
     hf.location = d.location;
     hf.sourceFile = LogicalCurrentFilePath();
     hf.sourceFunction = currentFunctionName;

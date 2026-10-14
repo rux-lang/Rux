@@ -103,7 +103,7 @@ bool SemanticAnalyzer::AnalyzeInParallel(std::vector<const Module *> &constModul
     std::vector<std::size_t> weights;
     std::size_t total = 0;
     for (const Module *module : ordered) {
-        weights.push_back(ModuleWeight(*module) + 1);
+        weights.push_back(declarationOnlyModules.contains(module) ? 1 : ModuleWeight(*module) + 1);
         total += weights.back();
     }
     // One context per thread: the finisher, which checks no body, and one per range of modules. Every context repeats
@@ -142,7 +142,7 @@ bool SemanticAnalyzer::AnalyzeInParallel(std::vector<const Module *> &constModul
         auto &replica = replicas[index];
         replica.context = std::make_unique<SemanticDetail::AnalysisContext>(
             SemanticDetail::AnalysisInputs{constModules, deps, packageName, replica.diagnostics, replica.symbols,
-                                           compileTimeContext, imports},
+                                           compileTimeContext, imports, &declarationOnlyModules},
             replica.facts);
         auto &context = *replica.context;
         const std::size_t begin = index == 0 ? 0 : bounds[index - 1];
@@ -238,7 +238,8 @@ SemanticModel SemanticAnalyzer::Analyze() {
         symbols.clear();
         facts = SemanticFacts{};
         SemanticDetail::AnalysisContext analyzer(
-            {constModules, deps, packageName, diags, symbols, compileTimeContext, imports}, facts);
+            {constModules, deps, packageName, diags, symbols, compileTimeContext, imports, &declarationOnlyModules},
+            facts);
         analyzer.SetWorkerPool(pool);
         analyzer.Run();
         facts.effectiveVisibilities = analyzer.EffectiveVisibilities();

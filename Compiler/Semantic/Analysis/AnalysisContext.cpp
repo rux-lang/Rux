@@ -111,6 +111,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output)
     , diags(inputs.diagnostics)
     , context(inputs.context)
     , imports(inputs.imports)
+    , declarationOnlyModules(inputs.declarationOnlyModules)
     , outputFacts(output)
     , expressionTypes(output.expressionTypes)
     , borrowedScalarReads(output.borrowedScalarReads)
@@ -870,6 +871,18 @@ void AnalysisContext::Finish() {
     ValidatePendingGenericInstantiations();
     RecordResolvedTypeProperties(distinctTypes());
     SynthesizeResolvedDropGlue(distinctTypes());
+    // Glue destroys a field with the field type's own destructor, an instance nothing checked here may have asked for
+    // when the bodies naming the type are reused rather than checked. Validating those instances can name more types,
+    // so this repeats until nothing new is validated.
+    for (;;) {
+        QueueDropGlueDestructors();
+        const std::size_t validated = ValidatedInstantiationCount();
+        ValidatePendingGenericInstantiations();
+        if (ValidatedInstantiationCount() == validated)
+            break;
+        RecordResolvedTypeProperties(distinctTypes());
+        SynthesizeResolvedDropGlue(distinctTypes());
+    }
     RecordResolvedTypeLayouts(distinctTypes());
     BuildFinalSymbolIdentities();
 }

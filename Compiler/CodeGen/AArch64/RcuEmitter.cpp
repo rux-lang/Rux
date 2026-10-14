@@ -259,6 +259,8 @@ std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
     std::vector<RcuFile> result(lir.modules.size());
     std::vector<std::vector<Diagnostic>> moduleDiagnostics(lir.modules.size());
     const auto emit = [&](const std::size_t index) {
+        if (index < emittedModules.size() && !emittedModules[index])
+            return;
         AArch64ModuleEmitter gen(lir.modules[index], layouts, packageName, targetOs, buildInfo,
                                  moduleDiagnostics[index]);
         gen.SetBacktrace(backtraceOf(index));

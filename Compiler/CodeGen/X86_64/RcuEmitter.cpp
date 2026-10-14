@@ -421,6 +421,8 @@ std::vector<RcuFile> RcuEmitter::Generate() const {
     std::vector<RcuFile> result(lir.modules.size());
     std::vector<std::vector<Diagnostic>> moduleDiagnostics(lir.modules.size());
     const auto emit = [&](const std::size_t index) {
+        if (index < emittedModules.size() && !emittedModules[index])
+            return;
         result[index] = GenerateRcuModule(lir.modules[index], layouts, packageName, targetOs, buildInfo,
                                           moduleDiagnostics[index], backtraceOf(index), machineSelection);
     };

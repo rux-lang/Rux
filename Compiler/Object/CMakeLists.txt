@@ -2,5 +2,6 @@
 
 rux_add_component(RuxObjectRcu
     Rcu/RcuDump.cpp
+    Rcu/RcuReader.cpp
     Rcu/RcuWriter.cpp)
 target_link_libraries(RuxObjectRcu PUBLIC RuxBuildInfo RuxTarget)
