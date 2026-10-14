@@ -1,5 +1,6 @@
 #include "Optimization/LirCfgPasses.h"
 
+#include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
@@ -387,24 +388,37 @@ bool ThreadConstantBranches(LirFunc &function) {
     });
     if (!candidate)
         return false;
-    std::unordered_map<LirReg, std::size_t> uses;
-    std::unordered_map<LirReg, std::optional<bool>> constants;
+    const std::size_t registers = RegisterCountHint(function);
+    LirRegisterTable<std::size_t> uses(registers);
+    LirRegisterTable<std::optional<bool>> constants(registers);
+    const auto use = [&](const LirReg reg) {
+        if (std::size_t *count = uses.Find(reg))
+            ++*count;
+        else
+            uses.Insert(reg, 1);
+    };
+    const auto usesOf = [&](const LirReg reg) {
+        const std::size_t *count = uses.Find(reg);
+        return count == nullptr ? std::size_t{0} : *count;
+    };
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
             for (const auto source : instruction.srcs)
-                ++uses[source];
+                use(source);
             for (const auto &[source, predecessor] : instruction.phiPreds) {
                 static_cast<void>(predecessor);
-                ++uses[source];
+                use(source);
             }
             if (instruction.op == LirOpcode::Const && instruction.dst != LirNoReg && instruction.type.IsBool())
                 if (const auto value = ParseConstant(instruction.strArg, instruction.type))
-                    constants[instruction.dst] = value->BooleanValue();
+                    constants.Assign(instruction.dst, value->BooleanValue());
         }
-        ++uses[block.term->cond];
+        use(block.term->cond);
         if (block.term->retVal)
-            ++uses[*block.term->retVal];
+            use(*block.term->retVal);
     }
+    // Rebuilt for every candidate, since threading moves edges; the lists keep their storage from one to the next.
+    Predecessors predecessors(function.blocks.size());
     bool changed = false;
     for (BlockIndex block = 1; block < function.blocks.size(); ++block) {
         auto &current = function.blocks[block];
@@ -420,7 +434,7 @@ bool ThreadConstantBranches(LirFunc &function) {
                 break;
             }
             const std::size_t expected = instruction.dst == current.term->cond ? 1 : 0;
-            if (uses[instruction.dst] != expected) {
+            if (usesOf(instruction.dst) != expected) {
                 simple = false;
                 break;
             }
@@ -429,15 +443,16 @@ bool ThreadConstantBranches(LirFunc &function) {
         }
         if (!simple || condition == nullptr)
             continue;
-        Predecessors predecessors(function.blocks.size());
+        for (auto &list : predecessors)
+            list.clear();
         for (BlockIndex index = 0; index < function.blocks.size(); ++index)
             for (const auto target : Successors(*function.blocks[index].term))
                 predecessors[target].push_back(index);
         for (const auto &[value, predecessor] : std::vector(condition->phiPreds)) {
-            const auto known = constants.find(value);
-            if (known == constants.end() || !known->second || predecessor == block)
+            const std::optional<bool> *known = constants.Find(value);
+            if (known == nullptr || !*known || predecessor == block)
                 continue;
-            const BlockIndex target = *known->second ? current.term->trueTarget : current.term->falseTarget;
+            const BlockIndex target = **known ? current.term->trueTarget : current.term->falseTarget;
             if (std::ranges::find(predecessors[target], predecessor) != predecessors[target].end())
                 continue;
             // The target's phis receive from the predecessor what they received from this block.

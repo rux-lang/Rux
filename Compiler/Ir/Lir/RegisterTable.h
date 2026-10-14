@@ -30,6 +30,10 @@ public:
         return found == sparse.end() ? nullptr : &found->second;
     }
 
+    [[nodiscard]] Value *Find(const LirReg reg) {
+        return const_cast<Value *>(std::as_const(*this).Find(reg));
+    }
+
     [[nodiscard]] bool Contains(const LirReg reg) const {
         return Find(reg) != nullptr;
     }
