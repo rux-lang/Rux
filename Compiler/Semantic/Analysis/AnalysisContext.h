@@ -1109,6 +1109,11 @@ private:
                                                                      const FuncDecl &method);
     [[nodiscard]] TypeRef ResolveOperatorReturnType(const TypeRef &receiverType, const FuncDecl &method);
     void CheckDecl(const Decl &declaration);
+    /// Whether `function` of a module whose code the build reuses needs no checking at all: it was checked when that
+    /// code was compiled, against the same declarations, and records nothing another module or lowering reads. A
+    /// generic body is instantiated from what checking it records, a default argument is lowered at every call, and an
+    /// assembly body is lowered whole.
+    [[nodiscard]] bool SkipsReusedFunction(const FuncDecl &function) const;
     [[nodiscard]] std::optional<std::uint64_t> EvalArrayLength(const Expr &expression) const;
     void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail = false);
     /// The type an expression was already checked to have, checking it only when it has not been: asking twice must

@@ -396,8 +396,17 @@ void AnalysisContext::RecordResolvedTypeLayouts(const std::vector<TypeRef> &reco
     }
 }
 
+bool AnalysisContext::SkipsReusedFunction(const FuncDecl &function) const {
+    return checkingDeclarationsOnly && currentTypeParams.empty() && function.typeParams.empty() && !function.isAsm &&
+           function.body != nullptr &&
+           std::ranges::none_of(function.params, [](const Param &param) { return param.defaultValue.has_value(); });
+}
+
 void AnalysisContext::CheckDecl(const Decl &decl) {
     if (auto *fn = AstCast<const FuncDecl>(&decl)) {
+        if (SkipsReusedFunction(*fn)) {
+            return;
+        }
         if (const Symbol *symbol = currentScope->LookupLocal(fn->name); symbol && symbol->kind == Symbol::Kind::Func) {
             ValidateFunctionSignature(*fn, symbol->funcOverloads);
         }

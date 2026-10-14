@@ -22,6 +22,9 @@ namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
 void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
+    if (SkipsReusedFunction(d)) {
+        return;
+    }
     auto savedTypeParams = currentTypeParams;
     const FuncDecl *savedFunctionDecl = BeginTrackedFunction(d);
     if (!isMethod) {

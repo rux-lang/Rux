@@ -241,6 +241,19 @@ std::vector<HirParam> AstToHirContext::LowerParams(const std::vector<Param> &par
 HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
                                    const std::unordered_map<std::string, TypeRef> &substitutions,
                                    const std::string &overrideName) {
+    // A non-generic function of a module whose code is reused keeps only what calling it needs: its name and calling
+    // convention. Analysis did not check it, and nothing is generated for it.
+    if (declarationOnly && substitutions.empty() && d.typeParams.empty() && d.body && !d.isAsm) {
+        HirFunc hf;
+        hf.name = overrideName.empty() ? d.name : overrideName;
+        hf.isPublic = model.IsEffectivelyPublic(d);
+        hf.isExported = hf.isPublic && model.IsExported(d);
+        hf.isNoReturn = d.isNoReturn;
+        hf.callConv = d.callConv;
+        hf.isDeclarationOnly = true;
+        hf.location = d.location;
+        return hf;
+    }
     auto savedTypeParams = currentTypeParams;
     currentTypeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     auto savedSubstitutions = currentSubstitutions;
@@ -295,10 +308,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         Define(sym);
     }
     std::optional<HirBlock> body;
-    // A non-generic function of a module whose code is reused keeps only its signature: analysis did not check its
-    // body, and nothing is generated for it.
-    const bool signatureOnly = declarationOnly && substitutions.empty() && d.typeParams.empty() && d.body;
-    if (d.body && !signatureOnly) {
+    if (d.body) {
         body = LowerBlock(*d.body);
         // Falling off the end of a function that completes without a value returns its completion, with the same
         // destruction of what the function still owns as any other return.
@@ -321,7 +331,6 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.params = LowerParams(d.params);
     hf.returnType = retType;
     hf.body = std::move(body);
-    hf.isDeclarationOnly = signatureOnly;
     hf.location = d.location;
     hf.sourceFile = LogicalCurrentFilePath();
     hf.sourceFunction = currentFunctionName;
