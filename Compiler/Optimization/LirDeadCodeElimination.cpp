@@ -424,18 +424,17 @@ bool EliminateFromFunction(LirFunc &function) {
         const auto removed = [&](const std::size_t position) {
             return deadStores[start + position] != 0 || neededInstructions[start + position] == 0;
         };
-        bool blockChanged = false;
-        for (std::size_t position = 0; position < block.instrs.size() && !blockChanged; ++position)
-            blockChanged = removed(position);
-        if (!blockChanged)
+        std::size_t retained = 0;
+        while (retained < block.instrs.size() && !removed(retained))
+            ++retained;
+        if (retained == block.instrs.size())
             continue;
         changed = true;
-        std::vector<LirInstr> retained;
-        retained.reserve(block.instrs.size());
-        for (std::size_t position = 0; position < block.instrs.size(); ++position)
+        // Compact in place: the instructions before the first removed one stay where they are.
+        for (std::size_t position = retained + 1; position < block.instrs.size(); ++position)
             if (!removed(position))
-                retained.push_back(std::move(block.instrs[position]));
-        block.instrs = std::move(retained);
+                block.instrs[retained++] = std::move(block.instrs[position]);
+        block.instrs.erase(block.instrs.begin() + static_cast<std::ptrdiff_t>(retained), block.instrs.end());
     }
     return changed;
 }
