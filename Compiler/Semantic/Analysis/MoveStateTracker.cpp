@@ -42,8 +42,9 @@ std::pair<std::size_t, std::size_t> MoveStateTracker::Mark() const noexcept {
 }
 
 void MoveStateTracker::DiscardTemporariesSince(const std::pair<std::size_t, std::size_t> mark) {
-    // A statement leaves the scopes as it found them; one that did not is left alone.
-    if (scopes.size() != mark.first || scopes.back().size() <= mark.second) {
+    // A statement leaves the scopes as it found them; one that did not is left alone. Outside every function the
+    // tracker may have no scope yet.
+    if (scopes.size() != mark.first || scopes.empty() || scopes.back().size() <= mark.second) {
         return;
     }
     auto &scope = scopes.back();

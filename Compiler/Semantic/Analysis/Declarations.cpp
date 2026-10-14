@@ -708,6 +708,14 @@ TypeRef AnalysisContext::CheckNamedConstant(const ConstDecl &declaration) {
 }
 
 void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
+    // Nothing reads the temporaries of an initializer once it is checked. A statement's are discarded after it, and
+    // so are a constant's, or the constants checked outside every function would pile theirs up in one tracker.
+    const auto temporaries = moveStates.Mark();
+    CheckConstDeclValue(d);
+    moveStates.DiscardTemporariesSince(temporaries);
+}
+
+void AnalysisContext::CheckConstDeclValue(const ConstDecl &d) {
     if (!d.intrinsicName.empty()) {
         if (!d.type) {
             EmitError(d.location, std::format("'intrinsic' constant '{}' requires a type", d.name));

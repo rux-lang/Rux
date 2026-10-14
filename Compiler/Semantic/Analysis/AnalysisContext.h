@@ -1533,6 +1533,7 @@ private:
     bool IsConstArrayElement(const Expr &e) const;
 
     void CheckConstDecl(const ConstDecl &d);
+    void CheckConstDeclValue(const ConstDecl &d);
     void CheckGlobalDecl(const GlobalDecl &d);
     /// Whether `expression` is a value the compiler computes, as a `const` initializer must be: literals, operators,
     /// casts, type queries, compile-time intrinsics, other constants, and aggregates and cases built from them.
