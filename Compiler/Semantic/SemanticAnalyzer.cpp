@@ -115,8 +115,10 @@ bool SemanticAnalyzer::AnalyzeInParallel(std::vector<const Module *> &constModul
     if (total * 4 < reusedWeight)
         return false;
     // One context per thread: the finisher, which checks no body, and one per range of modules. Every context repeats
-    // the Begin phases, so past a few ranges that repeated work costs more than splitting bodies further saves.
-    constexpr std::size_t maxRanges = 6;
+    // the Begin phases and holds its own copy of their state, so past a few ranges that repeated work costs more than
+    // splitting bodies further saves: on the 100,000-line benchmark four ranges check as fast as six and keep 80 MB
+    // less, while three are slower.
+    constexpr std::size_t maxRanges = 4;
     const std::size_t contexts = std::min({maxRanges, pool->Jobs() - 1, ordered.size()});
     if (contexts < 2)
         return false;
