@@ -47,9 +47,26 @@ using LiteralKeys = std::unordered_map<LirReg, std::string>;
 using SameBits = std::unordered_map<LirReg, LirReg>;
 
 std::string Key(const LirInstr &instruction, const LiteralKeys &literals, const SameBits &sameBits = {}) {
-    const auto type = instruction.type.ToString();
-    std::string key = std::to_string(static_cast<unsigned>(instruction.op)) + ":" + std::to_string(type.size()) + ":" +
-                      type + ":" + std::to_string(instruction.strArg.size()) + ":" + instruction.strArg;
+    std::string key;
+    key.reserve(48 + instruction.strArg.size());
+    key += std::to_string(static_cast<unsigned>(instruction.op));
+    key += ':';
+    // A primitive is spelled by its kind alone, so its kind stands in for the spelling; no spelling starts with '#'.
+    const TypeRef &type = instruction.type;
+    if (type.kind <= TypeRef::Kind::Float512 && type.name.empty() && type.inner.empty() && !type.arrayLength) {
+        key += '#';
+        key += std::to_string(static_cast<unsigned>(type.kind));
+    }
+    else {
+        const auto spelling = type.ToString();
+        key += std::to_string(spelling.size());
+        key += ':';
+        key += spelling;
+    }
+    key += ':';
+    key += std::to_string(instruction.strArg.size());
+    key += ':';
+    key += instruction.strArg;
     for (auto source : instruction.srcs) {
         // Only an operand is looked through; the instruction's own type still separates different results.
         if (instruction.op != LirOpcode::Cast)
