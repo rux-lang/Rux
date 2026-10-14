@@ -277,7 +277,7 @@ LirReg SoftFloatHelperSynthesis::NewReg() {
     return builder.AllocateRegister();
 }
 
-void SoftFloatHelperSynthesis::Emit(LirInstr instruction) {
+void SoftFloatHelperSynthesis::Emit(LirInstr &&instruction) {
     if (!builder.Insert(std::move(instruction))) {
         Fail(std::string(builder.FailureReason()));
     }

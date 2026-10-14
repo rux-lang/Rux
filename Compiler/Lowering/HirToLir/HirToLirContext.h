@@ -132,7 +132,7 @@ private:
     [[nodiscard]] std::uint32_t NewBlock(std::string label = "") const;
     void SetBlock(std::uint32_t idx);
     [[nodiscard]] bool IsTerminated() const;
-    void Emit(LirInstr instruction);
+    void Emit(LirInstr &&instruction);
     /// Replaces an instruction on a float the target computes in software with a helper call, emitting the call and
     /// what reads its result. Returns false, leaving the instruction to be emitted as it is, when nothing replaces it.
     [[nodiscard]] bool EmitSoftFloatReplacement(LirInstr &instruction);

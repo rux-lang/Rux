@@ -112,7 +112,7 @@ bool CheckedLirBuilder::HasValidTargets(const LirTerminator &terminator) const n
     std::unreachable();
 }
 
-bool CheckedLirBuilder::Insert(LirInstr instruction) {
+bool CheckedLirBuilder::Insert(LirInstr &&instruction) {
     if (!currentBlock) {
         failureReason = "no current block is selected";
         return false;

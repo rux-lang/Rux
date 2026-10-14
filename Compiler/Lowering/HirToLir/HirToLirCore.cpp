@@ -349,7 +349,7 @@ void HirToLirContext::SetBlock(const std::uint32_t idx) {
 }
 
 // Instruction emission
-void HirToLirContext::Emit(LirInstr i) {
+void HirToLirContext::Emit(LirInstr &&i) {
     if (EmitSoftFloatReplacement(i)) {
         return;
     }

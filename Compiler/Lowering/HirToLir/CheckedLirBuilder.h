@@ -55,7 +55,7 @@ public:
 
     /// Append an instruction to the selected block. Rejects a source register that is not yet defined, and a
     /// destination that is unallocated or was already assigned.
-    [[nodiscard]] bool Insert(LirInstr instruction);
+    [[nodiscard]] bool Insert(LirInstr &&instruction);
 
     /// Close the selected block. Rejects an undefined condition or return register, and any edge to a block that does
     /// not exist.

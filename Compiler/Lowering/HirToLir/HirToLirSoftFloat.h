@@ -128,7 +128,7 @@ public:
     [[nodiscard]] const std::string &Require(const SoftFloatHelperKey &helper);
 
     [[nodiscard]] LirReg NewReg();
-    void Emit(LirInstr instruction);
+    void Emit(LirInstr &&instruction);
     void Terminate(LirTerminator terminator);
     /// Records why the helper cannot be built. Only the first reason is kept.
     void Fail(std::string detail);
