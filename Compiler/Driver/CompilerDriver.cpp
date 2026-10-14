@@ -1187,7 +1187,9 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                 continue;
             }
             if (reused[index] != nullptr) {
-                pack.Put(module->name, *reused[index]);
+                // The objects were read back long ago, so the entry moves over rather than copying its object.
+                if (auto entry = moduleReuse.pack.Take(module->name))
+                    pack.Put(module->name, std::move(*entry));
                 continue;
             }
             const auto key = moduleReuse.keys.find(module);

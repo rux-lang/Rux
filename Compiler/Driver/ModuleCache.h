@@ -72,6 +72,9 @@ public:
     }
 
     void Put(const std::string &module, CachedModule entry);
+    /// Remove the entry of `module` and hand it over, so a pack written after this one keeps it without a copy.
+    /// Pointers to other entries stay valid.
+    [[nodiscard]] std::optional<CachedModule> Take(const std::string &module);
 
     /// Write the pack to `path`, replacing any earlier one in a single rename. Returns false when it cannot be written.
     bool Write(const std::filesystem::path &path) const;

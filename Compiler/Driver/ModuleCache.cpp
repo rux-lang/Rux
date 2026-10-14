@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <system_error>
 #include <utility>
 
@@ -58,7 +59,7 @@ void PutString(std::vector<std::uint8_t> &out, const std::string_view text) {
 /// Reads the fields `ModulePack::Write` wrote, failing once anything runs past the end.
 class PackReader {
 public:
-    explicit PackReader(const std::vector<std::uint8_t> &inputBytes)
+    explicit PackReader(const std::span<const std::uint8_t> inputBytes)
         : bytes(inputBytes) {
     }
 
@@ -103,8 +104,8 @@ public:
         const std::uint32_t length = U32();
         if (!Need(length))
             return {};
-        std::vector<std::uint8_t> result(bytes.begin() + static_cast<std::ptrdiff_t>(position),
-                                         bytes.begin() + static_cast<std::ptrdiff_t>(position + length));
+        const auto read = bytes.subspan(position, length);
+        std::vector<std::uint8_t> result(read.begin(), read.end());
         position += length;
         return result;
     }
@@ -121,7 +122,7 @@ private:
         return false;
     }
 
-    const std::vector<std::uint8_t> &bytes;
+    std::span<const std::uint8_t> bytes;
     std::size_t position = 0;
     bool ok = true;
 };
@@ -177,8 +178,7 @@ ModulePack ModulePack::Read(const std::filesystem::path &path) {
     const std::vector<std::uint8_t> bytes = ReadFileBytes(path);
     if (bytes.size() < kPackMagic.size() || !std::equal(kPackMagic.begin(), kPackMagic.end(), bytes.begin()))
         return pack;
-    const std::vector<std::uint8_t> body(bytes.begin() + static_cast<std::ptrdiff_t>(kPackMagic.size()), bytes.end());
-    PackReader reader(body);
+    PackReader reader(std::span(bytes).subspan(kPackMagic.size()));
     const std::uint32_t count = reader.U32();
     for (std::uint32_t entry = 0; entry < count && reader.Ok(); ++entry) {
         std::string module = reader.String();
@@ -229,6 +229,13 @@ const CachedModule *ModulePack::Find(const std::string &module, const std::strin
 
 void ModulePack::Put(const std::string &module, CachedModule entry) {
     entries.insert_or_assign(module, std::move(entry));
+}
+
+std::optional<CachedModule> ModulePack::Take(const std::string &module) {
+    auto node = entries.extract(module);
+    if (node.empty())
+        return std::nullopt;
+    return std::move(node.mapped());
 }
 
 bool ModulePack::Write(const std::filesystem::path &path) const {
