@@ -2,6 +2,7 @@
 
 #include "Ir/Lir/Lir.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <optional>
@@ -16,9 +17,10 @@ namespace Rux {
 template <typename Value>
 class LirRegisterTable {
 public:
-    /// @param expected roughly how many registers the function defines, usually its instruction count
-    explicit LirRegisterTable(const std::size_t expected)
-        : limit(expected * 4 + 64) {
+    /// @param registers roughly how many registers the function defines, usually its instruction count
+    explicit LirRegisterTable(const std::size_t registers)
+        : expected(registers)
+        , limit(registers * 4 + 64) {
     }
 
     [[nodiscard]] const Value *Find(const LirReg reg) const {
@@ -127,11 +129,17 @@ public:
 
 private:
     std::optional<Value> &Slot(const LirReg reg) {
-        if (reg >= table.size())
+        if (reg >= table.size()) {
+            // Registers usually arrive in increasing order, so the first one makes room for the expected count rather
+            // than letting the table grow (and move every value) step by step.
+            if (table.capacity() == 0)
+                table.reserve(std::max(expected + 1, static_cast<std::size_t>(reg) + 1));
             table.resize(static_cast<std::size_t>(reg) + 1);
+        }
         return table[reg];
     }
 
+    std::size_t expected;
     std::size_t limit;
     std::size_t count = 0;
     std::vector<std::optional<Value>> table;
