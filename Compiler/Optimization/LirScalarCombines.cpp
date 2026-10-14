@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -40,6 +41,22 @@ public:
 private:
     LirRegisterTable<const LirInstr *> table;
 };
+
+/// Whether any combine below can apply to `instruction` as the pass finds it. Each combine starts from one of these
+/// shapes, and a later one only sees a shape an earlier one produced from them, so an instruction of no such shape
+/// passes through unchanged.
+bool MayCombine(const LirInstr &instruction) {
+    if (instruction.srcs.size() != 2)
+        return false;
+    if (instruction.type.kind == TypeRef::Kind::Bool8 && !instruction.isVolatile)
+        return true;
+    const bool word = instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64;
+    if (word && (instruction.op == LirOpcode::Or || instruction.op == LirOpcode::And ||
+                 instruction.op == LirOpcode::Div || instruction.op == LirOpcode::Mod))
+        return true;
+    return instruction.op == LirOpcode::Add && !instruction.isVolatile && instruction.type.IsInteger() &&
+           !instruction.type.IsSigned();
+}
 
 std::optional<std::uint64_t> UnsignedMaximum(const TypeRef &type) {
     switch (type.kind) {
@@ -187,11 +204,28 @@ bool Combine(LirFunc &function) {
     };
     bool changed = false;
     std::unordered_map<LirReg, UnsignedRange> ranges;
-    std::vector<std::vector<LirInstr>> rewritten(function.blocks.size());
+    // Only blocks with a rewrite get a new instruction list; the rest are left as they are, uncopied.
+    std::vector<std::optional<std::vector<LirInstr>>> rewritten(function.blocks.size());
     for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
-        std::vector<LirInstr> output;
-        output.reserve(function.blocks[blockIndex].instrs.size());
-        for (auto instruction : function.blocks[blockIndex].instrs) {
+        const auto &instructions = function.blocks[blockIndex].instrs;
+        auto &output = rewritten[blockIndex];
+        for (std::size_t index = 0; index < instructions.size(); ++index) {
+            if (!MayCombine(instructions[index])) {
+                if (output)
+                    output->push_back(instructions[index]);
+                continue;
+            }
+            // The block's list starts with copies of the instructions before this one, made at its first rewrite.
+            const auto rewrite = [&]() -> std::vector<LirInstr> & {
+                if (!output) {
+                    output.emplace();
+                    output->reserve(instructions.size() + 4);
+                    output->assign(instructions.begin(), instructions.begin() + static_cast<std::ptrdiff_t>(index));
+                }
+                return *output;
+            };
+            bool modified = false;
+            LirInstr instruction = instructions[index];
             if (instruction.type.kind == TypeRef::Kind::Bool8 && instruction.type == TypeRef::MakeBool() &&
                 instruction.srcs.size() == 2 && !instruction.isVolatile &&
                 definitions.Find(instruction.srcs[0]) != nullptr && definitions.Find(instruction.srcs[1]) != nullptr &&
@@ -203,7 +237,7 @@ bool Combine(LirFunc &function) {
                         instruction.op = LirOpcode::Const;
                         instruction.srcs.clear();
                         instruction.strArg = *result ? "true" : "false";
-                        changed = true;
+                        changed = modified = true;
                     }
                 }
             }
@@ -231,7 +265,7 @@ bool Combine(LirFunc &function) {
                             instruction.op = LirOpcode::RotateRight;
                             instruction.srcs = {shiftLeft->srcs[0]};
                             instruction.strArg = std::to_string(*b);
-                            changed = true;
+                            changed = modified = true;
                         }
                     }
                 }
@@ -255,7 +289,7 @@ bool Combine(LirFunc &function) {
                         continue;
                     instruction.op = shift->op;
                     instruction.srcs = shift->srcs;
-                    changed = true;
+                    changed = modified = true;
                     break;
                 }
             }
@@ -271,8 +305,8 @@ bool Combine(LirFunc &function) {
                         std::to_string(instruction.op == LirOpcode::Div ? std::countr_zero(*divisor) : *divisor - 1);
                     instruction.srcs[1] = immediate.dst;
                     instruction.op = instruction.op == LirOpcode::Div ? LirOpcode::Lshr : LirOpcode::And;
-                    output.push_back(std::move(immediate));
-                    changed = true;
+                    rewrite().push_back(std::move(immediate));
+                    changed = modified = true;
                 }
             }
             // Adding two constants in turn adds their sum, which leaves one addition where an unrolled loop stepped
@@ -291,17 +325,20 @@ bool Combine(LirFunc &function) {
                         sum.type = instruction.type;
                         sum.strArg = std::to_string((*first + *outer) & *maximum);
                         instruction.srcs = {inner->srcs[0], sum.dst};
-                        output.push_back(std::move(sum));
-                        changed = true;
+                        rewrite().push_back(std::move(sum));
+                        changed = modified = true;
                     }
                 }
             }
-            output.push_back(std::move(instruction));
+            if (modified)
+                rewrite();
+            if (output)
+                output->push_back(std::move(instruction));
         }
-        rewritten[blockIndex] = std::move(output);
     }
     for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex)
-        function.blocks[blockIndex].instrs = std::move(rewritten[blockIndex]);
+        if (rewritten[blockIndex])
+            function.blocks[blockIndex].instrs = std::move(*rewritten[blockIndex]);
     return changed;
 }
 } // namespace
