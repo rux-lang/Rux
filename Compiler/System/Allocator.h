@@ -13,7 +13,8 @@
 // Freed blocks go to the freeing thread's list, wherever they were allocated; a list that grows long is handed to a
 // shared depot other threads refill from. The depot keeps blocks by the slab they lie in, so the moment the last block
 // of a slab arrives the slab is free for any size class, and the memory one stage frees serves the next stage's
-// allocations whatever their sizes. Memory is never returned to the operating system before the process exits.
+// allocations whatever their sizes. Free slabs beyond a limit are returned to the operating system while the program
+// keeps allocating.
 
 #include <cstddef>
 
@@ -36,6 +37,8 @@ struct SlabUsage {
     std::size_t carvedBytes = 0;
     /// Bytes of whole free slabs kept ready for any size class.
     std::size_t idleBytes = 0;
+    /// Bytes of whole free slabs returned to the operating system until they are needed again.
+    std::size_t releasedBytes = 0;
 };
 
 [[nodiscard]] SlabUsage CurrentSlabUsage() noexcept;

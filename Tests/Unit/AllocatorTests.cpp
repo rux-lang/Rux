@@ -111,7 +111,7 @@ TEST_CASE("slabs whose blocks are all freed serve other size classes") {
     for (void *block : blocks)
         Allocator::Deallocate(block);
     const auto freed = Allocator::CurrentSlabUsage();
-    CHECK(freed.idleBytes >= before.idleBytes + (std::size_t{4} << 20));
+    CHECK(freed.idleBytes + freed.releasedBytes >= before.idleBytes + before.releasedBytes + (std::size_t{4} << 20));
     // Another class takes the freed slabs instead of carving new ones.
     std::vector<void *> others;
     for (int index = 0; index < 20000; ++index) {
@@ -124,6 +124,35 @@ TEST_CASE("slabs whose blocks are all freed serve other size classes") {
     for (std::size_t index = 0; index < others.size(); ++index)
         CHECK(static_cast<std::uint8_t *>(others[index])[99] == (index & 0xFF));
     for (void *block : others)
+        Allocator::Deallocate(block);
+}
+
+TEST_CASE("free slabs beyond the idle limit are returned to the system and committed again on reuse") {
+    // 128 MiB of 8 KiB blocks, more than the allocator keeps idle.
+    std::vector<void *> blocks;
+    for (int index = 0; index < 16384; ++index) {
+        void *block = Allocator::Allocate(8000);
+        REQUIRE(block != nullptr);
+        std::memset(block, 0x33, 8000);
+        blocks.push_back(block);
+    }
+    for (void *block : blocks)
+        Allocator::Deallocate(block);
+    // The slabs go back to the system once the program asks for a slab again.
+    blocks.clear();
+    blocks.push_back(Allocator::Allocate(7000));
+    REQUIRE(blocks[0] != nullptr);
+    std::memset(blocks[0], 0, 7000);
+    CHECK(Allocator::CurrentSlabUsage().releasedBytes > 0);
+    for (int index = 1; index < 16384; ++index) {
+        auto *block = static_cast<std::uint8_t *>(Allocator::Allocate(7000));
+        REQUIRE(block != nullptr);
+        std::memset(block, index & 0xFF, 7000);
+        blocks.push_back(block);
+    }
+    for (std::size_t index = 0; index < blocks.size(); ++index)
+        CHECK(static_cast<std::uint8_t *>(blocks[index])[6999] == (index & 0xFF));
+    for (void *block : blocks)
         Allocator::Deallocate(block);
 }
 
@@ -141,5 +170,6 @@ TEST_CASE("a finished thread's blocks and unused slab ends become reusable") {
     worker.join();
     const auto after = Allocator::CurrentSlabUsage();
     // All 12 MiB the thread used come back but for the parts of a few slabs the sweeps have not reached.
-    CHECK(after.idleBytes >= allocated.idleBytes + (std::size_t{8} << 20));
+    CHECK(after.idleBytes + after.releasedBytes >=
+          allocated.idleBytes + allocated.releasedBytes + (std::size_t{8} << 20));
 }

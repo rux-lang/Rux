@@ -25,6 +25,9 @@ constexpr std::size_t kReserveBytes = std::size_t{1} << 38;
 constexpr std::size_t kSlabCount = kReserveBytes >> kSlabShift;
 // Address space is made usable this many slabs at a time, so the operating system is asked rarely.
 constexpr std::size_t kCommitSlabs = 64;
+// Whole free slabs kept ready beyond this many are returned to the operating system, once there are a batch more.
+constexpr std::size_t kIdleSlabLimit = (std::size_t{64} << 20) / kSlabSize;
+constexpr std::size_t kReleaseBatch = (std::size_t{32} << 20) / kSlabSize;
 
 // Block sizes grow in steps of 16 bytes to 256, then by an eighth of each power of two, up to 8 KiB. Every size is a
 // multiple of 16, so every block of a slab is 16-byte aligned.
@@ -56,8 +59,11 @@ constexpr std::array<std::uint8_t, kMaxSmall / 16 + 1> kClassOfGranule = [] {
 
 static_assert(kBlockSizes[kClassCount - 1] == kMaxSmall);
 
-// What a carved slab holds when its blocks are all free, instead of the class of its blocks.
-constexpr std::uint8_t kIdleSlab = 0xFF;
+// What a carved slab holds, besides the class of its blocks: nothing, either still committed or returned to the
+// operating system, or nothing on its way back to the operating system.
+constexpr std::uint8_t kIdleSlab = 0xFD;
+constexpr std::uint8_t kReleasingSlab = 0xFE;
+constexpr std::uint8_t kReleasedSlab = 0xFF;
 static_assert(kClassCount < kIdleSlab);
 
 /// A spin lock that needs no construction, so it works before and after static initialization. It guards only slow
@@ -68,6 +74,10 @@ public:
     void Lock() noexcept {
         while (flag.test_and_set(std::memory_order_acquire))
             std::this_thread::yield();
+    }
+
+    [[nodiscard]] bool TryLock() noexcept {
+        return !flag.test_and_set(std::memory_order_acquire);
     }
 
     void Unlock() noexcept {
@@ -125,12 +135,16 @@ std::atomic<ReserveState> reserveState{ReserveState::Untried};
 std::uint8_t slabClasses[kSlabCount];
 
 // The carved part of the range, guarded by `slabLock`. Slabs from `kFreeListSlabs` to `slabsCarved` hold a class or
-// are idle; the hint is the lowest slab that may be idle.
+// are idle, releasing or released; the hints are the lowest slabs that may be idle or released.
 SpinLock slabLock;
 std::size_t slabsCarved = kFreeListSlabs;
 std::size_t slabsCommitted = kFreeListSlabs;
 std::size_t idleSlabs = 0;
+std::size_t releasedSlabs = 0;
 std::size_t idleHint = 0;
+std::size_t releasedHint = 0;
+// One release to the operating system at a time.
+SpinLock releaseLock;
 
 // Freed blocks no thread is holding, per class, kept by the slab they lie in, so a slab is known to be free the moment
 // the last of its blocks arrives.
@@ -230,6 +244,16 @@ bool CommitFreeLists(const std::size_t first, const std::size_t count) noexcept 
 #endif
 }
 
+/// Return `count` slabs from `first` to the operating system, keeping their addresses reserved.
+void Decommit(char *first, const std::size_t count) noexcept {
+#if RUX_OS_WINDOWS
+    static_cast<void>(VirtualFree(first, count * kSlabSize, MEM_DECOMMIT));
+#else
+    // Mapping fresh inaccessible pages over the slabs drops their contents and their charge at once.
+    static_cast<void>(mmap(first, count * kSlabSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0));
+#endif
+}
+
 /// The lowest carved slab from `hint` in `state`, or `slabsCarved` when there is none. Called with `slabLock` held.
 std::size_t FindSlab(const std::uint8_t state, const std::size_t hint) noexcept {
     const std::size_t from = hint < kFreeListSlabs ? kFreeListSlabs : hint;
@@ -240,16 +264,35 @@ std::size_t FindSlab(const std::uint8_t state, const std::size_t hint) noexcept 
                             : static_cast<std::size_t>(static_cast<const std::uint8_t *>(found) - slabClasses);
 }
 
-/// A slab for `sizeClass`: an idle one, else a fresh one from the range. Null when the range is used up or cannot be
-/// committed.
-char *TakeSlab(const std::size_t sizeClass) noexcept {
+/// A slab for `sizeClass`: an idle one, else a released one committed again, else a fresh one from the range. Null
+/// when the range is used up or cannot be committed. Tells whether idle slabs are left beyond the limit.
+char *ReuseOrCarveSlab(const std::size_t sizeClass, bool &idleBeyondLimit) noexcept {
     const LockGuard guard(slabLock);
+    idleBeyondLimit = idleSlabs > kIdleSlabLimit + kReleaseBatch;
     std::size_t index = slabsCarved;
     if (idleSlabs != 0) {
         index = FindSlab(kIdleSlab, idleHint);
         if (index != slabsCarved) {
             idleHint = index + 1;
             --idleSlabs;
+        }
+    }
+    if (index == slabsCarved && releasedSlabs != 0) {
+        index = FindSlab(kReleasedSlab, releasedHint);
+        if (index != slabsCarved) {
+            // Commit the released slabs that follow too, as idle ones, so the operating system is asked rarely.
+            std::size_t count = 1;
+            while (count < kCommitSlabs && index + count < slabsCarved && slabClasses[index + count] == kReleasedSlab)
+                ++count;
+            if (!Commit(SlabAt(index), count))
+                return nullptr;
+            releasedSlabs -= count;
+            releasedHint = index + count;
+            for (std::size_t next = index + 1; next < index + count; ++next)
+                slabClasses[next] = kIdleSlab;
+            idleSlabs += count - 1;
+            if (count > 1 && idleHint > index + 1)
+                idleHint = index + 1;
         }
     }
     if (index == slabsCarved) {
@@ -267,6 +310,67 @@ char *TakeSlab(const std::size_t sizeClass) noexcept {
     }
     slabClasses[index] = static_cast<std::uint8_t>(sizeClass);
     return SlabAt(index);
+}
+
+/// Return idle slabs beyond the limit to the operating system, the highest first, a run of neighbours at a time. The
+/// slabs are marked as releasing while the lock is dropped for the calls, so no thread takes them meanwhile; a thread
+/// that finds another releasing leaves the work to it.
+void ReleaseIdleSlabs() noexcept {
+    if (!releaseLock.TryLock())
+        return;
+
+    struct SlabRun {
+        std::size_t first;
+        std::size_t count;
+    };
+
+    std::array<SlabRun, 64> runs{};
+    std::size_t runCount = 0;
+    std::size_t released = 0;
+    {
+        const LockGuard guard(slabLock);
+        std::size_t excess = idleSlabs > kIdleSlabLimit ? idleSlabs - kIdleSlabLimit : 0;
+        for (std::size_t index = slabsCarved; excess != 0 && index-- > kFreeListSlabs;) {
+            if (slabClasses[index] != kIdleSlab)
+                continue;
+            if (runCount != 0 && runs[runCount - 1].first == index + 1) {
+                --runs[runCount - 1].first;
+                ++runs[runCount - 1].count;
+            }
+            else if (runCount == runs.size()) {
+                break;
+            }
+            else {
+                runs[runCount++] = SlabRun{index, 1};
+            }
+            slabClasses[index] = kReleasingSlab;
+            --excess;
+            ++released;
+        }
+        idleSlabs -= released;
+    }
+    for (std::size_t run = 0; run < runCount; ++run)
+        Decommit(SlabAt(runs[run].first), runs[run].count);
+    {
+        const LockGuard guard(slabLock);
+        for (std::size_t run = 0; run < runCount; ++run) {
+            std::memset(slabClasses + runs[run].first, kReleasedSlab, runs[run].count);
+            if (runs[run].first < releasedHint)
+                releasedHint = runs[run].first;
+        }
+        releasedSlabs += released;
+    }
+    releaseLock.Unlock();
+}
+
+/// A slab for `sizeClass`, as `ReuseOrCarveSlab` finds one. Idle slabs beyond the limit are returned to the
+/// operating system only here, while the program still allocates, so the memory freed as it ends costs no calls.
+char *TakeSlab(const std::size_t sizeClass) noexcept {
+    bool idleBeyondLimit = false;
+    char *slab = ReuseOrCarveSlab(sizeClass, idleBeyondLimit);
+    if (idleBeyondLimit)
+        ReleaseIdleSlabs();
+    return slab;
 }
 
 /// Make `count` slabs whose blocks are all free idle, ready for any class.
@@ -555,6 +659,7 @@ SlabUsage CurrentSlabUsage() noexcept {
     return SlabUsage{
         .carvedBytes = (slabsCarved - kFreeListSlabs) * kSlabSize,
         .idleBytes = idleSlabs * kSlabSize,
+        .releasedBytes = releasedSlabs * kSlabSize,
     };
 }
 } // namespace Rux::System::Allocator
