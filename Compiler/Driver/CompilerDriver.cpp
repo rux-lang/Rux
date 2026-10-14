@@ -404,8 +404,13 @@ CompilerDriver::Impl::RememberSources(const std::span<SourceFile> sources) {
             // Stamped as soon as it is read, so an edit made while the build runs is not mistaken for what was built.
             std::error_code error;
             const auto size = std::filesystem::file_size(file.path, error);
-            const auto modified =
+            auto modified =
                 error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(file.path, error);
+            // A file written moments ago may be written again within the same tick of the file clock without its
+            // size changing, and its stamp would then say it never changed. Such a file is stamped with no time, so
+            // the next build compares its content instead of trusting the stamp.
+            if (modified > std::filesystem::file_time_type::clock::now() - std::chrono::seconds(2))
+                modified = std::filesystem::file_time_type{};
             loadedSourceStamps.emplace(stored->first,
                                        std::pair{error ? ~std::uintmax_t{0} : size,
                                                  static_cast<std::int64_t>(modified.time_since_epoch().count())});
