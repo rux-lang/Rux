@@ -99,6 +99,14 @@ private:
         ModulePack pack;
         /// The key of every module read from a source file; a generated module has none and is always compiled.
         std::unordered_map<const Module *, std::string> keys;
+        /// What the keys were made of, recorded with the module so the next build can take it over.
+        struct SourceDigests {
+            std::uintmax_t size = 0;
+            std::int64_t modified = 0;
+            std::string source;
+            std::string interface;
+        };
+        std::unordered_map<const Module *, SourceDigests> digests;
         /// Modules this build reuses the objects of, and their entries in `pack`.
         std::unordered_set<const Module *> declarationOnly;
         std::unordered_map<const Module *, const CachedModule *> cached;

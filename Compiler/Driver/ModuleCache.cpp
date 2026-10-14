@@ -81,6 +81,15 @@ public:
         return value;
     }
 
+    std::uint64_t U64() {
+        if (!Need(8))
+            return 0;
+        std::uint64_t value = 0;
+        for (int index = 0; index < 8; ++index)
+            value |= static_cast<std::uint64_t>(bytes[position++]) << (8 * index);
+        return value;
+    }
+
     std::string String() {
         const std::uint32_t length = U32();
         if (!Need(length))
@@ -117,7 +126,12 @@ private:
     bool ok = true;
 };
 
-constexpr std::string_view kPackMagic = "RUXMODS2";
+constexpr std::string_view kPackMagic = "RUXMODS3";
+
+void PutU64(std::vector<std::uint8_t> &out, const std::uint64_t value) {
+    for (int shift = 0; shift < 64; shift += 8)
+        out.push_back(static_cast<std::uint8_t>(value >> shift));
+}
 } // namespace
 
 std::string ModuleInterface(const Module &module, const std::string_view source) {
@@ -142,23 +156,25 @@ std::string ModuleInterface(const Module &module, const std::string_view source)
     return interface;
 }
 
-std::string ModuleRootsDigest(const std::span<const Optimization::LirModuleRoot> roots) {
-    std::string text;
-    for (const auto &root : roots) {
-        text += std::to_string(static_cast<int>(root.kind));
-        text += ' ';
-        text += root.name;
-        text += '\n';
-    }
-    return HashText(text);
+namespace {
+std::vector<std::uint8_t> ReadFileBytes(const std::filesystem::path &path) {
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+    if (!stream)
+        return {};
+    const auto end = stream.tellg();
+    if (end <= 0)
+        return {};
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(end));
+    stream.seekg(0);
+    if (!stream.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
+        return {};
+    return bytes;
 }
+} // namespace
 
 ModulePack ModulePack::Read(const std::filesystem::path &path) {
     ModulePack pack;
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
-        return pack;
-    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    const std::vector<std::uint8_t> bytes = ReadFileBytes(path);
     if (bytes.size() < kPackMagic.size() || !std::equal(kPackMagic.begin(), kPackMagic.end(), bytes.begin()))
         return pack;
     const std::vector<std::uint8_t> body(bytes.begin() + static_cast<std::ptrdiff_t>(kPackMagic.size()), bytes.end());
@@ -168,8 +184,16 @@ ModulePack ModulePack::Read(const std::filesystem::path &path) {
         std::string module = reader.String();
         CachedModule cached;
         cached.key = reader.String();
-        cached.roots = reader.String();
+        const std::uint32_t rootCount = reader.U32();
+        for (std::uint32_t root = 0; root < rootCount && reader.Ok(); ++root) {
+            const auto kind = static_cast<Optimization::LirDeclarationKind>(reader.U8());
+            cached.roots.push_back({kind, reader.String()});
+        }
         cached.fails = reader.U8() != 0;
+        cached.sourceSize = reader.U64();
+        cached.sourceModified = static_cast<std::int64_t>(reader.U64());
+        cached.sourceDigest = reader.String();
+        cached.interfaceDigest = reader.String();
         for (auto &declarations : cached.references.declarations) {
             const std::uint32_t declarationCount = reader.U32();
             for (std::uint32_t index = 0; index < declarationCount && reader.Ok(); ++index) {
@@ -193,6 +217,11 @@ ModulePack ModulePack::Read(const std::filesystem::path &path) {
     return pack;
 }
 
+const CachedModule *ModulePack::FindAny(const std::string &module) const {
+    const auto found = entries.find(module);
+    return found != entries.end() ? &found->second : nullptr;
+}
+
 const CachedModule *ModulePack::Find(const std::string &module, const std::string_view key) const {
     const auto found = entries.find(module);
     return found != entries.end() && found->second.key == key ? &found->second : nullptr;
@@ -208,8 +237,7 @@ bool ModulePack::Write(const std::filesystem::path &path) const {
     std::size_t size = kPackMagic.size() + 4;
     for (const auto &entry : entries) {
         ordered.push_back(&entry);
-        size += entry.first.size() + entry.second.key.size() + entry.second.roots.size() + entry.second.object.size() +
-                64;
+        size += entry.first.size() + entry.second.key.size() + entry.second.object.size() + 256;
     }
     std::ranges::sort(ordered, {}, [](const auto *entry) { return entry->first; });
     std::vector<std::uint8_t> out;
@@ -220,8 +248,16 @@ bool ModulePack::Write(const std::filesystem::path &path) const {
         const CachedModule &cached = entry->second;
         PutString(out, entry->first);
         PutString(out, cached.key);
-        PutString(out, cached.roots);
+        PutU32(out, static_cast<std::uint32_t>(cached.roots.size()));
+        for (const auto &root : cached.roots) {
+            PutU8(out, static_cast<std::uint8_t>(root.kind));
+            PutString(out, root.name);
+        }
         PutU8(out, cached.fails ? 1 : 0);
+        PutU64(out, cached.sourceSize);
+        PutU64(out, static_cast<std::uint64_t>(cached.sourceModified));
+        PutString(out, cached.sourceDigest);
+        PutString(out, cached.interfaceDigest);
         for (const auto &declarations : cached.references.declarations) {
             PutU32(out, static_cast<std::uint32_t>(declarations.size()));
             for (const auto &declaration : declarations) {

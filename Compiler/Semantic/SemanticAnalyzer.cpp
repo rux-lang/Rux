@@ -102,10 +102,18 @@ bool SemanticAnalyzer::AnalyzeInParallel(std::vector<const Module *> &constModul
     // Contiguous ranges of about equal work, one per context.
     std::vector<std::size_t> weights;
     std::size_t total = 0;
+    std::size_t reusedWeight = 0;
     for (const Module *module : ordered) {
-        weights.push_back(declarationOnlyModules.contains(module) ? 1 : ModuleWeight(*module) + 1);
+        const std::size_t weight = ModuleWeight(*module) + 1;
+        const bool reused = declarationOnlyModules.contains(module);
+        reusedWeight += reused ? weight : 0;
+        weights.push_back(reused ? 1 : weight);
         total += weights.back();
     }
+    // Every context repeats the Begin phases, which cost about as much as checking a few modules' bodies: when most
+    // modules are reused and only their declarations are checked, one context is faster than several.
+    if (total * 4 < reusedWeight)
+        return false;
     // One context per thread: the finisher, which checks no body, and one per range of modules. Every context repeats
     // the Begin phases, so past a few ranges that repeated work costs more than splitting bodies further saves.
     constexpr std::size_t maxRanges = 6;

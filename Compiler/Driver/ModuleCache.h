@@ -34,22 +34,26 @@ namespace Rux::Driver {
 /// modules can depend on. A module whose bodies declare items into the program's indexes is its whole source.
 [[nodiscard]] std::string ModuleInterface(const Module &module, std::string_view source);
 
-/// A digest of the roots a module was pruned from, which its object depends on in a Release build.
-[[nodiscard]] std::string ModuleRootsDigest(std::span<const Optimization::LirModuleRoot> roots);
-
 /// What a build recorded about one module.
 struct CachedModule {
     /// Everything the module's object was compiled from but its roots: the compilation, the program's interface and
     /// the module's own source.
     std::string key;
-    /// `ModuleRootsDigest` of the roots it was pruned from, or empty when the build prunes nothing.
-    std::string roots;
+    /// The roots it was pruned from (`Optimization::ModuleRoots`), which its object also depends on; empty when the
+    /// build prunes nothing.
+    std::vector<Optimization::LirModuleRoot> roots;
     /// The module's references before optimization, which reachability needs of a module that is not lowered again.
     Optimization::LirModuleReferences references;
     /// Whether its code can panic or fail an assertion, which calls for the program's stack-trace printer.
     bool fails = false;
     /// The object, as `SerializeRcuFile` encoded it.
     std::vector<std::uint8_t> object;
+    /// The size and modification time of the source the digests below were taken of, so a later build can take them
+    /// over for a file it finds unchanged instead of hashing it again.
+    std::uintmax_t sourceSize = 0;
+    std::int64_t sourceModified = 0;
+    std::string sourceDigest;
+    std::string interfaceDigest;
 };
 
 /// The modules one build recorded, by module name.
@@ -60,6 +64,11 @@ public:
 
     /// The entry of `module` when it was recorded under `key`.
     [[nodiscard]] const CachedModule *Find(const std::string &module, std::string_view key) const;
+    /// The entry of `module` whatever it was recorded under.
+    [[nodiscard]] const CachedModule *FindAny(const std::string &module) const;
+    [[nodiscard]] std::size_t Size() const noexcept {
+        return entries.size();
+    }
 
     void Put(const std::string &module, CachedModule entry);
 

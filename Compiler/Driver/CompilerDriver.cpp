@@ -137,14 +137,29 @@ void CompilerDriver::Impl::PrepareModuleReuse() {
         modules.push_back(&parsed.module);
     for (const auto &parsed : parseResults)
         modules.push_back(&parsed.module);
-    std::vector<std::string> sourceDigests(modules.size());
-    std::vector<std::string> interfaceDigests(modules.size());
+    moduleReuse.pack = ModulePack::Read(ModulePackPath());
+    // A file whose size and modification time are what the pack recorded keeps the digests recorded with it, as an
+    // up-to-date build record trusts them; any other file is hashed.
+    std::vector<ModuleReuse::SourceDigests> digests(modules.size());
     Workers().ForEach(modules.size(), [&](const std::size_t index) {
-        const auto text = loadedSourceTexts.find(modules[index]->name);
+        const std::string &name = modules[index]->name;
+        const auto text = loadedSourceTexts.find(name);
         if (text == loadedSourceTexts.end())
             return;
-        sourceDigests[index] = HashText(text->second.Text());
-        interfaceDigests[index] = HashText(ModuleInterface(*modules[index], text->second.Text()));
+        auto &digest = digests[index];
+        if (const auto stamp = loadedSourceStamps.find(name); stamp != loadedSourceStamps.end()) {
+            digest.size = stamp->second.first;
+            digest.modified = stamp->second.second;
+        }
+        const CachedModule *recorded = moduleReuse.pack.FindAny(name);
+        if (recorded != nullptr && digest.modified != 0 && recorded->sourceSize == digest.size &&
+            recorded->sourceModified == digest.modified && !recorded->sourceDigest.empty()) {
+            digest.source = recorded->sourceDigest;
+            digest.interface = recorded->interfaceDigest;
+            return;
+        }
+        digest.source = HashText(text->second.Text());
+        digest.interface = HashText(ModuleInterface(*modules[index], text->second.Text()));
     });
     // The program's interface: what every module declares, in name order, under the request this build serves.
     std::vector<std::size_t> byName(modules.size());
@@ -152,17 +167,26 @@ void CompilerDriver::Impl::PrepareModuleReuse() {
         byName[index] = index;
     std::ranges::sort(byName, {}, [&](const std::size_t index) { return std::string_view(modules[index]->name); });
     std::string program = BuildKey() + "\n";
+    // Manifests decide what is compiled beyond the sources: the artifact kind, and the configuration `when` folds
+    // against, which the interface text, holding every branch, does not show.
+    for (const auto &manifest : dependencyGraph->ManifestPaths()) {
+        std::ifstream stream(manifest, std::ios::binary);
+        const std::string content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        program += std::format("manifest {} {}\n", HashText(content), manifest.string());
+    }
     for (const std::size_t index : byName)
-        program += std::format("{} {}\n", interfaceDigests[index].empty() ? "-" : interfaceDigests[index],
+        program += std::format("{} {}\n", digests[index].interface.empty() ? "-" : digests[index].interface,
                                modules[index]->name);
     const std::string programKey = HashText(program);
     moduleReuse.keys.clear();
-    for (std::size_t index = 0; index < modules.size(); ++index)
-        if (!sourceDigests[index].empty())
-            moduleReuse.keys.emplace(modules[index], HashText(std::format("{}\n{}\n{}", programKey,
-                                                                          modules[index]->name,
-                                                                          sourceDigests[index])));
-    moduleReuse.pack = ModulePack::Read(ModulePackPath());
+    moduleReuse.digests.clear();
+    for (std::size_t index = 0; index < modules.size(); ++index) {
+        if (digests[index].source.empty())
+            continue;
+        moduleReuse.keys.emplace(modules[index], HashText(std::format("{}\n{}\n{}", programKey,
+                                                                      modules[index]->name, digests[index].source)));
+        moduleReuse.digests.emplace(modules[index], std::move(digests[index]));
+    }
     moduleReuse.enabled = true;
     SelectReusedModules();
 }
@@ -276,10 +300,22 @@ void CompilerDriver::Impl::RecordBuild(const std::filesystem::path &artifactPath
     BuildRecord record;
     record.key = BuildKey();
     record.stats = stats;
-    for (const auto &[path, text] : loadedSourceTexts) {
-        const auto &[size, modified] = loadedSourceStamps.at(path);
-        record.inputs.push_back({path, size, modified, HashText(text.Text())});
-    }
+    // The digests module reuse already took are the same SHA-256 of the same text; the rest are hashed side by side.
+    std::unordered_map<std::string_view, const std::string *> knownDigests;
+    for (const auto &[module, digest] : moduleReuse.digests)
+        knownDigests.emplace(module->name, &digest.source);
+    std::vector<std::pair<const std::string *, const SourceText *>> sources;
+    sources.reserve(loadedSourceTexts.size());
+    for (const auto &[path, text] : loadedSourceTexts)
+        sources.emplace_back(&path, &text);
+    std::vector<BuildRecord::File> inputs(sources.size());
+    Workers().ForEach(sources.size(), [&](const std::size_t index) {
+        const auto &[path, text] = sources[index];
+        const auto &[size, modified] = loadedSourceStamps.at(*path);
+        const auto known = knownDigests.find(*path);
+        inputs[index] = {*path, size, modified, known != knownDigests.end() ? *known->second : HashText(text->Text())};
+    });
+    record.inputs = std::move(inputs);
     auto manifests = dependencyGraph->ManifestPaths();
     manifests.push_back(opts.manifestPath);
     std::ranges::sort(manifests);
@@ -924,10 +960,23 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                 references[index] = Optimization::CollectModuleReferences(lirPackage.modules[index]);
             moduleReferences[index] = reused[index] != nullptr ? &reused[index]->references : &references[index];
         });
-        roots = Optimization::ModuleRoots(moduleReferences, artifactKind);
+        // When every module references what the pack recorded for it, the roots are the ones it recorded too.
+        bool recordedGraph = moduleReuse.enabled && moduleReuse.pack.Size() == moduleCount;
+        for (std::size_t index = 0; recordedGraph && index < moduleCount; ++index) {
+            const CachedModule *recorded = moduleReuse.pack.FindAny(lirPackage.modules[index].name);
+            recordedGraph = recorded != nullptr && recorded->references == *moduleReferences[index];
+        }
+        if (recordedGraph) {
+            roots.resize(moduleCount);
+            for (std::size_t index = 0; index < moduleCount; ++index)
+                roots[index] = moduleReuse.pack.FindAny(lirPackage.modules[index].name)->roots;
+        }
+        else {
+            roots = Optimization::ModuleRoots(moduleReferences, artifactKind);
+        }
         bool stale = false;
         for (std::size_t index = 0; index < moduleCount; ++index) {
-            if (reused[index] != nullptr && ModuleRootsDigest(roots[index]) != reused[index]->roots) {
+            if (reused[index] != nullptr && roots[index] != reused[index]->roots) {
                 moduleReuse.fresh.insert(sourceModules[index]->name);
                 stale = true;
             }
@@ -1108,8 +1157,16 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         ModulePack pack;
         for (std::size_t index = 0; index < moduleCount; ++index) {
             const Module *module = sourceModules[index];
-            if (module == nullptr)
+            if (module == nullptr) {
+                // The program module has no object to keep, but what it references is part of the program's graph.
+                if (release && lirPackage.modules[index].name == kProgramModuleName) {
+                    CachedModule program;
+                    program.roots = roots[index];
+                    program.references = std::move(references[index]);
+                    pack.Put(lirPackage.modules[index].name, std::move(program));
+                }
                 continue;
+            }
             if (reused[index] != nullptr) {
                 pack.Put(module->name, *reused[index]);
                 continue;
@@ -1118,8 +1175,11 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
             if (key == moduleReuse.keys.end() || freshObjects[index].empty() || reported.contains(module->name))
                 continue;
             const bool fails = index < lirLowering.ModuleFailures().size() && lirLowering.ModuleFailures()[index] != 0;
-            pack.Put(module->name, {key->second, release ? ModuleRootsDigest(roots[index]) : std::string{},
-                                    std::move(references[index]), fails, std::move(freshObjects[index])});
+            const auto &digest = moduleReuse.digests.at(module);
+            pack.Put(module->name,
+                     {key->second, release ? roots[index] : std::vector<Optimization::LirModuleRoot>{},
+                      std::move(references[index]), fails, std::move(freshObjects[index]), digest.size,
+                      digest.modified, digest.source, digest.interface});
         }
         static_cast<void>(pack.Write(ModulePackPath()));
     }

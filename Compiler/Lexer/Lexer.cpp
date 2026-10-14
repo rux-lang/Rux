@@ -88,6 +88,8 @@ LexerResult Lexer::Tokenize() {
     tokens.clear();
     comments.clear();
     diagnostics.clear();
+    // Rux source runs at about one token per five bytes, so the token list rarely has to grow.
+    tokens.reserve(source.size() / 5 + 16);
     pos = 0;
     line = 1;
     col = 1;

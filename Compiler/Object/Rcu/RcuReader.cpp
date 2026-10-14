@@ -172,11 +172,15 @@ std::optional<RcuFile> DeserializeRcuFile(const std::span<const std::uint8_t> by
 }
 
 std::optional<RcuFile> RcuReader::Read(const std::filesystem::path &path) {
-    std::ifstream stream(path, std::ios::binary);
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream)
         return std::nullopt;
-    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    if (stream.bad())
+    const auto end = stream.tellg();
+    if (end < 0)
+        return std::nullopt;
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(end));
+    stream.seekg(0);
+    if (!stream.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
         return std::nullopt;
     return DeserializeRcuFile(bytes);
 }

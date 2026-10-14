@@ -71,7 +71,11 @@ TEST_CASE("module packs round-trip their entries and refuse damaged files") {
     const auto path = directory / "Release-test.modules";
     Driver::CachedModule entry;
     entry.key = "key";
-    entry.roots = "roots";
+    entry.roots = {{Optimization::LirDeclarationKind::Function, "Main"}};
+    entry.sourceSize = 123;
+    entry.sourceModified = -5;
+    entry.sourceDigest = "source";
+    entry.interfaceDigest = "interface";
     entry.fails = true;
     entry.object = {1, 2, 3, 0, 255};
     auto &functions = entry.references.declarations[static_cast<std::size_t>(Optimization::LirDeclarationKind::Function)];
@@ -80,7 +84,9 @@ TEST_CASE("module packs round-trip their entries and refuse damaged files") {
 
     Driver::ModulePack pack;
     pack.Put("A.rux", entry);
-    pack.Put("B.rux", Driver::CachedModule{"other", "", {}, false, {}});
+    Driver::CachedModule other;
+    other.key = "other";
+    pack.Put("B.rux", other);
     REQUIRE(pack.Write(path));
 
     const auto read = Driver::ModulePack::Read(path);
@@ -90,6 +96,11 @@ TEST_CASE("module packs round-trip their entries and refuse damaged files") {
     CHECK(found->fails);
     CHECK(found->object == entry.object);
     CHECK(found->references == entry.references);
+    CHECK(found->sourceSize == 123);
+    CHECK(found->sourceModified == -5);
+    CHECK(found->sourceDigest == "source");
+    CHECK(found->interfaceDigest == "interface");
+    CHECK(read.FindAny("A.rux") == found);
     CHECK(read.Find("A.rux", "stale") == nullptr);
     CHECK(read.Find("B.rux", "other") != nullptr);
     CHECK(read.Find("C.rux", "key") == nullptr);
