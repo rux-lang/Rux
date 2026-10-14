@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cstdlib>
 #include <format>
 #include <fstream>
 #include <limits>
@@ -1074,9 +1075,20 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
     writeRaw("PE\0\0", 4); // PE signature
 
-    // COFF File Header (20 bytes)
-    wBuf(BuildPeCoffHeader(*architecture, static_cast<uint16_t>(numSections), static_cast<uint32_t>(std::time(nullptr)),
-                           isDll));
+    // COFF File Header (20 bytes). The time stamp is `SOURCE_DATE_EPOCH` when it is set, and otherwise a digest of the
+    // image's contents rather than the clock, so linking the same objects twice writes the same file.
+    uint32_t timeStamp = 0;
+    if (const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH"); epoch && !epoch->empty()) {
+        timeStamp = static_cast<uint32_t>(std::strtoull(epoch->c_str(), nullptr, 10));
+    }
+    else {
+        uint64_t hash = 0xcbf29ce484222325ULL;
+        for (const Buf *buffer : {&textBuf, &rdataBuf, &dataBuf})
+            for (const uint8_t byte : *buffer)
+                hash = (hash ^ byte) * 0x100000001b3ULL;
+        timeStamp = static_cast<uint32_t>(hash ^ (hash >> 32));
+    }
+    wBuf(BuildPeCoffHeader(*architecture, static_cast<uint16_t>(numSections), timeStamp, isDll));
 
     // Optional Header PE32+ (240 bytes)
     wU16(kMagicPE32P);

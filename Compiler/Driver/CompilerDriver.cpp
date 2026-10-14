@@ -211,18 +211,7 @@ bool CompilerDriver::Impl::VerifyReusedArtifact(const std::filesystem::path &art
         Emit(ErrorDiagnostic("module cache verification: the package does not compile without reusing modules"));
         return false;
     }
-    const auto expected = read(compiled.primaryArtifactPath);
-    // A PE image carries the time it was linked at, which is the one difference two links may have.
-    std::size_t stampOffset = std::string::npos;
-    if (expected.size() > 0x40 && expected[0] == 'M' && expected[1] == 'Z') {
-        std::uint32_t peOffset = 0;
-        for (int index = 0; index < 4; ++index)
-            peOffset |= static_cast<std::uint32_t>(static_cast<unsigned char>(expected[0x3C + index])) << (8 * index);
-        stampOffset = peOffset + 8;
-    }
-    bool same = reused.size() == expected.size();
-    for (std::size_t index = 0; same && index < reused.size(); ++index)
-        same = reused[index] == expected[index] || (index >= stampOffset && index < stampOffset + 4);
+    const bool same = reused == read(compiled.primaryArtifactPath);
     if (!same) {
         Emit(ErrorDiagnostic(
             std::format("module cache verification: reusing {} modules produced a different artifact than compiling "

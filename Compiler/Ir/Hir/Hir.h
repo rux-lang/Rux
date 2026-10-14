@@ -796,9 +796,10 @@ inline HirGuardedPattern::~HirGuardedPattern() = default;
 inline HirBlockExpr::~HirBlockExpr() = default;
 
 /// `dynamic_cast` to a concrete HIR node type. As with `AstCast`, every concrete node derives directly from a node base
-/// and nothing derives from it, so comparing type identities answers the same question far more cheaply.
+/// and nothing derives from it, so comparing type identities, by address as `AstCast` does, answers the same question
+/// far more cheaply.
 template <typename T, typename Node>
 [[nodiscard]] inline T *HirCast(Node *node) noexcept {
-    return node != nullptr && typeid(*node) == typeid(T) ? static_cast<T *>(node) : nullptr;
+    return node != nullptr && &typeid(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
 }
 } // namespace Rux

@@ -150,14 +150,7 @@ func Main() -> int {
         const auto full = CompilerDriver(uncached).Compile();
         REQUIRE(full.ok);
         CHECK(full.stats.dependencyReusedFiles == 0);
-        auto expected = ReadBinaryFile(full.primaryArtifactPath);
-        REQUIRE(expected.size() == incremental.size());
-        // A PE image records when it was linked; nothing else may differ.
-        if (expected.size() > 0x40 && expected[0] == 'M' && expected[1] == 'Z') {
-            const std::size_t stamp = Read32(expected, 0x3C) + 8;
-            std::copy_n(incremental.begin() + static_cast<std::ptrdiff_t>(stamp), 4,
-                        expected.begin() + static_cast<std::ptrdiff_t>(stamp));
-        }
+        const auto expected = ReadBinaryFile(full.primaryArtifactPath);
         CHECK(expected == incremental);
     }
     CHECK(diagnostics.empty());

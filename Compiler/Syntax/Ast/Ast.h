@@ -949,11 +949,12 @@ struct Module {
  * Every concrete node type derives directly from one of the node bases (`Expr`, `Stmt`, `Decl`, `TypeExpr`, `Pattern`)
  * and nothing derives from it, so a node is a `T` exactly when its dynamic type is `T`. Comparing type identities is
  * far cheaper than the general hierarchy walk `dynamic_cast` performs, which had been the largest single cost of
- * semantic analysis.
+ * semantic analysis. The identities are compared by address: the compiler is one statically linked image, which holds
+ * exactly one `type_info` per type, so this is the same answer without comparing the types' mangled names.
  */
 template <typename T, typename Node>
 [[nodiscard]] inline T *AstCast(Node *node) noexcept {
-    return node != nullptr && typeid(*node) == typeid(T) ? static_cast<T *>(node) : nullptr;
+    return node != nullptr && &typeid(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
 }
 
 inline ArrayTypeExpr::~ArrayTypeExpr() = default;
