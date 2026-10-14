@@ -58,6 +58,10 @@ public:
     [[nodiscard]] Scope *Parent() const;
     [[nodiscard]] const std::unordered_map<std::string, Symbol> &Table() const;
 
+    /// Point this scope's parent, and the module scopes its symbols name, at the copies `copies` gives for them: an
+    /// index copied together with its scopes calls this on every copy.
+    void Remap(const std::unordered_map<const Scope *, Scope *> &copies);
+
 private:
     Scope *parent;
     std::unordered_map<std::string, Symbol> table;
@@ -85,6 +89,9 @@ public:
     using ResolveType = std::function<TypeRef(const TypeExpr &)>;
 
     SemanticProgramIndex(std::vector<SemanticDiagnostic> &diagnostics, std::vector<SemanticSymbol> &publicSymbols);
+    /// A copy of `base` with scopes of its own, reporting into `diagnostics` and `publicSymbols`.
+    SemanticProgramIndex(const SemanticProgramIndex &base, std::vector<SemanticDiagnostic> &diagnostics,
+                         std::vector<SemanticSymbol> &publicSymbols);
 
     [[nodiscard]] Scope &GlobalScope();
     [[nodiscard]] Scope &CreateScope(Scope &parent);

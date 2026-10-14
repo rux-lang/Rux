@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <format>
 #include <utility>
 
@@ -105,7 +106,19 @@ bool AnalysisContext::CanConvertToInterface(const TypeRef &argument, const TypeR
 }
 
 AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output)
-    : modules(inputs.modules)
+    : AnalysisContext(std::move(inputs), output, nullptr) {
+}
+
+AnalysisContext::AnalysisContext(const AnalysisContext &base, AnalysisInputs inputs, SemanticFacts &output)
+    : AnalysisContext(std::move(inputs), output, &base) {
+    // Only the state that outlives a function is copied, so the base must be between functions.
+    assert(base.currentFunctionDecl == nullptr && base.currentScope == &base.globalScope &&
+           "a context is copied between functions");
+}
+
+AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, const AnalysisContext *base)
+    : AnalysisState(base != nullptr ? static_cast<const AnalysisState &>(*base) : AnalysisState{})
+    , modules(inputs.modules)
     , deps(inputs.dependencies)
     , packageName(inputs.packageName)
     , diags(inputs.diagnostics)
@@ -154,7 +167,8 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output)
     , exhaustiveMatchStatements(output.exhaustiveMatchStatements)
     , ownedMatchSubjects(output.ownedMatchSubjects)
     , typeQueryValues(output.typeQueryValues)
-    , programIndex(diags, inputs.symbols)
+    , programIndex(base != nullptr ? SemanticProgramIndex(base->programIndex, diags, inputs.symbols)
+                                   : SemanticProgramIndex(diags, inputs.symbols))
     , globalScope(programIndex.GlobalScope())
     , packageModuleScopes(programIndex.Packages())
     , structDecls(programIndex.Structs())

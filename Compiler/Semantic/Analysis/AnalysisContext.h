@@ -56,9 +56,173 @@ struct AnalysisInputs {
 /// `__float128`. Every other type is left to the checks that already hold for it.
 [[nodiscard]] bool HasCAbiMapping(const TypeRef &type) noexcept;
 
-class AnalysisContext final {
+/// What an analysis builds up and keeps from one function to the next, apart from the facts it records and the program
+/// index. A context that checks some modules' bodies starts as a copy of one that ran the phases before them, and
+/// everything declared here is copied with it; state that lives only while one function is checked belongs in
+/// `AnalysisContext` instead.
+struct AnalysisState {
+    struct DeferredUnaryCheck {
+        TokenKind op;
+        TypeRef operand;
+        SourceLocation location;
+    };
+
+    struct DeferredBinaryCheck {
+        TokenKind op;
+        TypeRef left;
+        TypeRef right;
+        const Expr *leftExpression;
+        const Expr *rightExpression;
+        const BinaryExpr *binaryExpression;
+        SourceLocation location;
+    };
+
+    struct DeferredCastCheck {
+        TypeRef operand;
+        TypeRef target;
+        SourceLocation location;
+    };
+
+    struct DeferredAtomicCheck {
+        TypeRef value;
+        std::string operation;
+        SourceLocation location;
+    };
+
+    struct DeferredScalarRead {
+        TypeRef reference;
+        SourceLocation location;
+    };
+
+    struct DeferredOutcomeCheck {
+        TypeRef payload;
+        SourceLocation location;
+        bool propagation = false;
+    };
+
+    /// A value whose type mentions a type parameter, so whether handing it over consumes it is not yet knowable.
+    /// Answered once per instantiation, when the parameter stands for something with a mobility.
+    struct DeferredConsumption {
+        const Expr *expression;
+        ValueConsumptionKind kind;
+        TypeRef type;
+        SourceLocation location;
+    };
+
+    /// A native match whose subject or typed annotations mention a type parameter, checked again per instantiation.
+    struct DeferredMatchCheck {
+        std::vector<const Pattern *> patterns;
+        TypeRef subject;
+    };
+
+    /// An `is` test whose subject or tested type mentions a type parameter, checked again per instantiation.
+    struct DeferredMembershipCheck {
+        TypeRef subject;
+        TypeRef tested;
+        SourceLocation location;
+    };
+
+    /// Where a call supplied a generic function's type arguments.
+    struct InstantiationSite {
+        std::string file;
+        SourceLocation location;
+    };
+
+    struct DeferredGenericCall {
+        const FuncDecl *callee;
+        std::unordered_map<std::string, TypeRef> substitutions;
+        std::optional<InstantiationSite> site;
+    };
+
+    struct PendingGenericInstantiation {
+        const FuncDecl *decl;
+        std::unordered_map<std::string, TypeRef> substitutions;
+        std::optional<InstantiationSite> site;
+    };
+
+    /// An enum a generic body composes out of its own parameters -- `Option<V>` written inside a container -- noted
+    /// against the function that writes it, so it can be composed again where the parameters are finally types.
+    struct DeferredEnumInstantiation {
+        const EnumDecl *decl;
+        std::vector<TypeRef> typeArgs;
+    };
+
+    std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
+    /// Per source file: for each primitive (by canonical kind), the packages whose extensions of it the file imported,
+    /// with `import Pkg::int8;` or a glob reaching a module that extends it.
+    std::unordered_map<std::string, std::unordered_map<TypeRef::Kind, std::unordered_set<std::string>>>
+        primitiveExtensionImports;
+    /// Native constructors whose operand has already been handed over, so checking one twice never moves twice.
+    std::unordered_set<const NativeConstructExpr *> consumedConstructorOperands;
+    /// Whether each native match, keyed by its first arm's pattern, covers its subject, so control flow can ask after
+    /// the arms are checked.
+    std::unordered_map<const Pattern *, bool> nativeMatchExhaustive;
+    /// What each tuple match, keyed by its first arm's pattern, leaves uncovered, or nothing when its arms cover it.
+    std::unordered_map<const Pattern *, std::optional<std::string>> tupleMatchMissing;
+    /// Types an instantiation named for the first time, which nothing written concretely spells. A generic body
+    /// composing `Option<V>` mentions no such type until `V` is decided, so the walks over what the program wrote
+    /// never reach it and it would have neither a layout nor a destructor.
+    std::vector<TypeRef> instantiatedTypes;
+    /// The types a generic function's body was checked with that still name its type parameters, by spelling. A
+    /// body is checked once, generically, so each instantiation substitutes these to learn what it holds by value:
+    /// a type only an instantiation spells, such as a `Block<Tracked>` built inside `Make<T>`, needs drop glue too.
+    std::unordered_map<const FuncDecl *, std::unordered_map<std::string, TypeRef>> genericBodyTypes;
+    /// The type a destination expects of an expression it is about to check, recorded before the check for the
+    /// expressions whose parts take their type from it, such as the elements of an array literal.
+    std::unordered_map<const Expr *, TypeRef> expectedExpressionTypes;
+    std::string currentFile;
+    std::string currentPackage;
+    std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
+    std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
+    std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
+    std::unordered_map<const GlobalDecl *, TypeRef> checkedGlobalTypes;
+    /// Constants declared by a statement inside a function body rather than at module level.
+    std::unordered_set<const ConstDecl *> localConstants;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredAtomicCheck>> deferredAtomicChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredScalarRead>> deferredScalarReads;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredOutcomeCheck>> deferredOutcomeChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredMatchCheck>> deferredMatchChecks;
+    /// Native types a generic body composes out of its own parameters. Nothing written concretely spells them, so each
+    /// instantiation composes them again where the parameters are types, which gives them layouts and drop glue.
+    std::unordered_map<const FuncDecl *, std::vector<TypeRef>> deferredNativeTypes;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredMembershipCheck>> deferredMembershipChecks;
+    std::unordered_set<const TypeExpr *> reportedGenericArity;
+    /// The suffixed integer literals sitting directly under a unary minus, registered before the operand is checked
+    /// so the literal's own check knows its magnitude is a negative one. `-128i8` is in range while `128i8` is not.
+    std::unordered_set<const LiteralExpr *> negatedIntegerLiterals;
+    /// A type expression is resolved once per place it is read -- a parameter's type is resolved again for its symbol,
+    /// its signature, and each overload attempt -- so an unsatisfied bound is reported for the spelling, not per read.
+    std::unordered_set<const TypeExpr *> reportedTypeArgumentConstraints;
+    /// The overloads the last `LookupFunctionOverload` found equally good, when it selected none for that reason.
+    std::vector<const FuncDecl *> ambiguousOverloads;
+    std::unordered_set<const UseDecl *> refreshedImports;
+    /// Declarations `PrecheckDecl` checked, which `CheckDecl` then leaves alone.
+    std::unordered_set<const Decl *> precheckedDeclarations;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredEnumInstantiation>> deferredEnumInstantiations;
+    std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
+    /// Where each phase left the instantiation queue, so absorbed workers' entries go where a single context would
+    /// have queued them.
+    std::size_t instantiationsAfterDependencyBegin = 0;
+    std::size_t instantiationsAfterDependencyBodies = 0;
+    std::size_t instantiationsAfterUserBegin = 0;
+    std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
+    std::unordered_set<const FuncDecl *> reportedRunawayInstantiations;
+    /// The module-level imports bound before signatures were resolved. Checking their module's declarations binds them
+    /// again, and the errors that second binding repeats are dropped.
+    std::unordered_set<const UseDecl *> appliedImports;
+};
+
+class AnalysisContext final : private AnalysisState {
 public:
     AnalysisContext(AnalysisInputs inputs, SemanticFacts &output);
+    /// A context that starts where `base` is, between two functions: a copy of its state and of its program index with
+    /// scopes of its own. `output` must already hold a copy of the facts `base` records into. `base` is only read.
+    AnalysisContext(const AnalysisContext &base, AnalysisInputs inputs, SemanticFacts &output);
     ~AnalysisContext();
 
     AnalysisContext(const AnalysisContext &) = delete;
@@ -105,6 +269,8 @@ public:
     [[nodiscard]] std::unordered_set<const Decl *> ExportedDeclarations() const;
 
 private:
+    AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, const AnalysisContext *base);
+
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
                    std::optional<std::string> help = {}) const;
     void EmitWarning(SourceLocation location, std::string message) const;
@@ -657,11 +823,6 @@ private:
     /// Checks `intrinsic #name: Root;`: the compiler supplies a value only for a known root, and fills in only the
     /// fields `CompilerParameters.h` lists for it.
     void CheckCompilerParameterDeclaration(const ConstDecl &declaration, const TypeRef &type);
-    std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
-    /// Per source file: for each primitive (by canonical kind), the packages whose extensions of it the file imported,
-    /// with `import Pkg::int8;` or a glob reaching a module that extends it.
-    std::unordered_map<std::string, std::unordered_map<TypeRef::Kind, std::unordered_set<std::string>>>
-        primitiveExtensionImports;
     [[nodiscard]] bool IsVisibleTypeSymbol(const Symbol &symbol) const;
     /// The primitive a type symbol names, following aliases, with the packages whose extensions of it apply where the
     /// symbol is used: the current package, the current file's imports and, for an alias, those of every file that
@@ -695,13 +856,6 @@ private:
     void CheckFallibleDiscard(const TypeRef &type, SourceLocation location);
     /// Reports the fallible locals of the scope being closed that were never read.
     void CheckUnreadFallibleLocals();
-    /// Native constructors whose operand has already been handed over, so checking one twice never moves twice.
-    std::unordered_set<const NativeConstructExpr *> consumedConstructorOperands;
-    /// Whether each native match, keyed by its first arm's pattern, covers its subject, so control flow can ask after
-    /// the arms are checked.
-    std::unordered_map<const Pattern *, bool> nativeMatchExhaustive;
-    /// What each tuple match, keyed by its first arm's pattern, leaves uncovered, or nothing when its arms cover it.
-    std::unordered_map<const Pattern *, std::optional<std::string>> tupleMatchMissing;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
     std::unordered_map<const BinaryExpr *, bool> &aggregateEqualities;
@@ -717,14 +871,6 @@ private:
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
     std::unordered_map<std::string, TypeProperties> &typeProperties;
     std::unordered_map<std::string, DropGluePlan> &dropGluePlans;
-    /// Types an instantiation named for the first time, which nothing written concretely spells. A generic body
-    /// composing `Option<V>` mentions no such type until `V` is decided, so the walks over what the program wrote
-    /// never reach it and it would have neither a layout nor a destructor.
-    std::vector<TypeRef> instantiatedTypes;
-    /// The types a generic function's body was checked with that still name its type parameters, by spelling. A
-    /// body is checked once, generically, so each instantiation substitutes these to learn what it holds by value:
-    /// a type only an instantiation spells, such as a `Block<Tracked>` built inside `Make<T>`, needs drop glue too.
-    std::unordered_map<const FuncDecl *, std::unordered_map<std::string, TypeRef>> genericBodyTypes;
     /// One entry per (bound, concrete type) pair a use site proved, so lowering can call the satisfying method directly
     /// in each instantiation instead of dispatching through the interface.
     std::unordered_map<std::string, ResolvedConstraintWitness> &constraintWitnesses;
@@ -736,9 +882,6 @@ private:
     /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator
     /// without resolving it again and analysis knows the expression is a call rather than a place.
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> &indexOperators;
-    /// The type a destination expects of an expression it is about to check, recorded before the check for the
-    /// expressions whose parts take their type from it, such as the elements of an array literal.
-    std::unordered_map<const Expr *, TypeRef> expectedExpressionTypes;
     /// One entry per accepted index expression assigned through a declared `[]=`, for the same two reasons.
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> &indexAssignments;
     /// The index expression currently being checked as the direct target of a plain assignment, if any. The setter is
@@ -756,8 +899,6 @@ private:
     SemanticProgramIndex programIndex;
     Scope &globalScope;
     const SemanticProgramIndex::PackageScopes &packageModuleScopes;
-    std::string currentFile;
-    std::string currentPackage;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     bool currentFunctionNoReturn = false;
     int loopDepth = 0;
@@ -794,13 +935,7 @@ private:
     const std::unordered_map<const FuncDecl *, Scope *> &functionDeclScopes;
     const std::unordered_map<const FuncDecl *, std::string> &functionDeclFiles;
     const std::unordered_map<const Decl *, SemanticProgramIndex::DeclarationInfo> &declarationInfos;
-    std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
-    std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
-    std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
-    std::unordered_map<const GlobalDecl *, TypeRef> checkedGlobalTypes;
     std::unordered_set<const ConstDecl *> checkingConstants;
-    /// Constants declared by a statement inside a function body rather than at module level.
-    std::unordered_set<const ConstDecl *> localConstants;
     Scope *currentScope;
     MoveStateTracker moveStates;
     std::vector<MoveStateTracker> savedMoveStates;
@@ -896,89 +1031,6 @@ private:
     [[nodiscard]] bool CanConvertToInterface(const TypeRef &argument, const TypeRef &parameter) const;
 
 private:
-    struct DeferredUnaryCheck {
-        TokenKind op;
-        TypeRef operand;
-        SourceLocation location;
-    };
-
-    struct DeferredBinaryCheck {
-        TokenKind op;
-        TypeRef left;
-        TypeRef right;
-        const Expr *leftExpression;
-        const Expr *rightExpression;
-        const BinaryExpr *binaryExpression;
-        SourceLocation location;
-    };
-
-    struct DeferredCastCheck {
-        TypeRef operand;
-        TypeRef target;
-        SourceLocation location;
-    };
-
-    struct DeferredAtomicCheck {
-        TypeRef value;
-        std::string operation;
-        SourceLocation location;
-    };
-
-    struct DeferredScalarRead {
-        TypeRef reference;
-        SourceLocation location;
-    };
-
-    struct DeferredOutcomeCheck {
-        TypeRef payload;
-        SourceLocation location;
-        bool propagation = false;
-    };
-
-    /// A value whose type mentions a type parameter, so whether handing it over consumes it is not yet knowable.
-    /// Answered once per instantiation, when the parameter stands for something with a mobility.
-    struct DeferredConsumption {
-        const Expr *expression;
-        ValueConsumptionKind kind;
-        TypeRef type;
-        SourceLocation location;
-    };
-
-    std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredAtomicCheck>> deferredAtomicChecks;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredScalarRead>> deferredScalarReads;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredOutcomeCheck>> deferredOutcomeChecks;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;
-
-    /// A native match whose subject or typed annotations mention a type parameter, checked again per instantiation.
-    struct DeferredMatchCheck {
-        std::vector<const Pattern *> patterns;
-        TypeRef subject;
-    };
-
-    /// An `is` test whose subject or tested type mentions a type parameter, checked again per instantiation.
-    struct DeferredMembershipCheck {
-        TypeRef subject;
-        TypeRef tested;
-        SourceLocation location;
-    };
-
-    std::unordered_map<const FuncDecl *, std::vector<DeferredMatchCheck>> deferredMatchChecks;
-    /// Native types a generic body composes out of its own parameters. Nothing written concretely spells them, so each
-    /// instantiation composes them again where the parameters are types, which gives them layouts and drop glue.
-    std::unordered_map<const FuncDecl *, std::vector<TypeRef>> deferredNativeTypes;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredMembershipCheck>> deferredMembershipChecks;
-    std::unordered_set<const TypeExpr *> reportedGenericArity;
-
-    /// The suffixed integer literals sitting directly under a unary minus, registered before the operand is checked
-    /// so the literal's own check knows its magnitude is a negative one. `-128i8` is in range while `128i8` is not.
-    std::unordered_set<const LiteralExpr *> negatedIntegerLiterals;
-    /// A type expression is resolved once per place it is read -- a parameter's type is resolved again for its symbol,
-    /// its signature, and each overload attempt -- so an unsatisfied bound is reported for the spelling, not per read.
-    std::unordered_set<const TypeExpr *> reportedTypeArgumentConstraints;
-
     void RegisterBuiltins();
     void IndexDeclarations();
     void CollectModule(const Module &module);
@@ -1017,8 +1069,6 @@ private:
                                               const std::vector<TypeRef> &parameterTypes);
     const FuncDecl *SelectOverload(const std::vector<OverloadMatch> &matches,
                                    const std::vector<TypeRef> &argumentTypes);
-    /// The overloads the last `LookupFunctionOverload` found equally good, when it selected none for that reason.
-    std::vector<const FuncDecl *> ambiguousOverloads;
     [[nodiscard]] const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
                                                          const std::vector<TypeRef> &argumentTypes,
                                                          const std::vector<TypeExprPtr> &typeArguments,
@@ -1151,9 +1201,6 @@ private:
     void RefreshModuleImportsInScope(const Module &module, Scope &scope);
     void RefreshDeclImports(const Decl &declaration);
     void ReapplyUseDecl(const UseDecl &useDecl);
-    std::unordered_set<const UseDecl *> refreshedImports;
-    /// Declarations `PrecheckDecl` checked, which `CheckDecl` then leaves alone.
-    std::unordered_set<const Decl *> precheckedDeclarations;
     /// Queues the destructor of every droppable type recorded, so its body is analyzed at each type it will
     /// be built for. Nothing in the source calls a destructor -- the generated glue does -- so without this a body
     /// reachable no other way is lowered having never been analyzed, and anything it deferred until its type
@@ -1245,42 +1292,9 @@ private:
     /// which takes none.
     [[nodiscard]] std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType, const FuncDecl &method);
 
-    /// Where a call supplied a generic function's type arguments.
-    struct InstantiationSite {
-        std::string file;
-        SourceLocation location;
-    };
-
-    struct DeferredGenericCall {
-        const FuncDecl *callee;
-        std::unordered_map<std::string, TypeRef> substitutions;
-        std::optional<InstantiationSite> site;
-    };
-
-    struct PendingGenericInstantiation {
-        const FuncDecl *decl;
-        std::unordered_map<std::string, TypeRef> substitutions;
-        std::optional<InstantiationSite> site;
-    };
-
     /// The instantiation whose body is being re-checked, so errors found there can say what caused it.
     const PendingGenericInstantiation *activeInstantiation = nullptr;
 
-    /// An enum a generic body composes out of its own parameters -- `Option<V>` written inside a container -- noted
-    /// against the function that writes it, so it can be composed again where the parameters are finally types.
-    struct DeferredEnumInstantiation {
-        const EnumDecl *decl;
-        std::vector<TypeRef> typeArgs;
-    };
-
-    std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
-    std::unordered_map<const FuncDecl *, std::vector<DeferredEnumInstantiation>> deferredEnumInstantiations;
-    std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
-    /// Where each phase left the instantiation queue, so absorbed workers' entries go where a single context would
-    /// have queued them.
-    std::size_t instantiationsAfterDependencyBegin = 0;
-    std::size_t instantiationsAfterDependencyBodies = 0;
-    std::size_t instantiationsAfterUserBegin = 0;
     Parallel::WorkerPool *workers = nullptr;
 
 public:
@@ -1315,11 +1329,9 @@ public:
     };
 
 private:
-    std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
     /// Queue the destructor of every type a drop glue plan destroys through it, which no checked body may have named.
     void QueueDropGlueDestructors();
     [[nodiscard]] std::size_t ValidatedInstantiationCount() const;
-    std::unordered_set<const FuncDecl *> reportedRunawayInstantiations;
     std::unordered_set<std::string> activeLayoutTypes;
 
     struct ImportScope {
@@ -1574,9 +1586,6 @@ private:
     void ImportSignatureDependencies(const Symbol &sym, const std::unordered_map<std::string, Symbol> &sourceTable);
 
     void CheckUseDecl(const UseDecl &d);
-    /// The module-level imports bound before signatures were resolved. Checking their module's declarations binds them
-    /// again, and the errors that second binding repeats are dropped.
-    std::unordered_set<const UseDecl *> appliedImports;
 
     static std::string MangleTypeName(const TypeRef &type);
 

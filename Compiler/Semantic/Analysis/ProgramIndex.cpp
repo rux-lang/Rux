@@ -160,6 +160,20 @@ Scope *Scope::Parent() const {
     return parent;
 }
 
+void Scope::Remap(const std::unordered_map<const Scope *, Scope *> &copies) {
+    const auto copyOf = [&](Scope *scope) {
+        if (scope == nullptr)
+            return scope;
+        const auto copy = copies.find(scope);
+        return copy == copies.end() ? scope : copy->second;
+    };
+    parent = copyOf(parent);
+    for (auto &[name, symbol] : table) {
+        static_cast<void>(name);
+        symbol.moduleScope = copyOf(symbol.moduleScope);
+    }
+}
+
 const std::unordered_map<std::string, Symbol> &Scope::Table() const {
     return table;
 }
@@ -168,6 +182,65 @@ SemanticProgramIndex::SemanticProgramIndex(std::vector<SemanticDiagnostic> &inpu
                                            std::vector<SemanticSymbol> &inputPublicSymbols)
     : diagnostics(inputDiagnostics)
     , publicSymbols(inputPublicSymbols) {
+}
+
+// Every member is copied here: a member missing from this list would start empty in the copy.
+SemanticProgramIndex::SemanticProgramIndex(const SemanticProgramIndex &base,
+                                           std::vector<SemanticDiagnostic> &inputDiagnostics,
+                                           std::vector<SemanticSymbol> &inputPublicSymbols)
+    : diagnostics(inputDiagnostics)
+    , publicSymbols(inputPublicSymbols)
+    , globalScope(base.globalScope)
+    , packageScopes(base.packageScopes)
+    , structs(base.structs)
+    , enums(base.enums)
+    , unions(base.unions)
+    , interfaces(base.interfaces)
+    , methods(base.methods)
+    , functions(base.functions)
+    , functionModulePaths(base.functionModulePaths)
+    , methodImplementations(base.methodImplementations)
+    , implementations(base.implementations)
+    , externFunctions(base.externFunctions)
+    , implementedInterfaces(base.implementedInterfaces)
+    , functionScopes(base.functionScopes)
+    , functionSources(base.functionSources)
+    , declarationInfos(base.declarationInfos)
+    , nominalDeclarations(base.nominalDeclarations)
+    , nominalNames(base.nominalNames)
+    , typeOwners(base.typeOwners)
+    , primitiveExtensions(base.primitiveExtensions) {
+    // The scopes are copied in order, and every pointer to one of the base's scopes is pointed at its copy.
+    std::unordered_map<const Scope *, Scope *> copies;
+    copies.reserve(base.scopes.size() + 1);
+    copies.emplace(&base.globalScope, &globalScope);
+    scopes.reserve(base.scopes.size());
+    for (const auto &scope : base.scopes) {
+        scopes.push_back(std::make_unique<Scope>(*scope));
+        copies.emplace(scope.get(), scopes.back().get());
+    }
+    const auto copyOf = [&](Scope *scope) {
+        const auto copy = copies.find(scope);
+        return copy == copies.end() ? scope : copy->second;
+    };
+    globalScope.Remap(copies);
+    for (const auto &scope : scopes)
+        scope->Remap(copies);
+    for (auto &[package, modules] : packageScopes) {
+        static_cast<void>(package);
+        for (auto &[path, scope] : modules) {
+            static_cast<void>(path);
+            scope = copyOf(scope);
+        }
+    }
+    for (auto &[function, scope] : functionScopes) {
+        static_cast<void>(function);
+        scope = copyOf(scope);
+    }
+    for (auto &[declaration, info] : declarationInfos) {
+        static_cast<void>(declaration);
+        info.scope = copyOf(info.scope);
+    }
 }
 
 Scope &SemanticProgramIndex::GlobalScope() {

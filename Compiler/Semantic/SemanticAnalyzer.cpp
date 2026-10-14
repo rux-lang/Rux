@@ -114,11 +114,11 @@ bool SemanticAnalyzer::AnalyzeInParallel(std::vector<const Module *> &constModul
     // modules are reused and only their declarations are checked, one context is faster than several.
     if (total * 4 < reusedWeight)
         return false;
-    // One context per thread: the finisher, which checks no body, and one per range of modules. Every context repeats
-    // the Begin phases and holds its own copy of their state, so past a few ranges that repeated work costs more than
-    // splitting bodies further saves: on the 100,000-line benchmark four ranges check as fast as six and keep 80 MB
-    // less, while three are slower.
-    constexpr std::size_t maxRanges = 4;
+    // One context per thread: the finisher, which checks no body, and one per range of modules. Every other context
+    // starts as a copy of the finisher's state and holds it as long as the finisher does, and the copies are made at
+    // once, so past a few ranges copying costs more than splitting bodies further saves: on the 100,000-line benchmark
+    // six ranges are faster than four or eight.
+    constexpr std::size_t maxRanges = 6;
     const std::size_t contexts = std::min({maxRanges, pool->Jobs() - 1, ordered.size()});
     if (contexts < 2)
         return false;
@@ -139,28 +139,41 @@ bool SemanticAnalyzer::AnalyzeInParallel(std::vector<const Module *> &constModul
         std::unique_ptr<SemanticDetail::AnalysisContext> context;
     };
 
-    // The first context checks no body: once its Begin phases are done, the others take their own records out of
-    // themselves against it, and it merges them and finishes. It is claimed first, so a worker waiting on it never
-    // waits on a task no thread will run.
+    // The first context checks no body. It runs the dependencies' Begin phases, the costly part of Begin, once for
+    // everyone: each other context starts as a copy of it, and it waits until all have copied it before it runs the
+    // package's own Begin phases. The others check their dependency bodies, run the package's Begin phases themselves,
+    // which are cheap, check their own bodies, and once the first is done take their own records out of themselves
+    // against it; it merges them and finishes. It is claimed first, so a worker waiting on it never waits on a task no
+    // thread will run.
     std::vector<Replica> replicas(ranges + 1);
     std::vector<SemanticDetail::AnalysisContext::BodyRecords> records(ranges);
     std::mutex mutex;
     std::condition_variable condition;
+    bool dependenciesBegun = false;
+    std::size_t copies = 0;
     bool finisherReady = false;
     std::atomic<bool> failed = false;
+    const auto inputsOf = [&](Replica &replica) {
+        return SemanticDetail::AnalysisInputs{constModules,    deps,
+                                              packageName,     replica.diagnostics,
+                                              replica.symbols, compileTimeContext,
+                                              imports,         &declarationOnlyModules};
+    };
     pool->ForEach(replicas.size(), [&](const std::size_t index) {
         auto &replica = replicas[index];
-        replica.context = std::make_unique<SemanticDetail::AnalysisContext>(
-            SemanticDetail::AnalysisInputs{constModules, deps, packageName, replica.diagnostics, replica.symbols,
-                                           compileTimeContext, imports, &declarationOnlyModules},
-            replica.facts);
-        auto &context = *replica.context;
-        const std::size_t begin = index == 0 ? 0 : bounds[index - 1];
-        const std::size_t end = index == 0 ? 0 : bounds[index];
-        context.BeginDependencies();
-        context.CheckDependencyModules(std::min(begin, dependencyCount), std::min(end, dependencyCount));
-        context.BeginUserModules();
         if (index == 0) {
+            replica.context = std::make_unique<SemanticDetail::AnalysisContext>(inputsOf(replica), replica.facts);
+            replica.context->BeginDependencies();
+            {
+                const std::scoped_lock lock(mutex);
+                dependenciesBegun = true;
+            }
+            condition.notify_all();
+            {
+                std::unique_lock lock(mutex);
+                condition.wait(lock, [&] { return copies == ranges; });
+            }
+            replica.context->BeginUserModules();
             {
                 const std::scoped_lock lock(mutex);
                 finisherReady = true;
@@ -170,6 +183,25 @@ bool SemanticAnalyzer::AnalyzeInParallel(std::vector<const Module *> &constModul
                 failed = true;
             return;
         }
+        {
+            std::unique_lock lock(mutex);
+            condition.wait(lock, [&] { return dependenciesBegun; });
+        }
+        // The first context is waiting for the copies, so reading it here races with nothing.
+        const auto &base = replicas.front();
+        replica.facts = base.facts;
+        replica.context =
+            std::make_unique<SemanticDetail::AnalysisContext>(*base.context, inputsOf(replica), replica.facts);
+        {
+            const std::scoped_lock lock(mutex);
+            ++copies;
+        }
+        condition.notify_all();
+        auto &context = *replica.context;
+        const std::size_t begin = bounds[index - 1];
+        const std::size_t end = bounds[index];
+        context.CheckDependencyModules(std::min(begin, dependencyCount), std::min(end, dependencyCount));
+        context.BeginUserModules();
         context.CheckUserModules(std::max(begin, dependencyCount) - dependencyCount,
                                  std::max(end, dependencyCount) - dependencyCount);
         if (!replica.diagnostics.empty())
