@@ -5,6 +5,7 @@
 #include "Optimization/ConstantAddresses.h"
 
 #include <algorithm>
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
@@ -88,14 +89,23 @@ bool Speculatable(const LirInstr &instruction) {
 
 /// Gives every loop entered from a single block that also branches elsewhere its own preheader on that edge, so the
 /// loop has a block that runs exactly when the loop is entered and nothing else depends on.
-bool InsertPreheaders(LirFunc &function) {
-    if (function.isExtern || function.isAsm || function.blocks.size() < 2 || function.blocks.size() > 4096)
-        return false;
-    const LirControlFlow cfg(function);
-    const LirDominance dominance(cfg);
-    const LirNaturalLoops loops(cfg, dominance);
-    if (!loops.complete)
-        return false;
+/// A function's control flow, dominance and natural loops, which both phases read: built once for both when giving
+/// loops preheaders changes no block, and again for hoisting when it does.
+struct LoopAnalysis {
+    explicit LoopAnalysis(const LirFunc &function)
+        : cfg(function)
+        , dominance(cfg)
+        , loops(cfg, dominance) {
+    }
+
+    LirControlFlow cfg;
+    LirDominance dominance;
+    LirNaturalLoops loops;
+};
+
+bool InsertPreheaders(LirFunc &function, const LoopAnalysis &analysis) {
+    const auto &cfg = analysis.cfg;
+    const auto &loops = analysis.loops;
     bool changed = false;
     for (const auto &[header, members] : loops.members) {
         std::vector<std::uint32_t> outside;
@@ -144,13 +154,40 @@ bool InsertPreheaders(LirFunc &function) {
     return changed;
 }
 
-bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNames) {
-    if (function.isExtern || function.isAsm || function.blocks.size() < 2 || function.blocks.size() > 4096) {
+/// The block a loop's invariants can move to: its one predecessor from outside, when that block leads only into the
+/// loop and dominates it.
+std::uint32_t HoistTarget(const LoopAnalysis &analysis, const std::uint32_t header,
+                          const std::unordered_set<std::uint32_t> &members) {
+    auto preheader = LirDominance::Invalid;
+    for (const auto predecessor : analysis.cfg.predecessors[header]) {
+        if (!members.contains(predecessor)) {
+            if (preheader != LirDominance::Invalid) {
+                return LirDominance::Invalid;
+            }
+            preheader = predecessor;
+        }
+    }
+    if (preheader == LirDominance::Invalid || analysis.cfg.successors[preheader].size() != 1 ||
+        !analysis.dominance.Dominates(preheader, header)) {
+        return LirDominance::Invalid;
+    }
+    return preheader;
+}
+
+bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNames, const LoopAnalysis &analysis) {
+    if (function.blocks.size() > 4096) {
+        return false;
+    }
+    const auto &cfg = analysis.cfg;
+    const auto &dominance = analysis.dominance;
+    const auto &loops = analysis.loops;
+    // The tables below cost more than the loops do; a function with no loop to hoist from needs none of them.
+    if (std::ranges::none_of(loops.members, [&](const auto &loop) {
+            return HoistTarget(analysis, loop.first, loop.second) != LirDominance::Invalid;
+        })) {
         return false;
     }
     const std::unordered_set<LirReg> constantAddresses = ConstantAddresses(function, constantNames);
-    const LirControlFlow cfg(function);
-    const LirDominance dominance(cfg);
     const LirLiveness liveness(function, cfg);
     const std::size_t registers = RegisterCountHint(function);
     LirRegisterTable<std::uint32_t> definitions(registers);
@@ -202,24 +239,11 @@ bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNam
         }
         return false;
     };
-    const LirNaturalLoops loops(cfg, dominance);
-    if (!loops.complete)
-        return false;
     bool changed = false;
     std::size_t budget = 512;
     for (const auto &[header, members] : loops.members) {
-        auto preheader = LirDominance::Invalid;
-        bool unique = true;
-        for (const auto predecessor : cfg.predecessors[header]) {
-            if (!members.contains(predecessor)) {
-                if (preheader != LirDominance::Invalid) {
-                    unique = false;
-                }
-                preheader = predecessor;
-            }
-        }
-        if (!unique || preheader == LirDominance::Invalid || cfg.successors[preheader].size() != 1 ||
-            !dominance.Dominates(preheader, header)) {
+        const auto preheader = HoistTarget(analysis, header, members);
+        if (preheader == LirDominance::Invalid) {
             continue;
         }
         bool again = true;
@@ -361,11 +385,20 @@ void LirLoopInvariants::Prepare(const LirPackage &package) {
 }
 
 PassChange LirLoopInvariants::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
-    if (!MayHaveLoops(function))
+    if (!MayHaveLoops(function) || function.isExtern || function.isAsm || function.blocks.size() < 2 ||
+        function.blocks.size() > 4096)
+        return PassChange::None;
+    auto analysis = std::make_unique<LoopAnalysis>(function);
+    if (!analysis->loops.complete)
         return PassChange::None;
     // This bounded motion phase runs once; reaching its budget leaves code in place, never drives nonconvergence.
-    const bool preheaders = InsertPreheaders(function);
-    const bool hoisted = Hoist(function, constantNames);
+    const bool preheaders = InsertPreheaders(function, *analysis);
+    if (preheaders) {
+        analysis = std::make_unique<LoopAnalysis>(function);
+        if (!analysis->loops.complete)
+            return PassChange::Changed;
+    }
+    const bool hoisted = Hoist(function, constantNames, *analysis);
     return preheaders || hoisted ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization
