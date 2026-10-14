@@ -150,6 +150,7 @@ Time:
   Lexing:                0 ms    0.0%
   Parsing:               0 ms    0.0%
   Loading dependency:   12 ms   57.1%
+  Reusing modules:       0 ms    0.0%
   Analyzing:             2 ms    9.5%
   Lowering to HIR:       1 ms    4.8%
   Lowering to LIR:       1 ms    4.8%
@@ -188,7 +189,7 @@ Every section is a title at column 0 over indented rows, with the label column s
 
 - **Each fact appears once.** The status line carries the profile, target, and elapsed time, so the rows beneath it carry only what it does not.
 - **A total closes the rows it sums.** `Total` ends the time table; `Declarations pruned` ends the four pruning counts it totals. `Estimated IR nodes` is not one of those four, which is why it sits outside the sum and says so in its label.
-- **`Other` is measured, not padding.** Phase timers cover lexing through linking, with `Loading dependency` the resolving, reading and conditional folding of dependency packages apart from their lexing and parsing, and `Optimizing LIR` the Release optimization passes apart from lowering; the wall clock also includes reading manifests, checking build records and module packs, and filesystem work that no phase measures. `Other` is that difference, so the percentage column always reaches 100%.
+- **`Other` is measured, not padding.** Phase timers cover lexing through linking, with `Loading dependency` the resolving, reading and conditional folding of dependency packages apart from their lexing and parsing, `Reusing modules` the hashing of sources and the reading and writing of module packs and precompiled packages, and `Optimizing LIR` the Release optimization passes apart from lowering; the wall clock also includes reading manifests, checking build records, and filesystem work that no phase measures. `Other` is that difference, so the percentage column always reaches 100%.
 - **Phase names match `--verbose`.** Both come from the same list, so a phase named in a progress line or a diagnostic note is spelled the same way here.
 
 `--quiet` suppresses the entire report, statistics included, but never diagnostics.

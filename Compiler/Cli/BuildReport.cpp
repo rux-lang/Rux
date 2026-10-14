@@ -99,10 +99,11 @@ std::string RenderGrid(const std::span<const std::string> headers,
 
 std::string RenderTimeSection(const BuildStats &stats, const Reporting::Style &style) {
     using Phase = CompilePhase;
-    const std::array<std::pair<Phase, std::chrono::milliseconds>, 9> phases{
+    const std::array<std::pair<Phase, std::chrono::milliseconds>, 10> phases{
         {{Phase::Lexing, stats.lexing},
          {Phase::Parsing, stats.parsing},
          {Phase::LoadingDependency, stats.dependencies},
+         {Phase::ReusingModules, stats.reuse},
          {Phase::Analyzing, stats.semantic},
          {Phase::LoweringToHir, stats.hir},
          {Phase::LoweringToLir, stats.lir},
@@ -368,6 +369,7 @@ std::string FormatBuildMatrixReport(const std::string_view packageName, const st
         aggregate.lir += cell.stats.lir;
         aggregate.lirOptimization += cell.stats.lirOptimization;
         aggregate.dependencies += cell.stats.dependencies;
+        aggregate.reuse += cell.stats.reuse;
         aggregate.codegen += cell.stats.codegen;
         aggregate.linking += cell.stats.linking;
         aggregate.localFiles += cell.stats.localFiles;

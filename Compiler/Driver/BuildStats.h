@@ -22,6 +22,8 @@ struct BuildStats {
     std::chrono::milliseconds parsing{0};
     /// Resolving, reading and folding the dependencies, apart from their lexing and parsing, which count above.
     std::chrono::milliseconds dependencies{0};
+    /// Hashing sources and reading packs to choose the modules to reuse, and writing the packs a build keeps.
+    std::chrono::milliseconds reuse{0};
     std::chrono::milliseconds semantic{0};
     std::chrono::milliseconds hir{0};
     /// Lowering HIR to LIR and preparing its pruning; the optimization passes count below.

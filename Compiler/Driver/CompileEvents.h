@@ -18,6 +18,9 @@ enum class CompilePhase {
     EmittingAssembly,
     EmittingObjects,
     Linking,
+    /// Choosing the compiled modules a build reuses and keeping the ones it compiled; timed, never reported as
+    /// progress.
+    ReusingModules,
 };
 
 enum class InspectionKind {

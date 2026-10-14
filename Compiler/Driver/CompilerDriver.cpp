@@ -672,7 +672,9 @@ CompileResult CompilerDriver::Impl::Compile() {
         finish();
         return result;
     }
+    const auto reuseStart = std::chrono::steady_clock::now();
     PrepareModuleReuse();
+    stats.reuse = ElapsedMs(reuseStart);
     if (!AnalyzeReusing()) {
         finish();
         return result;
@@ -1325,6 +1327,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     }
     stats.linking = ElapsedMs(linkingStart);
     if (moduleReuse.enabled) {
+        const auto recordStart = std::chrono::steady_clock::now();
         // Record every module this build has an object of, except one something was reported about: reusing it would
         // not report that again.
         std::unordered_set<std::string_view> reported;
@@ -1412,6 +1415,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                                     digest.modified, digest.source, digest.interface});
         }
         static_cast<void>(pack.Write(ModulePackPath()));
+        stats.reuse += ElapsedMs(recordStart);
     }
     return true;
 }
