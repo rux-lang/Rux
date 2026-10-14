@@ -5,6 +5,7 @@
 #include "Optimization/ConstantAddresses.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -46,7 +47,8 @@ bool Pure(const LirOpcode op) {
     }
 }
 
-using LiteralKeys = LirRegisterTable<std::string>;
+/// The literal each constant register holds, as a number shared by every register holding an equal literal.
+using LiteralKeys = LirRegisterTable<std::uint32_t>;
 /// The source of each conversion between two integer types of one width and signedness, such as `uint` and `uint64`:
 /// the value's bits do not change, so an operand read through it is the same operand.
 using SameBits = LirRegisterTable<LirReg>;
@@ -62,26 +64,46 @@ struct KeyHash {
 /// Available values by key. Keyed by text so a lookup can use the one buffer every key is built in.
 using ValueTable = std::unordered_map<std::string, LirReg, KeyHash, std::equal_to<>>;
 
-/// Write the key of `instruction` to `key`, replacing what it held: equal keys mean equal values.
+/// Append `value` in as few bytes as it needs, seven bits a byte with the top bit marking that more follow.
+void AppendLength(std::string &key, std::size_t value) {
+    while (value >= 0x80) {
+        key += static_cast<char>(0x80 | (value & 0x7F));
+        value >>= 7;
+    }
+    key += static_cast<char>(value);
+}
+
+void AppendWord(std::string &key, const std::uint32_t value) {
+    for (int shift = 0; shift < 32; shift += 8)
+        key += static_cast<char>((value >> shift) & 0xFF);
+}
+
+/// Write the key of `instruction` to `key`, replacing what it held: equal keys mean equal values. Every part is either
+/// of fixed size or preceded by its length, so two different instructions never share a key. The encoding is binary to
+/// keep the key of an operation on two registers short enough to need no heap storage of its own.
 void BuildKey(std::string &key, const LirInstr &instruction, const LiteralKeys *literals, const SameBits *sameBits) {
     key.clear();
-    key += std::to_string(static_cast<unsigned>(instruction.op));
-    key += ':';
-    // A primitive is spelled by its kind alone, so its kind stands in for the spelling; no spelling starts with '#'.
+    const auto op = static_cast<std::uint32_t>(instruction.op);
+    if (op < 0xFF) {
+        key += static_cast<char>(op);
+    }
+    else {
+        key += static_cast<char>(0xFF);
+        AppendWord(key, op);
+    }
+    // A primitive is spelled by its kind alone, so its kind stands in for the spelling.
     const TypeRef &type = instruction.type;
     if (type.kind <= TypeRef::Kind::Float512 && type.name.empty() && type.inner.empty() && !type.arrayLength) {
-        key += '#';
-        key += std::to_string(static_cast<unsigned>(type.kind));
+        key += 'p';
+        key += static_cast<char>(static_cast<unsigned>(type.kind));
     }
     else {
         const auto spelling = type.ToString();
-        key += std::to_string(spelling.size());
-        key += ':';
+        key += 's';
+        AppendLength(key, spelling.size());
         key += spelling;
     }
-    key += ':';
-    key += std::to_string(instruction.strArg.size());
-    key += ':';
+    AppendLength(key, instruction.strArg.size());
     key += instruction.strArg;
     for (auto source : instruction.srcs) {
         // Only an operand is looked through; the instruction's own type still separates different results.
@@ -92,15 +114,13 @@ void BuildKey(std::string &key, const LirInstr &instruction, const LiteralKeys *
                     break;
                 source = *found;
             }
-        if (const std::string *literal = literals == nullptr ? nullptr : literals->Find(source)) {
-            key += ":c";
-            key += std::to_string(literal->size());
-            key += ':';
-            key += *literal;
+        if (const std::uint32_t *literal = literals == nullptr ? nullptr : literals->Find(source)) {
+            key += 'c';
+            AppendWord(key, *literal);
         }
         else {
-            key += ":r";
-            key += std::to_string(source);
+            key += 'r';
+            AppendWord(key, source);
         }
     }
 }
@@ -120,6 +140,8 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         }
     }
     std::string key;
+    // Each distinct literal's number, in the order the literals first appear.
+    ValueTable literalNumbers;
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
             if (instruction.dst != LirNoReg && !types.Insert(instruction.dst, &instruction.type)) {
@@ -128,10 +150,12 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
             if (instruction.dst != LirNoReg && instruction.op == LirOpcode::Const && !instruction.isVolatile &&
                 instruction.srcs.empty() &&
                 (instruction.type.IsInteger() || instruction.type.IsBool() || instruction.type.IsChar())) {
-                // Preserve local constant definitions while recognizing equal typed operands. Own the text:
-                // instruction storage is replaced during traversal, so retaining instruction pointers is unsafe.
+                // Preserve local constant definitions while recognizing equal typed operands.
                 BuildKey(key, instruction, nullptr, nullptr);
-                literals.Insert(instruction.dst, key);
+                auto found = literalNumbers.find(std::string_view(key));
+                if (found == literalNumbers.end())
+                    found = literalNumbers.emplace(key, static_cast<LirReg>(literalNumbers.size())).first;
+                literals.Insert(instruction.dst, found->second);
             }
         }
     }
