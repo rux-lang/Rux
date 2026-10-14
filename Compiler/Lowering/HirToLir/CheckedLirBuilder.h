@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <unordered_set>
+#include <vector>
 
 namespace Rux {
 /**
@@ -70,6 +70,7 @@ public:
 
 private:
     [[nodiscard]] bool IsDefined(LirReg reg) const noexcept;
+    void MarkDefined(LirReg reg);
     [[nodiscard]] bool HasValidSources(const LirInstr &instruction) const noexcept;
     [[nodiscard]] bool HasValidSources(const LirTerminator &terminator) const noexcept;
     [[nodiscard]] bool HasValidTargets(const LirTerminator &terminator) const noexcept;
@@ -77,7 +78,8 @@ private:
     LirFunc *function;
     std::optional<BlockIndex> currentBlock;
     LirReg nextRegister = 0;
-    std::unordered_set<LirReg> definedRegisters;
+    /// One flag per allocated register, grown as registers are defined: registers are numbered densely from zero.
+    std::vector<bool> definedRegisters;
     std::string failureReason;
 };
 } // namespace Rux
