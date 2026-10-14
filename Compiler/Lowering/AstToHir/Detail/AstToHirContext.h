@@ -83,11 +83,13 @@ protected:
     /// Whether the module, or the constant, being lowered has read the build's time. Reading it is bookkeeping, not a
     /// change to what lowering does, so reading from a const member records it too.
     mutable bool readsBuildTime = false;
+
     /// The build's time, noting that the code being lowered depends on it.
     [[nodiscard]] std::int64_t BuildTimestamp() const {
         readsBuildTime = true;
         return context.buildInfo.Timestamp();
     }
+
     HirScope globalScope;
     HirScope *currentScope;
     std::vector<std::unique_ptr<HirScope>> ownedScopes;
