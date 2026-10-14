@@ -259,5 +259,6 @@ private:
     std::unique_ptr<LirDeclarationPruner> initialPruning;
     /// The pruner inside the LIR pipeline, owned by it.
     LirDeclarationPruner *loopPruning = nullptr;
+    Parallel::WorkerPool *workerPool = nullptr;
 };
 } // namespace Rux::Optimization

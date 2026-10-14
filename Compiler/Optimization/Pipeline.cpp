@@ -334,7 +334,7 @@ PassRunReport OptimizationPipeline::RunLir(LirPackage &package) {
     LirPruningStats initial;
     std::vector<Diagnostic> initialDiagnostics;
     if (initialPruning) {
-        const PassContext context{BuildProfile::Release, 0, 1, &initialDiagnostics, &initial};
+        const PassContext context{BuildProfile::Release, 0, 1, &initialDiagnostics, &initial, nullptr, workerPool};
         static_cast<void>(initialPruning->Run(package, context));
     }
     auto report = lir.Run(package);
@@ -361,6 +361,7 @@ void OptimizationPipeline::SetModuleRoots(std::vector<std::vector<LirModuleRoot>
 }
 
 void OptimizationPipeline::SetWorkerPool(Parallel::WorkerPool *pool) noexcept {
+    workerPool = pool;
     hir.SetWorkerPool(pool);
     lir.SetWorkerPool(pool);
 }
