@@ -99,13 +99,16 @@ std::string RenderGrid(const std::span<const std::string> headers,
 
 std::string RenderTimeSection(const BuildStats &stats, const Reporting::Style &style) {
     using Phase = CompilePhase;
-    const std::array<std::pair<Phase, std::chrono::milliseconds>, 7> phases{{{Phase::Lexing, stats.lexing},
-                                                                             {Phase::Parsing, stats.parsing},
-                                                                             {Phase::Analyzing, stats.semantic},
-                                                                             {Phase::LoweringToHir, stats.hir},
-                                                                             {Phase::LoweringToLir, stats.lir},
-                                                                             {Phase::EmittingObjects, stats.codegen},
-                                                                             {Phase::Linking, stats.linking}}};
+    const std::array<std::pair<Phase, std::chrono::milliseconds>, 9> phases{
+        {{Phase::Lexing, stats.lexing},
+         {Phase::Parsing, stats.parsing},
+         {Phase::LoadingDependency, stats.dependencies},
+         {Phase::Analyzing, stats.semantic},
+         {Phase::LoweringToHir, stats.hir},
+         {Phase::LoweringToLir, stats.lir},
+         {Phase::OptimizingLir, stats.lirOptimization},
+         {Phase::EmittingObjects, stats.codegen},
+         {Phase::Linking, stats.linking}}};
 
     // `total` is wall clock while the phases are individual timers, so the
     // difference is real work — resolving dependencies, reading manifests,
@@ -363,6 +366,8 @@ std::string FormatBuildMatrixReport(const std::string_view packageName, const st
         aggregate.semantic += cell.stats.semantic;
         aggregate.hir += cell.stats.hir;
         aggregate.lir += cell.stats.lir;
+        aggregate.lirOptimization += cell.stats.lirOptimization;
+        aggregate.dependencies += cell.stats.dependencies;
         aggregate.codegen += cell.stats.codegen;
         aggregate.linking += cell.stats.linking;
         aggregate.localFiles += cell.stats.localFiles;

@@ -512,7 +512,12 @@ CompileResult CompilerDriver::Impl::Compile() {
         finish();
         return result;
     }
-    if (!LoadDependencies()) {
+    const auto dependenciesStart = std::chrono::steady_clock::now();
+    const auto frontEndBefore = stats.lexing + stats.parsing;
+    const bool dependenciesLoaded = LoadDependencies();
+    stats.dependencies = std::max(std::chrono::milliseconds{0},
+                                  ElapsedMs(dependenciesStart) - (stats.lexing + stats.parsing - frontEndBefore));
+    if (!dependenciesLoaded) {
         finish();
         return result;
     }
@@ -990,7 +995,9 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         }
         optimizationPipeline.SetModuleRoots(roots);
     }
+    const auto lirOptimizationStart = std::chrono::steady_clock::now();
     const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
+    stats.lirOptimization = ElapsedMs(lirOptimizationStart);
     stats.optimizationPasses.insert(stats.optimizationPasses.end(), lirOptimization.passStatistics.begin(),
                                     lirOptimization.passStatistics.end());
     if (EmitAll(lirOptimization.diagnostics)) {
@@ -1011,7 +1018,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
             return false;
         }
     }
-    stats.lir = ElapsedMs(lirStart);
+    stats.lir = ElapsedMs(lirStart) - stats.lirOptimization;
 
     const auto codegenStart = std::chrono::steady_clock::now();
     const bool isAArch64 = compileTimeContext.target.arch == Target::Arch::AArch64;

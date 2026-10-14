@@ -149,12 +149,14 @@ Built StringBuilder (Debug, Windows x86-64) in 21 ms
 Time:
   Lexing:                0 ms    0.0%
   Parsing:               0 ms    0.0%
+  Loading dependency:   12 ms   57.1%
   Analyzing:             2 ms    9.5%
   Lowering to HIR:       1 ms    4.8%
   Lowering to LIR:       1 ms    4.8%
+  Optimizing LIR:        0 ms    0.0%
   Emitting RCU objects:  1 ms    4.8%
   Linking:               2 ms    9.5%
-  Other:                14 ms   66.7%
+  Other:                 2 ms    9.5%
   Total:                21 ms  100.0%
 
 Source:
@@ -186,7 +188,7 @@ Every section is a title at column 0 over indented rows, with the label column s
 
 - **Each fact appears once.** The status line carries the profile, target, and elapsed time, so the rows beneath it carry only what it does not.
 - **A total closes the rows it sums.** `Total` ends the time table; `Declarations pruned` ends the four pruning counts it totals. `Estimated IR nodes` is not one of those four, which is why it sits outside the sum and says so in its label.
-- **`Other` is measured, not padding.** Phase timers cover lexing through linking; the wall clock also includes resolving dependencies, reading manifests, and filesystem work that no phase measures. `Other` is that difference, so the percentage column always reaches 100%.
+- **`Other` is measured, not padding.** Phase timers cover lexing through linking, with `Loading dependency` the resolving, reading and conditional folding of dependency packages apart from their lexing and parsing, and `Optimizing LIR` the Release optimization passes apart from lowering; the wall clock also includes reading manifests, checking build records and module packs, and filesystem work that no phase measures. `Other` is that difference, so the percentage column always reaches 100%.
 - **Phase names match `--verbose`.** Both come from the same list, so a phase named in a progress line or a diagnostic note is spelled the same way here.
 
 `--quiet` suppresses the entire report, statistics included, but never diagnostics.
