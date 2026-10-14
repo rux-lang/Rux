@@ -297,11 +297,12 @@ struct LirSourceContext {
     std::uint32_t column = 0;
 };
 
-// LIR Instruction
+// LIR Instruction. The fields are ordered so the small ones share words: every instruction is moved several times on
+// its way through lowering and the passes, so padding costs as much as a field.
 struct LirInstr {
     LirReg dst = LirNoReg; // result register (LirNoReg for Store)
-    TypeRef type;          // result type (or value type for Store)
     LirOpcode op = LirOpcode::Const;
+    TypeRef type;             // result type (or value type for Store)
     std::vector<LirReg> srcs; // source registers
     std::string strArg;       // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
