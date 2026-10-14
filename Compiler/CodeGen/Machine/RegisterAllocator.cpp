@@ -29,15 +29,22 @@ public:
         words[bit / 64] &= ~(std::uint64_t{1} << (bit % 64));
     }
 
-    /// this |= other & ~mask; returns whether anything changed.
-    bool UnionWithout(const BitSet &other, const BitSet &mask) noexcept {
+    /// this |= generated | (outgoing & ~killed): one step of backward liveness without a temporary set; returns
+    /// whether anything changed.
+    bool UnionTransfer(const BitSet &generated, const BitSet &outgoing, const BitSet &killed) noexcept {
         bool changed = false;
         for (std::size_t index = 0; index < words.size(); ++index) {
-            const std::uint64_t next = words[index] | (other.words[index] & ~mask.words[index]);
+            const std::uint64_t next =
+                words[index] | generated.words[index] | (outgoing.words[index] & ~killed.words[index]);
             changed = changed || next != words[index];
             words[index] = next;
         }
         return changed;
+    }
+
+    /// Becomes a copy of `other`, reusing this set's storage.
+    void Assign(const BitSet &other) {
+        words.assign(other.words.begin(), other.words.end());
     }
 
     bool Union(const BitSet &other) noexcept {
@@ -64,6 +71,76 @@ public:
 
 private:
     std::vector<std::uint64_t> words;
+};
+
+/// A list of values per node, all kept in one growing run of fixed-size chunks, so a node's list grows without an
+/// allocation of its own. Lists are read in the order they were written. A visitor may append to other nodes' lists:
+/// every chunk is looked up again after each visit.
+template <typename T>
+class NodeLists {
+public:
+    void Reset(const std::size_t nodes) {
+        head.assign(nodes, None);
+        tail.assign(nodes, None);
+        chunks.clear();
+    }
+
+    void Push(const std::size_t node, const T value) {
+        std::uint32_t last = tail[node];
+        if (last == None || chunks[last].count == ChunkSize) {
+            const auto fresh = static_cast<std::uint32_t>(chunks.size());
+            chunks.emplace_back();
+            if (last == None)
+                head[node] = fresh;
+            else
+                chunks[last].next = fresh;
+            tail[node] = fresh;
+            last = fresh;
+        }
+        auto &chunk = chunks[last];
+        chunk.items[chunk.count++] = value;
+    }
+
+    /// Calls `visit` with each value of `node`'s list in order, stopping at the first call that returns true; returns
+    /// whether one did.
+    template <typename Visit>
+    bool Find(const std::size_t node, Visit visit) const {
+        for (std::uint32_t chunk = head[node]; chunk != None; chunk = chunks[chunk].next) {
+            for (std::uint32_t item = 0; item < chunks[chunk].count; ++item) {
+                const T value = chunks[chunk].items[item];
+                if (visit(value))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    template <typename Visit>
+    void ForEach(const std::size_t node, Visit visit) const {
+        Find(node, [&](const T value) {
+            visit(value);
+            return false;
+        });
+    }
+
+    /// Appends `from`'s list to `to`'s, which must be another node.
+    void Append(const std::size_t to, const std::size_t from) {
+        ForEach(from, [&](const T value) { Push(to, value); });
+    }
+
+private:
+    static constexpr std::uint32_t None = std::numeric_limits<std::uint32_t>::max();
+    static constexpr std::uint32_t ChunkSize = 6;
+
+    struct Chunk {
+        T items[ChunkSize]{};
+        std::uint32_t count = 0;
+        std::uint32_t next = None;
+    };
+
+    std::vector<Chunk> chunks;
+    std::vector<std::uint32_t> head;
+    std::vector<std::uint32_t> tail;
 };
 
 /// Interference between two registers of one class, stored as the lower triangle of a bit matrix over that class's
@@ -168,8 +245,8 @@ private:
     std::size_t registerCount = 0;
     std::vector<NodeState> state;
     std::vector<std::uint32_t> degree;
-    std::vector<std::vector<Reg>> adjacency;
-    std::vector<std::vector<std::uint32_t>> moveList;
+    NodeLists<Reg> adjacency;
+    NodeLists<std::uint32_t> moveList;
     std::vector<Reg> alias;
     std::vector<Reg> color;
     std::vector<double> spillCost;
@@ -178,6 +255,10 @@ private:
     std::array<std::unique_ptr<TriangleMatrix>, 2> interference;
     std::vector<Move> moves;
     std::vector<BitSet> liveOut;
+    /// The live set `Build` walks each block with, kept so its storage is reused.
+    BitSet live;
+    /// The neighbours `Conservative` has counted, kept so its storage is reused.
+    mutable std::vector<Reg> counted;
 
     std::vector<Reg> simplifyWorklist;
     std::vector<Reg> freezeWorklist;
@@ -253,8 +334,8 @@ private:
         registerCount = PhysicalRegisterCount + function.VirtualCount();
         state.assign(registerCount, NodeState::Initial);
         degree.assign(registerCount, 0);
-        adjacency.assign(registerCount, {});
-        moveList.assign(registerCount, {});
+        adjacency.Reset(registerCount);
+        moveList.Reset(registerCount);
         alias.assign(registerCount, NoReg);
         color.assign(registerCount, NoReg);
         spillCost.assign(registerCount, 0.0);
@@ -310,9 +391,7 @@ private:
                 const auto block = reverse - 1;
                 for (const auto successor : function.blocks[block].successors)
                     liveOut[block].Union(liveIn[successor]);
-                BitSet incoming = generated[block];
-                incoming.UnionWithout(liveOut[block], killed[block]);
-                changed = liveIn[block].Union(incoming) || changed;
+                changed = liveIn[block].UnionTransfer(generated[block], liveOut[block], killed[block]) || changed;
             }
         }
     }
@@ -325,11 +404,11 @@ private:
             return;
         matrix.Set(denseIndex[u], denseIndex[v]);
         if (!Precolored(u)) {
-            adjacency[u].push_back(v);
+            adjacency.Push(u, v);
             ++degree[u];
         }
         if (!Precolored(v)) {
-            adjacency[v].push_back(u);
+            adjacency.Push(v, u);
             ++degree[v];
         }
     }
@@ -345,7 +424,7 @@ private:
         std::vector<Reg> defs;
         for (std::size_t block = 0; block < function.blocks.size(); ++block) {
             const double weight = std::pow(10.0, std::min<std::uint32_t>(function.blocks[block].loopDepth, 6));
-            BitSet live = liveOut[block];
+            live.Assign(liveOut[block]);
             const auto &instructions = function.blocks[block].instructions;
             for (std::size_t reverse = instructions.size(); reverse > 0; --reverse) {
                 const auto &instruction = instructions[reverse - 1];
@@ -359,8 +438,8 @@ private:
                         live.Reset(reg);
                     const auto index = static_cast<std::uint32_t>(moves.size());
                     moves.push_back({instruction.operands[0].reg, instruction.operands[1].reg, MoveState::Worklist});
-                    moveList[instruction.operands[0].reg].push_back(index);
-                    moveList[instruction.operands[1].reg].push_back(index);
+                    moveList.Push(instruction.operands[0].reg, index);
+                    moveList.Push(instruction.operands[1].reg, index);
                     moveWorklist.push_back(index);
                 }
                 for (const auto reg : defs)
@@ -376,7 +455,7 @@ private:
     }
 
     [[nodiscard]] bool MoveRelated(const Reg reg) const {
-        return std::ranges::any_of(moveList[reg], [&](const std::uint32_t move) {
+        return moveList.Find(reg, [&](const std::uint32_t move) {
             return moves[move].state == MoveState::Worklist || moves[move].state == MoveState::Active;
         });
     }
@@ -402,18 +481,19 @@ private:
 
     template <typename Visit>
     void ForEachAdjacent(const Reg reg, Visit visit) const {
-        for (const auto other : adjacency[reg])
+        adjacency.ForEach(reg, [&](const Reg other) {
             if (state[other] != NodeState::Stacked && state[other] != NodeState::Coalesced)
                 visit(other);
+        });
     }
 
     void EnableMoves(const Reg reg) {
-        for (const auto move : moveList[reg]) {
+        moveList.ForEach(reg, [&](const std::uint32_t move) {
             if (moves[move].state == MoveState::Active) {
                 moves[move].state = MoveState::Worklist;
                 moveWorklist.push_back(move);
             }
-        }
+        });
     }
 
     void DecrementDegree(const Reg reg) {
@@ -465,11 +545,11 @@ private:
 
     [[nodiscard]] bool Conservative(const Reg u, const Reg v) const {
         std::uint32_t significant = 0;
-        std::vector<Reg> seen;
+        counted.clear();
         const auto count = [&](const Reg other) {
-            if (std::ranges::find(seen, other) != seen.end())
+            if (std::ranges::find(counted, other) != counted.end())
                 return;
-            seen.push_back(other);
+            counted.push_back(other);
             if (degree[other] >= K(other))
                 ++significant;
         };
@@ -483,7 +563,7 @@ private:
         alias[v] = u;
         spillCost[u] += spillCost[v];
         unspillable[u] = unspillable[u] && unspillable[v];
-        moveList[u].insert(moveList[u].end(), moveList[v].begin(), moveList[v].end());
+        moveList.Append(u, v);
         EnableMoves(v);
         ForEachAdjacent(v, [&](const Reg other) {
             AddEdge(other, u);
@@ -535,10 +615,10 @@ private:
     }
 
     void FreezeMoves(const Reg reg) {
-        for (const auto index : moveList[reg]) {
+        moveList.ForEach(reg, [&](const std::uint32_t index) {
             auto &move = moves[index];
             if (move.state != MoveState::Worklist && move.state != MoveState::Active)
-                continue;
+                return;
             const Reg x = Alias(move.destination);
             const Reg y = Alias(move.source);
             const Reg other = y == Alias(reg) ? x : y;
@@ -548,7 +628,7 @@ private:
                 state[other] = NodeState::Simplify;
                 simplifyWorklist.push_back(other);
             }
-        }
+        });
     }
 
     void Freeze() {
@@ -596,13 +676,15 @@ private:
     /// Prefers the color of a move partner that already has one, so a copy the coalescer had to leave still
     /// disappears when both ends land in the same register.
     [[nodiscard]] Reg PreferredColor(const Reg reg, const std::vector<bool> &available) const {
-        for (const auto index : moveList[reg]) {
-            const auto &move = moves[index];
-            const Reg partner = Alias(move.destination) == Alias(reg) ? Alias(move.source) : Alias(move.destination);
-            const Reg partnerColor = color[partner];
-            if (partnerColor != NoReg && available[partnerColor])
-                return partnerColor;
-        }
+        Reg preferred = NoReg;
+        if (moveList.Find(reg, [&](const std::uint32_t index) {
+                const auto &move = moves[index];
+                const Reg partner =
+                    Alias(move.destination) == Alias(reg) ? Alias(move.source) : Alias(move.destination);
+                preferred = color[partner];
+                return preferred != NoReg && available[preferred];
+            }))
+            return preferred;
         for (const auto candidate : target.allocationOrder[static_cast<std::size_t>(ClassOf(reg))])
             if (available[candidate])
                 return candidate;
@@ -617,11 +699,11 @@ private:
             std::ranges::fill(available, false);
             for (const auto candidate : target.allocationOrder[static_cast<std::size_t>(ClassOf(reg))])
                 available[candidate] = true;
-            for (const auto other : adjacency[reg]) {
+            adjacency.ForEach(reg, [&](const Reg other) {
                 const Reg representative = Alias(other);
                 if (state[representative] == NodeState::Colored || state[representative] == NodeState::Precolored)
                     available[color[representative]] = false;
-            }
+            });
             const Reg chosen = PreferredColor(reg, available);
             if (chosen == NoReg) {
                 state[reg] = NodeState::Spilled;
