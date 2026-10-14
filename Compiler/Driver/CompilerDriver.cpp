@@ -743,6 +743,15 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         return false;
     }
     BeginPhase(CompilePhase::OptimizingLir, opts.manifest.package.name.Text());
+    if (compileTimeContext.profile == BuildProfile::Release) {
+        // Each module is pruned from what the rest of the program needs of it, as the unoptimized code says, so its
+        // optimized code never depends on how the other modules were optimized.
+        std::vector<Optimization::LirModuleReferences> references(lirPackage.modules.size());
+        Workers().ForEach(lirPackage.modules.size(), [&](const std::size_t index) {
+            references[index] = Optimization::CollectModuleReferences(lirPackage.modules[index]);
+        });
+        optimizationPipeline.SetModuleRoots(Optimization::ModuleRoots(references, artifactKind));
+    }
     const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
     stats.optimizationPasses.insert(stats.optimizationPasses.end(), lirOptimization.passStatistics.begin(),
                                     lirOptimization.passStatistics.end());

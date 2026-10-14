@@ -67,6 +67,62 @@ TEST_CASE("executable LIR reachability follows package-wide code and data edges 
     CHECK(result.ReachableDeclarations().size() == 7);
 }
 
+TEST_CASE("pruning each module from its roots keeps what pruning the whole package keeps") {
+    const auto function = [](std::string name, std::vector<std::string> calls) {
+        LirFunc result;
+        result.name = std::move(name);
+        result.blocks.resize(1);
+        for (auto &call : calls) {
+            LirInstr instruction;
+            instruction.op = LirOpcode::Call;
+            instruction.strArg = std::move(call);
+            result.blocks[0].instrs.push_back(std::move(instruction));
+        }
+        return result;
+    };
+    LirModule entry;
+    entry.name = "Entry";
+    entry.funcs.push_back(function("Main", {"Support::Shared", "Local"}));
+    entry.funcs.push_back(function("Local", {}));
+    entry.funcs.push_back(function("Unused", {"Support::OnlyFromUnused"}));
+    LirModule support;
+    support.name = "Support";
+    support.funcs.push_back(function("Shared", {"Inner"}));
+    support.funcs.push_back(function("Inner", {"Entry::Local"}));
+    support.funcs.push_back(function("OnlyFromUnused", {}));
+    support.funcs.push_back(function("Widget::Display", {}));
+    support.vtables.push_back({"__vtable__Widget__Display", {"Widget::Display"}});
+    LirPackage package;
+    package.modules.push_back(std::move(entry));
+    package.modules.push_back(std::move(support));
+
+    std::vector<Optimization::LirModuleReferences> references;
+    for (const auto &module : package.modules)
+        references.push_back(Optimization::CollectModuleReferences(module));
+    for (const ArtifactKind kind : {ArtifactKind::Executable, ArtifactKind::SharedLibrary}) {
+        CAPTURE(static_cast<int>(kind));
+        const auto roots = Optimization::ModuleRoots(references, kind);
+        REQUIRE(roots.size() == 2);
+        const auto whole = Optimization::LirReachabilityAnalysis::Run(package, kind);
+        std::vector<Optimization::LirDeclarationId> combined;
+        for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
+            const auto own = Optimization::LirReachabilityAnalysis::RunModule(package, moduleIndex, roots[moduleIndex]);
+            for (const auto &declaration : own.ReachableDeclarations()) {
+                CHECK(declaration.moduleIndex == moduleIndex);
+                combined.push_back(declaration);
+            }
+        }
+        std::ranges::sort(combined);
+        CHECK(combined == whole.ReachableDeclarations());
+    }
+    // `Local` is entered from Main in its own module and from Support, so it is a root of Entry only through Support.
+    const auto executableRoots = Optimization::ModuleRoots(references, ArtifactKind::Executable);
+    using Root = Optimization::LirModuleRoot;
+    using Kind = Optimization::LirDeclarationKind;
+    CHECK(executableRoots[0] == std::vector<Root>{{Kind::Function, "Local"}, {Kind::Function, "Main"}});
+    CHECK(executableRoots[1] == std::vector<Root>{{Kind::Function, "Shared"}});
+}
+
 TEST_CASE("library LIR reachability roots exported code and data for both artifact kinds") {
     LirModule module;
     module.name = "Library";

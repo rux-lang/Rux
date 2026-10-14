@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BuildInfo/ArtifactKind.h"
+#include "Optimization/LirDeclarationPruner.h"
 #include "Optimization/Pass.h"
 
 #include <algorithm>
@@ -244,6 +245,10 @@ public:
     [[nodiscard]] std::vector<Diagnostic> Configure(std::span<const std::string> disabled, bool statistics);
     void SetObservers(HirPassPipeline::Observer hirObserver, LirPassPipeline::Observer lirObserver);
     void SetWorkerPool(Parallel::WorkerPool *pool) noexcept;
+    /// Prune each module from the declarations the artifact's roots and the other modules enter it through
+    /// (`ModuleRoots`, one list per module in package order), following only its own references, instead of walking the
+    /// whole package. What a module keeps then depends on the other modules only through these roots.
+    void SetModuleRoots(std::vector<std::vector<LirModuleRoot>> roots);
 
 private:
     OptimizationPipeline(BuildProfile profile, std::size_t fixedPointLimit);
@@ -251,6 +256,8 @@ private:
     HirPassPipeline hir;
     LirPassPipeline lir;
     /// Release pruning before the first LIR iteration, so no pass optimizes a declaration the artifact will not keep.
-    std::unique_ptr<LirPass> initialPruning;
+    std::unique_ptr<LirDeclarationPruner> initialPruning;
+    /// The pruner inside the LIR pipeline, owned by it.
+    LirDeclarationPruner *loopPruning = nullptr;
 };
 } // namespace Rux::Optimization

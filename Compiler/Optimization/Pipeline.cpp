@@ -309,7 +309,9 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
     OptimizationPipeline pipeline = ForProfile(profile, fixedPointLimit);
     if (profile == BuildProfile::Release) {
         pipeline.initialPruning = std::make_unique<LirDeclarationPruner>(artifactKind);
-        pipeline.lir.Add(std::make_unique<LirDeclarationPruner>(artifactKind));
+        auto loopPruning = std::make_unique<LirDeclarationPruner>(artifactKind);
+        pipeline.loopPruning = loopPruning.get();
+        pipeline.lir.Add(std::move(loopPruning));
     }
     return pipeline;
 }
@@ -348,6 +350,14 @@ PassRunReport OptimizationPipeline::RunLir(LirPackage &package) {
 void OptimizationPipeline::SetObservers(HirPassPipeline::Observer hirObserver, LirPassPipeline::Observer lirObserver) {
     hir.SetObserver(std::move(hirObserver));
     lir.SetObserver(std::move(lirObserver));
+}
+
+void OptimizationPipeline::SetModuleRoots(std::vector<std::vector<LirModuleRoot>> roots) {
+    const auto shared = std::make_shared<const std::vector<std::vector<LirModuleRoot>>>(std::move(roots));
+    if (initialPruning)
+        initialPruning->SetModuleRoots(shared);
+    if (loopPruning != nullptr)
+        loopPruning->SetModuleRoots(shared);
 }
 
 void OptimizationPipeline::SetWorkerPool(Parallel::WorkerPool *pool) noexcept {

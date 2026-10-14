@@ -3,6 +3,7 @@
 #include "Optimization/LirReachability.h"
 
 #include <cstddef>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -57,13 +58,22 @@ PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &con
         return PassChange::None;
     }
 
-    const auto reachability = LirReachabilityAnalysis::Run(package, artifactKind);
+    std::optional<LirReachabilityResult> wholePackage;
+    if (!moduleRoots) {
+        wholePackage = LirReachabilityAnalysis::Run(package, artifactKind);
+    }
     LirPruningStats ignoredStats;
     LirPruningStats &stats = context.lirPruning != nullptr ? *context.lirPruning : ignoredStats;
     bool changed = false;
 
     for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
         auto &module = package.modules[moduleIndex];
+        static const std::vector<LirModuleRoot> noRoots;
+        const LirReachabilityResult reachability =
+            wholePackage ? *wholePackage
+                         : LirReachabilityAnalysis::RunModule(
+                               package, moduleIndex,
+                               moduleIndex < moduleRoots->size() ? (*moduleRoots)[moduleIndex] : noRoots);
         changed = Prune(
                       module.funcs,
                       [&](const std::size_t index) {
