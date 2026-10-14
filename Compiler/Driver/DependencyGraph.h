@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Diagnostics/Diagnostics.h"
+#include "Package/Cache.h"
 #include "Package/Manifest.h"
 #include "Target/TargetTriple.h"
 
@@ -64,6 +65,7 @@ public:
 
 private:
     [[nodiscard]] const Manifest *ReadManifest(const std::filesystem::path &path, bool reportErrors);
+    [[nodiscard]] const std::filesystem::path &CanonicalManifest(const std::filesystem::path &path);
     void AddLocal(const std::filesystem::path &path);
     void Fail(const SourcePackage &owner, std::string message, std::vector<std::string> notes = {},
               std::optional<std::string> help = {});
@@ -75,6 +77,10 @@ private:
     std::map<std::filesystem::path, Manifest> manifests;
     std::map<std::string, std::vector<std::filesystem::path>> localSources;
     std::map<std::string, std::map<std::string, std::string>> bindings;
+    // Every package and manifest path is looked up for each owner that names it, so the cache listing and the
+    // canonical spelling are kept for the build rather than read from the filesystem again.
+    std::map<std::string, std::vector<Packages::InstalledPackage>> installedVersions;
+    std::map<std::filesystem::path, std::filesystem::path> canonicalManifests;
     std::vector<Diagnostic> diagnostics;
 };
 } // namespace Rux::Driver
