@@ -122,6 +122,7 @@ set(RUX_TEST_SOURCES
     PrimitiveCatalogTests.cpp
     ReferenceTypeTests.cpp
     WideIntegerTests.cpp
+    LinkerGarbageCollectionTests.cpp
     LinkerTests.cpp
     RcuLinkGraphTests.cpp
     RcuObjectLayoutTests.cpp

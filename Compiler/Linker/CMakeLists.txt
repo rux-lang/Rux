@@ -9,6 +9,7 @@ rux_add_component(RuxLinker
     Coff/CoffObjectWriter.cpp
     Elf/ElfObjectWriter.cpp
     Linker.cpp
+    RcuGarbageCollection.cpp
     RcuLinkGraph.cpp
     RcuObjectLayout.cpp
     MachO/CodeSignature.cpp

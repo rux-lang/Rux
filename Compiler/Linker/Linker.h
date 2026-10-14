@@ -43,6 +43,12 @@ public:
         emitSymbols = enabled;
     }
 
+    /// Leave out of an image every function its entry point and exports do not reach (`RcuGarbageCollection.h`). The
+    /// driver asks for it, so a module can keep functions it compiled for other modules that turn out not to need them.
+    void SetCollectGarbage(bool enabled) noexcept {
+        collectGarbage = enabled;
+    }
+
 private:
     std::vector<RcuFile> objects;
     std::string packageName;
@@ -53,6 +59,7 @@ private:
     Target::Arch targetArch = Target::HostArch;
     std::optional<RcuLinkGraph> graph;
     bool emitSymbols = false;
+    bool collectGarbage = false;
 
     void Error(std::string msg, std::vector<std::string> notes = {});
 

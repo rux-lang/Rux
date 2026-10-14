@@ -198,6 +198,10 @@ constexpr uint16_t AArch64TlvDescriptorPageOff12 = 32;
 /// every ELF executable, and `Core::ProcessStartFrame` reads it.
 constexpr std::string_view kProcessStartFrameSymbol = "__rux_start_frame";
 
+/// How the stack-trace printer's table of one module's functions is named. The linker treats what such a table refers
+/// to as weak: listing a function there does not keep it in the image.
+constexpr std::string_view kFunctionTablePrefix = "__rux_function_table_";
+
 /// The word a PE image's thread-local storage directory names, which the loader fills with the image's TLS slot. The
 /// linker defines it for every PE image with thread-local variables.
 constexpr std::string_view kTlsIndexSymbol = "_tls_index";

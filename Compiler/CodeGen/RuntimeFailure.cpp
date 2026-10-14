@@ -1,5 +1,7 @@
 #include "CodeGen/RuntimeFailure.h"
 
+#include "Object/Rcu/Rcu.h"
+
 #include <cstdint>
 #include <format>
 
@@ -31,7 +33,7 @@ std::string FunctionTableSymbol(const std::string_view moduleName) {
         hash ^= static_cast<unsigned char>(character);
         hash *= 0x100000001b3ULL;
     }
-    return std::format("__rux_function_table_{:016x}", hash);
+    return std::format("{}{:016x}", kFunctionTablePrefix, hash);
 }
 
 } // namespace Rux

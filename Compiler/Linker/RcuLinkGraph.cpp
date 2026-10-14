@@ -162,9 +162,6 @@ void ValidateObject(const RcuFile &object, const std::string_view packageName, c
                 continue;
             }
             const std::size_t width = RelocationWidth(relocation.type);
-            const std::string symbol = relocation.symbolIndex < object.symbols.size()
-                                         ? object.symbols[relocation.symbolIndex].name
-                                         : std::format("<index {}>", relocation.symbolIndex);
             if (relocation.symbolIndex >= object.symbols.size()) {
                 InvalidObject(diagnostics,
                               std::format("RCU object '{}' has a relocation in section '{}' with an invalid symbol "
@@ -174,6 +171,7 @@ void ValidateObject(const RcuFile &object, const std::string_view packageName, c
                                            relocation.sectionOffset, relocation.symbolIndex, object.symbols.size())});
                 continue;
             }
+            const std::string &symbol = object.symbols[relocation.symbolIndex].name;
             if (width == 0) {
                 InvalidObject(
                     diagnostics,
@@ -269,8 +267,9 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
         }
     }
 
-    std::ranges::sort(graph.definitions, {}, [](const RcuLinkDefinition &definition) {
-        return std::tuple(definition.name, definition.location.objectIndex, definition.location.symbolIndex);
+    std::ranges::sort(graph.definitions, [](const RcuLinkDefinition &left, const RcuLinkDefinition &right) {
+        return std::tie(left.name, left.location.objectIndex, left.location.symbolIndex) <
+               std::tie(right.name, right.location.objectIndex, right.location.symbolIndex);
     });
     for (const auto &[name, location] : definitionsByName) {
         const RcuSymbol &symbol = objects[location.objectIndex].symbols[location.symbolIndex];
