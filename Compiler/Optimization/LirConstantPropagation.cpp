@@ -3,6 +3,7 @@
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cstdint>
 #include <optional>
@@ -36,9 +37,25 @@ bool SameValue(const KnownValue &left, const KnownValue &right) {
 /// Follow a chain of copies to whatever the register ultimately holds. The visited set is not defensive tidiness: a phi
 /// cycle in a loop genuinely produces a copy chain that returns to its start.
 KnownValue Resolve(const Values &values, const LirReg reg) {
-    LirReg current = reg;
+    // Most chains end within a few steps, so the registers visited are kept in place until a long one needs a set.
+    constexpr std::size_t kInline = 16;
+    std::array<LirReg, kInline> recent{};
+    std::size_t count = 0;
     std::unordered_set<LirReg> visited;
-    while (visited.insert(current).second) {
+    const auto visit = [&](const LirReg candidate) {
+        if (count < kInline) {
+            if (std::find(recent.begin(), recent.begin() + static_cast<std::ptrdiff_t>(count), candidate) !=
+                recent.begin() + static_cast<std::ptrdiff_t>(count))
+                return false;
+            recent[count++] = candidate;
+            return true;
+        }
+        if (visited.empty())
+            visited.insert(recent.begin(), recent.end());
+        return visited.insert(candidate).second;
+    };
+    LirReg current = reg;
+    while (visit(current)) {
         const auto found = values.find(current);
         if (found == values.end()) {
             return KnownValue{std::nullopt, current};
@@ -51,7 +68,10 @@ KnownValue Resolve(const Values &values, const LirReg reg) {
         }
         current = *found->second.copy;
     }
-    return KnownValue{std::nullopt, *std::ranges::min_element(visited)};
+    const LirReg smallest = visited.empty()
+                              ? *std::min_element(recent.begin(), recent.begin() + static_cast<std::ptrdiff_t>(count))
+                              : *std::ranges::min_element(visited);
+    return KnownValue{std::nullopt, smallest};
 }
 
 /// The one case a switch on a known subject reaches, or its default when no case value equals the subject.

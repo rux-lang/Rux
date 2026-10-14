@@ -5,12 +5,60 @@
 #include <algorithm>
 #include <bit>
 #include <unordered_map>
+#include <vector>
 
 namespace Rux::Optimization {
 namespace {
 struct UnsignedRange {
     std::uint64_t minimum;
     std::uint64_t maximum;
+};
+
+/// The instruction defining each register of one function, pointing at the function's own instructions. Registers are
+/// numbered from zero upwards in a function, so a table by number holds them without a node per register; a number far
+/// past the function's size, which only hand-built IR uses, goes to a map instead.
+class Definitions {
+public:
+    explicit Definitions(const std::size_t expected)
+        : limit(expected * 4 + 64) {
+    }
+
+    [[nodiscard]] const LirInstr *Find(const LirReg reg) const {
+        if (reg < table.size())
+            return table[reg];
+        if (reg < limit)
+            return nullptr;
+        const auto found = sparse.find(reg);
+        return found == sparse.end() ? nullptr : found->second;
+    }
+
+    /// Record `instruction` as the definition of `reg`; false when `reg` already has one.
+    bool Insert(const LirReg reg, const LirInstr *instruction) {
+        if (reg >= limit)
+            return sparse.emplace(reg, instruction).second;
+        if (reg >= table.size())
+            table.resize(static_cast<std::size_t>(reg) + 1, nullptr);
+        if (table[reg] != nullptr)
+            return false;
+        table[reg] = instruction;
+        return true;
+    }
+
+    /// Record `instruction` as the definition of `reg`, replacing any earlier one.
+    void Assign(const LirReg reg, const LirInstr *instruction) {
+        if (reg >= limit) {
+            sparse.insert_or_assign(reg, instruction);
+            return;
+        }
+        if (reg >= table.size())
+            table.resize(static_cast<std::size_t>(reg) + 1, nullptr);
+        table[reg] = instruction;
+    }
+
+private:
+    std::size_t limit;
+    std::vector<const LirInstr *> table;
+    std::unordered_map<LirReg, const LirInstr *> sparse;
 };
 
 std::optional<std::uint64_t> UnsignedMaximum(const TypeRef &type) {
@@ -32,14 +80,14 @@ std::optional<std::uint64_t> UnsignedMaximum(const TypeRef &type) {
 // Facts describe a value's representation, independent of control flow. Unknown definitions, phis and overflowing
 // arithmetic retain their complete unsigned range. Bounded recursion prevents deep expression graphs consuming the
 // host stack; caching a conservative result is safe even if a later query could establish a tighter bound.
-std::optional<UnsignedRange> RangeOf(const LirReg reg, const std::unordered_map<LirReg, LirInstr> &definitions,
+std::optional<UnsignedRange> RangeOf(const LirReg reg, const Definitions &definitions,
                                      std::unordered_map<LirReg, UnsignedRange> &ranges, const unsigned depth = 0) {
     if (const auto found = ranges.find(reg); found != ranges.end())
         return found->second;
-    const auto found = definitions.find(reg);
-    if (found == definitions.end())
+    const LirInstr *found = definitions.Find(reg);
+    if (found == nullptr)
         return std::nullopt;
-    const auto &instruction = found->second;
+    const auto &instruction = *found;
     const auto maximum = UnsignedMaximum(instruction.type);
     if (!maximum)
         return std::nullopt;
@@ -127,18 +175,25 @@ std::optional<bool> CompareRanges(const LirOpcode opcode, const UnsignedRange le
 }
 
 bool Combine(LirFunc &function) {
-    std::unordered_map<LirReg, LirInstr> definitions;
+    std::size_t instructions = function.params.size();
+    for (const auto &block : function.blocks)
+        instructions += block.instrs.size();
+    // The definitions point at the function's own instructions, which stay as they are until every block is rewritten:
+    // the rewritten blocks are installed only at the end, so every lookup sees the instructions as the pass found them.
+    Definitions definitions(instructions);
+    std::vector<LirInstr> parameters(function.params.size());
     LirReg next = 0;
-    for (const auto &parameter : function.params) {
-        definitions[parameter.reg] = {};
-        definitions[parameter.reg].op = LirOpcode::Phi; // Unknown runtime input, not a literal.
-        definitions[parameter.reg].type = parameter.type;
+    for (std::size_t index = 0; index < function.params.size(); ++index) {
+        const auto &parameter = function.params[index];
+        parameters[index].op = LirOpcode::Phi; // Unknown runtime input, not a literal.
+        parameters[index].type = parameter.type;
+        definitions.Assign(parameter.reg, &parameters[index]);
         next = std::max(next, parameter.reg + 1);
     }
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
             if (instruction.dst != LirNoReg) {
-                if (!definitions.emplace(instruction.dst, instruction).second) {
+                if (!definitions.Insert(instruction.dst, &instruction)) {
                     return false;
                 }
                 next = std::max(next, instruction.dst + 1);
@@ -146,21 +201,24 @@ bool Combine(LirFunc &function) {
         }
     }
     const auto constant = [&](const LirReg reg) -> std::optional<std::uint64_t> {
-        const auto found = definitions.find(reg);
-        if (found == definitions.end() || found->second.op != LirOpcode::Const || !found->second.type.IsInteger()) {
+        const LirInstr *found = definitions.Find(reg);
+        if (found == nullptr || found->op != LirOpcode::Const || !found->type.IsInteger()) {
             return std::nullopt;
         }
-        const auto value = ParseConstant(found->second.strArg, found->second.type);
+        const auto value = ParseConstant(found->strArg, found->type);
         return value && value->Width() <= 64 ? std::optional{value->RawBits()} : std::nullopt;
     };
     bool changed = false;
     std::unordered_map<LirReg, UnsignedRange> ranges;
-    for (auto &block : function.blocks) {
+    std::vector<std::vector<LirInstr>> rewritten(function.blocks.size());
+    for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
         std::vector<LirInstr> output;
-        for (auto instruction : block.instrs) {
-            if (instruction.type == TypeRef::MakeBool() && instruction.srcs.size() == 2 && !instruction.isVolatile &&
-                definitions.contains(instruction.srcs[0]) && definitions.contains(instruction.srcs[1]) &&
-                definitions.at(instruction.srcs[0]).type == definitions.at(instruction.srcs[1]).type) {
+        output.reserve(function.blocks[blockIndex].instrs.size());
+        for (auto instruction : function.blocks[blockIndex].instrs) {
+            if (instruction.type.kind == TypeRef::Kind::Bool8 && instruction.type == TypeRef::MakeBool() &&
+                instruction.srcs.size() == 2 && !instruction.isVolatile &&
+                definitions.Find(instruction.srcs[0]) != nullptr && definitions.Find(instruction.srcs[1]) != nullptr &&
+                definitions.Find(instruction.srcs[0])->type == definitions.Find(instruction.srcs[1])->type) {
                 const auto left = RangeOf(instruction.srcs[0], definitions, ranges);
                 const auto right = RangeOf(instruction.srcs[1], definitions, ranges);
                 if (left && right) {
@@ -176,11 +234,11 @@ bool Combine(LirFunc &function) {
             const bool word =
                 instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64;
             if (word && instruction.srcs.size() == 2 && instruction.op == LirOpcode::Or) {
-                const auto left = definitions.find(instruction.srcs[0]);
-                const auto right = definitions.find(instruction.srcs[1]);
-                if (left != definitions.end() && right != definitions.end()) {
-                    const auto *shiftLeft = &left->second;
-                    const auto *shiftRight = &right->second;
+                const LirInstr *left = definitions.Find(instruction.srcs[0]);
+                const LirInstr *right = definitions.Find(instruction.srcs[1]);
+                if (left != nullptr && right != nullptr) {
+                    const auto *shiftLeft = left;
+                    const auto *shiftRight = right;
                     if (shiftRight->op == LirOpcode::Shl) {
                         std::swap(shiftLeft, shiftRight);
                     }
@@ -206,22 +264,20 @@ bool Combine(LirFunc &function) {
             // shift helper be recognized as one.
             if (word && instruction.srcs.size() == 2 && instruction.op == LirOpcode::And) {
                 for (std::size_t side = 0; side < 2; ++side) {
-                    const auto shift = definitions.find(instruction.srcs[side]);
+                    const LirInstr *shift = definitions.Find(instruction.srcs[side]);
                     const auto mask = constant(instruction.srcs[1 - side]);
-                    if (shift == definitions.end() || !mask ||
-                        (shift->second.op != LirOpcode::Lshr && shift->second.op != LirOpcode::Shr) ||
-                        shift->second.type != instruction.type || shift->second.srcs.size() != 2 ||
-                        shift->second.isVolatile)
+                    if (shift == nullptr || !mask || (shift->op != LirOpcode::Lshr && shift->op != LirOpcode::Shr) ||
+                        shift->type != instruction.type || shift->srcs.size() != 2 || shift->isVolatile)
                         continue;
-                    const auto count = constant(shift->second.srcs[1]);
+                    const auto count = constant(shift->srcs[1]);
                     const auto width = instruction.type.kind == TypeRef::Kind::UInt32 ? 32U : 64U;
                     if (!count || *count == 0 || *count >= width)
                         continue;
                     const std::uint64_t kept = (std::uint64_t{1} << (width - *count)) - 1;
                     if ((*mask & kept) != kept)
                         continue;
-                    instruction.op = shift->second.op;
-                    instruction.srcs = shift->second.srcs;
+                    instruction.op = shift->op;
+                    instruction.srcs = shift->srcs;
                     changed = true;
                     break;
                 }
@@ -246,19 +302,18 @@ bool Combine(LirFunc &function) {
             // its count twice. Unsigned arithmetic wraps the same either way.
             if (instruction.op == LirOpcode::Add && instruction.srcs.size() == 2 && !instruction.isVolatile &&
                 instruction.type.IsInteger() && !instruction.type.IsSigned()) {
-                const auto inner = definitions.find(instruction.srcs[0]);
+                const LirInstr *inner = definitions.Find(instruction.srcs[0]);
                 const auto outer = constant(instruction.srcs[1]);
                 const auto maximum = UnsignedMaximum(instruction.type);
-                if (inner != definitions.end() && outer && maximum && inner->second.op == LirOpcode::Add &&
-                    inner->second.type == instruction.type && inner->second.srcs.size() == 2 &&
-                    !inner->second.isVolatile) {
-                    if (const auto first = constant(inner->second.srcs[1])) {
+                if (inner != nullptr && outer && maximum && inner->op == LirOpcode::Add &&
+                    inner->type == instruction.type && inner->srcs.size() == 2 && !inner->isVolatile) {
+                    if (const auto first = constant(inner->srcs[1])) {
                         LirInstr sum;
                         sum.op = LirOpcode::Const;
                         sum.dst = next++;
                         sum.type = instruction.type;
                         sum.strArg = std::to_string((*first + *outer) & *maximum);
-                        instruction.srcs = {inner->second.srcs[0], sum.dst};
+                        instruction.srcs = {inner->srcs[0], sum.dst};
                         output.push_back(std::move(sum));
                         changed = true;
                     }
@@ -266,8 +321,10 @@ bool Combine(LirFunc &function) {
             }
             output.push_back(std::move(instruction));
         }
-        block.instrs = std::move(output);
+        rewritten[blockIndex] = std::move(output);
     }
+    for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex)
+        function.blocks[blockIndex].instrs = std::move(rewritten[blockIndex]);
     return changed;
 }
 } // namespace
