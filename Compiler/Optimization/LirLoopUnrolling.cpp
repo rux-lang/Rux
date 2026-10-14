@@ -113,8 +113,9 @@ bool Unroll(LirFunc &function) {
         const auto body = head.term->trueTarget;
         const auto &source = function.blocks[body];
         if (body == header || !source.term || source.term->kind != LirTermKind::Jump ||
-            source.term->trueTarget != header || cfg.predecessors[body] != std::vector<std::uint32_t>{header} ||
-            source.instrs.size() < 4 || source.instrs.size() > 64 || !std::ranges::all_of(source.instrs, BodyOperation))
+            source.term->trueTarget != header ||
+            (cfg.predecessors[body].size() != 1 || cfg.predecessors[body][0] != header) || source.instrs.size() < 4 ||
+            source.instrs.size() > 64 || !std::ranges::all_of(source.instrs, BodyOperation))
             continue;
         const auto preheader = cfg.predecessors[header][cfg.predecessors[header][0] == body ? 1 : 0];
         const auto &entry = function.blocks[preheader];

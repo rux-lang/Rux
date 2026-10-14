@@ -100,7 +100,7 @@ bool Widen(LirFunc &function) {
         const auto &back = *function.blocks[body].term;
         if (term.kind != LirTermKind::Branch || term.trueTarget != body || members.contains(term.falseTarget) ||
             back.kind != LirTermKind::Jump || back.trueTarget != header ||
-            cfg.predecessors[body] != std::vector<std::uint32_t>{header})
+            (cfg.predecessors[body].size() != 1 || cfg.predecessors[body][0] != header))
             continue;
         auto preheader =
             cfg.predecessors[header][0] == body ? cfg.predecessors[header][1] : cfg.predecessors[header][0];

@@ -6,26 +6,53 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <span>
 #include <utility>
 #include <vector>
 
 namespace Rux {
+/// One list of blocks for each block of a function, stored back to back in one array.
+class LirBlockLists {
+public:
+    [[nodiscard]] std::span<const std::uint32_t> operator[](const std::size_t block) const {
+        return {items.data() + starts[block], starts[block + 1] - starts[block]};
+    }
+
+    /// How many blocks have a list.
+    [[nodiscard]] std::size_t size() const {
+        return starts.empty() ? 0 : starts.size() - 1;
+    }
+
+    [[nodiscard]] bool empty() const {
+        return size() == 0;
+    }
+
+private:
+    friend struct LirControlFlow;
+
+    std::vector<std::uint32_t> items;
+    std::vector<std::size_t> starts;
+};
+
 /// A per-function snapshot. Rebuild after changing terminators or block numbering.
 struct LirControlFlow {
-    std::vector<std::vector<std::uint32_t>> successors;
-    std::vector<std::vector<std::uint32_t>> predecessors;
+    /// Each block's distinct successors, in the order its terminator names them.
+    LirBlockLists successors;
+    /// Each block's predecessors, in block order.
+    LirBlockLists predecessors;
     std::vector<bool> reachable;
 
     explicit LirControlFlow(const LirFunc &function)
-        : successors(function.blocks.size())
-        , predecessors(function.blocks.size())
-        , reachable(function.blocks.size(), false) {
-        for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+        : reachable(function.blocks.size(), false) {
+        const std::size_t count = function.blocks.size();
+        auto &targets = successors.items;
+        targets.reserve(count * 2);
+        successors.starts.assign(count + 1, 0);
+        for (std::uint32_t block = 0; block < count; ++block) {
             const auto add = [&](const std::uint32_t target) {
-                if (target < function.blocks.size() &&
-                    std::ranges::find(successors[block], target) == successors[block].end()) {
-                    successors[block].push_back(target);
-                    predecessors[target].push_back(block);
+                if (target < count && std::find(targets.begin() + static_cast<std::ptrdiff_t>(successors.starts[block]),
+                                                targets.end(), target) == targets.end()) {
+                    targets.push_back(target);
                 }
             };
             if (const auto &term = function.blocks[block].term) {
@@ -48,7 +75,19 @@ struct LirControlFlow {
                     break;
                 }
             }
+            successors.starts[block + 1] = targets.size();
         }
+        // Predecessors by counting: each block's list fills in block order, as appending edge by edge would.
+        predecessors.starts.assign(count + 1, 0);
+        for (const auto target : targets)
+            ++predecessors.starts[target + 1];
+        for (std::size_t block = 0; block < count; ++block)
+            predecessors.starts[block + 1] += predecessors.starts[block];
+        predecessors.items.resize(targets.size());
+        std::vector<std::size_t> filled(predecessors.starts.begin(), predecessors.starts.end() - 1);
+        for (std::uint32_t block = 0; block < count; ++block)
+            for (const auto target : successors[block])
+                predecessors.items[filled[target]++] = block;
         if (function.blocks.empty()) {
             return;
         }
