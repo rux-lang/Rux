@@ -41,6 +41,7 @@
 #include <unordered_set>
 #include <utility>
 
+
 namespace Rux::Driver {
 using namespace Target;
 using namespace System;
@@ -896,6 +897,10 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                                              [&] { return LirPrinter::Dump(package, path); });
             });
     }
+    // Nothing after HIR reads the semantic model but its module order, so its memory serves the stages that follow.
+    // Analyzing again, as a retry does, builds a new one.
+    const std::vector<const Module *> analyzedModules = semanticModel->modules;
+    semanticModel.reset();
     BeginPhase(CompilePhase::OptimizingHir, opts.manifest.package.name.Text());
     const auto hirOptimization = optimizationPipeline.RunHir(hirPackage);
     stats.optimizationPasses = hirOptimization.passStatistics;
@@ -907,7 +912,8 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     // LIR
     const auto lirStart = std::chrono::steady_clock::now();
     BeginPhase(CompilePhase::LoweringToLir, opts.manifest.package.name.Text());
-    HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
+    std::optional<HirToLirLowering> hirToLir(std::in_place, std::move(hirPackage), compileTimeContext.target);
+    HirToLirLowering &lirLowering = *hirToLir;
     lirLowering.SetWorkerPool(&Workers());
     lirLowering.SetProgramModule(true);
     // A reused module is not lowered again, so whether it can fail is what was recorded with it.
@@ -917,14 +923,17 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     if (EmitAll(lirLowering.Diagnostics())) {
         return false;
     }
+    // The HIR the lowering holds is not read again.
+    const std::vector<char> moduleFailures = lirLowering.ModuleFailures();
+    hirToLir.reset();
     BeginPhase(CompilePhase::OptimizingLir, opts.manifest.package.name.Text());
     // The source module each LIR module was lowered from, in package order, and the recorded entry of every one whose
     // object this build reuses. The program module that follows them is compiled on every build.
     const std::size_t moduleCount = lirPackage.modules.size();
     std::vector<const Module *> sourceModules(moduleCount, nullptr);
     std::vector<const CachedModule *> reused(moduleCount, nullptr);
-    for (std::size_t index = 0; index < std::min(moduleCount, semanticModel->modules.size()); ++index) {
-        sourceModules[index] = semanticModel->modules[index];
+    for (std::size_t index = 0; index < std::min(moduleCount, analyzedModules.size()); ++index) {
+        sourceModules[index] = analyzedModules[index];
         if (const auto found = moduleReuse.cached.find(sourceModules[index]); found != moduleReuse.cached.end())
             reused[index] = found->second;
     }
@@ -1107,6 +1116,13 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     }
     stats.codegen = ElapsedMs(codegenStart);
 
+    // The objects are all the linker reads: the LIR is released first.
+    std::vector<std::string> lirModuleNames;
+    lirModuleNames.reserve(lirPackage.modules.size());
+    for (const LirModule &module : lirPackage.modules)
+        lirModuleNames.push_back(module.name);
+    lirPackage = LirPackage{};
+
     // Link
     const auto linkingStart = std::chrono::steady_clock::now();
     BeginPhase(CompilePhase::Linking, opts.manifest.package.name.Text());
@@ -1148,11 +1164,11 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
             const Module *module = sourceModules[index];
             if (module == nullptr) {
                 // The program module has no object to keep, but what it references is part of the program's graph.
-                if (release && lirPackage.modules[index].name == kProgramModuleName) {
+                if (release && lirModuleNames[index] == kProgramModuleName) {
                     CachedModule program;
                     program.roots = roots[index];
                     program.references = std::move(references[index]);
-                    pack.Put(lirPackage.modules[index].name, std::move(program));
+                    pack.Put(lirModuleNames[index], std::move(program));
                 }
                 continue;
             }
@@ -1163,7 +1179,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
             const auto key = moduleReuse.keys.find(module);
             if (key == moduleReuse.keys.end() || freshObjects[index].empty() || reported.contains(module->name))
                 continue;
-            const bool fails = index < lirLowering.ModuleFailures().size() && lirLowering.ModuleFailures()[index] != 0;
+            const bool fails = index < moduleFailures.size() && moduleFailures[index] != 0;
             const auto &digest = moduleReuse.digests.at(module);
             pack.Put(module->name,
                      {key->second, release ? roots[index] : std::vector<Optimization::LirModuleRoot>{},
