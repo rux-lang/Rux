@@ -202,7 +202,7 @@ void *BlockAt(const std::uint32_t slab, const std::uint16_t offset) noexcept {
 constexpr std::array<std::uint32_t, kClassCount> kFlushLimits = [] {
     std::array<std::uint32_t, kClassCount> limits{};
     for (std::size_t sizeClass = 0; sizeClass < kClassCount; ++sizeClass) {
-        const std::uint32_t limit = (std::uint32_t{256} * 1024) / kBlockSizes[sizeClass];
+        const std::uint32_t limit = (std::uint32_t{64} * 1024) / kBlockSizes[sizeClass];
         limits[sizeClass] = limit < 32 ? 32 : limit;
     }
     return limits;
