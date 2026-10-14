@@ -17,16 +17,6 @@
 
 namespace Rux::HirToLirDetail {
 
-/// The whole package's glue, in the order the plans were sorted, so a build produces the same symbols every time.
-std::vector<LirFunc> HirToLirContext::SynthesizeDropGlue(const std::vector<DropGluePlan> &plans) {
-    std::vector<LirFunc> functions;
-    functions.reserve(plans.size());
-    for (const DropGluePlan &plan : plans) {
-        functions.push_back(SynthesizeDropGlueFunc(plan));
-    }
-    return functions;
-}
-
 /// One `void (*T)` function that destroys the value at its argument.
 ///
 /// The parameter is the address rather than the value: destruction reads storage that is about to go away, and a

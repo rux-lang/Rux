@@ -121,8 +121,8 @@ HirPackage AstToHirContext::Run(Parallel::WorkerPool *pool) {
         package.dropGlues.push_back(plan);
     }
     std::ranges::sort(package.dropGlues, {}, [](const DropGluePlan &plan) { return plan.type.ToString(); });
-    // Destructor instances join the last module, so they are lowered as part of it, from the same starting state
-    // however the modules themselves were lowered.
+    // Destructor instances are lowered from the state the last module starts from, however the modules themselves were
+    // lowered.
     if (!modules.empty()) {
         BeginModule(*modules.back());
     }
@@ -143,19 +143,10 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
     if (package.modules.empty()) {
         return;
     }
-    // Every name the package already emitted, so a destructor already instantiated by another use resolves to that
-    // body instead of lowering a second one under the same symbol.
+    // The instances form a pool of their own, independent of what the modules instantiated: a module whose glue calls
+    // one takes a private copy unless it already lowered that instance itself.
     generatedMonomorphizedFuncNames.clear();
-    for (const HirModule &module : package.modules) {
-        for (const HirFunc &function : module.funcs) {
-            generatedMonomorphizedFuncNames.insert(function.name);
-        }
-        for (const HirImplBlock &implementation : module.impls) {
-            for (const std::string &name : implementation.methodLinkerNames) {
-                generatedMonomorphizedFuncNames.insert(name);
-            }
-        }
-    }
+    monomorphizedFuncs.clear();
     // A plan for a type that still names a type parameter describes nothing that can exist: there is no value of
     // `Box<T>` until `T` is chosen, and every choice has a plan of its own. Instantiating one would lower the generic
     // body with the parameter substituted for itself, which is how a `sizeof(T)` inside it ends up with no width.
@@ -163,12 +154,9 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
     for (DropGluePlan &plan : package.dropGlues) {
         ResolveDropGlueSteps(plan.steps);
     }
-    // An instantiation requested above belongs to whichever module is lowered last: every module has already been
-    // lowered, and a function has to live in one of them to be emitted at all.
-    for (HirFunc &instance : monomorphizedFuncs) {
-        package.modules.back().funcs.push_back(std::move(instance));
-    }
+    package.dropGlueInstances = std::move(monomorphizedFuncs);
     monomorphizedFuncs.clear();
+    generatedMonomorphizedFuncNames.clear();
 }
 
 void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {

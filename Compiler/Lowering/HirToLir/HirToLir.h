@@ -33,10 +33,18 @@ public:
         pool = inputPool;
     }
 
+    /// Put the stack-trace printer into a module of its own, `kProgramModuleName`, after the source modules, rather
+    /// than into the last source module, so no source module's code depends on whether anything else can fail. The
+    /// driver does; a package lowered without it keeps one module per source.
+    void SetProgramModule(const bool enabled) noexcept {
+        programModule = enabled;
+    }
+
 private:
     HirPackage hir;
     TargetContext target;
     std::vector<Diagnostic> diagnostics;
     Parallel::WorkerPool *pool = nullptr;
+    bool programModule = false;
 };
 } // namespace Rux

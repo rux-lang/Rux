@@ -175,9 +175,8 @@ void AArch64ModuleEmitter::PredeclareFunctionTables() {
     if (!backtrace.enabled) {
         return;
     }
-    const std::string table = FunctionTableSymbol(backtrace.moduleIndex);
-    dataSyms[table] = DeclareSymbol(table, {}, RcuSymKind::Const, RcuSymVis::Global);
-    if (backtrace.IsLast()) {
+    dataSyms[backtrace.table] = DeclareSymbol(backtrace.table, {}, RcuSymKind::Const, RcuSymVis::Global);
+    if (backtrace.IsProgram()) {
         const std::string tables(kFunctionTablesSymbol);
         dataSyms[tables] = DeclareSymbol(tables, {}, RcuSymKind::Const, RcuSymVis::Global);
     }
@@ -210,15 +209,14 @@ void AArch64ModuleEmitter::EmitFunctionTables() {
         AddRodataReloc(nameSlot, names[index], RcuRelType::Abs64);
         pushWord(functionRanges[index].name.size());
     }
-    (void)moduleBuilder.DefineSymbol(dataSyms.at(FunctionTableSymbol(backtrace.moduleIndex)), RcuModuleSection::RoData,
+    (void)moduleBuilder.DefineSymbol(dataSyms.at(backtrace.table), RcuModuleSection::RoData,
                                      tableOff, static_cast<std::uint32_t>(RodataData().size()) - tableOff);
-    if (!backtrace.IsLast()) {
+    if (!backtrace.IsProgram()) {
         return;
     }
     const std::uint32_t tablesOff = AlignRodata(8);
-    pushWord(backtrace.moduleCount);
-    for (std::size_t index = 0; index < backtrace.moduleCount; ++index) {
-        const std::string name = FunctionTableSymbol(index);
+    pushWord(backtrace.programTables.size());
+    for (const std::string &name : backtrace.programTables) {
         const auto slot = static_cast<std::uint32_t>(RodataData().size());
         pushWord(0);
         const auto known = dataSyms.find(name);

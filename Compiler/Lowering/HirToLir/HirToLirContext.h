@@ -28,7 +28,8 @@ public:
     HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics);
 
     /// Lower `hir`, lowering modules on `pool`'s threads when one is given; the result never depends on it.
-    [[nodiscard]] LirPackage Run(const HirPackage &hir, Parallel::WorkerPool *pool = nullptr);
+    [[nodiscard]] LirPackage Run(const HirPackage &hir, Parallel::WorkerPool *pool = nullptr,
+                                 bool programModule = false);
 
 private:
     struct LocalConstValue {
@@ -76,6 +77,9 @@ private:
     std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
     /// The drop glue of every droppable type, keyed by its spelling.
     std::unordered_map<std::string, std::string> dropGlueSymbols;
+    /// Every plan and destructor instance by the symbol a call reaches it under.
+    std::unordered_map<std::string, const DropGluePlan *> dropGluePlans;
+    std::unordered_map<std::string, const HirFunc *> dropGlueInstances;
     /// While the pattern of an arm over a consumed subject is lowered: the payloads it matches without binding, which
     /// that arm destroys before its body because nothing else owns them once the subject was handed over.
     std::vector<std::pair<LirReg, TypeRef>> *residualPayloads = nullptr;
@@ -183,6 +187,9 @@ private:
     [[nodiscard]] static std::uint64_t StringLiteralLength(const std::string &value, const TypeRef &elementType);
 
     [[nodiscard]] LirModule LowerModule(const HirModule &module);
+    /// Lower `module` and everything it calls that belongs to no module: the drop glue and destructor instances its
+    /// cleanups reach and the software-float helpers its operations need, each as a private copy of its own.
+    [[nodiscard]] LirModule LowerSelfContainedModule(const HirModule &module);
     [[nodiscard]] static std::string PrintConstExpr(const HirExpr &expression);
     [[nodiscard]] std::optional<std::string> PrintConstElement(const HirExpr &expression) const;
     void CollectConstContents(const HirConst &constant, LirConstDecl &declaration) const;
@@ -192,7 +199,6 @@ private:
                                                 std::vector<LirConstScalar> &scalars) const;
     [[nodiscard]] LirFunc LowerFunc(const HirFunc &function, std::string_view nameOverride = "");
 
-    [[nodiscard]] std::vector<LirFunc> SynthesizeDropGlue(const std::vector<DropGluePlan> &plans);
     [[nodiscard]] LirFunc SynthesizeDropGlueFunc(const DropGluePlan &plan);
     void EmitDropGlueSteps(const std::vector<DropGlueStep> &steps, LirReg base);
     void EmitDropGlueStep(const DropGlueStep &step, LirReg base);

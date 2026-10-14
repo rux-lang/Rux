@@ -108,6 +108,12 @@ enum class LirOpcode {
 /// program that can fail that way.
 inline constexpr std::string_view kBacktraceFunctionName = "__rux_backtrace";
 
+/// The name of the module lowering adds after every source module: it holds what belongs to the program as a whole
+/// rather than to any one source, the stack-trace printer and, in its object, the table of every module's function
+/// table. It is compiled on every build, so the objects of the source modules depend on nothing but their own source
+/// and the declarations they see.
+inline constexpr std::string_view kProgramModuleName = "__rux_program";
+
 /// The spelling of an opcode, as a dump writes it and as a diagnostic names it. One name serves both, so a back end
 /// reporting an opcode it cannot lower yet names the same thing the LIR dump beside it does.
 [[nodiscard]] constexpr std::string_view LirOpcodeName(const LirOpcode op) noexcept {

@@ -402,17 +402,27 @@ RcuEmitter::RcuEmitter(const LirPackage &package, std::string inputPackageName, 
 
 std::vector<RcuFile> RcuEmitter::Generate() const {
     const auto layouts = Layout::BuildPackageLayouts(lir);
-    const bool tracesPanics = std::ranges::any_of(lir.modules, [](const LirModule &module) {
+    // Modules trace their failures and list their functions when asked to, or when the package holds the stack-trace
+    // printer; the module holding the printer also lists every module's table.
+    const auto holdsPrinter = [](const LirModule &module) {
         return std::ranges::any_of(module.funcs,
                                    [](const LirFunc &function) { return function.name == kBacktraceFunctionName; });
-    });
+    };
+    const bool tracesPanics = backtraces || std::ranges::any_of(lir.modules, holdsPrinter);
+    std::vector<std::string> tables;
+    tables.reserve(lir.modules.size());
+    for (const LirModule &module : lir.modules)
+        tables.push_back(FunctionTableSymbol(module.name));
+    const auto backtraceOf = [&](const std::size_t index) {
+        return BacktraceTables{tracesPanics, tables[index],
+                               holdsPrinter(lir.modules[index]) ? tables : std::vector<std::string>{}};
+    };
     // Modules are independent objects, so each is emitted on its own; diagnostics merge in module order.
     std::vector<RcuFile> result(lir.modules.size());
     std::vector<std::vector<Diagnostic>> moduleDiagnostics(lir.modules.size());
     const auto emit = [&](const std::size_t index) {
-        const BacktraceTables backtrace{tracesPanics, index, lir.modules.size()};
         result[index] = GenerateRcuModule(lir.modules[index], layouts, packageName, targetOs, buildInfo,
-                                          moduleDiagnostics[index], backtrace, machineSelection);
+                                          moduleDiagnostics[index], backtraceOf(index), machineSelection);
     };
     if (pool != nullptr)
         pool->ForEach(lir.modules.size(), emit);

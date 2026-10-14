@@ -1,5 +1,6 @@
 #include "CodeGen/RuntimeFailure.h"
 
+#include <cstdint>
 #include <format>
 
 namespace Rux {
@@ -23,8 +24,14 @@ RuntimeFailureLayout BuildRuntimeFailureLayout(const RuntimeFailureKind kind, co
             .location = std::format("\n  at {} ({}:{}:{})\n", stableFunction, stableFile, line, column)};
 }
 
-std::string FunctionTableSymbol(const std::size_t moduleIndex) {
-    return std::format("__rux_function_table_{}", moduleIndex);
+std::string FunctionTableSymbol(const std::string_view moduleName) {
+    // FNV-1a over the module's name: a module keeps its symbol however many modules come before it.
+    std::uint64_t hash = 0xcbf29ce484222325ULL;
+    for (const char character : moduleName) {
+        hash ^= static_cast<unsigned char>(character);
+        hash *= 0x100000001b3ULL;
+    }
+    return std::format("__rux_function_table_{:016x}", hash);
 }
 
 } // namespace Rux

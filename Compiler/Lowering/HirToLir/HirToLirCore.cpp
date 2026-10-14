@@ -84,7 +84,7 @@ HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagno
     softFloatPolicy.arch = target.arch;
 }
 
-LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *pool) {
+LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *pool, const bool programModule) {
     typeLayouts = &hir.typeLayouts;
     globalConsts.clear();
     for (const auto &mod : hir.modules) {
@@ -161,8 +161,18 @@ LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *poo
             funcNames.insert(f.name);
         }
     }
+    dropGluePlans.clear();
+    dropGlueInstances.clear();
     for (const DropGluePlan &plan : hir.dropGlues) {
         dropGlueSymbols.emplace(plan.type.ToString(), plan.symbol);
+        dropGluePlans.emplace(plan.symbol, &plan);
+    }
+    for (const HirFunc &instance : hir.dropGlueInstances) {
+        if (instance.callConv != CallingConvention::Default) {
+            funcConvs[instance.name] = instance.callConv;
+        }
+        funcNames.insert(instance.name);
+        dropGlueInstances.emplace(instance.name, &instance);
     }
     LirPackage pkg;
     pkg.dropGlues = hir.dropGlues;
@@ -176,50 +186,37 @@ LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *poo
             sharedConstantName = !constantNames.insert(c.name).second || sharedConstantName;
     if (pool == nullptr || pool->Jobs() == 1 || sharedConstantName) {
         for (std::size_t index = 0; index < hir.modules.size(); ++index)
-            pkg.modules[index] = LowerModule(hir.modules[index]);
+            pkg.modules[index] = LowerSelfContainedModule(hir.modules[index]);
     }
     else {
         // Each thread lowers with its own copy of the package tables built above. What one module leaves behind for
-        // the package — diagnostics, helper requests, whether it can panic — is kept apart and merged in module order,
-        // so the package is the same as lowering the modules one after another.
+        // the package — diagnostics and whether it can panic — is kept apart and merged in module order, so the
+        // package is the same as lowering the modules one after another.
         std::vector<std::optional<HirToLirContext>> workers(pool->Jobs());
         std::vector<std::vector<Diagnostic>> moduleDiagnostics(hir.modules.size());
-        std::vector<SoftFloatHelperRegistry> moduleHelpers(hir.modules.size());
         std::vector<char> moduleFailures(hir.modules.size(), 0);
         pool->ForEachOnWorker(hir.modules.size(), [&](const std::size_t index, const std::size_t worker) {
             auto &context = workers[worker];
             if (!context)
                 context.emplace(*this);
             context->diagnostics = &moduleDiagnostics[index];
-            context->softFloatHelpers = {};
             context->emittedRuntimeFailure = false;
-            pkg.modules[index] = context->LowerModule(hir.modules[index]);
-            moduleHelpers[index] = std::move(context->softFloatHelpers);
+            pkg.modules[index] = context->LowerSelfContainedModule(hir.modules[index]);
             moduleFailures[index] = context->emittedRuntimeFailure ? 1 : 0;
         });
         for (std::size_t index = 0; index < hir.modules.size(); ++index) {
             diagnostics->insert(diagnostics->end(), std::make_move_iterator(moduleDiagnostics[index].begin()),
                                 std::make_move_iterator(moduleDiagnostics[index].end()));
-            softFloatHelpers.Absorb(moduleHelpers[index]);
             emittedRuntimeFailure = emittedRuntimeFailure || moduleFailures[index] != 0;
         }
     }
-    // Glue is synthesized once the modules are lowered, because a plan describes a type rather than a module and every
-    // cleanup in the package names the same symbol for it. It joins the last module for the same reason a monomorphized
-    // instance does: a function has to belong to one to be emitted.
-    if (!pkg.modules.empty()) {
-        for (LirFunc &glue : SynthesizeDropGlue(hir.dropGlues)) {
-            pkg.modules.back().funcs.push_back(std::move(glue));
+    // A program that can panic gets the stack-trace printer its failure paths call, once: in the program module after
+    // every source module, or in the last source module.
+    if (emittedRuntimeFailure && (programModule || !pkg.modules.empty())) {
+        if (programModule) {
+            pkg.modules.emplace_back().name = std::string(kProgramModuleName);
         }
-        // Software-float helpers join the same module on the same terms. Each is private, so a package that carries
-        // its own copy of one another package also emits resolves to whichever copy the linker keeps first.
-        for (LirFunc &helper : softFloatHelpers.SynthesizePending(*diagnostics)) {
-            pkg.modules.back().funcs.push_back(std::move(helper));
-        }
-        // A program that can panic gets the stack-trace printer its failure paths call, once, in the same module.
-        if (emittedRuntimeFailure) {
-            pkg.modules.back().funcs.push_back(SynthesizeBacktrace(*diagnostics));
-        }
+        pkg.modules.back().funcs.push_back(SynthesizeBacktrace(*diagnostics));
     }
     VerifySoftFloatLowering(pkg, softFloatPolicy, *diagnostics);
     return pkg;
@@ -950,6 +947,50 @@ TypeRef HirToLirContext::StringSliceElementType(const HirLiteralExpr &e) {
 }
 
 // Module lowering
+LirModule HirToLirContext::LowerSelfContainedModule(const HirModule &mod) {
+    softFloatHelpers = {};
+    LirModule lm = LowerModule(mod);
+    std::unordered_set<std::string> defined;
+    for (const LirFunc &function : lm.funcs)
+        defined.insert(function.name);
+    // Glue and destructor instances may destroy or call further ones, so the module is scanned until nothing new is
+    // called. Plans come in the order the package sorted them, so the module's functions do not depend on the order
+    // its calls were found in.
+    std::size_t scanned = 0;
+    for (;;) {
+        std::unordered_set<std::string> called;
+        for (; scanned < lm.funcs.size(); ++scanned)
+            for (const LirBlock &block : lm.funcs[scanned].blocks)
+                for (const LirInstr &instruction : block.instrs)
+                    if (instruction.op == LirOpcode::Call && !defined.contains(instruction.strArg) &&
+                        (dropGluePlans.contains(instruction.strArg) || dropGlueInstances.contains(instruction.strArg)))
+                        called.insert(instruction.strArg);
+        if (called.empty())
+            break;
+        std::vector<const DropGluePlan *> plans;
+        std::vector<const HirFunc *> instances;
+        for (const std::string &symbol : called) {
+            defined.insert(symbol);
+            if (const auto plan = dropGluePlans.find(symbol); plan != dropGluePlans.end())
+                plans.push_back(plan->second);
+            else
+                instances.push_back(dropGlueInstances.at(symbol));
+        }
+        std::ranges::sort(plans);
+        std::ranges::sort(instances);
+        for (const DropGluePlan *plan : plans)
+            lm.funcs.push_back(SynthesizeDropGlueFunc(*plan));
+        for (const HirFunc *instance : instances)
+            lm.funcs.push_back(LowerFunc(*instance));
+    }
+    // Software-float helpers are private to the module that calls them, on the same terms.
+    for (LirFunc &helper : softFloatHelpers.SynthesizePending(*diagnostics)) {
+        lm.funcs.push_back(std::move(helper));
+    }
+    softFloatHelpers = {};
+    return lm;
+}
+
 LirModule HirToLirContext::LowerModule(const HirModule &mod) {
     // funcConvs is populated package-wide in Run() before any module is
     // lowered, so cross-module (imported) calls resolve correctly.
@@ -1335,7 +1376,7 @@ HirToLirLowering::HirToLirLowering(HirPackage inputHir, TargetContext inputTarge
 LirPackage HirToLirLowering::Generate() {
     diagnostics.clear();
     HirToLirDetail::HirToLirContext lowering(target, diagnostics);
-    return lowering.Run(hir, pool);
+    return lowering.Run(hir, pool, programModule);
 }
 
 const std::vector<Diagnostic> &HirToLirLowering::Diagnostics() const noexcept {

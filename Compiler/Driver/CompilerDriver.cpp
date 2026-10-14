@@ -737,6 +737,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     BeginPhase(CompilePhase::LoweringToLir, opts.manifest.package.name.Text());
     HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
     lirLowering.SetWorkerPool(&Workers());
+    lirLowering.SetProgramModule(true);
     auto lirPackage = lirLowering.Generate();
     if (EmitAll(lirLowering.Diagnostics())) {
         return false;
@@ -798,6 +799,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                                          compileTimeContext.target.os, compileTimeContext.buildInfo);
         aarch64Emitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
         aarch64Emitter.SetWorkerPool(&Workers());
+        aarch64Emitter.SetBacktraces(true);
         rcuFiles = aarch64Emitter.Generate();
         codegenDiagnostics = aarch64Emitter.Diagnostics();
     }
@@ -806,6 +808,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
                               compileTimeContext.buildInfo);
         rcuEmitter.SetMachineSelection(compileTimeContext.profile == BuildProfile::Release);
         rcuEmitter.SetWorkerPool(&Workers());
+        rcuEmitter.SetBacktraces(true);
         rcuFiles = rcuEmitter.Generate();
         codegenDiagnostics = rcuEmitter.Diagnostics();
     }

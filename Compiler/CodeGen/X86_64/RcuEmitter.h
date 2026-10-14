@@ -29,6 +29,13 @@ public:
         pool = inputPool;
     }
 
+    /// Have every module trace its failures and list its functions for the stack-trace printer whether or not anything
+    /// in the package can fail, so a module's object depends only on the module. The driver does; otherwise modules
+    /// do so only when the package holds the printer.
+    void SetBacktraces(const bool enabled) noexcept {
+        backtraces = enabled;
+    }
+
     /// Diagnostics accumulated during generation (e.g. errors encoding an `asm func` body). Populated by Generate();
     /// check after calling it.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
@@ -41,6 +48,7 @@ private:
     Target::OS targetOs;
     BuildInfo buildInfo;
     bool machineSelection = false;
+    bool backtraces = false;
     Parallel::WorkerPool *pool = nullptr;
     mutable std::vector<Diagnostic> diagnostics;
 };

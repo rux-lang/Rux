@@ -772,6 +772,9 @@ struct HirTypeLayout {
 struct HirPackage {
     std::vector<HirModule> modules;
     std::vector<DropGluePlan> dropGlues;
+    /// Generic destructor instances drop glue calls. They belong to no module: each module that destroys such a value
+    /// lowers its own private copy next to its own glue, so what a module compiles to never depends on another one.
+    std::vector<HirFunc> dropGlueInstances;
     std::unordered_map<std::string, HirTypeLayout> typeLayouts;
 };
 
