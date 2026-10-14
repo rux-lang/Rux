@@ -101,6 +101,11 @@ private:
     void SetRuxImportsForModule(const Module &module);
     /// Bind the package's own declarations: its primitive extensions, then its aliases and nested modules.
     void BindLocalDeclarations();
+    /// Bind the package's own declarations if a module's imports were set since they were last bound. Every entry
+    /// point that reads or changes the bindings runs this first, so the bindings change in the same order as if each
+    /// module had bound them at once, while a module that evaluates nothing never walks the package.
+    void BindPendingLocalDeclarations();
+    bool localDeclarationsPending = false;
     void CollectRuxImports(const std::vector<DeclPtr> &decls);
     [[nodiscard]] bool RequireRuxImport(const std::string &name, SourceLocation location);
     [[nodiscard]] std::optional<std::string> IntrinsicArgument(const IntrinsicExpr &expr, bool allowEnum = false);

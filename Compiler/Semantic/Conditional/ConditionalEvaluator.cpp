@@ -303,6 +303,7 @@ void ConditionalEvaluator::Impl::SetImports(const Module &module) {
 }
 
 void ConditionalEvaluator::Impl::RegisterDeclarations(const std::vector<DeclPtr> &decls) {
+    BindPendingLocalDeclarations();
     CollectRuxImports(decls);
     CollectCompileTimeDecls(decls);
     for (const Module *module : localModules) {
@@ -345,12 +346,20 @@ void ConditionalEvaluator::Impl::BindLocalDeclarations() {
     }
 }
 
+void ConditionalEvaluator::Impl::BindPendingLocalDeclarations() {
+    if (!std::exchange(localDeclarationsPending, false))
+        return;
+    BindLocalDeclarations();
+}
+
 CompileTimeEvaluation ConditionalEvaluator::Impl::Evaluate(const Expr &expr) {
+    BindPendingLocalDeclarations();
     BeginEvaluation();
     return {Eval(expr), TakeDiagnostics()};
 }
 
 CompileTimeEvaluation ConditionalEvaluator::Impl::EvaluateConstant(const std::string_view name) {
+    BindPendingLocalDeclarations();
     BeginEvaluation();
     const auto found = constExprs.find(std::string(name));
     if (found == constExprs.end()) {
@@ -364,6 +373,7 @@ CompileTimeEvaluation ConditionalEvaluator::Impl::EvaluateConstant(const std::st
 
 CompileTimeConditionEvaluation ConditionalEvaluator::Impl::EvaluateCondition(const Expr *condition,
                                                                              const SourceLocation location) {
+    BindPendingLocalDeclarations();
     BeginEvaluation();
     const bool value = EvalCondition(condition, location);
     return {value, TakeDiagnostics()};
@@ -372,12 +382,14 @@ CompileTimeConditionEvaluation ConditionalEvaluator::Impl::EvaluateCondition(con
 CompileTimeMatchEvaluation
 ConditionalEvaluator::Impl::SelectMatchArm(const Expr &subject, const std::vector<std::vector<const Expr *>> &arms,
                                            const SourceLocation location) {
+    BindPendingLocalDeclarations();
     BeginEvaluation();
     const int arm = SelectMatchArmImpl(subject, arms, location);
     return {arm, TakeDiagnostics()};
 }
 
 void ConditionalEvaluator::Impl::RegisterConstant(const ConstDecl &decl) {
+    BindPendingLocalDeclarations();
     RegisterConstantImpl(decl);
 }
 
@@ -479,8 +491,9 @@ void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
     intrinsicBindings.clear();
     externalIntrinsicTypes.clear();
     aliasPrimitiveTargets.clear();
+    localDeclarationsPending = false;
     CollectRuxImports(module.items);
-    BindLocalDeclarations();
+    localDeclarationsPending = true;
 }
 
 void ConditionalEvaluator::Impl::CollectRuxImports(const std::vector<DeclPtr> &decls) {

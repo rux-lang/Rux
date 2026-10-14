@@ -120,6 +120,7 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
             owner.activeTypeAliases.insert(alias);
             owner.SetSourceContext(source.name, {}, {});
             owner.SetImports(source);
+            owner.BindPendingLocalDeclarations();
             inherit(owner.associatedDeclarations);
         }
         else
@@ -274,6 +275,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
     owner.SetSourceContext(binding.source->name, {}, {});
     owner.selectedDeclarations = selectedDeclarations;
     owner.SetImports(*binding.source);
+    owner.BindPendingLocalDeclarations();
     if (binding.source->name == currentFile) {
         // Selected declarations may already have moved out of a conditional branch.
         // Their indexed bindings remain valid until the enclosing fold completes.
