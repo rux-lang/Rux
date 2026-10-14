@@ -396,6 +396,14 @@ void AnalysisContext::RecordResolvedTypeLayouts(const std::vector<TypeRef> &reco
     }
 }
 
+void AnalysisContext::ResolveReusedParameters(const FuncDecl &function) {
+    // The body is reused, but the name an overload is called by spells its parameter types, which resolving them is
+    // what records, as checking the function would.
+    for (const auto &parameter : function.params)
+        if (!parameter.IsReceiver() && parameter.type)
+            static_cast<void>(ResolveType(*parameter.type));
+}
+
 bool AnalysisContext::SkipsReusedFunction(const FuncDecl &function) const {
     return checkingDeclarationsOnly && currentTypeParams.empty() && function.typeParams.empty() && !function.isAsm &&
            function.body != nullptr &&
@@ -405,6 +413,7 @@ bool AnalysisContext::SkipsReusedFunction(const FuncDecl &function) const {
 void AnalysisContext::CheckDecl(const Decl &decl) {
     if (auto *fn = AstCast<const FuncDecl>(&decl)) {
         if (SkipsReusedFunction(*fn)) {
+            ResolveReusedParameters(*fn);
             return;
         }
         if (const Symbol *symbol = currentScope->LookupLocal(fn->name); symbol && symbol->kind == Symbol::Kind::Func) {

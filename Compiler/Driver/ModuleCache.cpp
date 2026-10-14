@@ -3,11 +3,15 @@
 #include "Driver/BuildCache.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <span>
 #include <system_error>
+#include <thread>
 #include <utility>
 
 namespace Rux::Driver {
@@ -285,8 +289,12 @@ bool ModulePack::Write(const std::filesystem::path &path) const {
     std::filesystem::create_directories(path.parent_path(), error);
     if (error)
         return false;
+    // A name of its own, so builds writing the same pack at once never write into one file; whichever renames last
+    // leaves its whole copy.
+    static std::atomic<std::uint64_t> writes = 0;
     auto temporary = path;
-    temporary += ".tmp";
+    temporary += std::format(".{}-{}-{}.tmp", std::hash<std::thread::id>{}(std::this_thread::get_id()),
+                             std::chrono::steady_clock::now().time_since_epoch().count(), writes.fetch_add(1));
     {
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
         if (!stream)
@@ -296,6 +304,10 @@ bool ModulePack::Write(const std::filesystem::path &path) const {
             return false;
     }
     std::filesystem::rename(temporary, path, error);
+    if (error) {
+        std::error_code removeError;
+        std::filesystem::remove(temporary, removeError);
+    }
     return !error;
 }
 } // namespace Rux::Driver

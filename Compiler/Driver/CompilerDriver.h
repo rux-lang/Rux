@@ -64,6 +64,9 @@ struct CompileOptions {
     bool useBuildCache = true;
     /// The build's time, in seconds since the Unix epoch, instead of `SOURCE_DATE_EPOCH` or the clock.
     std::optional<std::int64_t> buildTimestamp;
+    /// Where precompiled dependency packages are kept (Driver/PackageCache.h) instead of `RUX_PACKAGE_CACHE` or the
+    /// user's data directory. Used only when `useBuildCache` is.
+    std::optional<std::filesystem::path> packageCacheDirectory;
 
     /// Optional presentation hook. The driver always retains diagnostics in CompileResult and supplies already-loaded
     /// source text to a callback so a CLI can render context without rereading files.

@@ -1163,6 +1163,7 @@ private:
     /// code was compiled, against the same declarations, and records nothing another module or lowering reads. A
     /// generic body is instantiated from what checking it records, a default argument is lowered at every call, and an
     /// assembly body is lowered whole.
+    void ResolveReusedParameters(const FuncDecl &function);
     [[nodiscard]] bool SkipsReusedFunction(const FuncDecl &function) const;
     [[nodiscard]] std::optional<std::uint64_t> EvalArrayLength(const Expr &expression) const;
     void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail = false);

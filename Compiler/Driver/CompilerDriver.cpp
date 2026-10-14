@@ -6,6 +6,7 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompileContext.h"
 #include "Driver/ModuleCache.h"
+#include "Driver/PackageCache.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Hir/HirPrinter.h"
 #include "Ir/Lir/Lir.h"
@@ -191,7 +192,134 @@ void CompilerDriver::Impl::PrepareModuleReuse() {
         moduleReuse.digests.emplace(modules[index], std::move(digests[index]));
     }
     moduleReuse.enabled = true;
+    PreparePackageReuse();
     SelectReusedModules();
+}
+
+std::string CompilerDriver::Impl::PackageContextKey() const {
+    // Everything but its sources and its place that changes what a dependency package compiles to: the compiler, the
+    // target and profile, and the compile-time context its `when` branches and intrinsics read.
+    std::string key = std::format("compiler {}\n", CompilerBuild::compilerVersion);
+    const auto compiler = System::CurrentExecutablePath();
+    std::error_code error;
+    const auto compilerSize = std::filesystem::file_size(compiler, error);
+    const auto compilerTime =
+        error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(compiler, error);
+    key += std::format("executable {} {} {}\n", compiler.string(), error ? 0 : compilerSize,
+                       compilerTime.time_since_epoch().count());
+    key += std::format("target {}\nprofile {}\ntest {}\noutput {}\nsymbols {}\n", opts.target.CanonicalName(),
+                       ToString(opts.profile), opts.isTest, static_cast<int>(compileTimeContext.outputKind),
+                       opts.emitSymbols);
+    for (const auto &[name, value] : compileTimeContext.config)
+        key += std::format("config {}={}\n", name, value);
+    for (const auto &pass : opts.disabledOptimizationPasses)
+        key += std::format("disable {}\n", pass);
+    key += std::format("epoch {}\n", System::GetEnv("SOURCE_DATE_EPOCH").value_or("-"));
+    return key;
+}
+
+void CompilerDriver::Impl::PreparePackageReuse() {
+    moduleReuse.packages.clear();
+    std::unordered_map<std::string, std::size_t> indexOf;
+    for (std::size_t index = 0; index < depParseResults.size(); ++index) {
+        const auto [found, inserted] = indexOf.try_emplace(loadedPackages[index], moduleReuse.packages.size());
+        if (inserted) {
+            auto &package = moduleReuse.packages.emplace_back();
+            package.id = loadedPackages[index];
+        }
+        moduleReuse.packages[found->second].modules.push_back(&depParseResults[index].module);
+    }
+    const std::string context = PackageContextKey();
+    const auto cache = PackageCacheDirectory(opts.packageCacheDirectory);
+    std::unordered_map<std::string, std::string> keys;
+    for (auto &package : moduleReuse.packages) {
+        if (const auto bindings = dependencyGraph->Bindings().find(package.id);
+            bindings != dependencyGraph->Bindings().end()) {
+            for (const auto &[alias, id] : bindings->second)
+                if (id != package.id && indexOf.contains(id))
+                    package.dependencies.push_back(id);
+        }
+        std::ranges::sort(package.dependencies);
+        package.dependencies.erase(std::ranges::unique(package.dependencies).begin(), package.dependencies.end());
+        const SourcePackage *source = dependencyGraph->Find(package.id);
+        bool keyed = source != nullptr;
+        std::string text = context + std::format("package {}\n", package.id);
+        if (source != nullptr) {
+            std::ifstream stream(source->manifestPath, std::ios::binary);
+            const std::string manifest((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+            // Where the package lies decides the paths its code reports: relative to the package being built when it
+            // lies inside it, else absolute.
+            const auto packageRoot = source->Root().lexically_normal();
+            const auto relative = packageRoot.lexically_relative(compileTimeContext.sourceRoot);
+            const bool inside = !relative.empty() && relative.begin()->generic_string() != "..";
+            text += std::format("manifest {}\nroot {}\nreported {}\n", HashText(manifest), packageRoot.generic_string(),
+                                inside ? relative.generic_string() : std::string("absolute"));
+        }
+        for (const Module *module : package.modules) {
+            const auto digest = moduleReuse.digests.find(module);
+            if (digest == moduleReuse.digests.end() || digest->second.source.empty()) {
+                keyed = false;
+                break;
+            }
+            text += std::format("module {} {}\n", digest->second.source, module->name);
+        }
+        for (const auto &dependency : package.dependencies) {
+            const auto key = keys.find(dependency);
+            if (key == keys.end() || key->second.empty()) {
+                keyed = false;
+                break;
+            }
+            text += std::format("dependency {}\n", key->second);
+        }
+        if (!keyed) {
+            keys[package.id] = {};
+            continue;
+        }
+        package.key = HashText(text);
+        keys[package.id] = package.key;
+        package.directory = cache / package.key.substr(0, 32);
+        package.variant = ReadNewestPackageVariant(package.directory);
+    }
+}
+
+bool CompilerDriver::Impl::RejectStalePackages() {
+    std::unordered_map<std::string, std::string> names;
+    bool stale = false;
+    for (auto &package : moduleReuse.packages) {
+        std::string text = NamesDigest(*semanticModel, package.modules) + "\n";
+        for (const auto &dependency : package.dependencies)
+            if (const auto found = names.find(dependency); found != names.end())
+                text += found->second + "\n";
+        package.names = HashText(text);
+        names[package.id] = package.names;
+        if (!package.variant)
+            continue;
+        const bool reusedUnderOtherNames = std::ranges::any_of(package.modules, [&](const Module *module) {
+            const auto cached = moduleReuse.cached.find(module);
+            const CachedModule *entry = package.variant->FindAny(module->name);
+            return cached != moduleReuse.cached.end() && cached->second == entry && entry->key != package.names;
+        });
+        if (reusedUnderOtherNames) {
+            for (const Module *module : package.modules)
+                moduleReuse.fresh.insert(module->name);
+            stale = true;
+        }
+    }
+    return stale;
+}
+
+bool CompilerDriver::Impl::AnalyzeReusing() {
+    if (!Analyze())
+        return false;
+    while (!moduleReuse.packages.empty() && RejectStalePackages()) {
+        // A package was kept under other names than this program gives its declarations, so its code would not link
+        // here: it is analyzed again whole, and compiled.
+        repeatingAnalysis = true;
+        SelectReusedModules();
+        if (!Analyze())
+            return false;
+    }
+    return true;
 }
 
 bool CompilerDriver::Impl::VerifyingModuleReuse() {
@@ -245,6 +373,21 @@ void CompilerDriver::Impl::SelectReusedModules() {
             moduleReuse.declarationOnly.insert(module);
             moduleReuse.cached.emplace(module, entry);
         }
+    }
+    // A dependency package kept in the shared cache supplies every module of it the pack did not, whole, as its names
+    // are checked for the package as one.
+    for (const auto &package : moduleReuse.packages) {
+        if (!package.variant)
+            continue;
+        const bool whole = std::ranges::all_of(package.modules, [&](const Module *module) {
+            return !module->bodiesDeclareItems && !moduleReuse.fresh.contains(module->name) &&
+                   package.variant->FindAny(module->name) != nullptr;
+        });
+        if (!whole)
+            continue;
+        for (const Module *module : package.modules)
+            if (moduleReuse.cached.try_emplace(module, package.variant->FindAny(module->name)).second)
+                moduleReuse.declarationOnly.insert(module);
     }
 }
 
@@ -530,7 +673,7 @@ CompileResult CompilerDriver::Impl::Compile() {
         return result;
     }
     PrepareModuleReuse();
-    if (!Analyze()) {
+    if (!AnalyzeReusing()) {
         finish();
         return result;
     }
@@ -558,7 +701,7 @@ CompileResult CompilerDriver::Impl::Compile() {
         repeatingAnalysis = true;
         SelectReusedModules();
         result.secondaryArtifactPaths.clear();
-        if (!Analyze()) {
+        if (!AnalyzeReusing()) {
             finish();
             return result;
         }
@@ -1187,6 +1330,58 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         std::unordered_set<std::string_view> reported;
         for (const auto &diagnostic : diagnostics)
             reported.insert(diagnostic.sourceName);
+        // Keep every dependency package this build compiled, in whole or in part, for later builds of any package to
+        // reuse, as a variant of its key named by the names and roots its modules were compiled under.
+        std::unordered_map<const Module *, std::size_t> moduleIndex;
+        for (std::size_t index = 0; index < moduleCount; ++index)
+            if (sourceModules[index] != nullptr)
+                moduleIndex.emplace(sourceModules[index], index);
+        for (const auto &package : moduleReuse.packages) {
+            if (package.key.empty())
+                continue;
+            const bool keptAlready =
+                package.variant && std::ranges::all_of(package.modules, [&](const Module *module) {
+                    const auto found = moduleReuse.cached.find(module);
+                    return found != moduleReuse.cached.end() && found->second == package.variant->FindAny(module->name);
+                });
+            if (keptAlready)
+                continue;
+            ModulePack variant;
+            std::string compiledUnder = package.names + "\n";
+            bool complete = true;
+            for (const Module *module : package.modules) {
+                const auto found = moduleIndex.find(module);
+                const std::size_t index = found == moduleIndex.end() ? moduleCount : found->second;
+                if (index == moduleCount || reported.contains(module->name) ||
+                    (index < readsBuildTime.size() && readsBuildTime[index]) ||
+                    (reused[index] == nullptr && freshObjects[index].empty())) {
+                    complete = false;
+                    break;
+                }
+                CachedModule entry;
+                if (reused[index] != nullptr) {
+                    entry = *reused[index];
+                }
+                else {
+                    const auto &digest = moduleReuse.digests.at(module);
+                    entry.references = references[index];
+                    entry.fails = index < moduleFailures.size() && moduleFailures[index] != 0;
+                    entry.object = freshObjects[index];
+                    entry.sourceSize = digest.size;
+                    entry.sourceModified = digest.modified;
+                    entry.sourceDigest = digest.source;
+                    entry.interfaceDigest = digest.interface;
+                }
+                entry.key = package.names;
+                entry.roots = release ? roots[index] : std::vector<Optimization::LirModuleRoot>{};
+                for (const auto &moduleRoot : entry.roots)
+                    compiledUnder +=
+                        std::format("{} {} {}\n", module->name, static_cast<int>(moduleRoot.kind), moduleRoot.name);
+                variant.Put(module->name, std::move(entry));
+            }
+            if (complete)
+                WritePackageVariant(package.directory, HashText(compiledUnder).substr(0, 32), variant);
+        }
         ModulePack pack;
         for (std::size_t index = 0; index < moduleCount; ++index) {
             const Module *module = sourceModules[index];

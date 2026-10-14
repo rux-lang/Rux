@@ -9,6 +9,7 @@ rux_add_component(RuxDriver
     BuildCache.cpp
     CompilerDriver.cpp
     ModuleCache.cpp
+    PackageCache.cpp
     DependencyGraph.cpp
     BuildPlan.cpp
     BuildTarget.cpp

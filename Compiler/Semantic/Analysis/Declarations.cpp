@@ -23,6 +23,7 @@ using Layout::AlignUp;
 
 void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
     if (SkipsReusedFunction(d)) {
+        ResolveReusedParameters(d);
         return;
     }
     auto savedTypeParams = currentTypeParams;

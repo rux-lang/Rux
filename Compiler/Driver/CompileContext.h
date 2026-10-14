@@ -58,6 +58,14 @@ private:
     [[nodiscard]] std::filesystem::path ModulePackPath() const;
     void PrepareModuleReuse();
     void SelectReusedModules();
+    /// Precompiled dependency packages (Driver/PackageCache.h): keying each dependency package and reading its newest
+    /// kept variant, checking once the program is analyzed that the variants reused were compiled under the names the
+    /// program gives, and keeping each package compiled or confirmed by this build.
+    [[nodiscard]] std::string PackageContextKey() const;
+    void PreparePackageReuse();
+    [[nodiscard]] bool RejectStalePackages();
+    /// Analyze, and again with the packages whose names differ compiled, until every reused package checks out.
+    bool AnalyzeReusing();
     /// Whether `RUX_VERIFY_MODULE_CACHE` asks every build that reuses modules to be checked against a fresh one.
     [[nodiscard]] static bool VerifyingModuleReuse();
     /// Compile the package again reusing nothing and report an internal error unless the artifact is the same.
@@ -114,6 +122,24 @@ private:
         std::unordered_map<const Module *, const CachedModule *> cached;
         /// Modules an attempt found needed differently than when they were recorded, which are compiled again.
         std::set<std::string> fresh;
+
+        /// A dependency package, which may come from the shared cache of precompiled packages.
+        struct Package {
+            std::string id;
+            std::vector<const Module *> modules;
+            /// The packages it imports from, which come before it.
+            std::vector<std::string> dependencies;
+            /// Its key, empty when it cannot be kept, and the directory its variants are kept in.
+            std::string key;
+            std::filesystem::path directory;
+            /// The newest variant kept of it, whose modules this build reuses when nothing else does.
+            std::optional<ModulePack> variant;
+            /// The names the program gave its declarations and those of its dependencies, once analyzed.
+            std::string names;
+        };
+
+        /// The dependency packages, each after those it imports from.
+        std::vector<Package> packages;
     };
 
     ModuleReuse moduleReuse;

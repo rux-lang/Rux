@@ -297,3 +297,82 @@ TEST_CASE("compiler driver never keeps a module that holds the build's time") {
     CHECK(diagnostics.empty());
     std::filesystem::remove_all(root, copyError);
 }
+
+TEST_CASE("dependency packages come from the shared package cache whatever the project keeps") {
+    // The dependency declares an overload no checked code calls, whose name spells a parameter type only resolving the
+    // skipped function records; the package is reused only when the names it was kept under are the program's.
+    DependencyFixture fixture;
+    fixture.SetDependencySource(R"(
+pub module Api {
+    pub interface Measure {
+        func Size() -> int;
+    }
+
+    pub func Total(first: int) -> int {
+        return first;
+    }
+
+    pub func Total(first: int, parts: Measure...) -> int {
+        var sum: int = first;
+        for part in parts {
+            sum += part.Size();
+        }
+        return sum;
+    }
+
+    pub struct Point {
+        pub x: int;
+    }
+
+    pub func Answer() -> int {
+        let point = Point { x: 42 };
+        return point.x;
+    }
+}
+)");
+    const auto cache = TempDirectory() / ("rux-package-cache-test-" +
+                                          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.packageCacheDirectory = cache;
+    const auto appTemp = options.manifestPath.parent_path() / "Temp";
+    const auto build = [&](const bool cached) {
+        auto request = options;
+        request.useBuildCache = cached;
+        const auto result = CompilerDriver(request).Compile();
+        REQUIRE(result.ok);
+        return std::pair{ReadBinaryFile(result.primaryArtifactPath), result.stats.dependencyReusedFiles};
+    };
+    fixture.SetApplicationSource("import Dependency::Api::Answer;\n\nfunc Main() -> int {\n"
+                                 "    return Answer() - 42;\n}\n");
+    static_cast<void>(build(true));
+    // A clean project: nothing of it is kept, but the dependency is.
+    std::error_code error;
+    std::filesystem::remove_all(appTemp, error);
+    const auto [clean, reused] = build(true);
+    CHECK(reused == 1);
+    CHECK(clean == build(false).first);
+
+    // A program that declares a type of the dependency's name gives the dependency's declarations other names, so the
+    // kept package does not link into it: it is compiled again, and kept as another variant the next build reuses.
+    fixture.SetApplicationSource(R"(
+import Dependency::Api::Answer;
+
+struct Point {
+    y: int;
+}
+
+func Main() -> int {
+    let point = Point { y: 42 };
+    return Answer() - point.y;
+}
+)");
+    std::filesystem::remove_all(appTemp, error);
+    const auto [renamed, renamedReused] = build(true);
+    CHECK(renamedReused == 0);
+    CHECK(renamed == build(false).first);
+    std::filesystem::remove_all(appTemp, error);
+    CHECK(build(true).second == 1);
+    CHECK(diagnostics.empty());
+    std::filesystem::remove_all(cache, error);
+}
