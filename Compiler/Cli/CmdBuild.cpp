@@ -11,6 +11,7 @@
 #include "Driver/BuildPlan.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
+#include "Parallel/WorkerPool.h"
 #include "Reporting/Reporting.h"
 
 #include <algorithm>
@@ -206,7 +207,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             // threads the build may use, and reported in order. What a cell reports is held until its turn, so reports
             // never interleave; progress lines are only shown when cells are built one at a time.
             const std::size_t threads =
-                jobs != 0 ? jobs : std::max<std::size_t>(1, std::thread::hardware_concurrency());
+                jobs != 0 ? jobs : Parallel::DefaultJobs();
             const std::size_t concurrent = opts.verbose ? 1 : std::clamp<std::size_t>(matrix.size(), 1, threads);
             std::vector<std::optional<BuildCellReport>> cellReports(matrix.size());
             std::vector<std::vector<std::string>> held(matrix.size());

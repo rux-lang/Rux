@@ -1,9 +1,56 @@
 #include "Parallel/WorkerPool.h"
 
+#include "System/WinApi.h"
+#include "Target/Platform.h"
+
 #include <algorithm>
+#include <bit>
+#include <cstdint>
+
+#if RUX_OS_LINUX
+    #include <sched.h>
+#elif RUX_OS_FREEBSD
+    #include <sys/param.h>
+    #include <sys/cpuset.h>
+#endif
 
 namespace Rux::Parallel {
+namespace {
+/// The logical cores this process may run on, or 0 when the platform cannot tell. A build started under a restricted
+/// affinity (`start /affinity`, `taskset`, `cpuset`) gets that many workers rather than one per core of the machine,
+/// which would only time-slice them on the cores it was given.
+std::size_t AffinityCores() noexcept {
+#if RUX_OS_WINDOWS
+    // A process mask describes one processor group; on a machine with several, threads may use them all.
+    if (GetActiveProcessorGroupCount() > 1)
+        return 0;
+    DWORD_PTR processMask = 0;
+    DWORD_PTR systemMask = 0;
+    if (GetProcessAffinityMask(GetCurrentProcess(), &processMask, &systemMask) == 0)
+        return 0;
+    return static_cast<std::size_t>(std::popcount(static_cast<std::uint64_t>(processMask)));
+#elif RUX_OS_LINUX
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof(set), &set) != 0)
+        return 0;
+    return static_cast<std::size_t>(CPU_COUNT(&set));
+#elif RUX_OS_FREEBSD
+    cpuset_t set;
+    CPU_ZERO(&set);
+    if (cpuset_getaffinity(CPU_LEVEL_WHICH, CPU_WHICH_PID, -1, sizeof(set), &set) != 0)
+        return 0;
+    return static_cast<std::size_t>(CPU_COUNT(&set));
+#else
+    return 0;
+#endif
+}
+} // namespace
+
 std::size_t DefaultJobs() noexcept {
+    const std::size_t cores = AffinityCores();
+    if (cores != 0)
+        return cores;
     return std::max<std::size_t>(1, std::thread::hardware_concurrency());
 }
 

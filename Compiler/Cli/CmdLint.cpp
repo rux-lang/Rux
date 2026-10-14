@@ -9,6 +9,7 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Linter/Linter.h"
+#include "Parallel/WorkerPool.h"
 #include "Reporting/Reporting.h"
 #include "Source/SourceLoader.h"
 
@@ -98,7 +99,7 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
         std::vector<Linting::LintResult> results(sources.files.size());
         const std::vector<TestTask> tasks(sources.files.size());
         RunTestTasks(
-            tasks, std::max<std::size_t>(1, std::thread::hardware_concurrency()),
+            tasks, Parallel::DefaultJobs(),
             [&](const std::size_t index) {
                 const auto &file = sources.files[index];
                 results[index] = Linting::Lint(file.source, file.path.string());

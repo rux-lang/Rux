@@ -11,6 +11,7 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
+#include "Parallel/WorkerPool.h"
 
 #include <algorithm>
 #include <array>
@@ -244,7 +245,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     // Packages are checked side by side, sharing the cores, and reported in order. What a package reports while others
     // are still being checked is held until its turn, so reports never interleave; progress lines are only shown when
     // packages are checked one at a time.
-    const std::size_t cores = std::max<std::size_t>(1, std::thread::hardware_concurrency());
+    const std::size_t cores = Parallel::DefaultJobs();
     const std::size_t concurrent = opts.verbose ? 1 : std::min(cores, std::max<std::size_t>(1, jobs.size()));
     const std::size_t compileJobs = std::max<std::size_t>(1, cores / concurrent);
 

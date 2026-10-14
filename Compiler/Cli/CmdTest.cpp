@@ -12,6 +12,7 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "Package/Manifest.h"
+#include "Parallel/WorkerPool.h"
 
 #include <algorithm>
 #include <charconv>
@@ -41,7 +42,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     bool isRelease = false;
     bool useBuildCache = true;
     // Test packages are independent, so by default one runs per logical core.
-    std::size_t jobs = std::max<std::size_t>(1, std::thread::hardware_concurrency());
+    std::size_t jobs = Parallel::DefaultJobs();
     std::string_view target;
     std::map<std::string, std::string> defines;
     std::vector<std::string_view> testArguments;
@@ -269,7 +270,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     compileOptions.localNamespaces = localNamespaces;
     compileOptions.useBuildCache = useBuildCache;
     // Packages built side by side share the cores rather than each starting a thread per core.
-    compileOptions.jobs = std::max<std::size_t>(1, std::thread::hardware_concurrency() / jobs);
+    compileOptions.jobs = std::max<std::size_t>(1, Parallel::DefaultJobs() / jobs);
     std::vector<TestOutcome> outcomes(testPackages.size());
     RunTestTasks(
         tasks, jobs,

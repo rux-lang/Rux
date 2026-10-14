@@ -13,7 +13,8 @@
 #include <vector>
 
 namespace Rux::Parallel {
-/// The number of threads a compilation uses when the user asks for none in particular: one per logical core.
+/// The number of threads a compilation uses when the user asks for none in particular: one per logical core the
+/// process may run on, so a build started under a restricted CPU affinity does not time-slice extra threads.
 [[nodiscard]] std::size_t DefaultJobs() noexcept;
 
 /// Resolve a requested job count, where 0 means `DefaultJobs()`.
