@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <thread>
 
 #if !RUX_OS_WINDOWS
@@ -15,8 +16,9 @@
 
 namespace Rux::System::Allocator {
 namespace {
-// Slabs are 64 KiB, carved in order from one reserved range of 256 GiB. Each slab holds blocks of one size class, and
-// the class of every slab is recorded by slab index, which is how a free finds the size of a block that has no header.
+// Slabs are 64 KiB, carved in order from one reserved range of 256 GiB. Each slab holds blocks of one size class while
+// any of them is in use, and the class of every slab is recorded by slab index, which is how a free finds the size of
+// a block that has no header.
 constexpr std::size_t kSlabShift = 16;
 constexpr std::size_t kSlabSize = std::size_t{1} << kSlabShift;
 constexpr std::size_t kReserveBytes = std::size_t{1} << 38;
@@ -54,9 +56,13 @@ constexpr std::array<std::uint8_t, kMaxSmall / 16 + 1> kClassOfGranule = [] {
 
 static_assert(kBlockSizes[kClassCount - 1] == kMaxSmall);
 
+// What a carved slab holds when its blocks are all free, instead of the class of its blocks.
+constexpr std::uint8_t kIdleSlab = 0xFF;
+static_assert(kClassCount < kIdleSlab);
+
 /// A spin lock that needs no construction, so it works before and after static initialization. It guards only slow
-/// paths: carving a slab and moving a free list to or from the depot. It yields rather than waiting on the address,
-/// which would import the address-wait API set on Windows.
+/// paths: taking or freeing a slab and moving free blocks to or from the depot. It yields rather than waiting on the
+/// address, which would import the address-wait API set on Windows.
 class SpinLock {
 public:
     void Lock() noexcept {
@@ -97,25 +103,50 @@ enum class ReserveState : int {
     Unavailable,
 };
 
+// The free blocks of a slab that lie in its class's depot: a list from `head` to `tail` of `count` blocks, given as
+// offsets in 16-byte units. A slab with any blocks there is in the depot's list of such slabs, by `previous` and
+// `next`.
+struct SlabFreeList {
+    std::uint16_t head = 0;
+    std::uint16_t tail = 0;
+    std::uint16_t count = 0;
+    std::uint32_t previous = 0;
+    std::uint32_t next = 0;
+};
+
+constexpr std::uint32_t kNoSlab = 0xFFFFFFFF;
+static_assert(kSlabCount < kNoSlab && kSlabSize / 16 <= 0x10000);
+
+// The free lists of the slabs lie at the start of the range, committed along with the slabs they describe.
+constexpr std::size_t kFreeListSlabs = kSlabCount * sizeof(SlabFreeList) / kSlabSize;
+
 std::atomic<char *> reservedBase{nullptr};
 std::atomic<ReserveState> reserveState{ReserveState::Untried};
 std::uint8_t slabClasses[kSlabCount];
-SpinLock carveLock;
-std::size_t slabsCarved = 0;
-std::size_t slabsCommitted = 0;
 
-// Freed blocks no thread is holding, per class: a list of chains, each chain a free list whose first block also links
-// to the next chain.
+// The carved part of the range, guarded by `slabLock`. Slabs from `kFreeListSlabs` to `slabsCarved` hold a class or
+// are idle; the hint is the lowest slab that may be idle.
+SpinLock slabLock;
+std::size_t slabsCarved = kFreeListSlabs;
+std::size_t slabsCommitted = kFreeListSlabs;
+std::size_t idleSlabs = 0;
+std::size_t idleHint = 0;
+
+// Freed blocks no thread is holding, per class, kept by the slab they lie in, so a slab is known to be free the moment
+// the last of its blocks arrives.
 struct Depot {
     SpinLock lock;
-    void *chains = nullptr;
+    std::uint32_t slabs = kNoSlab;
 };
 
 std::array<Depot, kClassCount> depots;
 
+// A thread's free blocks of one class: a list of exactly `count` blocks, a full spare list of `FlushLimit` blocks, and
+// the untouched end of the slab the thread is carving.
 struct ClassCache {
     void *head = nullptr;
     std::size_t count = 0;
+    void *spare = nullptr;
     char *bump = nullptr;
     char *end = nullptr;
 };
@@ -130,11 +161,30 @@ void *&NextBlock(void *block) noexcept {
     return *static_cast<void **>(block);
 }
 
-void *&NextChain(void *block) noexcept {
-    return static_cast<void **>(block)[1];
+char *SlabAt(const std::size_t index) noexcept {
+    return reservedBase.load(std::memory_order_relaxed) + index * kSlabSize;
 }
 
-/// How many free blocks of `sizeClass` a thread keeps before handing its list to the depot.
+std::uint32_t SlabIndex(const void *block) noexcept {
+    const char *base = reservedBase.load(std::memory_order_relaxed);
+    return static_cast<std::uint32_t>(static_cast<std::size_t>(static_cast<const char *>(block) - base) >> kSlabShift);
+}
+
+SlabFreeList &FreeListOf(const std::uint32_t slab) noexcept {
+    return reinterpret_cast<SlabFreeList *>(reservedBase.load(std::memory_order_relaxed))[slab];
+}
+
+std::uint16_t OffsetInSlab(const void *block) noexcept {
+    const char *base = reservedBase.load(std::memory_order_relaxed);
+    const auto offset = static_cast<std::size_t>(static_cast<const char *>(block) - base);
+    return static_cast<std::uint16_t>((offset & (kSlabSize - 1)) >> 4);
+}
+
+void *BlockAt(const std::uint32_t slab, const std::uint16_t offset) noexcept {
+    return SlabAt(slab) + (std::size_t{offset} << 4);
+}
+
+/// How many free blocks of `sizeClass` a thread keeps in a list before setting it aside as its spare.
 constexpr std::array<std::uint32_t, kClassCount> kFlushLimits = [] {
     std::array<std::uint32_t, kClassCount> limits{};
     for (std::size_t sizeClass = 0; sizeClass < kClassCount; ++sizeClass) {
@@ -144,27 +194,223 @@ constexpr std::array<std::uint32_t, kClassCount> kFlushLimits = [] {
     return limits;
 }();
 
+// A refill takes whole slab lists from the depot, and a thread's list must stay within its limit.
+static_assert([] {
+    for (std::size_t sizeClass = 0; sizeClass < kClassCount; ++sizeClass)
+        if (kSlabSize / kBlockSizes[sizeClass] > kFlushLimits[sizeClass])
+            return false;
+    return true;
+}());
+
 std::size_t FlushLimit(const std::size_t sizeClass) noexcept {
     return kFlushLimits[sizeClass];
 }
 
-void PushChain(const std::size_t sizeClass, void *chain) noexcept {
-    auto &depot = depots[sizeClass];
-    const LockGuard guard(depot.lock);
-    NextChain(chain) = depot.chains;
-    depot.chains = chain;
+/// Make `count` slabs from `first` readable and writable.
+bool Commit(char *first, const std::size_t count) noexcept {
+#if RUX_OS_WINDOWS
+    return VirtualAlloc(first, count * kSlabSize, MEM_COMMIT, PAGE_READWRITE) != nullptr;
+#else
+    return mprotect(first, count * kSlabSize, PROT_READ | PROT_WRITE) == 0;
+#endif
 }
 
-void *PopChain(const std::size_t sizeClass) noexcept {
-    auto &depot = depots[sizeClass];
-    const LockGuard guard(depot.lock);
-    void *chain = depot.chains;
-    if (chain != nullptr)
-        depot.chains = NextChain(chain);
-    return chain;
+/// Make the free lists of `count` slabs from `first` readable and writable.
+bool CommitFreeLists(const std::size_t first, const std::size_t count) noexcept {
+    char *base = reservedBase.load(std::memory_order_relaxed);
+#if RUX_OS_WINDOWS
+    return VirtualAlloc(base + first * sizeof(SlabFreeList), count * sizeof(SlabFreeList), MEM_COMMIT,
+                        PAGE_READWRITE) != nullptr;
+#else
+    // Protection changes whole pages, so round the range out to them.
+    constexpr std::uintptr_t kPage = 4096;
+    const auto begin = reinterpret_cast<std::uintptr_t>(base + first * sizeof(SlabFreeList)) & ~(kPage - 1);
+    const auto end = reinterpret_cast<std::uintptr_t>(base + (first + count) * sizeof(SlabFreeList));
+    return mprotect(reinterpret_cast<void *>(begin), end - begin, PROT_READ | PROT_WRITE) == 0;
+#endif
 }
 
-/// Hands a finished thread's free blocks to the depot, so the threads that remain reuse them.
+/// The lowest carved slab from `hint` in `state`, or `slabsCarved` when there is none. Called with `slabLock` held.
+std::size_t FindSlab(const std::uint8_t state, const std::size_t hint) noexcept {
+    const std::size_t from = hint < kFreeListSlabs ? kFreeListSlabs : hint;
+    if (from >= slabsCarved)
+        return slabsCarved;
+    const void *found = std::memchr(slabClasses + from, state, slabsCarved - from);
+    return found == nullptr ? slabsCarved
+                            : static_cast<std::size_t>(static_cast<const std::uint8_t *>(found) - slabClasses);
+}
+
+/// A slab for `sizeClass`: an idle one, else a fresh one from the range. Null when the range is used up or cannot be
+/// committed.
+char *TakeSlab(const std::size_t sizeClass) noexcept {
+    const LockGuard guard(slabLock);
+    std::size_t index = slabsCarved;
+    if (idleSlabs != 0) {
+        index = FindSlab(kIdleSlab, idleHint);
+        if (index != slabsCarved) {
+            idleHint = index + 1;
+            --idleSlabs;
+        }
+    }
+    if (index == slabsCarved) {
+        if (slabsCarved == kSlabCount)
+            return nullptr;
+        if (slabsCarved == slabsCommitted) {
+            std::size_t count = kSlabCount - slabsCommitted;
+            if (count > kCommitSlabs)
+                count = kCommitSlabs;
+            if (!Commit(SlabAt(slabsCommitted), count) || !CommitFreeLists(slabsCommitted, count))
+                return nullptr;
+            slabsCommitted += count;
+        }
+        ++slabsCarved;
+    }
+    slabClasses[index] = static_cast<std::uint8_t>(sizeClass);
+    return SlabAt(index);
+}
+
+/// Make `count` slabs whose blocks are all free idle, ready for any class.
+void FreeSlabs(const std::uint32_t *slabs, const std::size_t count) noexcept {
+    const LockGuard guard(slabLock);
+    for (std::size_t index = 0; index < count; ++index) {
+        slabClasses[slabs[index]] = kIdleSlab;
+        if (slabs[index] < idleHint)
+            idleHint = slabs[index];
+    }
+    idleSlabs += count;
+}
+
+void UnlinkSlab(Depot &depot, const SlabFreeList &list) noexcept {
+    if (list.previous == kNoSlab)
+        depot.slabs = list.next;
+    else
+        FreeListOf(list.previous).next = list.next;
+    if (list.next != kNoSlab)
+        FreeListOf(list.next).previous = list.previous;
+}
+
+/// Consecutive blocks of one slab in a list handed to the depot, linked to each other already.
+struct Run {
+    void *first;
+    void *last;
+    std::uint32_t slab;
+    std::uint32_t length;
+};
+
+constexpr std::size_t kRunBatch = 64;
+
+/// Add `count` runs of `sizeClass` to their slabs' lists in the depot, then free the slabs that became whole.
+void DepositRuns(const std::size_t sizeClass, const Run *runs, const std::size_t count) noexcept {
+    const std::size_t capacity = kSlabSize / kBlockSizes[sizeClass];
+    std::array<std::uint32_t, kRunBatch> freed{};
+    std::size_t freedCount = 0;
+    auto &depot = depots[sizeClass];
+    {
+        const LockGuard guard(depot.lock);
+        for (std::size_t index = 0; index < count; ++index) {
+            const Run &run = runs[index];
+            SlabFreeList &list = FreeListOf(run.slab);
+            if (list.count == 0) {
+                NextBlock(run.last) = nullptr;
+                list.tail = OffsetInSlab(run.last);
+                list.previous = kNoSlab;
+                list.next = depot.slabs;
+                if (depot.slabs != kNoSlab)
+                    FreeListOf(depot.slabs).previous = run.slab;
+                depot.slabs = run.slab;
+            }
+            else {
+                NextBlock(run.last) = BlockAt(run.slab, list.head);
+            }
+            list.head = OffsetInSlab(run.first);
+            list.count = static_cast<std::uint16_t>(list.count + run.length);
+            if (list.count == capacity) {
+                UnlinkSlab(depot, list);
+                list.count = 0;
+                freed[freedCount++] = run.slab;
+            }
+        }
+    }
+    if (freedCount != 0)
+        FreeSlabs(freed.data(), freedCount);
+}
+
+/// Hand a null-terminated list of blocks of `sizeClass` to the depot. Its blocks are gathered by slab first, so the
+/// depot is updated once per slab rather than once per block.
+void PushList(const std::size_t sizeClass, void *list) noexcept {
+    // Which run of the batch last took a block of a slab, by the slab's low bits; a stale or colliding entry only
+    // starts another run of the same slab.
+    constexpr std::size_t kSlots = 256;
+    std::array<std::uint8_t, kSlots> runOfSlab;
+    runOfSlab.fill(0xFF);
+    std::array<Run, kRunBatch> runs;
+    std::size_t count = 0;
+    Run *current = nullptr;
+    for (void *block = list; block != nullptr;) {
+        void *next = NextBlock(block);
+        const std::uint32_t slab = SlabIndex(block);
+        if (current == nullptr || current->slab != slab) {
+            const std::uint8_t slot = runOfSlab[slab % kSlots];
+            if (slot < count && runs[slot].slab == slab) {
+                current = &runs[slot];
+            }
+            else {
+                if (count == kRunBatch) {
+                    DepositRuns(sizeClass, runs.data(), count);
+                    runOfSlab.fill(0xFF);
+                    count = 0;
+                }
+                runOfSlab[slab % kSlots] = static_cast<std::uint8_t>(count);
+                runs[count] = Run{block, block, slab, 1};
+                current = &runs[count++];
+                block = next;
+                continue;
+            }
+        }
+        // Blocks already walked are relinked only, so `next` stays the list's own successor.
+        NextBlock(current->last) = block;
+        current->last = block;
+        ++current->length;
+        block = next;
+    }
+    if (count != 0)
+        DepositRuns(sizeClass, runs.data(), count);
+}
+
+/// Free blocks of `sizeClass` from the depot, the whole lists of a few slabs, and their number; null when the depot
+/// is empty. They are at most `FlushLimit` blocks, which a slab's list alone never exceeds: a slab whose blocks are all
+/// in the depot is not in it. The lists are joined after the lock is dropped, since that touches a block of each.
+void *PopList(const std::size_t sizeClass, std::size_t &length) noexcept {
+    constexpr std::size_t kMaxSlabs = 16;
+    const std::size_t limit = FlushLimit(sizeClass);
+    std::array<std::pair<void *, void *>, kMaxSlabs> lists;
+    std::size_t listCount = 0;
+    length = 0;
+    {
+        auto &depot = depots[sizeClass];
+        const LockGuard guard(depot.lock);
+        while (length < limit / 2 && listCount < kMaxSlabs && depot.slabs != kNoSlab) {
+            const std::uint32_t slab = depot.slabs;
+            SlabFreeList &list = FreeListOf(slab);
+            if (length + list.count > limit)
+                break;
+            depot.slabs = list.next;
+            if (list.next != kNoSlab)
+                FreeListOf(list.next).previous = kNoSlab;
+            lists[listCount++] = {BlockAt(slab, list.head), BlockAt(slab, list.tail)};
+            length += list.count;
+            list.count = 0;
+        }
+    }
+    if (listCount == 0)
+        return nullptr;
+    for (std::size_t index = 1; index < listCount; ++index)
+        NextBlock(lists[index - 1].second) = lists[index].first;
+    return lists[0].first;
+}
+
+/// Hands a finished thread's free blocks, and the untouched end of each slab it was carving, to the depot, so the
+/// threads that remain reuse them and the slabs can be freed whole.
 struct CacheFlusher {
     CacheFlusher() = default;
     CacheFlusher(const CacheFlusher &) = delete;
@@ -174,9 +420,18 @@ struct CacheFlusher {
         for (std::size_t sizeClass = 0; sizeClass < kClassCount; ++sizeClass) {
             auto &cache = threadCache.classes[sizeClass];
             if (cache.head != nullptr)
-                PushChain(sizeClass, cache.head);
-            cache.head = nullptr;
-            cache.count = 0;
+                PushList(sizeClass, cache.head);
+            if (cache.spare != nullptr)
+                PushList(sizeClass, cache.spare);
+            const std::size_t blockSize = kBlockSizes[sizeClass];
+            if (cache.bump != nullptr && static_cast<std::size_t>(cache.end - cache.bump) >= blockSize) {
+                const std::size_t length = static_cast<std::size_t>(cache.end - cache.bump) / blockSize;
+                for (std::size_t index = 0; index < length; ++index)
+                    NextBlock(cache.bump + index * blockSize) =
+                        index + 1 < length ? cache.bump + (index + 1) * blockSize : nullptr;
+                PushList(sizeClass, cache.bump);
+            }
+            cache = ClassCache{};
         }
     }
 };
@@ -209,52 +464,42 @@ bool Reserve() noexcept {
     return true;
 }
 
-/// Make `count` slabs from `first` readable and writable.
-bool Commit(char *first, const std::size_t count) noexcept {
-#if RUX_OS_WINDOWS
-    return VirtualAlloc(first, count * kSlabSize, MEM_COMMIT, PAGE_READWRITE) != nullptr;
-#else
-    return mprotect(first, count * kSlabSize, PROT_READ | PROT_WRITE) == 0;
-#endif
-}
-
-/// A fresh slab for `sizeClass`, or null when the reserved range is used up or cannot be committed.
-char *CarveSlab(const std::size_t sizeClass) noexcept {
-    char *base = reservedBase.load(std::memory_order_acquire);
-    const LockGuard guard(carveLock);
-    if (slabsCarved == kSlabCount)
-        return nullptr;
-    if (slabsCarved == slabsCommitted) {
-        std::size_t count = kSlabCount - slabsCommitted;
-        if (count > kCommitSlabs)
-            count = kCommitSlabs;
-        if (!Commit(base + slabsCommitted * kSlabSize, count))
-            return nullptr;
-        slabsCommitted += count;
-    }
-    const std::size_t index = slabsCarved++;
-    slabClasses[index] = static_cast<std::uint8_t>(sizeClass);
-    return base + index * kSlabSize;
-}
-
-/// The slow path of a small allocation: refill the thread's list from the depot or a new slab.
+/// The slow path of a small allocation: refill the thread's list from its spare, the depot or a slab.
 void *Refill(const std::size_t sizeClass, ClassCache &cache) noexcept {
     // Constructing the flusher registers its destructor for this thread, which runs when the thread ends.
     static_cast<void>(&threadFlusher);
-    if (void *chain = PopChain(sizeClass)) {
-        cache.head = NextBlock(chain);
-        cache.count = FlushLimit(sizeClass) / 2;
-        return chain;
+    if (void *spare = cache.spare) {
+        cache.spare = nullptr;
+        cache.head = NextBlock(spare);
+        cache.count = FlushLimit(sizeClass) - 1;
+        return spare;
+    }
+    std::size_t length = 0;
+    if (void *list = PopList(sizeClass, length)) {
+        cache.head = NextBlock(list);
+        cache.count = length - 1;
+        return list;
     }
     if (!Reserve())
         return nullptr;
-    char *slab = CarveSlab(sizeClass);
+    char *slab = TakeSlab(sizeClass);
     if (slab == nullptr)
         return nullptr;
     const std::size_t blockSize = kBlockSizes[sizeClass];
     cache.bump = slab + blockSize;
     cache.end = slab + (kSlabSize / blockSize) * blockSize;
     return slab;
+}
+
+/// The slow path of a small free: the thread's list is full, so it becomes the spare and a full spare goes to the
+/// depot.
+void SetListAside(const std::size_t sizeClass, ClassCache &cache) noexcept {
+    static_cast<void>(&threadFlusher);
+    if (cache.spare != nullptr)
+        PushList(sizeClass, cache.spare);
+    cache.spare = cache.head;
+    cache.head = nullptr;
+    cache.count = 0;
 }
 } // namespace
 
@@ -265,8 +510,7 @@ void *Allocate(std::size_t size) noexcept {
     auto &cache = threadCache.classes[sizeClass];
     if (void *block = cache.head) {
         cache.head = NextBlock(block);
-        if (cache.count != 0)
-            --cache.count;
+        --cache.count;
         return block;
     }
     const std::size_t blockSize = kBlockSizes[sizeClass];
@@ -287,9 +531,7 @@ bool OwnsBlock(const void *pointer) noexcept {
 }
 
 std::size_t BlockSize(const void *pointer) noexcept {
-    const char *base = reservedBase.load(std::memory_order_relaxed);
-    const auto offset = static_cast<std::size_t>(static_cast<const char *>(pointer) - base);
-    return kBlockSizes[slabClasses[offset >> kSlabShift]];
+    return kBlockSizes[slabClasses[SlabIndex(pointer)]];
 }
 
 void Deallocate(void *pointer) noexcept {
@@ -299,16 +541,20 @@ void Deallocate(void *pointer) noexcept {
         std::free(pointer);
         return;
     }
-    const char *base = reservedBase.load(std::memory_order_relaxed);
-    const std::size_t sizeClass =
-        slabClasses[static_cast<std::size_t>(static_cast<char *>(pointer) - base) >> kSlabShift];
+    const std::size_t sizeClass = slabClasses[SlabIndex(pointer)];
     auto &cache = threadCache.classes[sizeClass];
+    if (cache.count == FlushLimit(sizeClass)) [[unlikely]]
+        SetListAside(sizeClass, cache);
     NextBlock(pointer) = cache.head;
     cache.head = pointer;
-    if (++cache.count > FlushLimit(sizeClass)) {
-        PushChain(sizeClass, cache.head);
-        cache.head = nullptr;
-        cache.count = 0;
-    }
+    ++cache.count;
+}
+
+SlabUsage CurrentSlabUsage() noexcept {
+    const LockGuard guard(slabLock);
+    return SlabUsage{
+        .carvedBytes = (slabsCarved - kFreeListSlabs) * kSlabSize,
+        .idleBytes = idleSlabs * kSlabSize,
+    };
 }
 } // namespace Rux::System::Allocator

@@ -11,7 +11,9 @@
 // carry no header. Large requests, and every request on a host that cannot reserve the range, go to `std::malloc`.
 //
 // Freed blocks go to the freeing thread's list, wherever they were allocated; a list that grows long is handed to a
-// shared depot other threads refill from. Memory is never returned to the operating system before the process exits.
+// shared depot other threads refill from. The depot keeps blocks by the slab they lie in, so the moment the last block
+// of a slab arrives the slab is free for any size class, and the memory one stage frees serves the next stage's
+// allocations whatever their sizes. Memory is never returned to the operating system before the process exits.
 
 #include <cstddef>
 
@@ -27,4 +29,14 @@ void Deallocate(void *pointer) noexcept;
 
 /// The usable size of the block `pointer` addresses, for a block `OwnsBlock` accepts.
 [[nodiscard]] std::size_t BlockSize(const void *pointer) noexcept;
+
+/// How the slabs of the reserved range are used.
+struct SlabUsage {
+    /// Bytes of slabs ever carved from the range, whatever they hold now.
+    std::size_t carvedBytes = 0;
+    /// Bytes of whole free slabs kept ready for any size class.
+    std::size_t idleBytes = 0;
+};
+
+[[nodiscard]] SlabUsage CurrentSlabUsage() noexcept;
 } // namespace Rux::System::Allocator

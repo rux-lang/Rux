@@ -97,3 +97,49 @@ TEST_CASE("over-aligned allocations keep their alignment") {
     CHECK(reinterpret_cast<std::uintptr_t>(array) % 64 == 0);
     delete[] array;
 }
+
+TEST_CASE("slabs whose blocks are all freed serve other size classes") {
+    // 3,000-byte requests have a class of their own that no other test uses.
+    std::vector<void *> blocks;
+    for (int index = 0; index < 4096; ++index) {
+        void *block = Allocator::Allocate(3000);
+        REQUIRE(block != nullptr);
+        std::memset(block, 0x5A, 3000);
+        blocks.push_back(block);
+    }
+    const auto before = Allocator::CurrentSlabUsage();
+    for (void *block : blocks)
+        Allocator::Deallocate(block);
+    const auto freed = Allocator::CurrentSlabUsage();
+    CHECK(freed.idleBytes >= before.idleBytes + (std::size_t{4} << 20));
+    // Another class takes the freed slabs instead of carving new ones.
+    std::vector<void *> others;
+    for (int index = 0; index < 20000; ++index) {
+        auto *block = static_cast<std::uint8_t *>(Allocator::Allocate(100));
+        REQUIRE(block != nullptr);
+        std::memset(block, index & 0xFF, 100);
+        others.push_back(block);
+    }
+    CHECK(Allocator::CurrentSlabUsage().carvedBytes == freed.carvedBytes);
+    for (std::size_t index = 0; index < others.size(); ++index)
+        CHECK(static_cast<std::uint8_t *>(others[index])[99] == (index & 0xFF));
+    for (void *block : others)
+        Allocator::Deallocate(block);
+}
+
+TEST_CASE("a finished thread's blocks and unused slab ends become reusable") {
+    Allocator::SlabUsage allocated;
+    std::thread worker([&allocated] {
+        // 1,500-byte requests have a class of their own; the thread frees all it allocated, then ends.
+        std::vector<void *> blocks;
+        for (int index = 0; index < 8000; ++index)
+            blocks.push_back(Allocator::Allocate(1500));
+        allocated = Allocator::CurrentSlabUsage();
+        for (void *block : blocks)
+            Allocator::Deallocate(block);
+    });
+    worker.join();
+    const auto after = Allocator::CurrentSlabUsage();
+    // All 12 MiB the thread used come back but for the parts of a few slabs the sweeps have not reached.
+    CHECK(after.idleBytes >= allocated.idleBytes + (std::size_t{8} << 20));
+}
