@@ -2,26 +2,28 @@
 
 #include "Ir/Lir/ControlFlow.h"
 #include "Optimization/ReferenceTypes.h"
+#include "Optimization/RegisterTable.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Rux::Optimization {
 namespace {
-using Types = std::unordered_map<LirReg, TypeRef>;
-using Copies = std::unordered_map<LirReg, LirReg>;
+using Copies = RegisterTable<LirReg>;
 
 LirReg Resolve(const Copies &copies, LirReg reg) {
-    for (std::size_t depth = 0; depth < copies.size(); ++depth) {
-        const auto next = copies.find(reg);
-        if (next == copies.end() || next->second == reg) {
+    for (std::size_t depth = 0; depth < copies.Size(); ++depth) {
+        const LirReg *next = copies.Find(reg);
+        if (next == nullptr || *next == reg) {
             break;
         }
-        reg = next->second;
+        reg = *next;
     }
     return reg;
 }
@@ -73,11 +75,22 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
     if (std::ranges::find(cfg.reachable, false) != cfg.reachable.end()) {
         return false;
     }
-    Types types;
-    std::map<LirReg, TypeRef> slots;
+
+    // The type each register is defined with, pointing at the function's own parameters and instructions, which do
+    // not change until every slot is decided. An alloca defines the address of its slot's type, which is marked
+    // rather than built.
+    struct Defined {
+        const TypeRef *type = nullptr;
+        bool address = false;
+    };
+
+    const std::size_t registers = RegisterCountHint(function);
+    RegisterTable<Defined> types(registers);
+    // Ordered by register: promotion numbers its new registers slot by slot in this order.
+    std::map<LirReg, const TypeRef *> slots;
     LirReg next = 0;
     for (const auto &parameter : function.params) {
-        types.emplace(parameter.reg, parameter.type);
+        types.Insert(parameter.reg, {&parameter.type, false});
         next = std::max(next, parameter.reg + 1);
     }
     for (const auto &block : function.blocks) {
@@ -86,17 +99,22 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
                 continue;
             }
             const auto &type = instruction.type;
-            if (!types.emplace(instruction.dst, instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(type) : type)
-                     .second) {
+            if (!types.Insert(instruction.dst, {&type, instruction.op == LirOpcode::Alloca})) {
                 return false; // Legacy non-SSA fixtures keep their memory behavior.
             }
             next = std::max(next, instruction.dst + 1);
             if (instruction.op == LirOpcode::Alloca && instruction.strArg.empty() &&
                 (Scalar(type) || references.Contains(type))) {
-                slots.emplace(instruction.dst, type);
+                slots.emplace(instruction.dst, &type);
             }
         }
     }
+    const auto storedType = [&](const LirReg value, const TypeRef &slot) {
+        const Defined *defined = types.Find(value);
+        if (defined == nullptr)
+            return false;
+        return defined->address ? slot == TypeRef::MakePointer(*defined->type) : *defined->type == slot;
+    };
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
             for (std::size_t index = 0; index < instruction.srcs.size(); ++index) {
@@ -108,8 +126,8 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
                 const bool load = instruction.op == LirOpcode::Load && instruction.srcs.size() == 1 && index == 0 &&
                                   instruction.strArg.empty();
                 const bool store = instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 && index == 1 &&
-                                   types.contains(instruction.srcs[0]) && types.at(instruction.srcs[0]) == slot->second;
-                if ((!load && !store) || instruction.isVolatile || instruction.type != slot->second) {
+                                   storedType(instruction.srcs[0], *slot->second);
+                if ((!load && !store) || instruction.isVolatile || instruction.type != *slot->second) {
                     slots.erase(slot);
                 }
             }
@@ -127,27 +145,85 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
     }
     // Bound construction for generated functions; an unpromoted slot retains its original semantics.
     const std::size_t count = function.blocks.size();
-    if (slots.size() > 2000000 / count) {
+    if (slots.empty() || slots.size() > 2000000 / count) {
         return false;
     }
+
+    // Every slot is decided against the function as it stands, then all promoted slots are rewritten in one walk. Each
+    // slot reads and writes only its own address, so deciding one never depends on another having been rewritten.
+    enum class Access : std::uint8_t {
+        Alloca,
+        Store,
+        Load
+    };
+
+    struct Event {
+        std::uint32_t block;
+        Access access;
+    };
+
+    struct Slot {
+        LirReg reg;
+        TypeRef type;
+        std::vector<Event> events;
+        bool promoted = false;
+        LirReg zero = LirNoReg;
+        std::vector<LirReg> incoming;
+        // The slot's value at the end of each block; during the rewrite, its value so far in the block.
+        std::vector<LirReg> outgoing;
+    };
+
+    std::vector<Slot> promoted;
+    promoted.reserve(slots.size());
+    RegisterTable<std::uint32_t> slotIndex(registers);
+    for (const auto &[reg, type] : slots) {
+        slotIndex.Insert(reg, static_cast<std::uint32_t>(promoted.size()));
+        auto &slot = promoted.emplace_back();
+        slot.reg = reg;
+        slot.type = *type;
+    }
+    // The slot an instruction accesses and how, if it accesses one.
+    const auto accessed = [&](const LirInstr &instruction) -> std::optional<std::pair<std::uint32_t, Access>> {
+        LirReg reg = LirNoReg;
+        Access access{};
+        if (instruction.op == LirOpcode::Alloca) {
+            reg = instruction.dst;
+            access = Access::Alloca;
+        }
+        else if (instruction.op == LirOpcode::Store && instruction.srcs.size() == 2) {
+            reg = instruction.srcs[1];
+            access = Access::Store;
+        }
+        else if (instruction.op == LirOpcode::Load && instruction.srcs.size() == 1) {
+            reg = instruction.srcs[0];
+            access = Access::Load;
+        }
+        if (reg == LirNoReg)
+            return std::nullopt;
+        const std::uint32_t *index = slotIndex.Find(reg);
+        if (index == nullptr)
+            return std::nullopt;
+        return std::pair{*index, access};
+    };
+    for (std::uint32_t block = 0; block < count; ++block)
+        for (const auto &instruction : function.blocks[block].instrs)
+            if (const auto access = accessed(instruction))
+                promoted[access->first].events.push_back({block, access->second});
+
     bool changed = false;
-    for (const auto &[slot, type] : slots) {
+    for (auto &slot : promoted) {
         std::vector<bool> liveIn(count), initializedIn(count, true), initializedOut(count, true);
         std::vector<int> lastWrite(count, -1);
         std::vector<bool> readsBeforeWrite(count, false);
-        for (std::size_t block = 0; block < count; ++block) {
-            for (const auto &instruction : function.blocks[block].instrs) {
-                if (instruction.op == LirOpcode::Alloca && instruction.dst == slot) {
-                    lastWrite[block] = 0;
-                }
-                else if (instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 &&
-                         instruction.srcs[1] == slot) {
-                    lastWrite[block] = 1;
-                }
-                else if (instruction.op == LirOpcode::Load && instruction.srcs.size() == 1 &&
-                         instruction.srcs[0] == slot && lastWrite[block] == -1) {
-                    readsBeforeWrite[block] = true;
-                }
+        for (const auto &event : slot.events) {
+            if (event.access == Access::Alloca) {
+                lastWrite[event.block] = 0;
+            }
+            else if (event.access == Access::Store) {
+                lastWrite[event.block] = 1;
+            }
+            else if (lastWrite[event.block] == -1) {
+                readsBeforeWrite[event.block] = true;
             }
         }
         bool again = true;
@@ -176,83 +252,98 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
             }
         }
         bool valid = true;
-        for (std::size_t block = 0; block < count; ++block) {
-            bool initialized = initializedIn[block];
-            for (const auto &instruction : function.blocks[block].instrs) {
-                if (instruction.op == LirOpcode::Alloca && instruction.dst == slot) {
-                    initialized = false;
-                }
-                else if (instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 &&
-                         instruction.srcs[1] == slot) {
-                    initialized = true;
-                }
-                else if (instruction.op == LirOpcode::Load && instruction.srcs.size() == 1 &&
-                         instruction.srcs[0] == slot && !initialized) {
-                    valid = false;
-                }
+        std::uint32_t current = ~std::uint32_t{};
+        bool initialized = false;
+        for (const auto &event : slot.events) {
+            if (event.block != current) {
+                current = event.block;
+                initialized = initializedIn[current];
+            }
+            if (event.access == Access::Alloca) {
+                initialized = false;
+            }
+            else if (event.access == Access::Store) {
+                initialized = true;
+            }
+            else if (!initialized) {
+                valid = false;
             }
         }
-        LirReg zero = LirNoReg;
         if (!valid) {
-            const auto spelling = ZeroOf(type);
-            if (!spelling || liveIn[0])
+            if (!ZeroOf(slot.type) || liveIn[0])
                 continue;
-            LirInstr constant;
-            constant.op = LirOpcode::Const;
-            constant.dst = next++;
-            constant.type = type;
-            constant.strArg = *spelling;
-            zero = constant.dst;
-            types[zero] = type;
-            function.blocks[0].instrs.insert(function.blocks[0].instrs.begin(), std::move(constant));
+            slot.zero = next++;
         }
-        std::vector<LirReg> incoming(count, LirNoReg), outgoing(count, LirNoReg);
+        slot.incoming.assign(count, LirNoReg);
         for (std::size_t block = 0; block < count; ++block) {
             if (liveIn[block]) {
-                incoming[block] = next++;
-                types[incoming[block]] = type;
+                slot.incoming[block] = next++;
             }
         }
-        Copies copies;
-        for (std::size_t block = 0; block < count; ++block) {
-            auto value = incoming[block];
-            std::erase_if(function.blocks[block].instrs, [&](const LirInstr &instruction) {
-                if (instruction.op == LirOpcode::Alloca && instruction.dst == slot) {
-                    value = zero;
-                    return true;
-                }
-                if (instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 && instruction.srcs[1] == slot) {
-                    value = instruction.srcs[0];
-                    return true;
-                }
-                if (instruction.op == LirOpcode::Load && instruction.srcs.size() == 1 && instruction.srcs[0] == slot) {
-                    copies[instruction.dst] = value;
-                    return true;
-                }
+        slot.outgoing = slot.incoming;
+        slot.promoted = true;
+        changed = true;
+    }
+    if (!changed)
+        return false;
+
+    Copies copies(registers);
+    for (std::uint32_t block = 0; block < count; ++block) {
+        std::erase_if(function.blocks[block].instrs, [&](const LirInstr &instruction) {
+            const auto access = accessed(instruction);
+            if (!access || !promoted[access->first].promoted)
                 return false;
-            });
-            outgoing[block] = value;
+            auto &slot = promoted[access->first];
+            auto &value = slot.outgoing[block];
+            if (access->second == Access::Alloca)
+                value = slot.zero;
+            else if (access->second == Access::Store)
+                value = instruction.srcs[0];
+            else
+                copies.Assign(instruction.dst, value);
+            return true;
+        });
+    }
+    // Each slot's zero and phis go in front of the earlier slots', as if every slot had inserted its own at the start
+    // of the block in turn.
+    std::vector<std::vector<LirInstr>> prefixes(count);
+    for (const auto &slot : promoted) {
+        if (!slot.promoted)
+            continue;
+        if (slot.zero != LirNoReg) {
+            LirInstr constant;
+            constant.op = LirOpcode::Const;
+            constant.dst = slot.zero;
+            constant.type = slot.type;
+            constant.strArg = *ZeroOf(slot.type);
+            prefixes[0].push_back(std::move(constant));
         }
         for (std::size_t block = 0; block < count; ++block) {
-            if (incoming[block] == LirNoReg) {
+            if (slot.incoming[block] == LirNoReg) {
                 continue;
             }
             LirInstr phi;
-            phi.dst = incoming[block];
-            phi.type = type;
+            phi.dst = slot.incoming[block];
+            phi.type = slot.type;
             phi.op = LirOpcode::Phi;
             for (const auto predecessor : cfg.predecessors[block]) {
-                phi.phiPreds.emplace_back(outgoing[predecessor] == LirNoReg ? zero : outgoing[predecessor],
-                                          predecessor);
+                phi.phiPreds.emplace_back(
+                    slot.outgoing[predecessor] == LirNoReg ? slot.zero : slot.outgoing[predecessor], predecessor);
             }
-            function.blocks[block].instrs.insert(function.blocks[block].instrs.begin(), std::move(phi));
+            prefixes[block].push_back(std::move(phi));
         }
-        RewriteUses(function, copies);
-        changed = true;
     }
+    for (std::size_t block = 0; block < count; ++block) {
+        if (prefixes[block].empty())
+            continue;
+        auto &instructions = function.blocks[block].instrs;
+        instructions.insert(instructions.begin(), std::make_move_iterator(prefixes[block].rbegin()),
+                            std::make_move_iterator(prefixes[block].rend()));
+    }
+    RewriteUses(function, copies);
     // Collapse forwarding phis locally, including self edges. Real loop recurrences keep their merge.
-    Copies copies;
-    bool again = changed;
+    Copies forwarded(registers);
+    bool again = true;
     while (again) {
         again = false;
         for (auto &block : function.blocks) {
@@ -263,7 +354,7 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
                 LirReg value = LirNoReg;
                 for (const auto &[source, predecessor] : instruction.phiPreds) {
                     static_cast<void>(predecessor);
-                    const auto resolved = Resolve(copies, source);
+                    const auto resolved = Resolve(forwarded, source);
                     if (resolved == instruction.dst) {
                         continue;
                     }
@@ -275,14 +366,14 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
                 if (value == LirNoReg) {
                     return false;
                 }
-                copies[instruction.dst] = value;
+                forwarded.Assign(instruction.dst, value);
                 again = true;
                 return true;
             });
         }
     }
-    RewriteUses(function, copies);
-    return changed;
+    RewriteUses(function, forwarded);
+    return true;
 }
 } // namespace
 
