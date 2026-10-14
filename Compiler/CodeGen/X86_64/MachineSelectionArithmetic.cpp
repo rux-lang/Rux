@@ -77,7 +77,7 @@ void Selector::SelectBinary(const LirInstr &instruction) {
         return;
     }
     const int width = ScalarSize(instruction.type) == 8 ? 8 : 4;
-    if (Commutative(instruction.op) && integerConstants.contains(left) && !integerConstants.contains(right))
+    if (Commutative(instruction.op) && integerConstants.Contains(left) && !integerConstants.Contains(right))
         std::swap(left, right);
     const auto immediate = Immediate(right, width);
     const auto size = static_cast<std::uint8_t>(width);
@@ -183,11 +183,11 @@ bool Selector::SelectSignedConstantDivision(const LirInstr &instruction) {
     // divisor takes the signed high half of a magic multiple, corrects it by the dividend when the multiplier's sign
     // differs from the divisor's, shifts it and adds one to a negative result. A narrower value is sign-extended
     // first, so one formula serves every width; a remainder is n - q * d.
-    const auto constant = integerConstants.find(instruction.srcs[1]);
+    const auto constant = integerConstants.Find(instruction.srcs[1]);
     const int size = ScalarSize(instruction.type);
-    if (constant == integerConstants.end() || !instruction.type.IsSigned() || !instruction.type.IsInteger() || size > 8)
+    if (constant == nullptr || !instruction.type.IsSigned() || !instruction.type.IsInteger() || size > 8)
         return false;
-    std::uint64_t bits = constant->second;
+    std::uint64_t bits = (*constant);
     if (size < 8) {
         const int width = size * 8;
         bits &= (std::uint64_t{1} << width) - 1;
@@ -257,12 +257,12 @@ bool Selector::SelectConstantDivision(const LirInstr &instruction) {
     // l = ceil(log2 d) and m = floor(2^64 * (2^l - d) / d) + 1, the quotient of any 64-bit n is
     // (t + ((n - t) >> 1)) >> (l - 1) where t is the high half of m * n. A narrower unsigned value is zero-extended
     // first, so one formula serves every width. A power of two is a shift and a mask.
-    const auto constant = integerConstants.find(instruction.srcs[1]);
+    const auto constant = integerConstants.Find(instruction.srcs[1]);
     const int size = ScalarSize(instruction.type);
-    if (constant == integerConstants.end() || instruction.type.IsSigned() || !instruction.type.IsInteger() || size > 8)
+    if (constant == nullptr || instruction.type.IsSigned() || !instruction.type.IsInteger() || size > 8)
         return false;
     const std::uint64_t mask = size == 8 ? ~std::uint64_t{0} : (std::uint64_t{1} << (size * 8)) - 1;
-    const std::uint64_t divisor = constant->second & mask;
+    const std::uint64_t divisor = (*constant) & mask;
     if (divisor == 0)
         return false;
     const bool remainder = instruction.op == LirOpcode::Mod;
@@ -371,9 +371,9 @@ void Selector::SelectShift(const LirInstr &instruction) {
     }
     // A 32-bit value shifted by a constant below 32 is shifted in place: the 32-bit instruction reads exactly the
     // value's bits and its result clears the upper half.
-    if (const auto constant = integerConstants.find(instruction.srcs[1]);
-        constant != integerConstants.end() && ScalarSize(instruction.type) == 4 && (constant->second & 63U) < 32) {
-        const auto count = static_cast<std::int64_t>(constant->second & 63U);
+    if (const auto constant = integerConstants.Find(instruction.srcs[1]);
+        constant != nullptr && ScalarSize(instruction.type) == 4 && ((*constant) & 63U) < 32) {
+        const auto count = static_cast<std::int64_t>((*constant) & 63U);
         const Op op = instruction.op == LirOpcode::Shl                                ? Op::Shl
                     : instruction.op == LirOpcode::Shr && instruction.type.IsSigned() ? Op::Sar
                                                                                       : Op::Shr;
@@ -397,8 +397,8 @@ void Selector::SelectShift(const LirInstr &instruction) {
     const Op op = instruction.op == LirOpcode::Shl                                ? Op::Shl
                 : instruction.op == LirOpcode::Shr && instruction.type.IsSigned() ? Op::Sar
                                                                                   : Op::Shr;
-    if (const auto constant = integerConstants.find(instruction.srcs[1]); constant != integerConstants.end()) {
-        const auto count = static_cast<std::int64_t>(constant->second & 63U);
+    if (const auto constant = integerConstants.Find(instruction.srcs[1]); constant != nullptr) {
+        const auto count = static_cast<std::int64_t>((*constant) & 63U);
         EmitCopy(destination, value, RegClass::General);
         if (count != 0)
             Emit(op, 8, {Operand::UseDef(destination), Operand::Imm(count)});
@@ -502,7 +502,7 @@ Cond Selector::EmitCompare(const LirInstr &comparison) {
     // with a constant of its storage's wider literal type, and only the enum's own width is meaningful.
     const int width = ScalarSize(type);
     Cond condition = IntegerCondition(comparison.op, type.IsSigned());
-    if (integerConstants.contains(left) && !integerConstants.contains(right)) {
+    if (integerConstants.Contains(left) && !integerConstants.Contains(right)) {
         std::swap(left, right);
         condition = Swap(condition);
     }

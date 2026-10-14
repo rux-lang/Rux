@@ -109,6 +109,17 @@ public:
         }
     }
 
+    /// Calls `visit(reg, value)` for every register with a value: those numbered in the table in increasing order,
+    /// then the rest in the order they were recorded.
+    template <typename Visit>
+    void ForEach(Visit visit) const {
+        for (std::size_t reg = 0; reg < table.size(); ++reg)
+            if (table[reg])
+                visit(static_cast<LirReg>(reg), *table[reg]);
+        for (const auto &[reg, value] : sparse)
+            visit(reg, value);
+    }
+
     /// How many registers have a value.
     [[nodiscard]] std::size_t Size() const {
         return count;

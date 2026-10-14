@@ -4,6 +4,7 @@
 // LIR operations. Nothing outside `MachineSelection*.cpp` includes this header.
 
 #include "CodeGen/X86_64/MachineSelection.h"
+#include "Ir/Lir/RegisterTable.h"
 
 #include <cstdint>
 #include <optional>
@@ -54,23 +55,25 @@ private:
     SelectedFunction out;
     bool win64 = false;
 
-    std::unordered_map<LirReg, TypeRef> types;
+    LirRegisterTable<TypeRef> types;
     /// Values of vector instructions: whatever their element type, they live in XMM registers.
-    std::unordered_set<LirReg> vectorValues;
-    std::unordered_map<LirReg, const LirInstr *> definitions;
-    std::unordered_map<LirReg, std::uint64_t> integerConstants;
-    std::unordered_map<LirReg, std::string> floatConstants;
-    std::unordered_map<LirReg, std::size_t> useCounts;
-    std::unordered_map<LirReg, Reg> registers;
-    std::unordered_map<LirReg, std::int32_t> homes;
-    std::unordered_map<LirReg, std::int32_t> allocas;
+    LirRegisterTable<bool> vectorValues;
+    LirRegisterTable<const LirInstr *> definitions;
+    LirRegisterTable<std::uint64_t> integerConstants;
+    LirRegisterTable<std::string> floatConstants;
+    LirRegisterTable<std::size_t> useCounts;
+    LirRegisterTable<Reg> registers;
+    LirRegisterTable<std::int32_t> homes;
+    LirRegisterTable<std::int32_t> allocas;
     /// For a value whose register is known to hold zeros above some bit, that bit count. A zero extension of such a
     /// value is a copy; so is a sign extension when the sign bit is among the zeros.
-    std::unordered_map<LirReg, int> zeroAbove;
-    std::unordered_map<LirReg, Reg> phiTemporaries;
-    std::unordered_map<LirReg, std::int32_t> phiTemporaryHomes;
-    std::unordered_map<const LirInstr *, std::vector<LirReg>> lastUses;
-    std::unordered_set<const LirInstr *> fusedComparisons;
+    LirRegisterTable<int> zeroAbove;
+    LirRegisterTable<Reg> phiTemporaries;
+    LirRegisterTable<std::int32_t> phiTemporaryHomes;
+    /// (instruction, register) for every register an instruction reads for the last time, sorted.
+    std::vector<std::pair<const LirInstr *, LirReg>> lastUses;
+    /// Comparisons fused into the branch that reads them, by the register they define.
+    LirRegisterTable<bool> fusedComparisons;
     std::vector<std::uint32_t> blockEntry;
     std::uint32_t current = 0;
     /// The LIR block being selected, for combines that must see the instructions around the one they replace.

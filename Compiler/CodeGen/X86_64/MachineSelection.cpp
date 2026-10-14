@@ -30,7 +30,20 @@ namespace {
 
 Selector::Selector(const LirFunc &inputFunction, const SelectionContext &inputContext)
     : func(inputFunction)
-    , context(inputContext) {
+    , context(inputContext)
+    , types(RegisterCountHint(inputFunction))
+    , vectorValues(RegisterCountHint(inputFunction))
+    , definitions(RegisterCountHint(inputFunction))
+    , integerConstants(RegisterCountHint(inputFunction))
+    , floatConstants(RegisterCountHint(inputFunction))
+    , useCounts(RegisterCountHint(inputFunction))
+    , registers(RegisterCountHint(inputFunction))
+    , homes(RegisterCountHint(inputFunction))
+    , allocas(RegisterCountHint(inputFunction))
+    , zeroAbove(RegisterCountHint(inputFunction))
+    , phiTemporaries(RegisterCountHint(inputFunction))
+    , phiTemporaryHomes(RegisterCountHint(inputFunction))
+    , fusedComparisons(RegisterCountHint(inputFunction)) {
 }
 
 void Selector::SelectPackedInteger(const LirInstr &instruction) {
@@ -104,12 +117,12 @@ ValueKind Selector::KindOf(const TypeRef &type) const {
 
 const TypeRef &Selector::TypeOf(const LirReg reg) const {
     static const TypeRef fallback = TypeRef::MakeInt64();
-    const auto found = types.find(reg);
-    return found != types.end() ? found->second : fallback;
+    const auto found = types.Find(reg);
+    return found != nullptr ? (*found) : fallback;
 }
 
 ValueKind Selector::KindOfReg(const LirReg reg) const {
-    if (vectorValues.contains(reg))
+    if (vectorValues.Contains(reg))
         return ValueKind::Xmm;
     return KindOf(TypeOf(reg));
 }
@@ -157,16 +170,15 @@ bool Selector::IsPointerTo(const LirReg reg, const TypeRef &pointee) const {
 }
 
 bool Selector::IsKilledAt(const LirInstr &instruction, const LirReg reg) const {
-    const auto found = lastUses.find(&instruction);
-    return found != lastUses.end() && std::ranges::find(found->second, reg) != found->second.end();
+    return std::ranges::binary_search(lastUses, std::pair{&instruction, reg});
 }
 
 int Selector::KnownZeroAbove(const LirReg reg) const {
-    if (const auto found = zeroAbove.find(reg); found != zeroAbove.end())
-        return found->second;
-    if (const auto constant = integerConstants.find(reg); constant != integerConstants.end()) {
+    if (const auto found = zeroAbove.Find(reg); found != nullptr)
+        return (*found);
+    if (const auto constant = integerConstants.Find(reg); constant != nullptr) {
         const int size = ScalarSize(TypeOf(reg));
-        std::uint64_t value = constant->second;
+        std::uint64_t value = (*constant);
         if (size < 8)
             value &= (std::uint64_t{1} << (size * 8)) - 1;
         return static_cast<int>(std::bit_width(value));
@@ -176,7 +188,7 @@ int Selector::KnownZeroAbove(const LirReg reg) const {
 
 void Selector::NoteZeroAbove(const LirReg reg, const int bits) {
     if (bits < 64)
-        zeroAbove[reg] = std::max(bits, 0);
+        zeroAbove.Assign(reg, std::max(bits, 0));
 }
 
 bool Selector::AlreadyExtended(const LirReg reg, const int size, const bool isSigned) const {
@@ -191,24 +203,24 @@ bool Selector::CollectFacts() {
         const TypeRef registerType = parameter.type.IsSlice() || IsInterface(parameter.type)
                                        ? TypeRef::MakePointer(parameter.type)
                                        : parameter.type;
-        if (!types.emplace(parameter.reg, registerType).second)
+        if (!types.Insert(parameter.reg, registerType))
             return false;
     }
     for (const auto &block : func.blocks) {
         for (const auto &instruction : block.instrs) {
             for (const auto source : instruction.srcs)
-                ++useCounts[source];
+                ++useCounts.Ref(source);
             for (const auto &[source, predecessor] : instruction.phiPreds) {
                 static_cast<void>(predecessor);
-                ++useCounts[source];
+                ++useCounts.Ref(source);
             }
             if (instruction.dst == LirNoReg)
                 continue;
-            types[instruction.dst] =
-                instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
-            definitions[instruction.dst] = &instruction;
+            types.Assign(instruction.dst, instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type)
+                                                                              : instruction.type);
+            definitions.Assign(instruction.dst, &instruction);
             if (IsVectorOpcode(instruction.op))
-                vectorValues.insert(instruction.dst);
+                vectorValues.Insert(instruction.dst, true);
             // Facts that hold however the blocks are ordered: a narrow unsigned load zero-extends, and a comparison
             // is 0 or 1. Recording them now lets a use selected before its definition rely on them.
             if (instruction.op == LirOpcode::Load && KindOf(instruction.type) == ValueKind::Gpr &&
@@ -219,20 +231,20 @@ bool Selector::CollectFacts() {
             if (instruction.op != LirOpcode::Const)
                 continue;
             if (IsFloat(instruction.type)) {
-                floatConstants[instruction.dst] = instruction.strArg;
+                floatConstants.Assign(instruction.dst, instruction.strArg);
             }
             else if (KindOf(instruction.type) == ValueKind::Gpr) {
                 const std::uint64_t bits =
                     instruction.type.IsBool()
                         ? (instruction.strArg == "true" || instruction.strArg == "1" ? 1U : 0U)
                         : ParseIntegerLiteralBits(instruction.strArg.empty() ? "0" : instruction.strArg).value_or(0);
-                integerConstants[instruction.dst] = bits;
+                integerConstants.Assign(instruction.dst, bits);
             }
         }
         if (block.term) {
-            ++useCounts[block.term->cond];
+            ++useCounts.Ref(block.term->cond);
             if (block.term->retVal)
-                ++useCounts[*block.term->retVal];
+                ++useCounts.Ref(*block.term->retVal);
         }
     }
     return true;
@@ -292,8 +304,8 @@ bool Selector::EligibleInstruction(const LirInstr &instruction) const {
     case LirOpcode::VectorShr: {
         if (!PackedInteger(instruction.type) || instruction.srcs.size() != 2 || kind(0) != ValueKind::Xmm)
             return false;
-        const auto count = integerConstants.find(instruction.srcs[1]);
-        return count != integerConstants.end() && count->second < 64;
+        const auto count = integerConstants.Find(instruction.srcs[1]);
+        return count != nullptr && (*count) < 64;
     }
     case LirOpcode::VectorRotateRight: {
         const auto count = ParseIntegerLiteralBits(instruction.strArg);
@@ -380,9 +392,12 @@ bool Selector::EligibleInstruction(const LirInstr &instruction) const {
 bool Selector::Eligible() const {
     if (func.isExtern || func.isAsm || func.isVariadic || func.blocks.empty())
         return false;
-    for (const auto &[reg, type] : types)
-        if (!type.IsOpaque() && KindOf(type) == ValueKind::Unsupported)
-            return false;
+    bool supported = true;
+    types.ForEach([&](LirReg, const TypeRef &type) {
+        supported = supported && (type.IsOpaque() || KindOf(type) != ValueKind::Unsupported);
+    });
+    if (!supported)
+        return false;
     if (!func.returnType.IsOpaque() && KindOf(func.returnType) == ValueKind::Unsupported)
         return false;
     for (const auto &block : func.blocks) {
@@ -442,7 +457,7 @@ void Selector::ComputeLastUses() {
                 continue;
             for (const auto source : instruction.srcs) {
                 if (const std::uint32_t *marked = live.Find(source); marked == nullptr || *marked != mark) {
-                    lastUses[&instruction].push_back(source);
+                    lastUses.emplace_back(&instruction, source);
                     live.Assign(source, mark);
                 }
             }
@@ -450,6 +465,7 @@ void Selector::ComputeLastUses() {
                 live.Assign(instruction.dst, 0);
         }
     }
+    std::ranges::sort(lastUses);
 }
 
 // ---- emission helpers --------------------------------------------------------------------------------------------
@@ -497,19 +513,19 @@ std::uint32_t Selector::Symbol(SymbolRef symbol) {
 }
 
 Reg Selector::Value(const LirReg reg) {
-    if (const auto found = registers.find(reg); found != registers.end())
-        return found->second;
+    if (const auto found = registers.Find(reg); found != nullptr)
+        return (*found);
     const Reg created = KindOfReg(reg) == ValueKind::Xmm ? NewXmm() : NewGpr();
-    registers.emplace(reg, created);
+    registers.Insert(reg, created);
     return created;
 }
 
 std::int32_t Selector::Home(const LirReg reg) {
-    if (const auto found = homes.find(reg); found != homes.end())
-        return found->second;
+    if (const auto found = homes.Find(reg); found != nullptr)
+        return (*found);
     const TypeRef &type = TypeOf(reg);
     const std::int32_t object = out.function.NewFrameObject(SlotSize(type), std::max(8, StorageAlign(type)));
-    homes.emplace(reg, object);
+    homes.Insert(reg, object);
     return object;
 }
 
@@ -534,9 +550,9 @@ Reg Selector::Extended(const LirReg reg, const bool forceSigned, const bool forc
     const int size = ScalarSize(type);
     if (size >= 8 || type.IsBool())
         return Materialize(reg);
-    if (const auto constant = integerConstants.find(reg); constant != integerConstants.end()) {
+    if (const auto constant = integerConstants.Find(reg); constant != nullptr) {
         const int bits = size * 8;
-        std::uint64_t value = constant->second & ((std::uint64_t{1} << bits) - 1);
+        std::uint64_t value = (*constant) & ((std::uint64_t{1} << bits) - 1);
         const bool isSigned = forceSigned || (!forceUnsigned && type.IsSigned());
         if (isSigned && (value >> (bits - 1)) != 0)
             value |= ~((std::uint64_t{1} << bits) - 1);
@@ -556,10 +572,10 @@ Reg Selector::Materialize(const LirReg reg) {
 }
 
 std::optional<std::int64_t> Selector::Immediate(const LirReg reg, const int width) const {
-    const auto found = integerConstants.find(reg);
-    if (found == integerConstants.end())
+    const auto found = integerConstants.Find(reg);
+    if (found == nullptr)
         return std::nullopt;
-    const std::uint64_t bits = found->second;
+    const std::uint64_t bits = (*found);
     if (width >= 8) {
         const auto value = static_cast<std::int64_t>(bits);
         if (value < std::numeric_limits<std::int32_t>::min() || value > std::numeric_limits<std::int32_t>::max())
@@ -585,19 +601,19 @@ Address Selector::AddressOf(const LirReg pointer, const int depth) {
     direct.base = Value(pointer);
     if (depth > 6)
         return direct;
-    if (const auto object = allocas.find(pointer); object != allocas.end()) {
+    if (const auto object = allocas.Find(pointer); object != nullptr) {
         Address address;
-        address.frameObject = object->second;
+        address.frameObject = (*object);
         return address;
     }
-    const auto definition = definitions.find(pointer);
-    if (definition == definitions.end())
+    const auto definition = definitions.Find(pointer);
+    if (definition == nullptr)
         return direct;
-    const LirInstr &instruction = *definition->second;
+    const LirInstr &instruction = *(*definition);
     switch (instruction.op) {
     case LirOpcode::Alloca: {
         Address address;
-        address.frameObject = allocas.contains(pointer) ? allocas.at(pointer) : -1;
+        address.frameObject = allocas.Contains(pointer) ? allocas.At(pointer) : -1;
         return address.frameObject >= 0 ? address : direct;
     }
     case LirOpcode::GlobalAddr: {
@@ -619,8 +635,8 @@ Address Selector::AddressOf(const LirReg pointer, const int depth) {
                                   : 8;
         const LirReg index = instruction.srcs[1];
         const Address base = AddressOf(instruction.srcs[0], depth + 1);
-        if (const auto constant = integerConstants.find(index); constant != integerConstants.end()) {
-            const auto value = static_cast<std::int64_t>(constant->second);
+        if (const auto constant = integerConstants.Find(index); constant != nullptr) {
+            const auto value = static_cast<std::int64_t>((*constant));
             if (value > -(std::int64_t{1} << 31) && value < (std::int64_t{1} << 31)) {
                 bool fits = true;
                 const Address result = Offset(base, value * elementSize, fits);
@@ -644,10 +660,10 @@ Address Selector::AddressOf(const LirReg pointer, const int depth) {
         LirReg folded = index;
         std::int64_t elements = 0;
         for (int step = 0; step < 4; ++step) {
-            const auto arithmetic = definitions.find(folded);
-            if (arithmetic == definitions.end())
+            const auto arithmetic = definitions.Find(folded);
+            if (arithmetic == nullptr)
                 break;
-            const LirInstr &sum = *arithmetic->second;
+            const LirInstr &sum = *(*arithmetic);
             if (sum.op == LirOpcode::Cast && sum.srcs.size() == 1 && ScalarSize(sum.type) == 8 && !sum.type.IsBool() &&
                 ScalarSize(TypeOf(sum.srcs[0])) == 8 && !TypeOf(sum.srcs[0]).IsBool() &&
                 TypeOf(sum.srcs[0]).IsInteger() && sum.type.IsInteger()) {
@@ -657,10 +673,10 @@ Address Selector::AddressOf(const LirReg pointer, const int depth) {
             if ((sum.op != LirOpcode::Add && sum.op != LirOpcode::Sub) || sum.srcs.size() != 2 ||
                 ScalarSize(sum.type) != 8 || !sum.type.IsInteger())
                 break;
-            const auto constant = integerConstants.find(sum.srcs[1]);
-            if (constant == integerConstants.end())
+            const auto constant = integerConstants.Find(sum.srcs[1]);
+            if (constant == nullptr)
                 break;
-            const auto amount = static_cast<std::int64_t>(constant->second);
+            const auto amount = static_cast<std::int64_t>((*constant));
             if (amount <= -(std::int64_t{1} << 20) || amount >= (std::int64_t{1} << 20))
                 break;
             elements += sum.op == LirOpcode::Add ? amount : -amount;
@@ -747,7 +763,7 @@ void Selector::SelectConstant(const LirInstr &instruction) {
     switch (KindOf(instruction.type)) {
     case ValueKind::Gpr: {
         const Reg destination = Value(instruction.dst);
-        const std::uint64_t bits = integerConstants.at(instruction.dst);
+        const std::uint64_t bits = integerConstants.At(instruction.dst);
         const int size = ScalarSize(instruction.type);
         std::uint64_t value = bits;
         if (size < 8)
@@ -821,52 +837,51 @@ bool Selector::SelectCombinedLoad(const LirInstr &instruction) {
     const auto rootOf = [&](LirReg pointer) {
         std::int64_t offset = 0;
         for (int depth = 0; depth < 16; ++depth) {
-            const auto definition = definitions.find(pointer);
-            if (definition == definitions.end() || definition->second->op != LirOpcode::IndexPtr ||
-                definition->second->srcs.size() != 2 ||
-                ScalarSize(definition->second->type.inner.empty() ? TypeRef{} : definition->second->type.inner[0]) != 1)
+            const auto definition = definitions.Find(pointer);
+            if (definition == nullptr || (*definition)->op != LirOpcode::IndexPtr || (*definition)->srcs.size() != 2 ||
+                ScalarSize((*definition)->type.inner.empty() ? TypeRef{} : (*definition)->type.inner[0]) != 1)
                 break;
-            const auto step = integerConstants.find(definition->second->srcs[1]);
-            if (step == integerConstants.end() || ScalarSize(TypeOf(definition->second->srcs[1])) != 8)
+            const auto step = integerConstants.Find((*definition)->srcs[1]);
+            if (step == nullptr || ScalarSize(TypeOf((*definition)->srcs[1])) != 8)
                 break;
-            offset += static_cast<std::int64_t>(step->second);
-            pointer = definition->second->srcs[0];
+            offset += static_cast<std::int64_t>((*step));
+            pointer = (*definition)->srcs[0];
         }
         return Byte{pointer, offset};
     };
     std::function<std::optional<Bytes>(LirReg)> bytesOf = [&](const LirReg reg) -> std::optional<Bytes> {
         if (--budget < 0)
             return std::nullopt;
-        if (const auto constant = integerConstants.find(reg); constant != integerConstants.end())
-            return constant->second == 0 ? std::optional<Bytes>(Bytes{}) : std::nullopt;
-        const auto definition = definitions.find(reg);
-        if (definition == definitions.end() || definition->second->isVolatile)
+        if (const auto constant = integerConstants.Find(reg); constant != nullptr)
+            return (*constant) == 0 ? std::optional<Bytes>(Bytes{}) : std::nullopt;
+        const auto definition = definitions.Find(reg);
+        if (definition == nullptr || (*definition)->isVolatile)
             return std::nullopt;
-        const LirInstr &node = *definition->second;
+        const LirInstr &node = *(*definition);
         if (node.op == LirOpcode::Cast && node.srcs.size() == 1 && node.type.IsInteger() &&
             ScalarSize(node.type) <= 8) {
             const TypeRef &from = TypeOf(node.srcs[0]);
             // Only a zero extension keeps the bytes above the source zero.
             if (!from.IsInteger() || (from.IsSigned() && ScalarSize(from) < ScalarSize(node.type)))
                 return std::nullopt;
-            const auto load = definitions.find(node.srcs[0]);
-            if (ScalarSize(from) == 1 && load != definitions.end() && load->second->op == LirOpcode::Load &&
-                !load->second->isVolatile && load->second->strArg.empty() && load->second->srcs.size() == 1) {
+            const auto load = definitions.Find(node.srcs[0]);
+            if (ScalarSize(from) == 1 && load != nullptr && (*load)->op == LirOpcode::Load && !(*load)->isVolatile &&
+                (*load)->strArg.empty() && (*load)->srcs.size() == 1) {
                 Bytes bytes{};
-                bytes[0] = rootOf(load->second->srcs[0]);
-                loads.push_back(load->second);
+                bytes[0] = rootOf((*load)->srcs[0]);
+                loads.push_back((*load));
                 return bytes;
             }
             return ScalarSize(from) <= ScalarSize(node.type) ? bytesOf(node.srcs[0]) : std::nullopt;
         }
         if (node.op == LirOpcode::Shl && node.srcs.size() == 2) {
-            const auto amount = integerConstants.find(node.srcs[1]);
-            if (amount == integerConstants.end() || amount->second % 8 != 0 || amount->second >= 64)
+            const auto amount = integerConstants.Find(node.srcs[1]);
+            if (amount == nullptr || (*amount) % 8 != 0 || (*amount) >= 64)
                 return std::nullopt;
             const auto inner = bytesOf(node.srcs[0]);
             if (!inner)
                 return std::nullopt;
-            const auto shift = static_cast<std::size_t>(amount->second / 8);
+            const auto shift = static_cast<std::size_t>((*amount) / 8);
             const auto size = static_cast<std::size_t>(ScalarSize(node.type));
             Bytes bytes{};
             for (std::size_t index = 0; index < 8; ++index) {
@@ -982,7 +997,7 @@ void Selector::SelectAddress(const LirInstr &instruction) {
     switch (instruction.op) {
     case LirOpcode::Alloca: {
         Address address;
-        address.frameObject = allocas.at(instruction.dst);
+        address.frameObject = allocas.At(instruction.dst);
         auto &lea = Emit(Op::Lea, 8, {Operand::Def(destination), Operand::Mem(address)});
         lea.rematerializable = true;
         return;
@@ -1010,7 +1025,7 @@ void Selector::SelectAddress(const LirInstr &instruction) {
                                   ? std::max(1, Size(instruction.type.inner[0]))
                                   : 8;
         if (elementSize != 1 && elementSize != 2 && elementSize != 4 && elementSize != 8 &&
-            !integerConstants.contains(instruction.srcs[1])) {
+            !integerConstants.Contains(instruction.srcs[1])) {
             const Reg scaled = NewGpr();
             Emit(Op::ImulImm, 8,
                  {Operand::Def(scaled), Operand::Use(Extended(instruction.srcs[1])), Operand::Imm(elementSize)});
@@ -1112,7 +1127,7 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
             Emit(Op::OrPacked, 16, {Operand::UseDef(destination), Operand::Use(wrapped)});
             return;
         }
-        const auto count = static_cast<std::int64_t>(integerConstants.at(instruction.srcs[1]));
+        const auto count = static_cast<std::int64_t>(integerConstants.At(instruction.srcs[1]));
         Emit(instruction.op == LirOpcode::VectorShl ? Op::ShlPacked64 : Op::ShrPacked64, 16,
              {Operand::UseDef(destination), Operand::Imm(count)});
         return;
@@ -1171,7 +1186,7 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
     case LirOpcode::Not:
     case LirOpcode::BitNot:
     case LirOpcode::Sqrt:
-        if (!fusedComparisons.contains(&instruction))
+        if (!fusedComparisons.Contains(instruction.dst))
             SelectUnary(instruction);
         return;
     case LirOpcode::CmpEq:
@@ -1180,7 +1195,7 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
     case LirOpcode::CmpLe:
     case LirOpcode::CmpGt:
     case LirOpcode::CmpGe:
-        if (!fusedComparisons.contains(&instruction))
+        if (!fusedComparisons.Contains(instruction.dst))
             SelectComparison(instruction);
         return;
     case LirOpcode::Cast:
@@ -1247,10 +1262,10 @@ void Selector::MarkBlocks() {
 bool Selector::Fusable(const std::uint32_t lirBlock, const LirTerminator &terminator) const {
     if (terminator.kind != LirTermKind::Branch)
         return false;
-    const auto definition = definitions.find(terminator.cond);
-    if (definition == definitions.end())
+    const auto definition = definitions.Find(terminator.cond);
+    if (definition == nullptr)
         return false;
-    const LirInstr &comparison = *definition->second;
+    const LirInstr &comparison = *(*definition);
     switch (comparison.op) {
     case LirOpcode::CmpEq:
     case LirOpcode::CmpNe:
@@ -1297,38 +1312,38 @@ void Selector::EmitPhiSources(const std::uint32_t from, const std::uint32_t to) 
         const LirReg source = incoming->first;
         switch (KindOf(TypeOf(instruction.dst))) {
         case ValueKind::Aggregate: {
-            auto found = phiTemporaryHomes.find(instruction.dst);
-            if (found == phiTemporaryHomes.end()) {
+            auto found = phiTemporaryHomes.Find(instruction.dst);
+            if (found == nullptr) {
                 const TypeRef &type = TypeOf(instruction.dst);
-                found = phiTemporaryHomes
-                            .emplace(instruction.dst,
-                                     out.function.NewFrameObject(SlotSize(type), std::max(8, StorageAlign(type))))
-                            .first;
+                phiTemporaryHomes.Insert(instruction.dst,
+                                         out.function.NewFrameObject(SlotSize(type), std::max(8, StorageAlign(type))));
+                found = phiTemporaryHomes.Find(instruction.dst);
             }
             Address temporary;
-            temporary.frameObject = found->second;
+            temporary.frameObject = (*found);
             CopyMemory(temporary, HomeAddress(source), SlotSize(TypeOf(instruction.dst)));
             break;
         }
         case ValueKind::Xmm: {
-            auto found = phiTemporaries.find(instruction.dst);
-            if (found == phiTemporaries.end())
-                found = phiTemporaries.emplace(instruction.dst, NewXmm()).first;
-            EmitCopy(found->second, Value(source), RegClass::Vector);
+            auto found = phiTemporaries.Find(instruction.dst);
+            if (found == nullptr)
+                phiTemporaries.Insert(instruction.dst, NewXmm());
+            found = phiTemporaries.Find(instruction.dst);
+            EmitCopy((*found), Value(source), RegClass::Vector);
             break;
         }
         default: {
-            auto found = phiTemporaries.find(instruction.dst);
-            if (found == phiTemporaries.end())
-                found = phiTemporaries.emplace(instruction.dst, NewGpr()).first;
-            if (const auto constant = integerConstants.find(source); constant != integerConstants.end()) {
+            auto found = phiTemporaries.Find(instruction.dst);
+            if (found == nullptr)
+                phiTemporaries.Insert(instruction.dst, NewGpr());
+            found = phiTemporaries.Find(instruction.dst);
+            if (const auto constant = integerConstants.Find(source); constant != nullptr) {
                 auto &move =
-                    Emit(Op::MovImm, 8,
-                         {Operand::Def(found->second), Operand::Imm(static_cast<std::int64_t>(constant->second))});
+                    Emit(Op::MovImm, 8, {Operand::Def((*found)), Operand::Imm(static_cast<std::int64_t>((*constant)))});
                 static_cast<void>(move);
             }
             else {
-                EmitCopy(found->second, Value(source), RegClass::General);
+                EmitCopy((*found), Value(source), RegClass::General);
             }
             break;
         }
@@ -1342,31 +1357,32 @@ void Selector::EmitPhiDestinations(const std::uint32_t lirBlock) {
             continue;
         switch (KindOf(TypeOf(instruction.dst))) {
         case ValueKind::Aggregate: {
-            auto found = phiTemporaryHomes.find(instruction.dst);
-            if (found == phiTemporaryHomes.end()) {
+            auto found = phiTemporaryHomes.Find(instruction.dst);
+            if (found == nullptr) {
                 const TypeRef &type = TypeOf(instruction.dst);
-                found = phiTemporaryHomes
-                            .emplace(instruction.dst,
-                                     out.function.NewFrameObject(SlotSize(type), std::max(8, StorageAlign(type))))
-                            .first;
+                phiTemporaryHomes.Insert(instruction.dst,
+                                         out.function.NewFrameObject(SlotSize(type), std::max(8, StorageAlign(type))));
+                found = phiTemporaryHomes.Find(instruction.dst);
             }
             Address temporary;
-            temporary.frameObject = found->second;
+            temporary.frameObject = (*found);
             CopyMemory(HomeAddress(instruction.dst), temporary, SlotSize(TypeOf(instruction.dst)));
             break;
         }
         case ValueKind::Xmm: {
-            auto found = phiTemporaries.find(instruction.dst);
-            if (found == phiTemporaries.end())
-                found = phiTemporaries.emplace(instruction.dst, NewXmm()).first;
-            EmitCopy(Value(instruction.dst), found->second, RegClass::Vector);
+            auto found = phiTemporaries.Find(instruction.dst);
+            if (found == nullptr)
+                phiTemporaries.Insert(instruction.dst, NewXmm());
+            found = phiTemporaries.Find(instruction.dst);
+            EmitCopy(Value(instruction.dst), (*found), RegClass::Vector);
             break;
         }
         default: {
-            auto found = phiTemporaries.find(instruction.dst);
-            if (found == phiTemporaries.end())
-                found = phiTemporaries.emplace(instruction.dst, NewGpr()).first;
-            EmitCopy(Value(instruction.dst), found->second, RegClass::General);
+            auto found = phiTemporaries.Find(instruction.dst);
+            if (found == nullptr)
+                phiTemporaries.Insert(instruction.dst, NewGpr());
+            found = phiTemporaries.Find(instruction.dst);
+            EmitCopy(Value(instruction.dst), (*found), RegClass::General);
             break;
         }
         }
@@ -1381,7 +1397,7 @@ void Selector::EmitBranch(const LirTerminator &terminator, const std::uint32_t l
         branch.condition = static_cast<std::uint8_t>(condition);
     };
     if (Fusable(lirBlock, terminator)) {
-        const LirInstr &comparison = *definitions.at(terminator.cond);
+        const LirInstr &comparison = *definitions.At(terminator.cond);
         const bool floating = KindOfReg(comparison.srcs[0]) == ValueKind::Xmm;
         const Cond condition = EmitCompare(comparison);
         if (floating && comparison.op == LirOpcode::CmpEq) {
@@ -1396,11 +1412,11 @@ void Selector::EmitBranch(const LirTerminator &terminator, const std::uint32_t l
             jump(condition, whenTrue);
         }
     }
-    else if (const auto definition = definitions.find(terminator.cond); definition != definitions.end() &&
-                                                                        fusedComparisons.contains(definition->second) &&
-                                                                        definition->second->op == LirOpcode::Not) {
+    else if (const auto definition = definitions.Find(terminator.cond); definition != nullptr &&
+                                                                        fusedComparisons.Contains((*definition)->dst) &&
+                                                                        (*definition)->op == LirOpcode::Not) {
         // A branch on a negation tests the operand and takes the opposite edge.
-        const LirInstr &negation = *definition->second;
+        const LirInstr &negation = *(*definition);
         const Reg operand = Value(negation.srcs[0]);
         Emit(Op::Test, static_cast<std::uint8_t>(ScalarSize(negation.type)),
              {Operand::Use(operand), Operand::Use(operand)});
@@ -1468,19 +1484,18 @@ void Selector::SelectBlock(const std::uint32_t lirBlock) {
     const auto &block = func.blocks[lirBlock];
     currentBlock = &block;
     if (block.term && Fusable(lirBlock, *block.term)) {
-        const LirInstr *comparison = definitions.at(block.term->cond);
+        const LirInstr *comparison = definitions.At(block.term->cond);
         // Materialized as well only when something besides the branch reads the result.
-        if (useCounts[comparison->dst] <= 1)
-            fusedComparisons.insert(comparison);
+        if (useCounts.Ref(comparison->dst) <= 1)
+            fusedComparisons.Insert(comparison->dst, true);
     }
     else if (block.term && block.term->kind == LirTermKind::Branch) {
         // A negation only the branch reads is folded into the branch.
-        if (const auto definition = definitions.find(block.term->cond);
-            definition != definitions.end() && definition->second->op == LirOpcode::Not &&
-            useCounts[block.term->cond] <= 1 && std::ranges::any_of(block.instrs, [&](const LirInstr &instruction) {
-                return &instruction == definition->second;
-            }))
-            fusedComparisons.insert(definition->second);
+        if (const auto definition = definitions.Find(block.term->cond);
+            definition != nullptr && (*definition)->op == LirOpcode::Not && useCounts.Ref(block.term->cond) <= 1 &&
+            std::ranges::any_of(block.instrs,
+                                [&](const LirInstr &instruction) { return &instruction == (*definition); }))
+            fusedComparisons.Insert((*definition)->dst, true);
     }
     for (const auto &instruction : block.instrs) {
         if (instruction.op == LirOpcode::Phi)
@@ -1522,8 +1537,8 @@ std::optional<SelectedFunction> Selector::Run() {
             if (instruction.op != LirOpcode::Alloca)
                 continue;
             const int size = AllocaSize(instruction);
-            allocas.emplace(instruction.dst, out.function.NewFrameObject(size > 0 ? size : 8,
-                                                                         std::max(8, StorageAlign(instruction.type))));
+            allocas.Insert(instruction.dst, out.function.NewFrameObject(size > 0 ? size : 8,
+                                                                        std::max(8, StorageAlign(instruction.type))));
         }
     }
     current = entry;

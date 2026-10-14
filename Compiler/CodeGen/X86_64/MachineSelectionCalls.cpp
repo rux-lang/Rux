@@ -48,8 +48,8 @@ bool Selector::IsCallClobberingWin64(const CallingConvention convention) const {
 
 void Selector::PassScalar(const LirReg argument, const TypeRef &type, const Reg destination) {
     const int size = ScalarSize(type);
-    if (const auto constant = integerConstants.find(argument); constant != integerConstants.end()) {
-        std::uint64_t value = constant->second;
+    if (const auto constant = integerConstants.Find(argument); constant != nullptr) {
+        std::uint64_t value = (*constant);
         if (size < 8) {
             const int bits = size * 8;
             value &= (std::uint64_t{1} << bits) - 1;
