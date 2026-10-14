@@ -81,6 +81,11 @@ func Main() -> int {
         REQUIRE(WriteFile(appRoot / "Src" / "Main.rux", source));
     }
 
+    /// Write another source file of the application, beside Main.rux.
+    void SetApplicationFile(const std::string_view name, const std::string_view source) const {
+        REQUIRE(WriteFile(appRoot / "Src" / name, source));
+    }
+
     void SetDependencySource(const std::string_view source) const {
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", source));
     }

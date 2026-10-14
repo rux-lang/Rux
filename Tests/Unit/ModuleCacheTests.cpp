@@ -157,3 +157,82 @@ func Main() -> int {
     }
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("compiler driver writes the same artifact for every job count, clean or reusing modules") {
+    // Enough modules for analysis, lowering and optimization to split them across threads, each with a type, a method,
+    // a generic instantiated at its own use, and a constant declared inside a body.
+    DependencyFixture fixture;
+    std::vector<Diagnostic> diagnostics;
+    const auto part = [](const int index, const int step) {
+        return std::format(R"(
+module App::Part{0} {{
+    pub struct Counter{0} {{
+        pub value: uint32;
+    }}
+
+    extend Counter{0} {{
+        pub func Bump(self: &var Counter{0}, by: uint32) {{
+            self.value += by;
+        }}
+    }}
+
+    pub func Pick{0}<T>(first: T, second: T, takeFirst: bool) -> T {{
+        if takeFirst {{
+            return first;
+        }}
+        return second;
+    }}
+
+    pub func Use{0}(x: uint32) -> uint32 {{
+        const Step: uint32 = {1}u32;
+        var counter = Counter{0}{{ value: x }};
+        counter.Bump(Pick{0}<uint32>(Step, x, x > 3u32));
+        return counter.value * Step;
+    }}
+}}
+)",
+                           index, step);
+    };
+    std::string main;
+    std::string sum = "0u32";
+    for (int index = 0; index < 6; ++index) {
+        fixture.SetApplicationFile(std::format("Part{}.rux", index), part(index, index + 1));
+        main += std::format("import App::Part{0}::Use{0};\n", index);
+        sum += std::format(" + Use{0}({0}u32)", index);
+    }
+    fixture.SetApplicationSource(main + std::format(R"(
+func Main() -> int {{
+    let total = {};
+    if total == 12345u32 {{
+        return 1;
+    }}
+    return 0;
+}}
+)",
+                                                    sum));
+    for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+        CAPTURE(ToString(profile));
+        std::size_t reused = 0;
+        const auto build = [&](const std::size_t jobs, const bool cache) {
+            auto options = fixture.Options(false, diagnostics);
+            options.profile = profile;
+            options.jobs = jobs;
+            options.useBuildCache = cache;
+            const auto result = CompilerDriver(options).Compile();
+            REQUIRE(result.ok);
+            reused = result.stats.localReusedFiles;
+            return ReadBinaryFile(result.primaryArtifactPath);
+        };
+        const auto serial = build(1, false);
+        CHECK(build(8, false) == serial);
+        // The first cached build records every module; the next one, after a body edit, reuses all but that module.
+        CHECK(build(8, true) == serial);
+        fixture.SetApplicationFile("Part3.rux", part(3, 9));
+        const auto edited = build(8, true);
+        CHECK(reused == 6);
+        CHECK(edited == build(1, false));
+        CHECK(edited != serial);
+        fixture.SetApplicationFile("Part3.rux", part(3, 4));
+    }
+    CHECK(diagnostics.empty());
+}
