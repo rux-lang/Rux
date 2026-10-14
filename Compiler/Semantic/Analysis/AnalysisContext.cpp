@@ -854,18 +854,51 @@ void AnalysisContext::CheckUserModules(const std::size_t begin, const std::size_
 }
 
 std::vector<TypeRef> AnalysisContext::DistinctRecordedTypes() const {
-    std::unordered_set<std::string> spellings;
-    std::vector<TypeRef> types;
-    const auto add = [&](const TypeRef &type) {
-        if (spellings.insert(type.ToString()).second)
-            types.push_back(type);
+    // Spelling every recorded type is the cost, and the maps are large, so each map's buckets are cut into fixed
+    // chunks spelled on the workers, each keeping the first type of every spelling it meets; the chunks are then joined
+    // in order. The list comes out in bucket order rather than the maps' own order, which nothing reading it depends
+    // on, since everything it feeds is recorded by spelling; and the chunks are the same for every number of threads.
+    struct Chunk {
+        std::size_t map = 0;
+        std::size_t first = 0;
+        std::size_t end = 0;
+        std::vector<std::pair<std::string, const TypeRef *>> distinct;
     };
-    for (const auto &[_, type] : expressionTypes)
-        add(type);
-    for (const auto &[_, type] : typeNodeTypes)
-        add(type);
-    for (const auto &[_, type] : patternTypes)
-        add(type);
+
+    constexpr std::size_t bucketsPerChunk = 8192;
+    std::vector<Chunk> chunks;
+    const std::array<std::size_t, 3> bucketCounts{expressionTypes.bucket_count(), typeNodeTypes.bucket_count(),
+                                                  patternTypes.bucket_count()};
+    for (std::size_t map = 0; map < bucketCounts.size(); ++map)
+        for (std::size_t first = 0; first < bucketCounts[map]; first += bucketsPerChunk)
+            chunks.push_back({map, first, std::min(bucketCounts[map], first + bucketsPerChunk), {}});
+    const auto spell = [&](const std::size_t index) {
+        Chunk &chunk = chunks[index];
+        std::unordered_set<std::string> seen;
+        const auto visit = [&](const auto &types) {
+            for (std::size_t bucket = chunk.first; bucket < chunk.end; ++bucket)
+                for (auto entry = types.begin(bucket); entry != types.end(bucket); ++entry)
+                    if (std::string spelling = entry->second.ToString(); seen.insert(spelling).second)
+                        chunk.distinct.emplace_back(std::move(spelling), &entry->second);
+        };
+        if (chunk.map == 0)
+            visit(expressionTypes);
+        else if (chunk.map == 1)
+            visit(typeNodeTypes);
+        else
+            visit(patternTypes);
+    };
+    if (workers != nullptr)
+        workers->ForEach(chunks.size(), spell);
+    else
+        for (std::size_t index = 0; index < chunks.size(); ++index)
+            spell(index);
+    std::unordered_set<std::string_view> spellings;
+    std::vector<TypeRef> types;
+    for (const Chunk &chunk : chunks)
+        for (const auto &[spelling, type] : chunk.distinct)
+            if (spellings.insert(spelling).second)
+                types.push_back(*type);
     return types;
 }
 
