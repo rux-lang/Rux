@@ -16,6 +16,7 @@
 #include "Target/AsmInstr.h"
 
 #include <format>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -430,8 +431,8 @@ private:
     }
 
     /// The outgoing area a call reserves: the Win64 home area and stack arguments, or the System V stack arguments.
-    [[nodiscard]] static int CallFrameSize(const std::vector<LirReg> &arguments, const bool win64, const int startIndex,
-                                           const AssemblyInstructionPrinter &printer) {
+    [[nodiscard]] static int CallFrameSize(const std::span<const LirReg> arguments, const bool win64,
+                                           const int startIndex, const AssemblyInstructionPrinter &printer) {
         if (win64) {
             const std::size_t count = arguments.size() + static_cast<std::size_t>(startIndex);
             return AlignUp(static_cast<int>(32 + (count > 4 ? count - 4 : 0) * 8), 16);
@@ -463,7 +464,7 @@ private:
     }
 
     /// System V stack arguments, written before any register is loaded.
-    static void StoreSysVStackArguments(const std::vector<LirReg> &arguments, const int startIndex,
+    static void StoreSysVStackArguments(const std::span<const LirReg> arguments, const int startIndex,
                                         AssemblyInstructionPrinter &printer) {
         int integerIndex = startIndex;
         int floatIndex = 0;
@@ -516,7 +517,7 @@ private:
         }
     }
 
-    static void EmitArguments(const std::vector<LirReg> &arguments, const bool win64, const int startIndex,
+    static void EmitArguments(const std::span<const LirReg> arguments, const bool win64, const int startIndex,
                               AssemblyInstructionPrinter &printer) {
         const auto &physicalRegisters = printer.FramePlan().PhysicalRegisters();
         if (win64) {
@@ -658,7 +659,7 @@ private:
         return true;
     }
 
-    void EmitPreparedCall(const LirInstr &instruction, const std::vector<LirReg> &arguments, const bool indirect,
+    void EmitPreparedCall(const LirInstr &instruction, const std::span<const LirReg> arguments, const bool indirect,
                           AssemblyInstructionPrinter &printer) {
         const bool win64 = printer.IsWin64Convention(instruction.callConv);
         // A result no register pair returns is written through a pointer the caller passes first.

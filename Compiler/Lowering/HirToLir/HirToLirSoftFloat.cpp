@@ -99,8 +99,7 @@ using Target::FloatOperation;
     return registerKinds[instruction.srcs.front()];
 }
 
-[[nodiscard]] LirInstr HelperCall(const LirReg dst, TypeRef type, const std::string &symbol,
-                                  std::vector<LirReg> arguments) {
+[[nodiscard]] LirInstr HelperCall(const LirReg dst, TypeRef type, const std::string &symbol, LirRegs arguments) {
     LirInstr call;
     call.dst = dst;
     call.op = LirOpcode::Call;

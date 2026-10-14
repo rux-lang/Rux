@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -64,13 +65,12 @@ private:
     AArch64CallAndTerminatorHooks &hooks;
 
     [[nodiscard]] TypeRef TypeOfReg(LirReg reg) const;
-    void EmitWindowsVariadicCallArgs(const std::vector<LirReg> &arguments, const std::vector<TypeRef> &types,
+    void EmitWindowsVariadicCallArgs(std::span<const LirReg> arguments, const std::vector<TypeRef> &types,
                                      const CallLayout &layout);
     void MoveRegisterArgument(const ArgLocation &location, LirReg reg, const TypeRef &type, bool toRegisters);
     void LoadResultFromAddress(const ArgLocation &location, A64Reg base, const TypeRef &type);
-    void EmitCallArgs(const std::vector<LirReg> &arguments, const std::vector<TypeRef> &types,
-                      const CallLayout &layout);
-    void EmitCall(const LirInstr &instruction, const std::vector<LirReg> &arguments, bool indirect);
+    void EmitCallArgs(std::span<const LirReg> arguments, const std::vector<TypeRef> &types, const CallLayout &layout);
+    void EmitCall(const LirInstr &instruction, std::span<const LirReg> arguments, bool indirect);
     void Report(std::string message);
     void Must(A64Status status, std::string_view what);
 };

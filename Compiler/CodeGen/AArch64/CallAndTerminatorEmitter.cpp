@@ -49,7 +49,7 @@ TypeRef AArch64CallEmitter::TypeOfReg(const LirReg reg) const {
     return it == registerTypes.end() ? TypeRef::MakeInt64() : it->second;
 }
 
-void AArch64CallEmitter::EmitWindowsVariadicCallArgs(const std::vector<LirReg> &arguments,
+void AArch64CallEmitter::EmitWindowsVariadicCallArgs(const std::span<const LirReg> arguments,
                                                      const std::vector<TypeRef> &types, const CallLayout &layout) {
     const auto loadSlot = [&](const std::size_t index, const std::int32_t sourceOffset, const A64Reg destination) {
         const ArgLocation &location = layout.args[index];
@@ -178,7 +178,7 @@ void AArch64CallEmitter::LoadResultFromAddress(const ArgLocation &location, cons
                      !aggregate && type.IsSigned());
 }
 
-void AArch64CallEmitter::EmitCallArgs(const std::vector<LirReg> &arguments, const std::vector<TypeRef> &types,
+void AArch64CallEmitter::EmitCallArgs(const std::span<const LirReg> arguments, const std::vector<TypeRef> &types,
                                       const CallLayout &layout) {
     if (layout.windowsVariadic) {
         EmitWindowsVariadicCallArgs(arguments, types, layout);
@@ -233,7 +233,7 @@ void AArch64CallEmitter::EmitCallArgs(const std::vector<LirReg> &arguments, cons
     }
 }
 
-void AArch64CallEmitter::EmitCall(const LirInstr &instruction, const std::vector<LirReg> &arguments,
+void AArch64CallEmitter::EmitCall(const LirInstr &instruction, const std::span<const LirReg> arguments,
                                   const bool indirect) {
     if (instruction.isCVariadic != instruction.cVariadicFixedParamCount.has_value()) {
         Report(

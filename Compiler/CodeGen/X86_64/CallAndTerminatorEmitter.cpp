@@ -42,7 +42,7 @@ bool X86_64CallEmitter::IsPointerToWin64ByRefAggregate(const TypeRef &type) cons
     return type->kind == TypeRef::Kind::Pointer && !type->inner.empty() && IsWin64ByRefAggregate(type->inner[0]);
 }
 
-int X86_64CallEmitter::CallFrameSize(const std::vector<LirReg> &arguments, const bool win64,
+int X86_64CallEmitter::CallFrameSize(const std::span<const LirReg> arguments, const bool win64,
                                      const int startIndex) const {
     if (win64) {
         const std::size_t count = arguments.size() + static_cast<std::size_t>(startIndex);
@@ -76,7 +76,7 @@ int X86_64CallEmitter::CallFrameSize(const std::vector<LirReg> &arguments, const
     return AlignUp(static_cast<int>(stackArguments * 8), 16);
 }
 
-void X86_64CallEmitter::StoreSysVStackArguments(const std::vector<LirReg> &arguments, const int startIndex) const {
+void X86_64CallEmitter::StoreSysVStackArguments(const std::span<const LirReg> arguments, const int startIndex) const {
     int integerIndex = startIndex;
     int floatIndex = 0;
     int stackIndex = 0;
@@ -126,7 +126,7 @@ void X86_64CallEmitter::StoreSysVStackArguments(const std::vector<LirReg> &argum
     }
 }
 
-void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, const CallingConvention convention,
+void X86_64CallEmitter::EmitArguments(const std::span<const LirReg> arguments, const CallingConvention convention,
                                       const int startIndex) const {
     const auto &types = framePlan.RegisterTypes();
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
@@ -282,7 +282,7 @@ bool X86_64CallEmitter::EmitBitCast(const LirInstr &instruction) const {
     return true;
 }
 
-void X86_64CallEmitter::EmitPreparedCall(const LirInstr &instruction, const std::vector<LirReg> &arguments,
+void X86_64CallEmitter::EmitPreparedCall(const LirInstr &instruction, const std::span<const LirReg> arguments,
                                          const bool indirect) const {
     const bool win64 = EffectiveConvention(instruction.callConv) == CallingConvention::Win64;
     const bool hiddenReturn = instruction.dst != LirNoReg && (win64 ? IsWin64ByRefAggregate(instruction.type)
