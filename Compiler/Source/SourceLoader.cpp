@@ -73,6 +73,12 @@ SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir, Pa
 }
 
 std::optional<SourceFile> SourceLoader::LoadFile(const std::filesystem::path &path) {
+    // Stamped before the read: an edit that lands after it leaves a stamp older than the file, so the next build
+    // looks at the file again rather than trusting what this build read. One query of the file answers both parts.
+    std::error_code stampError;
+    const std::filesystem::directory_entry entry(path, stampError);
+    const auto size = stampError ? 0 : entry.file_size(stampError);
+    const auto modified = stampError ? std::filesystem::file_time_type{} : entry.last_write_time(stampError);
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream) {
         return std::nullopt;
@@ -95,6 +101,8 @@ std::optional<SourceFile> SourceLoader::LoadFile(const std::filesystem::path &pa
     return SourceFile{
         .path = std::move(absolutePath),
         .source = std::move(text),
+        .size = stampError ? ~std::uintmax_t{0} : size,
+        .modified = stampError ? std::filesystem::file_time_type{} : modified,
     };
 }
 
