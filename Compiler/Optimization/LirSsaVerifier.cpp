@@ -95,12 +95,12 @@ bool HasMisplacedAddress(const LirFunc &function, const LirControlFlow &cfg, con
     // The first definition of a register counts, and a parameter's type comes before any instruction's.
     LirRegisterTable<Defined> defined(RegisterCountHint(function));
     for (const auto &parameter : function.params)
-        defined.Insert(parameter.reg, {0, false, parameter.type.kind});
+        defined.Insert(parameter.reg, {0, false, parameter.type->kind});
     for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
         for (const auto &instruction : function.blocks[block].instrs) {
             if (instruction.dst == LirNoReg)
                 continue;
-            const auto kind = instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer : instruction.type.kind;
+            const auto kind = instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer : instruction.type->kind;
             if (const Defined *found = defined.Find(instruction.dst)) {
                 if (!found->instruction)
                     defined.Assign(instruction.dst, {block, true, found->kind});
@@ -155,7 +155,7 @@ bool PlacePatternAddresses(LirFunc &function) {
         std::map<LirReg, std::vector<Location>> uses;
         for (const auto &parameter : function.params) {
             parameters.insert(parameter.reg);
-            types.emplace(parameter.reg, parameter.type.kind);
+            types.emplace(parameter.reg, parameter.type->kind);
         }
         for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
             const auto &instructions = function.blocks[block].instrs;
@@ -163,8 +163,8 @@ bool PlacePatternAddresses(LirFunc &function) {
                 const auto &instruction = instructions[index];
                 if (instruction.dst != LirNoReg) {
                     definitions.emplace(instruction.dst, Location{block, index});
-                    types.emplace(instruction.dst,
-                                  instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer : instruction.type.kind);
+                    types.emplace(instruction.dst, instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer
+                                                                                       : instruction.type->kind);
                 }
                 if (!cfg.reachable[block]) {
                     continue;
@@ -241,7 +241,7 @@ bool PlacePatternAddresses(LirFunc &function) {
                         return false; // A malformed definition cycle remains for the verifier to diagnose.
                     }
                     const bool address =
-                        instruction.type.kind == TypeRef::Kind::Pointer &&
+                        instruction.type->kind == TypeRef::Kind::Pointer &&
                         (instruction.op == LirOpcode::FieldPtr || instruction.op == LirOpcode::IndexPtr ||
                          (instruction.op == LirOpcode::Cast && instruction.srcs.size() == 1 &&
                           types.contains(instruction.srcs[0]) &&
@@ -337,7 +337,8 @@ void Verify(const LirFunc &function, const PassContext &context) {
             const auto &instruction = instructions[index];
             if (instruction.op == LirOpcode::Sqrt &&
                 (instruction.dst == LirNoReg || instruction.srcs.size() != 1 ||
-                 (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64) ||
+                 (instruction.type->kind != TypeRef::Kind::Float32 &&
+                  instruction.type->kind != TypeRef::Kind::Float64) ||
                  (instruction.srcs.size() == 1 && definitions.Contains(instruction.srcs[0]) &&
                   *definitions.Find(instruction.srcs[0])->type != instruction.type))) {
                 report(instruction.dst, block, "sqrt requires one same-type float32/float64 operand and a result");

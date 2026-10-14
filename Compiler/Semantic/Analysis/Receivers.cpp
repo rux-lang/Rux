@@ -56,11 +56,11 @@ void AnalysisContext::CheckReceiverType(const FuncDecl &declaration, const Param
     if (!currentImpl || declared.IsUnknown() || currentExtendedType.IsUnknown()) {
         return;
     }
-    const bool isIndirect = (declared.kind == TypeRef::Kind::Pointer || declared.kind == TypeRef::Kind::Reference) &&
-                            !declared.inner.empty();
+    const bool isIndirect = (declared->kind == TypeRef::Kind::Pointer || declared->kind == TypeRef::Kind::Reference) &&
+                            !declared->inner.empty();
     // A slice is a fat pointer whose ABI passes it by address, so it reaches a method the way a pointer receiver does.
     const bool isReference = isIndirect || declared.IsSlice();
-    if (const TypeRef &base = isIndirect ? declared.inner.front() : declared;
+    if (const TypeRef &base = isIndirect ? declared->inner.front() : declared;
         !base.IsUnknown() && base != currentExtendedType) {
         EmitError(receiver.location,
                   std::format("receiver type '{}' does not name the extended type '{}'", declared.ToString(),
@@ -107,7 +107,7 @@ std::optional<TypeRef> AnalysisContext::ResolveMethodReceiverType(const TypeRef 
         return std::nullopt;
     }
     const TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+    currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
     TypeRef declared = ResolveTypeWithSubstitution(*receiver->type, MethodTypeSubstitutions(receiverType));
@@ -125,22 +125,22 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
     if (!declared) {
         return true;
     }
-    if (declared->kind == TypeRef::Kind::Reference && receiverType.kind == TypeRef::Kind::Pointer) {
+    if ((*declared)->kind == TypeRef::Kind::Reference && receiverType->kind == TypeRef::Kind::Pointer) {
         EmitError(call.location,
                   std::format("cannot create safe receiver '{}' from raw pointer '{}'", declared->ToString(),
                               receiverType.ToString()),
                   {"raw pointers do not prove a valid non-null borrow"}, "call the method on an owning value");
         return false;
     }
-    if (declared->kind == TypeRef::Kind::Pointer && receiverType.kind == TypeRef::Kind::Reference) {
+    if ((*declared)->kind == TypeRef::Kind::Pointer && receiverType->kind == TypeRef::Kind::Reference) {
         EmitError(call.location,
                   std::format("cannot pass reference '{}' to raw-pointer receiver '{}' implicitly",
                               receiverType.ToString(), declared->ToString()),
                   {"crossing into a raw-pointer API must be explicit"});
         return false;
     }
-    if (receiverType.kind == TypeRef::Kind::Reference && declared->kind != TypeRef::Kind::Reference &&
-        declared->kind != TypeRef::Kind::Pointer && !declared->IsSlice()) {
+    if (receiverType->kind == TypeRef::Kind::Reference && (*declared)->kind != TypeRef::Kind::Reference &&
+        (*declared)->kind != TypeRef::Kind::Pointer && !declared->IsSlice()) {
         EmitError(call.location,
                   std::format("cannot pass value behind reference '{}' to by-value receiver of '{}'",
                               receiverType.ToString(), method.name),
@@ -149,8 +149,8 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
         return false;
     }
     const bool requiresWrite =
-        (declared->kind == TypeRef::Kind::Pointer || declared->kind == TypeRef::Kind::Reference) &&
-        !declared->inner.empty() && declared->inner.front().isMut;
+        ((*declared)->kind == TypeRef::Kind::Pointer || (*declared)->kind == TypeRef::Kind::Reference) &&
+        !(*declared)->inner.empty() && (*declared)->inner.front().isMut;
     if (!requiresWrite) {
         return true;
     }
@@ -159,11 +159,11 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
 
 bool AnalysisContext::CheckWritableReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                             const std::string &methodName, const std::string &declared) {
-    if (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) {
-        if (!receiverType.inner.empty() && !receiverType.inner.front().isMut) {
-            const bool isReferenceType = receiverType.kind == TypeRef::Kind::Reference;
+    if (receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference) {
+        if (!receiverType->inner.empty() && !receiverType->inner.front().isMut) {
+            const bool isReferenceType = receiverType->kind == TypeRef::Kind::Reference;
             TypeRef writable = receiverType;
-            writable.inner.front().isMut = true;
+            writable = writable.WithWritableInner(true);
             EmitError(
                 call.location,
                 isReferenceType ? std::format("cannot call '{}' through immutable reference '{}'", methodName,

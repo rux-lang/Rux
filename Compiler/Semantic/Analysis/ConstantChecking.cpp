@@ -277,7 +277,7 @@ std::optional<std::pair<std::uint32_t, bool>> AnalysisContext::IntegerRange(cons
     if (!type.IsInteger()) {
         return std::nullopt;
     }
-    const auto bits = PrimitiveBits(type.kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
+    const auto bits = PrimitiveBits(type->kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
     if (!bits) {
         return std::nullopt;
     }
@@ -366,7 +366,7 @@ bool AnalysisContext::IsIntegerLiteralOutOfRangeFor(const Expr &expr, const Type
 // change, so name it when possible.
 std::string AnalysisContext::ImmutableAddressOfHint(const Expr &expr, const TypeRef &targetType) {
     // Only a '*var T' target can reject a read-only '*T' source this way.
-    if (targetType.kind != TypeRef::Kind::Pointer || targetType.inner.empty() || !targetType.inner[0].isMut) {
+    if (targetType->kind != TypeRef::Kind::Pointer || targetType->inner.empty() || !targetType->inner[0].isMut) {
         return {};
     }
     const auto *addressOf = AstCast<const UnaryExpr>(&expr);
@@ -397,7 +397,7 @@ std::optional<std::string> AnalysisContext::UnfitCharacterLiteralMessage(const E
         return std::nullopt;
     }
     const std::optional<std::uint32_t> codePoint = Lexer::DecodeCharLiteralCodePoint(literal->token.text);
-    if (!codePoint || IsOneCharacterOf(targetType.kind, *codePoint)) {
+    if (!codePoint || IsOneCharacterOf(targetType->kind, *codePoint)) {
         return std::nullopt;
     }
     const std::string_view text = literal->token.text;
@@ -437,8 +437,8 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
                                                                                             : "Failure";
         const std::string_view form = construct->kind == NativeConstructExpr::Kind::Some ? "optional" : "fallible";
         // A nominal variant with the same case name is constructed by its own name, never by the native constructor.
-        if (targetType.kind == TypeRef::Kind::Named) {
-            const std::string variantName = BaseTypeName(targetType.name);
+        if (targetType->kind == TypeRef::Kind::Named) {
+            const std::string variantName = BaseTypeName(targetType->name);
             if (const auto declaration = enumDecls.find(NominalTypeName(variantName));
                 declaration != enumDecls.end() && declaration->second->IsVariant() &&
                 std::ranges::any_of(declaration->second->variants,
@@ -449,8 +449,8 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
         }
         TypeRef level = targetType;
         while (construct->kind == NativeConstructExpr::Kind::Some ? level.IsFallible() : level.IsOptional()) {
-            TypeRef payload = level.inner.front();
-            level = std::move(payload);
+            TypeRef payload = level->inner.front();
+            level = payload;
         }
         if (construct->kind == NativeConstructExpr::Kind::Some ? !level.IsOptional() : !level.IsFallible()) {
             return std::format("'.{}(...)' constructs a native {}, but the expected type is '{}'", name, form,
@@ -466,7 +466,7 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
                                sourceType->second.ToString(), targetType.ToString());
         }
         if (IsUnsuffixedIntegerLiteral(expr) && targetType.IsSum() &&
-            std::ranges::count_if(targetType.inner, [](const TypeRef &member) { return member.IsInteger(); }) > 1) {
+            std::ranges::count_if(targetType->inner, [](const TypeRef &member) { return member.IsInteger(); }) > 1) {
             return std::format("integer literal is ambiguous for '{}', which has several integer members; add a "
                                "suffix or a cast",
                                targetType.ToString());

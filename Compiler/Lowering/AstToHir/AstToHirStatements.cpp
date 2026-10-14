@@ -140,7 +140,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
             call->type = constructedType;
             auto callee = std::make_unique<HirVarExpr>();
             callee->location = statement->location;
-            callee->name = ConcreteMethodCalleeName(BaseTypeName(constructedType.name), constructedType, constructor);
+            callee->name = ConcreteMethodCalleeName(BaseTypeName(constructedType->name), constructedType, constructor);
             callee->type = AssociatedFunctionType(constructedType, constructor);
             call->callee = std::move(callee);
             const auto substitutions = MethodTypeSubstitutions(constructedType);
@@ -243,8 +243,8 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->variable = statement->variable;
         lowered->iterable = LowerExpr(*statement->iterable);
         TypeRef elementType = TypeRef::MakeUnknown();
-        if (lowered->iterable->type.IsIterableRange() && !lowered->iterable->type.inner.empty()) {
-            elementType = lowered->iterable->type.inner[0];
+        if (lowered->iterable->type.IsIterableRange() && !lowered->iterable->type->inner.empty()) {
+            elementType = lowered->iterable->type->inner[0];
         }
         else if (const auto sliceElement = IndexElementType(lowered->iterable->type)) {
             elementType = *sliceElement;
@@ -342,7 +342,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
             HirConst loweredConstant = LowerConst(*constant);
             lowered->hasConstant = true;
             lowered->constantName = std::move(loweredConstant.name);
-            lowered->constantType = std::move(loweredConstant.type);
+            lowered->constantType = loweredConstant.type;
             lowered->constantValue = std::move(loweredConstant.value);
         }
         else if (const auto *alias = AstCast<const TypeAliasDecl>(statement->decl.get())) {
@@ -398,8 +398,8 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
         lowered->location = tuple->location;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
             TypeRef elementType = TypeRef::MakeUnknown();
-            if (type.kind == TypeRef::Kind::Tuple && i < type.inner.size()) {
-                elementType = type.inner[i];
+            if (type->kind == TypeRef::Kind::Tuple && i < type->inner.size()) {
+                elementType = type->inner[i];
             }
             lowered->elements.push_back(LowerLetPattern(*tuple->elements[i], elementType, isMutable, discardsParts));
         }
@@ -528,8 +528,8 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
             lowered->path = {enumName, variantName};
             lowered->resolvedType = subjectType;
         }
-        else if (enumPattern->path.size() == 1 && subjectType.kind == TypeRef::Kind::Named) {
-            enumName = BaseTypeName(subjectType.name);
+        else if (enumPattern->path.size() == 1 && subjectType->kind == TypeRef::Kind::Named) {
+            enumName = BaseTypeName(subjectType->name);
             variantName = enumPattern->path[0];
             lowered->path = {enumName, variantName};
             lowered->resolvedType = subjectType;
@@ -550,7 +550,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
             }
             if (const auto enumIt = enumDecls.find(enumName); enumIt != enumDecls.end()) {
                 lowered->form = enumIt->second->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
-                const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
+                const auto typeArguments = ParseTypeArgsFromTypeName(subjectType->name);
                 const auto &parameters = enumIt->second->typeParams;
                 const std::size_t count = std::min(parameters.size(), typeArguments.size());
                 for (std::size_t i = 0; i < count; ++i) {
@@ -655,8 +655,8 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         auto lowered = std::make_unique<HirTuplePattern>();
         lowered->location = tuple->location;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
-            const TypeRef elementType = subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size()
-                                          ? subjectType.inner[i]
+            const TypeRef elementType = subjectType->kind == TypeRef::Kind::Tuple && i < subjectType->inner.size()
+                                          ? subjectType->inner[i]
                                           : TypeRef::MakeUnknown();
             lowered->elements.push_back(LowerPattern(*tuple->elements[i], elementType));
         }

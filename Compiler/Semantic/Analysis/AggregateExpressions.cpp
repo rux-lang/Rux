@@ -9,7 +9,7 @@
 namespace Rux::SemanticDetail {
 namespace {
 [[nodiscard]] const TypeRef &ReferencedValue(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? type.inner.front() : type;
+    return type->kind == TypeRef::Kind::Reference && !type->inner.empty() ? type->inner.front() : type;
 }
 
 template <typename Range, typename Projection>
@@ -197,8 +197,8 @@ const IndexExpr *AnalysisContext::IndexOperatorInPlace(const Expr &place) const 
 
 std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
     const TypeRef *named = &type;
-    if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
-        named = &type.inner[0];
+    if ((type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Reference) && !type->inner.empty()) {
+        named = &type->inner[0];
     }
     // Slice extension methods are keyed on the full element-specific spelling (e.g. `int[..]`) so `extend
     // int[..]` stays distinct from `extend char8[..]`; named types collapse to their base name so generic
@@ -206,8 +206,8 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
     if (named->IsSlice()) {
         return named->ToString();
     }
-    if (named->kind == TypeRef::Kind::Named) {
-        return BaseTypeName(named->name);
+    if ((*named)->kind == TypeRef::Kind::Named) {
+        return BaseTypeName((*named)->name);
     }
     // Every primitive names its own method set, so a width added to the catalog joins without a case here.
     if (named->IsPrimitive()) {
@@ -217,24 +217,24 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
 }
 
 std::optional<TypeRef> AnalysisContext::SliceElementType(const TypeRef &type) const {
-    if (!type.IsSlice() || type.inner.empty()) {
+    if (!type.IsSlice() || type->inner.empty()) {
         return std::nullopt;
     }
-    return type.inner[0];
+    return type->inner[0];
 }
 
 std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {
     const TypeRef &value = ReferencedValue(type);
-    if (value.kind == TypeRef::Kind::Array && !value.inner.empty()) {
-        return value.inner[0];
+    if (value->kind == TypeRef::Kind::Array && !value->inner.empty()) {
+        return value->inner[0];
     }
     if (auto elementType = SliceElementType(value)) {
         // An element read out of a view is a value; the writability the element carries describes the view.
         elementType->isMut = false;
         return elementType;
     }
-    if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
-        return value.inner[0];
+    if (value->kind == TypeRef::Kind::Pointer && !value->inner.empty()) {
+        return value->inner[0];
     }
     return std::nullopt;
 }
@@ -245,11 +245,11 @@ std::optional<std::vector<TypeRef>> AnalysisContext::ExpectedCaseTypeArguments(c
         return std::nullopt;
     }
     const auto expected = expectedExpressionTypes.find(&expression);
-    if (expected == expectedExpressionTypes.end() || expected->second.kind != TypeRef::Kind::Named ||
-        BaseTypeName(expected->second.name) != BaseTypeName(EnumType(declaration).name)) {
+    if (expected == expectedExpressionTypes.end() || expected->second->kind != TypeRef::Kind::Named ||
+        BaseTypeName(expected->second->name) != BaseTypeName(EnumType(declaration)->name)) {
         return std::nullopt;
     }
-    std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(expected->second.name);
+    std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(expected->second->name);
     if (arguments.size() != declaration.typeParams.size()) {
         return std::nullopt;
     }
@@ -263,8 +263,8 @@ std::optional<TypeRef> AnalysisContext::ExpectedArrayElementType(const ArrayExpr
     }
     const TypeRef &type = expected->second;
     std::optional<TypeRef> element;
-    if (type.kind == TypeRef::Kind::Array && type.arrayLength == array.elements.size() && !type.inner.empty()) {
-        element = type.inner.front();
+    if (type->kind == TypeRef::Kind::Array && type->arrayLength == array.elements.size() && !type->inner.empty()) {
+        element = type->inner.front();
     }
     else if (const auto sliceElement = SliceElementType(type)) {
         element = *sliceElement;
@@ -345,12 +345,12 @@ TypeRef AnalysisContext::StructFieldType(const TypeRef &objectType, const std::s
     // reached through a pointer -- a pointer has no name of its own, so reading them off `objectType` would leave a
     // generic instantiation looking like a bare declaration and its fields still spelled in the type parameters.
     const TypeRef &named =
-        ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-         !objectType.inner.empty())
-            ? objectType.inner[0]
+        ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+         !objectType->inner.empty())
+            ? objectType->inner[0]
             : objectType;
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> typeArguments = ParseTypeArgsFromTypeName(named.name);
+    const std::vector<TypeRef> typeArguments = ParseTypeArgsFromTypeName(named->name);
     const auto &parameters = structure->second->typeParams;
     const std::size_t count = std::min(parameters.size(), typeArguments.size());
     for (std::size_t i = 0; i < count; ++i) {
@@ -644,11 +644,11 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                 // duration of one call. Writability is the same question assigning into a built-in element asks: a
                 // reference or pointer carries the permission in its own type, and anything else is as writable as
                 // the place it names.
-                if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-                    !objectType.inner.empty()) {
-                    if (!objectType.inner.front().isMut) {
+                if ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+                    !objectType->inner.empty()) {
+                    if (!objectType->inner.front().isMut) {
                         EmitError(index->location,
-                                  objectType.kind == TypeRef::Kind::Reference
+                                  objectType->kind == TypeRef::Kind::Reference
                                       ? std::format("cannot modify data through immutable reference '{}'",
                                                     objectType.ToString())
                                       : std::format("cannot modify data through read-only pointer '{}'",
@@ -706,23 +706,23 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             // A range of an array views its elements, writably when the array is a writable place; a range of a
             // slice keeps the slice's writability; and a range of a pointer views the elements it addresses, writably
             // when the pointee is, but only with an end bound, since the pointer alone has no length to run to.
-            if (objectValueType.kind == TypeRef::Kind::Array && !objectValueType.inner.empty()) {
-                const bool writable = objectType.kind == TypeRef::Kind::Reference
-                                        ? objectType.inner.front().isMut
+            if (objectValueType->kind == TypeRef::Kind::Array && !objectValueType->inner.empty()) {
+                const bool writable = objectType->kind == TypeRef::Kind::Reference
+                                        ? objectType->inner.front().isMut
                                         : PlaceIsWritable(*index->object, objectType);
-                return TypeRef::MakeSlice(objectValueType.inner[0], writable);
+                return TypeRef::MakeSlice(objectValueType->inner[0], writable);
             }
             if (const auto elementType = SliceElementType(objectValueType)) {
                 return TypeRef::MakeSlice(*elementType, elementType->isMut);
             }
-            if (objectValueType.kind == TypeRef::Kind::Pointer && !objectValueType.inner.empty()) {
+            if (objectValueType->kind == TypeRef::Kind::Pointer && !objectValueType->inner.empty()) {
                 if (!indexType.RangeHasEnd()) {
                     EmitError(index->location,
                               std::format("cannot slice pointer '{}' without an end bound", objectType.ToString()), {},
                               "write 'p[..n]' or 'p[a..b]' to give the slice a length");
                     return TypeRef::MakeUnknown();
                 }
-                return TypeRef::MakeSlice(objectValueType.inner[0], objectValueType.inner[0].isMut);
+                return TypeRef::MakeSlice(objectValueType->inner[0], objectValueType->inner[0].isMut);
             }
             std::optional<std::string> sliceHelp;
             if (isNamedType) {
@@ -743,8 +743,8 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         if (builtinElementType) {
             // A fixed array's extent is known here, so a constant index past it is reported now rather than left to
             // the run-time check every other index of an array or slice receives.
-            if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength) {
-                const std::uint64_t length = *objectValueType.arrayLength;
+            if (objectValueType->kind == TypeRef::Kind::Array && objectValueType->arrayLength) {
+                const std::uint64_t length = *objectValueType->arrayLength;
                 if (const auto constant = EvalConstInt(*index->index);
                     constant && (*constant < 0 || static_cast<std::uint64_t>(*constant) >= length)) {
                     EmitError(index->index->location,
@@ -789,7 +789,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             CheckBorrowedPlaceRead(*field, field->location);
         }
         const TypeRef &objectValueType = ReferencedValue(objectType);
-        if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength && field->field == "length") {
+        if (objectValueType->kind == TypeRef::Kind::Array && objectValueType->arrayLength && field->field == "length") {
             return TypeRef::MakeUInt();
         }
         // A slice's two members are compiler-owned, like an array's length: its shape is fixed by the runtime rather
@@ -807,7 +807,8 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
         if (objectValueType.IsRange()) {
-            const TypeRef elementType = objectValueType.inner.empty() ? TypeRef::MakeInt64() : objectValueType.inner[0];
+            const TypeRef elementType =
+                objectValueType->inner.empty() ? TypeRef::MakeInt64() : objectValueType->inner[0];
             if (field->field == "start" && objectValueType.RangeHasStart()) {
                 return elementType;
             }
@@ -819,17 +820,18 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                       {"range members are 'start' and 'end' when that bound is present"});
             return TypeRef::MakeUnknown();
         }
-        if (objectValueType.kind == TypeRef::Kind::Tuple) {
+        if (objectValueType->kind == TypeRef::Kind::Tuple) {
             try {
                 std::size_t consumed = 0;
                 const std::size_t index = std::stoul(field->field, &consumed);
                 if (consumed == field->field.size()) {
-                    if (index < objectValueType.inner.size()) {
-                        return objectValueType.inner[index];
+                    if (index < objectValueType->inner.size()) {
+                        return objectValueType->inner[index];
                     }
                     EmitError(field->location,
                               std::format("tuple index {} is out of range for a tuple with {} element{}", index,
-                                          objectValueType.inner.size(), objectValueType.inner.size() == 1 ? "" : "s"));
+                                          objectValueType->inner.size(),
+                                          objectValueType->inner.size() == 1 ? "" : "s"));
                     return TypeRef::MakeUnknown();
                 }
             }

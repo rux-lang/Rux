@@ -13,28 +13,28 @@ using Shapes = std::unordered_map<std::string, Fields>;
 Fields Shape(const TypeRef &type, const Shapes &structs) {
     Fields fields;
     if (type.IsRange()) {
-        const auto element = type.inner.empty() ? TypeRef::MakeInt64() : type.inner[0];
+        const auto element = type->inner.empty() ? TypeRef::MakeInt64() : type->inner[0];
         if (type.RangeHasStart())
             fields.emplace("start", element);
         if (type.RangeHasEnd())
             fields.emplace("end", element);
     }
-    else if (type.IsSlice() && type.inner.size() == 1) {
-        fields.emplace("data", TypeRef::MakePointer(type.inner[0]));
+    else if (type.IsSlice() && type->inner.size() == 1) {
+        fields.emplace("data", TypeRef::MakePointer(type->inner[0]));
         fields.emplace("length", TypeRef::MakeUInt64());
     }
-    else if (type.kind == TypeRef::Kind::Tuple && type.inner.size() <= 16) {
-        for (std::size_t i = 0; i < type.inner.size(); ++i)
-            fields.emplace(std::to_string(i), type.inner[i]);
+    else if (type->kind == TypeRef::Kind::Tuple && type->inner.size() <= 16) {
+        for (std::size_t i = 0; i < type->inner.size(); ++i)
+            fields.emplace(std::to_string(i), type->inner[i]);
     }
-    else if (type.kind == TypeRef::Kind::Named && type.inner.empty()) {
-        if (const auto found = structs.find(type.name); found != structs.end())
+    else if (type->kind == TypeRef::Kind::Named && type->inner.empty()) {
+        if (const auto found = structs.find(type->name); found != structs.end())
             fields = found->second;
     }
     if (!std::ranges::all_of(fields, [](const auto &field) {
             const auto &value = field.second;
             return value.IsInteger() || value.IsFloat() || value.IsBool() || value.IsChar() ||
-                   value.kind == TypeRef::Kind::Pointer || value.kind == TypeRef::Kind::Func;
+                   value->kind == TypeRef::Kind::Pointer || value->kind == TypeRef::Kind::Func;
         })) {
         return {};
     }
@@ -79,8 +79,8 @@ bool ReplaceFields(LirFunc &function, const Shapes &structs) {
             if (instruction.op != LirOpcode::FieldPtr)
                 continue;
             const auto field = candidate.fields.find(instruction.strArg);
-            if (field == candidate.fields.end() || instruction.type.kind != TypeRef::Kind::Pointer ||
-                instruction.type.inner.size() != 1 || instruction.type.inner[0] != field->second) {
+            if (field == candidate.fields.end() || instruction.type->kind != TypeRef::Kind::Pointer ||
+                instruction.type->inner.size() != 1 || instruction.type->inner[0] != field->second) {
                 candidate.valid = false;
                 continue;
             }

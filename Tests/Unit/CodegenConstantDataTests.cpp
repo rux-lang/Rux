@@ -142,7 +142,7 @@ TEST_CASE("both emitters preserve every scalar module constant width") {
             CHECK(symbol->visibility == RcuSymVis::Local);
             REQUIRE(constant.scalars.size() == 1);
             CHECK(Rux::Testing::RodataOf(*object, constant.name) ==
-                  Bytes(constant.scalars.front().literal, constant.type.kind));
+                  Bytes(constant.scalars.front().literal, constant.type->kind));
         }
     }
 }

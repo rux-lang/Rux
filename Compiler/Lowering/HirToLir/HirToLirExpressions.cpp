@@ -21,20 +21,20 @@ namespace {
 // to another, or a code unit or unsigned integer whose whole range fits the target and, for a scalar target, stays
 // below the surrogates.
 bool CharacterCastAlwaysValid(const TypeRef &source, const TypeRef &target) {
-    const bool scalarTarget = CharacterDomainOf(target.kind) == CharacterDomain::ScalarValue;
+    const bool scalarTarget = CharacterDomainOf(target->kind) == CharacterDomain::ScalarValue;
     std::optional<std::uint64_t> sourceMaximum;
     if (source.IsChar()) {
-        if (CharacterDomainOf(source.kind) == CharacterDomain::ScalarValue) {
+        if (CharacterDomainOf(source->kind) == CharacterDomain::ScalarValue) {
             return scalarTarget;
         }
-        sourceMaximum = MaxCharacterValue(source.kind);
+        sourceMaximum = MaxCharacterValue(source->kind);
     }
     else if (source.IsInteger() && !source.IsSigned()) {
         if (const auto bytes = source.SizeInBytes(); bytes && *bytes < 8) {
             sourceMaximum = (std::uint64_t{1} << (*bytes * 8)) - 1;
         }
     }
-    const auto targetMaximum = MaxCharacterValue(target.kind);
+    const auto targetMaximum = MaxCharacterValue(target->kind);
     return sourceMaximum && targetMaximum && *sourceMaximum <= *targetMaximum &&
            (!scalarTarget || *sourceMaximum < 0xD800);
 }
@@ -241,14 +241,14 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     }
     if (auto *e = HirCast<const HirFieldExpr>(&expr)) {
         const TypeRef &objectValueType =
-            e->object->type.kind == TypeRef::Kind::Reference && !e->object->type.inner.empty()
-                ? e->object->type.inner.front()
+            e->object->type->kind == TypeRef::Kind::Reference && !e->object->type->inner.empty()
+                ? e->object->type->inner.front()
                 : e->object->type;
-        if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength && e->field == "length") {
-            return EmitConst(std::to_string(*objectValueType.arrayLength), TypeRef::MakeUInt());
+        if (objectValueType->kind == TypeRef::Kind::Array && objectValueType->arrayLength && e->field == "length") {
+            return EmitConst(std::to_string(*objectValueType->arrayLength), TypeRef::MakeUInt());
         }
         const bool indirect =
-            e->object->type.kind == TypeRef::Kind::Pointer || e->object->type.kind == TypeRef::Kind::Reference;
+            e->object->type->kind == TypeRef::Kind::Pointer || e->object->type->kind == TypeRef::Kind::Reference;
         LirReg base = indirect ? LowerExpr(*e->object) : LowerLValue(*e->object);
         LirReg ptr = EmitFieldPtr(base, e->field, e->type);
         // An interface value is a 16-byte fat pointer that is handled by its address, the same way a local or an
@@ -276,21 +276,21 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
             TypeRef checkType = TypeRef::MakeUInt64();
             switch (sourceType.IsFloat() ? 8 : sourceType.SizeInBytes().value_or(8)) {
             case 16:
-                checkType.kind = TypeRef::Kind::UInt128;
+                checkType = TypeRef::MakePrimitive(TypeRef::Kind::UInt128);
                 break;
             case 32:
-                checkType.kind = TypeRef::Kind::UInt256;
+                checkType = TypeRef::MakePrimitive(TypeRef::Kind::UInt256);
                 break;
             case 64:
-                checkType.kind = TypeRef::Kind::UInt512;
+                checkType = TypeRef::MakePrimitive(TypeRef::Kind::UInt512);
                 break;
             default:
                 break;
             }
             const LirReg unsignedValue = EmitCastIfNeeded(value, sourceType, checkType);
-            const LirReg maximum = EmitConst(std::to_string(*MaxCharacterValue(e->type.kind)), checkType);
+            const LirReg maximum = EmitConst(std::to_string(*MaxCharacterValue(e->type->kind)), checkType);
             LirReg valid = EmitBinary(LirOpcode::CmpLe, unsignedValue, maximum, TypeRef::MakeBool());
-            if (CharacterDomainOf(e->type.kind) == CharacterDomain::ScalarValue) {
+            if (CharacterDomainOf(e->type->kind) == CharacterDomain::ScalarValue) {
                 const LirReg below =
                     EmitBinary(LirOpcode::CmpLt, unsignedValue, EmitConst("55296", checkType), TypeRef::MakeBool());
                 const LirReg above =
@@ -419,10 +419,10 @@ LirReg HirToLirContext::EmitVariantPayloadEquality(const HirVariantEqualityPaylo
                           TypeRef::MakeBool());
     }
     if (payload.operation == Operation::Custom) {
-        const bool receiverIndirect = payload.customReceiverType.kind == TypeRef::Kind::Pointer ||
-                                      payload.customReceiverType.kind == TypeRef::Kind::Reference;
-        const bool argumentIndirect = payload.customArgumentType.kind == TypeRef::Kind::Pointer ||
-                                      payload.customArgumentType.kind == TypeRef::Kind::Reference;
+        const bool receiverIndirect = payload.customReceiverType->kind == TypeRef::Kind::Pointer ||
+                                      payload.customReceiverType->kind == TypeRef::Kind::Reference;
+        const bool argumentIndirect = payload.customArgumentType->kind == TypeRef::Kind::Pointer ||
+                                      payload.customArgumentType->kind == TypeRef::Kind::Reference;
         LirInstr call;
         call.dst = NewReg();
         call.op = LirOpcode::Call;
@@ -449,7 +449,7 @@ LirReg HirToLirContext::EmitVariantPayloadEquality(const HirVariantEqualityPaylo
     }
     if (payload.operation == Operation::Array && !payload.elements.empty()) {
         const HirVariantEqualityPayload &element = payload.elements.front();
-        return EmitEqualitySequence(payload.type.arrayLength.value_or(0), [&](const std::size_t index) {
+        return EmitEqualitySequence(payload.type->arrayLength.value_or(0), [&](const std::size_t index) {
             const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
             const LirReg leftElement = EmitIndexPtr(left, offset, element.type);
             const LirReg rightElement = EmitIndexPtr(right, offset, element.type);
@@ -638,7 +638,7 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
     // Pointer arithmetic offsets by whole elements, so the integer operand is scaled by the pointee size. IndexPtr
     // carries the element type and is scaled in the back end, which is the only place a struct pointee can be sized.
     if ((e.op == TK::Plus || e.op == TK::Minus) && IsPointerArithmetic(e.type)) {
-        if (e.left->type.kind == TypeRef::Kind::Pointer) {
+        if (e.left->type->kind == TypeRef::Kind::Pointer) {
             // ptr + int, or ptr - int with the count negated first.
             const LirReg index =
                 e.op == TK::Minus ? EmitBinary(LirOpcode::Sub, EmitConst("0", e.right->type), rhs, e.right->type) : rhs;
@@ -663,7 +663,7 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     }
 
     LirReg val = LirNoReg;
-    if (simpleAssignment && (e.type.kind == TypeRef::Kind::Array || e.type.kind == TypeRef::Kind::Tuple)) {
+    if (simpleAssignment && (e.type->kind == TypeRef::Kind::Array || e.type->kind == TypeRef::Kind::Tuple)) {
         // An array or tuple expression can lower to the address of the slot it was built in rather than to its value,
         // and a store of that address wrote the pointer itself into any place narrow enough for one register. Building
         // the new value in its own slot and loading it gives the store a value, whatever produced it, and keeps a
@@ -778,7 +778,7 @@ LirReg HirToLirContext::LowerArgument(const HirExpr &argument) {
     // arrived as the value the callee reads, but one written at the call site — `v[2..5]` — handed over the address
     // of its slot, which System V and AAPCS64 placed as the first of the two registers the callee reads the pair
     // from, leaving `end` whatever the second register happened to hold.
-    if (argument.type.kind == TypeRef::Kind::Array || argument.type.kind == TypeRef::Kind::Tuple ||
+    if (argument.type->kind == TypeRef::Kind::Array || argument.type->kind == TypeRef::Kind::Tuple ||
         argument.type.IsRange()) {
         return EmitLoad(LowerLValue(argument), argument.type);
     }
@@ -940,8 +940,8 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
         ci.op = LirOpcode::CallIndirect;
         // A function value of a C-variadic type takes its anonymous arguments as C passes them, like a named extern.
         if (const TypeRef &calleeType = e.callee->type;
-            calleeType.kind == TypeRef::Kind::Func && calleeType.isVariadic && !calleeType.inner.empty()) {
-            PassCVariadicArguments(ci, calleeType.inner.size() - 1, e);
+            calleeType->kind == TypeRef::Kind::Func && calleeType.isVariadic && !calleeType->inner.empty()) {
+            PassCVariadicArguments(ci, calleeType->inner.size() - 1, e);
         }
         LirReg fp = LowerExpr(*e.callee);
         ci.srcs.insert(ci.srcs.begin(), fp);
@@ -957,12 +957,12 @@ HirToLirContext::IndexedStorage HirToLirContext::LowerIndexedStorage(const HirEx
                                                                      const TypeRef &elementType) {
     const TypeRef dataType = TypeRef::MakePointer(elementType);
     const TypeRef lengthType = TypeRef::MakeUInt64();
-    const bool viaReference = object.type.kind == TypeRef::Kind::Reference && !object.type.inner.empty();
-    const TypeRef &valueType = viaReference ? object.type.inner.front() : object.type;
+    const bool viaReference = object.type->kind == TypeRef::Kind::Reference && !object.type->inner.empty();
+    const TypeRef &valueType = viaReference ? object.type->inner.front() : object.type;
     IndexedStorage storage;
     if (IsArrayType(valueType)) {
         storage.data = viaReference ? LowerExpr(object) : LowerLValue(object);
-        storage.constantLength = valueType.arrayLength.value_or(0);
+        storage.constantLength = valueType->arrayLength.value_or(0);
         storage.length = EmitConst(std::to_string(*storage.constantLength), lengthType);
     }
     else if (IsViewType(valueType)) {
@@ -1041,14 +1041,14 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
 
     LirReg start = EmitConst("0", indexType);
     if (rangeType.RangeHasStart()) {
-        const TypeRef boundType = rangeType.inner.empty() ? indexType : rangeType.inner[0];
+        const TypeRef boundType = rangeType->inner.empty() ? indexType : rangeType->inner[0];
         const LirReg startField = EmitFieldPtr(rangeSlot, "start", boundType);
         start = EmitCastIfNeeded(EmitLoad(startField, boundType), boundType, indexType);
     }
 
     LirReg end = collectionLength;
     if (rangeType.RangeHasEnd()) {
-        const TypeRef boundType = rangeType.inner.empty() ? indexType : rangeType.inner[0];
+        const TypeRef boundType = rangeType->inner.empty() ? indexType : rangeType->inner[0];
         const LirReg endField = EmitFieldPtr(rangeSlot, "end", boundType);
         end = EmitCastIfNeeded(EmitLoad(endField, boundType), boundType, indexType);
         if (collectionLength != LirNoReg) {
@@ -1142,7 +1142,7 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
     }
     if (auto *e = HirCast<const HirFieldExpr>(&expr)) {
         const bool indirect =
-            e->object->type.kind == TypeRef::Kind::Pointer || e->object->type.kind == TypeRef::Kind::Reference;
+            e->object->type->kind == TypeRef::Kind::Pointer || e->object->type->kind == TypeRef::Kind::Reference;
         LirReg base = indirect ? LowerExpr(*e->object) : LowerLValue(*e->object);
         return EmitFieldPtr(base, e->field, e->type);
     }

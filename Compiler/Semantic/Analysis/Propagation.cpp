@@ -15,10 +15,10 @@ namespace {
 } // namespace
 
 AnalysisContext::LegacyOutcomeShape AnalysisContext::LegacyOutcomeShapeOf(const TypeRef &type) const {
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return LegacyOutcomeShape::None;
     }
-    const EnumDecl *declaration = EnumNamed(BaseTypeName(type.name));
+    const EnumDecl *declaration = EnumNamed(BaseTypeName(type->name));
     if (!declaration || !declaration->IsVariant()) {
         return LegacyOutcomeShape::None;
     }
@@ -38,8 +38,8 @@ bool AnalysisContext::ErrorFitsChannel(const TypeRef &error, const TypeRef &chan
     if (!channel.IsSum()) {
         return false;
     }
-    const auto member = [&](const TypeRef &candidate) { return std::ranges::contains(channel.inner, candidate); };
-    return member(error) || (error.IsSum() && std::ranges::all_of(error.inner, member));
+    const auto member = [&](const TypeRef &candidate) { return std::ranges::contains(channel->inner, candidate); };
+    return member(error) || (error.IsSum() && std::ranges::all_of(error->inner, member));
 }
 
 TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef &operandType) {
@@ -86,12 +86,12 @@ TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef
     propagation.payloadType = success;
     propagation.failureType = error;
     propagation.returnType = currentReturnType;
-    propagations.insert_or_assign(&expression, std::move(propagation));
+    propagations.insert_or_assign(&expression, propagation);
     return success;
 }
 
 TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType) {
-    const TypeRef &payload = operandType.inner.front();
+    const TypeRef &payload = operandType->inner.front();
     // Absence leaves as the enclosing optional's absence, or as the successful absence of `U? ! F`; nothing deeper is
     // a target, and no error is ever invented for it.
     const bool optionalTarget = currentReturnType.IsOptional();
@@ -120,7 +120,7 @@ TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const
     ResolvedPropagation propagation;
     propagation.payloadType = payload;
     propagation.returnType = currentReturnType;
-    propagations.insert_or_assign(&expression, std::move(propagation));
+    propagations.insert_or_assign(&expression, propagation);
     return payload;
 }
 
@@ -130,8 +130,8 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         return TypeRef::MakeUnknown();
     }
     // A borrowed outcome cannot hand its payload to the continuing expression or its error to the caller.
-    if (operandType.kind == TypeRef::Kind::Reference && !operandType.inner.empty() &&
-        (operandType.inner.front().IsFallible() || operandType.inner.front().IsOptional())) {
+    if (operandType->kind == TypeRef::Kind::Reference && !operandType->inner.empty() &&
+        (operandType->inner.front().IsFallible() || operandType->inner.front().IsOptional())) {
         EmitError(expression.location,
                   std::format("'?' cannot consume the borrowed value '{}'", operandType.ToString()),
                   {"'?' moves the success onward or the error out of the function, and a reference owns neither"},
@@ -176,7 +176,7 @@ bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const Sourc
     if (payload.IsUnknown() || (!ClassifyTypeProperties(payload).IsResolved() && MentionsTypeParameter(payload))) {
         return true;
     }
-    if (payload.kind == TypeRef::Kind::Reference) {
+    if (payload->kind == TypeRef::Kind::Reference) {
         EmitError(location,
                   std::format("'{}' cannot extract reference payload type '{}' from {}", operation, payload.ToString(),
                               propagation ? "an outcome" : "an optional"),
@@ -197,7 +197,7 @@ bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const Sourc
 }
 
 TypeRef AnalysisContext::CheckNativeCoalesce(const BinaryExpr &expression, const TypeRef &leftType) {
-    const TypeRef &payload = leftType.inner.front();
+    const TypeRef &payload = leftType->inner.front();
     bool payloadValid = true;
     if (MentionsTypeParameter(payload) && currentFunctionDecl) {
         deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location});
@@ -229,7 +229,7 @@ TypeRef AnalysisContext::CheckNativeCoalesce(const BinaryExpr &expression, const
     if (payloadValid && fallbackValid && !payload.IsUnknown()) {
         ResolvedCoalescing coalescing;
         coalescing.payloadType = payload;
-        coalescings.insert_or_assign(&expression, std::move(coalescing));
+        coalescings.insert_or_assign(&expression, coalescing);
     }
     return payload;
 }
@@ -243,10 +243,10 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
     if (leftType.IsOptional() && !leftType.IsIncompleteNative()) {
         return CheckNativeCoalesce(expression, leftType);
     }
-    if (leftType.IsFallible() || (leftType.kind == TypeRef::Kind::Reference && !leftType.inner.empty() &&
-                                  (leftType.inner.front().IsOptional() || leftType.inner.front().IsFallible()))) {
+    if (leftType.IsFallible() || (leftType->kind == TypeRef::Kind::Reference && !leftType->inner.empty() &&
+                                  (leftType->inner.front().IsOptional() || leftType->inner.front().IsFallible()))) {
         static_cast<void>(CheckExpr(*expression.right));
-        const bool reference = leftType.kind == TypeRef::Kind::Reference;
+        const bool reference = leftType->kind == TypeRef::Kind::Reference;
         EmitError(expression.location,
                   std::format("operator '{}' cannot take '{}'",
                               "?"

@@ -72,7 +72,7 @@ TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
     Define(symbol);
     CheckConstDecl(declaration);
     const TypeRef type = currentScope->Lookup(declaration.name)->type;
-    if (!declaration.intrinsicName.empty() && !IntrinsicFloatConstantLiteral(type.kind, declaration.name)) {
+    if (!declaration.intrinsicName.empty() && !IntrinsicFloatConstantLiteral(type->kind, declaration.name)) {
         EmitError(declaration.location, "intrinsic associated constants support only floating-point Infinity, NaN, "
                                         "Max, Lowest, MinPositive and Epsilon");
     }
@@ -86,7 +86,7 @@ TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
     if (type.IsInteger() || type.IsFloat() || type.IsBool() || type.IsChar()) {
         std::string literal;
         if (!declaration.intrinsicName.empty()) {
-            literal = IntrinsicFloatConstantLiteral(type.kind, declaration.name).value_or("");
+            literal = IntrinsicFloatConstantLiteral(type->kind, declaration.name).value_or("");
         }
         else {
             const auto packageModules = [&](const std::string_view name) {
@@ -241,9 +241,9 @@ void AnalysisContext::ValidateIntrinsicFunction(const FuncDecl &declaration) {
         const Param &parameter = declaration.params[index];
         const TypeRef type = ResolveType(*parameter.type);
         const bool matches = known->parameters[index] == IntrinsicParameter::Condition
-                               ? type.kind == TypeRef::Kind::Bool8
-                               : type.IsSlice() && !type.IsWritableSlice() && !type.inner.empty() &&
-                                     type.inner.front().kind == TypeRef::Kind::Char8;
+                               ? type->kind == TypeRef::Kind::Bool8
+                               : type.IsSlice() && !type.IsWritableSlice() && !type->inner.empty() &&
+                                     type->inner.front()->kind == TypeRef::Kind::Char8;
         if (!matches || parameter.isVariadic) {
             reject(std::format("parameter '{}' has type '{}'", parameter.name, type.ToString()));
             return;

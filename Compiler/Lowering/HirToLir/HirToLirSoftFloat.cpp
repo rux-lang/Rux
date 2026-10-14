@@ -82,7 +82,7 @@ using Target::FloatOperation;
 
 /// What a register defined by `instruction` holds.
 [[nodiscard]] TypeRef::Kind ResultKind(const LirInstr &instruction) noexcept {
-    return instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer : instruction.type.kind;
+    return instruction.op == LirOpcode::Alloca ? TypeRef::Kind::Pointer : instruction.type->kind;
 }
 
 /// The kind a comparison or a conversion is about: a cast names its source type, and a comparison's operands are
@@ -104,7 +104,7 @@ using Target::FloatOperation;
     LirInstr call;
     call.dst = dst;
     call.op = LirOpcode::Call;
-    call.type = std::move(type);
+    call.type = type;
     call.strArg = symbol;
     call.srcs = std::move(arguments);
     return call;
@@ -186,10 +186,10 @@ std::optional<SoftFloatHelperKey> SoftFloatHelperFor(const LirInstr &instruction
                (lowering == FloatLowering::X87 && !Target::IsX87NativeOperation(operation));
     };
     const auto arithmetic = [&](const SoftFloatOperation operation) -> std::optional<SoftFloatHelperKey> {
-        if (!computedByHelper(instruction.type.kind, FloatOperation::Arithmetic)) {
+        if (!computedByHelper(instruction.type->kind, FloatOperation::Arithmetic)) {
             return std::nullopt;
         }
-        return SoftFloatHelperKey{operation, instruction.type.kind, TypeRef::Kind::Unknown};
+        return SoftFloatHelperKey{operation, instruction.type->kind, TypeRef::Kind::Unknown};
     };
     switch (instruction.op) {
     case LirOpcode::Add:
@@ -201,9 +201,9 @@ std::optional<SoftFloatHelperKey> SoftFloatHelperFor(const LirInstr &instruction
     case LirOpcode::Div:
         return arithmetic(SoftFloatOperation::Divide);
     case LirOpcode::Mod:
-        if (policy.For(instruction.type.kind) == FloatLowering::Native &&
+        if (policy.For(instruction.type->kind) == FloatLowering::Native &&
             !Target::HasNativeFloatRemainder(policy.arch)) {
-            return SoftFloatHelperKey{SoftFloatOperation::Remainder, instruction.type.kind, TypeRef::Kind::Unknown};
+            return SoftFloatHelperKey{SoftFloatOperation::Remainder, instruction.type->kind, TypeRef::Kind::Unknown};
         }
         return arithmetic(SoftFloatOperation::Remainder);
     case LirOpcode::CmpEq:
@@ -217,7 +217,7 @@ std::optional<SoftFloatHelperKey> SoftFloatHelperFor(const LirInstr &instruction
         }
         return SoftFloatHelperKey{SoftFloatOperation::Compare, operandKind, TypeRef::Kind::Unknown};
     case LirOpcode::Cast:
-        return ConversionHelperFor(operandKind, instruction.type.kind, policy);
+        return ConversionHelperFor(operandKind, instruction.type->kind, policy);
     default:
         return std::nullopt;
     }
@@ -354,7 +354,7 @@ void EmitSoftFloatPlaceholder(SoftFloatHelperSynthesis &synthesis) {
         LirInstr instruction;
         instruction.dst = defines ? synthesis.NewReg() : LirNoReg;
         instruction.op = op;
-        instruction.type = std::move(type);
+        instruction.type = type;
         instruction.srcs = std::move(sources);
         instruction.strArg = std::move(argument);
         const LirReg reg = instruction.dst;
@@ -392,7 +392,7 @@ void VerifySoftFloatLowering(const LirPackage &package, const SoftFloatPolicy &p
                 registerKinds[reg] = kind;
             };
             for (const LirParam &param : function.params) {
-                record(param.reg, param.type.kind);
+                record(param.reg, param.type->kind);
             }
             for (const LirBlock &block : function.blocks) {
                 for (const LirInstr &instruction : block.instrs) {
@@ -425,8 +425,8 @@ void VerifySoftFloatLowering(const LirPackage &package, const SoftFloatPolicy &p
 bool HirToLirContext::EmitSoftFloatReplacement(LirInstr &instruction) {
     // A constant is spelled once, exactly, so that each back end parses the same text to the same bits.
     if (instruction.op == LirOpcode::Const) {
-        if (IsComputedByHelpers(softFloatPolicy.For(instruction.type.kind))) {
-            if (const auto encoding = ParseFloatEncoding(instruction.strArg, *FormatOf(instruction.type.kind))) {
+        if (IsComputedByHelpers(softFloatPolicy.For(instruction.type->kind))) {
+            if (const auto encoding = ParseFloatEncoding(instruction.strArg, *FormatOf(instruction.type->kind))) {
                 instruction.strArg = FormatFloatEncoding(*encoding);
             }
         }
@@ -518,10 +518,10 @@ void HirToLirContext::EmitSoftFloatConversion(const LirInstr &instruction, const
                                               const TypeRef::Kind operandKind) {
     const TypeRef &parameter = signature.parameters.front();
     LirReg source = instruction.srcs.at(0);
-    if (operandKind != parameter.kind) {
+    if (operandKind != parameter->kind) {
         source = EmitConversion(source, TypeRef::MakePrimitive(operandKind), parameter);
     }
-    if (signature.result.kind == instruction.type.kind) {
+    if (signature.result->kind == instruction.type->kind) {
         Emit(HelperCall(instruction.dst, instruction.type, symbol, {source}));
         return;
     }

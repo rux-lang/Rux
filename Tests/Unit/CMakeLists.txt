@@ -116,6 +116,7 @@ set(RUX_TEST_SOURCES
     NativeReturnFailTests.cpp
     NativeStorageLoweringTests.cpp
     NativeTypeIdentityTests.cpp
+    TypeInterningTests.cpp
     NativeTypeResolutionTests.cpp
     NativeTypeSpellingTests.cpp
     NativeTypeSyntaxTests.cpp

@@ -13,11 +13,11 @@ namespace Rux::Optimization {
 namespace {
 bool Word(const TypeRef &type) {
     // Every supported target has 64-bit uint. Signed and narrowing conversions need separate proofs.
-    return type.kind == TypeRef::Kind::UInt || type.kind == TypeRef::Kind::UInt64;
+    return type->kind == TypeRef::Kind::UInt || type->kind == TypeRef::Kind::UInt64;
 }
 
 bool SignedWord(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Int || type.kind == TypeRef::Kind::Int64;
+    return type->kind == TypeRef::Kind::Int || type->kind == TypeRef::Kind::Int64;
 }
 
 struct Definition {
@@ -259,9 +259,9 @@ bool Version(LirFunc &function) {
                 const auto found = definitions.Find(instruction->srcs[0]);
                 if (found == nullptr)
                     return std::nullopt;
-                if (found->type.kind == TypeRef::Kind::UInt8)
+                if (found->type->kind == TypeRef::Kind::UInt8)
                     return 0xFF;
-                if (found->type.kind == TypeRef::Kind::UInt16)
+                if (found->type->kind == TypeRef::Kind::UInt16)
                     return 0xFFFF;
                 return std::nullopt;
             }

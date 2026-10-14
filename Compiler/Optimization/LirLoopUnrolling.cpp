@@ -135,9 +135,9 @@ bool Unroll(LirFunc &function) {
         const auto limit = comparison->srcs[1];
         const auto *phi = definition(induction);
         const bool unsignedInduction =
-            phi && (phi->type.kind == TypeRef::Kind::UInt || phi->type.kind == TypeRef::Kind::UInt64);
+            phi && (phi->type->kind == TypeRef::Kind::UInt || phi->type->kind == TypeRef::Kind::UInt64);
         const bool signedInduction =
-            phi && (phi->type.kind == TypeRef::Kind::Int || phi->type.kind == TypeRef::Kind::Int64);
+            phi && (phi->type->kind == TypeRef::Kind::Int || phi->type->kind == TypeRef::Kind::Int64);
         if (!phi || phi->op != LirOpcode::Phi || owners.At(induction) != header ||
             (!unsignedInduction && !signedInduction) || (owners.Contains(limit) && members.contains(owners.At(limit))))
             continue;
@@ -297,14 +297,15 @@ bool Unroll(LirFunc &function) {
             LirReg address = LirNoReg;
         };
 
-        const bool floating = std::ranges::any_of(
-            source.instrs, [](const LirInstr &instruction) { return instruction.type.kind == TypeRef::Kind::Float64; });
+        const bool floating = std::ranges::any_of(source.instrs, [](const LirInstr &instruction) {
+            return instruction.type->kind == TypeRef::Kind::Float64;
+        });
         const auto element = [&](const TypeRef &type) {
-            return floating ? type.kind == TypeRef::Kind::Float64
-                            : type.kind == TypeRef::Kind::Int64 || type.kind == TypeRef::Kind::UInt64;
+            return floating ? type->kind == TypeRef::Kind::Float64
+                            : type->kind == TypeRef::Kind::Int64 || type->kind == TypeRef::Kind::UInt64;
         };
         const auto pointerToDouble = [&](const TypeRef &type) {
-            return type.kind == TypeRef::Kind::Pointer && type.inner.size() == 1 && element(type.inner[0]);
+            return type->kind == TypeRef::Kind::Pointer && type->inner.size() == 1 && element(type->inner[0]);
         };
         // A small integer known now, or once constants fold: the unroller runs before inlined arguments such as a
         // rotation's `64 - n` have been folded.

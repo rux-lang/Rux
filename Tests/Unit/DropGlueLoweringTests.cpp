@@ -62,7 +62,7 @@ std::size_t CallCount(const LirFunc &function, const std::string &symbol) {
 /// mangling the compiler actually uses.
 std::string GlueSymbol(const LirPackage &package, const std::string &typeName) {
     for (const DropGluePlan &plan : package.dropGlues) {
-        if (plan.type.name == typeName) {
+        if (plan.type->name == typeName) {
             return plan.symbol;
         }
     }
@@ -144,9 +144,9 @@ TEST_SUITE("DropGlueLowering") {
 
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Handle"));
         REQUIRE_EQ(glue.params.size(), 1);
-        CHECK_EQ(glue.params.front().type.kind, TypeRef::Kind::Pointer);
-        REQUIRE_FALSE(glue.params.front().type.inner.empty());
-        CHECK_EQ(glue.params.front().type.inner.front().name, "Handle");
+        CHECK_EQ(glue.params.front().type->kind, TypeRef::Kind::Pointer);
+        REQUIRE_FALSE(glue.params.front().type->inner.empty());
+        CHECK_EQ(glue.params.front().type->inner.front()->name, "Handle");
         CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
     }
 

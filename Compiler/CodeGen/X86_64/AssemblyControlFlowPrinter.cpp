@@ -188,7 +188,7 @@ private:
                 continue;
             }
             const int scalarSize = size > 0 ? size : 8;
-            const bool float32 = step.type.kind == TypeRef::Kind::Float32;
+            const bool float32 = step.type->kind == TypeRef::Kind::Float32;
             if (step.kind == PhiMoveStep::Kind::SaveDestination) {
                 instructionPrinter.LoadA(step.dst, step.type);
                 if (size > 8) {
@@ -559,8 +559,8 @@ private:
                     printer.Instruction("lea",
                                         std::format("{}, {}", reg, AssemblyInstructionPrinter::Rbp(displacement)));
                 }
-                else if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty() &&
-                         printer.IsWin64ByRefAggregate(type.inner[0]) && !physicalRegisters.contains(argument)) {
+                else if (type->kind == TypeRef::Kind::Pointer && !type->inner.empty() &&
+                         printer.IsWin64ByRefAggregate(type->inner[0]) && !physicalRegisters.contains(argument)) {
                     printer.Instruction(
                         "mov", std::format("{}, {}", reg, AssemblyInstructionPrinter::Rbp("qword", displacement)));
                 }

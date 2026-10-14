@@ -51,7 +51,7 @@ struct X86ScalarMachineInstruction {
                                                                         const std::uint64_t value) {
     if (instruction.isVolatile || instruction.dst == LirNoReg || instruction.srcs.size() != 2)
         return std::nullopt;
-    const auto kind = instruction.type.kind;
+    const auto kind = instruction.type->kind;
     if (kind != TypeRef::Kind::UInt32 && kind != TypeRef::Kind::Int64 && kind != TypeRef::Kind::UInt64 &&
         kind != TypeRef::Kind::Int && kind != TypeRef::Kind::UInt)
         return std::nullopt;
@@ -84,10 +84,10 @@ struct X86ScalarMachineInstruction {
 [[nodiscard]] inline std::optional<X86ScalarMachineInstruction>
 SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePlan &plan) {
     if (instruction.op == LirOpcode::RotateRight && instruction.srcs.size() == 1 && !instruction.isVolatile &&
-        (instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64)) {
+        (instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::UInt64)) {
         const auto &homes = plan.PhysicalRegisters();
         const auto &types = plan.RegisterTypes();
-        const bool word32 = instruction.type.kind == TypeRef::Kind::UInt32;
+        const bool word32 = instruction.type->kind == TypeRef::Kind::UInt32;
         const auto count = ParseIntegerLiteralBits(instruction.strArg);
         if (count && *count < (word32 ? 32U : 64U) && homes.contains(instruction.dst) &&
             homes.contains(instruction.srcs[0]) && types.contains(instruction.srcs[0]) &&
@@ -105,12 +105,12 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
         }
     }
     if (instruction.op == LirOpcode::Sqrt && instruction.srcs.size() == 1 && !instruction.isVolatile &&
-        (instruction.type.kind == TypeRef::Kind::Float32 || instruction.type.kind == TypeRef::Kind::Float64)) {
+        (instruction.type->kind == TypeRef::Kind::Float32 || instruction.type->kind == TypeRef::Kind::Float64)) {
         const auto &homes = plan.FloatRegisters();
         const auto &types = plan.RegisterTypes();
         if (homes.contains(instruction.dst) && homes.contains(instruction.srcs[0]) &&
             types.contains(instruction.srcs[0]) && types.at(instruction.srcs[0]) == instruction.type) {
-            const bool single = instruction.type.kind == TypeRef::Kind::Float32;
+            const bool single = instruction.type->kind == TypeRef::Kind::Float32;
             const auto destination = homes.at(instruction.dst);
             return X86ScalarMachineInstruction{single ? X86ScalarRegisterClass::Float32
                                                       : X86ScalarRegisterClass::Float64,
@@ -125,12 +125,12 @@ SelectScalarMachineInstruction(const LirInstr &instruction, const X86_64FramePla
     }
     if (instruction.srcs.size() != 2 || instruction.dst == LirNoReg || instruction.isVolatile)
         return std::nullopt;
-    const bool single = instruction.type.kind == TypeRef::Kind::Float32;
-    const bool floating = single || instruction.type.kind == TypeRef::Kind::Float64;
-    const bool word32 = instruction.type.kind == TypeRef::Kind::UInt32;
-    if (!floating && !word32 && instruction.type.kind != TypeRef::Kind::Int64 &&
-        instruction.type.kind != TypeRef::Kind::UInt64 && instruction.type.kind != TypeRef::Kind::Int &&
-        instruction.type.kind != TypeRef::Kind::UInt)
+    const bool single = instruction.type->kind == TypeRef::Kind::Float32;
+    const bool floating = single || instruction.type->kind == TypeRef::Kind::Float64;
+    const bool word32 = instruction.type->kind == TypeRef::Kind::UInt32;
+    if (!floating && !word32 && instruction.type->kind != TypeRef::Kind::Int64 &&
+        instruction.type->kind != TypeRef::Kind::UInt64 && instruction.type->kind != TypeRef::Kind::Int &&
+        instruction.type->kind != TypeRef::Kind::UInt)
         return std::nullopt;
     const auto &homes = floating ? plan.FloatRegisters() : plan.PhysicalRegisters();
     const auto &types = plan.RegisterTypes();

@@ -111,7 +111,7 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
             iterator->second.funcOverloads.insert(iterator->second.funcOverloads.end(), symbol.funcOverloads.begin(),
                                                   symbol.funcOverloads.end());
             if (iterator->second.type.IsUnknown() && !symbol.type.IsUnknown()) {
-                iterator->second.type = std::move(symbol.type);
+                iterator->second.type = symbol.type;
             }
             if (!iterator->second.externDecl && symbol.externDecl) {
                 iterator->second.externDecl = symbol.externDecl;

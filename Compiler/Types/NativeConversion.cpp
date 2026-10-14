@@ -17,11 +17,11 @@ std::optional<Route> MemberRoute(const TypeRef &source, const TypeRef &destinati
     if (!destination.IsSum()) {
         return std::nullopt;
     }
-    if (const auto member = std::ranges::find(destination.inner, source); member != destination.inner.end()) {
-        return Route{Step{Step::Kind::Inject, static_cast<std::size_t>(member - destination.inner.begin())}};
+    if (const auto member = std::ranges::find(destination->inner, source); member != destination->inner.end()) {
+        return Route{Step{Step::Kind::Inject, static_cast<std::size_t>(member - destination->inner.begin())}};
     }
-    if (source.IsSum() && std::ranges::all_of(source.inner, [&](const TypeRef &member) {
-            return std::ranges::find(destination.inner, member) != destination.inner.end();
+    if (source.IsSum() && std::ranges::all_of(source->inner, [&](const TypeRef &member) {
+            return std::ranges::find(destination->inner, member) != destination->inner.end();
         })) {
         return Route{Step{Step::Kind::WidenSum}};
     }
@@ -49,11 +49,11 @@ void CollectRoutes(const TypeRef &source, const TypeRef &destination, std::vecto
         return;
     }
     if (destination.IsOptional()) {
-        const TypeRef &payload = destination.inner[0];
+        const TypeRef &payload = destination->inner[0];
         if (source.IsOptional()) {
             // An existing optional keeps its presence or absence and widens its payload, the way a fallible widens
             // its channels.
-            if (std::optional<Route> widened = MemberRoute(source.inner[0], payload);
+            if (std::optional<Route> widened = MemberRoute(source->inner[0], payload);
                 widened && widened->front().kind != Step::Kind::Identity) {
                 routes.push_back(Prepend(Step::Kind::WidenOptional, *widened));
             }
@@ -66,12 +66,12 @@ void CollectRoutes(const TypeRef &source, const TypeRef &destination, std::vecto
         return;
     }
     if (destination.IsFallible()) {
-        const TypeRef &success = destination.inner[0];
-        const TypeRef &error = destination.inner[1];
+        const TypeRef &success = destination->inner[0];
+        const TypeRef &error = destination->inner[1];
         bool errorCouldForward = false;
         if (source.IsFallible()) {
-            const std::optional<Route> successChannel = MemberRoute(source.inner[0], success);
-            const std::optional<Route> errorChannel = MemberRoute(source.inner[1], error);
+            const std::optional<Route> successChannel = MemberRoute(source->inner[0], success);
+            const std::optional<Route> errorChannel = MemberRoute(source->inner[1], error);
             errorCouldForward = errorChannel.has_value();
             if (successChannel && errorChannel) {
                 routes.push_back(Route{Step{Step::Kind::WidenFallible}});
@@ -101,7 +101,7 @@ void CollectRoutes(const TypeRef &source, const TypeRef &destination, std::vecto
 
 bool MentionsNativeType(const TypeRef &type) noexcept {
     return type.IsSum() || type.IsOptional() || type.IsFallible() ||
-           std::ranges::any_of(type.inner, MentionsNativeType);
+           std::ranges::any_of(type->inner, MentionsNativeType);
 }
 
 NativeConversion ClassifyNativeConversion(const TypeRef &source, const TypeRef &destination) {
@@ -115,7 +115,7 @@ NativeConversion ClassifyNativeConversion(const TypeRef &source, const TypeRef &
         const TypeRef *level = &destination;
         while (level->IsFallible()) {
             route.push_back(Step{Step::Kind::Success});
-            level = &level->inner[0];
+            level = &(*level)->inner[0];
         }
         if (!level->IsOptional() || level->IsNoneValue()) {
             return {NativeConversion::Outcome::Incompatible, {}};

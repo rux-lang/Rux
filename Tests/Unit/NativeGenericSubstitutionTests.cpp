@@ -4,6 +4,7 @@
 #include "SemanticTestSupport.h"
 
 #include <memory>
+#include <vector>
 
 using namespace Rux;
 using namespace Rux::Testing::SemanticTestSupport;
@@ -54,13 +55,11 @@ const Expr &Initializer(const FuncDecl &function, const std::size_t index) {
 TEST_CASE("renormalizing a substituted sum removes members that became equal") {
     TypeRef sum = TypeRef::MakeSum({TypeRef::MakeTypeParam("T"), TypeRef::MakeTypeParam("U")});
     REQUIRE(sum.IsSum());
-    sum.inner[0] = TypeRef::MakeInt32();
-    sum.inner[1] = TypeRef::MakeInt32();
+    sum = sum.WithInner(std::vector{TypeRef::MakeInt32(), TypeRef::MakeInt32()});
     CHECK_EQ(TypeRef::Renormalize(sum), TypeRef::MakeInt32());
 
     TypeRef distinct = TypeRef::MakeSum({TypeRef::MakeTypeParam("T"), TypeRef::MakeTypeParam("U")});
-    distinct.inner[0] = TypeRef::MakeInt64();
-    distinct.inner[1] = TypeRef::MakeInt32();
+    distinct = distinct.WithInner(std::vector{TypeRef::MakeInt64(), TypeRef::MakeInt32()});
     CHECK_EQ(TypeRef::Renormalize(distinct), TypeRef::MakeSum({TypeRef::MakeInt32(), TypeRef::MakeInt64()}));
 
     const TypeRef optional = TypeRef::MakeOptional(TypeRef::MakeInt32());

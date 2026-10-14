@@ -95,7 +95,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         sym.name = param.name;
         sym.location = param.location;
         sym.type = param.isVariadic ? TypeRef::MakeSlice(ResolveType(*param.type)) : ResolveType(*param.type);
-        if (sym.type.kind != TypeRef::Kind::Reference) {
+        if (sym.type->kind != TypeRef::Kind::Reference) {
             ValidateStoredType(sym.type, param.location, "function parameter");
         }
         if (foreignAbi) {
@@ -105,8 +105,8 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         // A format string's placeholders are counted in the bytes of a UTF-8 literal, so the attribute belongs only
         // on the parameter type such a literal is passed as.
         if (param.isFormat && !param.isVariadic && !sym.type.IsUnknown() &&
-            !(sym.type.IsSlice() && !sym.type.inner.empty() && sym.type.inner.front().kind == TypeRef::Kind::Char8 &&
-              !sym.type.inner.front().isMut)) {
+            !(sym.type.IsSlice() && !sym.type->inner.empty() && sym.type->inner.front()->kind == TypeRef::Kind::Char8 &&
+              !sym.type->inner.front().isMut)) {
             EmitError(param.formatLocation,
                       std::format("'#Format' parameter '{}' has type '{}', but a format string must be 'char8[..]'",
                                   param.name, sym.type.ToString()));
@@ -299,7 +299,7 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
         bool seenDefault = false;
         for (const auto &p : method->params) {
             const TypeRef parameterType = ResolveType(*p.type);
-            if (parameterType.kind != TypeRef::Kind::Reference) {
+            if (parameterType->kind != TypeRef::Kind::Reference) {
                 ValidateStoredType(parameterType, p.location, "interface method parameter");
             }
             if (p.defaultValue) {
@@ -392,7 +392,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     }
     const bool receiverMayResolve = extendedSymbol != nullptr || !AstCast<const NamedTypeExpr>(d.extendedType.get());
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
-    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || extendedType.IsSlice();
+    const bool isSliceReceiver = extendedType->kind == TypeRef::Kind::Array || extendedType.IsSlice();
     if (!isSliceReceiver && !extendedSymbol) {
         std::optional<std::string> help;
         if (const Symbol *suggestion = currentScope->Suggest(typeName)) {
@@ -751,7 +751,7 @@ void AnalysisContext::CheckConstDeclValue(const ConstDecl &d) {
                                                      valueType.DisplayString(), constType.ToString())));
     }
     const bool compileTime = valueType.IsUnknown() || CheckCompileTimeInitializer(*d.value, d);
-    if (compileTime && (constType.IsSlice() || constType.kind == TypeRef::Kind::Array)) {
+    if (compileTime && (constType.IsSlice() || constType->kind == TypeRef::Kind::Array)) {
         const auto *array = AstCast<const ArrayExpr>(d.value.get());
         const auto *repeat = AstCast<const ArrayRepeatExpr>(d.value.get());
         const bool isText = AstCast<const LiteralExpr>(d.value.get()) != nullptr;
@@ -803,7 +803,7 @@ void AnalysisContext::CheckGlobalDecl(const GlobalDecl &d) {
                                                      valueType.DisplayString(), globalType.ToString())));
     }
     const bool compileTime = valueType.IsUnknown() || CheckCompileTimeInitializer(*d.value, d);
-    if (compileTime && globalType.kind == TypeRef::Kind::Array) {
+    if (compileTime && globalType->kind == TypeRef::Kind::Array) {
         const auto *array = AstCast<const ArrayExpr>(d.value.get());
         const auto *repeat = AstCast<const ArrayRepeatExpr>(d.value.get());
         if (!array && !repeat) {

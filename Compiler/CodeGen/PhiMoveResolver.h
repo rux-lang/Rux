@@ -38,7 +38,7 @@ inline std::vector<PhiMoveStep> ResolvePhiMoves(std::vector<PhiMove> moves) {
     pending.reserve(moves.size());
     for (auto &move : moves) {
         if (move.dst != move.src) {
-            pending.push_back({std::move(move), false});
+            pending.push_back({move, false});
         }
     }
 

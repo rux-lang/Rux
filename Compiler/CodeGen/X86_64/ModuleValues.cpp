@@ -55,7 +55,7 @@ void X86_64ModuleEmitter::LoadA(const LirReg reg, const TypeRef &t) const {
         enc.Byte(0xD2); // mov rdx, r10
     }
     else if (IsFloat(t)) {
-        if (t.kind == TypeRef::Kind::Float32) {
+        if (t->kind == TypeRef::Kind::Float32) {
             enc.MovssXmm0Load(d);
         }
         else {
@@ -132,7 +132,7 @@ void X86_64ModuleEmitter::LoadB(LirReg reg, const TypeRef &t) const {
         return;
     }
     if (IsFloat(t)) {
-        if (t.kind == TypeRef::Kind::Float32) {
+        if (t->kind == TypeRef::Kind::Float32) {
             enc.MovssXmm1Load(d);
         }
         else {
@@ -178,7 +178,7 @@ void X86_64ModuleEmitter::StoreStack(LirReg dst, const TypeRef &t) const {
         enc.Dword(static_cast<uint32_t>(d + 8)); // mov [rbp+disp+8], rdx
     }
     else if (IsFloat(t)) {
-        if (t.kind == TypeRef::Kind::Float32) {
+        if (t->kind == TypeRef::Kind::Float32) {
             enc.MovssXmm0Store(d);
         }
         else {

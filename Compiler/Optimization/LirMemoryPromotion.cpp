@@ -50,9 +50,10 @@ void RewriteUses(LirFunc &function, const Copies &copies) {
 
 bool Scalar(const TypeRef &type) {
     return type.IsInteger() || type.IsChar() || type.IsBool() || type.IsFloat() ||
-           type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Func ||
-           (type.kind == TypeRef::Kind::Reference && type.inner.size() == 1 &&
-            (type.inner[0].IsInteger() || type.inner[0].IsChar() || type.inner[0].IsBool() || type.inner[0].IsFloat()));
+           type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Func ||
+           (type->kind == TypeRef::Kind::Reference && type->inner.size() == 1 &&
+            (type->inner[0].IsInteger() || type->inner[0].IsChar() || type->inner[0].IsBool() ||
+             type->inner[0].IsFloat()));
 }
 
 /// The spelling of a slot type's zero, which a path that reads the slot before any store reads instead. Source
@@ -61,7 +62,7 @@ bool Scalar(const TypeRef &type) {
 std::optional<std::string> ZeroOf(const TypeRef &type) {
     if (type.IsFloat())
         return "0.0";
-    if (type.IsInteger() || type.IsChar() || type.IsBool() || type.kind == TypeRef::Kind::Pointer)
+    if (type.IsInteger() || type.IsChar() || type.IsBool() || type->kind == TypeRef::Kind::Pointer)
         return "0";
     return std::nullopt;
 }

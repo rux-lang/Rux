@@ -8,7 +8,7 @@
 
 namespace Rux::SemanticDetail {
 bool HasCAbiMapping(const TypeRef &type) noexcept {
-    return !type.IsFloat() || type.kind == TypeRef::Kind::Float32 || type.kind == TypeRef::Kind::Float64;
+    return !type.IsFloat() || type->kind == TypeRef::Kind::Float32 || type->kind == TypeRef::Kind::Float64;
 }
 
 std::optional<AnalysisContext::CAbiViolation>
@@ -23,16 +23,16 @@ AnalysisContext::FindCAbiViolation(const TypeRef &type, std::unordered_set<std::
         }
         return found;
     };
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Array:
         // A fixed array is its elements in place; the field holding it is the path to them.
-        if (type.arrayLength && !type.inner.empty()) {
-            return FindCAbiViolation(type.inner.front(), visiting);
+        if (type->arrayLength && !type->inner.empty()) {
+            return FindCAbiViolation(type->inner.front(), visiting);
         }
         return std::nullopt;
     case TypeRef::Kind::Tuple:
-        for (std::size_t index = 0; index < type.inner.size(); ++index) {
-            if (auto found = inside(FindCAbiViolation(type.inner[index], visiting), std::to_string(index))) {
+        for (std::size_t index = 0; index < type->inner.size(); ++index) {
+            if (auto found = inside(FindCAbiViolation(type->inner[index], visiting), std::to_string(index))) {
                 return found;
             }
         }
@@ -44,15 +44,15 @@ AnalysisContext::FindCAbiViolation(const TypeRef &type, std::unordered_set<std::
         return std::nullopt;
     }
 
-    const std::string baseName = BaseTypeName(type.name);
+    const std::string baseName = BaseTypeName(type->name);
     // A struct cannot hold itself by value; the guard only keeps a malformed declaration from recursing forever.
-    if (!visiting.insert(type.name).second) {
+    if (!visiting.insert(type->name).second) {
         return std::nullopt;
     }
     std::optional<CAbiViolation> found;
     if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
         std::unordered_map<std::string, TypeRef> substitutions;
-        const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
+        const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type->name);
         const auto &typeParams = structure->second->typeParams;
         for (std::size_t index = 0; index < std::min(typeParams.size(), typeArgs.size()); ++index) {
             substitutions[typeParams[index].name] = typeArgs[index];
@@ -73,7 +73,7 @@ AnalysisContext::FindCAbiViolation(const TypeRef &type, std::unordered_set<std::
             }
         }
     }
-    visiting.erase(type.name);
+    visiting.erase(type->name);
     return found;
 }
 
@@ -120,7 +120,7 @@ TypeRef AnalysisContext::MakeFuncType(const std::vector<Param> &parameters,
     TypeRef resolvedReturn = returnType ? ResolveType(**returnType) : TypeRef::MakeOpaque();
 
     currentTypeParams = savedTypeParameters;
-    TypeRef functionType = TypeRef::MakeFunc(std::move(parameterTypes), std::move(resolvedReturn));
+    TypeRef functionType = TypeRef::MakeFunc(std::move(parameterTypes), resolvedReturn);
     functionType.isVariadic = variadic;
     return functionType;
 }
@@ -147,7 +147,7 @@ TypeRef AnalysisContext::MakeFuncTypeWithSubstitution(const std::vector<Param> &
         returnType ? ResolveTypeWithSubstitution(**returnType, substitutions) : TypeRef::MakeOpaque();
 
     currentTypeParams = savedTypeParameters;
-    TypeRef functionType = TypeRef::MakeFunc(std::move(parameterTypes), std::move(resolvedReturn));
+    TypeRef functionType = TypeRef::MakeFunc(std::move(parameterTypes), resolvedReturn);
     functionType.isVariadic = variadic;
     return functionType;
 }
@@ -309,7 +309,7 @@ std::optional<AnalysisContext::FunctionSignature> AnalysisContext::ResolveFuncti
             currentTypeParams = savedTypeParameters;
             return std::nullopt;
         }
-        signature.paramTypes.push_back(std::move(type));
+        signature.paramTypes.push_back(type);
         signature.variadicParams.push_back(parameter.isVariadic);
     }
 

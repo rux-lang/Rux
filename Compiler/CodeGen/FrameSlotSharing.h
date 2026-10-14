@@ -469,7 +469,7 @@ template <typename DataSize>
         case LirOpcode::IndexPtr:
             return true;
         case LirOpcode::Cast:
-            return instruction.type.kind == TypeRef::Kind::Pointer;
+            return instruction.type->kind == TypeRef::Kind::Pointer;
         default:
             return false;
         }

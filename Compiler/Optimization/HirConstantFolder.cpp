@@ -86,7 +86,7 @@ void HirConstantFolder::PopScope() {
 
 void HirConstantFolder::Declare(const std::string_view name, std::optional<TypedConstant> constant) {
     if (!name.empty()) {
-        scopes.back().insert_or_assign(std::string{name}, BindingFact{std::move(constant)});
+        scopes.back().insert_or_assign(std::string{name}, BindingFact{constant});
     }
 }
 
@@ -262,7 +262,7 @@ void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
                 fact = ParseConstant(WithoutIntegerSuffix(literal->value), type);
             }
         }
-        Declare(binding->name, std::move(fact));
+        Declare(binding->name, fact);
         if (binding->pattern) {
             DeclarePatternBindings(*binding->pattern);
         }
@@ -575,7 +575,7 @@ bool HirConstantFolder::FoldCast(HirExprPtr &expr) {
         // discard nonzero high words or a sign and turn an invalid value into an apparently valid code unit.
         const auto scalar = operand->Bits().ToUnsigned();
         if ((operand->GetKind() == TypedConstant::Kind::SignedInteger && operand->Bits().IsNegative()) || !scalar ||
-            !IsValidCharacterValue(cast->targetType.kind, *scalar)) {
+            !IsValidCharacterValue(cast->targetType->kind, *scalar)) {
             return false;
         }
     }

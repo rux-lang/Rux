@@ -12,22 +12,22 @@ int RuntimeAlignmentOf(const TypeRef &type, const LayoutMap &layouts,
     if (const auto native = RuntimeNativeLayout(type, layouts, interfaceNames)) {
         return static_cast<int>(native->alignment);
     }
-    if (type.kind == TypeRef::Kind::Array) {
-        return type.inner.empty() ? 1 : RuntimeAlignmentOf(type.inner.front(), layouts, interfaceNames);
+    if (type->kind == TypeRef::Kind::Array) {
+        return type->inner.empty() ? 1 : RuntimeAlignmentOf(type->inner.front(), layouts, interfaceNames);
     }
-    if (type.kind == TypeRef::Kind::Tuple) {
+    if (type->kind == TypeRef::Kind::Tuple) {
         int alignment = 1;
-        for (const TypeRef &element : type.inner) {
+        for (const TypeRef &element : type->inner) {
             alignment = std::max(alignment, RuntimeAlignmentOf(element, layouts, interfaceNames));
         }
         return alignment;
     }
-    if (type.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(type.name);
+    if (type->kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(type->name);
         if (interfaceNames.contains(base)) {
             return 8;
         }
-        auto layout = layouts.find(type.name);
+        auto layout = layouts.find(type->name);
         if (layout == layouts.end()) {
             layout = layouts.find(base);
         }
@@ -44,11 +44,11 @@ namespace {
                                      const std::unordered_set<std::string> &interfaceNames) {
     int offset = 0;
     for (std::size_t i = 0; i < index; ++i) {
-        const int size = RuntimeSizeOf(tuple.inner[i], layouts, interfaceNames);
-        offset = AlignUp(offset, RuntimeAlignmentOf(tuple.inner[i], layouts, interfaceNames));
+        const int size = RuntimeSizeOf(tuple->inner[i], layouts, interfaceNames);
+        offset = AlignUp(offset, RuntimeAlignmentOf(tuple->inner[i], layouts, interfaceNames));
         offset += size;
     }
-    return AlignUp(offset, RuntimeAlignmentOf(tuple.inner[index], layouts, interfaceNames));
+    return AlignUp(offset, RuntimeAlignmentOf(tuple->inner[index], layouts, interfaceNames));
 }
 } // namespace
 
@@ -80,7 +80,7 @@ std::string EncodeStringLiteral(const std::string_view value, int elementSize) {
 int SizeOf(const TypeRef &t) {
     // Every primitive is sized by the catalog, so a width added there needs no case here. The backend compiles for a
     // 64-bit target, which is what a pointer-sized primitive answers at.
-    if (const auto primitive = PrimitiveSize(t.kind, 8)) {
+    if (const auto primitive = PrimitiveSize(t->kind, 8)) {
         return static_cast<int>(*primitive);
     }
     if (const auto native = ComputeNativeLayout(t, [](const TypeRef &member) -> std::optional<SizeAndAlignment> {
@@ -89,13 +89,13 @@ int SizeOf(const TypeRef &t) {
         })) {
         return static_cast<int>(native->size);
     }
-    switch (t.kind) {
+    switch (t->kind) {
     case TypeRef::Kind::Opaque:
         return 0;
     case TypeRef::Kind::Tuple: {
         int offset = 0;
         int maxAlign = 1;
-        for (const auto &elem : t.inner) {
+        for (const auto &elem : t->inner) {
             const int sz = SizeOf(elem);
             const int al = AlignOf(elem);
             if (al > 1) {
@@ -107,27 +107,27 @@ int SizeOf(const TypeRef &t) {
         return AlignUp(offset, maxAlign);
     }
     case TypeRef::Kind::Array:
-        if (t.inner.empty() || !t.arrayLength) {
+        if (t->inner.empty() || !t->arrayLength) {
             return 0;
         }
-        return SizeOf(t.inner[0]) * static_cast<int>(*t.arrayLength);
+        return SizeOf(t->inner[0]) * static_cast<int>(*t->arrayLength);
     case TypeRef::Kind::Range:
     case TypeRef::Kind::RangeInclusive: {
-        const TypeRef &elemType = t.inner.empty() ? TypeRef::MakeInt64() : t.inner[0];
+        const TypeRef &elemType = t->inner.empty() ? TypeRef::MakeInt64() : t->inner[0];
         return 2 * SizeOf(elemType);
     }
     case TypeRef::Kind::RangeFrom:
     case TypeRef::Kind::RangeTo:
     case TypeRef::Kind::RangeToInclusive:
-        return t.inner.empty() ? 0 : SizeOf(t.inner[0]);
+        return t->inner.empty() ? 0 : SizeOf(t->inner[0]);
     case TypeRef::Kind::RangeFull:
         return 0;
     case TypeRef::Kind::Slice:
         return 16;
     case TypeRef::Kind::Named:
         // A named type's `inner` is its layout marker when it has one: an enum records its storage there.
-        if (!t.inner.empty()) {
-            return SizeOf(t.inner[0]);
+        if (!t->inner.empty()) {
+            return SizeOf(t->inner[0]);
         }
         return 8;
     default:
@@ -143,12 +143,12 @@ int AlignOf(const TypeRef &t) {
         })) {
         return static_cast<int>(native->alignment);
     }
-    if (t.kind == TypeRef::Kind::Array) {
-        return t.inner.empty() ? 1 : AlignOf(t.inner[0]);
+    if (t->kind == TypeRef::Kind::Array) {
+        return t->inner.empty() ? 1 : AlignOf(t->inner[0]);
     }
-    if (t.kind == TypeRef::Kind::Tuple) {
+    if (t->kind == TypeRef::Kind::Tuple) {
         int alignment = 1;
-        for (const TypeRef &element : t.inner) {
+        for (const TypeRef &element : t->inner) {
             alignment = std::max(alignment, AlignOf(element));
         }
         return alignment;
@@ -165,7 +165,7 @@ int AlignOf(const TypeRef &t) {
 
 bool IsFloat(const TypeRef &t) {
     // Only the widths a machine floating-point register holds; the software-lowered ones are not register floats.
-    return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
+    return t->kind == TypeRef::Kind::Float32 || t->kind == TypeRef::Kind::Float64;
 }
 
 bool IsNativeFloat(const TypeRef &t) {
@@ -190,7 +190,7 @@ bool IsWideValue(const TypeRef &t) {
 
 int WideTemporarySize(const LirInstr &instruction, const std::unordered_map<LirReg, TypeRef> &registerTypes) {
     // float80 is the one software float a backend computes on directly (x87), and it is staged through scratch slots.
-    const auto needs = [](const TypeRef &type) { return IsWideScalar(type) || type.kind == TypeRef::Kind::Float80; };
+    const auto needs = [](const TypeRef &type) { return IsWideScalar(type) || type->kind == TypeRef::Kind::Float80; };
     int largest = needs(instruction.type) ? SizeOf(instruction.type) : 0;
     for (const LirReg source : instruction.srcs) {
         if (const auto found = registerTypes.find(source); found != registerTypes.end() && needs(found->second)) {
@@ -201,7 +201,7 @@ int WideTemporarySize(const LirInstr &instruction, const std::unordered_map<LirR
 }
 
 TypeRef UnsignedIntegerType(const TypeRef &type) {
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Int8:
         return TypeRef::MakeUInt8();
     case TypeRef::Kind::Int16:
@@ -305,16 +305,16 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
     // A composite's size follows from its elements', and an element may be a struct that only the layout map can size.
     // Recurse here rather than falling through to SizeOf, which has no layout map and charges eight bytes for every
     // struct it cannot measure: an array would then reserve less stack than it occupies and overrun its own frame.
-    if (t.kind == TypeRef::Kind::Array) {
-        if (t.inner.empty() || !t.arrayLength) {
+    if (t->kind == TypeRef::Kind::Array) {
+        if (t->inner.empty() || !t->arrayLength) {
             return 0;
         }
-        return RuntimeSizeOf(t.inner[0], layouts, interfaceNames) * static_cast<int>(*t.arrayLength);
+        return RuntimeSizeOf(t->inner[0], layouts, interfaceNames) * static_cast<int>(*t->arrayLength);
     }
-    if (t.kind == TypeRef::Kind::Tuple) {
+    if (t->kind == TypeRef::Kind::Tuple) {
         int offset = 0;
         int maxAlign = 1;
-        for (const auto &element : t.inner) {
+        for (const auto &element : t->inner) {
             const int size = RuntimeSizeOf(element, layouts, interfaceNames);
             const int alignment = RuntimeAlignmentOf(element, layouts, interfaceNames);
             if (alignment > 1) {
@@ -325,12 +325,12 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         }
         return AlignUp(offset, maxAlign);
     }
-    if (t.kind == TypeRef::Kind::Reference && !t.inner.empty() && t.inner.front().kind == TypeRef::Kind::Named &&
-        interfaceNames.contains(BaseTypeName(t.inner.front().name))) {
+    if (t->kind == TypeRef::Kind::Reference && !t->inner.empty() && t->inner.front()->kind == TypeRef::Kind::Named &&
+        interfaceNames.contains(BaseTypeName(t->inner.front()->name))) {
         return 16;
     }
-    if (t.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(t.name);
+    if (t->kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(t->name);
         // An interface value has a fixed two-pointer representation; an ordinary struct always uses the layout of its
         // resolved declaration.
         if (interfaceNames.contains(base)) {
@@ -338,7 +338,7 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         }
         // An instantiation is sized by its own entry when it has one; the declaration's entry still answers for a plain
         // struct, whose name is its base name.
-        if (const auto it = layouts.find(t.name); it != layouts.end()) {
+        if (const auto it = layouts.find(t->name); it != layouts.end()) {
             return it->second.totalSize;
         }
         if (const auto it = layouts.find(base); it != layouts.end()) {
@@ -350,11 +350,11 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
 
 int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, const LayoutMap &layouts,
                   const std::unordered_set<std::string> &interfaceNames) {
-    if ((pointerType.kind != TypeRef::Kind::Pointer && pointerType.kind != TypeRef::Kind::Reference) ||
-        pointerType.inner.empty()) {
+    if ((pointerType->kind != TypeRef::Kind::Pointer && pointerType->kind != TypeRef::Kind::Reference) ||
+        pointerType->inner.empty()) {
         return 0;
     }
-    const TypeRef &pointee = pointerType.inner[0];
+    const TypeRef &pointee = pointerType->inner[0];
 
     // A range is its bounds in declaration order, so `end` follows `start`
     // wherever there is a `start` to follow and sits at the front otherwise.
@@ -362,15 +362,15 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
         if (fieldName != "end" || !pointee.RangeHasEnd() || !pointee.RangeHasStart()) {
             return 0;
         }
-        return pointee.inner.empty() ? SizeOf(TypeRef::MakeInt64()) : SizeOf(pointee.inner[0]);
+        return pointee->inner.empty() ? SizeOf(TypeRef::MakeInt64()) : SizeOf(pointee->inner[0]);
     }
 
-    if (pointee.kind == TypeRef::Kind::Tuple) {
+    if (pointee->kind == TypeRef::Kind::Tuple) {
         std::size_t index = 0;
         const char *first = fieldName.data();
         const char *last = first + fieldName.size();
         const auto [stopped, ec] = std::from_chars(first, last, index);
-        if (ec != std::errc{} || stopped != last || index >= pointee.inner.size()) {
+        if (ec != std::errc{} || stopped != last || index >= pointee->inner.size()) {
             return 0;
         }
         return TupleElementOffset(pointee, index, layouts, interfaceNames);
@@ -382,15 +382,15 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
         return fieldName == "length" ? 8 : 0;
     }
 
-    if (pointee.kind != TypeRef::Kind::Named) {
+    if (pointee->kind != TypeRef::Kind::Named) {
         return 0;
     }
-    const std::string base = BaseTypeName(pointee.name);
+    const std::string base = BaseTypeName(pointee->name);
     // An interface value is the same pointer-and-word shape, under a name that is a declaration rather than a type.
     if (interfaceNames.contains(base)) {
         return fieldName == "vtable" ? 8 : 0;
     }
-    auto layout = layouts.find(pointee.name);
+    auto layout = layouts.find(pointee->name);
     if (layout == layouts.end()) {
         layout = layouts.find(base);
     }

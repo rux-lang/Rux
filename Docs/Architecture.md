@@ -74,7 +74,7 @@ These are maintained contracts, not a one-time migration record. Changes to them
 
 ## Shared models
 
-`RuxTypes` owns resolved type values, primitive descriptions, value-property records, case forms, and destruction recipes. Semantic analysis computes these facts; HIR, LIR, optimization and backends consume them without linking the analyzer. `RuxTokens` owns token values and spellings, `RuxAst` owns syntax data and documentation values, and `RuxSemanticModel` owns accepted semantic results and compile-time value descriptions. Parser results have their own header, independent of parser state. The stage facades and `RuxCore` compatibility target remain available.
+`RuxTypes` owns resolved type values, primitive descriptions, value-property records, case forms, and destruction recipes. Semantic analysis computes these facts; HIR, LIR, optimization and backends consume them without linking the analyzer. A `TypeRef` is a small handle to an interned, immutable `TypeNode`: each distinct structure is stored once for the life of the process (shared by every thread, built outside a sharded lock), the node caches its spelling, its structural hash, and the identity node `operator==` compares, so copying, comparing, hashing, and spelling a type never allocate. The hash is computed from the structure rather than an address, so tables keyed by types iterate in the same order on every run. `RuxTokens` owns token values and spellings, `RuxAst` owns syntax data and documentation values, and `RuxSemanticModel` owns accepted semantic results and compile-time value descriptions. Parser results have their own header, independent of parser state. The stage facades and `RuxCore` compatibility target remain available.
 
 ## Component Ownership
 

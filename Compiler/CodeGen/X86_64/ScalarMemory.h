@@ -25,9 +25,9 @@ SelectScalarMemoryInstruction(const LirInstr &instruction, const X86_64FramePlan
         instruction.srcs.size() != (store ? 2U : 1U))
         return std::nullopt;
     const auto &type = instruction.type;
-    const bool floating = type.kind == TypeRef::Kind::Float32 || type.kind == TypeRef::Kind::Float64;
+    const bool floating = type->kind == TypeRef::Kind::Float32 || type->kind == TypeRef::Kind::Float64;
     // No aggregate, interface, Boolean normalization or software-floating representation is guessed here.
-    if (!floating && !type.IsInteger() && !type.IsChar() && type.kind != TypeRef::Kind::Pointer)
+    if (!floating && !type.IsInteger() && !type.IsChar() && type->kind != TypeRef::Kind::Pointer)
         return std::nullopt;
     const auto bytes = Layout::SizeOf(type);
     if (bytes != 1 && bytes != 2 && bytes != 4 && bytes != 8)
@@ -39,7 +39,7 @@ SelectScalarMemoryInstruction(const LirInstr &instruction, const X86_64FramePlan
     const auto &types = plan.RegisterTypes();
     if (!general.contains(pointer) || !values.contains(value) || !types.contains(value) || types.at(value) != type ||
         !types.contains(pointer) ||
-        (types.at(pointer).kind != TypeRef::Kind::Pointer && types.at(pointer).kind != TypeRef::Kind::Reference))
+        (types.at(pointer)->kind != TypeRef::Kind::Pointer && types.at(pointer)->kind != TypeRef::Kind::Reference))
         return std::nullopt;
     return X86ScalarMemoryInstruction{X86AllocatedGprs.at(static_cast<std::size_t>(general.at(pointer))),
                                       floating ? values.at(value)

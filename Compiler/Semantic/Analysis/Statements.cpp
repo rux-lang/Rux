@@ -276,7 +276,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         // With nothing to give it a width, an unsuffixed literal is an `int`, so one too large for that is reported
         // here rather than stored as whatever its low bits happen to be.
         if (!letStatement->type && letStatement->init && IsUnsuffixedIntegerLiteral(*letStatement->init) &&
-            initializerType.kind == TypeRef::Kind::Int &&
+            initializerType->kind == TypeRef::Kind::Int &&
             !UnsuffixedIntegerLiteralFits(*letStatement->init, initializerType)) {
             EmitError(letStatement->init->location, "integer literal is out of range for type 'int'", {},
                       "annotate the binding with a wider type, or add a suffix such as 'i128'");
@@ -321,7 +321,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                           "remove defaults so exactly one constructor accepts no arguments");
             }
         }
-        if (declarationType.kind != TypeRef::Kind::Reference) {
+        if (declarationType->kind != TypeRef::Kind::Reference) {
             ValidateStoredType(declarationType, letStatement->location, "local variable");
         }
 
@@ -347,7 +347,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         const bool initializerAccepted =
             letStatement->init && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
             (!letStatement->type || CanAssignExprTo(*letStatement->init, initializerType, declarationType));
-        const bool nullReferenceInitializer = letStatement->init && declarationType.kind == TypeRef::Kind::Reference &&
+        const bool nullReferenceInitializer = letStatement->init && declarationType->kind == TypeRef::Kind::Reference &&
                                               IsNullLiteral(*letStatement->init);
         if (nullReferenceInitializer) {
             EmitError(letStatement->init->location,
@@ -368,7 +368,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                                              std::format("cannot assign '{}' to '{}'", initializerType.DisplayString(),
                                                          declarationType.ToString())));
         }
-        if (initializerAccepted && !nullReferenceInitializer && declarationType.kind != TypeRef::Kind::Reference) {
+        if (initializerAccepted && !nullReferenceInitializer && declarationType->kind != TypeRef::Kind::Reference) {
             ConsumeValue(*letStatement->init, initializerType, ValueConsumptionKind::Initialization,
                          letStatement->location);
         }
@@ -395,7 +395,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (defined && defined->type.IsFallible()) {
             fallibleLocals.push_back({defined, currentScope});
         }
-        if (defined && initializerAccepted && declarationType.kind == TypeRef::Kind::Reference) {
+        if (defined && initializerAccepted && declarationType->kind == TypeRef::Kind::Reference) {
             RegisterReferenceBinding(*defined, *letStatement->init, declarationType);
         }
     }
@@ -562,8 +562,8 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
     }
     else if (const auto *matchStatement = AstCast<const MatchStmt>(&statement)) {
         const TypeRef expressionType = CheckExpr(*matchStatement->subject);
-        const TypeRef subjectType = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
-                                      ? expressionType.inner.front()
+        const TypeRef subjectType = expressionType->kind == TypeRef::Kind::Reference && !expressionType->inner.empty()
+                                      ? expressionType->inner.front()
                                       : expressionType;
         const bool armsTakeParts = ConsumeMatchSubject(*matchStatement->subject, expressionType, matchStatement->arms,
                                                        matchStatement->location);
@@ -657,7 +657,7 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
             expectedExpressionTypes.insert_or_assign(value, currentReturnType);
         }
         TypeRef valueType = CheckExpr(*value);
-        if (valueType.kind == TypeRef::Kind::Reference && !valueType.CanReadScalarTo(currentReturnType)) {
+        if (valueType->kind == TypeRef::Kind::Reference && !valueType.CanReadScalarTo(currentReturnType)) {
             EmitError(location,
                       std::format("reference value '{}' cannot escape through a return", valueType.ToString()),
                       {"references are restricted to parameters, receivers, and local aliases"},
@@ -774,7 +774,7 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
     }
     else if (AstCast<const WildcardPattern>(&pattern)) {}
     else if (const auto *tuplePattern = AstCast<const TuplePattern>(&pattern)) {
-        if (type.kind != TypeRef::Kind::Tuple) {
+        if (type->kind != TypeRef::Kind::Tuple) {
             if (!type.IsUnknown()) {
                 EmitError(tuplePattern->location,
                           std::format("cannot destructure non-tuple type '{}'", type.ToString()));
@@ -785,15 +785,15 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
             return;
         }
 
-        if (tuplePattern->elements.size() != type.inner.size()) {
+        if (tuplePattern->elements.size() != type->inner.size()) {
             EmitError(tuplePattern->location,
                       std::format("tuple pattern has {} elements but type '{}' has {}", tuplePattern->elements.size(),
-                                  type.ToString(), type.inner.size()));
+                                  type.ToString(), type->inner.size()));
         }
 
-        const std::size_t count = std::min(tuplePattern->elements.size(), type.inner.size());
+        const std::size_t count = std::min(tuplePattern->elements.size(), type->inner.size());
         for (std::size_t index = 0; index < count; ++index) {
-            CheckLetPattern(*tuplePattern->elements[index], type.inner[index], isMutable);
+            CheckLetPattern(*tuplePattern->elements[index], type->inner[index], isMutable);
         }
         for (std::size_t index = count; index < tuplePattern->elements.size(); ++index) {
             CheckLetPattern(*tuplePattern->elements[index], TypeRef::MakeUnknown(), isMutable);
@@ -823,9 +823,9 @@ std::vector<TypeRef> AnalysisContext::CheckStructPatternShape(const StructPatter
     }
     // A generic structure built from an initializer carries its package-qualified identity, so the subject may spell
     // the structure either way.
-    else if (!subjectType.IsUnknown() && (subjectType.kind != TypeRef::Kind::Named ||
-                                          (BaseTypeName(subjectType.name) != pattern.typeName &&
-                                           NominalTypeName(BaseTypeName(subjectType.name)) != declaration->first))) {
+    else if (!subjectType.IsUnknown() && (subjectType->kind != TypeRef::Kind::Named ||
+                                          (BaseTypeName(subjectType->name) != pattern.typeName &&
+                                           NominalTypeName(BaseTypeName(subjectType->name)) != declaration->first))) {
         EmitError(pattern.location, std::format("struct pattern '{}' cannot match value of type '{}'", pattern.typeName,
                                                 subjectType.ToString()));
     }
@@ -841,8 +841,8 @@ std::vector<TypeRef> AnalysisContext::CheckStructPatternShape(const StructPatter
     }
     // A field of a generic structure has the type its declaration names with the subject's type arguments in place.
     std::unordered_map<std::string, TypeRef> substitutions;
-    if (declaration != structDecls.end() && subjectType.kind == TypeRef::Kind::Named) {
-        const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
+    if (declaration != structDecls.end() && subjectType->kind == TypeRef::Kind::Named) {
+        const auto typeArguments = ParseTypeArgsFromTypeName(subjectType->name);
         const auto &parameters = declaration->second->typeParams;
         for (std::size_t index = 0; index < std::min(parameters.size(), typeArguments.size()); ++index) {
             substitutions.emplace(parameters[index].name, typeArguments[index]);
@@ -889,7 +889,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         // `p?` is exactly `.Some(p)`: it needs an optional at its position and checks `p` against the payload.
         TypeRef payload = TypeRef::MakeUnknown();
         if (subjectType.IsOptional()) {
-            payload = subjectType.inner.front();
+            payload = subjectType->inner.front();
         }
         else if (!subjectType.IsUnknown()) {
             EmitError(presencePattern->location,
@@ -907,7 +907,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
     if (AstCast<const NonePattern>(&pattern)) {
         if (!subjectType.IsUnknown() && !subjectType.IsOptional()) {
             const std::string nominal =
-                subjectType.kind == TypeRef::Kind::Named ? BaseTypeName(subjectType.name) : std::string();
+                subjectType->kind == TypeRef::Kind::Named ? BaseTypeName(subjectType->name) : std::string();
             if (!nominal.empty() && LookupCase(nominal, "None")) {
                 EmitError(pattern.location,
                           std::format("'none' matches a native optional; use '.None' for variant '{}'", nominal), {},
@@ -931,7 +931,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         std::string issue;
         std::optional<std::string> help;
         if (const std::optional<std::size_t> member = SumMemberOfPattern(pattern, subjectType, &issue, &help)) {
-            const TypeRef memberType = subjectType.inner[*member];
+            const TypeRef memberType = subjectType->inner[*member];
             CheckPattern(pattern, memberType);
             patternTypes.insert_or_assign(&pattern, subjectType);
             NoteGenericBodyType(subjectType);
@@ -1006,18 +1006,18 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         CheckPattern(*rangePattern->hi, subjectType);
     }
     else if (const auto *tuplePattern = AstCast<const TuplePattern>(&pattern)) {
-        if (!subjectType.IsUnknown() && subjectType.kind != TypeRef::Kind::Tuple) {
+        if (!subjectType.IsUnknown() && subjectType->kind != TypeRef::Kind::Tuple) {
             EmitError(tuplePattern->location,
                       std::format("tuple pattern cannot match value of type '{}'", subjectType.ToString()));
         }
-        else if (subjectType.kind == TypeRef::Kind::Tuple &&
-                 tuplePattern->elements.size() != subjectType.inner.size()) {
+        else if (subjectType->kind == TypeRef::Kind::Tuple &&
+                 tuplePattern->elements.size() != subjectType->inner.size()) {
             EmitError(tuplePattern->location, std::format("tuple pattern has {} elements, but matched tuple has {}",
-                                                          tuplePattern->elements.size(), subjectType.inner.size()));
+                                                          tuplePattern->elements.size(), subjectType->inner.size()));
         }
         for (std::size_t index = 0; index < tuplePattern->elements.size(); ++index) {
-            const TypeRef elementType = subjectType.kind == TypeRef::Kind::Tuple && index < subjectType.inner.size()
-                                          ? subjectType.inner[index]
+            const TypeRef elementType = subjectType->kind == TypeRef::Kind::Tuple && index < subjectType->inner.size()
+                                          ? subjectType->inner[index]
                                           : TypeRef::MakeUnknown();
             CheckPattern(*tuplePattern->elements[index], elementType);
         }
@@ -1036,13 +1036,13 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
 
         if (enumPattern->path.size() == 1) {
             variantName = enumPattern->path[0];
-            if (subjectType.kind != TypeRef::Kind::Named) {
+            if (subjectType->kind != TypeRef::Kind::Named) {
                 EmitError(enumPattern->location,
                           std::format("cannot infer enum or variant type for shorthand pattern '.{}' from type '{}'",
                                       variantName, subjectType.ToString()));
             }
             else {
-                enumName = BaseTypeName(subjectType.name);
+                enumName = BaseTypeName(subjectType->name);
                 if (const EnumDecl *enumeration = EnumNamed(enumName)) {
                     enumDeclaration = enumeration;
                 }
@@ -1073,8 +1073,8 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                           ? std::format("variant '{}' has no case '{}'", enumName, variantName)
                           : std::format("enum '{}' has no enumerator '{}'", enumName, variantName));
         }
-        if (enumDeclaration && subjectType.kind == TypeRef::Kind::Named &&
-            BaseTypeName(subjectType.name) != programIndex.NominalName(*enumDeclaration)) {
+        if (enumDeclaration && subjectType->kind == TypeRef::Kind::Named &&
+            BaseTypeName(subjectType->name) != programIndex.NominalName(*enumDeclaration)) {
             EmitError(enumPattern->location, std::format("{} pattern '{}::{}' cannot match value of type '{}'",
                                                          enumDeclaration->IsVariant() ? "variant" : "enum", enumName,
                                                          variantName, subjectType.ToString()));
@@ -1099,7 +1099,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
 
         std::unordered_map<std::string, TypeRef> substitutions;
         if (enumDeclaration) {
-            const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
+            const auto typeArguments = ParseTypeArgsFromTypeName(subjectType->name);
             const auto &parameters = enumDeclaration->typeParams;
             const std::size_t count = std::min(parameters.size(), typeArguments.size());
             for (std::size_t index = 0; index < count; ++index) {
@@ -1172,7 +1172,7 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
     }
     // A tuple's values are the combinations of its elements' values, so its coverage is decided over the whole pattern
     // rather than case by case.
-    if (subjectType.kind == TypeRef::Kind::Tuple && !patterns.empty() && patterns.front()) {
+    if (subjectType->kind == TypeRef::Kind::Tuple && !patterns.empty() && patterns.front()) {
         tupleMatchMissing.insert_or_assign(patterns.front(), MissingMatchValues(patterns, subjectType));
     }
     std::unordered_set<std::string> seen;
@@ -1195,7 +1195,7 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
         }
         if (const auto *enumerator = AstCast<const EnumPattern>(pattern); enumerator && !enumerator->path.empty()) {
             const std::string &variantName = enumerator->path.back();
-            if (const auto resolved = LookupCase(BaseTypeName(subjectType.name), variantName);
+            if (const auto resolved = LookupCase(BaseTypeName(subjectType->name), variantName);
                 resolved && CasePatternCoversCase(*enumerator, *resolved->selectedCase, resolved->form)) {
                 coveredVariants.insert(variantName);
             }
@@ -1203,10 +1203,10 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
         coveredAll = MatchesWholeSubject(*pattern, subjectType);
     }
 
-    if (coveredAll || subjectType.kind != TypeRef::Kind::Named) {
+    if (coveredAll || subjectType->kind != TypeRef::Kind::Named) {
         return;
     }
-    const std::string enumName = BaseTypeName(subjectType.name);
+    const std::string enumName = BaseTypeName(subjectType->name);
     const EnumDecl *declaration = EnumNamed(enumName);
     if (!declaration) {
         return;
@@ -1257,15 +1257,15 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
         }
         return hasTrue && hasFalse;
     }
-    if (subjectType.kind == TypeRef::Kind::Tuple) {
+    if (subjectType->kind == TypeRef::Kind::Tuple) {
         const auto found = patterns.empty() ? tupleMatchMissing.end() : tupleMatchMissing.find(patterns.front());
         return found != tupleMatchMissing.end() && !found->second;
     }
-    if (subjectType.kind != TypeRef::Kind::Named) {
+    if (subjectType->kind != TypeRef::Kind::Named) {
         return false;
     }
 
-    const std::string enumName = BaseTypeName(subjectType.name);
+    const std::string enumName = BaseTypeName(subjectType->name);
     const EnumDecl *declaration = EnumNamed(enumName);
     if (!declaration) {
         return false;

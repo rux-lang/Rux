@@ -13,13 +13,13 @@
 namespace Rux::Optimization {
 namespace {
 bool Word(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::UInt || type.kind == TypeRef::Kind::UInt64;
+    return type->kind == TypeRef::Kind::UInt || type->kind == TypeRef::Kind::UInt64;
 }
 
 /// The size of a value whose bytes a wider store can repeat: an integer, character or Boolean of one, two or four
 /// bytes. Floating-point values convert by value, not by bits, so they keep their loops.
 std::uint64_t ElementSize(const TypeRef &type) {
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::UInt8:
     case TypeRef::Kind::Int8:
     case TypeRef::Kind::Char8:
@@ -193,8 +193,8 @@ bool Widen(LirFunc &function) {
             }
         }
         if (!simple || !address || !store || !step || !outside(address->srcs[0]) || !outside(store->srcs[0]) ||
-            address->type.kind != TypeRef::Kind::Pointer || address->type.inner.size() != 1 ||
-            address->type.inner[0] != store->type)
+            address->type->kind != TypeRef::Kind::Pointer || address->type->inner.size() != 1 ||
+            address->type->inner[0] != store->type)
             continue;
         const auto size = ElementSize(store->type);
         if (size == 0)
@@ -235,7 +235,7 @@ bool Widen(LirFunc &function) {
         const bool castIndex = index != nullptr;
         const auto castType = castIndex ? index->type : TypeRef{};
         auto wordPointee = TypeRef::MakeUInt64();
-        wordPointee.isMut = addressType.inner[0].isMut;
+        wordPointee.isMut = addressType->inner[0].isMut;
         const auto wordPointer = TypeRef::MakePointer(wordPointee);
 
         auto &setup = function.blocks[preheader].instrs;

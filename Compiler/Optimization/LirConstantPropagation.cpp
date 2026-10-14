@@ -242,7 +242,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                                    const BlockIndex blockIndex, const std::unordered_set<LirReg> &floatRegisters) {
     if (instruction.op == LirOpcode::Const) {
         if (auto value = ParseConstant(instruction.strArg, instruction.type)) {
-            return KnownValue{std::move(value), std::nullopt};
+            return KnownValue{value, std::nullopt};
         }
         return std::nullopt;
     }
@@ -258,7 +258,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                 if (joined && !SameValue(*joined, incoming)) {
                     return std::nullopt;
                 }
-                joined = std::move(incoming);
+                joined = incoming;
             }
             return joined;
         };
@@ -283,8 +283,8 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const KnownValue operand = Resolve(values, instruction.srcs[0]);
         const auto amount = ParseConstant(instruction.strArg, TypeRef::MakeUInt32());
         if (operand.constant && amount && amount->RawBits() < operand.constant->Width() &&
-            (instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64)) {
-            const auto bits = instruction.type.kind == TypeRef::Kind::UInt32
+            (instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::UInt64)) {
+            const auto bits = instruction.type->kind == TypeRef::Kind::UInt32
                                 ? std::rotr(static_cast<std::uint32_t>(operand.constant->RawBits()),
                                             static_cast<int>(amount->RawBits()))
                                 : std::rotr(operand.constant->RawBits(), static_cast<int>(amount->RawBits()));
@@ -296,7 +296,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const KnownValue operand = Resolve(values, instruction.srcs[0]);
         if (operand.constant) {
             if (auto result = EvaluateUnary(*token, *operand.constant)) {
-                return KnownValue{std::move(result), std::nullopt};
+                return KnownValue{result, std::nullopt};
             }
         }
         return std::nullopt;
@@ -306,7 +306,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const KnownValue right = Resolve(values, instruction.srcs[1]);
         if (left.constant && right.constant) {
             if (auto result = EvaluateBinary(*token, *left.constant, *right.constant)) {
-                return KnownValue{std::move(result), std::nullopt};
+                return KnownValue{result, std::nullopt};
             }
         }
 
@@ -324,7 +324,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
             case LirOpcode::Sub:
             case LirOpcode::Xor:
                 if (auto zero = ParseConstant("0", instruction.type)) {
-                    return KnownValue{std::move(zero), std::nullopt};
+                    return KnownValue{zero, std::nullopt};
                 }
                 break;
             case LirOpcode::And:
@@ -334,14 +334,14 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
             case LirOpcode::CmpLe:
             case LirOpcode::CmpGe:
                 if (auto t = ParseConstant("true", TypeRef::MakeBool())) {
-                    return KnownValue{std::move(t), std::nullopt};
+                    return KnownValue{t, std::nullopt};
                 }
                 break;
             case LirOpcode::CmpNe:
             case LirOpcode::CmpLt:
             case LirOpcode::CmpGt:
                 if (auto f = ParseConstant("false", TypeRef::MakeBool())) {
-                    return KnownValue{std::move(f), std::nullopt};
+                    return KnownValue{f, std::nullopt};
                 }
                 break;
             default:
@@ -372,7 +372,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
             case LirOpcode::Mul:
                 if (rightIsZero || leftIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 if (rightIsOne)
@@ -385,14 +385,14 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                     return KnownValue{std::nullopt, leftReg};
                 if (leftIsZero && !rightIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 break;
             case LirOpcode::And:
                 if (rightIsZero || leftIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 break;
@@ -410,7 +410,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                     return KnownValue{std::nullopt, leftReg};
                 if (leftIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 break;
@@ -424,7 +424,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const KnownValue source = Resolve(values, instruction.srcs[0]);
         if (source.constant) {
             if (auto result = CastConstant(*source.constant, instruction.type)) {
-                return KnownValue{std::move(result), std::nullopt};
+                return KnownValue{result, std::nullopt};
             }
         }
     }

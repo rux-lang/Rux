@@ -14,7 +14,7 @@ namespace {
 bool Speculatable(const LirInstr &instruction) {
     if (instruction.isVolatile || instruction.dst == LirNoReg ||
         !(instruction.type.IsInteger() || instruction.type.IsBool() || instruction.type.IsChar() ||
-          instruction.type.kind == TypeRef::Kind::Pointer)) {
+          instruction.type->kind == TypeRef::Kind::Pointer)) {
         return false;
     }
     switch (instruction.op) {
@@ -41,9 +41,9 @@ bool Speculatable(const LirInstr &instruction) {
 }
 
 [[nodiscard]] bool ScalarValue(const TypeRef &type) {
-    return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer ||
-           type.kind == TypeRef::Kind::Reference || type.kind == TypeRef::Kind::Func ||
-           type.kind == TypeRef::Kind::Float32 || type.kind == TypeRef::Kind::Float64;
+    return type.IsInteger() || type.IsBool() || type.IsChar() || type->kind == TypeRef::Kind::Pointer ||
+           type->kind == TypeRef::Kind::Reference || type->kind == TypeRef::Kind::Func ||
+           type->kind == TypeRef::Kind::Float32 || type->kind == TypeRef::Kind::Float64;
 }
 
 /// An integer, character, Boolean or pointer conversion of a value that is not floating point: it cannot trap or
@@ -53,7 +53,7 @@ bool Speculatable(const LirInstr &instruction) {
         return false;
     const auto *source = types.Find(instruction.srcs[0]);
     const auto general = [](const TypeRef &type) {
-        return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer;
+        return type.IsInteger() || type.IsBool() || type.IsChar() || type->kind == TypeRef::Kind::Pointer;
     };
     return source != nullptr && general(*source) && general(instruction.type) &&
            source->SizeInBytes().value_or(16) <= 8 && instruction.type.SizeInBytes().value_or(16) <= 8;
@@ -252,8 +252,9 @@ bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNam
         const auto general = [&](const LirReg reg) {
             const auto *found = types.Find(reg);
             return found != nullptr &&
-                   (found->IsInteger() || found->IsBool() || found->IsChar() || found->kind == TypeRef::Kind::Pointer ||
-                    found->kind == TypeRef::Kind::Reference || found->kind == TypeRef::Kind::Func);
+                   (found->IsInteger() || found->IsBool() || found->IsChar() ||
+                    (*found)->kind == TypeRef::Kind::Pointer || (*found)->kind == TypeRef::Kind::Reference ||
+                    (*found)->kind == TypeRef::Kind::Func);
         };
         LirRegisterTable<bool> live(registers);
         for (const auto reg : liveness.liveOut[header]) {

@@ -76,7 +76,7 @@ bool Reduce(LirFunc &function) {
         const auto induction = comparison->srcs[0];
         const auto *phi = definition(induction);
         if (!phi || phi->op != LirOpcode::Phi || owners.At(induction) != header || phi->phiPreds.size() != 2 ||
-            (phi->type.kind != TypeRef::Kind::UInt && phi->type.kind != TypeRef::Kind::UInt64))
+            (phi->type->kind != TypeRef::Kind::UInt && phi->type->kind != TypeRef::Kind::UInt64))
             continue;
         const auto back = std::ranges::find_if(phi->phiPreds, [&](const auto &edge) { return edge.second == body; });
         const auto initial =
@@ -107,7 +107,7 @@ bool Reduce(LirFunc &function) {
                 break;
             if (address.dst == LirNoReg || address.isVolatile || !address.strArg.empty() ||
                 address.op != LirOpcode::IndexPtr || address.srcs.size() != 2 ||
-                address.type.kind != TypeRef::Kind::Pointer || !invariant(address.srcs[0]))
+                address.type->kind != TypeRef::Kind::Pointer || !invariant(address.srcs[0]))
                 continue;
             const auto *index = definition(address.srcs[1]);
             if (!index || index->isVolatile || index->op != LirOpcode::Add || index->type != phi->type ||

@@ -22,18 +22,20 @@ using Layout::AlignUp;
 
 TypeRef AnalysisContext::SubstituteIdentityType(TypeRef type,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) const {
-    if (type.kind == TypeRef::Kind::TypeParam) {
-        if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
+    if (type->kind == TypeRef::Kind::TypeParam) {
+        if (const auto substitution = substitutions.find(type->name); substitution != substitutions.end()) {
             TypeRef substituted = substitution->second;
             // Preserve the same pointee/referent identity used by layout substitution and callable instantiation.
             substituted.isMut = type.isMut;
             return substituted;
         }
     }
-    for (auto &inner : type.inner) {
-        inner = SubstituteIdentityType(std::move(inner), substitutions);
+    std::vector<TypeRef> inner;
+    inner.reserve(type->inner.size());
+    for (const TypeRef &member : type->inner) {
+        inner.push_back(SubstituteIdentityType(member, substitutions));
     }
-    return TypeRef::Renormalize(std::move(type));
+    return TypeRef::Renormalize(type.WithInner(inner));
 }
 
 TypeRef AnalysisContext::IdentityParameterType(const Param &parameter,

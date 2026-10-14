@@ -9,12 +9,12 @@
 namespace Rux::Optimization {
 namespace {
 std::optional<std::size_t> Length(const LirConstDecl &constant) {
-    if (!constant.hasSequenceData || constant.type.kind != TypeRef::Kind::Slice || constant.type.inner.size() != 1 ||
-        constant.elementType != constant.type.inner[0])
+    if (!constant.hasSequenceData || constant.type->kind != TypeRef::Kind::Slice || constant.type->inner.size() != 1 ||
+        constant.elementType != constant.type->inner[0])
         return std::nullopt;
     if (!constant.isTextSlice)
         return constant.elements.size();
-    switch (constant.elementType.kind) {
+    switch (constant.elementType->kind) {
     case TypeRef::Kind::Char8:
         return CodeUnitCount(constant.text, 1);
     case TypeRef::Kind::Char16:

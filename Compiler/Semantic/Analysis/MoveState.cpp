@@ -73,7 +73,7 @@ Symbol *AnalysisContext::DefineTrackedLocal(Symbol symbol, const bool initialize
         // initialization exists, tracking the aggregate as uninitialized produces false paths for every fill loop. An
         // array whose elements need destruction cannot be filled that way, because its drop flag covers it whole and
         // a written element would never be destroyed, so it is tracked like any other local declared without a value.
-        const bool fillableArray = defined->type.kind == TypeRef::Kind::Array && !MayNeedDestruction(defined->type);
+        const bool fillableArray = defined->type->kind == TypeRef::Kind::Array && !MayNeedDestruction(defined->type);
         const bool hasInitialStorage = initialized || fillableArray;
         const MoveStateTracker::Identity identity = MoveStateTracker::Local(defined);
         moveStates.Declare(
@@ -203,15 +203,15 @@ void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocatio
 void AnalysisContext::FillableArrayParts(const TypeRef &type, const std::string &prefix,
                                          std::vector<std::string> &parts) {
     const auto child = [&](const std::string &name) { return prefix.empty() ? name : prefix + "." + name; };
-    if (type.kind == TypeRef::Kind::Array) {
+    if (type->kind == TypeRef::Kind::Array) {
         if (!prefix.empty()) {
             parts.push_back(prefix);
         }
         return;
     }
-    if (type.kind == TypeRef::Kind::Tuple) {
-        for (std::size_t index = 0; index < type.inner.size(); ++index) {
-            FillableArrayParts(type.inner[index], child(std::to_string(index)), parts);
+    if (type->kind == TypeRef::Kind::Tuple) {
+        for (std::size_t index = 0; index < type->inner.size(); ++index) {
+            FillableArrayParts(type->inner[index], child(std::to_string(index)), parts);
         }
         return;
     }
@@ -228,12 +228,12 @@ bool AnalysisContext::PartsMakeWhole(const TypeRef &type, const std::span<const 
         return true;
     }
     const auto child = [&](const std::string &name) { return prefix.empty() ? name : prefix + "." + name; };
-    if (type.kind == TypeRef::Kind::Tuple) {
-        if (type.inner.empty()) {
+    if (type->kind == TypeRef::Kind::Tuple) {
+        if (type->inner.empty()) {
             return false;
         }
-        for (std::size_t index = 0; index < type.inner.size(); ++index) {
-            if (!PartsMakeWhole(type.inner[index], parts, child(std::to_string(index)))) {
+        for (std::size_t index = 0; index < type->inner.size(); ++index) {
+            if (!PartsMakeWhole(type->inner[index], parts, child(std::to_string(index)))) {
                 return false;
             }
         }
@@ -515,7 +515,7 @@ bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &su
         return handedOver;
     }
     const MovePlace place = AnalyzeMovePlace(subject);
-    if (subjectType.kind == TypeRef::Kind::Reference || place.IsBorrowedStorage()) {
+    if (subjectType->kind == TypeRef::Kind::Reference || place.IsBorrowedStorage()) {
         return false;
     }
     // A named subject that no arm takes anything from stays with its owner; a temporary has no other owner, so its
@@ -561,7 +561,7 @@ void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expres
             {}, "add an 'else' arm");
         return;
     }
-    if (subjectType.kind == TypeRef::Kind::Tuple && !patterns.empty()) {
+    if (subjectType->kind == TypeRef::Kind::Tuple && !patterns.empty()) {
         if (const auto found = tupleMatchMissing.find(patterns.front());
             found != tupleMatchMissing.end() && found->second) {
             EmitError(
@@ -574,8 +574,8 @@ void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expres
 
 TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     const TypeRef expressionType = CheckExpr(*expression.subject);
-    const TypeRef subjectType = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
-                                  ? expressionType.inner.front()
+    const TypeRef subjectType = expressionType->kind == TypeRef::Kind::Reference && !expressionType->inner.empty()
+                                  ? expressionType->inner.front()
                                   : expressionType;
 
     const bool armsTakeParts =
@@ -709,8 +709,8 @@ void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLoca
     const auto leaves = [&](const Expr &object) {
         const auto objectType = expressionTypes.find(&object);
         return objectType != expressionTypes.end() &&
-               (objectType->second.kind == TypeRef::Kind::Pointer ||
-                objectType->second.kind == TypeRef::Kind::Reference || SliceElementType(objectType->second));
+               (objectType->second->kind == TypeRef::Kind::Pointer ||
+                objectType->second->kind == TypeRef::Kind::Reference || SliceElementType(objectType->second));
     };
     const Expr *root = &target;
     while (true) {
@@ -764,11 +764,11 @@ void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLoca
     for (const std::string &field : std::views::reverse(fields)) {
         enclosing.emplace_back(path, partType);
         path += (path.empty() ? "" : ".") + field;
-        if (partType.kind == TypeRef::Kind::Tuple) {
+        if (partType->kind == TypeRef::Kind::Tuple) {
             std::size_t index = 0;
             const auto [end, error] = std::from_chars(field.data(), field.data() + field.size(), index);
-            partType = error == std::errc{} && end == field.data() + field.size() && index < partType.inner.size()
-                         ? partType.inner[index]
+            partType = error == std::errc{} && end == field.data() + field.size() && index < partType->inner.size()
+                         ? partType->inner[index]
                          : TypeRef::MakeUnknown();
         }
         else {
@@ -811,8 +811,8 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
             break;
         }
         const auto objectType = expressionTypes.find(object);
-        if (objectType == expressionTypes.end() || objectType->second.kind == TypeRef::Kind::Pointer ||
-            objectType->second.kind == TypeRef::Kind::Reference || SliceElementType(objectType->second)) {
+        if (objectType == expressionTypes.end() || objectType->second->kind == TypeRef::Kind::Pointer ||
+            objectType->second->kind == TypeRef::Kind::Reference || SliceElementType(objectType->second)) {
             return;
         }
         place = object;
@@ -875,20 +875,20 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
     // A generic instantiation is recorded under its package-qualified name; the source names it without the qualifier.
     const TypeRef &type = symbol->type;
     std::string typeName = type.DisplayString();
-    if (type.kind == TypeRef::Kind::Named) {
+    if (type->kind == TypeRef::Kind::Named) {
         const std::size_t arguments = typeName.find('<');
         if (const std::size_t qualifier = typeName.rfind("::", arguments); qualifier != std::string::npos) {
             typeName.erase(0, qualifier + 2);
         }
     }
     std::string example;
-    if (type.kind == TypeRef::Kind::Named) {
+    if (type->kind == TypeRef::Kind::Named) {
         example = std::format("{} = {} {{ ... }}", symbol->name, typeName);
     }
-    else if (type.kind == TypeRef::Kind::Tuple) {
+    else if (type->kind == TypeRef::Kind::Tuple) {
         example = std::format("{} = (...)", symbol->name);
     }
-    else if (type.kind == TypeRef::Kind::Array) {
+    else if (type->kind == TypeRef::Kind::Array) {
         example = std::format("{} = [...]", symbol->name);
     }
     const std::string help = example.empty()
@@ -956,7 +956,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
             return false;
         }
         if (const auto found = expressionTypes.find(object);
-            found != expressionTypes.end() && found->second.kind == TypeRef::Kind::Reference) {
+            found != expressionTypes.end() && found->second->kind == TypeRef::Kind::Reference) {
             return true;
         }
         return self(*object);
@@ -976,7 +976,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
             return false;
         }
         if (const auto found = expressionTypes.find(object);
-            found != expressionTypes.end() && found->second.kind == TypeRef::Kind::Pointer) {
+            found != expressionTypes.end() && found->second->kind == TypeRef::Kind::Pointer) {
             return true;
         }
         return self(*object);
@@ -1104,7 +1104,7 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
 
 bool AnalysisContext::IsFreshTemporarySource(const Expr &expression, const TypeRef &type,
                                              const TypeRef &targetType) const {
-    if (type.IsUnknown() || type.kind == TypeRef::Kind::Reference || !(type == targetType)) {
+    if (type.IsUnknown() || type->kind == TypeRef::Kind::Reference || !(type == targetType)) {
         return false;
     }
     // `<-value` records its own transfer, which leaves nothing for a copy to read afterwards.
@@ -1122,7 +1122,7 @@ void AnalysisContext::ConsumeExplicitValue(const Expr &expression, const TypeRef
     if (RejectSubsetViewUse(expression, location, "be moved")) {
         return;
     }
-    if (type.kind == TypeRef::Kind::Reference) {
+    if (type->kind == TypeRef::Kind::Reference) {
         EmitError(location, "cannot move a non-owning reference",
                   {"references borrow storage but do not own the value they address"},
                   "pass or assign the reference without '<-', or move the owning value instead");
@@ -1189,7 +1189,7 @@ void AnalysisContext::ConsumeCallArguments(const CallExpr &call, const std::vect
     const std::size_t count = std::min(call.args.size(), argumentTypes.size());
     for (std::size_t index = 0; index < count; ++index) {
         if (parameterTypes && index < parameterTypes->size() &&
-            (*parameterTypes)[index].kind == TypeRef::Kind::Reference) {
+            (*parameterTypes)[index]->kind == TypeRef::Kind::Reference) {
             continue;
         }
         ConsumeValue(*call.args[index], argumentTypes[index], ValueConsumptionKind::Argument,
@@ -1200,11 +1200,11 @@ void AnalysisContext::ConsumeCallArguments(const CallExpr &call, const std::vect
 void AnalysisContext::ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                             const FuncDecl &method) {
     const std::optional<TypeRef> declared = ResolveMethodReceiverType(receiverType, method);
-    if (declared && declared->kind == TypeRef::Kind::Reference) {
+    if (declared && (*declared)->kind == TypeRef::Kind::Reference) {
         BeginReceiverReferenceBorrow(call, receiver, *declared);
         return;
     }
-    if (!declared || declared->kind == TypeRef::Kind::Pointer || declared->IsSlice()) {
+    if (!declared || (*declared)->kind == TypeRef::Kind::Pointer || declared->IsSlice()) {
         return;
     }
     ConsumeValue(receiver, receiverType, ValueConsumptionKind::Receiver, call.location);

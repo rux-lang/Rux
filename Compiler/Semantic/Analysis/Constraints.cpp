@@ -127,7 +127,7 @@ void AnalysisContext::DeduceTypeArgumentsFromBounds(const std::vector<TypeParame
         for (const TypeParameter &parameter : parameters) {
             const auto argument = substitutions.find(parameter.name);
             if (argument == substitutions.end() || argument->second.IsUnknown() ||
-                argument->second.kind == TypeRef::Kind::TypeParam) {
+                argument->second->kind == TypeRef::Kind::TypeParam) {
                 continue;
             }
             const TypeRef receiver = argument->second;
@@ -196,8 +196,8 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
     // A type parameter passed on as a type argument carries only what its own declaration promised. Checking that
     // promise here rather than at each instantiation is what keeps a generic body checkable on its own: the caller
     // already had to satisfy the outer bound, so the inner one follows.
-    if (argument.kind == TypeRef::Kind::TypeParam) {
-        const auto bounds = currentTypeParamBounds.find(argument.name);
+    if (argument->kind == TypeRef::Kind::TypeParam) {
+        const auto bounds = currentTypeParamBounds.find(argument->name);
         // A parameter with no recorded bounds belongs to a declaration that is not the one being checked -- a signature
         // is resolved before its body, and a type is read back in contexts that carry names but no constraints. What
         // that parameter promised is unknown here, so the pass over its own declaration decides instead of this one.
@@ -209,7 +209,7 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
                 return true;
             }
         }
-        reason = std::format("type parameter '{}' is not constrained by '{}'", argument.name, interface.name);
+        reason = std::format("type parameter '{}' is not constrained by '{}'", argument->name, interface.name);
         return false;
     }
 
@@ -238,7 +238,7 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
         // since every call through the bound is typed by the requirement and lowered to that method.
         if (!interface.typeParams.empty() && !interfaceArguments.empty() &&
             std::ranges::none_of(interfaceArguments, [](const TypeRef &type) {
-                return type.IsUnknown() || type.kind == TypeRef::Kind::TypeParam;
+                return type.IsUnknown() || type->kind == TypeRef::Kind::TypeParam;
             })) {
             const TypeRef requiredReturn =
                 ResolveInterfaceMethodReturnType(*required, argument, &interface, interfaceArguments);
@@ -297,14 +297,14 @@ const FuncDecl *AnalysisContext::SelectBoundOperation(const std::string &typeNam
 std::optional<AnalysisContext::ConstrainedOperation>
 AnalysisContext::LookupConstrainedOperation(const TypeRef &receiverType, const std::string &methodName) const {
     const TypeRef &receiver =
-        (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
-                !receiverType.inner.empty()
-            ? receiverType.inner.front()
+        (receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference) &&
+                !receiverType->inner.empty()
+            ? receiverType->inner.front()
             : receiverType;
-    if (receiver.kind != TypeRef::Kind::TypeParam) {
+    if (receiver->kind != TypeRef::Kind::TypeParam) {
         return std::nullopt;
     }
-    const auto bounds = currentTypeParamBounds.find(receiver.name);
+    const auto bounds = currentTypeParamBounds.find(receiver->name);
     if (bounds == currentTypeParamBounds.end()) {
         return std::nullopt;
     }
@@ -316,8 +316,8 @@ AnalysisContext::LookupConstrainedOperation(const TypeRef &receiverType, const s
             if (bound.interface->methods[index]->name != methodName) {
                 continue;
             }
-            return ConstrainedOperation{receiver.name, bound.name,      bound.interface->methods[index].get(),
-                                        index,         bound.interface, bound.typeArguments};
+            return ConstrainedOperation{receiver->name, bound.name,      bound.interface->methods[index].get(),
+                                        index,          bound.interface, bound.typeArguments};
         }
     }
     return std::nullopt;
@@ -335,25 +335,25 @@ void AnalysisContext::RecordConstrainedBinding(const CallExpr &call, const Const
 void AnalysisContext::EmitMissingConstrainedOperation(const SourceLocation location, const TypeRef &receiverType,
                                                       const std::string &methodName) const {
     const TypeRef &receiver =
-        (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
-                !receiverType.inner.empty()
-            ? receiverType.inner.front()
+        (receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference) &&
+                !receiverType->inner.empty()
+            ? receiverType->inner.front()
             : receiverType;
     std::vector<std::string> notes;
     std::string names;
-    if (const auto bounds = currentTypeParamBounds.find(receiver.name); bounds != currentTypeParamBounds.end()) {
+    if (const auto bounds = currentTypeParamBounds.find(receiver->name); bounds != currentTypeParamBounds.end()) {
         for (const ResolvedTypeBound &bound : bounds->second) {
             names += names.empty() ? "" : ", ";
             names += std::format("'{}'", bound.name);
         }
     }
-    notes.push_back(names.empty() ? std::format("type parameter '{}' has no interface bounds", receiver.name)
-                                  : std::format("type parameter '{}' is bound by {}", receiver.name, names));
-    EmitError(
-        location,
-        std::format("no interface bound on type parameter '{}' provides method '{}'", receiver.name, methodName),
-        std::move(notes),
-        std::format("add a bound whose interface declares '{}', as in '{}: SomeInterface'", methodName, receiver.name));
+    notes.push_back(names.empty() ? std::format("type parameter '{}' has no interface bounds", receiver->name)
+                                  : std::format("type parameter '{}' is bound by {}", receiver->name, names));
+    EmitError(location,
+              std::format("no interface bound on type parameter '{}' provides method '{}'", receiver->name, methodName),
+              std::move(notes),
+              std::format("add a bound whose interface declares '{}', as in '{}: SomeInterface'", methodName,
+                          receiver->name));
 }
 
 void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParameter> &parameters,
@@ -387,7 +387,7 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
             notes.push_back(
                 std::format("type parameter '{}' of {} is bound by '{}'", parameter.name, subject, bound.name));
             std::optional<std::string> help;
-            if (argument->second.kind == TypeRef::Kind::TypeParam) {
+            if (argument->second->kind == TypeRef::Kind::TypeParam) {
                 help =
                     std::format("add the bound to the enclosing declaration, as in '{}: {}'", argumentName, bound.name);
             }

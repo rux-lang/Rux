@@ -101,7 +101,7 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
             parts.push_back(part.empty() ? TypeRef::MakeUnit() : ParseTypeRefFromString(part));
         }
         if (native->form == TypeRef::NativeSpelling::Form::Fallible) {
-            return TypeRef::MakeFallible(std::move(parts[0]), std::move(parts[1]));
+            return TypeRef::MakeFallible(parts[0], parts[1]);
         }
         return TypeRef::MakeSum(std::move(parts));
     }
@@ -119,7 +119,7 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         if (!element) {
             return TypeRef::MakeRangeFull();
         }
-        return TypeRef::MakeRange(std::move(*element), !range->start.empty(), !range->end.empty(), range->inclusive);
+        return TypeRef::MakeRange(*element, !range->start.empty(), !range->end.empty(), range->inclusive);
     }
 
     if (str[0] == '*' || str[0] == '&') {
@@ -135,14 +135,14 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         }
         TypeRef inner = ParseTypeRefFromString(std::move(pointee));
         inner.isMut = writable;
-        return isReference ? TypeRef::MakeReference(std::move(inner)) : TypeRef::MakePointer(std::move(inner));
+        return isReference ? TypeRef::MakeReference(inner) : TypeRef::MakePointer(inner);
     }
 
     // A slice renders its writability as `var` in front of the element, the way a pointer does.
     if (str.starts_with("var ")) {
         TypeRef slice = ParseTypeRefFromString(str.substr(4));
         if (slice.IsSlice()) {
-            slice.inner[0].isMut = true;
+            slice = TypeRef::MakeSlice(slice->inner[0], true);
         }
         return slice;
     }
@@ -401,7 +401,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             return TypeRef::MakeUnknown();
         }
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakePointer(std::move(pointeeType));
+        return TypeRef::MakePointer(pointeeType);
     }
 
     if (const auto *t = AstCast<const ReferenceTypeExpr>(&expr)) {
@@ -410,7 +410,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             return TypeRef::MakeUnknown();
         }
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakeReference(std::move(pointeeType));
+        return TypeRef::MakeReference(pointeeType);
     }
 
     if (const auto *t = AstCast<const ArrayTypeExpr>(&expr)) {
@@ -418,7 +418,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         if (elemType.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
-        return TypeRef::MakeArray(std::move(elemType), t->size ? EvalArrayLength(*t->size) : std::nullopt);
+        return TypeRef::MakeArray(elemType, t->size ? EvalArrayLength(*t->size) : std::nullopt);
     }
 
     if (const auto *t = AstCast<const SliceTypeExpr>(&expr)) {
@@ -426,7 +426,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         if (elemType.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
-        return TypeRef::MakeSlice(std::move(elemType), t->elementMut);
+        return TypeRef::MakeSlice(elemType, t->elementMut);
     }
 
     if (const auto *t = AstCast<const RangeTypeExpr>(&expr)) {
@@ -460,13 +460,13 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             if (pt.IsUnknown()) {
                 return TypeRef::MakeUnknown();
             }
-            paramTypes.push_back(std::move(pt));
+            paramTypes.push_back(pt);
         }
         TypeRef ret = t->returnType ? ResolveType(*t->returnType->get()) : TypeRef::MakeOpaque();
         if (ret.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
-        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), ret);
         funcType.isVariadic = t->isVariadic;
         return funcType;
     }
@@ -488,14 +488,14 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             type = TypeRef::MakeSum(std::move(resolved));
         }
         else if (AstCast<const OptionalTypeExpr>(&expr)) {
-            type = TypeRef::MakeOptional(std::move(resolved.front()));
+            type = TypeRef::MakeOptional(resolved.front());
         }
         else {
             // `! E` writes no success type; its success is the built-in unit.
             const bool hasSuccess = static_cast<const FallibleTypeExpr &>(expr).success != nullptr;
-            TypeRef error = std::move(resolved.back());
-            TypeRef success = hasSuccess ? std::move(resolved.front()) : TypeRef::MakeUnit();
-            type = TypeRef::MakeFallible(std::move(success), std::move(error));
+            TypeRef error = resolved.back();
+            TypeRef success = hasSuccess ? resolved.front() : TypeRef::MakeUnit();
+            type = TypeRef::MakeFallible(success, error);
         }
         NoteDeferredNativeType(type);
         return type;
@@ -536,12 +536,12 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     if (auto *t = AstCast<const PointerTypeExpr>(&expr)) {
         TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakePointer(std::move(pointeeType));
+        return TypeRef::MakePointer(pointeeType);
     }
     if (auto *t = AstCast<const ReferenceTypeExpr>(&expr)) {
         TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakeReference(std::move(pointeeType));
+        return TypeRef::MakeReference(pointeeType);
     }
     if (auto *t = AstCast<const ArrayTypeExpr>(&expr)) {
         return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
@@ -572,7 +572,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         }
         TypeRef returnType =
             t->returnType ? ResolveTypeWithSubstitution(*t->returnType->get(), substitutions) : TypeRef::MakeOpaque();
-        TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), std::move(returnType));
+        TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), returnType);
         functionType.isVariadic = t->isVariadic;
         return functionType;
     }

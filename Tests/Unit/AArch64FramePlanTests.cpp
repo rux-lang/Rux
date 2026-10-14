@@ -70,7 +70,7 @@ TEST_CASE("AArch64 frame plan owns hidden results aggregate regions phi scratch 
     CHECK_EQ(plan.SlotOffsets().at(0), savedBytes + 24);
     CHECK_EQ(plan.SlotOffsets().at(1), savedBytes + 48);
     CHECK_EQ(plan.AllocaDataOffsets().at(1), savedBytes + 56);
-    CHECK_EQ(plan.RegisterTypes().at(1).kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(plan.RegisterTypes().at(1)->kind, TypeRef::Kind::Pointer);
     CHECK_EQ(plan.PhiMoves().at(1).at(1).size(), 2);
     CHECK_EQ(plan.PhiTemporarySize(), 8);
     CHECK_EQ(plan.PhiTemporaryOffset(), savedBytes + 112);

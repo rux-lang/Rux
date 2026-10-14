@@ -303,7 +303,7 @@ HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, std::ve
     auto call = std::make_unique<HirCallExpr>();
     call->location = location;
     call->isNoReturn = method.isNoReturn;
-    call->type = callee->type.inner.empty() ? TypeRef::MakeUnknown() : callee->type.inner.back();
+    call->type = callee->type->inner.empty() ? TypeRef::MakeUnknown() : callee->type->inner.back();
     call->callee = std::move(callee);
     call->args.push_back(std::move(selfArg));
 
@@ -311,10 +311,10 @@ HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, std::ve
     // receiver and exists only while the return type still follows it.
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         OperatorArgument &argument = arguments[index];
-        if (call->callee->type.inner.size() > index + 2 && argument.source) {
-            const TypeRef &expectedType = call->callee->type.inner[index + 1];
+        if (call->callee->type->inner.size() > index + 2 && argument.source) {
+            const TypeRef &expectedType = call->callee->type->inner[index + 1];
             if (argument.value->type.CanImplicitlyBorrowTo(expectedType)) {
-                if (argument.value->type.kind == TypeRef::Kind::Reference) {
+                if (argument.value->type->kind == TypeRef::Kind::Reference) {
                     argument.value->type = expectedType;
                 }
                 else {
@@ -329,7 +329,7 @@ HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, std::ve
             else if (UnsuffixedIntegerLiteralFits(*argument.source, expectedType)) {
                 argument.value->type = expectedType;
             }
-            else if (IsNullLiteral(*argument.source) && expectedType.kind == TypeRef::Kind::Pointer) {
+            else if (IsNullLiteral(*argument.source) && expectedType->kind == TypeRef::Kind::Pointer) {
                 argument.value->type = expectedType;
                 if (auto *literal = HirCast<HirLiteralExpr>(argument.value.get())) {
                     literal->value = "0";
@@ -474,11 +474,11 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
             // A read loads the referent and a write stores to it, so both reach it through the same dereference: as
             // an assignment target the dereference is the place the store addresses.
             if ((model.HasBorrowedScalarRead(expr) || model.HasReferenceWrite(expr)) &&
-                lowered->type.kind == TypeRef::Kind::Reference) {
+                lowered->type->kind == TypeRef::Kind::Reference) {
                 auto read = std::make_unique<HirUnaryExpr>();
                 read->location = lowered->location;
                 read->op = TokenKind::Star;
-                read->type = lowered->type.inner.front();
+                read->type = lowered->type->inner.front();
                 read->type.isMut = false;
                 read->operand = std::move(lowered);
                 lowered = std::move(read);

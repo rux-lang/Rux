@@ -40,7 +40,7 @@ bool AArch64CallPlanner::IsAggregate(const TypeRef &type) const {
     if (type.IsSlice()) {
         return true;
     }
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -49,8 +49,8 @@ bool AArch64CallPlanner::IsAggregate(const TypeRef &type) const {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(type.name);
-        return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+        const std::string base = BaseTypeName(type->name);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!type->inner.empty() && SizeOf(type) > 8);
     }
     default:
         return false;
@@ -63,34 +63,34 @@ bool AArch64CallPlanner::CollectFloatMembers(const TypeRef &type, TypeRef::Kind 
     }
     if (IsFloat(type)) {
         if (count == 0) {
-            memberKind = type.kind;
+            memberKind = type->kind;
         }
-        else if (type.kind != memberKind) {
+        else if (type->kind != memberKind) {
             return false;
         }
         ++count;
         return true;
     }
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Tuple:
-        for (const auto &element : type.inner) {
+        for (const auto &element : type->inner) {
             if (!CollectFloatMembers(element, memberKind, count)) {
                 return false;
             }
         }
-        return !type.inner.empty();
+        return !type->inner.empty();
     case TypeRef::Kind::Array:
-        if (type.inner.empty() || !type.arrayLength || *type.arrayLength == 0) {
+        if (type->inner.empty() || !type->arrayLength || *type->arrayLength == 0) {
             return false;
         }
-        for (std::uint64_t index = 0; index < *type.arrayLength; ++index) {
-            if (!CollectFloatMembers(type.inner[0], memberKind, count)) {
+        for (std::uint64_t index = 0; index < *type->arrayLength; ++index) {
+            if (!CollectFloatMembers(type->inner[0], memberKind, count)) {
                 return false;
             }
         }
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(type.name);
+        const std::string base = BaseTypeName(type->name);
         if (interfaceNames.contains(base)) {
             return false;
         }

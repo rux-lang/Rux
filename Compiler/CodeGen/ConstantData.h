@@ -25,10 +25,10 @@ namespace Rux {
 /// zero, which is what the scalar paths have always written for one.
 [[nodiscard]] inline WideInteger ScalarConstantBits(const std::string_view literal, const TypeRef &type,
                                                     const std::uint32_t width) {
-    if (type.kind == TypeRef::Kind::Float64) {
+    if (type->kind == TypeRef::Kind::Float64) {
         return WideInteger::FromUnsigned(std::bit_cast<std::uint64_t>(ParseFloatLiteral<double>(literal)), width);
     }
-    if (type.kind == TypeRef::Kind::Float32) {
+    if (type->kind == TypeRef::Kind::Float32) {
         return WideInteger::FromUnsigned(std::bit_cast<std::uint32_t>(ParseFloatLiteral<float>(literal)), width);
     }
     if (type.IsBool()) {
@@ -36,7 +36,7 @@ namespace Rux {
         return WideInteger::FromUnsigned(literal == "true" || literal == "1" ? 1 : 0, width);
     }
     if (type.IsFloat()) {
-        const PrimitiveInfo *primitive = FindPrimitive(type.kind);
+        const PrimitiveInfo *primitive = FindPrimitive(type->kind);
         const FloatFormat *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
         const auto encoding = format ? ParseFloatEncoding(literal, *format) : std::nullopt;
         return encoding ? encoding->Bits().ConvertedTruncating(width) : WideInteger::Zero(width);
@@ -88,10 +88,10 @@ inline void AppendScalarConstant(std::vector<std::uint8_t> &data, const std::str
     for (const LirConstScalar &part : scalars) {
         int offset = 0;
         for (const LirConstMember &member : part.path) {
-            if (member.aggregate.kind == TypeRef::Kind::Array) {
-                const int stride = member.aggregate.inner.empty()
+            if (member.aggregate->kind == TypeRef::Kind::Array) {
+                const int stride = member.aggregate->inner.empty()
                                      ? 0
-                                     : Layout::RuntimeSizeOf(member.aggregate.inner.front(), layouts, interfaceNames);
+                                     : Layout::RuntimeSizeOf(member.aggregate->inner.front(), layouts, interfaceNames);
                 offset += stride * std::stoi(member.member);
             }
             else {

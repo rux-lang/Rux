@@ -333,7 +333,7 @@ TEST_CASE("float32 and float64 remainders run the same exact fprem loop, not an 
         for (const Target::OS os : Systems) {
             CAPTURE(type.ToString());
             CAPTURE(static_cast<int>(os));
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const bool float32 = type->kind == TypeRef::Kind::Float32;
             const LirFunc function = SingleInstruction(LirOpcode::Mod, {type, type}, type);
             const Frame frame(function, os);
             // Allocated SSE values pass through a scratch slot because x87 accepts only memory operands.

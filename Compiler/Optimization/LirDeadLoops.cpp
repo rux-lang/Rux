@@ -45,7 +45,7 @@ bool Inert(const LirInstr &instruction) {
 }
 
 bool Word(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::UInt || type.kind == TypeRef::Kind::UInt64;
+    return type->kind == TypeRef::Kind::UInt || type->kind == TypeRef::Kind::UInt64;
 }
 
 bool Remove(LirFunc &function) {

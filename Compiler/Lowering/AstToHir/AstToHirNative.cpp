@@ -22,7 +22,7 @@ namespace {
 HirExprPtr NullPointer(const SourceLocation location, TypeRef type) {
     auto literal = std::make_unique<HirLiteralExpr>();
     literal->location = location;
-    literal->type = std::move(type);
+    literal->type = type;
     literal->value = "0";
     return literal;
 }
@@ -33,24 +33,24 @@ HirExprPtr NullPointer(const SourceLocation location, TypeRef type) {
 
 /// The index of `member` among the members of the sum `sum`.
 [[nodiscard]] std::optional<std::uint64_t> MemberTag(const TypeRef &sum, const TypeRef &member) {
-    const auto found = std::ranges::find(sum.inner, member);
-    if (found == sum.inner.end()) {
+    const auto found = std::ranges::find(sum->inner, member);
+    if (found == sum->inner.end()) {
         return std::nullopt;
     }
-    return static_cast<std::uint64_t>(found - sum.inner.begin());
+    return static_cast<std::uint64_t>(found - sum->inner.begin());
 }
 
 /// The alternatives of one native level, in tag order, with the payload each carries.
 [[nodiscard]] std::vector<std::pair<std::uint64_t, std::optional<TypeRef>>> NativeCases(const TypeRef &type) {
     std::vector<std::pair<std::uint64_t, std::optional<TypeRef>>> cases;
     if (type.IsSum()) {
-        for (std::size_t index = 0; index < type.inner.size(); ++index) {
-            cases.emplace_back(index, type.inner[index]);
+        for (std::size_t index = 0; index < type->inner.size(); ++index) {
+            cases.emplace_back(index, type->inner[index]);
         }
     }
     else if (type.IsOptional()) {
         cases.emplace_back(NativeAbsentTag, std::nullopt);
-        cases.emplace_back(NativePresentTag, type.inner.front());
+        cases.emplace_back(NativePresentTag, type->inner.front());
     }
     else if (type.IsFallible()) {
         cases.emplace_back(NativeSuccessTag, type.FallibleSuccess());
@@ -177,7 +177,7 @@ HirExprPtr AstToHirContext::RebuildNativeLevel(
             destinationPayload = *payloadType;
         }
         else if (payloadType) {
-            destinationPayload = destination.inner[tag == NativeFailureTag && destination.IsFallible() ? 1 : 0];
+            destinationPayload = destination->inner[tag == NativeFailureTag && destination.IsFallible() ? 1 : 0];
         }
         HirExprPtr payload = payloadType ? TransferredBinding(name, *payloadType, location) : nullptr;
         if (payload && destinationPayload && *destinationPayload != *payloadType) {
@@ -232,10 +232,10 @@ HirExprPtr AstToHirContext::ApplyNativeRoute(HirExprPtr value, const TypeRef &de
         return MakeNativeCase(destination, step.member, std::move(value), location);
     case NativeConversionStep::Kind::Presence:
         return MakeNativeCase(destination, NativePresentTag,
-                              ApplyNativeRoute(std::move(value), destination.inner.front(), rest, location), location);
+                              ApplyNativeRoute(std::move(value), destination->inner.front(), rest, location), location);
     case NativeConversionStep::Kind::Success:
         return MakeNativeCase(destination, NativeSuccessTag,
-                              ApplyNativeRoute(std::move(value), destination.inner.front(), rest, location), location);
+                              ApplyNativeRoute(std::move(value), destination->inner.front(), rest, location), location);
     case NativeConversionStep::Kind::Absent:
         return MakeNativeCase(destination, NativeAbsentTag, nullptr, location);
     case NativeConversionStep::Kind::WidenSum:
@@ -269,13 +269,13 @@ HirExprPtr AstToHirContext::LowerNativeConstruct(const NativeConstructExpr &cons
     const bool optionalForm = construct.kind == NativeConstructExpr::Kind::Some;
     if (optionalForm ? targetType.IsFallible() : targetType.IsOptional()) {
         const std::uint64_t wrapperTag = optionalForm ? NativeSuccessTag : NativePresentTag;
-        return MakeNativeCase(targetType, wrapperTag, LowerNativeConstruct(construct, targetType.inner.front()),
+        return MakeNativeCase(targetType, wrapperTag, LowerNativeConstruct(construct, targetType->inner.front()),
                               construct.location);
     }
     std::uint64_t tag = NativePresentTag;
     TypeRef channel = TypeRef::MakeUnknown();
     if (optionalForm && targetType.IsOptional()) {
-        channel = targetType.inner.front();
+        channel = targetType->inner.front();
     }
     else if (!optionalForm && targetType.IsFallible()) {
         const bool failure = construct.kind == NativeConstructExpr::Kind::Failure;
@@ -312,14 +312,14 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
         const std::function<HirExprPtr(const TypeRef &)> build = [&](const TypeRef &level) -> HirExprPtr {
             if (level.IsOptional() || level.IsFallible()) {
                 return MakeNativeCase(level, level.IsOptional() ? NativePresentTag : NativeSuccessTag,
-                                      build(level.inner.front()), expression.location);
+                                      build(level->inner.front()), expression.location);
             }
             if (level.IsSum()) {
-                const auto member = std::ranges::find_if(level.inner, [&](const TypeRef &candidate) {
+                const auto member = std::ranges::find_if(level->inner, [&](const TypeRef &candidate) {
                     return floating ? candidate.IsFloat() : candidate.IsInteger();
                 });
-                if (member != level.inner.end()) {
-                    return MakeNativeCase(level, static_cast<std::uint64_t>(member - level.inner.begin()),
+                if (member != level->inner.end()) {
+                    return MakeNativeCase(level, static_cast<std::uint64_t>(member - level->inner.begin()),
                                           LowerExprAs(expression, *member), expression.location);
                 }
             }
@@ -334,13 +334,13 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
         const std::function<HirExprPtr(const TypeRef &)> build = [&](const TypeRef &level) -> HirExprPtr {
             if (level.IsOptional() || level.IsFallible()) {
                 return MakeNativeCase(level, level.IsOptional() ? NativePresentTag : NativeSuccessTag,
-                                      build(level.inner.front()), expression.location);
+                                      build(level->inner.front()), expression.location);
             }
             if (level.IsSum()) {
                 const auto member = std::ranges::find_if(
-                    level.inner, [](const TypeRef &candidate) { return candidate.kind == TypeRef::Kind::Pointer; });
-                if (member != level.inner.end()) {
-                    return MakeNativeCase(level, static_cast<std::uint64_t>(member - level.inner.begin()),
+                    level->inner, [](const TypeRef &candidate) { return candidate->kind == TypeRef::Kind::Pointer; });
+                if (member != level->inner.end()) {
+                    return MakeNativeCase(level, static_cast<std::uint64_t>(member - level->inner.begin()),
                                           NullPointer(expression.location, *member), expression.location);
                 }
             }
@@ -499,7 +499,7 @@ HirPatternPtr AstToHirContext::LowerNativeSelection(const TypeRef &subjectType, 
     };
     const auto members = [&](const TypeRef &sum, const std::vector<std::size_t> &selected) -> HirPatternPtr {
         if (selected.size() == 1) {
-            const TypeRef &member = sum.inner[selected.front()];
+            const TypeRef &member = sum->inner[selected.front()];
             return NativeCasePattern(sum, selected.front(), member, binding(member), location);
         }
         auto subset = std::make_unique<HirNativeSubsetPattern>();
@@ -521,7 +521,7 @@ HirPatternPtr AstToHirContext::LowerNativeSelection(const TypeRef &subjectType, 
     case NativeSelection::Kind::Members:
         return members(subjectType, selection.members);
     case NativeSelection::Kind::Presence: {
-        const TypeRef &payload = subjectType.inner.front();
+        const TypeRef &payload = subjectType->inner.front();
         HirPatternPtr inner = selection.members.empty() ? binding(payload) : members(payload, selection.members);
         return NativeCasePattern(subjectType, NativePresentTag, payload, std::move(inner), location);
     }
@@ -552,7 +552,7 @@ HirPatternPtr AstToHirContext::LowerNativePattern(const Pattern &pattern, const 
         return NativeCasePattern(subjectType, NativeAbsentTag, std::nullopt, nullptr, location);
     }
     if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        const TypeRef payload = subjectType.IsOptional() ? subjectType.inner.front() : TypeRef::MakeUnknown();
+        const TypeRef payload = subjectType.IsOptional() ? subjectType->inner.front() : TypeRef::MakeUnknown();
         return NativeCasePattern(subjectType, NativePresentTag, payload, LowerPattern(*presence->inner, payload),
                                  location);
     }
@@ -561,7 +561,7 @@ HirPatternPtr AstToHirContext::LowerNativePattern(const Pattern &pattern, const 
         (subjectType.IsOptional() || subjectType.IsFallible())) {
         const std::string &name = enumeration->path.front();
         std::uint64_t tag = NativePresentTag;
-        TypeRef channel = subjectType.inner.front();
+        TypeRef channel = subjectType->inner.front();
         if (subjectType.IsFallible()) {
             const bool failure = name == "Failure";
             tag = failure ? NativeFailureTag : NativeSuccessTag;
@@ -583,8 +583,8 @@ HirPatternPtr AstToHirContext::LowerNativePattern(const Pattern &pattern, const 
 
 HirExprPtr AstToHirContext::LowerNativeMembership(const IsExpr &expression) {
     TypeRef subjectType = ResolvedExpressionType(*expression.operand);
-    if (subjectType.kind == TypeRef::Kind::Reference && !subjectType.inner.empty()) {
-        subjectType = subjectType.inner.front();
+    if (subjectType->kind == TypeRef::Kind::Reference && !subjectType->inner.empty()) {
+        subjectType = subjectType->inner.front();
     }
     if (!IsNativeType(subjectType)) {
         return nullptr;
@@ -794,7 +794,7 @@ HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
 
 HirExprPtr AstToHirContext::LowerNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType) {
     const SourceLocation location = expression.location;
-    const TypeRef payload = operandType.inner.front();
+    const TypeRef payload = operandType->inner.front();
     const std::string payloadName = std::format("$try.value.{}", propagationOrdinal++);
     auto bound = std::make_unique<HirBindingPattern>();
     bound->location = location;
@@ -828,7 +828,7 @@ HirExprPtr AstToHirContext::LowerNativeOptionalTry(const TryExpr &expression, co
 HirExprPtr AstToHirContext::LowerNativeCoalesce(const BinaryExpr &expression) {
     const SourceLocation location = expression.location;
     const TypeRef operandType = ResolvedExpressionType(*expression.left);
-    const TypeRef payload = operandType.inner.front();
+    const TypeRef payload = operandType->inner.front();
     const std::string payloadName = std::format("$coalesce.value.{}", coalescingOrdinal++);
     auto bound = std::make_unique<HirBindingPattern>();
     bound->location = location;

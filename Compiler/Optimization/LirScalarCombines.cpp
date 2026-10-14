@@ -48,9 +48,10 @@ private:
 bool MayCombine(const LirInstr &instruction) {
     if (instruction.srcs.size() != 2)
         return false;
-    if (instruction.type.kind == TypeRef::Kind::Bool8 && !instruction.isVolatile)
+    if (instruction.type->kind == TypeRef::Kind::Bool8 && !instruction.isVolatile)
         return true;
-    const bool word = instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64;
+    const bool word =
+        instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::UInt64;
     if (word && (instruction.op == LirOpcode::Or || instruction.op == LirOpcode::And ||
                  instruction.op == LirOpcode::Div || instruction.op == LirOpcode::Mod))
         return true;
@@ -59,7 +60,7 @@ bool MayCombine(const LirInstr &instruction) {
 }
 
 std::optional<std::uint64_t> UnsignedMaximum(const TypeRef &type) {
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::UInt8:
         return UINT8_MAX;
     case TypeRef::Kind::UInt16:
@@ -226,7 +227,7 @@ bool Combine(LirFunc &function) {
             };
             bool modified = false;
             LirInstr instruction = instructions[index];
-            if (instruction.type.kind == TypeRef::Kind::Bool8 && instruction.type == TypeRef::MakeBool() &&
+            if (instruction.type->kind == TypeRef::Kind::Bool8 && instruction.type == TypeRef::MakeBool() &&
                 instruction.srcs.size() == 2 && !instruction.isVolatile &&
                 definitions.Find(instruction.srcs[0]) != nullptr && definitions.Find(instruction.srcs[1]) != nullptr &&
                 definitions.Find(instruction.srcs[0])->type == definitions.Find(instruction.srcs[1])->type) {
@@ -243,7 +244,7 @@ bool Combine(LirFunc &function) {
             }
             // Keep a deliberately narrow contract: no signed arithmetic, wide integers or floating identities.
             const bool word =
-                instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64;
+                instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::UInt64;
             if (word && instruction.srcs.size() == 2 && instruction.op == LirOpcode::Or) {
                 const LirInstr *left = definitions.Find(instruction.srcs[0]);
                 const LirInstr *right = definitions.Find(instruction.srcs[1]);
@@ -260,7 +261,7 @@ bool Combine(LirFunc &function) {
                         shiftRight->type == instruction.type) {
                         const auto a = constant(shiftLeft->srcs[1]);
                         const auto b = constant(shiftRight->srcs[1]);
-                        const auto width = instruction.type.kind == TypeRef::Kind::UInt32 ? 32U : 64U;
+                        const auto width = instruction.type->kind == TypeRef::Kind::UInt32 ? 32U : 64U;
                         if (a && b && *a > 0 && *a < width && *b > 0 && *b < width && *a + *b == width) {
                             instruction.op = LirOpcode::RotateRight;
                             instruction.srcs = {shiftLeft->srcs[0]};
@@ -281,7 +282,7 @@ bool Combine(LirFunc &function) {
                         shift->type != instruction.type || shift->srcs.size() != 2 || shift->isVolatile)
                         continue;
                     const auto count = constant(shift->srcs[1]);
-                    const auto width = instruction.type.kind == TypeRef::Kind::UInt32 ? 32U : 64U;
+                    const auto width = instruction.type->kind == TypeRef::Kind::UInt32 ? 32U : 64U;
                     if (!count || *count == 0 || *count >= width)
                         continue;
                     const std::uint64_t kept = (std::uint64_t{1} << (width - *count)) - 1;

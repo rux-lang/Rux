@@ -67,7 +67,7 @@ TEST_CASE("borrowed scalar reads retain reference types in semantic facts and lo
     CHECK_FALSE(model.HasBorrowedScalarRead(*alias->init));
     CHECK(model.HasBorrowedScalarRead(*copy->init));
     REQUIRE(model.TryGetType(*copy->init) != nullptr);
-    CHECK_EQ(model.TryGetType(*copy->init)->kind, TypeRef::Kind::Reference);
+    CHECK_EQ((*model.TryGetType(*copy->init))->kind, TypeRef::Kind::Reference);
     CHECK(model.TryGetConsumption(*copy->init) == nullptr);
     CHECK(model.TryGetCopy(*copy->init) == nullptr);
 
@@ -85,7 +85,7 @@ TEST_CASE("borrowed scalar reads retain reference types in semantic facts and lo
     REQUIRE(load != nullptr);
     CHECK_EQ(load->op, TokenKind::Star);
     CHECK_EQ(load->type.ToString(), "uint128");
-    CHECK_EQ(load->operand->type.kind, TypeRef::Kind::Reference);
+    CHECK_EQ(load->operand->type->kind, TypeRef::Kind::Reference);
     HirToLirLowering lowering(std::move(hir), CompileTimeContext{}.target);
     const auto lir = lowering.Generate();
     REQUIRE(lowering.Diagnostics().empty());
@@ -117,7 +117,7 @@ TEST_CASE("borrowed scalar writes store through the reference in HIR") {
     CHECK(model.HasReferenceWrite(*assignment->target));
     CHECK_FALSE(model.HasBorrowedScalarRead(*assignment->target));
     REQUIRE(model.TryGetType(*assignment->target) != nullptr);
-    CHECK_EQ(model.TryGetType(*assignment->target)->kind, TypeRef::Kind::Reference);
+    CHECK_EQ((*model.TryGetType(*assignment->target))->kind, TypeRef::Kind::Reference);
 
     HirPackage hir = AstToHirLowering(model).Generate();
     REQUIRE_EQ(hir.modules.size(), 1);
@@ -132,7 +132,7 @@ TEST_CASE("borrowed scalar writes store through the reference in HIR") {
     const auto *place = dynamic_cast<const HirUnaryExpr *>(store->target.get());
     REQUIRE(place != nullptr);
     CHECK_EQ(place->op, TokenKind::Star);
-    CHECK_EQ(place->operand->type.kind, TypeRef::Kind::Reference);
+    CHECK_EQ(place->operand->type->kind, TypeRef::Kind::Reference);
     HirToLirLowering lowering(std::move(hir), CompileTimeContext{}.target);
     const auto lir = lowering.Generate();
     REQUIRE(lowering.Diagnostics().empty());
@@ -188,7 +188,7 @@ TEST_CASE("a whole value written through a reference replaces the referent and d
     REQUIRE_FALSE(model.HasErrors());
     CHECK(model.HasReferenceWrite(*assignment->target));
     REQUIRE(model.TryGetType(*assignment->target) != nullptr);
-    CHECK_EQ(model.TryGetType(*assignment->target)->kind, TypeRef::Kind::Reference);
+    CHECK_EQ((*model.TryGetType(*assignment->target))->kind, TypeRef::Kind::Reference);
 
     HirPackage hir = AstToHirLowering(model).Generate();
     REQUIRE_EQ(hir.modules.size(), 1);
@@ -328,7 +328,7 @@ TEST_CASE("reference types preserve identity mutability and layout") {
     const TypeRef shared = TypeRef::MakeReference(TypeRef::MakeInt32());
     TypeRef writableReferent = TypeRef::MakeInt32();
     writableReferent.isMut = true;
-    const TypeRef exclusive = TypeRef::MakeReference(std::move(writableReferent));
+    const TypeRef exclusive = TypeRef::MakeReference(writableReferent);
 
     CHECK_EQ(shared.ToString(), "&int32");
     CHECK_EQ(exclusive.ToString(), "&var int32");
@@ -381,9 +381,9 @@ TEST_CASE("reference parameters retain their types through HIR and LIR") {
     const TypeRef *exclusive = model.TryGetType(*declaration->params[1].type);
     REQUIRE(shared != nullptr);
     REQUIRE(exclusive != nullptr);
-    CHECK_EQ(shared->kind, TypeRef::Kind::Reference);
+    CHECK_EQ((*shared)->kind, TypeRef::Kind::Reference);
     CHECK_EQ(shared->ToString(), "&Item");
-    CHECK_EQ(exclusive->kind, TypeRef::Kind::Reference);
+    CHECK_EQ((*exclusive)->kind, TypeRef::Kind::Reference);
     CHECK_EQ(exclusive->ToString(), "&var Item");
 
     const TypeProperties *properties = model.TryGetProperties(*declaration->params[0].type);
@@ -393,7 +393,7 @@ TEST_CASE("reference parameters retain their types through HIR and LIR") {
     HirPackage hir = AstToHirLowering(model).Generate();
     REQUIRE_EQ(hir.modules.size(), 1);
     REQUIRE_EQ(hir.modules[0].typeAliases.size(), 1);
-    CHECK_EQ(hir.modules[0].typeAliases[0].type.kind, TypeRef::Kind::Reference);
+    CHECK_EQ(hir.modules[0].typeAliases[0].type->kind, TypeRef::Kind::Reference);
     REQUIRE_EQ(hir.modules[0].externFuncs.size(), 1);
     REQUIRE_EQ(hir.modules[0].externFuncs[0].params.size(), 2);
     CHECK_EQ(hir.modules[0].externFuncs[0].params[0].type, *shared);

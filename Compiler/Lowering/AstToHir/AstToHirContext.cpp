@@ -24,7 +24,7 @@ void HirScope::Define(HirSymbol symbol) {
             it->second.funcOverloads.insert(it->second.funcOverloads.end(), symbol.funcOverloads.begin(),
                                             symbol.funcOverloads.end());
             if (it->second.type.IsUnknown() && !symbol.type.IsUnknown()) {
-                it->second.type = std::move(symbol.type);
+                it->second.type = symbol.type;
             }
         }
         return;
@@ -186,29 +186,29 @@ void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
 /// parameters, and lowering then built a destructor for a type that cannot exist -- which asks for the size of a
 /// node whose element type is still a parameter, and stops the compiler where there is nothing left to ask.
 bool AstToHirContext::TypeIsConcrete(const TypeRef &type) {
-    if (type.IsUnknown() || type.kind == TypeRef::Kind::TypeParam) {
+    if (type.IsUnknown() || type->kind == TypeRef::Kind::TypeParam) {
         return false;
     }
-    for (const TypeRef &inner : type.inner) {
+    for (const TypeRef &inner : type->inner) {
         if (!TypeIsConcrete(inner)) {
             return false;
         }
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return true;
     }
-    if (type.name.find('<') == std::string::npos) {
+    if (type->name.find('<') == std::string::npos) {
         // A bare name that nothing declares is a parameter. Primitives and the builtin aggregates never reach here
         // as a named type -- they are recognized while the name is parsed -- so a name is either declared or a
         // parameter, with nothing in between.
-        if (structDecls.contains(type.name) || enumDecls.contains(type.name) || unionDecls.contains(type.name) ||
-            interfaceDecls.contains(type.name))
+        if (structDecls.contains(type->name) || enumDecls.contains(type->name) || unionDecls.contains(type->name) ||
+            interfaceDecls.contains(type->name))
             return true;
-        const HirSymbol *declared = globalScope.Lookup(type.name);
+        const HirSymbol *declared = globalScope.Lookup(type->name);
         return declared != nullptr &&
                (declared->kind == HirSymbol::Kind::Type || declared->kind == HirSymbol::Kind::Interface);
     }
-    for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
+    for (const TypeRef &argument : ParseTypeArgsFromTypeName(type->name)) {
         if (!TypeIsConcrete(argument)) {
             return false;
         }
@@ -340,7 +340,7 @@ void AstToHirContext::RegisterBuiltins() {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Type;
         symbol.name = name;
-        symbol.type = std::move(type);
+        symbol.type = type;
         globalScope.Define(std::move(symbol));
     };
     add("opaque", TypeRef::MakeOpaque());
@@ -373,7 +373,7 @@ TypeRef AstToHirContext::MakeFuncType(const std::vector<Param> &params, const st
     TypeRef resultType = returnType ? ResolveType(**returnType) : TypeRef::MakeOpaque();
 
     currentTypeParams = savedTypeParams;
-    return TypeRef::MakeFunc(std::move(paramTypes), std::move(resultType));
+    return TypeRef::MakeFunc(std::move(paramTypes), resultType);
 }
 
 std::string AstToHirContext::NominalName(const Decl &declaration) const {
@@ -385,7 +385,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         HirSymbol symbol;
         symbol.kind = kind;
         symbol.name = name;
-        symbol.type = std::move(type);
+        symbol.type = type;
         globalScope.Define(std::move(symbol));
     };
     if (const auto *function = AstCast<const FuncDecl>(&decl)) {
@@ -667,14 +667,14 @@ HirCopyPlan AstToHirContext::BuildEnumCopyPlan(const TypeRef &type, const EnumDe
     }
 
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     const std::size_t count = std::min(arguments.size(), declaration.typeParams.size());
     for (std::size_t index = 0; index < count; ++index) {
         substitutions.emplace(declaration.typeParams[index].name, arguments[index]);
     }
 
     bool needsPlan = false;
-    const std::string base = BaseTypeName(type.name);
+    const std::string base = BaseTypeName(type->name);
     for (const EnumDecl::Variant &variant : declaration.variants) {
         plan.variantDiscriminants.push_back(LookupEnumVariantDiscriminant(base, variant.name).value_or("0"));
         std::vector<TypeRef> payloadTypes;
@@ -716,14 +716,14 @@ HirMovePlan AstToHirContext::BuildEnumMovePlan(const TypeRef &type, const EnumDe
     }
 
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     const std::size_t count = std::min(arguments.size(), declaration.typeParams.size());
     for (std::size_t index = 0; index < count; ++index) {
         substitutions.emplace(declaration.typeParams[index].name, arguments[index]);
     }
 
     bool needsPlan = false;
-    const std::string base = BaseTypeName(type.name);
+    const std::string base = BaseTypeName(type->name);
     for (const EnumDecl::Variant &variant : declaration.variants) {
         plan.variantDiscriminants.push_back(LookupEnumVariantDiscriminant(base, variant.name).value_or("0"));
         std::vector<TypeRef> payloadTypes;

@@ -46,27 +46,27 @@ void AnalysisContext::ReportUntypedExpression(const Expr &expression) const {
 }
 
 bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, const TypeRef &targetType) const {
-    if (targetType.kind != TypeRef::Kind::Named) {
+    if (targetType->kind != TypeRef::Kind::Named) {
         return false;
     }
     // The target is already resolved in its declaration's scope. A caller need not import interfaces that only
     // occur in another interface's signature, just as it need not import a generic declaration's bounds.
-    const auto target = interfaceDecls.find(targetType.name);
+    const auto target = interfaceDecls.find(targetType->name);
     if (target == interfaceDecls.end()) {
         return false;
     }
     if (target->second->methods.empty()) {
         return true;
     }
-    if (expressionType.kind == TypeRef::Kind::TypeParam) {
-        const auto bounds = currentTypeParamBounds.find(expressionType.name);
+    if (expressionType->kind == TypeRef::Kind::TypeParam) {
+        const auto bounds = currentTypeParamBounds.find(expressionType->name);
         return bounds != currentTypeParamBounds.end() &&
                std::ranges::any_of(bounds->second,
                                    [&](const ResolvedTypeBound &bound) { return bound.interface == target->second; });
     }
     const auto implements = [&](const TypeRef &type) {
         const auto implementation = typeImplementsInterfaces.find(type.ToString());
-        return implementation != typeImplementsInterfaces.end() && implementation->second.contains(targetType.name);
+        return implementation != typeImplementsInterfaces.end() && implementation->second.contains(targetType->name);
     };
     if (implements(expressionType)) {
         return true;
@@ -75,31 +75,31 @@ bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, con
     // same way: `var char8[..]` is passed where `Display` is wanted as its `char8[..]` would be.
     if (expressionType.IsWritableSlice()) {
         TypeRef readOnly = expressionType;
-        readOnly.inner.front().isMut = false;
+        readOnly = readOnly.WithWritableInner(false);
         return implements(readOnly);
     }
-    if (expressionType.kind == TypeRef::Kind::Int) {
+    if (expressionType->kind == TypeRef::Kind::Int) {
         return implements(TypeRef::MakeInt64());
     }
-    if (expressionType.kind == TypeRef::Kind::Int64) {
+    if (expressionType->kind == TypeRef::Kind::Int64) {
         return implements(TypeRef::MakeInt());
     }
-    if (expressionType.kind == TypeRef::Kind::UInt) {
+    if (expressionType->kind == TypeRef::Kind::UInt) {
         return implements(TypeRef::MakeUInt64());
     }
-    if (expressionType.kind == TypeRef::Kind::UInt64) {
+    if (expressionType->kind == TypeRef::Kind::UInt64) {
         return implements(TypeRef::MakeUInt());
     }
     return false;
 }
 
 bool AnalysisContext::CanConvertToInterface(const TypeRef &argument, const TypeRef &parameter) const {
-    if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
+    if (parameter->kind != TypeRef::Kind::Reference || parameter->inner.empty()) {
         return TypeImplementsInterface(argument, parameter);
     }
     TypeRef source =
-        argument.kind == TypeRef::Kind::Reference && !argument.inner.empty() ? argument.inner.front() : argument;
-    TypeRef target = parameter.inner.front();
+        argument->kind == TypeRef::Kind::Reference && !argument->inner.empty() ? argument->inner.front() : argument;
+    TypeRef target = parameter->inner.front();
     source.isMut = false;
     target.isMut = false;
     return TypeImplementsInterface(source, target);
@@ -209,20 +209,20 @@ std::unordered_set<const Decl *> AnalysisContext::ExportedDeclarations() const {
 }
 
 bool AnalysisContext::MentionsTypeParameter(const TypeRef &type) const {
-    if (type.kind == TypeRef::Kind::TypeParam) {
+    if (type->kind == TypeRef::Kind::TypeParam) {
         return true;
     }
-    if (type.kind == TypeRef::Kind::Named) {
-        if (std::ranges::contains(currentTypeParams, BaseTypeName(type.name))) {
+    if (type->kind == TypeRef::Kind::Named) {
+        if (std::ranges::contains(currentTypeParams, BaseTypeName(type->name))) {
             return true;
         }
-        for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
+        for (const TypeRef &argument : ParseTypeArgsFromTypeName(type->name)) {
             if (MentionsTypeParameter(argument)) {
                 return true;
             }
         }
     }
-    return std::ranges::any_of(type.inner, [this](const TypeRef &inner) { return MentionsTypeParameter(inner); });
+    return std::ranges::any_of(type->inner, [this](const TypeRef &inner) { return MentionsTypeParameter(inner); });
 }
 
 TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
@@ -230,23 +230,23 @@ TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
     // An argument spelled inside an instantiation's name is substituted by rebuilding the name around what the
     // arguments became. Walking only `inner` left `Option<T>` exactly as it was, so every question deferred until
     // the parameter was known was answered against a type that still mentioned it.
-    if (type.kind == TypeRef::Kind::Named && type.name.find('<') != std::string::npos) {
-        std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    if (type->kind == TypeRef::Kind::Named && type->name.find('<') != std::string::npos) {
+        std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
         bool changed = false;
         for (TypeRef &argument : arguments) {
             TypeRef substituted = SubstituteTypeParameters(argument, substitutions);
             changed = changed || substituted.ToString() != argument.ToString();
-            argument = std::move(substituted);
+            argument = substituted;
         }
         if (changed) {
-            TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type.name), arguments));
+            TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type->name), arguments));
             rebuilt.isMut = type.isMut;
             return rebuilt;
         }
         return type;
     }
-    if (type.kind == TypeRef::Kind::Named || type.kind == TypeRef::Kind::TypeParam) {
-        if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
+    if (type->kind == TypeRef::Kind::Named || type->kind == TypeRef::Kind::TypeParam) {
+        if (const auto it = substitutions.find(type->name); it != substitutions.end()) {
             TypeRef substituted = it->second;
             // Pointer and reference types record writability on the substituted slot itself, so the substitution has
             // to carry that mark onto whatever the type parameter becomes.
@@ -255,10 +255,12 @@ TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
         }
         return type;
     }
-    for (TypeRef &inner : type.inner) {
-        inner = SubstituteTypeParameters(std::move(inner), substitutions);
+    std::vector<TypeRef> inner;
+    inner.reserve(type->inner.size());
+    for (const TypeRef &member : type->inner) {
+        inner.push_back(SubstituteTypeParameters(member, substitutions));
     }
-    return TypeRef::Renormalize(std::move(type));
+    return TypeRef::Renormalize(type.WithInner(inner));
 }
 
 std::string AnalysisContext::NominalTypeName(const std::string &name) const {
@@ -281,8 +283,8 @@ std::string AnalysisContext::NominalTypeName(const std::string &name) const {
         if (identity != programIndex.NominalNames().end())
             return identity->second;
     }
-    if (symbol && symbol->type.kind == TypeRef::Kind::Named)
-        return BaseTypeName(symbol->type.name);
+    if (symbol && symbol->type->kind == TypeRef::Kind::Named)
+        return BaseTypeName(symbol->type->name);
     return name;
 }
 
@@ -419,7 +421,7 @@ void AnalysisContext::RegisterBuiltins() {
         Symbol symbol;
         symbol.kind = Symbol::Kind::Type;
         symbol.name = name;
-        symbol.type = std::move(type);
+        symbol.type = type;
         symbol.isPublic = true;
         symbol.isEffectivelyPublic = true;
         symbol.ownerPackage = "<builtin>";
@@ -530,92 +532,92 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
     if (paramType.IsUnknown() || argType.IsUnknown()) {
         return true;
     }
-    if (paramType.kind == TypeRef::Kind::TypeParam ||
-        (paramType.kind == TypeRef::Kind::Named && typeParamNames.contains(paramType.name))) {
-        if (typeParamNames.contains(paramType.name)) {
+    if (paramType->kind == TypeRef::Kind::TypeParam ||
+        (paramType->kind == TypeRef::Kind::Named && typeParamNames.contains(paramType->name))) {
+        if (typeParamNames.contains(paramType->name)) {
             TypeRef target = argType;
-            if (const auto it = substitutions.find(paramType.name); it != substitutions.end()) {
+            if (const auto it = substitutions.find(paramType->name); it != substitutions.end()) {
                 const TypeRef &existing = it->second;
                 if (existing == target) {
                     return true;
                 }
-                if (existing.kind == TypeRef::Kind::Int && target.IsInteger()) {
-                    substitutions[paramType.name] = target;
+                if (existing->kind == TypeRef::Kind::Int && target.IsInteger()) {
+                    substitutions[paramType->name] = target;
                     return true;
                 }
-                if (target.kind == TypeRef::Kind::Int && existing.IsInteger()) {
+                if (target->kind == TypeRef::Kind::Int && existing.IsInteger()) {
                     return true;
                 }
-                if (existing.kind == TypeRef::Kind::Float && target.IsFloat()) {
-                    substitutions[paramType.name] = target;
+                if (existing->kind == TypeRef::Kind::Float && target.IsFloat()) {
+                    substitutions[paramType->name] = target;
                     return true;
                 }
-                if (target.kind == TypeRef::Kind::Float && existing.IsFloat()) {
+                if (target->kind == TypeRef::Kind::Float && existing.IsFloat()) {
                     return true;
                 }
                 if (target.IsAssignableTo(existing)) {
                     return true;
                 }
                 if (existing.IsAssignableTo(target)) {
-                    substitutions[paramType.name] = target;
+                    substitutions[paramType->name] = target;
                     return true;
                 }
                 return false;
             }
-            substitutions.emplace(paramType.name, target);
+            substitutions.emplace(paramType->name, target);
             return true;
         }
         return true;
     }
 
-    if (paramType.kind == TypeRef::Kind::Reference) {
-        if (paramType.inner.empty()) {
+    if (paramType->kind == TypeRef::Kind::Reference) {
+        if (paramType->inner.empty()) {
             return false;
         }
-        if (argType.kind == TypeRef::Kind::Reference && !argType.inner.empty()) {
-            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        if (argType->kind == TypeRef::Kind::Reference && !argType->inner.empty()) {
+            return DeduceTypeArgument(paramType->inner[0], argType->inner[0], typeParamNames, substitutions);
         }
-        return DeduceTypeArgument(paramType.inner[0], argType, typeParamNames, substitutions);
+        return DeduceTypeArgument(paramType->inner[0], argType, typeParamNames, substitutions);
     }
 
-    if (paramType.kind == TypeRef::Kind::Pointer) {
-        if (paramType.inner.empty()) {
+    if (paramType->kind == TypeRef::Kind::Pointer) {
+        if (paramType->inner.empty()) {
             return false;
         }
-        if (argType.kind == TypeRef::Kind::Pointer && !argType.inner.empty()) {
-            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        if (argType->kind == TypeRef::Kind::Pointer && !argType->inner.empty()) {
+            return DeduceTypeArgument(paramType->inner[0], argType->inner[0], typeParamNames, substitutions);
         }
         return false;
     }
 
-    if (paramType.kind == TypeRef::Kind::Array) {
-        if (paramType.inner.empty()) {
+    if (paramType->kind == TypeRef::Kind::Array) {
+        if (paramType->inner.empty()) {
             return false;
         }
-        if (argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
-            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        if (argType->kind == TypeRef::Kind::Array && !argType->inner.empty()) {
+            return DeduceTypeArgument(paramType->inner[0], argType->inner[0], typeParamNames, substitutions);
         }
         return false;
     }
 
-    if (paramType.kind == TypeRef::Kind::Tuple) {
-        if (argType.kind != TypeRef::Kind::Tuple || paramType.inner.size() != argType.inner.size()) {
+    if (paramType->kind == TypeRef::Kind::Tuple) {
+        if (argType->kind != TypeRef::Kind::Tuple || paramType->inner.size() != argType->inner.size()) {
             return false;
         }
-        for (std::size_t i = 0; i < paramType.inner.size(); ++i) {
-            if (!DeduceTypeArgument(paramType.inner[i], argType.inner[i], typeParamNames, substitutions)) {
+        for (std::size_t i = 0; i < paramType->inner.size(); ++i) {
+            if (!DeduceTypeArgument(paramType->inner[i], argType->inner[i], typeParamNames, substitutions)) {
                 return false;
             }
         }
         return true;
     }
 
-    if (paramType.kind == TypeRef::Kind::Func) {
-        if (argType.kind != TypeRef::Kind::Func || paramType.inner.size() != argType.inner.size()) {
+    if (paramType->kind == TypeRef::Kind::Func) {
+        if (argType->kind != TypeRef::Kind::Func || paramType->inner.size() != argType->inner.size()) {
             return false;
         }
-        for (std::size_t i = 0; i < paramType.inner.size(); ++i) {
-            if (!DeduceTypeArgument(paramType.inner[i], argType.inner[i], typeParamNames, substitutions)) {
+        for (std::size_t i = 0; i < paramType->inner.size(); ++i) {
+            if (!DeduceTypeArgument(paramType->inner[i], argType->inner[i], typeParamNames, substitutions)) {
                 return false;
             }
         }
@@ -625,40 +627,41 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
     // An optional parameter deduces its payload from an optional argument level by level, and from a plain argument,
     // which would become its present value.
     if (paramType.IsOptional()) {
-        if (paramType.inner.empty()) {
+        if (paramType->inner.empty()) {
             return false;
         }
-        const TypeRef &payload = argType.IsOptional() && !argType.inner.empty() ? argType.inner[0] : argType;
-        return DeduceTypeArgument(paramType.inner[0], payload, typeParamNames, substitutions);
+        const TypeRef &payload = argType.IsOptional() && !argType->inner.empty() ? argType->inner[0] : argType;
+        return DeduceTypeArgument(paramType->inner[0], payload, typeParamNames, substitutions);
     }
 
     // A fallible parameter deduces each channel from the matching channel of a fallible argument.
     if (paramType.IsFallible()) {
-        if (!argType.IsFallible() || paramType.inner.size() != 2 || argType.inner.size() != 2) {
+        if (!argType.IsFallible() || paramType->inner.size() != 2 || argType->inner.size() != 2) {
             return false;
         }
-        return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions) &&
-               DeduceTypeArgument(paramType.inner[1], argType.inner[1], typeParamNames, substitutions);
+        return DeduceTypeArgument(paramType->inner[0], argType->inner[0], typeParamNames, substitutions) &&
+               DeduceTypeArgument(paramType->inner[1], argType->inner[1], typeParamNames, substitutions);
     }
 
     // A slice parameter deduces its element from a slice argument, or from the fixed array that coerces to one.
-    if (paramType.kind == TypeRef::Kind::Slice) {
-        if (paramType.inner.empty()) {
+    if (paramType->kind == TypeRef::Kind::Slice) {
+        if (paramType->inner.empty()) {
             return false;
         }
-        if ((argType.kind == TypeRef::Kind::Slice || argType.kind == TypeRef::Kind::Array) && !argType.inner.empty()) {
-            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        if ((argType->kind == TypeRef::Kind::Slice || argType->kind == TypeRef::Kind::Array) &&
+            !argType->inner.empty()) {
+            return DeduceTypeArgument(paramType->inner[0], argType->inner[0], typeParamNames, substitutions);
         }
         return false;
     }
 
-    if (paramType.kind == TypeRef::Kind::Named) {
-        const std::string paramBase = BaseTypeName(paramType.name);
-        if (argType.kind == TypeRef::Kind::Named) {
-            const std::string argBase = BaseTypeName(argType.name);
+    if (paramType->kind == TypeRef::Kind::Named) {
+        const std::string paramBase = BaseTypeName(paramType->name);
+        if (argType->kind == TypeRef::Kind::Named) {
+            const std::string argBase = BaseTypeName(argType->name);
             if (paramBase == argBase) {
-                const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
-                const auto argArgs = ParseTypeArgsFromTypeName(argType.name);
+                const auto paramArgs = ParseTypeArgsFromTypeName(paramType->name);
+                const auto argArgs = ParseTypeArgsFromTypeName(argType->name);
                 if (paramArgs.size() == argArgs.size() && !paramArgs.empty()) {
                     for (std::size_t i = 0; i < paramArgs.size(); ++i) {
                         if (!DeduceTypeArgument(paramArgs[i], argArgs[i], typeParamNames, substitutions)) {
@@ -724,10 +727,10 @@ bool AnalysisContext::DeduceTypeArguments(const FuncDecl &declaration, const std
 
     const TypeRef templateFuncType = MakeFuncTypeWithSubstitution(declaration.params, declaration.returnType, {},
                                                                   TypeParameterNames(declaration.typeParams));
-    if (templateFuncType.kind != TypeRef::Kind::Func || templateFuncType.inner.empty()) {
+    if (templateFuncType->kind != TypeRef::Kind::Func || templateFuncType->inner.empty()) {
         return false;
     }
-    const std::vector<TypeRef> fixedTypes(templateFuncType.inner.begin(), templateFuncType.inner.end() - 1);
+    const std::vector<TypeRef> fixedTypes(templateFuncType->inner.begin(), templateFuncType->inner.end() - 1);
     const std::size_t count = std::min(argumentTypes.size(), fixedTypes.size());
     for (std::size_t i = 0; i < count; ++i) {
         DeduceTypeArgument(fixedTypes[i], argumentTypes[i], typeParamNames, substitutions);

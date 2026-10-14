@@ -145,7 +145,7 @@ void AArch64ModuleEmitter::GenModule() {
         if (!c.hasSequenceData) {
             EmitConstValue(c);
         }
-        else if (c.type.kind == TypeRef::Kind::Array) {
+        else if (c.type->kind == TypeRef::Kind::Array) {
             EmitConstArray(c);
         }
         else {

@@ -66,8 +66,8 @@ void AnalysisContext::ValidatePublicType(const TypeExpr &type, const std::string
 
 void AnalysisContext::ValidatePublicResolvedType(const TypeRef &type, const Decl &declaration,
                                                  const std::string_view subject) {
-    if (type.kind == TypeRef::Kind::Named) {
-        const std::string name = BaseTypeName(type.name);
+    if (type->kind == TypeRef::Kind::Named) {
+        const std::string name = BaseTypeName(type->name);
         if (const Symbol *symbol = currentScope->Lookup(name);
             symbol && symbol->ownerPackage != "<builtin>" && !symbol->isEffectivelyPublic &&
             reportedPrivateApiDeclarations.insert(&declaration).second) {
@@ -76,11 +76,11 @@ void AnalysisContext::ValidatePublicResolvedType(const TypeRef &type, const Decl
                       {DeclarationNote(*symbol)},
                       std::format("make '{}' public or remove it from the public signature", name));
         }
-        for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
+        for (const TypeRef &argument : ParseTypeArgsFromTypeName(type->name)) {
             ValidatePublicResolvedType(argument, declaration, subject);
         }
     }
-    for (const TypeRef &inner : type.inner) {
+    for (const TypeRef &inner : type->inner) {
         ValidatePublicResolvedType(inner, declaration, subject);
     }
 }

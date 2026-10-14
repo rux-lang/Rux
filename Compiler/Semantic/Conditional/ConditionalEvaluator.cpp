@@ -427,7 +427,7 @@ void ConditionalEvaluator::Impl::RegisterConstantImpl(const ConstDecl &decl) {
     // `byte` is `uint8` by another name, and has its width.
     const std::string_view name = CanonicalPrimitiveName(named->name);
     if (const auto type = PrimitiveTypeFromName(name); type && type->IsFloat()) {
-        constFloatWidths.emplace(decl.name, FindPrimitive(type->kind)->bits);
+        constFloatWidths.emplace(decl.name, FindPrimitive((*type)->kind)->bits);
     }
     if (name == "int8")
         constSignedIntegerWidths.emplace(decl.name, 8);
@@ -825,8 +825,8 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             return std::nullopt;
         }
         const auto value = query->query == TypeQueryExpr::Query::Size
-                             ? PrimitiveSize(type->kind, static_cast<std::uint32_t>(context.target.pointer_size))
-                             : PrimitiveAlign(type->kind, static_cast<std::uint32_t>(context.target.pointer_size));
+                             ? PrimitiveSize((*type)->kind, static_cast<std::uint32_t>(context.target.pointer_size))
+                             : PrimitiveAlign((*type)->kind, static_cast<std::uint32_t>(context.target.pointer_size));
         return value ? std::optional<Value>{Value{static_cast<std::uint64_t>(*value)}} : std::nullopt;
     }
     if (const auto *cast = AstCast<const CastExpr>(&expr)) {
@@ -836,7 +836,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         if (!type || !value || !(type->IsInteger() || type->IsChar())) {
             return std::nullopt;
         }
-        const auto width = PrimitiveBits(type->kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
+        const auto width = PrimitiveBits((*type)->kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
         if (!width) {
             return std::nullopt;
         }
@@ -858,7 +858,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         }
         if (type->IsChar()) {
             const auto scalar = bits.ToUnsigned();
-            if ((sourceSigned && bits.IsNegative()) || !scalar || !IsValidCharacterValue(type->kind, *scalar)) {
+            if ((sourceSigned && bits.IsNegative()) || !scalar || !IsValidCharacterValue((*type)->kind, *scalar)) {
                 return std::nullopt;
             }
         }

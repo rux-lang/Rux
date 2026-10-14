@@ -19,7 +19,7 @@ namespace {
 HirExprPtr CompilerLiteral(const SourceLocation location, TypeRef type, std::string value) {
     auto literal = std::make_unique<HirLiteralExpr>();
     literal->location = location;
-    literal->type = std::move(type);
+    literal->type = type;
     literal->value = std::move(value);
     return literal;
 }
@@ -91,7 +91,7 @@ bool CompilerHasFeature(const std::string_view feature) {
 
 HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression, const ValueConsumptionKind kind) {
     HirExprPtr lowered = LowerExpr(expression);
-    if (lowered->type.kind != TypeRef::Kind::Reference || lowered->type.inner.empty()) {
+    if (lowered->type->kind != TypeRef::Kind::Reference || lowered->type->inner.empty()) {
         // The arms own a subject analysis handed them. A transfer already says so; a temporary, or the copy a by-value
         // match makes of a named copyable value, is marked here, which is what gives the bindings their cleanups and
         // the arms the duty to destroy what they leave.
@@ -116,7 +116,7 @@ HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression, const Valu
     auto dereference = std::make_unique<HirUnaryExpr>();
     dereference->location = expression.location;
     dereference->op = TokenKind::Star;
-    dereference->type = lowered->type.inner.front();
+    dereference->type = lowered->type->inner.front();
     dereference->operand = std::move(lowered);
     return dereference;
 }
@@ -127,7 +127,7 @@ std::uint64_t AstToHirContext::ResolvedTypeQuery(const TypeQueryExpr &expression
     }
 
     const TypeRef type = ResolveTypeWithSubstitution(*expression.type, currentSubstitutions);
-    if (type.kind == TypeRef::Kind::TypeParam) {
+    if (type->kind == TypeRef::Kind::TypeParam) {
         assert(currentSubstitutions.empty());
         return 0;
     }
@@ -142,7 +142,7 @@ std::uint64_t AstToHirContext::ResolvedTypeQuery(const TypeQueryExpr &expression
 }
 
 std::string AstToHirContext::GenericStructInitName(const StructInitExpr &expression) {
-    std::string name = BaseTypeNameImpl(ResolvedExpressionType(expression).name);
+    std::string name = BaseTypeNameImpl(ResolvedExpressionType(expression)->name);
     if (!expression.typeArgs.empty()) {
         name += "<";
         for (std::size_t i = 0; i < expression.typeArgs.size(); ++i) {
@@ -188,7 +188,7 @@ HirExprPtr AstToHirContext::LowerCompilerParamField(const std::string &root, con
         if (const auto declaration = enumDecls.find(typeName); declaration != enumDecls.end()) {
             type = EnumType(*declaration->second);
         }
-        return CompilerLiteral(location, std::move(type), std::to_string(value));
+        return CompilerLiteral(location, type, std::to_string(value));
     };
 
     if (root == "Target") {
@@ -275,7 +275,7 @@ HirExprPtr AstToHirContext::LowerCompilerParamObject(const std::string &root, co
     auto object = std::make_unique<HirStructInitExpr>();
     object->location = location;
     object->type = type;
-    object->typeName = type.name.empty() ? root : type.name;
+    object->typeName = type->name.empty() ? root : type->name;
     const auto declaration = structDecls.find(object->typeName);
     if (declaration == structDecls.end()) {
         return nullptr;
@@ -459,7 +459,7 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         value = context.config.contains(intrinsicArgument()) ? "true" : "false";
         break;
     }
-    return CompilerLiteral(expression.location, std::move(type), std::move(value));
+    return CompilerLiteral(expression.location, type, std::move(value));
 }
 
 TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, const std::string &fieldName) {
@@ -498,19 +498,20 @@ TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, c
 
 std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRef &expressionType,
                                                                     const TypeRef &targetType) const {
-    TypeRef target = targetType.kind == TypeRef::Kind::Reference && !targetType.inner.empty() ? targetType.inner.front()
-                                                                                              : targetType;
-    TypeRef expression = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
-                           ? expressionType.inner.front()
+    TypeRef target = targetType->kind == TypeRef::Kind::Reference && !targetType->inner.empty()
+                       ? targetType->inner.front()
+                       : targetType;
+    TypeRef expression = expressionType->kind == TypeRef::Kind::Reference && !expressionType->inner.empty()
+                           ? expressionType->inner.front()
                            : expressionType;
     target.isMut = false;
     expression.isMut = false;
-    if (target.kind != TypeRef::Kind::Named) {
+    if (target->kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }
     const auto hasVtable = [&](const TypeRef &type) {
         const auto implementation = typeInterfaceVtables.find(type.ToString());
-        return implementation != typeInterfaceVtables.end() && implementation->second.contains(target.name);
+        return implementation != typeInterfaceVtables.end() && implementation->second.contains(target->name);
     };
     if (hasVtable(expression)) {
         return expression;
@@ -518,21 +519,21 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
     // A writable slice is viewed through the read-only slice's implementation, as analysis accepted it.
     if (expression.IsWritableSlice()) {
         TypeRef readOnly = expression;
-        readOnly.inner.front().isMut = false;
+        readOnly = readOnly.WithWritableInner(false);
         if (hasVtable(readOnly)) {
             return readOnly;
         }
     }
-    if (expression.kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64())) {
+    if (expression->kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64())) {
         return TypeRef::MakeInt64();
     }
-    if (expression.kind == TypeRef::Kind::Int64 && hasVtable(TypeRef::MakeInt())) {
+    if (expression->kind == TypeRef::Kind::Int64 && hasVtable(TypeRef::MakeInt())) {
         return TypeRef::MakeInt();
     }
-    if (expression.kind == TypeRef::Kind::UInt && hasVtable(TypeRef::MakeUInt64())) {
+    if (expression->kind == TypeRef::Kind::UInt && hasVtable(TypeRef::MakeUInt64())) {
         return TypeRef::MakeUInt64();
     }
-    if (expression.kind == TypeRef::Kind::UInt64 && hasVtable(TypeRef::MakeUInt())) {
+    if (expression->kind == TypeRef::Kind::UInt64 && hasVtable(TypeRef::MakeUInt())) {
         return TypeRef::MakeUInt();
     }
     return std::nullopt;
@@ -576,21 +577,21 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         return CompilerLiteral(expression.location, targetType, literal->token.text);
     }
 
-    if (IsNullLiteral(expression) && targetType.kind == TypeRef::Kind::Pointer) {
+    if (IsNullLiteral(expression) && targetType->kind == TypeRef::Kind::Pointer) {
         return CompilerLiteral(expression.location, targetType, "0");
     }
 
     // A range literal accepted against a range type builds each bound at that type's element type.
     if (const auto *range = AstCast<const RangeExpr>(&expression);
-        range && targetType.IsRange() && !targetType.inner.empty()) {
+        range && targetType.IsRange() && !targetType->inner.empty()) {
         auto lowered = std::make_unique<HirRangeExpr>();
         lowered->location = range->location;
         lowered->inclusive = range->inclusive;
         if (range->lo) {
-            lowered->lo = LowerExprAs(*range->lo, targetType.inner.front());
+            lowered->lo = LowerExprAs(*range->lo, targetType->inner.front());
         }
         if (range->hi) {
-            lowered->hi = LowerExprAs(*range->hi, targetType.inner.front());
+            lowered->hi = LowerExprAs(*range->hi, targetType->inner.front());
         }
         lowered->type = targetType;
         return lowered;
@@ -604,16 +605,16 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     }
 
     if (const auto *array = AstCast<const ArrayExpr>(&expression);
-        array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
+        array && targetType->kind == TypeRef::Kind::Array && targetType->arrayLength && !targetType->inner.empty()) {
         auto lowered = std::make_unique<HirArrayExpr>();
         lowered->location = array->location;
-        lowered->elementType = targetType.inner[0];
+        lowered->elementType = targetType->inner[0];
         std::vector<HirPartialDropAction> completed;
         for (std::size_t index = 0; index < array->elements.size(); ++index) {
             const auto &element = array->elements[index];
             AppendFailureCleanup(lowered->failureCleanups, completed);
-            lowered->elements.push_back(LowerExprAs(*element, targetType.inner[0]));
-            if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::Element, targetType.inner[0], index, {},
+            lowered->elements.push_back(LowerExprAs(*element, targetType->inner[0]));
+            if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::Element, targetType->inner[0], index, {},
                                               element->location)) {
                 completed.push_back(std::move(*cleanup));
             }
@@ -623,8 +624,8 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     }
 
     if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression);
-        repeat && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
-        return LowerArrayRepeatAs(*repeat, targetType.inner[0], targetType);
+        repeat && targetType->kind == TypeRef::Kind::Array && targetType->arrayLength && !targetType->inner.empty()) {
+        return LowerArrayRepeatAs(*repeat, targetType->inner[0], targetType);
     }
 
     if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
@@ -657,7 +658,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         if (const auto sliceElement = SliceElementType(targetType)) {
             const TypeRef resolved = ResolvedExpressionType(*repeat);
-            const std::uint64_t count = resolved.arrayLength.value_or(0);
+            const std::uint64_t count = resolved->arrayLength.value_or(0);
             auto lowered = LowerArrayRepeatAs(*repeat, *sliceElement, TypeRef::MakeArray(*sliceElement, count));
 
             auto view = std::make_unique<HirArrayToSliceExpr>();
@@ -671,15 +672,15 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     }
 
     if (const auto *tuple = AstCast<const TupleExpr>(&expression);
-        tuple && targetType.kind == TypeRef::Kind::Tuple && tuple->elements.size() == targetType.inner.size()) {
+        tuple && targetType->kind == TypeRef::Kind::Tuple && tuple->elements.size() == targetType->inner.size()) {
         auto lowered = std::make_unique<HirTupleExpr>();
         lowered->location = tuple->location;
         std::vector<HirPartialDropAction> completed;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
             AppendFailureCleanup(lowered->failureCleanups, completed);
             lowered->elements.push_back(
-                ConvertScalar(LowerExprAs(*tuple->elements[i], targetType.inner[i]), targetType.inner[i]));
-            if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::TupleElement, targetType.inner[i], i, {},
+                ConvertScalar(LowerExprAs(*tuple->elements[i], targetType->inner[i]), targetType->inner[i]));
+            if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::TupleElement, targetType->inner[i], i, {},
                                               tuple->elements[i]->location)) {
                 completed.push_back(std::move(*cleanup));
             }
@@ -689,21 +690,22 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     }
 
     HirExprPtr lowered = LowerExpr(expression);
-    if (targetType.kind == TypeRef::Kind::Reference) {
-        const TypeRef &referent = targetType.inner.front();
-        TypeRef expressionValueType = lowered->type.kind == TypeRef::Kind::Reference && !lowered->type.inner.empty()
-                                        ? lowered->type.inner.front()
+    if (targetType->kind == TypeRef::Kind::Reference) {
+        const TypeRef &referent = targetType->inner.front();
+        TypeRef expressionValueType = lowered->type->kind == TypeRef::Kind::Reference && !lowered->type->inner.empty()
+                                        ? lowered->type->inner.front()
                                         : lowered->type;
         TypeRef referentValueType = referent;
         expressionValueType.isMut = false;
         referentValueType.isMut = false;
-        if (referent.kind == TypeRef::Kind::Named) {
-            if (interfaceDecls.contains(referent.name) && expressionValueType != referentValueType) {
+        if (referent->kind == TypeRef::Kind::Named) {
+            if (interfaceDecls.contains(referent->name) && expressionValueType != referentValueType) {
                 std::optional<TypeRef> implementationType = InterfaceImplementationType(lowered->type, targetType);
                 if (!implementationType) {
-                    implementationType = lowered->type.kind == TypeRef::Kind::Reference && !lowered->type.inner.empty()
-                                           ? lowered->type.inner.front()
-                                           : lowered->type;
+                    implementationType =
+                        lowered->type->kind == TypeRef::Kind::Reference && !lowered->type->inner.empty()
+                            ? lowered->type->inner.front()
+                            : lowered->type;
                     implementationType->isMut = false;
                 }
                 auto coercion = std::make_unique<HirCoerceToInterfaceExpr>();
@@ -712,7 +714,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
                 coercion->borrowed = true;
                 const auto type = typeInterfaceVtables.find(implementationType->ToString());
                 if (type != typeInterfaceVtables.end()) {
-                    const auto label = type->second.find(referent.name);
+                    const auto label = type->second.find(referent->name);
                     if (label != type->second.end()) {
                         coercion->vtableLabel = label->second;
                     }
@@ -723,7 +725,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         }
         // A concrete reference still needs interface coercion above. An already compatible reference keeps its
         // existing address and only weakens the accepted static borrow type.
-        if (lowered->type.kind == TypeRef::Kind::Reference) {
+        if (lowered->type->kind == TypeRef::Kind::Reference) {
             lowered->type = targetType;
             return lowered;
         }
@@ -737,8 +739,8 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     if (UnsuffixedIntegerLiteralFits(expression, targetType)) {
         lowered->type = targetType;
     }
-    else if (targetType.kind == TypeRef::Kind::Named) {
-        if (interfaceDecls.contains(targetType.name) && lowered->type != targetType) {
+    else if (targetType->kind == TypeRef::Kind::Named) {
+        if (interfaceDecls.contains(targetType->name) && lowered->type != targetType) {
             std::optional<TypeRef> implementationType = InterfaceImplementationType(lowered->type, targetType);
             if (!implementationType) {
                 implementationType = lowered->type;
@@ -750,10 +752,10 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
             auto coercion = std::make_unique<HirCoerceToInterfaceExpr>();
             coercion->location = expression.location;
             coercion->type = targetType;
-            const auto interface = interfaceDecls.find(targetType.name);
+            const auto interface = interfaceDecls.find(targetType->name);
             if (interface != interfaceDecls.end() && !interface->second->methods.empty()) {
                 if (const auto type = typeInterfaceVtables.find(typeName); type != typeInterfaceVtables.end()) {
-                    if (const auto label = type->second.find(targetType.name); label != type->second.end()) {
+                    if (const auto label = type->second.find(targetType->name); label != type->second.end()) {
                         coercion->vtableLabel = label->second;
                     }
                 }
@@ -762,13 +764,13 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
             return coercion;
         }
     }
-    if (lowered->type.kind == TypeRef::Kind::Array && lowered->type.arrayLength && !lowered->type.inner.empty() &&
+    if (lowered->type->kind == TypeRef::Kind::Array && lowered->type->arrayLength && !lowered->type->inner.empty() &&
         SliceElementType(targetType)) {
         auto coercion = std::make_unique<HirArrayToSliceExpr>();
         coercion->location = expression.location;
         coercion->type = targetType;
-        coercion->elementType = lowered->type.inner[0];
-        coercion->length = *lowered->type.arrayLength;
+        coercion->elementType = lowered->type->inner[0];
+        coercion->length = *lowered->type->arrayLength;
         coercion->value = std::move(lowered);
         return coercion;
     }
@@ -804,7 +806,7 @@ std::unique_ptr<HirArrayExpr> AstToHirContext::LowerArrayRepeatAs(const ArrayRep
     lowered->location = expression.location;
     lowered->type = arrayType;
     lowered->elementType = elementType;
-    lowered->repeatCount = arrayType.arrayLength.value_or(0);
+    lowered->repeatCount = arrayType->arrayLength.value_or(0);
     lowered->repeatCopyPlan = BuildCopyPlan(elementType);
     lowered->repeatedElement = LowerExprAs(*expression.value, elementType);
     if (const DropGluePlan *glue = model.TryGetDropGlue(elementType)) {
@@ -894,9 +896,9 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         }
         if (path->segments.size() == 2) {
             TypeRef pathType = ResolvedExpressionType(expression);
-            if (pathType.kind == TypeRef::Kind::Func && !pathType.inner.empty())
-                pathType = pathType.inner.back();
-            const std::string enumName = BaseTypeNameImpl(pathType.name);
+            if (pathType->kind == TypeRef::Kind::Func && !pathType->inner.empty())
+                pathType = pathType->inner.back();
+            const std::string enumName = BaseTypeNameImpl(pathType->name);
             if (HirSymbol *first = currentScope->Lookup(path->segments[0]);
                 first && (first->kind == HirSymbol::Kind::Type || first->kind == HirSymbol::Kind::Interface)) {
                 if (first->kind == HirSymbol::Kind::Type) {
@@ -917,7 +919,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
                         lowered->location = path->location;
                         lowered->form = CaseTypeForm::Variant;
                         // A generic unit case has the instantiation analysis gave it from its destination.
-                        lowered->type = pathType.kind == TypeRef::Kind::Named ? pathType : EnumType(declaration);
+                        lowered->type = pathType->kind == TypeRef::Kind::Named ? pathType : EnumType(declaration);
                         lowered->discriminant = *discriminant;
                         return lowered;
                     }
@@ -967,8 +969,8 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
     }
     if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         const TypeRef type = ResolvedExpressionType(*repeat);
-        const TypeRef elementType = type.kind == TypeRef::Kind::Array && !type.inner.empty()
-                                      ? type.inner[0]
+        const TypeRef elementType = type->kind == TypeRef::Kind::Array && !type->inner.empty()
+                                      ? type->inner[0]
                                       : ResolvedExpressionType(*repeat->value);
         return LowerArrayRepeatAs(*repeat, elementType, type);
     }
@@ -976,8 +978,8 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         auto lowered = std::make_unique<HirArrayExpr>();
         lowered->location = array->location;
         lowered->type = ResolvedExpressionType(*array);
-        if (lowered->type.kind == TypeRef::Kind::Array && !lowered->type.inner.empty()) {
-            lowered->elementType = lowered->type.inner[0];
+        if (lowered->type->kind == TypeRef::Kind::Array && !lowered->type->inner.empty()) {
+            lowered->elementType = lowered->type->inner[0];
         }
         std::vector<HirPartialDropAction> completed;
         for (std::size_t index = 0; index < array->elements.size(); ++index) {
@@ -1003,7 +1005,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             AppendFailureCleanup(lowered->failureCleanups, completed);
             lowered->elements.push_back(LowerExpr(*element));
             const TypeRef elementType =
-                index < lowered->type.inner.size() ? lowered->type.inner[index] : lowered->elements.back()->type;
+                index < lowered->type->inner.size() ? lowered->type->inner[index] : lowered->elements.back()->type;
             if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::TupleElement, elementType, index, {},
                                               element->location)) {
                 completed.push_back(std::move(*cleanup));

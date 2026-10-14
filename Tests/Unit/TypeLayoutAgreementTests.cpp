@@ -148,7 +148,7 @@ TEST_CASE("a variant's storage marker carries its alignment to code generation")
             if (function.name != "Make") {
                 continue;
             }
-            REQUIRE_EQ(function.returnType.inner.size(), 1);
+            REQUIRE_EQ(function.returnType->inner.size(), 1);
             CHECK_EQ(Layout::SizeOf(function.returnType), 32);
             CHECK_EQ(Layout::AlignOf(function.returnType), 16);
             CHECK_EQ(Layout::RuntimeAlignmentOf(TypeRef::MakeArray(function.returnType, 2), analyzed.backend, {}), 16);

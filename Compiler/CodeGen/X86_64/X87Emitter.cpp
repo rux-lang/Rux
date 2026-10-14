@@ -29,7 +29,7 @@ constexpr std::uint16_t ExtendedPrecisionControlWord = 0x037F;
 constexpr std::int32_t Float80PaddingOffset = 10;
 
 [[nodiscard]] bool IsFloat80(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Float80;
+    return type->kind == TypeRef::Kind::Float80;
 }
 
 /// A signed integer `fild` converts exactly once it is widened to 64 bits.
@@ -71,7 +71,7 @@ public:
         if (IsFloat(type)) {
             // A machine float only reaches a general-purpose register by its bits; `fld` needs it in memory.
             const std::int32_t address = physical ? Spill(reg, type) : Slot(reg);
-            type.kind == TypeRef::Kind::Float32 ? encoder.FldDword(address) : encoder.FldQword(address);
+            type->kind == TypeRef::Kind::Float32 ? encoder.FldDword(address) : encoder.FldQword(address);
             return;
         }
         encoder.FildQword(!physical && SizeOf(type) == 8 ? Slot(reg) : Spill(reg, type));
@@ -87,7 +87,7 @@ public:
             encoder.MovDwordStoreImm32(slot + Float80PaddingOffset + 2, 0);
             return;
         }
-        const bool float32 = type.kind == TypeRef::Kind::Float32;
+        const bool float32 = type->kind == TypeRef::Kind::Float32;
         if (!framePlan.PhysicalRegisters().contains(reg) && !framePlan.FloatRegisters().contains(reg)) {
             float32 ? encoder.FstpDword(Slot(reg)) : encoder.FstpQword(Slot(reg));
             return;
@@ -107,7 +107,7 @@ private:
     [[nodiscard]] std::int32_t Spill(const LirReg reg, const TypeRef &type) const {
         hooks.LoadA(reg, type);
         if (IsFloat(type)) {
-            type.kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Store(spill) : encoder.MovsdXmm0Store(spill);
+            type->kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Store(spill) : encoder.MovsdXmm0Store(spill);
         }
         else {
             encoder.MovRaxStore(spill);

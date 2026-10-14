@@ -185,8 +185,8 @@ TEST_CASE("semantic program index preserves enum and variant forms by source") {
     REQUIRE_EQ(taggedStatus->typeParams.size(), 1);
     CHECK_EQ(taggedStatus->typeParams.front().name, "Value");
     CHECK_FALSE(index.Enums().contains("Status"));
-    CHECK_EQ(scalarRoot.LookupLocal("Status")->type.name, "scalar-package::Status");
-    CHECK_EQ(taggedRoot.LookupLocal("Status")->type.name, "tagged-package::Status");
+    CHECK_EQ(scalarRoot.LookupLocal("Status")->type->name, "scalar-package::Status");
+    CHECK_EQ(taggedRoot.LookupLocal("Status")->type->name, "tagged-package::Status");
 }
 
 TEST_CASE("same-scope enum and variant names collide as one nominal type namespace") {

@@ -29,7 +29,7 @@ constexpr std::uint64_t kNoBranchSite = ~0ULL;
 }
 
 [[nodiscard]] A64Reg FloatRegister(const TypeRef &type, const unsigned index) {
-    return type.kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
+    return type->kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
 }
 } // namespace
 
@@ -347,7 +347,7 @@ void AArch64CallEmitter::EmitParamSpills(const LirFunc &function) {
 void AArch64CallEmitter::EmitReturnValue(const LirReg reg, const TypeRef &type) {
     const TypeRef regType = TypeOfReg(reg);
     const bool throughPointer =
-        regType.kind == TypeRef::Kind::Pointer && !regType.inner.empty() && regType.inner[0] == type;
+        regType->kind == TypeRef::Kind::Pointer && !regType->inner.empty() && regType->inner[0] == type;
     if (framePlan.IndirectResultOffset() != 0) {
         const A64Reg destination = A64::Xn(10);
         hooks.LoadScalar(destination, A64::Fp, framePlan.IndirectResultOffset(), 8, false);

@@ -9,11 +9,11 @@ namespace {
 /// subset sum. Nothing when any part of it is not a member.
 std::optional<std::vector<std::size_t>> SelectedMembers(const TypeRef &sum, const TypeRef &annotation) {
     const auto indexOf = [&](const TypeRef &member) -> std::optional<std::size_t> {
-        const auto found = std::ranges::find(sum.inner, member);
-        if (found == sum.inner.end()) {
+        const auto found = std::ranges::find(sum->inner, member);
+        if (found == sum->inner.end()) {
             return std::nullopt;
         }
-        return static_cast<std::size_t>(found - sum.inner.begin());
+        return static_cast<std::size_t>(found - sum->inner.begin());
     };
     if (const std::optional<std::size_t> member = indexOf(annotation)) {
         return std::vector<std::size_t>{*member};
@@ -22,7 +22,7 @@ std::optional<std::vector<std::size_t>> SelectedMembers(const TypeRef &sum, cons
         return std::nullopt;
     }
     std::vector<std::size_t> members;
-    for (const TypeRef &member : annotation.inner) {
+    for (const TypeRef &member : annotation->inner) {
         const std::optional<std::size_t> index = indexOf(member);
         if (!index) {
             return std::nullopt;
@@ -44,8 +44,8 @@ NativeSelection ClassifyNativeSelection(const TypeRef &subject, const TypeRef &a
         }
         return {};
     }
-    if (subject.IsOptional() && !subject.inner.empty()) {
-        const TypeRef &payload = subject.inner[0];
+    if (subject.IsOptional() && !subject->inner.empty()) {
+        const TypeRef &payload = subject->inner[0];
         if (payload == annotation) {
             return {NativeSelection::Kind::Presence, {}};
         }

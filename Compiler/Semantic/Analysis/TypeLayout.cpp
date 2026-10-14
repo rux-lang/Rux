@@ -31,12 +31,13 @@ std::optional<std::uint64_t> AnalysisContext::CheckedAlignUp(const std::uint64_t
 std::optional<ResolvedTypeLayout>
 AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
                                  const std::unordered_map<std::string, TypeRef> &substitutions) {
-    if ((inputType.kind == TypeRef::Kind::Named || inputType.kind == TypeRef::Kind::TypeParam) &&
-        substitutions.contains(inputType.name) && substitutions.at(inputType.name).ToString() != inputType.ToString()) {
-        return LayoutOfTypeRef(substitutions.at(inputType.name), substitutions);
+    if ((inputType->kind == TypeRef::Kind::Named || inputType->kind == TypeRef::Kind::TypeParam) &&
+        substitutions.contains(inputType->name) &&
+        substitutions.at(inputType->name).ToString() != inputType.ToString()) {
+        return LayoutOfTypeRef(substitutions.at(inputType->name), substitutions);
     }
 
-    const std::string key = inputType.ToString();
+    const std::string &key = inputType.ToString();
     if (const auto known = typeLayouts.find(key); known != typeLayouts.end()) {
         return known->second;
     }
@@ -69,10 +70,10 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
         return finish(ResolvedTypeLayout{16, 8});
     }
 
-    if (inputType.kind == TypeRef::Kind::Named) {
-        const std::string baseName = BaseTypeName(inputType.name);
+    if (inputType->kind == TypeRef::Kind::Named) {
+        const std::string baseName = BaseTypeName(inputType->name);
         std::unordered_map<std::string, TypeRef> localSubs = substitutions;
-        const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(inputType.name);
+        const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(inputType->name);
         if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
             const std::size_t count = std::min(structure->second->typeParams.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
@@ -102,26 +103,26 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
                 return finish(LayoutOfTypeRef(sym->type, localSubs));
             }
         }
-        if (!inputType.inner.empty()) {
-            return finish(LayoutOfTypeRef(inputType.inner[0], localSubs));
+        if (!inputType->inner.empty()) {
+            return finish(LayoutOfTypeRef(inputType->inner[0], localSubs));
         }
         return finish(std::nullopt);
     }
 
-    if (inputType.kind == TypeRef::Kind::Reference && !inputType.inner.empty()) {
-        const TypeRef referent = inputType.inner.front();
-        if (referent.kind == TypeRef::Kind::Named) {
-            const auto interface = interfaceDecls.find(BaseTypeName(referent.name));
+    if (inputType->kind == TypeRef::Kind::Reference && !inputType->inner.empty()) {
+        const TypeRef referent = inputType->inner.front();
+        if (referent->kind == TypeRef::Kind::Named) {
+            const auto interface = interfaceDecls.find(BaseTypeName(referent->name));
             if (interface != interfaceDecls.end()) {
                 return finish(ResolvedTypeLayout{16, 8});
             }
         }
     }
 
-    if (inputType.kind == TypeRef::Kind::Tuple) {
+    if (inputType->kind == TypeRef::Kind::Tuple) {
         std::uint64_t offset = 0;
         std::uint64_t alignment = 1;
-        for (const TypeRef &element : inputType.inner) {
+        for (const TypeRef &element : inputType->inner) {
             const auto elementLayout = LayoutOfTypeRef(element, substitutions);
             if (!elementLayout) {
                 return finish(std::nullopt);
@@ -143,31 +144,31 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
         return finish(size ? std::optional(ResolvedTypeLayout{*size, alignment}) : std::nullopt);
     }
 
-    if (inputType.kind == TypeRef::Kind::Array) {
-        if (inputType.inner.empty() || !inputType.arrayLength) {
+    if (inputType->kind == TypeRef::Kind::Array) {
+        if (inputType->inner.empty() || !inputType->arrayLength) {
             return finish(std::nullopt);
         }
-        const auto elementLayout = LayoutOfTypeRef(inputType.inner[0], substitutions);
+        const auto elementLayout = LayoutOfTypeRef(inputType->inner[0], substitutions);
         if (!elementLayout) {
             return finish(std::nullopt);
         }
-        const auto size = checkedMultiply(elementLayout->size, *inputType.arrayLength);
+        const auto size = checkedMultiply(elementLayout->size, *inputType->arrayLength);
         return finish(size ? std::optional(ResolvedTypeLayout{*size, elementLayout->alignment}) : std::nullopt);
     }
 
     if (inputType.IsRange()) {
-        if (inputType.kind == TypeRef::Kind::RangeFull) {
+        if (inputType->kind == TypeRef::Kind::RangeFull) {
             return finish(ResolvedTypeLayout{0, 1});
         }
-        if (inputType.inner.empty()) {
+        if (inputType->inner.empty()) {
             return finish(std::nullopt);
         }
-        const auto elementLayout = LayoutOfTypeRef(inputType.inner[0], substitutions);
+        const auto elementLayout = LayoutOfTypeRef(inputType->inner[0], substitutions);
         if (!elementLayout || elementLayout->size == 0) {
             return finish(std::nullopt);
         }
         const std::uint64_t count =
-            inputType.kind == TypeRef::Kind::Range || inputType.kind == TypeRef::Kind::RangeInclusive ? 2 : 1;
+            inputType->kind == TypeRef::Kind::Range || inputType->kind == TypeRef::Kind::RangeInclusive ? 2 : 1;
         const auto size = checkedMultiply(elementLayout->size, count);
         return finish(size ? std::optional(ResolvedTypeLayout{*size, elementLayout->alignment}) : std::nullopt);
     }
@@ -277,14 +278,14 @@ TypeRef AnalysisContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
         // plain discriminant enum just as much when substitution has dropped what `inner` said.
         const auto layout = LayoutOfTypeRef(type);
         if (layout) {
-            typeLayouts.insert_or_assign(type.name, *layout);
+            typeLayouts.insert_or_assign(type->name, *layout);
         }
         if (decl.form == EnumDecl::Form::Variant && layout) {
-            type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
-            return type;
+            const TypeRef marker = TypeRef::MakeStorageMarker(layout->size, layout->alignment);
+            return type.WithInner({&marker, 1});
         }
-        type.inner.push_back(EnumBaseType(decl));
-        return type;
+        const TypeRef base = EnumBaseType(decl);
+        return type.WithInner({&base, 1});
     }
     if (typeArgs.size() == decl.typeParams.size()) {
         // An instantiation built out of the enclosing generic's parameters cannot be laid out here and is not
@@ -304,8 +305,9 @@ TypeRef AnalysisContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
             // this type a second time and reads its size back from here, having no layout machinery of its own.
             // An instantiation composed only inside generic bodies -- where nothing concrete ever spells it --
             // otherwise reached lowering with no marker at all.
-            typeLayouts.insert_or_assign(type.name, *layout);
-            type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
+            typeLayouts.insert_or_assign(type->name, *layout);
+            const TypeRef marker = TypeRef::MakeStorageMarker(layout->size, layout->alignment);
+            return type.WithInner({&marker, 1});
         }
     }
     return type;
@@ -318,8 +320,8 @@ AnalysisContext::LayoutOfStruct(const StructDecl &decl, const std::unordered_map
     for (const auto &field : decl.fields) {
         const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
         std::optional<ResolvedTypeLayout> fieldLayout;
-        if (fieldType.kind == TypeRef::Kind::Array && !fieldType.arrayLength && !fieldType.inner.empty()) {
-            const auto elementLayout = LayoutOfTypeRef(fieldType.inner[0], substitutions);
+        if (fieldType->kind == TypeRef::Kind::Array && !fieldType->arrayLength && !fieldType->inner.empty()) {
+            const auto elementLayout = LayoutOfTypeRef(fieldType->inner[0], substitutions);
             if (elementLayout) {
                 fieldLayout = ResolvedTypeLayout{0, elementLayout->alignment};
             }
@@ -472,7 +474,7 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
             if (!p.isVariadic) {
                 ValidateArrayType(*p.type);
                 const TypeRef parameterType = ResolveType(*p.type);
-                if (parameterType.kind != TypeRef::Kind::Reference) {
+                if (parameterType->kind != TypeRef::Kind::Reference) {
                     ValidateStoredType(parameterType, p.location, "extern parameter");
                 }
                 ValidateCAbiType(parameterType, p.location, std::format("extern parameter '{}'", p.name));

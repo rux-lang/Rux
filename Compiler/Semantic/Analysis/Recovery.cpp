@@ -128,7 +128,7 @@ TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
     propagation.payloadType = success;
     propagation.failureType = error;
     propagation.returnType = currentReturnType;
-    mappedPropagations.insert_or_assign(&expression, std::move(propagation));
+    mappedPropagations.insert_or_assign(&expression, propagation);
     return success;
 }
 
@@ -138,7 +138,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
         CheckRecoveryArmsWithoutSubject(expression.arms);
         return TypeRef::MakeUnknown();
     }
-    if (subjectType.kind == TypeRef::Kind::Reference) {
+    if (subjectType->kind == TypeRef::Kind::Reference) {
         EmitError(expression.location,
                   std::format("'catch' cannot consume the borrowed value '{}'", subjectType.ToString()),
                   {"'catch' moves the success onward or the error into its arms, and a reference owns neither"},
@@ -221,7 +221,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
     // Recovery handles every error: coverage is checked over the error payload alone.
     ValidateMatchPatterns(patterns, error);
     if (!MatchPatternsAreExhaustive(patterns, error) && !IsNativeMatchSubject(error) &&
-        !(error.kind == TypeRef::Kind::Named && EnumNamed(BaseTypeName(error.name)))) {
+        !(error->kind == TypeRef::Kind::Named && EnumNamed(BaseTypeName(error->name)))) {
         EmitError(expression.location,
                   std::format("'catch' arms do not cover every error of type '{}'", error.ToString()), {},
                   "add an 'else' arm, or bind the whole error, as in 'e => ...'");

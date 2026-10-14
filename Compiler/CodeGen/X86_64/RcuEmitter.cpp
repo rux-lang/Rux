@@ -293,8 +293,8 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
     for (const auto &parameter : func.params) {
         if (const auto found = framePlan.FloatRegisters().find(parameter.reg);
             found != framePlan.FloatRegisters().end()) {
-            parameter.type.kind == TypeRef::Kind::Float32 ? enc.MovssXmm0Load(Disp(parameter.reg))
-                                                          : enc.MovsdXmm0Load(Disp(parameter.reg));
+            parameter.type->kind == TypeRef::Kind::Float32 ? enc.MovssXmm0Load(Disp(parameter.reg))
+                                                           : enc.MovsdXmm0Load(Disp(parameter.reg));
             enc.MovXmm(found->second, 0);
         }
     }

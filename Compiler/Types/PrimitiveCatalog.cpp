@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <utility>
 
 namespace Rux {
 namespace {
@@ -90,6 +91,41 @@ constexpr std::array<PrimitiveAlias, 4> Aliases{{
     {"float", K::Float64},
 }};
 } // namespace
+
+namespace {
+/// The node of leaf kind `index`, or an empty unused entry for a kind that carries more than itself.
+constexpr TypeNode LeafTypeNode(const std::size_t index) {
+    const auto kind = static_cast<K>(index);
+    TypeNode node;
+    node.kind = kind;
+    node.hash = (index + 1) * 0x9e3779b97f4a7c15ULL;
+    if (index < KindIndex.size() && KindIndex[index]) {
+        node.spelling = KindIndex[index]->name;
+    }
+    else if (kind == K::Unknown) {
+        node.spelling = "?";
+    }
+    else if (kind == K::Opaque) {
+        node.spelling = "opaque";
+    }
+    else if (kind == K::RangeFull) {
+        node.spelling = "..";
+    }
+    else {
+        return node;
+    }
+    node.identity = &Detail::leafTypeNodes[index];
+    return node;
+}
+
+template <std::size_t... Index>
+constexpr std::array<TypeNode, sizeof...(Index)> LeafTypeNodes(std::index_sequence<Index...> /*indices*/) {
+    return {LeafTypeNode(Index)...};
+}
+} // namespace
+
+constinit const std::array<TypeNode, Detail::LeafTypeKindCount> Detail::leafTypeNodes =
+    LeafTypeNodes(std::make_index_sequence<Detail::LeafTypeKindCount>{});
 
 std::span<const PrimitiveInfo> PrimitiveCatalog() noexcept {
     return Catalog;

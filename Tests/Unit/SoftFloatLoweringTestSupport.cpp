@@ -36,13 +36,13 @@ struct Value {
 };
 
 std::optional<Shape> ShapeOf(const TypeRef &type) {
-    if (type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) {
-        return Shape{ValueClass::Pointer, type.kind, 64, 8, false};
+    if (type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Reference) {
+        return Shape{ValueClass::Pointer, type->kind, 64, 8, false};
     }
     if (type.IsFloat()) {
-        const PrimitiveInfo *primitive = FindPrimitive(type.kind);
+        const PrimitiveInfo *primitive = FindPrimitive(type->kind);
         const FloatFormat *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
-        return format ? std::optional{Shape{ValueClass::Float, type.kind, format->valueBits, primitive->size, false}}
+        return format ? std::optional{Shape{ValueClass::Float, type->kind, format->valueBits, primitive->size, false}}
                       : std::nullopt;
     }
     if (!type.IsBool() && !type.IsInteger() && !type.IsChar()) {
@@ -53,7 +53,7 @@ std::optional<Shape> ShapeOf(const TypeRef &type) {
         return std::nullopt;
     }
     const auto bytes = static_cast<std::uint32_t>(size);
-    return Shape{type.IsBool() ? ValueClass::Bool : ValueClass::Integer, type.kind, bytes * 8, bytes, type.IsSigned()};
+    return Shape{type.IsBool() ? ValueClass::Bool : ValueClass::Integer, type->kind, bytes * 8, bytes, type.IsSigned()};
 }
 
 /// Addresses start well above zero, so a null or small integer used as a pointer is caught rather than read.

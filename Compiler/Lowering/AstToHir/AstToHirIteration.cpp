@@ -167,7 +167,7 @@ HirExprPtr AstToHirContext::LowerConventionCall(const FuncDecl &method, HirExprP
     callee->name = ConcreteMethodCalleeName(typeName, receiver->type, method);
     HirExprPtr self = LowerReceiverFor(method, std::move(receiver));
     callee->type = MethodType(self->type, method);
-    call->type = callee->type.inner.empty() ? TypeRef::MakeOpaque() : callee->type.inner.back();
+    call->type = callee->type->inner.empty() ? TypeRef::MakeOpaque() : callee->type->inner.back();
     call->args.push_back(std::move(self));
     call->callee = std::move(callee);
     return call;

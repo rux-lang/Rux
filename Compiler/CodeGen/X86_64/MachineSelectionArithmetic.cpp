@@ -360,7 +360,7 @@ void Selector::SelectShift(const LirInstr &instruction) {
     const Reg destination = Value(instruction.dst);
     if (instruction.op == LirOpcode::RotateRight) {
         const auto amount = ParseIntegerLiteralBits(instruction.strArg).value_or(0);
-        const std::uint8_t size = instruction.type.kind == TypeRef::Kind::UInt64 ? 8 : 4;
+        const std::uint8_t size = instruction.type->kind == TypeRef::Kind::UInt64 ? 8 : 4;
         EmitCopy(destination, Value(instruction.srcs[0]), RegClass::General);
         if (amount % (size * 8) != 0) {
             Emit(Op::Ror, size, {Operand::UseDef(destination), Operand::Imm(static_cast<std::int64_t>(amount))});
@@ -427,7 +427,7 @@ void Selector::SelectUnary(const LirInstr &instruction) {
     switch (instruction.op) {
     case LirOpcode::Neg:
         if (KindOf(instruction.type) == ValueKind::Xmm) {
-            const bool single = instruction.type.kind == TypeRef::Kind::Float32;
+            const bool single = instruction.type->kind == TypeRef::Kind::Float32;
             Address mask;
             mask.symbol = Symbol({single ? SymbolRef::Kind::Float32SignMask : SymbolRef::Kind::Float64SignMask, {}});
             const Reg maskRegister = NewXmm();
@@ -581,7 +581,7 @@ void Selector::SelectCast(const LirInstr &instruction) {
         return;
     }
     if (destinationKind == ValueKind::Gpr) {
-        const bool single = from.kind == TypeRef::Kind::Float32;
+        const bool single = from->kind == TypeRef::Kind::Float32;
         if (to.IsInteger() && !to.IsSigned() && SizeOf(to) == 8) {
             const Reg scratch = NewXmm();
             const Reg clobbered = NewXmm();

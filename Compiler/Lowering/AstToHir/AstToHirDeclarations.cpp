@@ -375,35 +375,35 @@ HirStruct AstToHirContext::LowerStruct(const StructDecl &d) {
 }
 
 void AstToHirContext::NoteStructInstantiation(const TypeRef &type) const {
-    for (const auto &inner : type.inner) {
+    for (const auto &inner : type->inner) {
         NoteStructInstantiation(inner);
     }
-    if (type.kind != TypeRef::Kind::Named || type.name.find('<') == std::string::npos) {
+    if (type->kind != TypeRef::Kind::Named || type->name.find('<') == std::string::npos) {
         return;
     }
-    const std::string base = BaseTypeNameImpl(type.name);
+    const std::string base = BaseTypeNameImpl(type->name);
     const auto declaration = structDecls.find(base);
     if (declaration == structDecls.end() || declaration->second->typeParams.empty()) {
         return;
     }
-    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(type->name);
     if (args.size() != declaration->second->typeParams.size()) {
         return;
     }
     // A type argument naming a type parameter still in scope is the generic declaration itself, not an instantiation of
     // it; its layout is only knowable once that parameter has been substituted.
     for (const auto &arg : args) {
-        if (arg.kind == TypeRef::Kind::TypeParam) {
+        if (arg->kind == TypeRef::Kind::TypeParam) {
             return;
         }
-        if (arg.kind == TypeRef::Kind::Named &&
-            std::find(currentTypeParams.begin(), currentTypeParams.end(), arg.name) != currentTypeParams.end()) {
+        if (arg->kind == TypeRef::Kind::Named &&
+            std::find(currentTypeParams.begin(), currentTypeParams.end(), arg->name) != currentTypeParams.end()) {
             return;
         }
         NoteStructInstantiation(arg);
     }
-    if (seenStructInstantiations.insert(type.name).second) {
-        pendingStructInstantiations.push_back(type.name);
+    if (seenStructInstantiations.insert(type->name).second) {
+        pendingStructInstantiations.push_back(type->name);
     }
 }
 
@@ -494,7 +494,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     TypeRef savedSelfType = currentSelfType;
     inImpl = true;
     TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
-    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || extendedType.IsSlice();
+    const bool isSliceReceiver = extendedType->kind == TypeRef::Kind::Array || extendedType.IsSlice();
     if (isSliceReceiver) {
         // `self` is the slice value; the slice ABI passes its address, so
         // slice indexing and iteration inside the method work as usual.

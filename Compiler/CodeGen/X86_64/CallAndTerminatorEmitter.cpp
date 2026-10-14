@@ -39,7 +39,7 @@ bool X86_64CallEmitter::IsSysVMemoryAggregate(const TypeRef &type) const {
 }
 
 bool X86_64CallEmitter::IsPointerToWin64ByRefAggregate(const TypeRef &type) const {
-    return type.kind == TypeRef::Kind::Pointer && !type.inner.empty() && IsWin64ByRefAggregate(type.inner[0]);
+    return type->kind == TypeRef::Kind::Pointer && !type->inner.empty() && IsWin64ByRefAggregate(type->inner[0]);
 }
 
 int X86_64CallEmitter::CallFrameSize(const std::vector<LirReg> &arguments, const bool win64,
@@ -415,8 +415,8 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
                 encoder.Dword(static_cast<std::uint32_t>(temporary + 8));
             }
             else if (IsFloat(step.type)) {
-                step.type.kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Store(temporary)
-                                                         : encoder.MovsdXmm0Store(temporary);
+                step.type->kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Store(temporary)
+                                                          : encoder.MovsdXmm0Store(temporary);
             }
             else if (const int scalarSize = size > 0 ? size : 8; scalarSize == 8) {
                 encoder.MovRaxStore(temporary);
@@ -445,8 +445,8 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
             encoder.Byte(0xD2); // mov rdx, r10
         }
         else if (IsFloat(step.type)) {
-            step.type.kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Load(temporary)
-                                                     : encoder.MovsdXmm0Load(temporary);
+            step.type->kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Load(temporary)
+                                                      : encoder.MovsdXmm0Load(temporary);
         }
         else if (const int scalarSize = size > 0 ? size : 8; scalarSize == 8) {
             encoder.MovRaxLoad(temporary);

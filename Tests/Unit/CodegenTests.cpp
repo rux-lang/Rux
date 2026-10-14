@@ -514,8 +514,8 @@ TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") 
             if (instruction.op != LirOpcode::Alloca) {
                 continue;
             }
-            hasInlineArray |= instruction.type.kind == TypeRef::Kind::Array && instruction.type.arrayLength == 4 &&
-                              instruction.type.inner == std::vector{TypeRef::MakeInt()};
+            hasInlineArray |= instruction.type->kind == TypeRef::Kind::Array && instruction.type->arrayLength == 4 &&
+                              instruction.type->inner == std::vector{TypeRef::MakeInt()};
             hasSliceView |= instruction.type == TypeRef::MakeSlice(TypeRef::MakeInt());
         }
     }

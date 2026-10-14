@@ -433,7 +433,7 @@ TypeRef AnalysisContext::LiteralType(const Token &tok) const {
 /// joining the catalog rather than by being listed here.
 void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
                                            const TypeRef &targetType) const {
-    const auto maximum = MaxCharacterValue(targetType.kind);
+    const auto maximum = MaxCharacterValue(targetType->kind);
     if (!maximum || !(operandType.IsInteger() || operandType.IsChar())) {
         return;
     }
@@ -462,7 +462,7 @@ void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const Typ
     if (!charValue || *charValue > *maximum) {
         outOfRange();
     }
-    else if (!IsValidCharacterValue(targetType.kind, *charValue)) {
+    else if (!IsValidCharacterValue(targetType->kind, *charValue)) {
         EmitError(expression.location, std::format("cast from '{}' to '{}' uses invalid surrogate code point U+{:04X}",
                                                    operandType.ToString(), targetType.ToString(), *charValue));
     }
@@ -472,7 +472,7 @@ void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const Typ
 /// measure than a well-behaved one.
 std::size_t AnalysisContext::TypeNodeCount(const TypeRef &type, const std::size_t limit) {
     std::size_t count = 1;
-    for (const TypeRef &inner : type.inner) {
+    for (const TypeRef &inner : type->inner) {
         if (count > limit) {
             return count;
         }

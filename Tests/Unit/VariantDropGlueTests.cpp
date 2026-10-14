@@ -175,7 +175,7 @@ TEST_CASE("scalar enums and all-trivial variants synthesize no destruction") {
         func Use(status: Status, state: State, number: Number) {}
     )");
     CHECK(std::ranges::none_of(package.dropGlues, [](const DropGluePlan &plan) {
-        return plan.type.name == "Status" || plan.type.name == "State" || plan.type.name == "Number";
+        return plan.type->name == "Status" || plan.type->name == "State" || plan.type->name == "Number";
     }));
 }
 

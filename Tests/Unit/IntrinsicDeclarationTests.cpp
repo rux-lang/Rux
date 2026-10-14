@@ -218,7 +218,7 @@ func Special() -> float64 { return float64::Infinity - float64::NaN + Largest + 
             CAPTURE(constant->name);
             const auto *value = model.TryGetConstantValue(*constant);
             REQUIRE(value);
-            CHECK_EQ(value->type.kind, kind);
+            CHECK_EQ(value->type->kind, kind);
             CHECK_EQ(value->literal, FloatLimit(kind, constant->name));
         }
     }

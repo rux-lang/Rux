@@ -112,11 +112,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
         // A value of the right type in storage the call may not write is refused for its binding, not its type.
         const Expr &argument = *e->args[argumentIndex];
-        if (parameterType.kind == TypeRef::Kind::Reference && !parameterType.inner.empty() &&
-            parameterType.inner.front().isMut && argumentType.kind != TypeRef::Kind::Reference &&
-            argumentType.kind != TypeRef::Kind::Pointer) {
+        if (parameterType->kind == TypeRef::Kind::Reference && !parameterType->inner.empty() &&
+            parameterType->inner.front().isMut && argumentType->kind != TypeRef::Kind::Reference &&
+            argumentType->kind != TypeRef::Kind::Pointer) {
             TypeRef shared = parameterType;
-            shared.inner.front().isMut = false;
+            shared = shared.WithWritableInner(false);
             if (CanAssignExprTo(argument, argumentType, shared) && PlaceIsImmutable(argument)) {
                 const Expr *root = &argument;
                 while (const auto *field = AstCast<const FieldExpr>(root)) {
@@ -171,7 +171,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (parameterType.IsUnknown()) {
             return true;
         }
-        if (parameterType.kind == TypeRef::Kind::Reference && IsNullLiteral(*e->args[index])) {
+        if (parameterType->kind == TypeRef::Kind::Reference && IsNullLiteral(*e->args[index])) {
             return false;
         }
         return argumentType.IsUnknown() || CanAssignExprTo(*e->args[index], argumentType, parameterType);
@@ -291,7 +291,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     MakeFuncTypeWithSubstitution(candidate.params, candidate.returnType, candidateSubstitutions,
                                                  TypeParameterNames(candidate.typeParams));
                 const std::size_t candidateParamCount =
-                    candidateType.inner.empty() ? 0 : candidateType.inner.size() - 1;
+                    candidateType->inner.empty() ? 0 : candidateType->inner.size() - 1;
                 std::size_t candidateRequiredCount = 0;
                 for (const Param &parameter : candidate.params) {
                     if (!parameter.isVariadic && !parameter.defaultValue) {
@@ -310,7 +310,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
                 const auto parameters = VisibleParameters(candidate, false);
                 for (std::size_t index = 0; index < std::min(argTypes.size(), candidateParamCount); ++index) {
-                    const TypeRef &parameterType = candidateType.inner[index];
+                    const TypeRef &parameterType = candidateType->inner[index];
                     if (!canPassArgument(index, argTypes[index], parameterType)) {
                         emitArgumentTypeError(ident->name, index, argTypes[index], parameterType,
                                               index < parameters.size() ? parameters[index] : nullptr, &candidate);
@@ -369,13 +369,14 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                             TypeParameterNames(decl->typeParams));
             const std::size_t paramCount =
-                funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty() ? funcType.inner.size() - 1 : 0;
-            const std::vector<TypeRef> fixedTypes(funcType.inner.begin(), funcType.inner.begin() + paramCount);
+                funcType->kind == TypeRef::Kind::Func && !funcType->inner.empty() ? funcType->inner.size() - 1 : 0;
+            const std::vector<TypeRef> fixedTypes(funcType->inner.begin(), funcType->inner.begin() + paramCount);
             callAccepted = checkBoundArguments(ident->name, argTypes, *decl, false, fixedTypes,
                                                ResolveVariadicElementType(*decl, substitutions)) &&
                            callAccepted;
             if (callAccepted) {
-                const std::vector<TypeRef> parameterTypes(funcType.inner.begin(), funcType.inner.begin() + paramCount);
+                const std::vector<TypeRef> parameterTypes(funcType->inner.begin(),
+                                                          funcType->inner.begin() + paramCount);
                 ConsumeCallArguments(*e, argTypes, &parameterTypes);
                 CheckFormatArguments(*e, *decl, false);
             }
@@ -383,7 +384,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (callAccepted && IsAtomicIntrinsic(decl->intrinsicName)) {
                 CheckAtomicCall(*e, *decl, substitutions);
             }
-            return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
+            return funcType->inner.empty() ? TypeRef::MakeUnknown() : funcType->inner.back();
         }
 
         if (Symbol *sym = currentScope->Lookup(ident->name); sym && sym->kind == Symbol::Kind::Type) {
@@ -401,7 +402,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 CheckWrittenTypeArgumentConstraints(*typeParameters, e->typeArgs, e->location,
                                                     std::format("type '{}'", ident->name));
             }
-            constructedType = InstantiateAssociatedReceiver(std::move(constructedType), e->typeArgs);
+            constructedType = InstantiateAssociatedReceiver(constructedType, e->typeArgs);
             const std::vector<const FuncDecl *> candidates = ConstructorCandidates(constructedType);
             if (candidates.empty()) {
                 const std::string typeName = NamedBaseTypeName(constructedType);
@@ -427,9 +428,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
             const auto constructorFixedTypes = [&](const FuncDecl &candidate) {
                 const TypeRef functionType = AssociatedFunctionType(constructedType, candidate);
-                return functionType.inner.empty()
+                return functionType->inner.empty()
                          ? std::vector<TypeRef>{}
-                         : std::vector<TypeRef>(functionType.inner.begin(), functionType.inner.end() - 1);
+                         : std::vector<TypeRef>(functionType->inner.begin(), functionType->inner.end() - 1);
             };
             const FuncDecl *constructor = nullptr;
             for (const FuncDecl *candidate : candidates) {
@@ -456,9 +457,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             QueueGenericInstantiation(*constructor, substitutions,
                                       expression.callee ? expression.callee->location : expression.location);
             const TypeRef functionType = AssociatedFunctionType(constructedType, *constructor);
-            const std::size_t parameterCount = functionType.inner.size() - 1;
-            const std::vector<TypeRef> parameterTypes(functionType.inner.begin(),
-                                                      functionType.inner.begin() + parameterCount);
+            const std::size_t parameterCount = functionType->inner.size() - 1;
+            const std::vector<TypeRef> parameterTypes(functionType->inner.begin(),
+                                                      functionType->inner.begin() + parameterCount);
             ConsumeCallArguments(*e, argTypes, &parameterTypes);
             RecordFunctionBinding(*e, *constructor, ResolvedCallableBinding::DispatchKind::Constructor, substitutions,
                                   constructedType);
@@ -474,11 +475,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         // method is chosen per instantiation, so the call is checked against the interface's signature here and the
         // witness recorded for each type argument is what lowering calls.
         const TypeRef &receiverBase =
-            (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
-                    !receiverType.inner.empty()
-                ? receiverType.inner.front()
+            (receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference) &&
+                    !receiverType->inner.empty()
+                ? receiverType->inner.front()
                 : receiverType;
-        if (receiverBase.kind == TypeRef::Kind::TypeParam) {
+        if (receiverBase->kind == TypeRef::Kind::TypeParam) {
             const auto constrained = LookupConstrainedOperation(receiverType, field->field);
             if (!constrained) {
                 EmitMissingConstrainedOperation(field->location, receiverType, field->field);
@@ -688,7 +689,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                                                    : std::format("{} were", e->typeArgs.size())));
                         }
                         const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
-                        const std::size_t paramCount = constructor.inner.empty() ? 0 : constructor.inner.size() - 1;
+                        const std::size_t paramCount = constructor->inner.empty() ? 0 : constructor->inner.size() - 1;
                         bool callAccepted = argTypes.size() == paramCount;
                         if (argTypes.size() != paramCount) {
                             emitArityError(std::format("{}::{}", path->segments[0], path->segments[1]), paramCount,
@@ -696,7 +697,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         }
                         else {
                             for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                                const TypeRef &paramType = constructor.inner[i];
+                                const TypeRef &paramType = constructor->inner[i];
                                 if (!canPassArgument(i, argTypes[i], paramType)) {
                                     callAccepted = false;
                                     EmitError(e->args[i]->location,
@@ -711,8 +712,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                             }
                         }
                         if (callAccepted) {
-                            const std::vector<TypeRef> parameterTypes(constructor.inner.begin(),
-                                                                      constructor.inner.begin() + paramCount);
+                            const std::vector<TypeRef> parameterTypes(constructor->inner.begin(),
+                                                                      constructor->inner.begin() + paramCount);
                             ConsumeCallArguments(*e, argTypes, &parameterTypes);
                         }
                         ResolvedCallableBinding binding;
@@ -727,7 +728,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         CheckTypeArgumentConstraints(decl.typeParams, binding.substitutions, e->location,
                                                      std::format("enum '{}'", decl.name));
                         callableBindings.insert_or_assign(e, std::move(binding));
-                        return constructor.inner.empty() ? TypeRef::MakeUnknown() : constructor.inner.back();
+                        return constructor->inner.empty() ? TypeRef::MakeUnknown() : constructor->inner.back();
                     }
                 }
                 TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
@@ -741,7 +742,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                     e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())));
                     return TypeRef::MakeUnknown();
                 }
-                receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
+                receiverType = InstantiateAssociatedReceiver(receiverType, e->typeArgs);
                 if (receiverParameters) {
                     CheckTypeArgumentConstraints(
                         *receiverParameters, MethodTypeSubstitutions(receiverType), e->location,
@@ -825,8 +826,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
     TypeRef calleeType = CheckExpr(*e->callee);
     const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
-    if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
-        const std::size_t paramCount = calleeType.inner.size() - 1;
+    if (calleeType->kind == TypeRef::Kind::Func && !calleeType->inner.empty()) {
+        const std::size_t paramCount = calleeType->inner.size() - 1;
         const bool arityOk = calleeType.isVariadic ? argTypes.size() >= paramCount : argTypes.size() == paramCount;
         std::string callableName = "function value";
         if (const auto *identifier = AstCast<const IdentExpr>(e->callee.get())) {
@@ -844,7 +845,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             // C-variadic arguments accept any type.
             for (std::size_t i = 0; i < paramCount; ++i) {
                 const TypeRef &argType = argTypes[i];
-                const TypeRef &paramType = calleeType.inner[i];
+                const TypeRef &paramType = calleeType->inner[i];
                 if (!canPassArgument(i, argType, paramType)) {
                     callAccepted = false;
                     const Param *parameter = nullptr;
@@ -861,8 +862,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 }
             }
             if (callAccepted) {
-                const std::vector<TypeRef> parameterTypes(calleeType.inner.begin(),
-                                                          calleeType.inner.begin() + paramCount);
+                const std::vector<TypeRef> parameterTypes(calleeType->inner.begin(),
+                                                          calleeType->inner.begin() + paramCount);
                 ConsumeCallArguments(*e, argTypes, &parameterTypes);
             }
         }
@@ -897,7 +898,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             }
             callableBindings.insert_or_assign(e, std::move(binding));
         }
-        return calleeType.inner.back();
+        return calleeType->inner.back();
     }
     return TypeRef::MakeUnknown();
 }
@@ -941,7 +942,7 @@ void AnalysisContext::RecordFunctionBinding(const CallExpr &call, const FuncDecl
     binding.dispatch = dispatch;
     binding.selectedDeclaration = &declaration;
     binding.substitutions = std::move(substitutions);
-    binding.receiverType = std::move(receiverType);
+    binding.receiverType = receiverType;
     binding.callingConvention = declaration.callConv;
     if (!declaration.params.empty() && declaration.params.back().isVariadic) {
         // The boundary counts the written arguments before the variadic ones. A receiver is written among them only in

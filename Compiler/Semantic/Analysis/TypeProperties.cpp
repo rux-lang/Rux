@@ -105,12 +105,12 @@ void AnalysisContext::ValidateIndexOperator(const FuncDecl &method, const TypeRe
             return false;
         }
         const TypeRef receiver = ResolveType(*method.params[0].type);
-        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() ||
-            !sameValueType(receiver.inner.front(), extendedType)) {
+        if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() ||
+            !sameValueType(receiver->inner.front(), extendedType)) {
             return false;
         }
         // Writing needs a writable receiver; reading must be available on a value nobody may write.
-        if (receiver.inner.front().isMut != writes) {
+        if (receiver->inner.front().isMut != writes) {
             return false;
         }
         // A read is an expression and a write is a statement, so exactly one of them has a result.
@@ -120,7 +120,7 @@ void AnalysisContext::ValidateIndexOperator(const FuncDecl &method, const TypeRe
         return;
     }
 
-    const std::string type = extendedType.ToString();
+    const std::string &type = extendedType.ToString();
     EmitError(method.location,
               std::format("the '{}' operator on '{}' must have signature '{}'", method.name, type,
                           writes ? std::format("func []=(self: &var {}, index: I, value: E)", type)
@@ -149,12 +149,12 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
         }
         TypeRef receiver = ResolveType(*method.params[0].type);
         TypeRef expected = extendedType;
-        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut) {
+        if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() || !receiver->inner.front().isMut) {
             return false;
         }
-        receiver.inner.front().isMut = false;
+        receiver = receiver.WithWritableInner(false);
         expected.isMut = false;
-        return receiver.inner.front() == expected;
+        return receiver->inner.front() == expected;
     }();
     if (!canonical) {
         EmitError(method.location, std::format("destructor for type '{}' must have signature 'func {}(self: &var {})'",
@@ -185,25 +185,25 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
 
         const TypeRef receiver = ResolveType(*method.params[0].type);
         const TypeRef other = ResolveType(*method.params[1].type);
-        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut ||
-            !sameValueType(receiver.inner.front(), extendedType)) {
+        if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() || !receiver->inner.front().isMut ||
+            !sameValueType(receiver->inner.front(), extendedType)) {
             return false;
         }
         if (!copy) {
-            return other.kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
+            return other->kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
         }
-        if (other.kind != TypeRef::Kind::Reference || other.inner.empty() || other.inner.front().isMut) {
+        if (other->kind != TypeRef::Kind::Reference || other->inner.empty() || other->inner.front().isMut) {
             return false;
         }
         // A body-bearing copy overload may construct T from another source type. Only the exact T-from-T signature
         // has the bodyless meaning "copy prohibited".
-        return method.body || sameValueType(other.inner.front(), extendedType);
+        return method.body || sameValueType(other->inner.front(), extendedType);
     }();
     if (operationSignature) {
         return;
     }
 
-    const std::string type = extendedType.ToString();
+    const std::string &type = extendedType.ToString();
     const std::string expected = copy && method.body ? std::format("func =(self: &var {0}, other: &Source)", type)
                                : copy                ? std::format("func =(self: &var {0}, other: &{0})", type)
                                                      : std::format("func <-(self: &var {0}, other: {0})", type);
@@ -212,7 +212,7 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
 }
 
 TypeProperties AnalysisContext::ClassifyTypeProperties(const TypeRef &type) {
-    const std::string key = type.ToString();
+    const std::string &key = type.ToString();
     if (const auto known = typeProperties.find(key); known != typeProperties.end() && known->second.IsResolved()) {
         return known->second;
     }

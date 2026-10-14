@@ -114,8 +114,8 @@ TEST_CASE("Linear scan reads a parameter at the type its caller supplies") {
     // otherwise — which is the one thing about a function's registers this pass
     // cannot work out for itself.
     const ParamTypeMap overridden = {{0, TypeRef::MakePointer(TypeRef::MakeInt32())}};
-    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type.kind, TypeRef::Kind::Int32);
-    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, overridden), 0)->type.kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type->kind, TypeRef::Kind::Int32);
+    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, overridden), 0)->type->kind, TypeRef::Kind::Pointer);
 }
 
 TEST_CASE("Linear scan reports an alloca as the pointer its register holds") {
@@ -128,7 +128,7 @@ TEST_CASE("Linear scan reports an alloca as the pointer its register holds") {
     // An alloca's register holds the address of what it reserved rather than a
     // value of the type it names, which is what decides the register file it
     // could live in.
-    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type.kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type->kind, TypeRef::Kind::Pointer);
 }
 
 TEST_CASE("Linear scan orders intervals by where they open and by register after that") {

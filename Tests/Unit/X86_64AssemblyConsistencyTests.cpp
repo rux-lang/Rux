@@ -216,7 +216,7 @@ void CheckAddressesAgree(const LirFunc &function, const Target::OS os) {
         instructions.push_back(Instruction(op, next++, TypeRef::MakeBool(), {0, 1}));
     }
     instructions.push_back(Instruction(LirOpcode::Mod, next, type, {0, 1}));
-    return Function(type.kind == TypeRef::Kind::Float32 ? "Compare32" : "Compare64", {{0, type, "a"}, {1, type, "b"}},
+    return Function(type->kind == TypeRef::Kind::Float32 ? "Compare32" : "Compare64", {{0, type, "a"}, {1, type, "b"}},
                     std::move(instructions), next, type);
 }
 
@@ -485,7 +485,7 @@ TEST_CASE("x86-64 assembly text gives SSE comparisons the unordered handling and
         for (const TypeRef &type : {TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
             CAPTURE(static_cast<int>(os));
             CAPTURE(type.ToString());
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const bool float32 = type->kind == TypeRef::Kind::Float32;
             const LirFunc function = FloatComparisons(type);
             const std::string text = AssemblyPrinter(PackageOf({function}), os).Generate();
             const X86_64FramePlan plan = PlanX86_64Frame(function, {}, {}, os);

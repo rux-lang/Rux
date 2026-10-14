@@ -173,7 +173,7 @@ TEST_CASE("x86-64 frame plan owns hidden returns aggregate regions phi scratch a
     CHECK_EQ(plan.SlotOffsets().at(0), savedBytes + 32);
     CHECK_EQ(plan.SlotOffsets().at(1), savedBytes + 40);
     CHECK_EQ(plan.AllocaDataOffsets().at(1), savedBytes + 64);
-    CHECK_EQ(plan.RegisterTypes().at(1).kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(plan.RegisterTypes().at(1)->kind, TypeRef::Kind::Pointer);
     CHECK_EQ(plan.PhiMoves().at(1).at(1).size(), 2);
     CHECK_EQ(plan.PhiTemporarySize(), 8);
     CHECK_EQ(plan.PhiTemporaryOffset(), savedBytes + 104);
@@ -288,7 +288,7 @@ TEST_CASE("x86-64 frame plan records Win64 address homes and hidden return after
     CHECK_EQ(plan.UsedPhysicalRegisters().front(), 0);
     CHECK_EQ(plan.PhysicalRegisters().at(0), 0);
     CHECK_EQ(plan.HiddenReturnOffset(), 16);
-    CHECK_EQ(plan.RegisterTypes().at(0).kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(plan.RegisterTypes().at(0)->kind, TypeRef::Kind::Pointer);
     CHECK_EQ(plan.SlotOffsets().at(0), 24);
     CHECK_EQ(plan.FrameSize(), 32);
     CHECK_EQ(plan.PhiTemporaryOffset(), 0);

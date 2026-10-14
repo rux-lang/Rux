@@ -34,7 +34,7 @@ namespace {
 /// The type a constant array element folds at. The evaluator models integers, bools and floats; a character folds as
 /// the unsigned integer of its width, which spells the same code point the character's own literal does.
 [[nodiscard]] TypeRef FoldingType(const TypeRef &type) {
-    const PrimitiveInfo *primitive = FindPrimitive(type.kind);
+    const PrimitiveInfo *primitive = FindPrimitive(type->kind);
     if (!primitive || primitive->category != PrimitiveCategory::Char) {
         return type;
     }
@@ -242,7 +242,7 @@ const std::string &HirToLirContext::SymbolFor(const std::string &name) const {
 /// A bool wider than `int` is not one of them: C has no such type, so there is nothing to promote it to and it is
 /// passed at its own width. The same holds for every bool at or above 32 bits.
 [[nodiscard]] std::optional<TypeRef> HirToLirContext::CVariadicPromotion(const TypeRef &type) {
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Float32:
         return TypeRef::MakeFloat64();
     case TypeRef::Kind::Bool8:
@@ -295,7 +295,7 @@ void HirToLirContext::PassCVariadicArguments(LirInstr &call, const std::size_t f
             call.srcs[i] = EmitCast(call.srcs[i], type, *promoted);
             type = *promoted;
         }
-        if (win64 && type.kind == TypeRef::Kind::Float64) {
+        if (win64 && type->kind == TypeRef::Kind::Float64) {
             const TypeRef bitsType = TypeRef::MakeUInt64();
             const LirReg slot = EmitAlloca(bitsType);
             EmitStore(call.srcs[i], slot, type);
@@ -314,7 +314,7 @@ LirReg HirToLirContext::DefineParameter(const TypeRef &type) {
     if (registerKinds.size() <= reg) {
         registerKinds.resize(reg + 1, TypeRef::Kind::Unknown);
     }
-    registerKinds[reg] = type.kind;
+    registerKinds[reg] = type->kind;
     return reg;
 }
 
@@ -387,7 +387,7 @@ void HirToLirContext::Return(const std::optional<LirReg> val, TypeRef type) cons
     LirTerminator t;
     t.kind = LirTermKind::Return;
     t.retVal = val;
-    t.retType = std::move(type);
+    t.retType = type;
     Terminate(std::move(t));
 }
 
@@ -439,7 +439,7 @@ LirReg HirToLirContext::EmitConst(std::string value, TypeRef type) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Const;
-    i.type = std::move(type);
+    i.type = type;
     i.strArg = std::move(value);
     Emit(std::move(i));
     return r;
@@ -450,7 +450,7 @@ LirReg HirToLirContext::EmitAlloca(TypeRef type) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Alloca;
-    i.type = std::move(type);
+    i.type = type;
     Emit(std::move(i));
     return r;
 }
@@ -460,7 +460,7 @@ LirReg HirToLirContext::EmitAlloca(TypeRef type, std::uint64_t count) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Alloca;
-    i.type = std::move(type);
+    i.type = type;
     i.strArg = std::to_string(count);
     Emit(std::move(i));
     return r;
@@ -498,7 +498,7 @@ LirReg HirToLirContext::EmitLoad(LirReg ptr, TypeRef type) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Load;
-    i.type = std::move(type);
+    i.type = type;
     i.srcs = {ptr};
     Emit(std::move(i));
     return r;
@@ -509,7 +509,7 @@ LirReg HirToLirContext::EmitNamedLoad(std::string name, TypeRef type) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Load;
-    i.type = std::move(type);
+    i.type = type;
     i.strArg = std::move(name);
     Emit(std::move(i));
     return r;
@@ -519,7 +519,7 @@ void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type, const bool
     LirInstr i;
     i.dst = LirNoReg;
     i.op = LirOpcode::Store;
-    i.type = std::move(type);
+    i.type = type;
     i.srcs = {val, ptr};
     i.isVolatile = isVolatile;
     Emit(std::move(i));
@@ -530,7 +530,7 @@ LirReg HirToLirContext::EmitBinary(const LirOpcode op, LirReg l, LirReg r, TypeR
     LirInstr i;
     i.dst = dst;
     i.op = op;
-    i.type = std::move(type);
+    i.type = type;
     i.srcs = {l, r};
     Emit(std::move(i));
     return dst;
@@ -559,10 +559,10 @@ LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef to
     // A float the target computes in software converts through a helper that saturates the same way, so it stays
     // one cast here for the software-float rewrite to replace.
     if (fromType.IsFloat() && toType.IsInteger() &&
-        softFloatPolicy.For(fromType.kind) == Target::FloatLowering::Native) {
+        softFloatPolicy.For(fromType->kind) == Target::FloatLowering::Native) {
         return EmitFloatToInteger(src, fromType, toType);
     }
-    return EmitConversion(src, fromType, std::move(toType));
+    return EmitConversion(src, fromType, toType);
 }
 
 LirReg HirToLirContext::EmitConversion(const LirReg src, const TypeRef &fromType, TypeRef toType) {
@@ -570,7 +570,7 @@ LirReg HirToLirContext::EmitConversion(const LirReg src, const TypeRef &fromType
     LirInstr i;
     i.dst = dst;
     i.op = LirOpcode::Cast;
-    i.type = std::move(toType);
+    i.type = toType;
     i.srcs = {src};
     i.strArg = fromType.ToString();
     Emit(std::move(i));
@@ -597,7 +597,7 @@ std::string PowerOfTwoDecimal(const std::uint32_t exponent) {
 
 /// The largest finite value of a hardware float type, exactly.
 std::string LargestFinite(const TypeRef &floatType) {
-    return floatType.kind == TypeRef::Kind::Float32
+    return floatType->kind == TypeRef::Kind::Float32
              ? "340282346638528859811704183484516925440.0"
              : "179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878"
                "17154045895351438246423432132688946418276846754670353751698604991057655128207624549009038932894407586"
@@ -607,7 +607,7 @@ std::string LargestFinite(const TypeRef &floatType) {
 
 /// The bits of a float type's significand field, which an exponent-and-significand decomposition reads.
 std::uint32_t SignificandFieldBits(const TypeRef &floatType) {
-    return floatType.kind == TypeRef::Kind::Float32 ? 23 : 52;
+    return floatType->kind == TypeRef::Kind::Float32 ? 23 : 52;
 }
 } // namespace
 
@@ -623,7 +623,7 @@ LirReg HirToLirContext::EmitFloatToInteger(const LirReg value, const TypeRef &fr
     const std::uint32_t width = static_cast<std::uint32_t>(toType.SizeInBytes().value_or(8) * 8);
     const bool isSigned = toType.IsSigned();
     const std::uint32_t magnitudeBits = isSigned ? width - 1 : width;
-    const std::uint32_t floatMaxExponent = fromType.kind == TypeRef::Kind::Float32 ? 127 : 1023;
+    const std::uint32_t floatMaxExponent = fromType->kind == TypeRef::Kind::Float32 ? 127 : 1023;
     const LirReg result = EmitAlloca(toType);
     const std::uint32_t done = NewBlock("ftoi.done");
 
@@ -711,7 +711,7 @@ LirReg HirToLirContext::EmitFloatToInteger(const LirReg value, const TypeRef &fr
     SetBlock(large);
     const LirReg spill = EmitAlloca(fromType);
     EmitStore(value, spill, fromType);
-    const bool single = fromType.kind == TypeRef::Kind::Float32;
+    const bool single = fromType->kind == TypeRef::Kind::Float32;
     const TypeRef bitsType = single ? TypeRef::MakeUInt32() : uint64Type;
     const LirReg rawBits = EmitLoad(spill, bitsType);
     const LirReg bits = single ? EmitConversion(rawBits, bitsType, uint64Type) : rawBits;
@@ -805,7 +805,7 @@ LirReg HirToLirContext::EmitIndexPtr(LirReg base, LirReg idx, const TypeRef &ele
 }
 
 bool HirToLirContext::IsPointerArithmetic(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Pointer && !type.inner.empty();
+    return type->kind == TypeRef::Kind::Pointer && !type->inner.empty();
 }
 
 /// Offsets a pointer by a count of elements, scaling by the pointee size.
@@ -815,7 +815,7 @@ bool HirToLirContext::IsPointerArithmetic(const TypeRef &type) {
 /// nothing for a named type. Emitting the multiply here silently skipped it for every struct, so `ptr + 1` advanced one
 /// byte instead of one element. Routing through IndexPtr gives pointer arithmetic and `ptr[n]` one scaling rule.
 LirReg HirToLirContext::EmitPointerOffset(LirReg base, LirReg index, const TypeRef &pointerType) {
-    return EmitIndexPtr(base, index, pointerType.inner[0]);
+    return EmitIndexPtr(base, index, pointerType->inner[0]);
 }
 
 /// Moves a pointer one element forward or back, for `++` and `--`. A negative index is correct for the back end's
@@ -833,7 +833,7 @@ LirReg HirToLirContext::EmitGlobalAddr(std::string label, TypeRef pointee) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::GlobalAddr;
-    i.type = TypeRef::MakePointer(std::move(pointee));
+    i.type = TypeRef::MakePointer(pointee);
     i.strArg = std::move(label);
     Emit(std::move(i));
     return r;
@@ -845,7 +845,7 @@ LirReg HirToLirContext::EmitThreadLocalAddr(std::string label, TypeRef pointee) 
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::ThreadLocalAddr;
-    i.type = TypeRef::MakePointer(std::move(pointee));
+    i.type = TypeRef::MakePointer(pointee);
     i.strArg = std::move(label);
     Emit(std::move(i));
     return r;
@@ -863,8 +863,8 @@ LirReg HirToLirContext::EmitStringAddr(std::string value, const TypeRef &elemTyp
 }
 
 [[nodiscard]] bool HirToLirContext::IsInterfaceType(const TypeRef &t) const {
-    const TypeRef &candidate = t.kind == TypeRef::Kind::Reference && !t.inner.empty() ? t.inner.front() : t;
-    return candidate.kind == TypeRef::Kind::Named && interfacesByName.contains(candidate.name);
+    const TypeRef &candidate = t->kind == TypeRef::Kind::Reference && !t->inner.empty() ? t->inner.front() : t;
+    return candidate->kind == TypeRef::Kind::Named && interfacesByName.contains(candidate->name);
 }
 
 bool HirToLirContext::IsSliceType(const TypeRef &type) {
@@ -878,25 +878,25 @@ bool HirToLirContext::IsViewType(const TypeRef &type) {
 }
 
 bool HirToLirContext::IsArrayType(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Array;
+    return type->kind == TypeRef::Kind::Array;
 }
 
 /// Whether a type names an instantiation of a generic enum that carries payloads -- the shape whose size the front
 /// end records as a layout marker. A type argument still naming one of the declaration's own parameters is the
 /// generic declaration rather than an instantiation of it, and has no layout until it has been substituted.
 bool HirToLirContext::IsInstantiatedPayloadEnum(const TypeRef &type) const {
-    if (type.kind != TypeRef::Kind::Named || !type.name.ends_with('>')) {
+    if (type->kind != TypeRef::Kind::Named || !type->name.ends_with('>')) {
         return false;
     }
-    const std::size_t open = type.name.find('<');
+    const std::size_t open = type->name.find('<');
     if (open == std::string::npos) {
         return false;
     }
-    const auto declared = genericPayloadEnums.find(type.name.substr(0, open));
+    const auto declared = genericPayloadEnums.find(type->name.substr(0, open));
     if (declared == genericPayloadEnums.end()) {
         return false;
     }
-    const std::string_view args(type.name.data() + open + 1, type.name.size() - open - 2);
+    const std::string_view args(type->name.data() + open + 1, type->name.size() - open - 2);
     return std::ranges::none_of(declared->second,
                                 [&](const std::string &param) { return ContainsIdentifier(args, param); });
 }
@@ -912,14 +912,14 @@ std::optional<std::uint64_t> HirToLirContext::EnumLayoutSize(const TypeRef &type
     if (type.IsSum() || type.IsOptional() || type.IsFallible()) {
         return TypeLayoutOf(type).size;
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }
-    if (!type.inner.empty() && type.inner[0].kind == TypeRef::Kind::Array) {
+    if (!type->inner.empty() && type->inner[0]->kind == TypeRef::Kind::Array) {
         return type.SizeInBytes();
     }
     if (IsInstantiatedPayloadEnum(type)) {
-        BuilderFailure(std::format("variant type '{}' reached lowering without a layout marker", type.name));
+        BuilderFailure(std::format("variant type '{}' reached lowering without a layout marker", type->name));
     }
     return std::nullopt;
 }
@@ -934,20 +934,20 @@ bool HirToLirContext::IsAggregateEnumType(const TypeRef &type) const {
 /// The type an enum's tag is stored as, which is what a match has to read it back as. Defaults to a full word, so an
 /// enum this pass never saw declared behaves as it always did.
 TypeRef HirToLirContext::EnumTagType(const TypeRef &enumType) const {
-    if (enumType.kind != TypeRef::Kind::Named) {
+    if (enumType->kind != TypeRef::Kind::Named) {
         return TypeRef::MakeInt64();
     }
-    const auto found = enumTagTypes.find(enumType.name);
+    const auto found = enumTagTypes.find(enumType->name);
     return found == enumTagTypes.end() ? TypeRef::MakeInt64() : found->second;
 }
 
 bool HirToLirContext::IsStringSliceLiteral(const HirLiteralExpr &e) {
-    return e.type.IsSlice() && !e.type.inner.empty() && e.type.inner[0].IsChar();
+    return e.type.IsSlice() && !e.type->inner.empty() && e.type->inner[0].IsChar();
 }
 
 TypeRef HirToLirContext::StringSliceElementType(const HirLiteralExpr &e) {
-    if (e.type.IsSlice() && !e.type.inner.empty()) {
-        TypeRef element = e.type.inner[0];
+    if (e.type.IsSlice() && !e.type->inner.empty()) {
+        TypeRef element = e.type->inner[0];
         element.isMut = false;
         return element;
     }
@@ -1214,7 +1214,7 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
                                                std::vector<LirConstMember> &path,
                                                std::vector<LirConstScalar> &scalars) const {
     // A pointer constant has a layout only as the literal `null` spells; an address is a relocation, not bytes.
-    if (type.kind == TypeRef::Kind::Pointer) {
+    if (type->kind == TypeRef::Kind::Pointer) {
         const auto *literal = HirCast<const HirLiteralExpr>(&value);
         if (!literal || !SplitIntegerLiteral(literal->value)) {
             return false;
@@ -1231,7 +1231,7 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
         return true;
     }
     // An enum without payloads is its tag, laid out as the integer the tag is stored as.
-    if (type.kind == TypeRef::Kind::Named && enumTagTypes.contains(type.name) && !IsAggregateEnumType(type)) {
+    if (type->kind == TypeRef::Kind::Named && enumTagTypes.contains(type->name) && !IsAggregateEnumType(type)) {
         const auto literal = PrintConstElement(value);
         if (!literal) {
             return false;
@@ -1251,31 +1251,32 @@ bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeR
         path.pop_back();
         return collected;
     };
-    if (const auto *init = HirCast<const HirStructInitExpr>(&value); init && type.kind == TypeRef::Kind::Named) {
+    if (const auto *init = HirCast<const HirStructInitExpr>(&value); init && type->kind == TypeRef::Kind::Named) {
         return std::ranges::all_of(init->fields, [&](const HirStructInitField &field) {
             return field.value && member(*field.value, field.value->type, field.name);
         });
     }
     if (const auto *tuple = HirCast<const HirTupleExpr>(&value);
-        tuple && type.kind == TypeRef::Kind::Tuple && tuple->elements.size() == type.inner.size()) {
+        tuple && type->kind == TypeRef::Kind::Tuple && tuple->elements.size() == type->inner.size()) {
         for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
-            if (!tuple->elements[index] || !member(*tuple->elements[index], type.inner[index], std::to_string(index))) {
+            if (!tuple->elements[index] ||
+                !member(*tuple->elements[index], type->inner[index], std::to_string(index))) {
                 return false;
             }
         }
         return true;
     }
     if (const auto *array = HirCast<const HirArrayExpr>(&value);
-        array && type.kind == TypeRef::Kind::Array && !type.inner.empty() && type.arrayLength) {
+        array && type->kind == TypeRef::Kind::Array && !type->inner.empty() && type->arrayLength) {
         const std::size_t count =
             array->repeatedElement ? static_cast<std::size_t>(array->repeatCount) : array->elements.size();
-        if (count != *type.arrayLength) {
+        if (count != *type->arrayLength) {
             return false;
         }
         for (std::size_t index = 0; index < count; ++index) {
             const HirExpr *element =
                 array->repeatedElement ? array->repeatedElement.get() : array->elements[index].get();
-            if (!element || !member(*element, type.inner.front(), std::to_string(index))) {
+            if (!element || !member(*element, type->inner.front(), std::to_string(index))) {
                 return false;
             }
         }

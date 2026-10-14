@@ -363,7 +363,7 @@ SoftFloatValue SoftFloatBuilder::BitsOfFloat(const SoftFloatValue &value) {
     const LirReg slot = Emit(LirOpcode::Alloca, bitsType, {});
     Emit(LirOpcode::Store, value.type, {value.reg, slot});
     const SoftFloatValue bits{Emit(LirOpcode::Load, bitsType, {slot}), bitsType};
-    if (value.type.kind == TypeRef::Kind::Float80) {
+    if (value.type->kind == TypeRef::Kind::Float80) {
         return And(bits, LowMask(80, bitsType));
     }
     return bits;

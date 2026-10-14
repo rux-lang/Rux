@@ -20,8 +20,8 @@ public:
     }
 
     [[nodiscard]] bool Contains(const TypeRef &type) const {
-        return type.kind == TypeRef::Kind::Reference && type.inner.size() == 1 &&
-               type.inner[0].kind == TypeRef::Kind::Named && names.contains(type.inner[0].name);
+        return type->kind == TypeRef::Kind::Reference && type->inner.size() == 1 &&
+               type->inner[0]->kind == TypeRef::Kind::Named && names.contains(type->inner[0]->name);
     }
 
 private:

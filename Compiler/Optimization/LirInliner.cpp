@@ -18,14 +18,15 @@ using Types = std::unordered_map<LirReg, TypeRef>;
 
 bool Scalar(const TypeRef &type) {
     return type.IsInteger() || type.IsFloat() || type.IsBool() || type.IsChar() ||
-           type.kind == TypeRef::Kind::Pointer ||
-           (type.kind == TypeRef::Kind::Reference && type.inner.size() == 1 &&
-            (type.inner[0].IsInteger() || type.inner[0].IsFloat() || type.inner[0].IsBool() || type.inner[0].IsChar()));
+           type->kind == TypeRef::Kind::Pointer ||
+           (type->kind == TypeRef::Kind::Reference && type->inner.size() == 1 &&
+            (type->inner[0].IsInteger() || type->inner[0].IsFloat() || type->inner[0].IsBool() ||
+             type->inner[0].IsChar()));
 }
 
 bool ArgumentMatches(const TypeRef &argument, const TypeRef &parameter) {
-    return argument == parameter || (parameter.kind == TypeRef::Kind::Reference &&
-                                     argument.kind == TypeRef::Kind::Pointer && argument.inner == parameter.inner);
+    return argument == parameter || (parameter->kind == TypeRef::Kind::Reference &&
+                                     argument->kind == TypeRef::Kind::Pointer && argument->inner == parameter->inner);
 }
 
 // Recognize semantics from an exact assembly body, never from a function's spelling. Both supported ABIs pass and
@@ -34,8 +35,8 @@ bool NativeSquareRoot(const LirFunc &function) {
     if (!function.isAsm || function.isExtern || function.isVariadic || function.isNoReturn ||
         function.params.size() != 1 || function.params[0].type != function.returnType || function.asmBody.size() != 2)
         return false;
-    const bool single = function.returnType.kind == TypeRef::Kind::Float32;
-    if (!single && function.returnType.kind != TypeRef::Kind::Float64)
+    const bool single = function.returnType->kind == TypeRef::Kind::Float32;
+    if (!single && function.returnType->kind != TypeRef::Kind::Float64)
         return false;
     const auto &operation = function.asmBody[0];
     const auto &ret = function.asmBody[1];

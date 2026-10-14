@@ -22,19 +22,19 @@ using Layout::AlignUp;
 
 std::unordered_map<std::string, TypeRef> AnalysisContext::MethodTypeSubstitutions(const TypeRef &receiverType) const {
     const TypeRef *receiver = &receiverType;
-    if ((receiver->kind == TypeRef::Kind::Pointer || receiver->kind == TypeRef::Kind::Reference) &&
-        !receiver->inner.empty()) {
-        receiver = &receiver->inner[0];
+    if (((*receiver)->kind == TypeRef::Kind::Pointer || (*receiver)->kind == TypeRef::Kind::Reference) &&
+        !(*receiver)->inner.empty()) {
+        receiver = &(*receiver)->inner[0];
     }
-    if (receiver->kind != TypeRef::Kind::Named) {
+    if ((*receiver)->kind != TypeRef::Kind::Named) {
         return {};
     }
 
-    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeName(receiver->name));
+    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeName((*receiver)->name));
     if (!typeParams) {
         return {};
     }
-    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(receiver->name);
+    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName((*receiver)->name);
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::size_t count = std::min(typeParams->size(), args.size());
     for (std::size_t i = 0; i < count; ++i) {
@@ -66,7 +66,7 @@ TypeRef AnalysisContext::ResolveMethodReturnType(const TypeRef &receiverType, co
     const auto savedTypeParams = currentTypeParams;
     AppendTypeParameterNames(currentTypeParams, method.typeParams);
     TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+    currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
     auto substitutions = MethodTypeSubstitutions(receiverType);
@@ -91,7 +91,7 @@ AnalysisContext::ResolveMethodParamTypes(const TypeRef &receiverType, const Func
         substitutions.insert_or_assign(name, type);
     }
     TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+    currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
     std::vector<TypeRef> params;
@@ -119,7 +119,7 @@ AnalysisContext::ResolveMethodVariadicType(const TypeRef &receiverType, const Fu
         substitutions.insert_or_assign(name, type);
     }
     TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+    currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
     TypeRef element = ResolveTypeWithSubstitution(*method.params.back().type, substitutions);
@@ -212,7 +212,7 @@ TypeRef AnalysisContext::ResolveOperatorReturnType(const TypeRef &receiverType, 
 
 TypeRef AnalysisContext::AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
     TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+    currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
     TypeRef type = MakeFuncTypeWithSubstitution(method.params, method.returnType, MethodTypeSubstitutions(receiverType),
@@ -318,10 +318,10 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
         }
         TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                         TypeParameterNames(decl->typeParams));
-        if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
+        if (funcType->kind != TypeRef::Kind::Func || funcType->inner.empty()) {
             return decl;
         }
-        const std::size_t paramCount = funcType.inner.size() - 1;
+        const std::size_t paramCount = funcType->inner.size() - 1;
         const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
         std::size_t requiredCount = 0;
         for (const auto &p : decl->params) {
@@ -335,14 +335,14 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
             return nullptr;
         }
         for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-            if (argTypes[i].IsUnknown() || funcType.inner[i].IsUnknown()) {
+            if (argTypes[i].IsUnknown() || funcType->inner[i].IsUnknown()) {
                 continue;
             }
-            if (!argTypes[i].IsAssignableTo(funcType.inner[i]) && !argTypes[i].CanReadScalarTo(funcType.inner[i]) &&
-                !argTypes[i].CanImplicitlyBorrowTo(funcType.inner[i]) &&
-                !CanConvertToInterface(argTypes[i], funcType.inner[i]) &&
-                !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger()) &&
-                !DefaultLiteralReachesNative(argTypes[i], funcType.inner[i])) {
+            if (!argTypes[i].IsAssignableTo(funcType->inner[i]) && !argTypes[i].CanReadScalarTo(funcType->inner[i]) &&
+                !argTypes[i].CanImplicitlyBorrowTo(funcType->inner[i]) &&
+                !CanConvertToInterface(argTypes[i], funcType->inner[i]) &&
+                !(argTypes[i].IsInteger() && funcType->inner[i].IsInteger()) &&
+                !DefaultLiteralReachesNative(argTypes[i], funcType->inner[i])) {
                 return nullptr;
             }
         }
@@ -368,10 +368,10 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
         }
         TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                         TypeParameterNames(decl->typeParams));
-        if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
+        if (funcType->kind != TypeRef::Kind::Func || funcType->inner.empty()) {
             continue;
         }
-        const std::vector<TypeRef> fixedTypes(funcType.inner.begin(), funcType.inner.end() - 1);
+        const std::vector<TypeRef> fixedTypes(funcType->inner.begin(), funcType->inner.end() - 1);
         const auto boundTypes = BoundParameterTypes(
             *decl, false, fixedTypes, ResolveVariadicElementType(*decl, substitutions), argTypes.size(), call);
         if (!boundTypes) {
@@ -394,7 +394,7 @@ bool AnalysisContext::ArgumentsReachOverload(const std::vector<TypeRef> &argType
         // An unsuffixed integer literal carries the default `int`, which is assignable to no other integer width, so
         // it is let reach any integer parameter; an explicitly typed argument is never silently narrowed to another
         // width.
-        const bool literalToInteger = (argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger()) ||
+        const bool literalToInteger = (argTypes[i]->kind == TypeRef::Kind::Int && paramType.IsInteger()) ||
                                       DefaultLiteralReachesNative(argTypes[i], paramType);
         const bool assignable = argTypes[i].IsAssignableTo(paramType) || argTypes[i].CanReadScalarTo(paramType) ||
                                 argTypes[i].CanImplicitlyBorrowTo(paramType) ||
@@ -421,9 +421,9 @@ const FuncDecl *AnalysisContext::SelectOverload(const std::vector<OverloadMatch>
         }
         const auto readOnly = [](TypeRef type) {
             type.isMut = false;
-            if (!type.inner.empty() &&
-                (type.kind == TypeRef::Kind::Reference || type.kind == TypeRef::Kind::Pointer || type.IsSlice())) {
-                type.inner.front().isMut = false;
+            if (!type->inner.empty() &&
+                (type->kind == TypeRef::Kind::Reference || type->kind == TypeRef::Kind::Pointer || type.IsSlice())) {
+                type = type.WithWritableInner(false);
             }
             return type;
         };
@@ -431,8 +431,8 @@ const FuncDecl *AnalysisContext::SelectOverload(const std::vector<OverloadMatch>
             return 1;
         }
         const auto referent = [&](const TypeRef &type) {
-            return type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? readOnly(type.inner.front())
-                                                                                : readOnly(type);
+            return type->kind == TypeRef::Kind::Reference && !type->inner.empty() ? readOnly(type->inner.front())
+                                                                                  : readOnly(type);
         };
         return referent(argument) == referent(parameter) ? 2 : 3;
     };
@@ -519,14 +519,14 @@ bool AnalysisContext::DefaultLiteralReachesNative(const TypeRef &argument, const
     }
     // A tuple literal reaches a tuple parameter element by element, so `Where((3, 0))` finds `Where(p: (int32,
     // int32))` although its elements carry the default `int`; whether each element fits is the argument's own check.
-    if (argument.kind == TypeRef::Kind::Tuple && parameter.kind == TypeRef::Kind::Tuple &&
-        argument.inner.size() == parameter.inner.size()) {
-        for (std::size_t index = 0; index < argument.inner.size(); ++index) {
-            const TypeRef &element = argument.inner[index];
-            const TypeRef &expected = parameter.inner[index];
+    if (argument->kind == TypeRef::Kind::Tuple && parameter->kind == TypeRef::Kind::Tuple &&
+        argument->inner.size() == parameter->inner.size()) {
+        for (std::size_t index = 0; index < argument->inner.size(); ++index) {
+            const TypeRef &element = argument->inner[index];
+            const TypeRef &expected = parameter->inner[index];
             const bool reaches = element.IsAssignableTo(expected) ||
-                                 (element.kind == TypeRef::Kind::Int && expected.IsInteger()) ||
-                                 (element.kind == TypeRef::Kind::Float64 && expected.IsFloat()) ||
+                                 (element->kind == TypeRef::Kind::Int && expected.IsInteger()) ||
+                                 (element->kind == TypeRef::Kind::Float64 && expected.IsFloat()) ||
                                  DefaultLiteralReachesNative(element, expected);
             if (!reaches) {
                 return false;
@@ -537,20 +537,20 @@ bool AnalysisContext::DefaultLiteralReachesNative(const TypeRef &argument, const
     // An unsuffixed literal carries its default width until a destination gives it one. A native parameter does so the
     // way the conversion rules do: through presence and success levels, then to the one member of its literal kind.
     // The argument's own check still rejects a value that does not fit, or an argument that is no literal at all.
-    const bool integer = argument.kind == TypeRef::Kind::Int;
-    const bool floating = argument.kind == TypeRef::Kind::Float64;
+    const bool integer = argument->kind == TypeRef::Kind::Int;
+    const bool floating = argument->kind == TypeRef::Kind::Float64;
     if ((!integer && !floating) || !(parameter.IsSum() || parameter.IsOptional() || parameter.IsFallible())) {
         return false;
     }
     TypeRef level = parameter;
     while (level.IsOptional() || level.IsFallible()) {
-        TypeRef payload = level.inner.front();
-        level = std::move(payload);
+        TypeRef payload = level->inner.front();
+        level = payload;
     }
     if (!level.IsSum()) {
         return integer ? level.IsInteger() : level.IsFloat();
     }
-    return std::ranges::count_if(level.inner, [&](const TypeRef &member) {
+    return std::ranges::count_if(level->inner, [&](const TypeRef &member) {
                return integer ? member.IsInteger() : member.IsFloat();
            }) == 1;
 }

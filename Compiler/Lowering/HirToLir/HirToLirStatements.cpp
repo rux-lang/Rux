@@ -264,7 +264,7 @@ void HirToLirContext::LowerLoop(const HirLoopStmt &s) {
 
 void HirToLirContext::LowerFor(const HirForStmt &s) {
     const bool isRange = s.iterable->type.IsIterableRange();
-    const TypeRef elemType = (isRange && !s.iterable->type.inner.empty()) ? s.iterable->type.inner[0] : s.varType;
+    const TypeRef elemType = (isRange && !s.iterable->type->inner.empty()) ? s.iterable->type->inner[0] : s.varType;
 
     // When the loop reuses a variable already in scope, its storage is the
     // outer variable's slot, so the loop's mutations persist afterwards.
@@ -362,9 +362,9 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         return;
     }
 
-    const bool borrowedSlice = s.iterable->type.kind == TypeRef::Kind::Reference && !s.iterable->type.inner.empty() &&
-                               IsSliceType(s.iterable->type.inner.front());
-    const TypeRef &sequenceType = borrowedSlice ? s.iterable->type.inner.front() : s.iterable->type;
+    const bool borrowedSlice = s.iterable->type->kind == TypeRef::Kind::Reference && !s.iterable->type->inner.empty() &&
+                               IsSliceType(s.iterable->type->inner.front());
+    const TypeRef &sequenceType = borrowedSlice ? s.iterable->type->inner.front() : s.iterable->type;
     if (IsSliceType(sequenceType) || IsArrayType(sequenceType)) {
         const TypeRef dataType = TypeRef::MakePointer(elemType);
         // A borrowed slice parameter already points to the descriptor. Reading its local slot would add another
@@ -384,7 +384,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
             length = EmitLoad(lenFieldPtr, TypeRef::MakeUInt64());
         }
         else {
-            length = EmitConst(std::to_string(sequenceType.arrayLength.value_or(0)), TypeRef::MakeUInt64());
+            length = EmitConst(std::to_string(sequenceType->arrayLength.value_or(0)), TypeRef::MakeUInt64());
         }
 
         LirReg idxSlot = EmitAlloca(TypeRef::MakeUInt64());

@@ -22,7 +22,7 @@ struct X86ScalarAddressInstruction {
 [[nodiscard]] inline std::optional<std::int32_t> ScalarAddressImmediate(const LirInstr &instruction,
                                                                         const std::uint64_t index, const int scale) {
     if (instruction.op != LirOpcode::IndexPtr || instruction.isVolatile || instruction.dst == LirNoReg ||
-        instruction.srcs.size() != 2 || instruction.type.kind != TypeRef::Kind::Pointer ||
+        instruction.srcs.size() != 2 || instruction.type->kind != TypeRef::Kind::Pointer ||
         (scale != 1 && scale != 2 && scale != 4 && scale != 8))
         return std::nullopt;
     // Address arithmetic wraps at the target's 64-bit pointer width, just like the indexed LEA form.
@@ -47,8 +47,8 @@ SelectScalarAddressInstruction(const LirInstr &instruction, const X86_64FramePla
     const auto &slots = plan.SlotOffsets();
     const auto base = instruction.srcs[0];
     if (!homes.contains(instruction.dst) || !types.contains(base) || !types.contains(instruction.dst) ||
-        types.at(instruction.dst).kind != TypeRef::Kind::Pointer ||
-        (types.at(base).kind != TypeRef::Kind::Pointer && types.at(base).kind != TypeRef::Kind::Reference))
+        types.at(instruction.dst)->kind != TypeRef::Kind::Pointer ||
+        (types.at(base)->kind != TypeRef::Kind::Pointer && types.at(base)->kind != TypeRef::Kind::Reference))
         return std::nullopt;
     X86ScalarAddressInstruction result;
     result.destination = X86AllocatedGprs.at(static_cast<std::size_t>(homes.at(instruction.dst)));
@@ -57,7 +57,7 @@ SelectScalarAddressInstruction(const LirInstr &instruction, const X86_64FramePla
     if (homes.contains(base))
         result.base = X86AllocatedGprs.at(static_cast<std::size_t>(homes.at(base)));
     else {
-        if (types.at(base).kind != TypeRef::Kind::Pointer || !slots.contains(base))
+        if (types.at(base)->kind != TypeRef::Kind::Pointer || !slots.contains(base))
             return std::nullopt;
         result.baseSlot = -slots.at(base);
     }

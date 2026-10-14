@@ -368,7 +368,7 @@ void Selector::SelectShift(const LirInstr &instruction) {
     const Reg destination = Value(instruction.dst);
     if (instruction.op == LirOpcode::RotateRight) {
         const auto amount = ParseIntegerLiteralBits(instruction.strArg).value_or(0);
-        const std::uint8_t size = instruction.type.kind == TypeRef::Kind::UInt64 ? 8 : 4;
+        const std::uint8_t size = instruction.type->kind == TypeRef::Kind::UInt64 ? 8 : 4;
         if (amount % (size * 8) != 0) {
             Emit(Op::Ror, size,
                  {Operand::Def(destination), Operand::Use(Value(instruction.srcs[0])),

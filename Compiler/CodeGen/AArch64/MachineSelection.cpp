@@ -35,7 +35,7 @@ int Selector::ScalarSize(const TypeRef &type) const {
 bool Selector::IsAggregate(const TypeRef &type) const {
     if (IsWideValue(type) || type.IsRange() || type.IsSlice())
         return true;
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     case TypeRef::Kind::Sum:
@@ -43,9 +43,9 @@ bool Selector::IsAggregate(const TypeRef &type) const {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(type.name);
+        const std::string base = BaseTypeName(type->name);
         return context.interfaceNames.contains(base) || context.layouts.contains(base) ||
-               (!type.inner.empty() && SizeOf(type) > 8);
+               (!type->inner.empty() && SizeOf(type) > 8);
     }
     default:
         return false;
@@ -55,7 +55,7 @@ bool Selector::IsAggregate(const TypeRef &type) const {
 ValueKind Selector::KindOf(const TypeRef &type) const {
     if (IsWideValue(type) || IsSoftwareFloat(type))
         return ValueKind::Unsupported;
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Unknown:
     case TypeRef::Kind::Opaque:
     case TypeRef::Kind::TypeParam:
@@ -101,14 +101,14 @@ int Selector::AllocaSize(const LirInstr &instruction) const {
     const auto result = std::from_chars(text.data(), text.data() + text.size(), count);
     if (result.ec != std::errc{} || result.ptr != text.data() + text.size())
         count = 0;
-    const TypeRef &elementType = instruction.type.inner.empty() ? instruction.type : instruction.type.inner[0];
+    const TypeRef &elementType = instruction.type->inner.empty() ? instruction.type : instruction.type->inner[0];
     const int elementSize = Size(elementType);
     return count * (elementSize > 0 ? elementSize : 8);
 }
 
 bool Selector::IsPointerTo(const LirReg reg, const TypeRef &pointee) const {
     const TypeRef &type = TypeOf(reg);
-    return type.kind == TypeRef::Kind::Pointer && !type.inner.empty() && type.inner[0] == pointee;
+    return type->kind == TypeRef::Kind::Pointer && !type->inner.empty() && type->inner[0] == pointee;
 }
 
 bool Selector::IsKilledAt(const LirInstr &instruction, const LirReg reg) const {
@@ -268,7 +268,7 @@ bool Selector::EligibleInstruction(const LirInstr &instruction) const {
                kind(1) == ValueKind::Gpr;
     case LirOpcode::RotateRight:
         return instruction.srcs.size() == 1 && result == ValueKind::Gpr && kind(0) == ValueKind::Gpr &&
-               (instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64) &&
+               (instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::UInt64) &&
                ParseIntegerLiteralBits(instruction.strArg).has_value();
     case LirOpcode::Neg:
         return instruction.srcs.size() == 1 && (result == ValueKind::Gpr || result == ValueKind::Fpr) &&
@@ -533,8 +533,8 @@ Address Selector::AddressOf(const LirReg pointer, const int depth) {
         return fits ? result : direct;
     }
     case LirOpcode::IndexPtr: {
-        const int elementSize = instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty()
-                                  ? std::max(1, Size(instruction.type.inner[0]))
+        const int elementSize = instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty()
+                                  ? std::max(1, Size(instruction.type->inner[0]))
                                   : 8;
         const LirReg index = instruction.srcs[1];
         const Address base = AddressOf(instruction.srcs[0], depth + 1);
@@ -679,7 +679,7 @@ void Selector::SelectConstant(const LirInstr &instruction) {
     case ValueKind::Fpr: {
         Address address;
         address.symbol = Symbol(
-            {instruction.type.kind == TypeRef::Kind::Float32 ? SymbolRef::Kind::Float32 : SymbolRef::Kind::Float64,
+            {instruction.type->kind == TypeRef::Kind::Float32 ? SymbolRef::Kind::Float32 : SymbolRef::Kind::Float64,
              instruction.strArg});
         Emit(Op::LoadFp, static_cast<std::uint8_t>(Size(instruction.type)),
              {Operand::Def(Value(instruction.dst)), Operand::Mem(address)})
@@ -768,7 +768,7 @@ void Selector::SelectAddress(const LirInstr &instruction) {
         return;
     }
     case LirOpcode::StringAddr: {
-        const TypeRef elementType = instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
+        const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
         Address address;
         address.symbol = Symbol({SymbolRef::Kind::String, EncodeStringLiteral(instruction.strArg, Size(elementType))});
         Emit(Op::AddressOf, 8, {Operand::Def(destination), Operand::Mem(address)}).rematerializable = true;
@@ -778,8 +778,8 @@ void Selector::SelectAddress(const LirInstr &instruction) {
         Emit(Op::Mov, 8, {Operand::Def(destination), Operand::Use(Fp)});
         return;
     case LirOpcode::IndexPtr: {
-        const int elementSize = instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty()
-                                  ? std::max(1, Size(instruction.type.inner[0]))
+        const int elementSize = instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty()
+                                  ? std::max(1, Size(instruction.type->inner[0]))
                                   : 8;
         if (elementSize != 1 && elementSize != 2 && elementSize != 4 && elementSize != 8 && elementSize != 16 &&
             !integerConstants.contains(instruction.srcs[1])) {
@@ -805,9 +805,9 @@ void Selector::SelectAddress(const LirInstr &instruction) {
             }
             else {
                 fallback.index = Extended(instruction.srcs[1]);
-                fallback.scale = static_cast<std::uint8_t>(instruction.type.kind == TypeRef::Kind::Pointer &&
-                                                                   !instruction.type.inner.empty()
-                                                               ? std::max(1, Size(instruction.type.inner[0]))
+                fallback.scale = static_cast<std::uint8_t>(instruction.type->kind == TypeRef::Kind::Pointer &&
+                                                                   !instruction.type->inner.empty()
+                                                               ? std::max(1, Size(instruction.type->inner[0]))
                                                                : 8);
             }
             Emit(Op::AddressOf, 8, {Operand::Def(destination), Operand::Mem(fallback)});

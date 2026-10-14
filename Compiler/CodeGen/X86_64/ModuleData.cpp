@@ -13,7 +13,7 @@ namespace Rux::X86_64Detail {
     if (t.IsSlice()) {
         return true;
     }
-    switch (t.kind) {
+    switch (t->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -22,8 +22,8 @@ namespace Rux::X86_64Detail {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(t.name);
-        return interfaceNames.count(base) > 0 || layouts.contains(base) || (!t.inner.empty() && SizeOf(t) > 8);
+        const std::string base = BaseTypeName(t->name);
+        return interfaceNames.count(base) > 0 || layouts.contains(base) || (!t->inner.empty() && SizeOf(t) > 8);
     }
     default:
         return false;
@@ -238,7 +238,7 @@ void X86_64ModuleEmitter::GenModule() {
         // A constant of slice type is addressed, not inlined, so it needs
         // real contents behind its name rather than a placeholder.
         if (c.hasSequenceData) {
-            if (c.type.kind == TypeRef::Kind::Array) {
+            if (c.type->kind == TypeRef::Kind::Array) {
                 EmitConstArray(c);
             }
             else {

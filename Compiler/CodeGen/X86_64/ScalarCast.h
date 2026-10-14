@@ -17,7 +17,7 @@ struct X86ScalarCastInstruction {
 
 [[nodiscard]] inline bool ScalarCastType(const TypeRef &type) {
     const auto bytes = Layout::SizeOf(type);
-    return (type.IsInteger() || type.IsChar() || type.kind == TypeRef::Kind::Pointer) &&
+    return (type.IsInteger() || type.IsChar() || type->kind == TypeRef::Kind::Pointer) &&
            (bytes == 1 || bytes == 2 || bytes == 4 || bytes == 8);
 }
 

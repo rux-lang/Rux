@@ -154,18 +154,18 @@ private:
         if (t.IsSlice()) {
             return true;
         }
-        if (t.kind != TypeRef::Kind::Named) {
+        if (t->kind != TypeRef::Kind::Named) {
             return false;
         }
-        const std::string base = BaseTypeName(t.name);
+        const std::string base = BaseTypeName(t->name);
         return interfaceNames.count(base) > 0;
     }
 
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const override {
         const auto &registerTypes = FramePlan().RegisterTypes();
         const auto it = registerTypes.find(reg);
-        return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
-               it->second.inner[0] == pointee;
+        return it != registerTypes.end() && it->second->kind == TypeRef::Kind::Pointer && !it->second->inner.empty() &&
+               it->second->inner[0] == pointee;
     }
 
     uint32_t GetOrAddExtern(const std::string &name, uint8_t kind, const std::string &dll = {}) {

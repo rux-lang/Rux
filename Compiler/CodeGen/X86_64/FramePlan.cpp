@@ -65,8 +65,8 @@ private:
     std::unordered_set<LirReg> immediateCandidates;
 
     [[nodiscard]] int AddressScale(const LirInstr &instruction) const {
-        return instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty()
-                 ? std::max(1, RuntimeSize(instruction.type.inner[0]))
+        return instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty()
+                 ? std::max(1, RuntimeSize(instruction.type->inner[0]))
                  : 8;
     }
 
@@ -122,12 +122,12 @@ private:
         int position = 0;
         for (const auto &block : func.blocks) {
             for (const auto &instruction : block.instrs) {
-                const bool floating =
-                    instruction.type.kind == TypeRef::Kind::Float32 || instruction.type.kind == TypeRef::Kind::Float64;
+                const bool floating = instruction.type->kind == TypeRef::Kind::Float32 ||
+                                      instruction.type->kind == TypeRef::Kind::Float64;
                 const bool word =
-                    instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::Int64 ||
-                    instruction.type.kind == TypeRef::Kind::UInt64 || instruction.type.kind == TypeRef::Kind::Int ||
-                    instruction.type.kind == TypeRef::Kind::UInt;
+                    instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::Int64 ||
+                    instruction.type->kind == TypeRef::Kind::UInt64 || instruction.type->kind == TypeRef::Kind::Int ||
+                    instruction.type->kind == TypeRef::Kind::UInt;
                 const bool arithmetic =
                     instruction.op == LirOpcode::Add || instruction.op == LirOpcode::Sub ||
                     instruction.op == LirOpcode::Mul || (floating && instruction.op == LirOpcode::Div) ||
@@ -136,7 +136,7 @@ private:
                               instruction.op == LirOpcode::Shr || instruction.op == LirOpcode::Lshr ||
                               instruction.op == LirOpcode::RotateRight));
                 const bool address =
-                    instruction.op == LirOpcode::IndexPtr && instruction.type.kind == TypeRef::Kind::Pointer;
+                    instruction.op == LirOpcode::IndexPtr && instruction.type->kind == TypeRef::Kind::Pointer;
                 if ((((floating || word) && arithmetic) || address) && !instruction.isVolatile &&
                     instruction.srcs.size() == (instruction.op == LirOpcode::RotateRight ? 1U : 2U) &&
                     spans.contains(instruction.dst) && spans.contains(instruction.srcs[0]) &&
@@ -173,7 +173,7 @@ private:
         if (type.IsSlice()) {
             return true;
         }
-        switch (type.kind) {
+        switch (type->kind) {
         case TypeRef::Kind::Tuple:
         case TypeRef::Kind::Array:
         // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -182,8 +182,9 @@ private:
         case TypeRef::Kind::Fallible:
             return true;
         case TypeRef::Kind::Named: {
-            const std::string base = BaseTypeName(type.name);
-            return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+            const std::string base = BaseTypeName(type->name);
+            return interfaceNames.contains(base) || layouts.contains(base) ||
+                   (!type->inner.empty() && SizeOf(type) > 8);
         }
         default:
             return false;
@@ -222,10 +223,10 @@ private:
         if (type.IsSlice()) {
             return true;
         }
-        if (type.kind != TypeRef::Kind::Named) {
+        if (type->kind != TypeRef::Kind::Named) {
             return false;
         }
-        const std::string base = BaseTypeName(type.name);
+        const std::string base = BaseTypeName(type->name);
         return interfaceNames.contains(base);
     }
 
@@ -392,7 +393,7 @@ private:
         if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
             count = 0;
         }
-        const TypeRef &elementType = instruction.type.inner.empty() ? instruction.type : instruction.type.inner[0];
+        const TypeRef &elementType = instruction.type->inner.empty() ? instruction.type : instruction.type->inner[0];
         const int elementSize = RuntimeSize(elementType);
         return count * (elementSize > 0 ? elementSize : 8);
     }

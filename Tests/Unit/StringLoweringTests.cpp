@@ -170,12 +170,12 @@ TEST_CASE("char64 literals lower as full-width decoded scalar constants") {
                                                                                       {"Escaped", "10"}}) {
         CAPTURE(name);
         const auto &function = RequireFunction(package, name);
-        CHECK_EQ(function.returnType.kind, TypeRef::Kind::Char64);
+        CHECK_EQ(function.returnType->kind, TypeRef::Kind::Char64);
         CHECK_EQ(Constants(function), std::vector<std::string>{value});
         for (const auto &block : function.blocks) {
             for (const auto &instruction : block.instrs) {
                 if (instruction.op == LirOpcode::Const) {
-                    CHECK_EQ(instruction.type.kind, TypeRef::Kind::Char64);
+                    CHECK_EQ(instruction.type->kind, TypeRef::Kind::Char64);
                 }
             }
         }

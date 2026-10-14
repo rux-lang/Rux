@@ -35,7 +35,7 @@ std::optional<TypeProperties> Properties(const TypeRef &type) {
         if (!type.IsFloat()) {
             return std::nullopt;
         }
-        const PrimitiveInfo *primitive = FindPrimitive(type.kind);
+        const PrimitiveInfo *primitive = FindPrimitive(type->kind);
         const FloatFormat *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
         return format ? std::optional{TypeProperties{TypedConstant::Kind::Floating, format->valueBits, format}}
                       : std::nullopt;
@@ -92,7 +92,7 @@ std::optional<std::uint32_t> ShiftAmount(const TypedConstant &value, const std::
 } // namespace
 
 TypedConstant::TypedConstant(TypeRef inputType, const Kind inputKind, WideInteger inputBits)
-    : type(std::move(inputType))
+    : type(inputType)
     , kind(inputKind)
     , width(inputBits.Width())
     , bits(inputBits) {

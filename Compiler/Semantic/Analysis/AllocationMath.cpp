@@ -22,7 +22,7 @@ TypeRef AnalysisContext::CheckTypeQueryExpression(const TypeQueryExpr &expressio
     const std::string_view spelling = isSize ? "sizeof" : "alignof";
     ValidateArrayType(*expression.type, /*allowFlexibleTail=*/false);
     const TypeRef queried = ResolveType(*expression.type);
-    if (queried.IsUnknown() || queried.kind == TypeRef::Kind::TypeParam) {
+    if (queried.IsUnknown() || queried->kind == TypeRef::Kind::TypeParam) {
         // A type parameter has no layout until it is substituted, so the query folds in each instantiation instead.
         return TypeRef::MakeUInt64();
     }
@@ -65,21 +65,21 @@ void AnalysisContext::ValidateCheckedArithmeticIntrinsic(const FuncDecl &declara
     }
     for (std::size_t index = 0; index < 2; ++index) {
         const TypeRef operand = ResolveType(*declaration.params[index].type);
-        if (operand.kind != TypeRef::Kind::UInt64) {
+        if (operand->kind != TypeRef::Kind::UInt64) {
             reject(std::format("parameter '{}' has type '{}'", declaration.params[index].name, operand.ToString()));
             return;
         }
     }
     const TypeRef result = ResolveType(*declaration.params[2].type);
     const auto *pointer = AstCast<const PointerTypeExpr>(declaration.params[2].type.get());
-    if (!pointer || !pointer->pointeeMut || result.kind != TypeRef::Kind::Pointer || result.inner.empty() ||
-        result.inner.front().kind != TypeRef::Kind::UInt64) {
+    if (!pointer || !pointer->pointeeMut || result->kind != TypeRef::Kind::Pointer || result->inner.empty() ||
+        result->inner.front()->kind != TypeRef::Kind::UInt64) {
         reject(std::format("parameter '{}' has type '{}'", declaration.params[2].name, result.ToString()));
         return;
     }
     const TypeRef returned =
         declaration.returnType ? ResolveType(*declaration.returnType->get()) : TypeRef::MakeOpaque();
-    if (returned.kind != TypeRef::Kind::Bool8) {
+    if (returned->kind != TypeRef::Kind::Bool8) {
         reject(std::format("it returns '{}'", returned.ToString()));
     }
 }

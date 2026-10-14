@@ -244,7 +244,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
         const auto *named = constant.type ? AstCast<const NamedTypeExpr>(constant.type->get()) : nullptr;
         const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
         if (type && type->IsFloat()) {
-            const auto *primitive = FindPrimitive(type->kind);
+            const auto *primitive = FindPrimitive((*type)->kind);
             const auto *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
             if (!format) {
                 return std::nullopt;

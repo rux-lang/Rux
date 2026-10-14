@@ -13,7 +13,7 @@ constexpr std::size_t MergeLimit = 4;
 
 /// An integer no wider than a machine word: the arithmetic below is single instructions on it.
 bool Word(const TypeRef &type) {
-    return type.IsInteger() && type.kind != TypeRef::Kind::Int128 && type.kind != TypeRef::Kind::UInt128;
+    return type.IsInteger() && type->kind != TypeRef::Kind::Int128 && type->kind != TypeRef::Kind::UInt128;
 }
 
 /// Safe to run whether or not the branch would have reached it: no effect, no trap, no wide arithmetic.
@@ -145,7 +145,7 @@ bool Convert(LirFunc &function) {
                     const LirInstr *const *addend = definitions.Find(value.addend);
                     value.one = addend != nullptr && (*addend)->op == LirOpcode::Const && (*addend)->strArg == "1";
                 }
-                merged.push_back(std::move(value));
+                merged.push_back(value);
             }
 
             const auto conditionReg = term->cond;
@@ -168,7 +168,7 @@ bool Convert(LirFunc &function) {
             // Per type: the condition as 0 or 1 when the side block would have run, and as all zeros or all ones.
             std::unordered_map<std::string, std::pair<LirReg, LirReg>> masks;
             const auto maskOf = [&](const TypeRef &type) {
-                const auto key = type.ToString();
+                const auto &key = type.ToString();
                 if (const auto found = masks.find(key); found != masks.end())
                     return found->second;
                 auto bit = emit(LirOpcode::Cast, type, {conditionReg}, conditionType.ToString());

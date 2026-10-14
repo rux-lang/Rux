@@ -74,12 +74,12 @@ void AnalysisContext::CheckAtomicValueType(const TypeRef &type, const std::strin
         expected = "an integer of 8 to 64 bits";
     }
     else if (bitwise) {
-        accepted = (type.IsInteger() && word) || type.kind == TypeRef::Kind::Bool8;
+        accepted = (type.IsInteger() && word) || type->kind == TypeRef::Kind::Bool8;
         expected = "an integer of 8 to 64 bits, or 'bool'";
     }
     else {
         accepted =
-            (type.IsInteger() && word) || type.kind == TypeRef::Kind::Bool8 || type.kind == TypeRef::Kind::Pointer;
+            (type.IsInteger() && word) || type->kind == TypeRef::Kind::Bool8 || type->kind == TypeRef::Kind::Pointer;
     }
     if (!accepted) {
         EmitError(location, std::format("'{}' cannot act on type '{}'", operation, type.ToString()),

@@ -338,7 +338,7 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
                 for (auto &[function, types] : record.genericBodyTypes) {
                     auto &merged = genericBodyTypes[function];
                     for (auto &[spelling, type] : types)
-                        merged.try_emplace(spelling, std::move(type));
+                        merged.try_emplace(spelling, type);
                 }
         },
         [&] { MergeAppended(deferredUnaryChecks, records, [](R &r) -> auto & { return r.deferredUnaryChecks; }); },

@@ -33,7 +33,7 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
             // one payload in the upper 32 bits. Wider generic enums use
             // the aggregate path below instead.
             if (i == 0) {
-                if (payloadExpr->type.kind != TypeRef::Kind::Int64 && payloadExpr->type.kind != TypeRef::Kind::Int) {
+                if (payloadExpr->type->kind != TypeRef::Kind::Int64 && payloadExpr->type->kind != TypeRef::Kind::Int) {
                     payload = EmitCast(payload, payloadExpr->type, TypeRef::MakeInt64());
                 }
                 const LirReg shift = EmitConst("32", TypeRef::MakeInt64());
@@ -90,7 +90,7 @@ LirReg HirToLirContext::BorrowedNativeSubjectSlot(const HirExpr &subject) {
     const auto *dereference = HirCast<const HirUnaryExpr>(&subject);
     const TypeRef &type = subject.type;
     if (!dereference || dereference->op != TokenKind::Star || !dereference->operand ||
-        dereference->operand->type.kind != TypeRef::Kind::Reference ||
+        dereference->operand->type->kind != TypeRef::Kind::Reference ||
         !(type.IsSum() || type.IsOptional() || type.IsFallible())) {
         return LirNoReg;
     }
@@ -312,8 +312,8 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
     std::vector<Part> parts;
     if (const auto *tuple = HirCast<const HirTuplePattern>(&pattern)) {
         for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
-            const TypeRef elementType = type.kind == TypeRef::Kind::Tuple && index < type.inner.size()
-                                          ? type.inner[index]
+            const TypeRef elementType = type->kind == TypeRef::Kind::Tuple && index < type->inner.size()
+                                          ? type->inner[index]
                                           : TypeRef::MakeUnknown();
             parts.push_back({tuple->elements[index].get(), std::to_string(index), elementType});
         }
@@ -465,8 +465,8 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
     if (auto *p = HirCast<const HirTuplePattern>(&pat)) {
         for (std::size_t i = 0; i < p->elements.size(); ++i) {
             TypeRef elemType = TypeRef::MakeUnknown();
-            if (subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size()) {
-                elemType = subjectType.inner[i];
+            if (subjectType->kind == TypeRef::Kind::Tuple && i < subjectType->inner.size()) {
+                elemType = subjectType->inner[i];
             }
             LirReg elemPtr = EmitFieldPtr(subjectPtr, std::to_string(i), elemType);
             BindLetPattern(*p->elements[i], elemPtr, elemType);
@@ -667,9 +667,9 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
 // For void expressions the return value is LirNoReg.
 
 TypeRef HirToLirContext::SliceElementTypeFromType(const TypeRef &type) {
-    if (type.IsSlice() && !type.inner.empty()) {
+    if (type.IsSlice() && !type->inner.empty()) {
         // The element type names storage here, never a place, so its writability is not part of the answer.
-        TypeRef element = type.inner[0];
+        TypeRef element = type->inner[0];
         element.isMut = false;
         return element;
     }
@@ -839,7 +839,7 @@ void HirToLirContext::EmitCopyPlan(const HirCopyPlan &plan, const LirReg source,
     }
     if (plan.kind == HirCopyPlan::Kind::Array && !plan.components.empty()) {
         const HirCopyPlan &element = plan.components.front();
-        for (std::uint64_t index = 0; index < plan.type.arrayLength.value_or(0); ++index) {
+        for (std::uint64_t index = 0; index < plan.type->arrayLength.value_or(0); ++index) {
             const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
             EmitCopyPlan(element, EmitIndexPtr(source, offset, element.type),
                          EmitIndexPtr(destination, offset, element.type));
@@ -905,15 +905,15 @@ void HirToLirContext::EmitCopyPlan(const HirCopyPlan &plan, const LirReg source,
 void HirToLirContext::StoreCopyIntoSlot(const HirCopyExpr &expression, const LirReg slot) {
     // A custom `=` takes its source as `other: &T`, so a reference is a source as it stands: its value is already the
     // address the copy reads, where the slot holding the reference is not.
-    const LirReg source = expression.value->type.kind == TypeRef::Kind::Reference ? LowerExpr(*expression.value)
-                                                                                  : LowerLValue(*expression.value);
+    const LirReg source = expression.value->type->kind == TypeRef::Kind::Reference ? LowerExpr(*expression.value)
+                                                                                   : LowerLValue(*expression.value);
     EmitCopyPlan(expression.plan, source, slot);
 }
 
 LirReg HirToLirContext::LowerCopy(const HirCopyExpr &expression) {
     const LirReg slot = EmitAlloca(expression.type);
     StoreCopyIntoSlot(expression, slot);
-    return expression.type.kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
+    return expression.type->kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
 }
 
 void HirToLirContext::EmitMovePlan(const HirMovePlan &plan, const LirReg source, const LirReg destination) {
@@ -941,7 +941,7 @@ void HirToLirContext::EmitMovePlan(const HirMovePlan &plan, const LirReg source,
     }
     if (plan.kind == HirMovePlan::Kind::Array && !plan.components.empty()) {
         const HirMovePlan &element = plan.components.front();
-        for (std::uint64_t index = 0; index < plan.type.arrayLength.value_or(0); ++index) {
+        for (std::uint64_t index = 0; index < plan.type->arrayLength.value_or(0); ++index) {
             const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
             EmitMovePlan(element, EmitIndexPtr(source, offset, element.type),
                          EmitIndexPtr(destination, offset, element.type));
@@ -1011,7 +1011,7 @@ void HirToLirContext::StoreMoveIntoSlot(const HirMoveExpr &expression, const Lir
 LirReg HirToLirContext::LowerMove(const HirMoveExpr &expression) {
     const LirReg slot = EmitAlloca(expression.type);
     StoreMoveIntoSlot(expression, slot);
-    return expression.type.kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
+    return expression.type->kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
 }
 
 LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
@@ -1141,7 +1141,7 @@ LirReg HirToLirContext::LowerMatchExpr(const HirMatchExpr &e) {
 void HirToLirContext::StoreCoerceToInterface(const HirCoerceToInterfaceExpr &e, LirReg slot) {
     LirReg concreteSlot = LirNoReg;
     if (e.borrowed) {
-        concreteSlot = e.value->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.value) : LowerLValue(*e.value);
+        concreteSlot = e.value->type->kind == TypeRef::Kind::Reference ? LowerExpr(*e.value) : LowerLValue(*e.value);
     }
     else {
         concreteSlot = EmitAlloca(e.value->type);
@@ -1201,7 +1201,7 @@ LirReg HirToLirContext::LowerEnumConstruct(const HirEnumConstructExpr &e) {
 }
 
 void HirToLirContext::StoreRangeInit(const HirRangeExpr &e, LirReg slot) {
-    const TypeRef elemType = e.type.inner.empty() ? TypeRef::MakeInt64() : e.type.inner[0];
+    const TypeRef elemType = e.type->inner.empty() ? TypeRef::MakeInt64() : e.type->inner[0];
     // Endpoints may be narrower than the range element type (e.g. a uint32
     // bound in a int..int). Widen them to the element type so the store
     // writes the full field; otherwise the unwritten high bits are garbage.
@@ -1269,9 +1269,9 @@ LirReg HirToLirContext::LowerStringLiteralSlice(const HirLiteralExpr &e) {
 /// How many code units of `elementType` a literal's UTF-8 value transcodes to. The length a view publishes counts
 /// the units it actually holds, so a wider encoding does not report the byte count of the source spelling.
 std::uint64_t HirToLirContext::StringLiteralLength(const std::string &value, const TypeRef &elementType) {
-    const int unitBytes = elementType.kind == TypeRef::Kind::Char16 ? 2
-                        : elementType.kind == TypeRef::Kind::Char32 ? 4
-                                                                    : 1;
+    const int unitBytes = elementType->kind == TypeRef::Kind::Char16 ? 2
+                        : elementType->kind == TypeRef::Kind::Char32 ? 4
+                                                                     : 1;
     // The lexer rejects source that is not valid UTF-8, so nothing valid reaches here without a count.
     return static_cast<std::uint64_t>(CodeUnitCount(value, unitBytes).value_or(0));
 }

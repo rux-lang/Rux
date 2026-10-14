@@ -93,7 +93,7 @@ std::vector<TypeRef> Allocations(const LirFunc &function, const std::string &typ
     std::vector<TypeRef> types;
     for (const LirBlock &block : function.blocks) {
         for (const LirInstr &instruction : block.instrs) {
-            if (instruction.op == LirOpcode::Alloca && instruction.type.name == typeName) {
+            if (instruction.op == LirOpcode::Alloca && instruction.type->name == typeName) {
                 types.push_back(instruction.type);
             }
         }
@@ -154,7 +154,7 @@ TEST_CASE("HIR construction retains variant form for unit tuple and named cases"
         const auto *construction = dynamic_cast<const HirEnumConstructExpr *>(returned->value->get());
         REQUIRE_MESSAGE(construction != nullptr, name);
         CHECK_EQ(construction->form, CaseTypeForm::Variant);
-        CHECK_EQ(construction->type.name, name == "Unit" ? "State" : "Parcel");
+        CHECK_EQ(construction->type->name, name == "Unit" ? "State" : "Parcel");
     }
 }
 
@@ -171,7 +171,7 @@ TEST_CASE("scalar enum members remain scalar literals rather than tagged constru
     const auto *literal = dynamic_cast<const HirLiteralExpr *>(returned->value->get());
     REQUIRE(literal != nullptr);
     CHECK_EQ(literal->value, "1");
-    CHECK_EQ(literal->type.name, "Code");
+    CHECK_EQ(literal->type->name, "Code");
 }
 
 TEST_CASE("unit variants allocate tagged storage even without payload fields") {
@@ -182,8 +182,8 @@ TEST_CASE("unit variants allocate tagged storage even without payload fields") {
     const LirFunc &unit = LirFunction(package, "Unit");
     const auto slots = Allocations(unit, "State");
     REQUIRE_EQ(slots.size(), 1);
-    REQUIRE_EQ(slots.front().inner.size(), 1);
-    CHECK_EQ(slots.front().inner.front().kind, TypeRef::Kind::Array);
+    REQUIRE_EQ(slots.front()->inner.size(), 1);
+    CHECK_EQ(slots.front()->inner.front()->kind, TypeRef::Kind::Array);
     CHECK_EQ(slots.front().SizeInBytes(), 8);
     CHECK_GE(CountOpcode(unit, LirOpcode::Store), 1);
 }
@@ -230,7 +230,7 @@ TEST_CASE("variant by-value calls retain concrete ABI types without decoding") {
     const LirFunc &identity = LirFunction(package, "Identity");
     REQUIRE_EQ(identity.params.size(), 1);
     CHECK_EQ(identity.params.front().type, identity.returnType);
-    CHECK_EQ(identity.returnType.name, "Parcel");
+    CHECK_EQ(identity.returnType->name, "Parcel");
     CHECK_EQ(identity.returnType.SizeInBytes(), 24);
     const LirFunc &main = LirFunction(package, "Main");
     CHECK_GE(CountOpcode(main, LirOpcode::Call), 2);
@@ -248,9 +248,9 @@ TEST_CASE("variant constructor and public function symbols do not encode source 
     const LirFunc &pass = LirFunction(package, "Pass");
     CHECK(build.isPublic);
     CHECK(pass.isPublic);
-    CHECK_EQ(build.returnType.name, "Outcome");
-    CHECK_EQ(pass.params.front().type.name, "Outcome");
-    CHECK_EQ(pass.returnType.name, "Outcome");
+    CHECK_EQ(build.returnType->name, "Outcome");
+    CHECK_EQ(pass.params.front().type->name, "Outcome");
+    CHECK_EQ(pass.returnType->name, "Outcome");
 }
 
 TEST_CASE("AArch64 lowering receives the same tagged construction metadata") {
@@ -324,9 +324,9 @@ TEST_CASE("nested variant construction preserves both concrete storage layouts")
     const LirFunc &inner = LirFunction(package, "BuildInner");
     const LirFunc &nested = LirFunction(package, "BuildNested");
     const LirFunc &pair = LirFunction(package, "BuildPair");
-    CHECK_EQ(inner.returnType.name, "Inner");
-    CHECK_EQ(nested.returnType.name, "Outer");
-    CHECK_EQ(pair.returnType.name, "Outer");
+    CHECK_EQ(inner.returnType->name, "Inner");
+    CHECK_EQ(nested.returnType->name, "Outer");
+    CHECK_EQ(pair.returnType->name, "Outer");
     CHECK_GT(nested.returnType.SizeInBytes().value_or(0), inner.returnType.SizeInBytes().value_or(0));
     CHECK_GE(CountOpcode(nested, LirOpcode::Call), 1);
     CHECK_GE(CountOpcode(pair, LirOpcode::Call), 1);
@@ -409,9 +409,9 @@ TEST_CASE("HIR variant patterns retain form discriminants and declaration payloa
         const auto *named = dynamic_cast<const HirEnumPattern *>(match.arms.back().pattern.get());
         REQUIRE(named != nullptr);
         REQUIRE_EQ(named->payloadTypes.size(), 3);
-        CHECK_EQ(named->payloadTypes[0].kind, TypeRef::Kind::UInt32);
-        CHECK_EQ(named->payloadTypes[1].kind, TypeRef::Kind::Bool8);
-        CHECK_EQ(named->payloadTypes[2].kind, TypeRef::Kind::UInt64);
+        CHECK_EQ(named->payloadTypes[0]->kind, TypeRef::Kind::UInt32);
+        CHECK_EQ(named->payloadTypes[1]->kind, TypeRef::Kind::Bool8);
+        CHECK_EQ(named->payloadTypes[2]->kind, TypeRef::Kind::UInt64);
         CHECK_EQ(named->argIndices, std::vector<std::size_t>{0, 1, 2});
     }
 }

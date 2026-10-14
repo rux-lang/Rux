@@ -93,9 +93,9 @@ void BuildKey(std::string &key, const LirInstr &instruction, const LiteralKeys *
     }
     // A primitive is spelled by its kind alone, so its kind stands in for the spelling.
     const TypeRef &type = instruction.type;
-    if (type.kind <= TypeRef::Kind::Float512 && type.name.empty() && type.inner.empty() && !type.arrayLength) {
+    if (type->kind <= TypeRef::Kind::Float512 && type->name.empty() && type->inner.empty() && !type->arrayLength) {
         key += 'p';
-        key += static_cast<char>(static_cast<unsigned>(type.kind));
+        key += static_cast<char>(static_cast<unsigned>(type->kind));
     }
     else {
         const auto spelling = type.ToString();
@@ -214,8 +214,8 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
     std::vector<std::vector<bool>> redundant(function.blocks.size());
     std::size_t memoryBudget = 65536;
     const auto stableType = [](const TypeRef &type) {
-        return type.IsInteger() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer ||
-               type.kind == TypeRef::Kind::Reference;
+        return type.IsInteger() || type.IsBool() || type.IsChar() || type->kind == TypeRef::Kind::Pointer ||
+               type->kind == TypeRef::Kind::Reference;
     };
     // Reused from block to block: even an empty table allocates with some standard libraries.
     MemoryFacts loads;
@@ -249,7 +249,7 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
                 instruction.op == LirOpcode::Load && instruction.srcs.size() == 1 && instruction.strArg.empty() &&
                 !instruction.isVolatile &&
                 (instruction.type.IsInteger() || instruction.type.IsFloat() || instruction.type.IsBool() ||
-                 instruction.type.IsChar() || instruction.type.kind == TypeRef::Kind::Pointer);
+                 instruction.type.IsChar() || instruction.type->kind == TypeRef::Kind::Pointer);
             const bool constantLoad = load && constantAddresses.contains(instruction.srcs[0]);
             const bool pure = (Pure(instruction.op) && !instruction.isVolatile) || constantLoad;
             // Keep cheap constants local: consumers rematerialize immediates and CFG folding recognizes local

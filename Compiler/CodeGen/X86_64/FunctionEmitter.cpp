@@ -45,7 +45,7 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     if (type.IsSlice()) {
         return true;
     }
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -54,8 +54,8 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(type.name);
-        return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+        const std::string base = BaseTypeName(type->name);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!type->inner.empty() && SizeOf(type) > 8);
     }
     default:
         return false;
@@ -65,8 +65,8 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
 bool X86_64FunctionEmitter::IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto type = registerTypes.find(reg);
-    return type != registerTypes.end() && type->second.kind == TypeRef::Kind::Pointer && !type->second.inner.empty() &&
-           type->second.inner[0] == pointee;
+    return type != registerTypes.end() && type->second->kind == TypeRef::Kind::Pointer &&
+           !type->second->inner.empty() && type->second->inner[0] == pointee;
 }
 
 int X86_64FunctionEmitter::FieldOffset(const LirReg base, const std::string &fieldName) const {
@@ -513,7 +513,7 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
         if (wideType.IsBool() && IsNativeFloat(destinationType)) {
             // A wide bool's value is word 0, 0 or 1, which converts as the integer it is; its raw bits would not.
             encoder.MovRaxLoad(source(0));
-            destinationType.kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
+            destinationType->kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
             hooks.StoreA(instruction.dst, destinationType);
             return true;
         }
@@ -599,7 +599,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], type);
         hooks.LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const bool float32 = type->kind == TypeRef::Kind::Float32;
             if (instruction.op == LirOpcode::Add) {
                 float32 ? encoder.AddssXmm01() : encoder.AddsdXmm01();
             }
@@ -636,7 +636,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], type);
         hooks.LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            type.kind == TypeRef::Kind::Float32 ? encoder.MulssXmm01() : encoder.MulsdXmm01();
+            type->kind == TypeRef::Kind::Float32 ? encoder.MulssXmm01() : encoder.MulsdXmm01();
         }
         else {
             encoder.ImulRaxR10();
@@ -651,7 +651,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
             // A float remainder never gets here: `EmitX87` computes it with `fprem`.
-            type.kind == TypeRef::Kind::Float32 ? encoder.DivssXmm01() : encoder.DivsdXmm01();
+            type->kind == TypeRef::Kind::Float32 ? encoder.DivssXmm01() : encoder.DivsdXmm01();
         }
         else {
             if (type.IsSigned()) {
@@ -705,7 +705,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     }
     case LirOpcode::RotateRight:
         hooks.LoadA(instruction.srcs[0], instruction.type);
-        encoder.RotateRaxImmediate(instruction.type.kind == TypeRef::Kind::UInt64,
+        encoder.RotateRaxImmediate(instruction.type->kind == TypeRef::Kind::UInt64,
                                    static_cast<std::uint8_t>(ParseIntegerLiteralBits(instruction.strArg).value()));
         hooks.StoreA(instruction.dst, instruction.type);
         return true;
@@ -713,7 +713,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         const TypeRef &type = instruction.type;
         hooks.LoadA(instruction.srcs[0], type);
         if (IsFloat(type)) {
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const bool float32 = type->kind == TypeRef::Kind::Float32;
             const std::uint32_t maskSymbol = hooks.InternFloatSignMask(float32);
             std::uint32_t relocationOffset;
             float32 ? encoder.MovssXmm1Rip(relocationOffset) : encoder.MovsdXmm1Rip(relocationOffset);
@@ -728,10 +728,10 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     }
     case LirOpcode::Sqrt:
         if (instruction.srcs.size() != 1 || instruction.dst == LirNoReg ||
-            (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64))
+            (instruction.type->kind != TypeRef::Kind::Float32 && instruction.type->kind != TypeRef::Kind::Float64))
             return false;
         hooks.LoadA(instruction.srcs[0], instruction.type);
-        encoder.Byte(instruction.type.kind == TypeRef::Kind::Float32 ? 0xF3 : 0xF2);
+        encoder.Byte(instruction.type->kind == TypeRef::Kind::Float32 ? 0xF3 : 0xF2);
         encoder.Byte(0x0F);
         encoder.Byte(0x51);
         encoder.Byte(0xC0); // sqrtss/sqrtsd xmm0, xmm0
@@ -767,7 +767,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], lhsType);
         hooks.LoadB(instruction.srcs[1], lhsType);
         if (IsFloat(lhsType)) {
-            lhsType.kind == TypeRef::Kind::Float32 ? encoder.UcomissXmm01() : encoder.UcomisdXmm01();
+            lhsType->kind == TypeRef::Kind::Float32 ? encoder.UcomissXmm01() : encoder.UcomisdXmm01();
             switch (instruction.op) {
             case LirOpcode::CmpEq:
                 encoder.SeteAl();
@@ -839,7 +839,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         const bool sourceFloat = IsFloat(sourceType);
         const bool destinationFloat = IsFloat(destinationType);
         if (sourceFloat && !destinationFloat) {
-            const bool single = sourceType.kind == TypeRef::Kind::Float32;
+            const bool single = sourceType->kind == TypeRef::Kind::Float32;
             const auto truncate = [&] { single ? encoder.CvttsssiRaxXmm0() : encoder.CvttsdsiRaxXmm0(); };
             if (destinationType.IsInteger() && !destinationType.IsSigned() && SizeOf(destinationType) == 8) {
                 // The truncating conversion produces a signed 64-bit integer, so an unsigned value of 2^63 or more is
@@ -870,13 +870,13 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             }
         }
         else if (!sourceFloat && destinationFloat) {
-            destinationType.kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
+            destinationType->kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
         }
         else if (sourceFloat && destinationFloat) {
-            if (sourceType.kind == TypeRef::Kind::Float32 && destinationType.kind == TypeRef::Kind::Float64) {
+            if (sourceType->kind == TypeRef::Kind::Float32 && destinationType->kind == TypeRef::Kind::Float64) {
                 encoder.CvtsssdXmm0();
             }
-            else if (sourceType.kind == TypeRef::Kind::Float64 && destinationType.kind == TypeRef::Kind::Float32) {
+            else if (sourceType->kind == TypeRef::Kind::Float64 && destinationType->kind == TypeRef::Kind::Float32) {
                 encoder.CvtsdssXmm0();
             }
         }
@@ -988,14 +988,14 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         }
         const TypeRef &type = instruction.type;
         const int size = SizeOf(type);
-        if (type.kind == TypeRef::Kind::Float32) {
+        if (type->kind == TypeRef::Kind::Float32) {
             const std::uint32_t symbol = hooks.InternFloat32Literal(instruction.strArg);
             std::uint32_t relocationOffset;
             encoder.MovssXmm0Rip(relocationOffset);
             hooks.AddTextRelocation(relocationOffset, symbol);
             hooks.StoreA(instruction.dst, type);
         }
-        else if (type.kind == TypeRef::Kind::Float64) {
+        else if (type->kind == TypeRef::Kind::Float64) {
             const std::uint32_t symbol = hooks.InternFloat64Literal(instruction.strArg);
             std::uint32_t relocationOffset;
             encoder.MovsdXmm0Rip(relocationOffset);
@@ -1246,7 +1246,7 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         return true;
     }
     case LirOpcode::StringAddr: {
-        const TypeRef elementType = instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
+        const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
         const std::uint32_t symbol =
             hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, SizeOfRuntime(elementType)));
         std::uint32_t relocationOffset;
@@ -1272,8 +1272,8 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     case LirOpcode::IndexPtr: {
         const LirReg base = instruction.srcs[0];
         const LirReg index = instruction.srcs[1];
-        int elementSize = instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty()
-                            ? SizeOfRuntime(instruction.type.inner[0])
+        int elementSize = instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty()
+                            ? SizeOfRuntime(instruction.type->inner[0])
                             : 8;
         if (elementSize < 1) {
             elementSize = 1;

@@ -63,7 +63,7 @@ TypeRef AstToHirContext::MakeFuncTypeWithSubstitution(const std::vector<Param> &
 
     currentTypeParams = savedTypeParams;
     currentSubstitutions = savedSubstitutions;
-    return TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+    return TypeRef::MakeFunc(std::move(paramTypes), ret);
 }
 
 std::string AstToHirContext::GenericTypeName(const NamedTypeExpr &type) {
@@ -102,7 +102,7 @@ std::vector<std::string> AstToHirContext::ImplTypeParams(const ImplDecl &decl) c
     if (!target) {
         return params;
     }
-    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeNameImpl(ResolvedType(*target).name));
+    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeNameImpl(ResolvedType(*target)->name));
     if (!typeParams) {
         return params;
     }
@@ -145,7 +145,7 @@ TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) const {
             parts.push_back(part.empty() ? TypeRef::MakeUnit() : ParseTypeRefFromString(part));
         }
         if (native->form == TypeRef::NativeSpelling::Form::Fallible) {
-            return TypeRef::MakeFallible(std::move(parts[0]), std::move(parts[1]));
+            return TypeRef::MakeFallible(parts[0], parts[1]);
         }
         return TypeRef::MakeSum(std::move(parts));
     }
@@ -163,7 +163,7 @@ TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) const {
         if (!element) {
             return TypeRef::MakeRangeFull();
         }
-        return TypeRef::MakeRange(std::move(*element), !range->start.empty(), !range->end.empty(), range->inclusive);
+        return TypeRef::MakeRange(*element, !range->start.empty(), !range->end.empty(), range->inclusive);
     }
 
     if (str[0] == '*' || str[0] == '&') {
@@ -179,14 +179,14 @@ TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) const {
         }
         TypeRef inner = ParseTypeRefFromString(std::move(pointee));
         inner.isMut = writable;
-        return isReference ? TypeRef::MakeReference(std::move(inner)) : TypeRef::MakePointer(std::move(inner));
+        return isReference ? TypeRef::MakeReference(inner) : TypeRef::MakePointer(inner);
     }
 
     // A slice renders its writability as `var` in front of the element, the way a pointer does.
     if (str.starts_with("var ")) {
         TypeRef slice = ParseTypeRefFromString(str.substr(4));
         if (slice.IsSlice()) {
-            slice.inner[0].isMut = true;
+            slice = TypeRef::MakeSlice(slice->inner[0], true);
         }
         return slice;
     }
@@ -472,7 +472,7 @@ std::optional<std::int64_t> AstToHirContext::ParseEnumDiscriminant(const std::st
 }
 
 std::optional<std::uint64_t> AstToHirContext::UnsignedIntegerMax(const TypeRef &type) {
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::UInt8:
         return std::numeric_limits<std::uint8_t>::max();
     case TypeRef::Kind::UInt16:
@@ -488,7 +488,7 @@ std::optional<std::uint64_t> AstToHirContext::UnsignedIntegerMax(const TypeRef &
 }
 
 std::optional<std::pair<std::int64_t, std::int64_t>> AstToHirContext::SignedIntegerRange(const TypeRef &type) {
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Int8:
         return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
                          static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())};
@@ -528,7 +528,7 @@ bool AstToHirContext::UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeR
     if (!target.IsInteger()) {
         return false;
     }
-    const auto bits = PrimitiveBits(target.kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
+    const auto bits = PrimitiveBits(target->kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
     const auto magnitude = DecodeIntegerLiteral(literal->token.text, WideInteger::MaxBits);
     if (!bits || !magnitude) {
         return false;
@@ -543,16 +543,16 @@ bool AstToHirContext::IsNullLiteral(const Expr &expr) {
 
 std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     const TypeRef *named = &type;
-    if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
-        named = &type.inner[0];
+    if ((type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Reference) && !type->inner.empty()) {
+        named = &type->inner[0];
     }
     // A slice's method set is keyed on its full element-specific spelling, so `extend int[..]` stays distinct
     // from `extend char8[..]` (see NamedBaseTypeName in the analyzer).
     if (named->IsSlice()) {
         return named->ToString();
     }
-    if (named->kind == TypeRef::Kind::Named) {
-        return BaseTypeNameImpl(named->name);
+    if ((*named)->kind == TypeRef::Kind::Named) {
+        return BaseTypeNameImpl((*named)->name);
     }
     if (named->IsPrimitive()) {
         return named->ToString();
@@ -578,22 +578,22 @@ std::optional<TypeRef> AstToHirContext::BuiltinTypeFromName(const std::string &n
 }
 
 std::optional<TypeRef> AstToHirContext::SliceElementType(const TypeRef &type) const {
-    if (!type.IsSlice() || type.inner.empty()) {
+    if (!type.IsSlice() || type->inner.empty()) {
         return std::nullopt;
     }
-    return type.inner[0];
+    return type->inner[0];
 }
 
 std::optional<TypeRef> AstToHirContext::IndexElementType(const TypeRef &type) const {
-    const TypeRef &value = type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? type.inner[0] : type;
-    if (value.kind == TypeRef::Kind::Array && !value.inner.empty()) {
-        return value.inner[0];
+    const TypeRef &value = type->kind == TypeRef::Kind::Reference && !type->inner.empty() ? type->inner[0] : type;
+    if (value->kind == TypeRef::Kind::Array && !value->inner.empty()) {
+        return value->inner[0];
     }
     if (auto elemType = SliceElementType(value)) {
         return elemType;
     }
-    if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
-        return value.inner[0];
+    if (value->kind == TypeRef::Kind::Pointer && !value->inner.empty()) {
+        return value->inner[0];
     }
     return std::nullopt;
 }
@@ -609,7 +609,7 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             if (auto it = substitutions.find(t->name); it != substitutions.end()) {
                 return RestoreEnumLayoutMarkers(it->second);
             }
-            if (const auto enumIt = enumDecls.find(BaseTypeNameImpl(ResolvedType(expr).name));
+            if (const auto enumIt = enumDecls.find(BaseTypeNameImpl(ResolvedType(expr)->name));
                 enumIt != enumDecls.end()) {
                 return EnumType(*enumIt->second);
             }
@@ -626,28 +626,28 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         // carries the same layout marker as one resolved directly. Spelling the name out here instead dropped that
         // marker, and lowering then read one enum two ways: an aggregate where a variant was built, a tag and payload
         // packed into a single word where the value was matched.
-        if (const auto enumIt = enumDecls.find(BaseTypeNameImpl(ResolvedType(expr).name)); enumIt != enumDecls.end()) {
+        if (const auto enumIt = enumDecls.find(BaseTypeNameImpl(ResolvedType(expr)->name)); enumIt != enumDecls.end()) {
             return EnumType(*enumIt->second, resolvedArgs);
         }
 
         TypeRef named =
-            TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeNameImpl(ResolvedType(expr).name), resolvedArgs));
+            TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeNameImpl(ResolvedType(expr)->name), resolvedArgs));
         NoteStructInstantiation(named);
         return named;
     }
     if (auto *t = AstCast<const PointerTypeExpr>(&expr)) {
         TypeRef pointee = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointee.isMut = pointee.isMut || t->pointeeMut;
-        return TypeRef::MakePointer(std::move(pointee));
+        return TypeRef::MakePointer(pointee);
     }
     if (auto *t = AstCast<const ReferenceTypeExpr>(&expr)) {
         TypeRef pointee = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointee.isMut = pointee.isMut || t->pointeeMut;
-        return TypeRef::MakeReference(std::move(pointee));
+        return TypeRef::MakeReference(pointee);
     }
     if (auto *t = AstCast<const ArrayTypeExpr>(&expr)) {
         return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
-                                  ResolvedType(expr).arrayLength);
+                                  ResolvedType(expr)->arrayLength);
     }
     if (auto *t = AstCast<const SliceTypeExpr>(&expr)) {
         return TypeRef::MakeSlice(ResolveTypeWithSubstitution(*t->element, substitutions), t->elementMut);
@@ -658,7 +658,7 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             return TypeRef::MakeRangeFull();
         }
         TypeRef element = ResolveTypeWithSubstitution(t->start ? *t->start : *t->end, substitutions);
-        return TypeRef::MakeRange(std::move(element), t->start != nullptr, t->end != nullptr, t->inclusive);
+        return TypeRef::MakeRange(element, t->start != nullptr, t->end != nullptr, t->inclusive);
     }
     if (auto *t = AstCast<const TupleTypeExpr>(&expr)) {
         std::vector<TypeRef> elems;
@@ -675,7 +675,7 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         }
         TypeRef returnType =
             t->returnType ? ResolveTypeWithSubstitution(*t->returnType->get(), substitutions) : TypeRef::MakeOpaque();
-        TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), std::move(returnType));
+        TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), returnType);
         functionType.isVariadic = t->isVariadic;
         return functionType;
     }
@@ -689,11 +689,11 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             return TypeRef::MakeSum(std::move(children));
         }
         if (AstCast<const OptionalTypeExpr>(&expr)) {
-            return TypeRef::MakeOptional(std::move(children.front()));
+            return TypeRef::MakeOptional(children.front());
         }
         const bool hasSuccess = static_cast<const FallibleTypeExpr &>(expr).success != nullptr;
-        TypeRef error = std::move(children.back());
-        return TypeRef::MakeFallible(hasSuccess ? std::move(children.front()) : TypeRef::MakeUnit(), std::move(error));
+        TypeRef error = children.back();
+        return TypeRef::MakeFallible(hasSuccess ? children.front() : TypeRef::MakeUnit(), error);
     }
     return ResolvedType(expr);
 }
@@ -716,7 +716,7 @@ TypeRef AstToHirContext::StructFieldType(const TypeRef &objectType, const std::s
     }
 
     std::unordered_map<std::string, TypeRef> substitutions;
-    std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(objectType.name);
+    std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(objectType->name);
     const auto &params = structIt->second->typeParams;
     const std::size_t count = std::min(params.size(), typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
@@ -736,19 +736,19 @@ TypeRef AstToHirContext::StructFieldType(const TypeRef &objectType, const std::s
 
 std::unordered_map<std::string, TypeRef> AstToHirContext::MethodTypeSubstitutions(const TypeRef &receiverType) const {
     const TypeRef *receiver = &receiverType;
-    if ((receiver->kind == TypeRef::Kind::Pointer || receiver->kind == TypeRef::Kind::Reference) &&
-        !receiver->inner.empty()) {
-        receiver = &receiver->inner[0];
+    if (((*receiver)->kind == TypeRef::Kind::Pointer || (*receiver)->kind == TypeRef::Kind::Reference) &&
+        !(*receiver)->inner.empty()) {
+        receiver = &(*receiver)->inner[0];
     }
-    if (receiver->kind != TypeRef::Kind::Named) {
+    if ((*receiver)->kind != TypeRef::Kind::Named) {
         return {};
     }
 
-    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeName(receiver->name));
+    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeName((*receiver)->name));
     if (!typeParams) {
         return {};
     }
-    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(receiver->name);
+    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName((*receiver)->name);
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::size_t count = std::min(typeParams->size(), args.size());
     for (std::size_t i = 0; i < count; ++i) {
@@ -773,13 +773,13 @@ TypeRef AstToHirContext::MethodType(const TypeRef &receiverType, const FuncDecl 
     }
     TypeRef ret = method.returnType ? ResolveTypeWithSubstitution(*method.returnType->get(), substitutions)
                                     : TypeRef::MakeOpaque();
-    return TypeRef::MakeFunc(std::move(params), std::move(ret));
+    return TypeRef::MakeFunc(std::move(params), ret);
 }
 
 TypeRef AstToHirContext::AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method,
                                                 const std::unordered_map<std::string, TypeRef> &methodSubstitutions) {
     TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+    currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
     auto substitutions = MethodTypeSubstitutions(receiverType);
@@ -796,7 +796,7 @@ TypeRef AstToHirContext::AssociatedFunctionType(const TypeRef &receiverType, con
     TypeRef ret = method.returnType ? ResolveTypeWithSubstitution(*method.returnType->get(), substitutions)
                                     : TypeRef::MakeOpaque();
     currentSelfType = savedSelfType;
-    return TypeRef::MakeFunc(std::move(params), std::move(ret));
+    return TypeRef::MakeFunc(std::move(params), ret);
 }
 
 bool AstToHirContext::MethodIsOverloaded(const std::string &typeName, const std::string &methodName) const {
@@ -839,7 +839,7 @@ std::string AstToHirContext::ConcreteMethodCalleeName(const std::string &typeNam
 
     if (generatedMonomorphizedFuncNames.insert(name).second) {
         const TypeRef savedSelfType = currentSelfType;
-        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+        currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                             ? receiverType
                             : TypeRef::MakePointer(receiverType);
         monomorphizedFuncs.push_back(LowerFunc(method, /*isMethod=*/true, substitutions, name));
@@ -864,16 +864,16 @@ HirCopyPlan AstToHirContext::BuildCopyPlan(const TypeRef &type, const FuncDecl *
         return plan;
     }
 
-    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
-        HirCopyPlan element = BuildCopyPlan(type.inner.front());
+    if (type->kind == TypeRef::Kind::Array && !type->inner.empty()) {
+        HirCopyPlan element = BuildCopyPlan(type->inner.front());
         if (element.kind != HirCopyPlan::Kind::Trivial) {
             plan.kind = HirCopyPlan::Kind::Array;
             plan.components.push_back(std::move(element));
         }
         return plan;
     }
-    if (type.kind == TypeRef::Kind::Tuple) {
-        for (const TypeRef &element : type.inner) {
+    if (type->kind == TypeRef::Kind::Tuple) {
+        for (const TypeRef &element : type->inner) {
             plan.components.push_back(BuildCopyPlan(element));
         }
         if (std::ranges::any_of(plan.components, [](const HirCopyPlan &component) {
@@ -889,11 +889,11 @@ HirCopyPlan AstToHirContext::BuildCopyPlan(const TypeRef &type, const FuncDecl *
     if (IsNativeType(type)) {
         return BuildNativeCopyPlan(type);
     }
-    if (type.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(type.name);
+    if (type->kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(type->name);
         if (const auto declaration = structDecls.find(base); declaration != structDecls.end()) {
             std::unordered_map<std::string, TypeRef> substitutions;
-            const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+            const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
             const std::size_t count = std::min(arguments.size(), declaration->second->typeParams.size());
             for (std::size_t index = 0; index < count; ++index) {
                 substitutions.emplace(declaration->second->typeParams[index].name, arguments[index]);
@@ -935,16 +935,16 @@ HirMovePlan AstToHirContext::BuildMovePlan(const TypeRef &type, const FuncDecl *
         return plan;
     }
 
-    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
-        HirMovePlan element = BuildMovePlan(type.inner.front());
+    if (type->kind == TypeRef::Kind::Array && !type->inner.empty()) {
+        HirMovePlan element = BuildMovePlan(type->inner.front());
         if (element.kind != HirMovePlan::Kind::Trivial) {
             plan.kind = HirMovePlan::Kind::Array;
             plan.components.push_back(std::move(element));
         }
         return plan;
     }
-    if (type.kind == TypeRef::Kind::Tuple) {
-        for (const TypeRef &element : type.inner) {
+    if (type->kind == TypeRef::Kind::Tuple) {
+        for (const TypeRef &element : type->inner) {
             plan.components.push_back(BuildMovePlan(element));
         }
         if (std::ranges::any_of(plan.components, [](const HirMovePlan &component) {
@@ -960,11 +960,11 @@ HirMovePlan AstToHirContext::BuildMovePlan(const TypeRef &type, const FuncDecl *
     if (IsNativeType(type)) {
         return BuildNativeMovePlan(type);
     }
-    if (type.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(type.name);
+    if (type->kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(type->name);
         if (const auto declaration = structDecls.find(base); declaration != structDecls.end()) {
             std::unordered_map<std::string, TypeRef> substitutions;
-            const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+            const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
             const std::size_t count = std::min(arguments.size(), declaration->second->typeParams.size());
             for (std::size_t index = 0; index < count; ++index) {
                 substitutions.emplace(declaration->second->typeParams[index].name, arguments[index]);
@@ -1058,11 +1058,11 @@ std::string AstToHirContext::CalleeName(const std::string &typeName, const std::
     TypeRef ft = MethodType(receiverType, decl);
     // ft.inner = [selfType, param1, ..., retType]
     std::string name = typeName + "::" + methodName + "__";
-    for (std::size_t i = 1; i + 1 < ft.inner.size(); ++i) {
+    for (std::size_t i = 1; i + 1 < ft->inner.size(); ++i) {
         if (i > 1) {
             name += "_";
         }
-        name += MangleTypeName(ft.inner[i]);
+        name += MangleTypeName(ft->inner[i]);
     }
     return name;
 }
@@ -1094,12 +1094,12 @@ const FuncDecl *AstToHirContext::LookupMethod(const TypeRef &receiverType, const
         // silent AST corruption.
         const auto *decl = overloads[0];
         TypeRef ft = MethodType(receiverType, *decl);
-        const std::size_t paramCount = ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
+        const std::size_t paramCount = ft->inner.size() >= 2 ? ft->inner.size() - 2 : 0;
         if (paramCount != argTypes.size()) {
             return nullptr;
         }
         for (std::size_t i = 0; i < argTypes.size(); ++i) {
-            const TypeRef &paramType = ft.inner[i + 1];
+            const TypeRef &paramType = ft->inner[i + 1];
             if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
                 continue;
             }
@@ -1113,13 +1113,13 @@ const FuncDecl *AstToHirContext::LookupMethod(const TypeRef &receiverType, const
     for (const auto *decl : overloads) {
         TypeRef ft = MethodType(receiverType, *decl);
         // ft.inner = [selfType, param1, ..., retType]
-        const std::size_t paramCount = ft.inner.size() >= 2 ? ft.inner.size() - 2 : 0;
+        const std::size_t paramCount = ft->inner.size() >= 2 ? ft->inner.size() - 2 : 0;
         if (paramCount != argTypes.size()) {
             continue;
         }
         bool match = true;
         for (std::size_t i = 0; i < argTypes.size(); ++i) {
-            const TypeRef &paramType = ft.inner[i + 1];
+            const TypeRef &paramType = ft->inner[i + 1];
             if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() && !argTypes[i].IsAssignableTo(paramType) &&
                 !argTypes[i].CanImplicitlyBorrowTo(paramType) && !(argTypes[i].IsInteger() && paramType.IsInteger())) {
                 match = false;
@@ -1145,12 +1145,12 @@ TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
         // marker rather than the tag has to say how large the value is.
         if (decl.form == EnumDecl::Form::Variant) {
             if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
-                type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
-                return type;
+                const TypeRef marker = TypeRef::MakeStorageMarker(layout->size, layout->alignment);
+                return type.WithInner({&marker, 1});
             }
         }
-        type.inner.push_back(EnumBaseType(decl));
-        return type;
+        const TypeRef base = EnumBaseType(decl);
+        return type.WithInner({&base, 1});
     }
     if (typeArgs.size() == decl.typeParams.size()) {
         // The marker is how the instantiation's size travels to lowering, which reads it to decide whether the enum
@@ -1158,7 +1158,8 @@ TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
         // builder of this type: an instantiation whose layout is not knowable yet -- a type argument still a
         // parameter -- carries no marker from either, and is not lowered until it has been substituted.
         if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
-            type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
+            const TypeRef marker = TypeRef::MakeStorageMarker(layout->size, layout->alignment);
+            return type.WithInner({&marker, 1});
         }
     }
     return type;

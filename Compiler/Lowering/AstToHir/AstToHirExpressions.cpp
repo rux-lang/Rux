@@ -52,8 +52,8 @@ std::string SubstituteTypeName(std::string name, const std::unordered_map<std::s
 /// Substitute type parameters throughout a type, recursing into pointees, elements, and type arguments so a parameter
 /// is replaced wherever it is nested.
 TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
-    if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
-        if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
+    if (type->kind == TypeRef::Kind::TypeParam || type->kind == TypeRef::Kind::Named) {
+        if (const auto substitution = substitutions.find(type->name); substitution != substitutions.end()) {
             TypeRef substituted = substitution->second;
             // `*var T` marks the pointee writable on the `T` slot, so the substitution carries that mark onto
             // whatever `T` turns out to be -- here as much as in analysis, or the two sides name the same
@@ -61,30 +61,37 @@ TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeR
             substituted.isMut = type.isMut;
             return substituted;
         }
-        if (type.kind == TypeRef::Kind::Named) {
-            type.name = SubstituteTypeName(std::move(type.name), substitutions);
-        }
     }
-    for (TypeRef &inner : type.inner) {
-        inner = SubstituteType(std::move(inner), substitutions);
+    std::vector<TypeRef> inner;
+    inner.reserve(type->inner.size());
+    for (const TypeRef &member : type->inner) {
+        inner.push_back(SubstituteType(member, substitutions));
     }
-    return TypeRef::Renormalize(std::move(type));
+    const std::string name =
+        type->kind == TypeRef::Kind::Named ? SubstituteTypeName(type->name, substitutions) : type->name;
+    return TypeRef::Renormalize(type.With(name, inner));
 }
 
 } // namespace
 
 TypeRef AstToHirContext::RestoreEnumLayoutMarkers(TypeRef type) const {
-    for (TypeRef &inner : type.inner) {
-        inner = RestoreEnumLayoutMarkers(std::move(inner));
+    if (!type->inner.empty()) {
+        std::vector<TypeRef> inner;
+        inner.reserve(type->inner.size());
+        for (const TypeRef &member : type->inner) {
+            inner.push_back(RestoreEnumLayoutMarkers(member));
+        }
+        type = type.WithInner(inner);
     }
     // Any enum, not only an instantiated one. Substitution drops what `inner` said, and `inner` is the only place a
     // type says how large it is; an enum left without it is sized as a pointer, so a write through `*var E` in a
     // generic body stored eight bytes into whatever room the real enum had.
-    if (type.kind != TypeRef::Kind::Named || !type.inner.empty() || !enumDecls.contains(BaseTypeName(type.name))) {
+    if (type->kind != TypeRef::Kind::Named || !type->inner.empty() || !enumDecls.contains(BaseTypeName(type->name))) {
         return type;
     }
     if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
-        type.inner.push_back(TypeRef::MakeStorageMarker(layout->size, layout->alignment));
+        const TypeRef marker = TypeRef::MakeStorageMarker(layout->size, layout->alignment);
+        return type.WithInner({&marker, 1});
     }
     return type;
 }
@@ -113,7 +120,7 @@ TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
 }
 
 TypeRef AstToHirContext::SubstituteCurrentType(TypeRef type) const {
-    return RestoreEnumLayoutMarkers(SubstituteType(std::move(type), currentSubstitutions));
+    return RestoreEnumLayoutMarkers(SubstituteType(type, currentSubstitutions));
 }
 
 /// The name to lower an identifier under, which for one naming a function is that function's linker name.
@@ -234,7 +241,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         auto lowerOperand = [&](const Expr &operand, const Expr &other) {
             if (IsNullLiteral(operand)) {
                 const TypeRef otherType = ResolvedExpressionType(other);
-                if (otherType.kind == TypeRef::Kind::Pointer) {
+                if (otherType->kind == TypeRef::Kind::Pointer) {
                     return LowerExprAs(operand, otherType);
                 }
             }
@@ -246,7 +253,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
             // A `null` operand carries no type fact, so the other operand's type is only looked up, not required. Only
             // a literal analysis left at the default `int` is retyped; one it already typed keeps that type.
             const TypeRef *ownFact = model.TryGetType(operand);
-            const bool defaultWidth = ownFact && ownFact->kind == TypeRef::Kind::Int;
+            const bool defaultWidth = ownFact && (*ownFact)->kind == TypeRef::Kind::Int;
             if (const TypeRef *otherFact = model.TryGetType(other); !shift && defaultWidth && otherFact) {
                 const TypeRef otherType = SubstituteCurrentType(*otherFact);
                 if (otherType.IsInteger() && UnsuffixedIntegerLiteralFits(operand, otherType)) {

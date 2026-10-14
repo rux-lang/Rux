@@ -532,7 +532,7 @@ void AnalysisContext::FinishBorrowAnalysis() {
 }
 
 void AnalysisContext::ExpireBorrowAtLastUse(const Symbol &symbol, const SourceLocation location) {
-    if (symbol.type.kind != TypeRef::Kind::Reference || !currentBorrowStatement) {
+    if (symbol.type->kind != TypeRef::Kind::Reference || !currentBorrowStatement) {
         return;
     }
     const auto live = borrowLiveAfter.find(currentBorrowStatement);
@@ -587,11 +587,11 @@ const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) cons
     }
     if (const auto *identifier = AstCast<const IdentExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
-        return symbol && symbol->type.kind == TypeRef::Kind::Reference ? symbol : nullptr;
+        return symbol && symbol->type->kind == TypeRef::Kind::Reference ? symbol : nullptr;
     }
     if (AstCast<const SelfExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup("self");
-        return symbol && symbol->type.kind == TypeRef::Kind::Reference ? symbol : nullptr;
+        return symbol && symbol->type->kind == TypeRef::Kind::Reference ? symbol : nullptr;
     }
     return nullptr;
 }
@@ -613,7 +613,7 @@ std::optional<AnalysisContext::BorrowPlace> AnalysisContext::ResolveBorrowPlace(
     }
 
     BorrowPlace place{root, analyzed.projections};
-    if (root->type.kind == TypeRef::Kind::Reference) {
+    if (root->type->kind == TypeRef::Kind::Reference) {
         if (const auto provenance = activeBorrows.find(root); provenance != activeBorrows.end()) {
             place = provenance->second.place;
             place.projections.insert(place.projections.end(), analyzed.projections.begin(), analyzed.projections.end());
@@ -648,11 +648,11 @@ bool AnalysisContext::ReportBorrowConflict(const BorrowPlace &place, const bool 
 void AnalysisContext::RegisterReferenceBinding(const Symbol &alias, const Expr &initializer,
                                                const TypeRef &referenceType) {
     const auto place = ResolveBorrowPlace(initializer);
-    if (!place || referenceType.inner.empty()) {
+    if (!place || referenceType->inner.empty()) {
         return;
     }
     const Symbol *parent = ReferenceSourceAlias(initializer);
-    const bool exclusive = referenceType.inner.front().isMut;
+    const bool exclusive = referenceType->inner.front().isMut;
     if (ReportBorrowConflict(*place, exclusive, parent, initializer.location,
                              exclusive ? "borrow exclusively" : "borrow")) {
         return;
@@ -664,16 +664,16 @@ void AnalysisContext::RegisterReferenceAssignment(const Expr &target, const Expr
                                                   const TypeRef &referenceType) {
     const auto *identifier = AstCast<const IdentExpr>(&target);
     Symbol *alias = identifier ? currentScope->Lookup(identifier->name) : nullptr;
-    if (!alias || alias->type.kind != TypeRef::Kind::Reference) {
+    if (!alias || alias->type->kind != TypeRef::Kind::Reference) {
         return;
     }
     const auto place = ResolveBorrowPlace(initializer);
     const Symbol *parent = ReferenceSourceAlias(initializer);
     activeBorrows.erase(alias);
-    if (!place || referenceType.inner.empty()) {
+    if (!place || referenceType->inner.empty()) {
         return;
     }
-    const bool exclusive = referenceType.inner.front().isMut;
+    const bool exclusive = referenceType->inner.front().isMut;
     if (!ReportBorrowConflict(*place, exclusive, parent, initializer.location,
                               exclusive ? "borrow exclusively" : "borrow")) {
         activeBorrows.insert_or_assign(alias, ActiveBorrow{alias, parent, *place, exclusive, initializer.location});
@@ -749,11 +749,11 @@ bool AnalysisContext::CheckBorrowedMove(const Expr &expression, const SourceLoca
 void AnalysisContext::BeginReceiverReferenceBorrow(const CallExpr &call, const Expr &receiver,
                                                    const TypeRef &referenceType) {
     const auto place = ResolveBorrowPlace(receiver);
-    if (!place || referenceType.inner.empty()) {
+    if (!place || referenceType->inner.empty()) {
         return;
     }
     const Symbol *parent = ReferenceSourceAlias(receiver);
-    const bool exclusive = referenceType.inner.front().isMut;
+    const bool exclusive = referenceType->inner.front().isMut;
     if (!ReportBorrowConflict(*place, exclusive, parent, receiver.location,
                               exclusive ? "borrow exclusively" : "borrow")) {
         pendingCallBorrows[&call].push_back({nullptr, parent, *place, exclusive, receiver.location});
@@ -769,7 +769,7 @@ void AnalysisContext::ValidateCallReferenceBorrows(const CallExpr &call, const s
     const std::size_t count = std::min(call.args.size(), parameterTypes.size());
     for (std::size_t index = 0; index < count; ++index) {
         const TypeRef &parameter = parameterTypes[index];
-        if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
+        if (parameter->kind != TypeRef::Kind::Reference || parameter->inner.empty()) {
             continue;
         }
         if (RejectSubsetViewUse(*call.args[index], call.args[index]->location, "be passed to a reference parameter")) {
@@ -780,7 +780,7 @@ void AnalysisContext::ValidateCallReferenceBorrows(const CallExpr &call, const s
             continue;
         }
         const Symbol *parent = ReferenceSourceAlias(*call.args[index]);
-        const bool exclusive = parameter.inner.front().isMut;
+        const bool exclusive = parameter->inner.front().isMut;
         bool conflict = ReportBorrowConflict(*place, exclusive, parent, call.args[index]->location,
                                              exclusive ? "borrow exclusively" : "borrow");
         for (const ActiveBorrow &temporary : temporaries) {
@@ -846,25 +846,25 @@ AnalysisContext::BorrowSnapshot AnalysisContext::ProjectBorrows(const BorrowSnap
 }
 
 bool AnalysisContext::TypeStoresReference(const TypeRef &type) {
-    if (type.kind == TypeRef::Kind::Reference) {
+    if (type->kind == TypeRef::Kind::Reference) {
         return true;
     }
     // A native sum, optional, or fallible stores its payloads the way a tuple stores its elements, so one holding a
     // reference anywhere is reference-storing as a whole.
-    if (type.kind == TypeRef::Kind::Array || type.kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
+    if (type->kind == TypeRef::Kind::Array || type->kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
         type.IsFallible()) {
-        return std::ranges::any_of(type.inner, [&](const TypeRef &element) { return TypeStoresReference(element); });
+        return std::ranges::any_of(type->inner, [&](const TypeRef &element) { return TypeStoresReference(element); });
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return false;
     }
 
-    const std::string base = BaseTypeName(type.name);
-    if (!referenceStorageChecks.insert(type.name).second) {
+    const std::string base = BaseTypeName(type->name);
+    if (!referenceStorageChecks.insert(type->name).second) {
         return false;
     }
-    const auto finish = [&] { referenceStorageChecks.erase(type.name); };
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const auto finish = [&] { referenceStorageChecks.erase(type->name); };
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     if (const auto structure = structDecls.find(base); structure != structDecls.end()) {
         std::unordered_map<std::string, TypeRef> substitutions;
         for (std::size_t index = 0; index < std::min(arguments.size(), structure->second->typeParams.size()); ++index) {

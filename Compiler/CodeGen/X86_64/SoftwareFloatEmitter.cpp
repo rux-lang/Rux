@@ -15,7 +15,7 @@ bool X86_64FunctionEmitter::EmitWideSoftwareFloatNegation(const LirInstr &instru
     if (instruction.dst == LirNoReg || !IsSoftwareFloat(operandType) || instruction.op != LirOpcode::Neg) {
         return false;
     }
-    const PrimitiveInfo *primitive = FindPrimitive(operandType.kind);
+    const PrimitiveInfo *primitive = FindPrimitive(operandType->kind);
     const int size = SizeOf(operandType);
     const int signBit = primitive ? static_cast<int>(primitive->bits - 1) : size * 8 - 1;
     if (size <= 8) {
@@ -35,7 +35,7 @@ bool X86_64FunctionEmitter::EmitWideSoftwareFloatNegation(const LirInstr &instru
 
 void X86_64FunctionEmitter::EmitSoftwareFloatConstant(const LirInstr &instruction) {
     const int size = SizeOf(instruction.type);
-    const PrimitiveInfo *primitive = FindPrimitive(instruction.type.kind);
+    const PrimitiveInfo *primitive = FindPrimitive(instruction.type->kind);
     const FloatFormat *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
     const auto encoding = format ? ParseFloatEncoding(instruction.strArg, *format) : std::nullopt;
     const WideInteger bits = encoding ? encoding->Bits() : WideInteger::Zero(static_cast<std::uint32_t>(size * 8));

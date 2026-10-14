@@ -57,12 +57,12 @@ void AnalysisContext::QueueGenericInstantiation(const FuncDecl &decl,
 std::optional<TypeRef> AnalysisContext::InstantiateFunctionReference(const IdentExpr &identifier,
                                                                      const Symbol &symbol) {
     const auto expected = expectedExpressionTypes.find(&identifier);
-    if (expected == expectedExpressionTypes.end() || expected->second.kind != TypeRef::Kind::Func) {
+    if (expected == expectedExpressionTypes.end() || expected->second->kind != TypeRef::Kind::Func) {
         return std::nullopt;
     }
     const TypeRef &target = expected->second;
     for (const FuncDecl *candidate : symbol.funcOverloads) {
-        if (candidate->typeParams.empty() || candidate->params.size() + 1 != target.inner.size() ||
+        if (candidate->typeParams.empty() || candidate->params.size() + 1 != target->inner.size() ||
             std::ranges::any_of(candidate->params, [](const Param &parameter) { return parameter.isVariadic; })) {
             continue;
         }
@@ -232,7 +232,7 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
                 }
                 LayoutOfTypeRef(substituted);
                 QueueDropMethodInstantiation(substituted);
-                instantiatedTypes.push_back(std::move(substituted));
+                instantiatedTypes.push_back(substituted);
             }
         }
 

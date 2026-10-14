@@ -60,21 +60,22 @@ std::string SubstituteIdentityName(std::string name, const std::unordered_map<st
 /// Substitute type parameters throughout a type, including nested ones, so a generic argument is resolved wherever it
 /// appears.
 TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
-    if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
-        if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
+    if (type->kind == TypeRef::Kind::TypeParam || type->kind == TypeRef::Kind::Named) {
+        if (const auto substitution = substitutions.find(type->name); substitution != substitutions.end()) {
             TypeRef substituted = substitution->second;
             // Writability belongs to the parameter slot in *var T, not to the caller's plain T argument.
             substituted.isMut = type.isMut;
             return substituted;
         }
-        if (type.kind == TypeRef::Kind::Named) {
-            type.name = SubstituteIdentityName(std::move(type.name), substitutions);
-        }
     }
-    for (auto &inner : type.inner) {
-        inner = SubstituteIdentityType(std::move(inner), substitutions);
+    std::vector<TypeRef> inner;
+    inner.reserve(type->inner.size());
+    for (const TypeRef &member : type->inner) {
+        inner.push_back(SubstituteIdentityType(member, substitutions));
     }
-    return TypeRef::Renormalize(std::move(type));
+    const std::string name =
+        type->kind == TypeRef::Kind::Named ? SubstituteIdentityName(type->name, substitutions) : type->name;
+    return TypeRef::Renormalize(type.With(name, inner));
 }
 
 /// Encode a type into the form a linker name embeds, so two instantiations differing only by argument get distinct
@@ -97,10 +98,10 @@ const TypeRef &RequireSubstitution(const std::unordered_map<std::string, TypeRef
 
 std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef &type) {
     const TypeRef &owner =
-        (type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()
-            ? type.inner.front()
+        (type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Reference) && !type->inner.empty()
+            ? type->inner.front()
             : type;
-    std::string name = owner.kind == TypeRef::Kind::Named ? owner.name : owner.ToString();
+    std::string name = owner->kind == TypeRef::Kind::Named ? owner->name : owner.ToString();
     // A slice keeps its element in the name, because `extend int[]` and `extend char8[]` are different method sets. Any
     // other generic instantiation shares one, so it reduces to the declaration that owns it.
     if (const std::size_t arguments = name.find('<'); arguments != std::string::npos && !owner.IsSlice()) {
@@ -135,10 +136,10 @@ ResolvedCallableBinding
 ResolvedCallableBinding::Instantiate(const std::unordered_map<std::string, TypeRef> &contextSubstitutions) const {
     ResolvedCallableBinding concrete = *this;
     for (auto &[_, type] : concrete.substitutions) {
-        type = SubstituteIdentityType(std::move(type), contextSubstitutions);
+        type = SubstituteIdentityType(type, contextSubstitutions);
     }
     if (concrete.receiverType) {
-        concrete.receiverType = SubstituteIdentityType(std::move(*concrete.receiverType), contextSubstitutions);
+        concrete.receiverType = SubstituteIdentityType(*concrete.receiverType, contextSubstitutions);
     }
     concrete.linkerName = LinkerNameFor(concrete.substitutions);
     return concrete;

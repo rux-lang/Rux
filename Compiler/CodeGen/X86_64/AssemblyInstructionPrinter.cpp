@@ -68,7 +68,7 @@ std::string Imm64(const std::uint64_t value) {
 }
 
 [[nodiscard]] bool IsFloat80(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Float80;
+    return type->kind == TypeRef::Kind::Float80;
 }
 
 /// The text of the x87 slot traffic for one instruction, mirroring `X87Stack` in `X87Emitter.cpp`: every operand is
@@ -111,7 +111,7 @@ public:
         if (IsFloat(type)) {
             const std::int32_t address = physical ? Spill(reg, type) : printer.Disp(reg);
             Emit("fld",
-                 AssemblyInstructionPrinter::Rbp(type.kind == TypeRef::Kind::Float32 ? "dword" : "qword", address));
+                 AssemblyInstructionPrinter::Rbp(type->kind == TypeRef::Kind::Float32 ? "dword" : "qword", address));
             return;
         }
         Emit("fild", AssemblyInstructionPrinter::Rbp("qword", !physical && SizeOf(type) == 8 ? printer.Disp(reg)
@@ -128,7 +128,7 @@ public:
             Emit("mov", AssemblyInstructionPrinter::Rbp("dword", slot + 12) + ", 0");
             return;
         }
-        const bool float32 = type.kind == TypeRef::Kind::Float32;
+        const bool float32 = type->kind == TypeRef::Kind::Float32;
         const std::string_view width = float32 ? "dword" : "qword";
         if (!printer.FramePlan().PhysicalRegisters().contains(reg) &&
             !printer.FramePlan().FloatRegisters().contains(reg)) {
@@ -145,7 +145,7 @@ private:
     [[nodiscard]] std::int32_t Spill(const LirReg reg, const TypeRef &type) const {
         printer.LoadA(reg, type);
         if (IsFloat(type)) {
-            const bool single = type.kind == TypeRef::Kind::Float32;
+            const bool single = type->kind == TypeRef::Kind::Float32;
             Emit(single ? "movss" : "movsd",
                  AssemblyInstructionPrinter::Rbp(single ? "dword" : "qword", spill) + ", xmm0");
         }
@@ -358,7 +358,7 @@ bool AssemblyInstructionPrinter::IsAggregate(const TypeRef &type) const {
     if (type.IsSlice()) {
         return true;
     }
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -367,8 +367,8 @@ bool AssemblyInstructionPrinter::IsAggregate(const TypeRef &type) const {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(type.name);
-        return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+        const std::string base = BaseTypeName(type->name);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!type->inner.empty() && SizeOf(type) > 8);
     }
     default:
         return false;
@@ -391,18 +391,18 @@ bool AssemblyInstructionPrinter::IsWin64AddressParameter(const TypeRef &type) co
     if (type.IsSlice()) {
         return true;
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return false;
     }
-    const std::string base = BaseTypeName(type.name);
+    const std::string base = BaseTypeName(type->name);
     return interfaceNames.contains(base);
 }
 
 bool AssemblyInstructionPrinter::IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto type = registerTypes.find(reg);
-    return type != registerTypes.end() && type->second.kind == TypeRef::Kind::Pointer && !type->second.inner.empty() &&
-           type->second.inner[0] == pointee;
+    return type != registerTypes.end() && type->second->kind == TypeRef::Kind::Pointer &&
+           !type->second->inner.empty() && type->second->inner[0] == pointee;
 }
 
 std::string_view AssemblyInstructionPrinter::PhysicalRegisterName(const int index) const {
@@ -454,7 +454,7 @@ void AssemblyInstructionPrinter::LoadA(const LirReg reg, const TypeRef &type) {
         Instruction("mov", "rdx, r10");
     }
     else if (IsFloat(type)) {
-        const bool float32 = type.kind == TypeRef::Kind::Float32;
+        const bool float32 = type->kind == TypeRef::Kind::Float32;
         Instruction(float32 ? "movss" : "movsd", "xmm0, " + Rbp(float32 ? "dword" : "qword", displacement));
     }
     else if (size == 8 || size == 0) {
@@ -507,7 +507,7 @@ void AssemblyInstructionPrinter::LoadB(const LirReg reg, const TypeRef &type) {
         return;
     }
     if (IsFloat(type)) {
-        const bool float32 = type.kind == TypeRef::Kind::Float32;
+        const bool float32 = type->kind == TypeRef::Kind::Float32;
         Instruction(float32 ? "movss" : "movsd", "xmm1, " + Rbp(float32 ? "dword" : "qword", displacement));
     }
     else if (size == 8 || size == 0) {
@@ -545,7 +545,7 @@ void AssemblyInstructionPrinter::StoreStack(const LirReg reg, const TypeRef &typ
         Instruction("mov", Rbp("qword", displacement + 8) + ", rdx");
     }
     else if (IsFloat(type)) {
-        const bool float32 = type.kind == TypeRef::Kind::Float32;
+        const bool float32 = type->kind == TypeRef::Kind::Float32;
         Instruction(float32 ? "movss" : "movsd", Rbp(float32 ? "dword" : "qword", displacement) + ", xmm0");
     }
     else {
@@ -820,7 +820,7 @@ void AssemblyInstructionPrinter::EmitFunctionSetup(const LirFunc &function) {
     for (const auto &parameter : function.params) {
         if (const auto found = framePlan.FloatRegisters().find(parameter.reg);
             found != framePlan.FloatRegisters().end()) {
-            const bool single = parameter.type.kind == TypeRef::Kind::Float32;
+            const bool single = parameter.type->kind == TypeRef::Kind::Float32;
             Instruction(single ? "movss" : "movsd", "xmm0, " + Rbp(single ? "dword" : "qword", Disp(parameter.reg)));
             Instruction("movaps", std::format("xmm{}, xmm0", found->second));
         }
@@ -901,7 +901,7 @@ bool AssemblyInstructionPrinter::EmitWideSoftwareFloatNegation(const LirInstr &i
         return false;
     }
     // Negation flips the sign bit and nothing else, at whatever width the format stores.
-    const PrimitiveInfo *primitive = FindPrimitive(operandType.kind);
+    const PrimitiveInfo *primitive = FindPrimitive(operandType->kind);
     const int size = SizeOf(operandType);
     const int signBit = primitive ? static_cast<int>(primitive->bits - 1) : size * 8 - 1;
     if (size <= 8) {
@@ -922,7 +922,7 @@ bool AssemblyInstructionPrinter::EmitWideSoftwareFloatNegation(const LirInstr &i
 void AssemblyInstructionPrinter::EmitSoftwareFloatConstant(const LirInstr &instruction) {
     // The literal is encoded at compile time and its storage written word by word, as an integer of its width.
     const int size = SizeOf(instruction.type);
-    const PrimitiveInfo *primitive = FindPrimitive(instruction.type.kind);
+    const PrimitiveInfo *primitive = FindPrimitive(instruction.type->kind);
     const FloatFormat *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
     const auto encoding = format ? ParseFloatEncoding(instruction.strArg, *format) : std::nullopt;
     const WideInteger bits = encoding ? encoding->Bits() : WideInteger::Zero(static_cast<std::uint32_t>(size * 8));
@@ -1301,7 +1301,7 @@ bool AssemblyInstructionPrinter::EmitWideArithmetic(const LirInstr &instruction)
         if (wideType.IsBool() && IsNativeFloat(destinationType)) {
             // A wide bool's value is word 0, 0 or 1, which converts as the integer it is.
             Instruction("mov", "rax, " + word(source(0), 0));
-            Instruction(destinationType.kind == TypeRef::Kind::Float32 ? "cvtsi2ss" : "cvtsi2sd", "xmm0, rax");
+            Instruction(destinationType->kind == TypeRef::Kind::Float32 ? "cvtsi2ss" : "cvtsi2sd", "xmm0, rax");
             StoreA(instruction.dst, destinationType);
             return true;
         }
@@ -1392,7 +1392,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         LoadA(instruction.srcs[0], type);
         LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const bool float32 = type->kind == TypeRef::Kind::Float32;
             // Bitwise operations are not produced for floating values; malformed LIR keeps the emitter's add.
             const bool subtract = instruction.op == LirOpcode::Sub;
             Instruction(subtract ? (float32 ? "subss" : "subsd") : (float32 ? "addss" : "addsd"), "xmm0, xmm1");
@@ -1426,7 +1426,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         LoadA(instruction.srcs[0], type);
         LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            Instruction(type.kind == TypeRef::Kind::Float32 ? "mulss" : "mulsd", "xmm0, xmm1");
+            Instruction(type->kind == TypeRef::Kind::Float32 ? "mulss" : "mulsd", "xmm0, xmm1");
         }
         else {
             Instruction("imul", "rax, r10");
@@ -1441,7 +1441,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
             // A float remainder never gets here: `PrintX87` spells it as the `fprem` loop.
-            Instruction(type.kind == TypeRef::Kind::Float32 ? "divss" : "divsd", "xmm0, xmm1");
+            Instruction(type->kind == TypeRef::Kind::Float32 ? "divss" : "divsd", "xmm0, xmm1");
         }
         else {
             if (type.IsSigned()) {
@@ -1496,7 +1496,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     }
     case LirOpcode::RotateRight:
         LoadA(instruction.srcs[0], instruction.type);
-        Instruction("ror", std::format("{}, {}", instruction.type.kind == TypeRef::Kind::UInt64 ? "rax" : "eax",
+        Instruction("ror", std::format("{}, {}", instruction.type->kind == TypeRef::Kind::UInt64 ? "rax" : "eax",
                                        instruction.strArg));
         StoreA(instruction.dst, instruction.type);
         return true;
@@ -1504,7 +1504,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         const TypeRef &type = instruction.type;
         LoadA(instruction.srcs[0], type);
         if (IsFloat(type)) {
-            if (type.kind == TypeRef::Kind::Float32) {
+            if (type->kind == TypeRef::Kind::Float32) {
                 Instruction("movss", std::format("xmm1, dword [rel {}]", modulePrinter.InternFloat32("0x80000000")));
                 Instruction("xorps", "xmm0, xmm1");
             }
@@ -1522,10 +1522,10 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
     }
     case LirOpcode::Sqrt:
         if (instruction.srcs.size() != 1 || instruction.dst == LirNoReg ||
-            (instruction.type.kind != TypeRef::Kind::Float32 && instruction.type.kind != TypeRef::Kind::Float64))
+            (instruction.type->kind != TypeRef::Kind::Float32 && instruction.type->kind != TypeRef::Kind::Float64))
             return false;
         LoadA(instruction.srcs[0], instruction.type);
-        Instruction(instruction.type.kind == TypeRef::Kind::Float32 ? "sqrtss" : "sqrtsd", "xmm0, xmm0");
+        Instruction(instruction.type->kind == TypeRef::Kind::Float32 ? "sqrtss" : "sqrtsd", "xmm0, xmm0");
         StoreA(instruction.dst, instruction.type);
         return true;
     case LirOpcode::Not:
@@ -1552,7 +1552,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         LoadA(instruction.srcs[0], lhsType);
         LoadB(instruction.srcs[1], lhsType);
         if (IsFloat(lhsType)) {
-            Instruction(lhsType.kind == TypeRef::Kind::Float32 ? "ucomiss" : "ucomisd", "xmm0, xmm1");
+            Instruction(lhsType->kind == TypeRef::Kind::Float32 ? "ucomiss" : "ucomisd", "xmm0, xmm1");
             PrintFloatComparison(*this, instruction.op);
         }
         else {
@@ -1593,7 +1593,7 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         const bool destinationFloat = IsFloat(destinationType);
         LoadA(instruction.srcs[0], sourceType);
         if (sourceFloat && !destinationFloat) {
-            const bool single = sourceType.kind == TypeRef::Kind::Float32;
+            const bool single = sourceType->kind == TypeRef::Kind::Float32;
             const std::string_view truncate = single ? "cvttss2si" : "cvttsd2si";
             if (destinationType.IsInteger() && !destinationType.IsSigned() && SizeOf(destinationType) == 8) {
                 // A value of 2^63 or more is reduced below it and its top bit restored.
@@ -1618,13 +1618,13 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
             }
         }
         else if (!sourceFloat && destinationFloat) {
-            Instruction(destinationType.kind == TypeRef::Kind::Float32 ? "cvtsi2ss" : "cvtsi2sd", "xmm0, rax");
+            Instruction(destinationType->kind == TypeRef::Kind::Float32 ? "cvtsi2ss" : "cvtsi2sd", "xmm0, rax");
         }
         else if (sourceFloat && destinationFloat) {
-            if (sourceType.kind == TypeRef::Kind::Float32 && destinationType.kind == TypeRef::Kind::Float64) {
+            if (sourceType->kind == TypeRef::Kind::Float32 && destinationType->kind == TypeRef::Kind::Float64) {
                 Instruction("cvtss2sd", "xmm0, xmm0");
             }
-            else if (sourceType.kind == TypeRef::Kind::Float64 && destinationType.kind == TypeRef::Kind::Float32) {
+            else if (sourceType->kind == TypeRef::Kind::Float64 && destinationType->kind == TypeRef::Kind::Float32) {
                 Instruction("cvtsd2ss", "xmm0, xmm0");
             }
         }
@@ -1663,11 +1663,11 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         }
         const TypeRef &type = instruction.type;
         const int size = SizeOf(type);
-        if (type.kind == TypeRef::Kind::Float32) {
+        if (type->kind == TypeRef::Kind::Float32) {
             Instruction("movss", std::format("xmm0, dword [rel {}]", modulePrinter.InternFloat32(instruction.strArg)));
             StoreA(instruction.dst, type);
         }
-        else if (type.kind == TypeRef::Kind::Float64) {
+        else if (type->kind == TypeRef::Kind::Float64) {
             Instruction("movsd", std::format("xmm0, qword [rel {}]", modulePrinter.InternFloat64(instruction.strArg)));
             StoreA(instruction.dst, type);
         }
@@ -1816,8 +1816,8 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
     case LirOpcode::IndexPtr: {
         const LirReg base = instruction.srcs[0];
         const LirReg index = instruction.srcs[1];
-        int elementSize = instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty()
-                            ? SizeOfRuntime(instruction.type.inner[0])
+        int elementSize = instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty()
+                            ? SizeOfRuntime(instruction.type->inner[0])
                             : 8;
         elementSize = std::max(elementSize, 1);
         if (const auto selected = SelectScalarAddressInstruction(instruction, framePlan, elementSize)) {
@@ -1844,7 +1844,7 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         StoreA(instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     case LirOpcode::StringAddr: {
-        const TypeRef elementType = instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
+        const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
         const std::string label =
             modulePrinter.InternString(EncodeStringLiteral(instruction.strArg, SizeOfRuntime(elementType)));
         Instruction("lea", std::format("rax, [rel {}]", label));

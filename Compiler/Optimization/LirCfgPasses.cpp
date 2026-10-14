@@ -135,8 +135,8 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
                 const auto parsed = std::from_chars(instruction.strArg.data(),
                                                     instruction.strArg.data() + instruction.strArg.size(), amount);
                 const bool word =
-                    instruction.type.kind == TypeRef::Kind::UInt32 || instruction.type.kind == TypeRef::Kind::UInt64;
-                const unsigned width = instruction.type.kind == TypeRef::Kind::UInt32 ? 32 : 64;
+                    instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::UInt64;
+                const unsigned width = instruction.type->kind == TypeRef::Kind::UInt32 ? 32 : 64;
                 if (!word || instruction.srcs.size() != 1 || instruction.dst == LirNoReg || parsed.ec != std::errc{} ||
                     parsed.ptr != instruction.strArg.data() + instruction.strArg.size() || amount >= width) {
                     Report(context, function, blockIndex,

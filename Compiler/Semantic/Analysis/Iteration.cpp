@@ -69,7 +69,7 @@ std::optional<AnalysisContext::ReportedItem> AnalysisContext::ReportedItemOf(con
     // A native optional reports an item by its presence and the end by its outer absence; an item may itself be
     // absent or failed without ending anything.
     if (returned.IsOptional() && !returned.IsIncompleteNative()) {
-        return ReportedItem{returned.inner.front(), returned};
+        return ReportedItem{returned->inner.front(), returned};
     }
     return std::nullopt;
 }
@@ -97,9 +97,9 @@ const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type) const 
 
 std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf(const TypeRef &subject) {
     IterationShape shape;
-    if (subject.IsIterableRange() && !subject.inner.empty()) {
+    if (subject.IsIterableRange() && !subject->inner.empty()) {
         shape.kind = IterationShape::Kind::Range;
-        shape.itemType = subject.inner[0];
+        shape.itemType = subject->inner[0];
         return shape;
     }
     if (auto element = IndexElementType(subject)) {
@@ -111,10 +111,10 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
     if (const FuncDecl *advance = LookupIteratorAdvance(subject)) {
         if (auto reported = ReportedItemOf(subject, *advance)) {
             shape.kind = IterationShape::Kind::Iterator;
-            shape.itemType = std::move(reported->itemType);
+            shape.itemType = reported->itemType;
             shape.iteratorType = subject;
             shape.advance = advance;
-            shape.reportedType = std::move(reported->reportedType);
+            shape.reportedType = reported->reportedType;
             return shape;
         }
         return std::nullopt;
@@ -127,11 +127,11 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
         if (const FuncDecl *advance = LookupIteratorAdvance(iteratorType)) {
             if (auto reported = ReportedItemOf(iteratorType, *advance)) {
                 shape.kind = IterationShape::Kind::Iterable;
-                shape.itemType = std::move(reported->itemType);
+                shape.itemType = reported->itemType;
                 shape.iteratorType = iteratorType;
                 shape.advance = advance;
                 shape.entry = entry;
-                shape.reportedType = std::move(reported->reportedType);
+                shape.reportedType = reported->reportedType;
                 return shape;
             }
         }
@@ -160,7 +160,7 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.advance = shape.advance;
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
-    iterations.insert_or_assign(&statement, std::move(iteration));
+    iterations.insert_or_assign(&statement, iteration);
 }
 
 void AnalysisContext::EmitNotIterable(const SourceLocation location, const TypeRef &subject) const {

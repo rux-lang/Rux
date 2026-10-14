@@ -37,7 +37,7 @@ namespace Rux::AArch64Detail {
     if (t.IsSlice()) {
         return true;
     }
-    switch (t.kind) {
+    switch (t->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -46,8 +46,8 @@ namespace Rux::AArch64Detail {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(t.name);
-        return interfaceNames.contains(base) || layouts.contains(base) || (!t.inner.empty() && SizeOf(t) > 8);
+        const std::string base = BaseTypeName(t->name);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!t->inner.empty() && SizeOf(t) > 8);
     }
     default:
         return false;
@@ -339,7 +339,7 @@ void AArch64ModuleEmitter::CopyFrameValue(const std::int32_t dstOff, const std::
         return;
     }
     if (IsFloat(type)) {
-        const A64Reg value = type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+        const A64Reg value = type->kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
         LoadScalar(value, A64::Fp, srcOff, value.bits / 8U, false);
         StoreScalar(value, A64::Fp, dstOff, value.bits / 8U);
         return;
@@ -379,7 +379,7 @@ void AArch64ModuleEmitter::CopyFrameValue(const std::int32_t dstOff, const std::
 // reached in two instructions rather than the four or five a MOVZ chain
 // through a general-purpose register would take.
 void AArch64ModuleEmitter::LoadFloatConstant(const A64Reg dst, const TypeRef &type, const std::string &literal) {
-    const bool single = type.kind == TypeRef::Kind::Float32;
+    const bool single = type->kind == TypeRef::Kind::Float32;
     const double value = single ? ParseFloatLiteral<float>(literal) : ParseFloatLiteral<double>(literal);
     if (TryEncodeFpImm8(value)) {
         Must(enc.FmovImm(dst, value), "a floating-point constant");

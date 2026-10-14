@@ -41,7 +41,7 @@ void AssemblyModulePrinter::EmitModuleData(const LirModule &module, const Layout
 
     // Each constant is printed with the bytes the object emitter places in its read-only data, at the same alignment.
     for (const auto &constant : module.consts) {
-        if (constant.hasSequenceData && constant.type.kind != TypeRef::Kind::Array) {
+        if (constant.hasSequenceData && constant.type->kind != TypeRef::Kind::Array) {
             const int elementSize = std::max(Layout::SizeOf(constant.elementType), 1);
             std::vector<std::uint8_t> elements;
             std::uint64_t length = constant.elements.size();
