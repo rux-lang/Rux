@@ -495,7 +495,8 @@ void Selector::SelectReturn(const LirTerminator &terminator) {
 std::int32_t Selector::PanicSiteFor(const LirInstr &instruction) {
     const RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
         instruction.op == LirOpcode::Assert ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
-        instruction.sourceFunction, instruction.sourceFile, instruction.sourceLine, instruction.sourceColumn);
+        instruction.source.Get().function, instruction.source.Get().file, instruction.source.Get().line,
+        instruction.source.Get().column);
     PanicSite site;
     site.prefix = Symbol({SymbolRef::Kind::String, layout.prefix});
     site.prefixLength = static_cast<std::uint32_t>(layout.prefix.size());

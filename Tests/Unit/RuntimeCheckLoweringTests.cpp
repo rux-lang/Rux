@@ -312,9 +312,9 @@ TEST_CASE("AArch64 emits the division checks as runtime failures") {
                                                  BuildProfile::Debug, *triple);
         const auto zero = Traps(package, "Divide", "division by zero");
         REQUIRE_EQ(zero.size(), 1);
-        CHECK_EQ(zero.front()->sourceFile, kLogicalPath);
-        CHECK_EQ(zero.front()->sourceFunction, "Divide");
-        CHECK_EQ(zero.front()->sourceLine, 2);
+        CHECK_EQ(zero.front()->source.Get().file, kLogicalPath);
+        CHECK_EQ(zero.front()->source.Get().function, "Divide");
+        CHECK_EQ(zero.front()->source.Get().line, 2);
         CHECK_EQ(Traps(package, "Divide", "division overflow").size(), 1);
         AArch64RcuEmitter emitter(package, "RuntimeCheckTest", os);
         const auto objects = emitter.Generate();

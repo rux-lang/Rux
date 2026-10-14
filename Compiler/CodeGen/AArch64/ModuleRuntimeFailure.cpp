@@ -50,9 +50,9 @@ void AArch64ModuleEmitter::GenAssert(AArch64TerminatorEmitter &terminatorEmitter
         heldBranch = terminatorEmitter.EmitBranchOverNonZero(A64::Xn(kTemp));
     }
 
-    const RuntimeFailureLayout layout =
-        BuildRuntimeFailureLayout(isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
-                                  instr.sourceFunction, instr.sourceFile, instr.sourceLine, instr.sourceColumn);
+    const RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
+        isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic, instr.source.Get().function,
+        instr.source.Get().file, instr.source.Get().line, instr.source.Get().column);
 
     if (isWindows) {
         const std::uint32_t getStdHandle =

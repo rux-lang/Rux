@@ -85,7 +85,7 @@ const LirInstr *FindFailure(const LirPackage &package, const LirOpcode opcode, c
         for (const auto &function : module.funcs) {
             for (const auto &block : function.blocks) {
                 const auto found = std::ranges::find(block.instrs, opcode, &LirInstr::op);
-                if (found != block.instrs.end() && found->sourceFunction == functionName) {
+                if (found != block.instrs.end() && found->source.Get().function == functionName) {
                     return &*found;
                 }
             }
@@ -196,14 +196,14 @@ TEST_CASE("runtime failure lowering preserves qualified function, logical path, 
     REQUIRE(assertion != nullptr);
     REQUIRE(panic != nullptr);
 
-    CHECK_EQ(assertion->sourceFunction, "Reporter::AssertNow");
-    CHECK_EQ(panic->sourceFunction, "Reporter::PanicNow");
-    CHECK_EQ(assertion->sourceFile, "Src/Runtime.rux");
-    CHECK_EQ(panic->sourceFile, "Src/Runtime.rux");
-    CHECK_EQ(assertion->sourceLine, 8);
-    CHECK_EQ(assertion->sourceColumn, 9);
-    CHECK_EQ(panic->sourceLine, 12);
-    CHECK_EQ(panic->sourceColumn, 9);
+    CHECK_EQ(assertion->source.Get().function, "Reporter::AssertNow");
+    CHECK_EQ(panic->source.Get().function, "Reporter::PanicNow");
+    CHECK_EQ(assertion->source.Get().file, "Src/Runtime.rux");
+    CHECK_EQ(panic->source.Get().file, "Src/Runtime.rux");
+    CHECK_EQ(assertion->source.Get().line, 8);
+    CHECK_EQ(assertion->source.Get().column, 9);
+    CHECK_EQ(panic->source.Get().line, 12);
+    CHECK_EQ(panic->source.Get().column, 9);
 }
 
 TEST_CASE("ELF, PE, and Mach-O images preserve runtime failure text on both backends") {

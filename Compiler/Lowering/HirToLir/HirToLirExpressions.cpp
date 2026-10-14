@@ -866,10 +866,8 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
             assertion.type = TypeRef::MakeOpaque();
             assertion.srcs = {condition, message};
             assertion.strArg = std::move(messageText);
-            assertion.sourceFile = e.sourceFile;
-            assertion.sourceFunction = e.sourceFunction;
-            assertion.sourceLine = e.sourceLine;
-            assertion.sourceColumn = e.sourceColumn;
+            assertion.source.Edit() = {
+                .file = e.sourceFile, .function = e.sourceFunction, .line = e.sourceLine, .column = e.sourceColumn};
             Emit(std::move(assertion));
             return LirNoReg;
         }
@@ -890,10 +888,8 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
             panic.type = TypeRef::MakeOpaque();
             panic.srcs = {message};
             panic.strArg = std::move(messageText);
-            panic.sourceFile = e.sourceFile;
-            panic.sourceFunction = e.sourceFunction;
-            panic.sourceLine = e.sourceLine;
-            panic.sourceColumn = e.sourceColumn;
+            panic.source.Edit() = {
+                .file = e.sourceFile, .function = e.sourceFunction, .line = e.sourceLine, .column = e.sourceColumn};
             Emit(std::move(panic));
             Unreachable();
             return LirNoReg;

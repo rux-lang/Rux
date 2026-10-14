@@ -405,11 +405,11 @@ void Machine::Execute(Frame &frame, const LirInstr &instr, const std::uint32_t d
     case LirOpcode::Assert:
         if (operand(0).bits.IsZero()) {
             Fail(LirFault::AssertFailed,
-                 std::format("assertion failed at line {}: {}", instr.sourceLine, instr.strArg));
+                 std::format("assertion failed at line {}: {}", instr.source.Get().line, instr.strArg));
         }
         return;
     case LirOpcode::Panic:
-        Fail(LirFault::Panic, std::format("panic at line {}: {}", instr.sourceLine, instr.strArg));
+        Fail(LirFault::Panic, std::format("panic at line {}: {}", instr.source.Get().line, instr.strArg));
     default:
         Fail(LirFault::Unsupported, std::format("opcode '{}'", LirOpcodeName(instr.op)));
     }

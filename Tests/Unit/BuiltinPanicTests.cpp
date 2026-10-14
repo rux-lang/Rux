@@ -99,9 +99,9 @@ TEST_CASE("the imported Panic intrinsic lowers with source context") {
     const LirInstr *panic = FindInstruction(*main, LirOpcode::Panic);
     REQUIRE(panic != nullptr);
     CHECK_EQ(panic->srcs.size(), 1);
-    CHECK_EQ(panic->sourceFile, "test.rux");
-    CHECK_EQ(panic->sourceFunction, "Main");
-    CHECK_NE(panic->sourceLine, 0);
+    CHECK_EQ(panic->source.Get().file, "test.rux");
+    CHECK_EQ(panic->source.Get().function, "Main");
+    CHECK_NE(panic->source.Get().line, 0);
     REQUIRE_FALSE(main->blocks.empty());
     REQUIRE(main->blocks.front().term.has_value());
     CHECK_EQ(main->blocks.front().term->kind, LirTermKind::Unreachable);

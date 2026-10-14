@@ -129,13 +129,13 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
 
     case LirOpcode::Assert:
         out << std::format("assert {}, {}, \"{}\" at {} ({}:{}:{})\n", i.srcs.empty() ? "?" : RegStr(i.srcs[0]),
-                           i.srcs.size() > 1 ? RegStr(i.srcs[1]) : "?", i.strArg, i.sourceFunction, i.sourceFile,
-                           i.sourceLine, i.sourceColumn);
+                           i.srcs.size() > 1 ? RegStr(i.srcs[1]) : "?", i.strArg, i.source.Get().function,
+                           i.source.Get().file, i.source.Get().line, i.source.Get().column);
         return;
 
     case LirOpcode::Panic:
         out << std::format("panic {}, \"{}\" at {} ({}:{}:{})\n", i.srcs.empty() ? "?" : RegStr(i.srcs[0]), i.strArg,
-                           i.sourceFunction, i.sourceFile, i.sourceLine, i.sourceColumn);
+                           i.source.Get().function, i.source.Get().file, i.source.Get().line, i.source.Get().column);
         return;
 
     case LirOpcode::FieldPtr:

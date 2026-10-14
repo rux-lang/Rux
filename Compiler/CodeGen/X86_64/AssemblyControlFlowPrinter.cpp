@@ -283,9 +283,10 @@ private:
             }
 
             const LirReg messageRegister = instruction.srcs[isAssertion ? 1 : 0];
-            const RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
-                isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic, instruction.sourceFunction,
-                instruction.sourceFile, instruction.sourceLine, instruction.sourceColumn);
+            const RuntimeFailureLayout layout =
+                BuildRuntimeFailureLayout(isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
+                                          instruction.source.Get().function, instruction.source.Get().file,
+                                          instruction.source.Get().line, instruction.source.Get().column);
 
             // As the module emitter writes them: WriteFile to the standard error handle on Windows, the write
             // system call to descriptor 2 elsewhere.

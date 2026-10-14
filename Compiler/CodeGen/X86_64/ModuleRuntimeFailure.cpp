@@ -27,9 +27,9 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
         }
 
         const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
-        const RuntimeFailureLayout layout =
-            BuildRuntimeFailureLayout(isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
-                                      instr.sourceFunction, instr.sourceFile, instr.sourceLine, instr.sourceColumn);
+        const RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
+            isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic, instr.source.Get().function,
+            instr.source.Get().file, instr.source.Get().line, instr.source.Get().column);
 
         if (targetOs == Target::OS::Windows) {
             const uint32_t getStdHandle = GetOrAddExtern("GetStdHandle", RcuSymKind::ExternFunc, "KERNEL32.DLL");

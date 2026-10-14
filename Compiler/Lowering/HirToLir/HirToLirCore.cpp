@@ -414,10 +414,8 @@ void HirToLirContext::EmitRuntimeTrap(const std::string_view message, const Sour
     panic.type = TypeRef::MakeOpaque();
     panic.srcs = {slot};
     panic.strArg = text;
-    panic.sourceFile = currentSourceFile;
-    panic.sourceFunction = currentSourceFunction;
-    panic.sourceLine = location.line;
-    panic.sourceColumn = location.column;
+    panic.source.Edit() = {
+        .file = currentSourceFile, .function = currentSourceFunction, .line = location.line, .column = location.column};
     Emit(std::move(panic));
     Unreachable();
 }

@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -248,6 +249,54 @@ inline constexpr std::string_view kProgramModuleName = "__rux_program";
     return "?";
 }
 
+/// A value few instructions carry, kept behind a pointer so the common instruction stays small and cheap to move. It
+/// reads as a default value until it is written, and copying it copies the value.
+template <typename T>
+class LirOutOfLine {
+public:
+    LirOutOfLine() noexcept = default;
+
+    LirOutOfLine(const LirOutOfLine &other)
+        : value(other.value ? std::make_unique<T>(*other.value) : nullptr) {
+    }
+
+    LirOutOfLine(LirOutOfLine &&other) noexcept = default;
+    ~LirOutOfLine() = default;
+
+    LirOutOfLine &operator=(const LirOutOfLine &other) {
+        if (this != &other) {
+            value = other.value ? std::make_unique<T>(*other.value) : nullptr;
+        }
+        return *this;
+    }
+
+    LirOutOfLine &operator=(LirOutOfLine &&other) noexcept = default;
+
+    [[nodiscard]] const T &Get() const noexcept {
+        static const T absent{};
+        return value ? *value : absent;
+    }
+
+    /// The value to write, created on first use.
+    [[nodiscard]] T &Edit() {
+        if (!value) {
+            value = std::make_unique<T>();
+        }
+        return *value;
+    }
+
+private:
+    std::unique_ptr<T> value;
+};
+
+/// Where an instruction that reports a runtime failure (`Assert`, `Panic`) stands in the source.
+struct LirSourceContext {
+    std::string file;
+    std::string function;
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+};
+
 // LIR Instruction
 struct LirInstr {
     LirReg dst = LirNoReg; // result register (LirNoReg for Store)
@@ -269,10 +318,7 @@ struct LirInstr {
     /// anonymous arguments correctly. It counts arguments only: a CallIndirect's callee in srcs[0] is not one of them.
     std::optional<std::uint32_t> cVariadicFixedParamCount;
     /// Optional source context used by instructions that report runtime failures.
-    std::string sourceFile;
-    std::string sourceFunction;
-    std::uint32_t sourceLine = 0;
-    std::uint32_t sourceColumn = 0;
+    LirOutOfLine<LirSourceContext> source;
 };
 
 // Terminators

@@ -122,15 +122,9 @@ TEST_CASE("x86-64 assembly control-flow printing owns runtime failure paths") {
                        {1, TypeRef::MakePointer(TypeRef::MakeSlice(TypeRef::MakeChar8())), "message"}};
 
     LirInstr assertion = Instruction(LirOpcode::Assert, LirNoReg, TypeRef::MakeOpaque(), {0, 1});
-    assertion.sourceFunction = "Failures";
-    assertion.sourceFile = "failure.rux";
-    assertion.sourceLine = 4;
-    assertion.sourceColumn = 8;
+    assertion.source.Edit() = {.file = "failure.rux", .function = "Failures", .line = 4, .column = 8};
     LirInstr panic = Instruction(LirOpcode::Panic, LirNoReg, TypeRef::MakeOpaque(), {1});
-    panic.sourceFunction = assertion.sourceFunction;
-    panic.sourceFile = assertion.sourceFile;
-    panic.sourceLine = 5;
-    panic.sourceColumn = 12;
+    panic.source.Edit() = {.file = "failure.rux", .function = "Failures", .line = 5, .column = 12};
 
     LirBlock block;
     block.instrs = {std::move(assertion), std::move(panic)};
