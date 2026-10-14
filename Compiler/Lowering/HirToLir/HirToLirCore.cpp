@@ -1389,6 +1389,17 @@ LirPackage HirToLirLowering::Generate() {
     return lowering.Run(hir, pool, programModule, externalFailures, &moduleFailures);
 }
 
+void HirToLirLowering::ReleaseHir() {
+    auto modules = std::move(hir.modules);
+    hir = HirPackage{};
+    const auto release = [&](const std::size_t index) { modules[index] = HirModule{}; };
+    if (pool != nullptr)
+        pool->ForEach(modules.size(), release);
+    else
+        for (std::size_t index = 0; index < modules.size(); ++index)
+            release(index);
+}
+
 const std::vector<Diagnostic> &HirToLirLowering::Diagnostics() const noexcept {
     return diagnostics;
 }

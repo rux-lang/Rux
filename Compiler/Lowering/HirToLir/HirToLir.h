@@ -51,6 +51,10 @@ public:
         return moduleFailures;
     }
 
+    /// After `Generate`: free the HIR, a module per thread of the pool, since nothing reads it again and freeing so
+    /// large a tree on one thread is a noticeable wait of its own.
+    void ReleaseHir();
+
 private:
     HirPackage hir;
     TargetContext target;

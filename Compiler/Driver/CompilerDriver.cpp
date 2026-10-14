@@ -924,6 +924,7 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     }
     // The HIR the lowering holds is not read again.
     const std::vector<char> moduleFailures = lirLowering.ModuleFailures();
+    lirLowering.ReleaseHir();
     hirToLir.reset();
     BeginPhase(CompilePhase::OptimizingLir, opts.manifest.package.name.Text());
     // The source module each LIR module was lowered from, in package order, and the recorded entry of every one whose
@@ -1120,6 +1121,9 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
     lirModuleNames.reserve(lirPackage.modules.size());
     for (const LirModule &module : lirPackage.modules)
         lirModuleNames.push_back(module.name);
+    // Freed a module per thread: the LIR is large, and freeing it on one thread is a noticeable wait of its own.
+    Workers().ForEach(lirPackage.modules.size(),
+                      [&](const std::size_t index) { lirPackage.modules[index] = LirModule{}; });
     lirPackage = LirPackage{};
 
     // Link
