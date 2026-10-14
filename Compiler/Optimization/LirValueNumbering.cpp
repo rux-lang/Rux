@@ -393,7 +393,7 @@ bool Number(LirFunc &function, const std::unordered_set<std::string> &constantNa
         term->falseTarget = 0;
         for (auto &instruction : function.blocks[discarded].instrs) {
             if (instruction.op == LirOpcode::Phi)
-                std::erase_if(instruction.phiPreds, [&](const auto &edge) { return edge.second == visit.block; });
+                instruction.phiPreds.EraseIf([&](const auto &edge) { return edge.second == visit.block; });
         }
         changed = true;
     }

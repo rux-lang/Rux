@@ -1,3 +1,4 @@
+#include "Ir/Lir/LirPhiEdges.h"
 #include "Ir/Lir/LirRegs.h"
 
 #include <doctest.h>
@@ -45,4 +46,25 @@ TEST_CASE("LIR register lists keep short lists inline and grow to the heap like 
     CHECK(std::vector<LirReg>(heapList.begin() + 1, heapList.end()) == std::vector<LirReg>{5, 6, 7, 8});
     heapList.clear();
     CHECK(heapList.empty());
+}
+
+TEST_CASE("LIR phi edge lists are empty without storage and copy their edges") {
+    LirPhiEdges edges;
+    CHECK(edges.empty());
+    CHECK(edges.begin() == edges.end());
+    CHECK(edges.EraseIf([](const auto &) { return true; }) == 0);
+
+    edges = {{1, 0}, {2, 1}};
+    edges.emplace_back(3, 2);
+    CHECK(edges.size() == 3);
+    CHECK(edges == std::vector<LirPhiEdges::Edge>{{1, 0}, {2, 1}, {3, 2}});
+
+    const LirPhiEdges copy = edges;
+    CHECK(edges.EraseIf([](const auto &edge) { return edge.second == 1; }) == 1);
+    CHECK(edges == std::vector<LirPhiEdges::Edge>{{1, 0}, {3, 2}});
+    CHECK(copy.size() == 3);
+
+    LirPhiEdges moved = std::move(edges);
+    CHECK(moved.front() == LirPhiEdges::Edge{1, 0});
+    CHECK(edges.empty()); // NOLINT(bugprone-use-after-move): a moved-from list is empty and reusable
 }

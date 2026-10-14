@@ -340,8 +340,7 @@ bool RemoveUnreachableBlocks(LirFunc &function) {
             if (instruction.op != LirOpcode::Phi) {
                 continue;
             }
-            std::erase_if(instruction.phiPreds,
-                          [&remap](const auto &entry) { return remap[entry.second] == invalidBlock; });
+            instruction.phiPreds.EraseIf([&remap](const auto &entry) { return remap[entry.second] == invalidBlock; });
             for (auto &[value, predecessor] : instruction.phiPreds) {
                 static_cast<void>(value);
                 predecessor = remap[predecessor];
@@ -364,7 +363,7 @@ void RemoveStalePhiPredecessors(LirFunc &function) {
     for (BlockIndex blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
         for (auto &instruction : function.blocks[blockIndex].instrs) {
             if (instruction.op == LirOpcode::Phi) {
-                std::erase_if(instruction.phiPreds, [&](const auto &entry) {
+                instruction.phiPreds.EraseIf([&](const auto &entry) {
                     return std::ranges::find(predecessors[blockIndex], entry.second) == predecessors[blockIndex].end();
                 });
             }
@@ -448,7 +447,8 @@ bool ThreadConstantBranches(LirFunc &function) {
         for (BlockIndex index = 0; index < function.blocks.size(); ++index)
             for (const auto target : Successors(*function.blocks[index].term))
                 predecessors[target].push_back(index);
-        for (const auto &[value, predecessor] : std::vector(condition->phiPreds)) {
+        for (const auto &[value, predecessor] :
+             std::vector<LirPhiEdges::Edge>(condition->phiPreds.begin(), condition->phiPreds.end())) {
             const std::optional<bool> *known = constants.Find(value);
             if (known == nullptr || !*known || predecessor == block)
                 continue;
@@ -497,7 +497,7 @@ bool ThreadConstantBranches(LirFunc &function) {
             }
             for (auto &instruction : current.instrs)
                 if (instruction.op == LirOpcode::Phi)
-                    std::erase_if(instruction.phiPreds, [&](const auto &edge) { return edge.second == predecessor; });
+                    instruction.phiPreds.EraseIf([&](const auto &edge) { return edge.second == predecessor; });
             predecessors[target].push_back(predecessor);
             changed = true;
         }

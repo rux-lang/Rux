@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ir/Lir/LirPhiEdges.h"
 #include "Ir/Lir/LirRegs.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
@@ -299,10 +300,10 @@ struct LirSourceContext {
 struct LirInstr {
     LirReg dst = LirNoReg; // result register (LirNoReg for Store)
     LirOpcode op = LirOpcode::Const;
-    TypeRef type;       // result type (or value type for Store)
-    LirRegs srcs;       // source registers
-    std::string strArg; // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
-    std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
+    TypeRef type;         // result type (or value type for Store)
+    LirRegs srcs;         // source registers
+    std::string strArg;   // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
+    LirPhiEdges phiPreds; // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
     bool isCVariadic = false;                                // call to a C-style variadic extern or function value
     /// A store whose only purpose is that it happens. Zeroizing a secret writes memory nothing reads afterwards, which
