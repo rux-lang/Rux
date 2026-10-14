@@ -3,12 +3,12 @@
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdint>
 #include <format>
 #include <optional>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -30,15 +30,42 @@ void Report(const PassContext &context, const LirFunc &function, const BlockInde
         std::format("internal LIR CFG error in {}: {}", BlockContext(function, blockIndex), std::move(message)));
 }
 
+/// Distinct successor blocks in the order a terminator names them. Jumps and branches, nearly every terminator, fit
+/// inline; only a switch with more distinct targets spills to the heap.
+class SuccessorList {
+public:
+    void Add(const BlockIndex target) {
+        if (std::find(begin(), end(), target) != end())
+            return;
+        if (spill.empty() && count < held.size()) {
+            held[count++] = target;
+            return;
+        }
+        if (spill.empty())
+            spill.assign(held.begin(), held.end());
+        spill.push_back(target);
+        ++count;
+    }
+
+    [[nodiscard]] const BlockIndex *begin() const {
+        return spill.empty() ? held.data() : spill.data();
+    }
+
+    [[nodiscard]] const BlockIndex *end() const {
+        return begin() + count;
+    }
+
+private:
+    std::array<BlockIndex, 2> held{};
+    std::vector<BlockIndex> spill;
+    std::size_t count = 0;
+};
+
 /// The blocks a terminator can transfer to. One place computes this so the verifier, the reachability walk, and phi
 /// maintenance can never disagree about the shape of the graph.
-std::vector<BlockIndex> Successors(const LirTerminator &terminator) {
-    std::vector<BlockIndex> result;
-    const auto add = [&result](const BlockIndex target) {
-        if (std::ranges::find(result, target) == result.end()) {
-            result.push_back(target);
-        }
-    };
+SuccessorList Successors(const LirTerminator &terminator) {
+    SuccessorList result;
+    const auto add = [&result](const BlockIndex target) { result.Add(target); };
 
     switch (terminator.kind) {
     case LirTermKind::Jump:
@@ -77,6 +104,9 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
 
     bool valid = true;
     Predecessors predecessors(function.blocks.size());
+    // The phi each predecessor was last named by, stamped so one table serves every phi of the function.
+    std::vector<std::size_t> namedBy(function.blocks.size(), 0);
+    std::size_t phiStamp = 0;
     for (BlockIndex blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
         const auto &block = function.blocks[blockIndex];
         if (!block.term) {
@@ -116,7 +146,7 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
             if (instruction.op != LirOpcode::Phi) {
                 continue;
             }
-            std::unordered_set<BlockIndex> namedPredecessors;
+            ++phiStamp;
             for (const auto &[value, predecessor] : instruction.phiPreds) {
                 static_cast<void>(value);
                 if (predecessor >= function.blocks.size()) {
@@ -130,14 +160,15 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
                            std::format("phi names block {}, which is not an actual predecessor", predecessor));
                     valid = false;
                 }
-                if (!namedPredecessors.insert(predecessor).second) {
+                if (namedBy[predecessor] == phiStamp) {
                     Report(context, function, blockIndex,
                            std::format("phi names predecessor block {} more than once", predecessor));
                     valid = false;
                 }
+                namedBy[predecessor] = phiStamp;
             }
             for (const BlockIndex predecessor : actualPredecessors) {
-                if (!namedPredecessors.contains(predecessor)) {
+                if (namedBy[predecessor] != phiStamp) {
                     Report(context, function, blockIndex,
                            std::format("phi has no value for predecessor block {}", predecessor));
                     valid = false;
@@ -152,20 +183,34 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
 /// definition elsewhere might not dominate this use, and proving that it does is not this pass's job.
 /// The constants a function defines, by register. Each register has one definition in SSA form, so a constant
 /// condition is known wherever it is read, not only in the block that defines it.
-using Constants = std::unordered_map<LirReg, const LirInstr *>;
+/// Only the registers a branch or a switch decides on are ever asked for, so only those are collected, sorted by
+/// register for lookup.
+using Constants = std::vector<std::pair<LirReg, const LirInstr *>>;
 
 Constants FunctionConstants(const LirFunc &function) {
+    std::vector<LirReg> conditions;
+    for (const auto &block : function.blocks)
+        if (block.term->kind == LirTermKind::Branch || block.term->kind == LirTermKind::Switch)
+            conditions.push_back(block.term->cond);
     Constants constants;
+    if (conditions.empty())
+        return constants;
+    std::ranges::sort(conditions);
     for (const auto &block : function.blocks)
         for (const auto &instruction : block.instrs)
-            if (instruction.op == LirOpcode::Const && instruction.dst != LirNoReg && !instruction.isVolatile)
-                constants.emplace(instruction.dst, &instruction);
+            if (instruction.op == LirOpcode::Const && instruction.dst != LirNoReg && !instruction.isVolatile &&
+                std::ranges::binary_search(conditions, instruction.dst))
+                constants.emplace_back(instruction.dst, &instruction);
+    // The first definition of a register wins, as it would in a map filled in order.
+    std::ranges::stable_sort(constants, {}, &Constants::value_type::first);
+    const auto duplicates = std::ranges::unique(constants, {}, &Constants::value_type::first);
+    constants.erase(duplicates.begin(), duplicates.end());
     return constants;
 }
 
 std::optional<TypedConstant> KnownConstant(const Constants &constants, const LirReg reg) {
-    const auto found = constants.find(reg);
-    if (found == constants.end())
+    const auto found = std::ranges::lower_bound(constants, reg, {}, &Constants::value_type::first);
+    if (found == constants.end() || found->first != reg)
         return std::nullopt;
     return ParseConstant(found->second->strArg, found->second->type);
 }
@@ -332,6 +377,15 @@ void RemoveStalePhiPredecessors(LirFunc &function) {
 /// other predecessors; it disappears when none is left.
 bool ThreadConstantBranches(LirFunc &function) {
     if (function.blocks.size() < 3 || function.blocks.size() > 4096)
+        return false;
+    // Only a block of nothing but phis ending in a two-way branch can be threaded; most functions have none, and need
+    // no use counts.
+    const bool candidate = std::any_of(function.blocks.begin() + 1, function.blocks.end(), [](const LirBlock &block) {
+        return block.term->kind == LirTermKind::Branch && !block.instrs.empty() &&
+               std::ranges::all_of(block.instrs,
+                                   [](const LirInstr &instruction) { return instruction.op == LirOpcode::Phi; });
+    });
+    if (!candidate)
         return false;
     std::unordered_map<LirReg, std::size_t> uses;
     std::unordered_map<LirReg, std::optional<bool>> constants;
