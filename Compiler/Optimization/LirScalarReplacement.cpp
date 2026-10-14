@@ -187,6 +187,7 @@ bool ReplaceFields(LirFunc &function, const Shapes &structs) {
     }
     for (auto &block : function.blocks) {
         std::vector<LirInstr> instructions;
+        instructions.reserve(block.instrs.size());
         for (auto &instruction : block.instrs) {
             if (instruction.op == LirOpcode::Alloca && allocas.contains(instruction.dst)) {
                 for (const auto &allocation : allocas.at(instruction.dst))

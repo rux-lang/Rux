@@ -308,6 +308,20 @@ bool Promote(LirFunc &function, const ConcreteReferenceTypes &references) {
     // Each slot's zero and phis go in front of the earlier slots', as if every slot had inserted its own at the start
     // of the block in turn.
     std::vector<std::vector<LirInstr>> prefixes(count);
+    {
+        std::vector<std::size_t> sizes(count);
+        for (const auto &slot : promoted) {
+            if (!slot.promoted)
+                continue;
+            if (slot.zero != LirNoReg)
+                ++sizes[0];
+            for (std::size_t block = 0; block < count; ++block)
+                if (slot.incoming[block] != LirNoReg)
+                    ++sizes[block];
+        }
+        for (std::size_t block = 0; block < count; ++block)
+            prefixes[block].reserve(sizes[block]);
+    }
     for (const auto &slot : promoted) {
         if (!slot.promoted)
             continue;

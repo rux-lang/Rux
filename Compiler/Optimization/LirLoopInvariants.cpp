@@ -286,8 +286,11 @@ bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNam
                 if (!members.contains(block)) {
                     continue;
                 }
-                std::vector<LirInstr> retained;
-                for (auto &instruction : function.blocks[block].instrs) {
+                // The block is compacted in place: an instruction that stays moves only when one before it left.
+                auto &instructions = function.blocks[block].instrs;
+                std::size_t retained = 0;
+                for (std::size_t position = 0; position < instructions.size(); ++position) {
+                    auto &instruction = instructions[position];
                     // A constant used by a varying recurrence is cheap to recreate near its use. Hoisting it alone
                     // extends its live range and can displace hotter loop values from the small register pool.
                     // A load moves only out of a loop that writes no memory, or reads read-only constant data, and
@@ -366,10 +369,13 @@ bool Hoist(LirFunc &function, const std::unordered_set<std::string> &constantNam
                         again = true;
                     }
                     else {
-                        retained.push_back(std::move(instruction));
+                        if (retained != position) {
+                            instructions[retained] = std::move(instruction);
+                        }
+                        ++retained;
                     }
                 }
-                function.blocks[block].instrs = std::move(retained);
+                instructions.erase(instructions.begin() + static_cast<std::ptrdiff_t>(retained), instructions.end());
             }
         }
     }
