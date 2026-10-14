@@ -1,9 +1,9 @@
 #include "Optimization/LirReachability.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <optional>
-#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -23,7 +23,8 @@ struct SymbolHash {
     }
 };
 
-using SymbolIndex = std::unordered_map<std::string, DeclarationList, SymbolHash, std::equal_to<>>;
+/// Keys view the names in the module references the walk covers, which outlive it, so indexing copies no name.
+using SymbolIndex = std::unordered_map<std::string_view, DeclarationList, SymbolHash, std::equal_to<>>;
 
 struct PackageIndex {
     SymbolIndex functions;
@@ -53,6 +54,16 @@ struct Graph {
 /// declarations without rescanning the modules for each reference.
 PackageIndex BuildIndex(const Graph &graph) {
     PackageIndex index;
+    std::size_t functions = 0;
+    std::size_t declarations = 0;
+    for (const auto *module : graph.modules) {
+        functions += module->declarations[static_cast<std::size_t>(LirDeclarationKind::Function)].size();
+        for (const auto &kind : module->declarations)
+            declarations += kind.size();
+    }
+    index.functions.reserve(functions);
+    index.data.reserve(declarations - functions);
+    index.all.reserve(declarations);
     for (std::size_t position = 0; position < graph.modules.size(); ++position) {
         const auto &module = *graph.modules[position];
         for (std::size_t kind = 0; kind < kLirDeclarationKinds; ++kind) {
@@ -60,7 +71,7 @@ PackageIndex BuildIndex(const Graph &graph) {
             for (std::size_t declarationIndex = 0; declarationIndex < module.declarations[kind].size();
                  ++declarationIndex) {
                 const LirDeclarationId declaration{declarationKind, graph.moduleIndices[position], declarationIndex};
-                const std::string &name = module.declarations[kind][declarationIndex].name;
+                const std::string_view name = module.declarations[kind][declarationIndex].name;
                 (declarationKind == LirDeclarationKind::Function ? index.functions : index.data)[name].push_back(
                     declaration);
                 index.all[name].push_back(declaration);
@@ -116,7 +127,12 @@ public:
 
     /// Record, per module, the declarations a walk enters it through from outside.
     void TrackRoots() {
-        roots.emplace(positions.size());
+        trackRoots = true;
+        for (std::size_t kind = 0; kind < kLirDeclarationKinds; ++kind) {
+            rootFlags[kind].resize(seen[kind].size());
+            for (std::size_t moduleIndex = 0; moduleIndex < seen[kind].size(); ++moduleIndex)
+                rootFlags[kind][moduleIndex].resize(seen[kind][moduleIndex].size());
+        }
     }
 
     /// Start at the artifact's roots: `Main` of an executable, every public declaration and vtable of a library.
@@ -164,10 +180,22 @@ public:
         return reachable;
     }
 
+    /// Each module's entry points, sorted and without repeats: declarations sharing a name enter as one root.
     [[nodiscard]] std::vector<std::vector<LirModuleRoot>> TakeRoots() {
         std::vector<std::vector<LirModuleRoot>> result(positions.size());
-        for (std::size_t moduleIndex = 0; moduleIndex < positions.size(); ++moduleIndex)
-            result[moduleIndex].assign((*roots)[moduleIndex].begin(), (*roots)[moduleIndex].end());
+        for (std::size_t moduleIndex = 0; moduleIndex < positions.size(); ++moduleIndex) {
+            auto &moduleRoots = result[moduleIndex];
+            for (std::size_t kind = 0; kind < kLirDeclarationKinds; ++kind) {
+                const auto &flags = rootFlags[kind][moduleIndex];
+                for (std::size_t declarationIndex = 0; declarationIndex < flags.size(); ++declarationIndex)
+                    if (flags[declarationIndex])
+                        moduleRoots.push_back(
+                            {static_cast<LirDeclarationKind>(kind),
+                             Declaration({static_cast<LirDeclarationKind>(kind), moduleIndex, declarationIndex}).name});
+            }
+            std::ranges::sort(moduleRoots);
+            moduleRoots.erase(std::ranges::unique(moduleRoots).begin(), moduleRoots.end());
+        }
         return result;
     }
 
@@ -179,8 +207,9 @@ private:
 
     /// Reach `declaration` from module `from`, or from the artifact's roots when there is none.
     void Add(const LirDeclarationId declaration, const std::optional<std::size_t> from) {
-        if (roots && from != declaration.moduleIndex)
-            (*roots)[declaration.moduleIndex].insert({declaration.kind, Declaration(declaration).name});
+        if (trackRoots && from != declaration.moduleIndex)
+            rootFlags[static_cast<std::size_t>(declaration.kind)][declaration.moduleIndex]
+                     [declaration.declarationIndex] = true;
         auto flag =
             seen[static_cast<std::size_t>(declaration.kind)][declaration.moduleIndex][declaration.declarationIndex];
         if (!flag) {
@@ -208,7 +237,9 @@ private:
     DeclarationList worklist;
     // Indexed by kind, module and position; the kinds are the enumerators of LirDeclarationKind in order.
     std::array<std::vector<std::vector<bool>>, kLirDeclarationKinds> seen;
-    std::optional<std::vector<std::set<LirModuleRoot>>> roots;
+    /// Which declarations a walk that tracks roots entered from outside their module, indexed as `seen` is.
+    bool trackRoots = false;
+    std::array<std::vector<std::vector<bool>>, kLirDeclarationKinds> rootFlags;
     std::size_t next = 0;
 };
 
