@@ -2,6 +2,7 @@
 
 #include "Ir/Lir/RegisterTable.h"
 #include "Optimization/ReferenceTypes.h"
+#include "Parallel/WorkerPool.h"
 
 #include <algorithm>
 #include <functional>
@@ -441,147 +442,173 @@ PassChange LirInliner::Run(LirPackage &package, const PassContext &context) {
             return found->second;
         return std::nullopt;
     };
+    // Functions are numbered module by module, so a module's functions are one range of the numbering.
+    std::vector<std::size_t> moduleStarts(package.modules.size() + 1, 0);
+    for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex)
+        moduleStarts[moduleIndex + 1] = moduleStarts[moduleIndex] + package.modules[moduleIndex].funcs.size();
     // Deterministic sink removal orders callees before callers. Recursive components and wrappers reaching them never
     // become candidates. Their bodies may still inline independent leaf calls, under the same finite growth budget.
     std::vector<std::vector<std::size_t>> callers(functions.size());
     std::vector<std::size_t> remaining(functions.size());
-    for (std::size_t index = 0; index < functions.size(); ++index) {
-        std::unordered_set<std::size_t> targets;
-        for (const auto &block : functions[index]->blocks) {
-            for (const auto &instruction : block.instrs) {
-                if (instruction.op != LirOpcode::Call)
-                    continue;
-                if (const auto target = resolve(index, instruction.strArg)) {
-                    targets.insert(*target);
-                }
-            }
-        }
-        remaining[index] = targets.size();
-        for (const auto target : targets) {
-            callers[target].push_back(index);
-        }
-    }
-    std::priority_queue<std::size_t, std::vector<std::size_t>, std::greater<>> ready;
-    for (std::size_t i = 0; i < remaining.size(); ++i) {
-        if (remaining[i] == 0) {
-            ready.push(i);
-        }
-    }
-    std::vector<std::size_t> order;
-    while (!ready.empty()) {
-        const auto next = ready.top();
-        ready.pop();
-        order.push_back(next);
-        for (const auto caller : callers[next]) {
-            if (--remaining[caller] == 0) {
-                ready.push(caller);
-            }
-        }
-    }
-    for (std::size_t i = 0; i < remaining.size(); ++i) {
-        if (remaining[i] != 0) {
-            order.push_back(i);
-        }
-    }
-    // Callees are kept by address: a function is finished, and never changed again this round, before it is offered.
-    std::unordered_map<std::size_t, const LirFunc *> available;
-    std::unordered_map<std::size_t, Size> sizes;
-    // The growth budget is a module's own, for the same reason inlining stays inside one.
-    std::vector<std::size_t> moduleBudgets(package.modules.size(), 50000);
-    bool changed = false;
-    for (const auto index : order) {
-        auto &function = *functions[index];
-        // Register types and the function's own addresses are needed only around a call this round may rewrite, so they
-        // are gathered when the first such call turns up, still before anything was inlined into the function.
-        LirReg next = 0;
-        Types types;
-        std::unordered_set<LirReg> local;
-        bool prepared = false;
-        const auto prepare = [&] {
-            if (prepared)
-                return;
-            prepared = true;
-            for (const auto &parameter : function.params) {
-                types[parameter.reg] = parameter.type;
-                next = std::max(next, parameter.reg + 1);
-            }
-            for (const auto &block : function.blocks) {
+    // Calls resolve inside their module, so every caller edge stays inside one module and each module is inlined on its
+    // own, on as many threads as there are. Taking a module's functions smallest number first among those ready is the
+    // order a single walk over the whole program would visit them in.
+    std::vector<std::vector<const LirFunc *>> rewritten(package.modules.size());
+    const auto inlineModule = [&](const std::size_t moduleIndex) {
+        const std::size_t first = moduleStarts[moduleIndex];
+        const std::size_t end = moduleStarts[moduleIndex + 1];
+        std::vector<std::size_t> targets;
+        for (std::size_t index = first; index < end; ++index) {
+            targets.clear();
+            for (const auto &block : functions[index]->blocks) {
                 for (const auto &instruction : block.instrs) {
-                    if (instruction.dst != LirNoReg) {
-                        types[instruction.dst] = instruction.op == LirOpcode::Alloca
-                                                   ? TypeRef::MakePointer(instruction.type)
-                                                   : instruction.type;
-                        next = std::max(next, instruction.dst + 1);
+                    if (instruction.op != LirOpcode::Call)
+                        continue;
+                    if (const auto target = resolve(index, instruction.strArg)) {
+                        targets.push_back(*target);
                     }
                 }
             }
-            // Addresses of the function's own objects and their fields, as it stood before this round inlined into it.
-            for (int pass = 0; pass < 2; ++pass)
-                for (const auto &block : function.blocks)
-                    for (const auto &instruction : block.instrs)
-                        if (instruction.op == LirOpcode::Alloca ||
-                            ((instruction.op == LirOpcode::FieldPtr || instruction.op == LirOpcode::IndexPtr) &&
-                             !instruction.srcs.empty() && local.contains(instruction.srcs[0])))
-                            local.insert(instruction.dst);
-        };
-        std::size_t budget = 2048;
-        bool functionChanged = false;
-        for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
-            for (std::size_t position = 0; position < function.blocks[block].instrs.size();) {
-                auto &call = function.blocks[block].instrs[position];
-                const auto target =
-                    call.op == LirOpcode::Call ? resolve(index, call.strArg) : std::optional<std::size_t>{};
-                const auto rooted =
-                    call.op == LirOpcode::Call ? resolveAnywhere(index, call.strArg) : std::optional<std::size_t>{};
-                const bool squareRoot = rooted && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
-                                        NativeSquareRoot(*functions[*rooted]) && call.srcs.size() == 1;
-                if (squareRoot)
-                    prepare();
-                if (squareRoot && types.contains(call.srcs[0]) && types.at(call.srcs[0]) == call.type &&
-                    call.type == functions[*rooted]->returnType) {
-                    call.op = LirOpcode::Sqrt;
-                    call.strArg.clear();
-                    call.callConv = CallingConvention::Default;
+            std::ranges::sort(targets);
+            targets.erase(std::ranges::unique(targets).begin(), targets.end());
+            remaining[index] = targets.size();
+            for (const auto target : targets) {
+                callers[target].push_back(index);
+            }
+        }
+        std::priority_queue<std::size_t, std::vector<std::size_t>, std::greater<>> ready;
+        for (std::size_t i = first; i < end; ++i) {
+            if (remaining[i] == 0) {
+                ready.push(i);
+            }
+        }
+        std::vector<std::size_t> order;
+        while (!ready.empty()) {
+            const auto next = ready.top();
+            ready.pop();
+            order.push_back(next);
+            for (const auto caller : callers[next]) {
+                if (--remaining[caller] == 0) {
+                    ready.push(caller);
+                }
+            }
+        }
+        for (std::size_t i = first; i < end; ++i) {
+            if (remaining[i] != 0) {
+                order.push_back(i);
+            }
+        }
+        // Callees are kept by address: a function is finished, and never changed again this round, before it is
+        // offered.
+        std::unordered_map<std::size_t, const LirFunc *> available;
+        std::unordered_map<std::size_t, Size> sizes;
+        // The growth budget is a module's own, for the same reason inlining stays inside one.
+        std::size_t moduleBudget = 50000;
+        for (const auto index : order) {
+            auto &function = *functions[index];
+            // Register types and the function's own addresses are needed only around a call this round may rewrite, so
+            // they are gathered when the first such call turns up, still before anything was inlined into the function.
+            LirReg next = 0;
+            Types types;
+            std::unordered_set<LirReg> local;
+            bool prepared = false;
+            const auto prepare = [&] {
+                if (prepared)
+                    return;
+                prepared = true;
+                for (const auto &parameter : function.params) {
+                    types[parameter.reg] = parameter.type;
+                    next = std::max(next, parameter.reg + 1);
+                }
+                for (const auto &block : function.blocks) {
+                    for (const auto &instruction : block.instrs) {
+                        if (instruction.dst != LirNoReg) {
+                            types[instruction.dst] = instruction.op == LirOpcode::Alloca
+                                                       ? TypeRef::MakePointer(instruction.type)
+                                                       : instruction.type;
+                            next = std::max(next, instruction.dst + 1);
+                        }
+                    }
+                }
+                // Addresses of the function's own objects and their fields, as it stood before this round inlined into
+                // it.
+                for (int pass = 0; pass < 2; ++pass)
+                    for (const auto &block : function.blocks)
+                        for (const auto &instruction : block.instrs)
+                            if (instruction.op == LirOpcode::Alloca ||
+                                ((instruction.op == LirOpcode::FieldPtr || instruction.op == LirOpcode::IndexPtr) &&
+                                 !instruction.srcs.empty() && local.contains(instruction.srcs[0])))
+                                local.insert(instruction.dst);
+            };
+            std::size_t budget = 2048;
+            bool functionChanged = false;
+            for (std::uint32_t block = 0; block < function.blocks.size(); ++block) {
+                for (std::size_t position = 0; position < function.blocks[block].instrs.size();) {
+                    auto &call = function.blocks[block].instrs[position];
+                    const auto target =
+                        call.op == LirOpcode::Call ? resolve(index, call.strArg) : std::optional<std::size_t>{};
+                    const auto rooted =
+                        call.op == LirOpcode::Call ? resolveAnywhere(index, call.strArg) : std::optional<std::size_t>{};
+                    const bool squareRoot = rooted && call.dst != LirNoReg && !call.isCVariadic && !call.isVolatile &&
+                                            NativeSquareRoot(*functions[*rooted]) && call.srcs.size() == 1;
+                    if (squareRoot)
+                        prepare();
+                    if (squareRoot && types.contains(call.srcs[0]) && types.at(call.srcs[0]) == call.type &&
+                        call.type == functions[*rooted]->returnType) {
+                        call.op = LirOpcode::Sqrt;
+                        call.strArg.clear();
+                        call.callConv = CallingConvention::Default;
+                        functionChanged = true;
+                        ++position;
+                        continue;
+                    }
+                    const auto found = target ? available.find(*target) : available.end();
+                    bool valid =
+                        call.op == LirOpcode::Call && found != available.end() && !call.isCVariadic && !call.isVolatile;
+                    if (valid) {
+                        prepare();
+                        const auto &callee = *found->second;
+                        valid = call.type == callee.returnType && call.srcs.size() == callee.params.size() &&
+                                (!callee.returnType.IsOpaque() || call.dst == LirNoReg) && Cost(callee) <= budget &&
+                                Cost(callee) <= moduleBudget &&
+                                function.blocks.size() + callee.blocks.size() + 1 <= 4096;
+                        for (std::size_t i = 0; valid && i < call.srcs.size(); ++i) {
+                            valid = types.contains(call.srcs[i]) &&
+                                    ArgumentMatches(types.at(call.srcs[i]), callee.params[i].type);
+                        }
+                        if (valid && sizes.at(*target) == Size::Large)
+                            valid = std::ranges::any_of(call.srcs,
+                                                        [&](const LirReg source) { return local.contains(source); });
+                    }
+                    if (!valid) {
+                        ++position;
+                        continue;
+                    }
+                    const auto cost = Cost(*found->second);
+                    Inline(function, block, position, *found->second, next, types);
+                    budget -= cost;
+                    moduleBudget -= cost;
                     functionChanged = true;
-                    ++position;
-                    continue;
                 }
-                const auto found = target ? available.find(*target) : available.end();
-                bool valid =
-                    call.op == LirOpcode::Call && found != available.end() && !call.isCVariadic && !call.isVolatile;
-                if (valid) {
-                    prepare();
-                    const auto &callee = *found->second;
-                    valid = call.type == callee.returnType && call.srcs.size() == callee.params.size() &&
-                            (!callee.returnType.IsOpaque() || call.dst == LirNoReg) && Cost(callee) <= budget &&
-                            Cost(callee) <= moduleBudgets[ownerIndex[index]] &&
-                            function.blocks.size() + callee.blocks.size() + 1 <= 4096;
-                    for (std::size_t i = 0; valid && i < call.srcs.size(); ++i) {
-                        valid = types.contains(call.srcs[i]) &&
-                                ArgumentMatches(types.at(call.srcs[i]), callee.params[i].type);
-                    }
-                    if (valid && sizes.at(*target) == Size::Large)
-                        valid =
-                            std::ranges::any_of(call.srcs, [&](const LirReg source) { return local.contains(source); });
-                }
-                if (!valid) {
-                    ++position;
-                    continue;
-                }
-                const auto cost = Cost(*found->second);
-                Inline(function, block, position, *found->second, next, types);
-                budget -= cost;
-                moduleBudgets[ownerIndex[index]] -= cost;
-                functionChanged = true;
+            }
+            if (functionChanged)
+                rewritten[moduleIndex].push_back(&function);
+            if (const auto size = remaining[index] == 0 ? Eligible(function, references) : std::nullopt) {
+                available.emplace(index, &function);
+                sizes.emplace(index, *size);
             }
         }
-        if (functionChanged) {
-            context.NoteChanged(function);
+    };
+    if (context.pool != nullptr)
+        context.pool->ForEach(package.modules.size(), inlineModule);
+    else
+        for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex)
+            inlineModule(moduleIndex);
+    bool changed = false;
+    for (const auto &functionsOfModule : rewritten) {
+        for (const auto *function : functionsOfModule) {
+            context.NoteChanged(*function);
             changed = true;
-        }
-        if (const auto size = remaining[index] == 0 ? Eligible(function, references) : std::nullopt) {
-            available.emplace(index, &function);
-            sizes.emplace(index, *size);
         }
     }
     return changed ? PassChange::Changed : PassChange::None;
