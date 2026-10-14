@@ -234,9 +234,9 @@ bool Linker::Link(const std::filesystem::path &outputPath) {
     if (artifactKind == ArtifactKind::StaticLibrary) {
         return WriteStaticLibrary(outputPath);
     }
-    // An image may keep only the functions its roots reach; a static library keeps everything for whoever links it.
+    // An image may keep only the code and data its roots reach; a static library keeps everything for whoever links it.
     const std::uint8_t padding = targetArch == Target::Arch::X86_64 ? 0xCC : 0x00;
-    if (collectGarbage && CollectUnreachableFunctions(objects, *graph, padding) && !BuildGraph()) {
+    if (collectGarbage && CollectUnreachable(objects, *graph, padding) && !BuildGraph()) {
         return false;
     }
     switch (targetOs) {
