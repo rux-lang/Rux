@@ -492,6 +492,10 @@ bool Version(LirFunc &function) {
             }
             clones.push_back(std::move(clone));
         }
+        // Whether the limit is a constant, read before anything is emitted: emitting appends to the preheader, which
+        // may move its instructions, and a definition there would be read from where it no longer is.
+        const LirInstr *limitDefinition = get(limit);
+        const bool constantLimit = limitDefinition != nullptr && limitDefinition->op == LirOpcode::Const;
         // Build non-trapping guards in the existing preheader. Subtraction may wrap when row > bound, but the
         // corresponding row <= bound conjunct rejects that case. No new loads, calls or panics are introduced.
         auto &setup = function.blocks[preheader].instrs;
@@ -509,11 +513,13 @@ bool Version(LirFunc &function) {
         const auto widenFrom = [&](const LirReg value, const TypeRef &from) {
             return emit(LirOpcode::Cast, TypeRef::MakeUInt64(), {value}, from.ToString());
         };
-        // The value as the preheader sees it: a constant defined inside the loop is recreated there.
+        // The value as the preheader sees it: a constant defined inside the loop is recreated there. Only a definition
+        // in the loop is read: the loop's blocks stay where they are while the preheader grows, the preheader's
+        // own instructions may not.
         const auto outside = [&](const LirReg value) {
             const auto &definition = definitions.At(value);
-            if (definition.instruction && definition.instruction->op == LirOpcode::Const &&
-                members.contains(definition.block))
+            if (members.contains(definition.block) && definition.instruction &&
+                definition.instruction->op == LirOpcode::Const)
                 return emit(LirOpcode::Const, definition.type, {}, definition.instruction->strArg);
             return value;
         };
@@ -565,9 +571,7 @@ bool Version(LirFunc &function) {
         // loop, which finishes with every check in place. One iteration that might fail, such as a decoder's last
         // group, then costs one checked iteration instead of the whole loop. A loop with a constant limit keeps the
         // guard: it is short, and its fast copy keeps the constant trip count that full unrolling needs.
-        const auto *limitDefinition = get(limit);
-        const bool split =
-            controlling == header && !signedInduction && !(limitDefinition && limitDefinition->op == LirOpcode::Const);
+        const bool split = controlling == header && !signedInduction && !constantLimit;
         if (split) {
             const auto bit = [&](const LirReg condition) {
                 return emit(LirOpcode::Cast, TypeRef::MakeUInt64(), {condition}, TypeRef::MakeBool().ToString());
