@@ -138,18 +138,19 @@ TEST_CASE("free slabs beyond the idle limit are returned to the system and commi
     }
     for (void *block : blocks)
         Allocator::Deallocate(block);
-    // The slabs go back to the system once the program asks for a slab again.
+    // The slabs go back to the system once the program asks for a slab again. Free blocks of the next class that
+    // earlier tests left behind serve the first requests, so the release is looked for while the blocks are taken.
+    const std::size_t releasedBefore = Allocator::CurrentSlabUsage().releasedBytes;
+    bool released = false;
     blocks.clear();
-    blocks.push_back(Allocator::Allocate(7000));
-    REQUIRE(blocks[0] != nullptr);
-    std::memset(blocks[0], 0, 7000);
-    CHECK(Allocator::CurrentSlabUsage().releasedBytes > 0);
-    for (int index = 1; index < 16384; ++index) {
+    for (int index = 0; index < 16384; ++index) {
         auto *block = static_cast<std::uint8_t *>(Allocator::Allocate(7000));
         REQUIRE(block != nullptr);
         std::memset(block, index & 0xFF, 7000);
         blocks.push_back(block);
+        released = released || Allocator::CurrentSlabUsage().releasedBytes > releasedBefore;
     }
+    CHECK(released);
     for (std::size_t index = 0; index < blocks.size(); ++index)
         CHECK(static_cast<std::uint8_t *>(blocks[index])[6999] == (index & 0xFF));
     for (void *block : blocks)
