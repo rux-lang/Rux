@@ -1152,6 +1152,45 @@ bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
         else {
             roots = Optimization::ModuleRoots(moduleReferences, artifactKind);
         }
+        // A package whose chosen variant was kept for a program that reaches other declarations of it may have a
+        // variant kept for one that reaches what this program does: the same names, references and roots. Its objects
+        // serve instead, with no second analysis, and the roots computed from the same references stay right.
+        std::unordered_map<const Module *, std::size_t> indexOfModule;
+        for (std::size_t index = 0; index < moduleCount; ++index)
+            if (sourceModules[index] != nullptr)
+                indexOfModule.emplace(sourceModules[index], index);
+        for (auto &package : moduleReuse.packages) {
+            if (!package.variant)
+                continue;
+            bool fromVariant = true;
+            bool staleHere = false;
+            for (const Module *module : package.modules) {
+                const auto found = indexOfModule.find(module);
+                const std::size_t index = found == indexOfModule.end() ? moduleCount : found->second;
+                fromVariant = fromVariant && index < moduleCount && reused[index] != nullptr &&
+                              reused[index] == package.variant->FindAny(module->name);
+                staleHere = staleHere ||
+                            (index < moduleCount && reused[index] != nullptr && roots[index] != reused[index]->roots);
+            }
+            if (!fromVariant || !staleHere)
+                continue;
+            auto matching = ReadPackageVariantWhere(package.directory, [&](const ModulePack &candidate) {
+                return std::ranges::all_of(package.modules, [&](const Module *module) {
+                    const std::size_t index = indexOfModule.at(module);
+                    const CachedModule *entry = candidate.FindAny(module->name);
+                    return entry != nullptr && entry->key == package.names &&
+                           entry->references == reused[index]->references && entry->roots == roots[index];
+                });
+            });
+            if (!matching)
+                continue;
+            package.variant = std::move(matching);
+            for (const Module *module : package.modules) {
+                const std::size_t index = indexOfModule.at(module);
+                reused[index] = package.variant->FindAny(module->name);
+                moduleReuse.cached[module] = reused[index];
+            }
+        }
         bool stale = false;
         for (std::size_t index = 0; index < moduleCount; ++index) {
             if (reused[index] != nullptr && roots[index] != reused[index]->roots) {

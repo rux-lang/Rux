@@ -52,18 +52,24 @@ std::optional<ModulePack> ReadNewestPackageVariant(const std::filesystem::path &
     return pack;
 }
 
-std::optional<ModulePack> ReadPackageVariantNamed(const std::filesystem::path &keyDirectory, const std::string &names,
-                                                  const std::span<const Module *const> modules) {
+std::optional<ModulePack> ReadPackageVariantWhere(const std::filesystem::path &keyDirectory,
+                                                  const std::function<bool(const ModulePack &)> &accepts) {
     for (const auto &path : VariantsNewestFirst(keyDirectory)) {
         auto pack = ModulePack::Read(path);
-        const bool named = pack.Size() != 0 && std::ranges::all_of(modules, [&](const Module *module) {
-                               const CachedModule *entry = pack.FindAny(module->name);
-                               return entry != nullptr && entry->key == names;
-                           });
-        if (named)
+        if (pack.Size() != 0 && accepts(pack))
             return pack;
     }
     return std::nullopt;
+}
+
+std::optional<ModulePack> ReadPackageVariantNamed(const std::filesystem::path &keyDirectory, const std::string &names,
+                                                  const std::span<const Module *const> modules) {
+    return ReadPackageVariantWhere(keyDirectory, [&](const ModulePack &pack) {
+        return std::ranges::all_of(modules, [&](const Module *module) {
+            const CachedModule *entry = pack.FindAny(module->name);
+            return entry != nullptr && entry->key == names;
+        });
+    });
 }
 
 void WritePackageVariant(const std::filesystem::path &keyDirectory, const std::string &variant,

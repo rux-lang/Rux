@@ -387,3 +387,57 @@ func Main() -> int {
     CHECK(diagnostics.empty());
     std::filesystem::remove_all(cache, error);
 }
+
+TEST_CASE("a Release build reuses the package variant kept for what it reaches of the package") {
+    // Two programs name the dependency's declarations alike but reach different functions of it, so a Release build
+    // keeps a variant of the package for each. Whichever was kept last, each program reuses its own.
+    DependencyFixture fixture;
+    fixture.SetDependencySource(R"(
+pub module Api {
+    pub func Answer() -> int {
+        return 42;
+    }
+
+    pub func Other() -> int {
+        return 7;
+    }
+}
+)");
+    const auto cache = TempDirectory() / ("rux-package-roots-test-" +
+                                          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(false, diagnostics);
+    options.profile = BuildProfile::Release;
+    options.packageCacheDirectory = cache;
+    const auto appTemp = options.manifestPath.parent_path() / "Temp";
+    const auto build = [&](const bool cached) {
+        auto request = options;
+        request.useBuildCache = cached;
+        const auto result = CompilerDriver(request).Compile();
+        REQUIRE(result.ok);
+        return std::pair{ReadBinaryFile(result.primaryArtifactPath), result.stats.dependencyReusedFiles};
+    };
+    const std::string answering = "import Dependency::Api::Answer;\n\nfunc Main() -> int {\n"
+                                  "    return Answer() - 42;\n}\n";
+    const std::string other = "import Dependency::Api::Other;\n\nfunc Main() -> int {\n"
+                              "    return Other() - 7;\n}\n";
+    std::error_code error;
+    fixture.SetApplicationSource(answering);
+    static_cast<void>(build(true));
+    fixture.SetApplicationSource(other);
+    std::filesystem::remove_all(appTemp, error);
+    static_cast<void>(build(true));
+    // The newest variant is the second program's; the first program's own is found by its roots.
+    fixture.SetApplicationSource(answering);
+    std::filesystem::remove_all(appTemp, error);
+    const auto [first, firstReused] = build(true);
+    CHECK(firstReused == 1);
+    CHECK(first == build(false).first);
+    fixture.SetApplicationSource(other);
+    std::filesystem::remove_all(appTemp, error);
+    const auto [second, secondReused] = build(true);
+    CHECK(secondReused == 1);
+    CHECK(second == build(false).first);
+    CHECK(diagnostics.empty());
+    std::filesystem::remove_all(cache, error);
+}
