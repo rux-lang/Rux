@@ -375,6 +375,15 @@ func Main() -> int {
     CHECK(renamed == build(false).first);
     std::filesystem::remove_all(appTemp, error);
     CHECK(build(true).second == 1);
+
+    // Back to the first program: the newest variant is the other program's, but the one kept for these names is
+    // found and reused rather than compiling the package again on every build.
+    fixture.SetApplicationSource("import Dependency::Api::Answer;\n\nfunc Main() -> int {\n"
+                                 "    return Answer() - 42;\n}\n");
+    std::filesystem::remove_all(appTemp, error);
+    const auto [returned, returnedReused] = build(true);
+    CHECK(returnedReused == 1);
+    CHECK(returned == clean);
     CHECK(diagnostics.empty());
     std::filesystem::remove_all(cache, error);
 }

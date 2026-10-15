@@ -299,11 +299,25 @@ bool CompilerDriver::Impl::RejectStalePackages() {
             const CachedModule *entry = package.variant->FindAny(module->name);
             return cached != moduleReuse.cached.end() && cached->second == entry && entry->key != package.names;
         });
-        if (reusedUnderOtherNames) {
-            for (const Module *module : package.modules)
-                moduleReuse.fresh.insert(module->name);
-            stale = true;
+        if (!reusedUnderOtherNames)
+            continue;
+        // Another program kept the newest variant. A variant kept for a program naming the package as this one does
+        // serves instead, with no second analysis: the names do not depend on which variant's objects are reused.
+        if (auto named = ReadPackageVariantNamed(package.directory, package.names, package.modules)) {
+            std::vector<const Module *> repointed;
+            for (const Module *module : package.modules) {
+                const auto cached = moduleReuse.cached.find(module);
+                if (cached != moduleReuse.cached.end() && cached->second == package.variant->FindAny(module->name))
+                    repointed.push_back(module);
+            }
+            package.variant = std::move(named);
+            for (const Module *module : repointed)
+                moduleReuse.cached[module] = package.variant->FindAny(module->name);
+            continue;
         }
+        for (const Module *module : package.modules)
+            moduleReuse.fresh.insert(module->name);
+        stale = true;
     }
     return stale;
 }

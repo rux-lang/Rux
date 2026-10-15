@@ -3,8 +3,12 @@
 #include "Driver/BuildCache.h"
 #include "System/Os.h"
 
+#include <algorithm>
 #include <format>
+#include <functional>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 namespace Rux::Driver {
 std::filesystem::path PackageCacheDirectory(const std::optional<std::filesystem::path> &configured) {
@@ -15,27 +19,51 @@ std::filesystem::path PackageCacheDirectory(const std::optional<std::filesystem:
     return System::UserDataDir() / "Cache" / "Packages";
 }
 
-std::optional<ModulePack> ReadNewestPackageVariant(const std::filesystem::path &keyDirectory) {
+namespace {
+/// The variants kept under `keyDirectory`, newest first; of variants written at once, the one whose name sorts last
+/// first, so every build looks at them in the same order.
+std::vector<std::filesystem::path> VariantsNewestFirst(const std::filesystem::path &keyDirectory) {
+    std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> variants;
     std::error_code error;
-    std::optional<std::filesystem::path> newest;
-    std::filesystem::file_time_type newestTime{};
     for (const auto &entry : std::filesystem::directory_iterator(keyDirectory, error)) {
         if (entry.path().extension() != ".modules")
             continue;
         std::error_code timeError;
         const auto time = entry.last_write_time(timeError);
-        // The newest wins; of variants written at once, the one whose name sorts last, so every build picks the same.
-        if (!timeError && (!newest || time > newestTime || (time == newestTime && entry.path() > *newest))) {
-            newest = entry.path();
-            newestTime = time;
-        }
+        if (!timeError)
+            variants.emplace_back(time, entry.path());
     }
-    if (!newest)
+    std::ranges::sort(variants, std::ranges::greater{});
+    std::vector<std::filesystem::path> paths;
+    paths.reserve(variants.size());
+    for (auto &variant : variants)
+        paths.push_back(std::move(variant.second));
+    return paths;
+}
+} // namespace
+
+std::optional<ModulePack> ReadNewestPackageVariant(const std::filesystem::path &keyDirectory) {
+    const auto variants = VariantsNewestFirst(keyDirectory);
+    if (variants.empty())
         return std::nullopt;
-    auto pack = ModulePack::Read(*newest);
+    auto pack = ModulePack::Read(variants.front());
     if (pack.Size() == 0)
         return std::nullopt;
     return pack;
+}
+
+std::optional<ModulePack> ReadPackageVariantNamed(const std::filesystem::path &keyDirectory, const std::string &names,
+                                                  const std::span<const Module *const> modules) {
+    for (const auto &path : VariantsNewestFirst(keyDirectory)) {
+        auto pack = ModulePack::Read(path);
+        const bool named = pack.Size() != 0 && std::ranges::all_of(modules, [&](const Module *module) {
+                               const CachedModule *entry = pack.FindAny(module->name);
+                               return entry != nullptr && entry->key == names;
+                           });
+        if (named)
+            return pack;
+    }
+    return std::nullopt;
 }
 
 void WritePackageVariant(const std::filesystem::path &keyDirectory, const std::string &variant,

@@ -9,8 +9,9 @@
 // declarations, which only a same-named declaration elsewhere changes, and, in Release, which of its declarations the
 // rest of the program reaches. A cached package is therefore kept as variants of its key, each recording the names its
 // declarations had (`NamesDigest`) and every module's roots. A build reuses the newest variant of each dependency's
-// key, checks the names once the program is analyzed and the roots once it is lowered, and compiles the package again
-// when either differs, so a reused object is always the one compiling the package would write.
+// key and checks the names once the program is analyzed; when they differ it takes the newest variant kept under its
+// own names instead, and only when there is none compiles the package again. The roots are checked once the program is
+// lowered. So a reused object is always the one compiling the package would write.
 //
 // The cache lives in `<user data>/Cache/Packages/<key>/<variant>.modules`, each variant a module pack written in one
 // rename, so builds that write the same variant at once leave one whole copy.
@@ -30,6 +31,13 @@ namespace Rux::Driver {
 
 /// The newest variant kept under `keyDirectory`, or nothing when there is none that reads back.
 [[nodiscard]] std::optional<ModulePack> ReadNewestPackageVariant(const std::filesystem::path &keyDirectory);
+
+/// The newest variant kept under `keyDirectory` that holds every one of `modules` under `names`, or nothing. Programs
+/// that name the package's declarations differently each keep a variant of it; this finds the one kept for a program
+/// that names them as this one does.
+[[nodiscard]] std::optional<ModulePack> ReadPackageVariantNamed(const std::filesystem::path &keyDirectory,
+                                                                const std::string &names,
+                                                                std::span<const Module *const> modules);
 
 /// Keep `pack` as variant `variant` under `keyDirectory`, unless that variant is already kept.
 void WritePackageVariant(const std::filesystem::path &keyDirectory, const std::string &variant, const ModulePack &pack);
