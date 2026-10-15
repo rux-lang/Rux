@@ -236,11 +236,11 @@ bool CommitFreeLists(const std::size_t first, const std::size_t count) noexcept 
     return VirtualAlloc(base + first * sizeof(SlabFreeList), count * sizeof(SlabFreeList), MEM_COMMIT,
                         PAGE_READWRITE) != nullptr;
 #else
-    // Protection changes whole pages, so round the range out to them.
-    constexpr std::uintptr_t kPage = 4096;
-    const auto begin = reinterpret_cast<std::uintptr_t>(base + first * sizeof(SlabFreeList)) & ~(kPage - 1);
-    const auto end = reinterpret_cast<std::uintptr_t>(base + (first + count) * sizeof(SlabFreeList));
-    return mprotect(reinterpret_cast<void *>(begin), end - begin, PROT_READ | PROT_WRITE) == 0;
+    // Protection changes whole pages, so the range starts at a slab boundary from the base: a whole number of pages
+    // on every host, where a fixed 4 KiB would not be on one with 16 KiB pages such as macOS on AArch64.
+    const std::size_t begin = first * sizeof(SlabFreeList) & ~(kSlabSize - 1);
+    const std::size_t end = (first + count) * sizeof(SlabFreeList);
+    return mprotect(base + begin, end - begin, PROT_READ | PROT_WRITE) == 0;
 #endif
 }
 
