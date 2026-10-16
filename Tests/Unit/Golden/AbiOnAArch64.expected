@@ -1,0 +1,3 @@
+3:1: error: '#Abi(.Win64)' names an x86-64 calling convention, which a build for AArch64 cannot use
+13:1: error: '#Abi(.SysV)' names an x86-64 calling convention, which a build for AArch64 cannot use
+20:1: error: '#Abi(.Win64)' names an x86-64 calling convention, which a build for AArch64 cannot use

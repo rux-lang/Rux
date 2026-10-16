@@ -80,6 +80,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
     }
     // A function with an explicit '#Abi' is called from foreign code, so its signature is held to the C mapping too.
     const bool foreignAbi = d.callConv != CallingConvention::Default;
+    CheckAbiForTarget(d.callConv, d.abiLocation);
     if (foreignAbi && d.returnType) {
         ValidateCAbiType(retType, d.returnType->get()->location,
                          std::format("the return value of '#Abi' function '{}'", d.name));
@@ -223,6 +224,21 @@ void AnalysisContext::CheckAsmBodyArchitecture(const FuncDecl &d) const {
                               Target::ToDisplayString(mnemonicArch), d.name, Target::ToDisplayString(target)));
         return;
     }
+}
+
+void AnalysisContext::CheckAbiForTarget(const CallingConvention convention,
+                                        const std::optional<SourceLocation> &location) {
+    // AArch64 has one calling convention, so an x86-64 one named on an AArch64 build would be silently ignored.
+    if (!location || context.target.arch != Target::Arch::AArch64 ||
+        (convention != CallingConvention::Win64 && convention != CallingConvention::SysV)) {
+        return;
+    }
+    const std::string_view name = convention == CallingConvention::Win64 ? "Win64" : "SysV";
+    EmitError(*location,
+              std::format("'#Abi(.{})' names an x86-64 calling convention, which a build for {} cannot use", name,
+                          Target::ToDisplayString(context.target.arch)),
+              {"AArch64 has one calling convention, which '#Abi(.C)' names"},
+              "write '#Abi(.C)', or keep the x86-64 declaration in a 'when #target.arch' arm");
 }
 
 void AnalysisContext::CheckStructDecl(const StructDecl &d) {

@@ -1562,6 +1562,8 @@ private:
     // reaches this far is one the build needs and no assembler can encode, so
     // it is an error: `when #target.arch` is how a function written twice
     // reaches both machines, and every first-party body uses it.
+    /// Refuses an x86-64 calling convention named by '#Abi' in a build for a machine that has only its own.
+    void CheckAbiForTarget(CallingConvention convention, const std::optional<SourceLocation> &location);
     void CheckAsmBodyArchitecture(const FuncDecl &d) const;
 
     void CheckStructDecl(const StructDecl &d);

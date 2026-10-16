@@ -758,6 +758,8 @@ struct FuncDecl : Decl {
     /// Marked `#Test()`: a test that a test build of its package runs.
     bool isTest = false;
     CallingConvention callConv = CallingConvention::Default;
+    /// Where the `#Abi` attribute is written, when there is one.
+    std::optional<SourceLocation> abiLocation;
     std::string name;
     std::vector<TypeParameter> typeParams;
     std::vector<Param> params;
@@ -923,6 +925,9 @@ struct ExternFuncDecl : Decl {
     std::string symbolName;
     std::string symbolNameConst;
     CallingConvention callConv = CallingConvention::Default;
+    /// Where the declaration's own `#Abi` attribute is written; a function of an extern block inherits the block's
+    /// convention, and the block holds the attribute.
+    std::optional<SourceLocation> abiLocation;
     std::vector<Param> params;
     bool isVariadic = false;
     std::optional<TypeExprPtr> returnType;
@@ -939,6 +944,7 @@ struct ExternBlockDecl : Decl {
     std::string dll;
     std::string dllConst;
     CallingConvention callConv = CallingConvention::Default;
+    std::optional<SourceLocation> abiLocation;
     std::vector<DeclPtr> items; // ExternFuncDecl or ExternVarDecl
 };
 

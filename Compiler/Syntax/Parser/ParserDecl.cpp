@@ -808,6 +808,9 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         block->dll = attrs.importLib;
         block->dllConst = attrs.importLibConst;
         block->callConv = attrs.callConv;
+        if (attrs.usedAbi) {
+            block->abiLocation = attrs.abiLocation;
+        }
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             Syntax::Documentation documentation = ParseDocumentation();
             if (Check(TokenKind::RightBrace)) {
@@ -885,6 +888,9 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         decl->symbolName = std::move(attrs.importSymbol);
         decl->symbolNameConst = std::move(attrs.importSymbolConst);
         decl->callConv = attrs.callConv;
+        if (attrs.usedAbi) {
+            decl->abiLocation = attrs.abiLocation;
+        }
         decl->name = ExpectBefore(TokenKind::Ident, "a function name after 'extern func'").text;
 
         if (Match(TokenKind::LeftParen)) {

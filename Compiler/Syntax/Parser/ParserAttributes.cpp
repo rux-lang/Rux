@@ -510,6 +510,9 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
         !AstCast<ExternBlockDecl>(decl.get())) {
         EmitError(attrs.abiLocation, "'#Abi' can only be applied to a function or extern block");
     }
+    if (auto *function = AstCast<FuncDecl>(decl.get()); function && attrs.usedAbi) {
+        function->abiLocation = attrs.abiLocation;
+    }
 
     return decl;
 }

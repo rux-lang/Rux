@@ -319,6 +319,8 @@ pub func PrintLine(#Format() format: char8[..], args: Display...) -> IoError?
 
 It marks a format string: a `char8[..]` parameter followed by a variadic parameter whose arguments fill its placeholders. When a call passes a string literal for it, the compiler counts the literal's placeholders — `{}` and `{:spec}`, with `{{` and `}}` as literal braces — against the variadic arguments, and a mismatch is an error such as `format string has 2 placeholders, but 1 argument was provided`. A format that is not a literal, a spread argument, and a pattern that is itself malformed are left to the formatter's run-time check. The attribute is all the compiler knows: it recognizes no package or function by name, so any function taking a format string can declare one. `#Format()` takes no arguments, appears at most once per parameter list, and cannot be applied to the receiver or to the variadic parameter itself.
 
+`#Abi` names one of `.C`, `.SysV` and `.Win64`. AArch64 has one calling convention, which `.C` names, so `.SysV` or `.Win64` in a build for AArch64 is an error (`'#Abi(.Win64)' names an x86-64 calling convention, which a build for AArch64 cannot use`); a declaration written for both machines keeps its x86-64 convention in a `when #target.arch` arm.
+
 ## Values, References, and Raw Pointers
 
 The five storage-facing type forms are:

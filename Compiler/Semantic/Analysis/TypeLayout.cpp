@@ -457,6 +457,7 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         ResolveType(*aliasDecl->type);
     }
     else if (auto *externFn = AstCast<const ExternFuncDecl>(&decl)) {
+        CheckAbiForTarget(externFn->callConv, externFn->abiLocation);
         if (externFn->dll.empty()) {
             EmitError(externFn->location, std::format("extern function '{}' must specify a "
                                                       "source DLL via "
@@ -486,6 +487,7 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         ValidateStoredType(ResolveType(*externVar->type), externVar->location, "extern variable");
     }
     else if (auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
+        CheckAbiForTarget(externBlock->callConv, externBlock->abiLocation);
         for (auto &item : externBlock->items) {
             CheckDecl(*item);
         }
