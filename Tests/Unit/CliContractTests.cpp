@@ -111,27 +111,16 @@ TEST_CASE("CLI JSON rendering consumes the same command and option data") {
     CHECK(json.contains("\"takesValue\":true"));
 }
 
-TEST_CASE("CLI help uses only verified documentation routes") {
-    constexpr std::array dedicated = {"add",  "build", "clean",  "doc", "fmt",  "help",      "init",   "install",
-                                      "list", "new",   "remove", "run", "test", "uninstall", "update", "version"};
-    constexpr std::array fallback = {"check", "info", "lint", "login", "logout", "pack", "publish"};
-
-    for (const std::string_view command : dedicated) {
-        const auto expected = std::format("https://rux-lang.dev/docs/cli/{}", command);
-        CHECK(DocumentationUrl(command) == expected);
-        const auto *spec = FindCommand(command);
-        REQUIRE(spec != nullptr);
-        CHECK(CliHelp::RenderCommand(*spec, 48, false).contains("Documentation:\n    " + expected + "\n"));
-        CHECK(CliHelp::RenderJson("test-version", command).contains("\"documentationUrl\":\"" + expected + "\""));
+TEST_CASE("CLI help links every command to its own reference page") {
+    for (const CommandSpec &spec : Commands()) {
+        const std::string expected = std::format("https://rux-lang.dev/docs/cli/{}", spec.name);
+        CAPTURE(spec.name);
+        CHECK(DocumentationUrl(spec.name) == expected);
+        CHECK(CliHelp::RenderCommand(spec, 48, false).contains("Documentation:\n    " + expected + "\n"));
+        CHECK(CliHelp::RenderJson("test-version", spec.name).contains("\"documentationUrl\":\"" + expected + "\""));
     }
-    for (const std::string_view command : fallback) {
-        CHECK(DocumentationUrl(command) == "https://rux-lang.dev/docs/cli");
-        const auto *spec = FindCommand(command);
-        REQUIRE(spec != nullptr);
-        CHECK(CliHelp::RenderCommand(*spec, 48, false).contains("Documentation:\n    https://rux-lang.dev/docs/cli\n"));
-        CHECK(CliHelp::RenderJson("test-version", command)
-                  .contains("\"documentationUrl\":\"https://rux-lang.dev/docs/cli\""));
-    }
+    CHECK(DocumentationUrl("") == "https://rux-lang.dev/docs/cli");
+    CHECK(DocumentationUrl("no-such-command") == "https://rux-lang.dev/docs/cli");
 }
 
 TEST_CASE("CLI help JSON preserves its exact field sets") {

@@ -121,7 +121,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     if (!targetTriple) {
         EmitDiag(ErrorDiagnostic("target '" + std::string(target) + "' is not supported",
                                  {"supported targets are " + SupportedTargetTriples()},
-                                 "try 'rux check --target linux-x86_64'", "https://rux-lang.dev/docs/cli"));
+                                 "try 'rux check --target linux-x86_64'", "https://rux-lang.dev/docs/cli/check"));
         hadErrors = true;
         return Finish(1);
     }

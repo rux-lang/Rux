@@ -6,6 +6,7 @@
 #include <array>
 #include <ranges>
 #include <string_view>
+#include <utility>
 
 using namespace Rux::CliContract;
 using namespace std::string_view_literals;
@@ -615,25 +616,34 @@ std::string_view PreferredOptionName(const OptionSpec &option) {
 }
 
 std::string_view DocumentationUrl(const std::string_view command) {
-    static constexpr std::array dedicated = {"add"sv,  "build"sv,     "clean"sv,  "doc"sv,    "fmt"sv,    "help"sv,
-                                             "init"sv, "install"sv,   "list"sv,   "new"sv,    "remove"sv, "run"sv,
-                                             "test"sv, "uninstall"sv, "update"sv, "version"sv};
-    static constexpr auto fallback = "https://rux-lang.dev/docs/cli"sv;
-    if (std::ranges::find(dedicated, command) == dedicated.end()) {
-        return fallback;
-    }
+    // Every command has its own reference page; anything else, such as the bare `rux`, has the overview.
     static constexpr std::array routes = {
-        "https://rux-lang.dev/docs/cli/add"sv,    "https://rux-lang.dev/docs/cli/build"sv,
-        "https://rux-lang.dev/docs/cli/clean"sv,  "https://rux-lang.dev/docs/cli/doc"sv,
-        "https://rux-lang.dev/docs/cli/fmt"sv,    "https://rux-lang.dev/docs/cli/help"sv,
-        "https://rux-lang.dev/docs/cli/init"sv,   "https://rux-lang.dev/docs/cli/install"sv,
-        "https://rux-lang.dev/docs/cli/list"sv,   "https://rux-lang.dev/docs/cli/new"sv,
-        "https://rux-lang.dev/docs/cli/remove"sv, "https://rux-lang.dev/docs/cli/run"sv,
-        "https://rux-lang.dev/docs/cli/test"sv,   "https://rux-lang.dev/docs/cli/uninstall"sv,
-        "https://rux-lang.dev/docs/cli/update"sv, "https://rux-lang.dev/docs/cli/version"sv,
+        std::pair{"add"sv, "https://rux-lang.dev/docs/cli/add"sv},
+        std::pair{"build"sv, "https://rux-lang.dev/docs/cli/build"sv},
+        std::pair{"check"sv, "https://rux-lang.dev/docs/cli/check"sv},
+        std::pair{"clean"sv, "https://rux-lang.dev/docs/cli/clean"sv},
+        std::pair{"doc"sv, "https://rux-lang.dev/docs/cli/doc"sv},
+        std::pair{"fmt"sv, "https://rux-lang.dev/docs/cli/fmt"sv},
+        std::pair{"help"sv, "https://rux-lang.dev/docs/cli/help"sv},
+        std::pair{"info"sv, "https://rux-lang.dev/docs/cli/info"sv},
+        std::pair{"init"sv, "https://rux-lang.dev/docs/cli/init"sv},
+        std::pair{"install"sv, "https://rux-lang.dev/docs/cli/install"sv},
+        std::pair{"lint"sv, "https://rux-lang.dev/docs/cli/lint"sv},
+        std::pair{"list"sv, "https://rux-lang.dev/docs/cli/list"sv},
+        std::pair{"login"sv, "https://rux-lang.dev/docs/cli/login"sv},
+        std::pair{"logout"sv, "https://rux-lang.dev/docs/cli/logout"sv},
+        std::pair{"new"sv, "https://rux-lang.dev/docs/cli/new"sv},
+        std::pair{"pack"sv, "https://rux-lang.dev/docs/cli/pack"sv},
+        std::pair{"publish"sv, "https://rux-lang.dev/docs/cli/publish"sv},
+        std::pair{"remove"sv, "https://rux-lang.dev/docs/cli/remove"sv},
+        std::pair{"run"sv, "https://rux-lang.dev/docs/cli/run"sv},
+        std::pair{"test"sv, "https://rux-lang.dev/docs/cli/test"sv},
+        std::pair{"uninstall"sv, "https://rux-lang.dev/docs/cli/uninstall"sv},
+        std::pair{"update"sv, "https://rux-lang.dev/docs/cli/update"sv},
+        std::pair{"version"sv, "https://rux-lang.dev/docs/cli/version"sv},
     };
-    const auto index = static_cast<std::size_t>(std::ranges::find(dedicated, command) - dedicated.begin());
-    return routes[index];
+    const auto route = std::ranges::find(routes, command, &std::pair<std::string_view, std::string_view>::first);
+    return route != routes.end() ? route->second : "https://rux-lang.dev/docs/cli"sv;
 }
 
 const PositionalSpec &PositionalsFor(const std::string_view command) {
