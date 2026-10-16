@@ -166,5 +166,13 @@ func Main() -> int {
     let readings: int32?[4] = [3i32, none, 5i32, none];
     Assert(Present(readings) == 2, "an optional array converts to an optional slice argument");
     Assert(Length(readings) == 4, "and to a generic slice parameter");
+
+    // An annotation gives its type to every arm of a match, so 'none' and a plain value are both its arms.
+    let n: int32 = 3;
+    let annotated: int32? = match n { 0 => none, else => n };
+    Assert(annotated == .Some(3i32), "a plain arm becomes the present value of the annotated optional");
+    let zero: int32 = 0;
+    let missing: int32? = match zero { 0 => none, else => zero };
+    Assert(missing == none, "a 'none' arm takes the annotated optional type");
     return 0;
 }

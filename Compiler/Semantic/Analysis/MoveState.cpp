@@ -598,6 +598,16 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     std::vector<const Pattern *> patterns;
     TypeRef resultType = TypeRef::MakeUnknown();
     bool coveredAll = false;
+    // An annotation of an optional, a fallible or a sum is the type of the match and of every arm, so `none` and a
+    // member's value are injected into it the way a `let` or a `return` would inject them.
+    std::optional<TypeRef> expectedOutcome;
+    if (const auto expected = expectedExpressionTypes.find(&expression);
+        expected != expectedExpressionTypes.end() &&
+        (expected->second.IsOptional() || expected->second.IsFallible() || expected->second.IsSum()) &&
+        !expected->second.MentionsIncompleteNative()) {
+        expectedOutcome = expected->second;
+        resultType = *expectedOutcome;
+    }
 
     // Arms accepted while the result was still incomplete, such as a leading `none`. A later arm that completes the
     // type has to accept them too.
@@ -622,6 +632,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         CheckPattern(*arm.pattern, subjectType);
         currentPatternTakesParts = savedTakesParts;
         currentPatternBorrow = savedBorrow;
+        if (expectedOutcome) {
+            expectedExpressionTypes.insert_or_assign(arm.body.get(), *expectedOutcome);
+        }
         // A diverging arm, such as `return` or a call to `Panic`, leaves the match and never decides its type.
         const TypeRef checkedArm = CheckExpr(*arm.body);
         const TypeRef armType = IsDivergingExpression(*arm.body) ? TypeRef::MakeUnknown() : checkedArm;
@@ -635,6 +648,13 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
                      AstCast<const IdentPattern>(arm.pattern.get()) != nullptr;
 
         if (armType.IsUnknown()) {
+            continue;
+        }
+        if (expectedOutcome) {
+            // The annotation decided the type, so each arm converts to it or is reported where it is.
+            if (!CanAssignExprTo(*arm.body, armType, *expectedOutcome)) {
+                reportMismatch(*arm.body, armType, arm.location);
+            }
             continue;
         }
         if (resultType.IsUnknown()) {

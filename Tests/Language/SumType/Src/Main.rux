@@ -225,5 +225,13 @@ func Main() -> int {
     var counter = Counter { count: 0i32 };
     Assert(TakeMember(@counter) == 5i32, "a binding takes the member out");
     Assert(counter.count == 1, "and destroys it when the arm ends");
+
+    // An annotation gives its type to every arm of a match, so each arm is injected into the sum.
+    let n: int32 = 3;
+    let injected: int32 | bool = match n { 0 => false, else => n };
+    Assert(injected is int32, "the integer arm becomes the integer member");
+    let zero: int32 = 0;
+    let flagged: int32 | bool = match zero { 0 => false, else => zero };
+    Assert(flagged is bool, "the bool arm becomes the bool member");
     return 0;
 }

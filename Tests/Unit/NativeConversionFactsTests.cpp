@@ -252,6 +252,7 @@ TEST_CASE("a match arm its expected type refuses is reported") {
     )");
     CHECK(Reports(*analyzed, "match arm type mismatch: expected 'int32?', found 'bool8?'"));
     CHECK(Reports(*analyzed, "'.Failure(...)' constructs a native fallible, but the expected type is 'int32?'"));
-    CHECK(Reports(*analyzed, "'return' value must have type 'int32?', but found 'none'"));
+    // The return type is the match's own, so a refused arm is reported where it is rather than at the 'return'.
+    CHECK_FALSE(Reports(*analyzed, "'return' value must have type 'int32?', but found 'none'"));
     CHECK(Reports(*analyzed, "cannot infer the type of 'open' from a native constructor with an unknown channel"));
 }
