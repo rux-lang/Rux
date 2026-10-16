@@ -142,7 +142,8 @@ pub func RunBenchmarksWith(benchmarks: BenchmarkCase[..], options: BenchmarkOpti
 }
 
 /// Measures the benchmarks the process's arguments choose. A plain argument is a filter, and a benchmark runs when
-/// its name holds any of them; `--quick` measures each for 10 milliseconds rather than 200, for checking that benchmarks still run.
+/// its name holds any of them; `--quick` measures each for 10 milliseconds rather than 200, for checking that
+/// benchmarks still run.
 /// @param benchmarks the benchmarks
 /// @returns 0, or 2 for arguments it does not understand
 /// @see https://rux-lang.dev/docs/api/test/benchmark#run-benchmarks
