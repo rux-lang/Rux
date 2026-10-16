@@ -46,7 +46,7 @@ The C ABI knows only `float32` and `float64`, as C's `float` and `double`. The o
 
 ## Size and Alignment
 
-Primitive storage of 16 bytes or more has alignment 16 on every target, including `float80` and all 128-, 256- and 512-bit types. Smaller primitives align to their storage size. `sizeof(T)` and `alignof(T)` report the same layout used by generated code.
+Primitive storage of 16 bytes or more has alignment 16 on every target, including `float80` and all 128-, 256- and 512-bit types. Smaller primitives align to their storage size. `sizeof(T)` and `alignof(T)` report the same layout used by generated code, and are compile-time integers wherever one is required: `uint8[sizeof(Header)]` is an array type, `[0; sizeof(int64)]` a repeat, and a constant computed from them serves as either. A query of a type parameter has no value until the function is instantiated, and a struct whose layout depends on its own size has none at all.
 
 A struct keeps declaration order, places each field at the next multiple of its alignment, and rounds its total size to its largest field alignment. For example, a struct containing `uint8` followed by `int128` places the latter at offset 16, has alignment 16 and occupies 32 bytes. A union places every member at offset zero and rounds the largest member size to the largest alignment. Module constant tables preserve their element alignment through object emission and linking on every target.
 

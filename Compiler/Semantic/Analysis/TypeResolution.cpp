@@ -431,7 +431,13 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         if (elemType.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
-        return TypeRef::MakeArray(elemType, t->size ? EvalArrayLength(*t->size) : std::nullopt);
+        // A length that does not fold is reported where the type is validated; it is not a flexible tail, which has
+        // no length written at all.
+        const std::optional<std::uint64_t> length = t->size ? EvalArrayLength(*t->size) : std::nullopt;
+        if (t->size && !length) {
+            return TypeRef::MakeUnknown();
+        }
+        return TypeRef::MakeArray(elemType, length);
     }
 
     if (const auto *t = AstCast<const SliceTypeExpr>(&expr)) {
@@ -557,8 +563,11 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         return TypeRef::MakeReference(pointeeType);
     }
     if (auto *t = AstCast<const ArrayTypeExpr>(&expr)) {
-        return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
-                                  t->size ? EvalArrayLength(*t->size) : std::nullopt);
+        const std::optional<std::uint64_t> length = t->size ? EvalArrayLength(*t->size) : std::nullopt;
+        if (t->size && !length) {
+            return TypeRef::MakeUnknown();
+        }
+        return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions), length);
     }
     if (auto *t = AstCast<const SliceTypeExpr>(&expr)) {
         return TypeRef::MakeSlice(ResolveTypeWithSubstitution(*t->element, substitutions), t->elementMut);

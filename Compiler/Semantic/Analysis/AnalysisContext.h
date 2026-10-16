@@ -1502,6 +1502,9 @@ private:
     ///
     /// @param expression the expression to fold, resolved in the current scope
     /// @returns the value, or nullopt when the expression is not a compile-time integer
+    /// The value of `sizeof` or `alignof` while folding a constant, laid out in `scope`. None for a type with no layout
+    /// yet, such as a type parameter.
+    [[nodiscard]] std::optional<std::uint64_t> TypeQueryValue(const TypeQueryExpr &query, Scope &scope) const;
     [[nodiscard]] std::optional<std::int64_t> EvalConstInteger(const Expr &expression) const;
     [[nodiscard]] std::optional<std::int64_t> EvalConstInteger(const Expr &expression, Scope &scope,
                                                                std::unordered_set<const ConstDecl *> &active) const;

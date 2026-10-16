@@ -629,6 +629,9 @@ std::optional<std::int64_t> AnalysisContext::EvalConstInteger(const Expr &expr, 
             }
             return constant(current);
         }
+        if (const auto *query = AstCast<const TypeQueryExpr>(&leaf)) {
+            return WordValue(TypeQueryValue(*query, scope));
+        }
         if (const auto *cast = AstCast<const CastExpr>(&leaf)) {
             const auto *named = AstCast<const NamedTypeExpr>(cast->type.get());
             const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
@@ -640,6 +643,29 @@ std::optional<std::int64_t> AnalysisContext::EvalConstInteger(const Expr &expr, 
         }
         return std::nullopt;
     });
+}
+
+std::optional<std::uint64_t> AnalysisContext::TypeQueryValue(const TypeQueryExpr &query, Scope &scope) const {
+    if (const auto known = typeQueryValues.find(&query); known != typeQueryValues.end()) {
+        return known->second;
+    }
+    // A query folded before its expression is checked, as an array length is, lays the type out here, in the scope the
+    // query was written in. Laying out caches what it computes, and whatever it reports is reported again where the
+    // query itself is checked, so only the value is kept.
+    auto &self = const_cast<AnalysisContext &>(*this);
+    const std::size_t diagnosticCount = diags.size();
+    Scope *const savedScope = self.currentScope;
+    self.currentScope = &scope;
+    std::optional<std::uint64_t> value;
+    if (const TypeRef queried = self.ResolveType(*query.type);
+        !queried.IsUnknown() && !MentionsTypeParameter(queried)) {
+        if (const auto layout = self.LayoutOfTypeExpression(*query.type)) {
+            value = query.query == TypeQueryExpr::Query::Size ? layout->size : layout->alignment;
+        }
+    }
+    self.currentScope = savedScope;
+    diags.resize(diagnosticCount);
+    return value;
 }
 
 bool AnalysisContext::ConstantFitsTarget(std::int64_t value, const TypeRef &target) const {
