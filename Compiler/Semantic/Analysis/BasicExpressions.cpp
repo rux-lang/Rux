@@ -1097,6 +1097,54 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             }
             return TypeRef::MakeBool();
         }
+        if (left->kind == TypeRef::Kind::Array && right->kind == TypeRef::Kind::Array) {
+            // Two fixed arrays compare element by element as one type, and an array literal is built as the other
+            // operand's type, as a tuple literal is. Comparing them as machine values compared at most one word of
+            // their bytes, and ordered them by those bytes as if they were one number.
+            TypeRef compared = left;
+            if (left != right) {
+                const auto isLiteral = [](const Expr &expression) {
+                    return AstCast<const ArrayExpr>(&expression) || AstCast<const ArrayRepeatExpr>(&expression);
+                };
+                if (isLiteral(rightExpression) && CanAssignExprTo(rightExpression, right, left)) {
+                    compared = left;
+                }
+                else if (isLiteral(leftExpression) && CanAssignExprTo(leftExpression, left, right)) {
+                    compared = right;
+                }
+                else {
+                    EmitError(location,
+                              std::format("operator '{}' cannot compare left operand '{}' with right operand '{}'",
+                                          operatorName, left.ToString(), right.ToString()),
+                              {"two arrays compare as one type, element by element"});
+                    return TypeRef::MakeBool();
+                }
+            }
+            if (operation != TK::Equal && operation != TK::BangEqual) {
+                EmitError(location,
+                          std::format("operator '{}' is not defined for array '{}'", operatorName, compared.ToString()),
+                          {"arrays have element-wise equality but no built-in ordering"},
+                          "compare the elements in the order that defines it");
+                return TypeRef::MakeBool();
+            }
+            if (!compared->arrayLength) {
+                EmitError(location, std::format("operator '{}' cannot compare flexible array '{}', which has no length",
+                                                operatorName, compared.ToString()));
+                return TypeRef::MakeBool();
+            }
+            VariantEqualityPayload plan;
+            plan.type = compared;
+            std::unordered_set<std::string> activeTypes;
+            if (BuildVariantEqualityPayload(plan, location, compared.ToString(), {}, {}, activeTypes) &&
+                binaryExpression) {
+                aggregateEqualities.insert_or_assign(binaryExpression, operation == TK::BangEqual);
+                if (left != right) {
+                    aggregateEqualityOperandTypes.insert_or_assign(binaryExpression, compared);
+                }
+                aggregateEqualityPlans.insert_or_assign(compared.ToString(), std::move(plan));
+            }
+            return TypeRef::MakeBool();
+        }
         const bool sameNamedType =
             left->kind == TypeRef::Kind::Named && right->kind == TypeRef::Kind::Named && left->name == right->name;
         const CaseTypeDeclaration caseType =

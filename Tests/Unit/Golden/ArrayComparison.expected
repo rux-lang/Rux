@@ -1,0 +1,4 @@
+8:26: error: operator '==' cannot compare left operand 'int32[2]' with right operand 'int32[3]'
+9:24: error: operator '==' cannot compare left operand 'int32[2]' with right operand 'int64[2]'
+10:26: error: operator '<' is not defined for array 'int32[2]'
+11:24: error: operator '>=' is not defined for array 'int32[2]'
