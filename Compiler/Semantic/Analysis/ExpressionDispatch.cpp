@@ -38,9 +38,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             if (sym->kind == Symbol::Kind::Const && sym->declaration) {
                 constantReferences[e] = static_cast<const ConstDecl *>(sym->declaration);
             }
-            else if (const auto *global = AstCast<const GlobalDecl>(sym->declaration);
-                     global && sym->kind == Symbol::Kind::Var) {
-                globalReferences[e] = global;
+            else if (sym->kind == Symbol::Kind::Var &&
+                     (AstCast<const GlobalDecl>(sym->declaration) || AstCast<const ExternVarDecl>(sym->declaration))) {
+                globalReferences[e] = sym->declaration;
             }
             else if (sym->kind == Symbol::Kind::Func) {
                 if (std::optional<TypeRef> instantiated = InstantiateFunctionReference(*e, *sym)) {
@@ -195,9 +195,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         if (current->kind == Symbol::Kind::Const && current->declaration) {
             constantReferences[e] = static_cast<const ConstDecl *>(current->declaration);
         }
-        else if (const auto *global = AstCast<const GlobalDecl>(current->declaration);
-                 global && current->kind == Symbol::Kind::Var) {
-            globalReferences[e] = global;
+        else if (current->kind == Symbol::Kind::Var && (AstCast<const GlobalDecl>(current->declaration) ||
+                                                        AstCast<const ExternVarDecl>(current->declaration))) {
+            globalReferences[e] = current->declaration;
         }
         return ReadTrackedSymbol(*current, e->location);
     }

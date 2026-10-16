@@ -638,10 +638,8 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
         importedData.sections.front().relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});
         importedData.symbols.push_back(
             {"errno", "libc.so.7", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
-        checkFailure(
-            {std::move(importedData)},
-            "external data symbol 'errno' cannot be imported for target 'freebsd-aarch64' because GOT-aware data "
-            "lowering and symbol-size metadata are not implemented");
+        checkFailure({std::move(importedData)},
+                     "imported data symbol 'errno' is read through its import slot, not addressed directly");
 
         RcuFile conflicting = ImportingMain({{"puts", "libfirst.so"}});
         RcuFile conflictDeclaration = ImportDeclarations({{"puts", "libsecond.so"}});
@@ -896,10 +894,8 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
         importedData.sections.front().relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});
         importedData.symbols.push_back(
             {"errno", "libc.so.7", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
-        checkFailure(
-            {std::move(importedData)},
-            "external data symbol 'errno' cannot be imported for target 'freebsd-aarch64' because GOT-aware data "
-            "lowering and symbol-size metadata are not implemented");
+        checkFailure({std::move(importedData)},
+                     "imported data symbol 'errno' is read through its import slot, not addressed directly");
     }
 
     TEST_CASE("FreeBSD AArch64 shared library deduplicates dependencies independently of declarations") {

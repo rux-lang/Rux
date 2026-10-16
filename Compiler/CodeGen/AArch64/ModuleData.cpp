@@ -137,7 +137,8 @@ void AArch64ModuleEmitter::EmitConstSlice(const LirConstDecl &c) {
 void AArch64ModuleEmitter::GenModule() {
     PredeclareFunctions();
     for (const auto &ev : mod.externVars) {
-        GetOrAddExtern(ev.name, RcuSymKind::ExternData);
+        GetOrAddExtern(ev.name, RcuSymKind::ExternData, ev.dll);
+        importedData.insert(ev.name);
     }
     for (const auto &c : mod.consts) {
         // A constant of sequence type is addressed rather than inlined, so

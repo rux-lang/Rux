@@ -240,7 +240,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     std::unordered_map<std::string, std::string> explicitImportLib;
     for (const auto &object : objects) {
         for (const auto &symbol : object.symbols) {
-            if (symbol.kind != RcuSymKind::ExternFunc || symbol.name.empty() || symbol.typeName.empty()) {
+            if ((symbol.kind != RcuSymKind::ExternFunc && symbol.kind != RcuSymKind::ExternData) ||
+                symbol.name.empty() || symbol.typeName.empty()) {
                 continue;
             }
             const std::string library = NormalizeDylibName(symbol.typeName);
@@ -253,15 +254,18 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     }
 
     // Assign the graph's referenced externals to libraries. Function addresses
-    // resolve to generated stubs. Imported data still needs GOT-aware lowering
-    // and is rejected explicitly rather than producing an invalid direct
-    // reference.
+    // resolve to generated stubs. Imported data takes the same non-lazy pointer
+    // slot a function's stub jumps through, and the code reads its address from
+    // the slot dyld binds.
     std::unordered_map<std::string, std::string> importLib;
     for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
         if (external.kind == RcuSymKind::ExternData) {
-            Error("external data symbol '" + external.name + "' cannot be imported by the Mach-O " +
-                  std::string(Target::ToDisplayString(targetArch)) +
-                  " linker because GOT-aware lowering is not implemented");
+            const auto explicitIt = explicitImportLib.find(external.name);
+            if (explicitIt == explicitImportLib.end()) {
+                Error("undefined external symbol '" + external.name + "'");
+                continue;
+            }
+            importLib.try_emplace(external.name, explicitIt->second);
             continue;
         }
         if (external.kind != RcuSymKind::ExternFunc) {
@@ -662,6 +666,31 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
             continue;
         }
 
+        // A reference to an imported datum's slot addresses the non-lazy pointer dyld binds to its address.
+        if (const std::optional<uint16_t> plain = PlainImportSlotRelocation(relocationType)) {
+            const auto import = std::ranges::find(importNames, symbol.name);
+            if (reference.resolution != RcuLinkResolution::External || import == importNames.end()) {
+                const std::string error = "extern variable '" + symbol.name + "' is not imported from a library";
+                Error(error, RelocationNotes(reference, error));
+                continue;
+            }
+            const auto index = static_cast<uint64_t>(std::distance(importNames.begin(), import));
+            std::string relocationError;
+            if (!ApplyMachORelocation(*architecture, *buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
+                                      imageLayout.importPointerAddress + index * 8, relocation.addend, *plain,
+                                      symbol.name, relocationError)) {
+                auto notes = RelocationNotes(reference, relocationError);
+                Error(std::move(relocationError), std::move(notes));
+            }
+            continue;
+        }
+
+        if (reference.resolution == RcuLinkResolution::External && symbol.kind == RcuSymKind::ExternData) {
+            const std::string error =
+                "imported data symbol '" + symbol.name + "' is read through its import slot, not addressed directly";
+            Error(error, RelocationNotes(reference, error));
+            continue;
+        }
         std::optional<uint64_t> targetAddress;
         if (reference.resolution == RcuLinkResolution::External) {
             const auto import = importStubs.find(symbol.name);

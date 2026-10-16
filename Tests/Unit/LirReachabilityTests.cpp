@@ -166,9 +166,9 @@ TEST_CASE("library LIR reachability roots exported code and data for both artifa
     module.consts[1].name = "PrivateData";
     module.consts[2].name = "DeadData";
     module.vtables.push_back({"__vtable__Widget__Render", {"Widget::Render"}});
-    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true},
-                         {"PrivateVariable", false, TypeRef::MakeInt32()},
-                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true, {}},
+                         {"PrivateVariable", false, TypeRef::MakeInt32(), false, {}},
+                         {"UnusedVariable", false, TypeRef::MakeInt32(), false, {}}};
 
     LirPackage package;
     package.modules.push_back(std::move(module));
@@ -217,8 +217,8 @@ TEST_CASE("Release prunes unreachable declarations deterministically while Debug
 
     module.consts = {Constant("LiveData"), Constant("DeadData", false, {"1", "2"})};
     module.vtables = {{"LiveVtable", {"Live"}}, {"DeadVtable", {"Dead"}}};
-    module.externVars = {{"LiveVariable", false, TypeRef::MakeInt32()},
-                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+    module.externVars = {{"LiveVariable", false, TypeRef::MakeInt32(), false, {}},
+                         {"UnusedVariable", false, TypeRef::MakeInt32(), false, {}}};
 
     LirPackage original;
     original.modules.push_back(std::move(module));
@@ -295,8 +295,8 @@ TEST_CASE("Release library pruning preserves exported APIs and their private dep
     module.funcs[0].blocks[0].instrs.push_back(std::move(call));
     module.consts = {Constant("PublicData", true), Constant("DeadData")};
     module.consts.front().isExported = true;
-    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true},
-                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true, {}},
+                         {"UnusedVariable", false, TypeRef::MakeInt32(), false, {}}};
 
     LirPackage package;
     package.modules.push_back(std::move(module));

@@ -567,7 +567,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     // call site whose DLL name is carried by another translation unit.
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
-            if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty()) {
+            if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) && !sym.typeName.empty()) {
                 explicitImportDll[sym.name] = sym.typeName;
             }
         }
@@ -576,8 +576,9 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     // Every extern a source declares names its library, KERNEL32 when it wrote none. A function referenced with no
     // library is one nothing defines and nothing declares, which the loader would refuse with no message at all.
     std::vector<std::string> undefined;
+    // Imported data takes an IAT entry as a function does; the code reads its address from the entry.
     for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
-        if (external.kind != RcuSymKind::ExternFunc) {
+        if (external.kind != RcuSymKind::ExternFunc && external.kind != RcuSymKind::ExternData) {
             continue;
         }
         const auto explicitDll = explicitImportDll.find(external.name);
@@ -973,7 +974,24 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         }
 
         std::optional<uint64_t> targetAddress;
-        if (reference.resolution == RcuLinkResolution::External) {
+        std::uint16_t relocationType = relocation.type;
+        // A reference to an imported data symbol's slot is a reference to its IAT entry, which the loader fills
+        // with the symbol's address, and it is then applied as the plain PC-relative form its instruction uses.
+        if (const std::optional<std::uint16_t> plain = PlainImportSlotRelocation(relocation.type)) {
+            relocationType = *plain;
+            const auto imported = importIdx.find(symbol.name);
+            if (reference.resolution != RcuLinkResolution::External || imported == importIdx.end()) {
+                Error(std::format("extern variable '{}' is not imported from a library", symbol.name),
+                      {"an extern variable is data another image defines, reached through its import entry"});
+                continue;
+            }
+            targetAddress = imageBase + rdataRva + iatEntryOff[imported->second];
+        }
+        else if (reference.resolution == RcuLinkResolution::External && symbol.kind == RcuSymKind::ExternData) {
+            Error("imported data symbol '" + symbol.name + "' is read through its import slot, not addressed directly");
+            continue;
+        }
+        else if (reference.resolution == RcuLinkResolution::External) {
             const auto imported = importThunks.find(symbol.name);
             if (imported != importThunks.end()) {
                 targetAddress = imported->second;
@@ -983,7 +1001,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
             targetAddress = symbolAddress(*reference.definition);
         }
         if (!targetAddress) {
-            if (symbol.kind == RcuSymKind::ExternFunc) {
+            if (symbol.kind == RcuSymKind::ExternFunc || symbol.kind == RcuSymKind::ExternData) {
                 Error("undefined external symbol '" + symbol.name + "'");
             }
             continue;
@@ -991,7 +1009,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
         std::string relocationError;
         if (!architecture->applyRelocation(*buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
-                                           *targetAddress, relocation.addend, relocation.type, symbol.name,
+                                           *targetAddress, relocation.addend, relocationType, symbol.name,
                                            relocationError)) {
             auto notes = RelocationNotes(reference, relocationError);
             Error(std::move(relocationError), std::move(notes));

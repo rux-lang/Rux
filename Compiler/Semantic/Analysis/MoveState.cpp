@@ -968,7 +968,13 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         }
     }
     if (const auto global = globalReferences.find(root); global != globalReferences.end()) {
-        EmitError(location, std::format("cannot move out of module variable '{}'", global->second->name),
+        const auto *module = AstCast<const GlobalDecl>(global->second);
+        const auto *external = AstCast<const ExternVarDecl>(global->second);
+        EmitError(location,
+                  std::format("cannot move out of {} variable '{}'", module ? "module" : "extern",
+                              module     ? module->name
+                              : external ? external->name
+                                         : std::string{}),
                   {"a module variable is shared by every function and must always hold a value"},
                   "copy the value, or assign a new value to the variable after reading it");
         return false;

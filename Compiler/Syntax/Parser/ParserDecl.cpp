@@ -858,6 +858,8 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 auto vd = std::make_unique<ExternVarDecl>();
                 vd->location = CurrentLocation();
                 vd->isPublic = isPublic || memberIsPublic;
+                vd->dll = attrs.importLib;
+                vd->dllConst = attrs.importLibConst;
                 vd->documentation = std::move(documentation);
                 vd->name = Advance().text;
                 ExpectBefore(TokenKind::Colon, "':' after the external variable name",
@@ -924,6 +926,10 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
     auto decl = std::make_unique<ExternVarDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
+    decl->dll = std::move(attrs.importLib);
+    decl->dllConst = std::move(attrs.importLibConst);
+    decl->symbolName = std::move(attrs.importSymbol);
+    decl->symbolNameConst = std::move(attrs.importSymbolConst);
     decl->name = Advance().text;
 
     ExpectBefore(TokenKind::Colon, "':' after the external variable name",

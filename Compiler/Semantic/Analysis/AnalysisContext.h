@@ -889,7 +889,7 @@ private:
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> &constantReferences;
-    std::unordered_map<const Expr *, const GlobalDecl *> &globalReferences;
+    std::unordered_map<const Expr *, const Decl *> &globalReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
     std::unordered_set<const TypeAliasDecl *> checkingTypeAliases;
@@ -1138,6 +1138,8 @@ private:
 private:
     void RegisterBuiltins();
     void IndexDeclarations();
+    /// A declaration's type while indexing, with no diagnostics: checking the declaration reports them.
+    [[nodiscard]] TypeRef ResolveIndexedType(const TypeExpr &type);
     void CollectModule(const Module &module);
     void CheckStatement(const Stmt &statement);
     /// Make `label` the target of `break label` and `continue label` inside a loop, reporting a reuse of an enclosing

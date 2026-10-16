@@ -22,7 +22,12 @@ const ConstDecl *SemanticModel::TryGetConstantReference(const Expr &expression) 
 
 const GlobalDecl *SemanticModel::TryGetGlobalReference(const Expr &expression) const noexcept {
     const auto found = facts.globalReferences.find(&expression);
-    return found == facts.globalReferences.end() ? nullptr : found->second;
+    return found == facts.globalReferences.end() ? nullptr : AstCast<const GlobalDecl>(found->second);
+}
+
+const ExternVarDecl *SemanticModel::TryGetExternVariableReference(const Expr &expression) const noexcept {
+    const auto found = facts.globalReferences.find(&expression);
+    return found == facts.globalReferences.end() ? nullptr : AstCast<const ExternVarDecl>(found->second);
 }
 
 const EvaluatedAssociatedConstant *SemanticModel::TryGetConstantValue(const ConstDecl &declaration) const noexcept {

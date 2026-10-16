@@ -183,6 +183,14 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->name = model.TryGetSymbolIdentity(*global)->linkerName;
         return lowered;
     }
+    // Foreign data is named by the symbol it is imported as.
+    if (const ExternVarDecl *external = model.TryGetExternVariableReference(expression)) {
+        auto lowered = std::make_unique<HirVarExpr>();
+        lowered->location = expression.location;
+        lowered->type = ResolvedExpressionType(expression);
+        lowered->name = external->symbolName.empty() ? external->name : external->symbolName;
+        return lowered;
+    }
     if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return LowerExpr(*move->operand);
     }

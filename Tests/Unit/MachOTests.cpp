@@ -1102,8 +1102,8 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.symbols.push_back(
             {"errno", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
         CHECK(linkError(std::move(program), "data-import") ==
-              "cannot link Mach-O executable 'MachOTest': external data symbol 'errno' cannot be imported by the "
-              "Mach-O AArch64 linker because GOT-aware lowering is not implemented");
+              "cannot link Mach-O executable 'MachOTest': Mach-O code cannot hold an absolute address in a "
+              "position-independent image; 'errno' must be reached PC-relatively");
     }
     SUBCASE("out-of-range branch") {
         RcuFile program;
@@ -1139,4 +1139,52 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.symbols.push_back({"Value", "", 1, 1, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
         CHECK(linkError(std::move(program), "low12-alignment").contains("is not aligned to its access width"));
     }
+}
+
+TEST_CASE("Mach-O linker reads imported data through a non-lazy pointer dyld binds") {
+    // Main: mov rax, [rip + slot]; mov eax, [rax]; ret.
+    RcuFile program;
+    program.arch = RcuArch::X86_64;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    text.data = {0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x8B, 0x00, 0xC3};
+    text.relocs.push_back({3, 1, RcuRelType::ImportSlotRel32, 0});
+    program.sections.push_back(std::move(text));
+    program.symbols.push_back({"Main", "int", 0, 10, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    program.symbols.push_back(
+        {"opterr", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-macho-data-import";
+    std::error_code ec;
+    std::filesystem::remove(output, ec);
+    Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
+                  Target::Arch::X86_64);
+    REQUIRE(linker.Link(output));
+    std::ifstream stream(output, std::ios::binary);
+    REQUIRE(stream.is_open());
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    stream.close();
+    std::filesystem::remove(output, ec);
+
+    MachOImage image;
+    std::string error;
+    REQUIRE_MESSAGE(ReadMachO64(bytes, image, error), error);
+    const auto bind = std::ranges::find(image.binds, std::string("_opterr"), &MachOBind::symbol);
+    REQUIRE(bind != image.binds.end());
+    const std::uint64_t slot = image.segments[bind->segmentIndex].vmAddress + bind->segmentOffset;
+
+    const auto load = std::ranges::search(bytes, std::vector<std::uint8_t>{0x48, 0x8B, 0x05});
+    REQUIRE_FALSE(load.empty());
+    const auto site = static_cast<std::size_t>(load.begin() - bytes.begin());
+    const auto *code = image.Section("__TEXT", "__text");
+    REQUIRE(code != nullptr);
+    const std::uint64_t siteAddress = code->address + (site - code->offset);
+    std::int32_t displacement = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        displacement |= static_cast<std::int32_t>(bytes[site + 3 + i]) << (i * 8U);
+    }
+    CHECK(siteAddress + 7 + static_cast<std::uint64_t>(static_cast<std::int64_t>(displacement)) == slot);
 }

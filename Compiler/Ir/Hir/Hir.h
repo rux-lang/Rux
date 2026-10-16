@@ -747,7 +747,10 @@ struct HirExternFunc {
 
 // extern Name: Type;
 struct HirExternVar {
+    /// The symbol imported, which is the declared name unless `#Link` gives another.
     std::string name;
+    /// The library the data is imported from.
+    std::string dll;
     bool isPublic = false;
     /// Public and owned by the package being compiled, so a library artifact keeps it.
     bool isExported = false;

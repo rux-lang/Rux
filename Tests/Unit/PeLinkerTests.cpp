@@ -953,3 +953,78 @@ TEST_CASE("PE linker diagnoses invalid Windows AArch64 relocations") {
     }
     CHECK_FALSE(std::filesystem::exists(output));
 }
+
+TEST_CASE("PE linker reads imported data through its IAT entry") {
+    // Main: mov rax, [rip + slot]; mov eax, [rax]; ret. The slot is `_fmode`'s IAT entry, which the loader fills with
+    // the address of msvcrt's variable.
+    RcuFile program;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    text.data = {0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x8B, 0x00, 0xC3};
+    text.relocs.push_back({3, 1, RcuRelType::ImportSlotRel32, 0});
+    program.sections.push_back(std::move(text));
+    program.symbols.push_back({"Main", "int", 0, 10, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    program.symbols.push_back(
+        {"_fmode", "msvcrt.dll", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+
+    const auto output = PeTestPath();
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    Linker linker({std::move(program)}, "PeDataImport", {}, ArtifactKind::Executable, Target::OS::Windows,
+                  Target::Arch::X86_64);
+    REQUIRE(linker.Link(output));
+    std::ifstream stream(output, std::ios::binary);
+    REQUIRE(stream.is_open());
+    const std::vector<uint8_t> image((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    stream.close();
+    std::filesystem::remove(output, error);
+
+    const size_t peOffset = Read32(image, 0x3C);
+    const size_t optional = peOffset + 24;
+    const uint32_t entryRva = Read32(image, optional + 16);
+    const uint32_t importRva = Read32(image, optional + 112 + 8);
+    std::vector<PeSection> sections;
+    for (uint16_t i = 0; i < Read16(image, peOffset + 6); ++i) {
+        const size_t offset = optional + 240 + static_cast<size_t>(i) * 40;
+        sections.push_back({{},
+                            Read32(image, offset + 8),
+                            Read32(image, offset + 12),
+                            Read32(image, offset + 16),
+                            Read32(image, offset + 20)});
+    }
+    const auto rvaToOffset = [&](const uint32_t rva) -> size_t {
+        for (const auto &section : sections) {
+            if (rva >= section.rva && rva < section.rva + std::max(section.virtualSize, section.rawSize)) {
+                return section.rawOffset + rva - section.rva;
+            }
+        }
+        return image.size();
+    };
+    const auto rel32Target = [&](const uint32_t fieldRva) {
+        const int32_t displacement = static_cast<int32_t>(Read32(image, rvaToOffset(fieldRva)));
+        return static_cast<uint32_t>(fieldRva + 4 + displacement);
+    };
+
+    // The IAT entry of each import, by library and name.
+    std::unordered_map<std::string, uint32_t> iatEntries;
+    for (size_t descriptor = rvaToOffset(importRva); Read32(image, descriptor + 12) != 0; descriptor += 20) {
+        const std::string library = ReadString(image, rvaToOffset(Read32(image, descriptor + 12)));
+        const uint32_t lookupRva = Read32(image, descriptor);
+        const uint32_t firstThunkRva = Read32(image, descriptor + 16);
+        for (uint32_t index = 0;; ++index) {
+            const uint64_t nameRva = Read64(image, rvaToOffset(lookupRva) + index * 8);
+            if (nameRva == 0) {
+                break;
+            }
+            iatEntries[library + "!" + ReadString(image, rvaToOffset(static_cast<uint32_t>(nameRva)) + 2)] =
+                firstThunkRva + index * 8;
+        }
+    }
+    REQUIRE(iatEntries.contains("msvcrt.dll!_fmode"));
+    const uint32_t mainRva = rel32Target(entryRva + 5);
+    CHECK(image[rvaToOffset(mainRva) + 1] == 0x8B); // a load of the slot, not a `lea` of the datum
+    CHECK(rel32Target(mainRva + 3) == iatEntries["msvcrt.dll!_fmode"]);
+}

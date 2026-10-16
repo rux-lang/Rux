@@ -614,7 +614,8 @@ HirExternFunc AstToHirContext::LowerExternFunc(const ExternFuncDecl &d) {
 
 HirExternVar AstToHirContext::LowerExternVar(const ExternVarDecl &d) {
     HirExternVar hev;
-    hev.name = d.name;
+    hev.name = d.symbolName.empty() ? d.name : d.symbolName;
+    hev.dll = d.dll;
     hev.isPublic = model.IsEffectivelyPublic(d);
     hev.isExported = hev.isPublic && model.IsExported(d);
     hev.type = ResolveType(*d.type);

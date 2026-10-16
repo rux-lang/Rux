@@ -192,6 +192,9 @@ std::uint32_t AArch64ModuleEmitter::ResolveMachineSymbol(const AArch64Machine::S
 }
 
 bool AArch64ModuleEmitter::GenMachineFunc(const LirFunc &func) {
+    if (ReachesImportedData(func)) {
+        return false;
+    }
     const AArch64Machine::SelectionContext context{layouts, interfaceNames, callPlanner, targetOs, backtrace.enabled};
     auto selected = AArch64Machine::SelectFunction(func, context);
     if (!selected) {

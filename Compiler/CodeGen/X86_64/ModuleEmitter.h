@@ -81,6 +81,8 @@ private:
     std::unordered_map<std::string, uint32_t> externSyms;
     std::unordered_map<std::string, uint32_t> funcSyms;
     std::unordered_map<std::string, uint32_t> dataSyms;
+    /// The extern variables the module reaches, whose addresses come from import slots.
+    std::unordered_set<std::string> importedData;
 
     std::unordered_set<std::string> reportedDiagnostics;
     std::string currentFunc;
@@ -233,6 +235,22 @@ private:
 
     [[nodiscard]] std::uint32_t ResolveNamedDataSymbol(const std::string &name) override {
         return GetOrAddExtern(name, RcuSymKind::ExternData);
+    }
+
+    [[nodiscard]] bool IsImportedData(const std::string &name) const override {
+        return importedData.contains(name);
+    }
+
+    /// Whether a function reaches imported data, which only the established emitter loads through its slot.
+    [[nodiscard]] bool ReachesImportedData(const LirFunc &function) const {
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::GlobalAddr && importedData.contains(instruction.strArg)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     [[nodiscard]] std::uint32_t ResolveGlobalSymbol(const std::string &name) override {

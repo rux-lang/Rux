@@ -175,6 +175,8 @@ private:
     std::unordered_map<std::string, std::uint32_t> externSyms;
     std::unordered_map<std::string, std::uint32_t> funcSyms;
     std::unordered_map<std::string, std::uint32_t> dataSyms;
+    /// The extern variables the module reaches, whose addresses come from import slots.
+    std::unordered_set<std::string> importedData;
 
     // The counter names interned constants apart; the names are local to the
     // object and mean nothing outside it.
@@ -364,6 +366,29 @@ private:
         Must(enc.LoadAddress(rd, ref), "the address of a symbol");
         AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64AdrPrelPgHi21);
         AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64AddAbsLo12Nc);
+    }
+
+    [[nodiscard]] bool IsImportedData(const std::string &name) const override {
+        return importedData.contains(name);
+    }
+
+    void LoadImportedDataAddress(const A64Reg rd, const std::uint32_t symIdx) override {
+        A64SymbolRef ref{};
+        Must(enc.LoadFromSymbol(rd, ref), "the address of imported data");
+        AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64ImportSlotPage21);
+        AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64ImportSlotLo12Nc);
+    }
+
+    /// Whether a function reaches imported data, which only the established emitter loads through its slot.
+    [[nodiscard]] bool ReachesImportedData(const LirFunc &function) const {
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::GlobalAddr && importedData.contains(instruction.strArg)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     [[nodiscard]] std::uint32_t ResolveGlobalSymbol(const std::string &name) override {

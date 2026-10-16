@@ -1567,3 +1567,104 @@ TEST_CASE("native object writers refuse a symbol defined in a section the object
         CHECK(error.contains("which the object does not contain"));
     }
 }
+
+TEST_CASE("ELF linker imports data through a GOT slot the loader fills") {
+    // `mov rax, [rip + slot]` on x86-64, `adrp x16, slot; ldr x16, [x16, slot]` on AArch64: the code reads the
+    // datum's address from its slot.
+    const auto link = [](const std::uint8_t objectArch, const Target::Arch targetArch, std::vector<std::uint8_t> code,
+                         std::vector<RcuReloc> relocations, const std::string &name) {
+        RcuFile program;
+        program.arch = objectArch;
+        RcuSection text;
+        text.name = ".text";
+        text.type = RcuSecType::Text;
+        text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+        text.alignment = 16;
+        text.data = std::move(code);
+        text.relocs = std::move(relocations);
+        const auto size = static_cast<std::uint32_t>(text.data.size());
+        program.sections.push_back(std::move(text));
+        program.symbols.push_back({"Main", "int", 0, size, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+        program.symbols.push_back(
+            {"opterr", "libc.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+        const auto output = Rux::Testing::TestTemporaryDirectory() / name;
+        std::error_code ec;
+        std::filesystem::remove(output, ec);
+        Linker linker({std::move(program)}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux, targetArch);
+        REQUIRE(linker.Link(output));
+        std::ifstream stream(output, std::ios::binary);
+        REQUIRE(stream.is_open());
+        ElfImage image{{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()}};
+        stream.close();
+        std::filesystem::remove(output, ec);
+        return image;
+    };
+    // The address of the first occurrence of `pattern` in an executable segment.
+    const auto codeAddress = [](const ElfImage &image, const std::vector<std::uint8_t> &pattern) {
+        for (const auto &segment : image.Segments()) {
+            if (segment.type != 1 || (segment.flags & 1U) == 0) {
+                continue;
+            }
+            const auto begin = image.bytes.begin() + static_cast<std::ptrdiff_t>(segment.offset);
+            const auto end = begin + static_cast<std::ptrdiff_t>(segment.fileSize);
+            const auto found = std::search(begin, end, pattern.begin(), pattern.end());
+            if (found != end) {
+                return segment.address + static_cast<std::uint64_t>(found - begin);
+            }
+        }
+        FAIL("instruction not found");
+        return std::uint64_t{0};
+    };
+    const auto slotOf = [](const ElfImage &image, const std::uint32_t globDat) {
+        const auto symbols = image.DynamicSymbols();
+        for (const auto &relocation : image.DynamicRelocations()) {
+            if (relocation.type == globDat && symbols.at(relocation.symbolIndex).name == "opterr") {
+                CHECK(symbols.at(relocation.symbolIndex).info == 0x11); // global object
+                CHECK(symbols.at(relocation.symbolIndex).sectionIndex == 0);
+                return relocation.offset;
+            }
+        }
+        FAIL("no GLOB_DAT relocation for 'opterr'");
+        return std::uint64_t{0};
+    };
+
+    SUBCASE("x86-64") {
+        const ElfImage image =
+            link(RcuArch::X86_64, Target::Arch::X86_64, {0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8B, 0x00, 0xC3},
+                 {{3, 1, RcuRelType::ImportSlotRel32, 0}}, "rux-elf-x86-64-data-import");
+        CHECK(std::ranges::contains(image.NeededLibraries(), "libc.so.6"));
+        const std::uint64_t slot = slotOf(image, 6);
+        const std::uint64_t site = codeAddress(image, {0x48, 0x8B, 0x05});
+        const auto displacement = static_cast<std::int32_t>(image.Word(site + 3));
+        CHECK(site + 7 + static_cast<std::uint64_t>(static_cast<std::int64_t>(displacement)) == slot);
+    }
+    SUBCASE("AArch64") {
+        const ElfImage image =
+            link(RcuArch::AArch64, Target::Arch::AArch64,
+                 {0x10, 0x00, 0x00, 0x90, 0x10, 0x02, 0x40, 0xF9, 0xC0, 0x03, 0x5F, 0xD6},
+                 {{0, 1, RcuRelType::AArch64ImportSlotPage21, 0}, {4, 1, RcuRelType::AArch64ImportSlotLo12Nc, 0}},
+                 "rux-elf-aarch64-data-import");
+        CHECK(std::ranges::contains(image.NeededLibraries(), "libc.so.6"));
+        const std::uint64_t slot = slotOf(image, 1025);
+        // The pair's immediates are patched, so the program is found by the `ret` that follows it.
+        const auto loadedSlot = [&image](const std::uint64_t address) {
+            const std::uint32_t adrp = image.Word(address);
+            const auto immediate =
+                static_cast<std::int32_t>(((adrp >> 5U & 0x7FFFFU) << 2U | (adrp >> 29U & 3U)) << 11U) >> 11;
+            const std::uint64_t page =
+                (address & ~std::uint64_t{0xFFF}) + (static_cast<std::int64_t>(immediate) << 12U);
+            return page + ((image.Word(address + 4) >> 10U & 0xFFFU) << 3U);
+        };
+        bool reached = false;
+        for (const auto &segment : image.Segments()) {
+            if (segment.type != 1 || (segment.flags & 1U) == 0) {
+                continue;
+            }
+            for (std::uint64_t at = segment.address + 8; at + 4 <= segment.address + segment.fileSize; at += 4) {
+                reached = reached || (image.Word(at) == 0xD65F03C0 && (image.Word(at - 8) & 0x9F00001F) == 0x90000010 &&
+                                      loadedSlot(at - 8) == slot);
+            }
+        }
+        CHECK(reached);
+    }
+}

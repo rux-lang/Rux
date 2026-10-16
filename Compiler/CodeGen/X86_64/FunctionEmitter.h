@@ -29,6 +29,8 @@ public:
     [[nodiscard]] virtual std::uint32_t InternFloatSignMask(bool float32) = 0;
     [[nodiscard]] virtual std::uint32_t ResolveNamedDataSymbol(const std::string &name) = 0;
     [[nodiscard]] virtual std::uint32_t ResolveGlobalSymbol(const std::string &name) = 0;
+    /// Whether `name` is data imported from a library, whose address the code reads from the slot the loader fills.
+    [[nodiscard]] virtual bool IsImportedData(const std::string &name) const = 0;
     virtual void AddTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol) = 0;
     /// A text relocation of a kind other than the RIP-relative one `AddTextRelocation` adds.
     virtual void AddTypedTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol, std::uint16_t type) = 0;

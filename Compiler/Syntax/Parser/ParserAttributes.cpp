@@ -454,8 +454,10 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     if (namesAConstRule && !AstCast<ConstDecl>(decl.get())) {
         EmitError(attrs.allowLocation, "'#Allow(\"naming.const\")' can only be applied to a constant declaration");
     }
-    if (attrs.usedLink && !AstCast<ExternFuncDecl>(decl.get()) && !AstCast<ExternBlockDecl>(decl.get())) {
-        EmitError(attrs.linkLocation, "'#Link' can only be applied to an extern function or extern block");
+    if (attrs.usedLink && !AstCast<ExternFuncDecl>(decl.get()) && !AstCast<ExternBlockDecl>(decl.get()) &&
+        !AstCast<ExternVarDecl>(decl.get())) {
+        EmitError(attrs.linkLocation,
+                  "'#Link' can only be applied to an extern function, extern variable or extern block");
     }
 
     if (attrs.usedNoReturn) {

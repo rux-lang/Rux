@@ -508,6 +508,8 @@ struct LirExternVar {
     TypeRef type;
     /// Public and owned by the package being compiled: a library artifact keeps it reachable.
     bool isExported = false;
+    /// The library the data is imported from; code reaches it through the slot the loader fills with its address.
+    std::string dll;
 };
 
 // Module / Package

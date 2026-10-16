@@ -1,0 +1,3 @@
+2:1: error: extern variable 'Unlinked' must name the library it is imported from
+5:5: error: extern variable 'AlsoUnlinked' must name the library it is imported from
+9:14: error: extern variable 'Half' has type 'float16', which has no C ABI mapping

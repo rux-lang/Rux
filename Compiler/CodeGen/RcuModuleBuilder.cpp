@@ -41,6 +41,9 @@ namespace {
     case RcuRelType::Rel32:
     case RcuRelType::TlsOffset32:
     case RcuRelType::TlvDescriptorRel32:
+    case RcuRelType::ImportSlotRel32:
+    case RcuRelType::AArch64ImportSlotPage21:
+    case RcuRelType::AArch64ImportSlotLo12Nc:
     case RcuRelType::AArch64TlsHi12:
     case RcuRelType::AArch64TlsLo12Nc:
     case RcuRelType::AArch64TlvDescriptorPage21:

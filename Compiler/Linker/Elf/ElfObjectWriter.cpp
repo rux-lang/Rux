@@ -151,6 +151,8 @@ std::optional<std::uint32_t> RelocationType(const std::uint16_t type, const Targ
             return 10; // R_X86_64_32
         case RcuRelType::Rel32:
             return 2; // R_X86_64_PC32
+        case RcuRelType::ImportSlotRel32:
+            return 9; // R_X86_64_GOTPCREL
         default:
             return std::nullopt;
         }
@@ -189,6 +191,10 @@ std::optional<std::uint32_t> RelocationType(const std::uint16_t type, const Targ
         return 283; // R_AARCH64_CALL26
     case RcuRelType::AArch64LdstAbsLo12Nc:
         return AArch64LdstRelocationType(word);
+    case RcuRelType::AArch64ImportSlotPage21:
+        return 311; // R_AARCH64_ADR_GOT_PAGE
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+        return 312; // R_AARCH64_LD64_GOT_LO12_NC
     default:
         return std::nullopt;
     }
@@ -199,7 +205,8 @@ std::optional<std::uint32_t> RelocationType(const std::uint16_t type, const Targ
 /// R_X86_64_PC32 is measured from the end of its four-byte field. AArch64 relocations are measured from the start of
 /// the instruction or field.
 std::int64_t RelocationAddend(const RcuReloc &relocation, const Target::Arch targetArch) noexcept {
-    const bool biased = targetArch == Target::Arch::X86_64 && relocation.type == RcuRelType::Rel32;
+    const bool biased = targetArch == Target::Arch::X86_64 &&
+                        (relocation.type == RcuRelType::Rel32 || relocation.type == RcuRelType::ImportSlotRel32);
     return biased ? relocation.addend - 4 : relocation.addend;
 }
 
@@ -289,7 +296,10 @@ bool ValidateAArch64Relocation(const RcuSection &section, const RcuReloc &reloca
                  ? true
                  : fail("requires a test-and-branch instruction and a four-byte-aligned addend");
     case RcuRelType::AArch64AdrPrelPgHi21:
+    case RcuRelType::AArch64ImportSlotPage21:
         return IsAArch64Adrp(word) ? true : fail("requires an ADRP instruction");
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+        return (word & 0xFFC0'0000U) == 0xF940'0000U ? true : fail("requires a 64-bit unsigned-offset LDR instruction");
     case RcuRelType::AArch64AddAbsLo12Nc:
         return IsAArch64UnshiftedAddImmediate(word) ? true : fail("requires an unshifted ADD-immediate instruction");
     case RcuRelType::AArch64LdstAbsLo12Nc: {

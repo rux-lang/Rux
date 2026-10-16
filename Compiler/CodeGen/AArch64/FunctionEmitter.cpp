@@ -641,7 +641,13 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     case LirOpcode::GlobalAddr: {
         const std::uint32_t symbol = hooks.ResolveGlobalSymbol(instruction.strArg);
         const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
-        hooks.LoadSymbolAddress(address, symbol);
+        // Imported data lives in another image: its address is read from the slot the loader fills.
+        if (hooks.IsImportedData(instruction.strArg)) {
+            hooks.LoadImportedDataAddress(address, symbol);
+        }
+        else {
+            hooks.LoadSymbolAddress(address, symbol);
+        }
         hooks.StoreToSlot(address, instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     }

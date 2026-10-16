@@ -147,7 +147,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     std::unordered_map<std::string, std::string> explicitImportLib;
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
-            if (sym.kind != RcuSymKind::ExternFunc || sym.name.empty() || sym.typeName.empty()) {
+            if ((sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData) || sym.name.empty() ||
+                sym.typeName.empty()) {
                 continue;
             }
             const auto [it, inserted] = explicitImportLib.try_emplace(sym.name, sym.typeName);
@@ -161,15 +162,18 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // Assign the graph's referenced externals to libraries. Prefer the library
     // recorded by an extern declaration in any object, then the call-site
     // metadata, and finally the target's default libc.
-    // Imported data is not supported: direct lowering does not address the
-    // datum through a GOT entry, and a copy relocation additionally needs the
-    // defining object's size.
-    std::unordered_map<std::string, std::string> importLib; // func -> library
+    // Imported data is reached through a GOT slot of its own, which the loader fills with the datum's address
+    // through a GLOB_DAT relocation; the code reads the address from the slot.
+    std::unordered_map<std::string, std::string> importLib;     // func -> library
+    std::unordered_map<std::string, std::string> dataImportLib; // datum -> library
     for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
         if (external.kind == RcuSymKind::ExternData) {
-            Error("external data symbol '" + external.name + "' cannot be imported for target '" +
-                  std::string(profile.targetName) +
-                  "' because GOT-aware data lowering and symbol-size metadata are not implemented");
+            const auto explicitIt = explicitImportLib.find(external.name);
+            if (explicitIt == explicitImportLib.end()) {
+                Error("undefined external symbol '" + external.name + "'");
+                continue;
+            }
+            dataImportLib.emplace(external.name, explicitIt->second);
             continue;
         }
         if (external.kind != RcuSymKind::ExternFunc || external.referenceIndices.empty()) {
@@ -211,7 +215,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         Error("thread-local variables are not supported in an ELF shared library yet");
         return false;
     }
-    const bool dynamic = isShared || !importLib.empty() || hasTls;
+    const bool dynamic = isShared || !importLib.empty() || !dataImportLib.empty() || hasTls;
     const Target::ElfDynamicRelocations dynRelocs = profile.dynamicRelocations;
     if (dynamic && !isShared) {
         importLib.try_emplace("exit", profile.defaultLibc);
@@ -397,6 +401,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         return true;
     };
 
+    // The GOT slot of each imported datum, known once the GOT is placed.
+    std::unordered_map<std::string, uint64_t> dataImportSlots;
+
     // Apply graph references to their typed merged-section placements.
     const auto applyRelocs = [&](const std::unordered_map<std::string, uint64_t> &imports, Buf &txt, Buf &ro, Buf &dat,
                                  const RcuSectionBases &bases, Buf *dynamicRelocations) {
@@ -429,7 +436,26 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
 
             std::optional<uint64_t> targetAddress;
-            if (reference.resolution == RcuLinkResolution::External) {
+            std::uint16_t type = relocation.type;
+            // A reference to an imported datum's slot addresses the GOT slot the loader fills with its address.
+            if (const std::optional<std::uint16_t> plain = PlainImportSlotRelocation(relocation.type)) {
+                type = *plain;
+                const auto slot = dataImportSlots.find(symbol.name);
+                if (reference.resolution != RcuLinkResolution::External || slot == dataImportSlots.end()) {
+                    const std::string error =
+                        std::format("extern variable '{}' is not imported from a library", symbol.name);
+                    Error(error, RelocationNotes(reference, error));
+                    continue;
+                }
+                targetAddress = slot->second;
+            }
+            else if (reference.resolution == RcuLinkResolution::External && symbol.kind == RcuSymKind::ExternData) {
+                const std::string error = "imported data symbol '" + symbol.name +
+                                          "' is read through its import slot, not addressed directly";
+                Error(error, RelocationNotes(reference, error));
+                continue;
+            }
+            else if (reference.resolution == RcuLinkResolution::External) {
                 const auto imported = imports.find(symbol.name);
                 if (imported != imports.end()) {
                     targetAddress = imported->second;
@@ -446,8 +472,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
 
             const size_t patchAt = static_cast<size_t>(sitePlacement->offset);
-            if (relocation.type == RcuRelType::TlsOffset32 || relocation.type == RcuRelType::AArch64TlsHi12 ||
-                relocation.type == RcuRelType::AArch64TlsLo12Nc) {
+            if (type == RcuRelType::TlsOffset32 || type == RcuRelType::AArch64TlsHi12 ||
+                type == RcuRelType::AArch64TlsLo12Nc) {
                 // A thread-local variable's offset from the thread pointer. x86-64 puts the program's block just
                 // below the thread pointer (TLS variant II), so the offset is negative; AArch64 puts it after a
                 // sixteen-byte control block above the thread pointer (variant I).
@@ -465,14 +491,14 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                     continue;
                 }
                 std::string error;
-                if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, alignUp(16, tlsAlign) + target->offset,
+                if (!ApplyAArch64Relocation(*buffer, patchAt, type, alignUp(16, tlsAlign) + target->offset,
                                             relocation.addend, *siteAddress, symbol.name, "ELF writer", error)) {
                     auto notes = RelocationNotes(reference, error);
                     Error(std::move(error), std::move(notes));
                 }
                 continue;
             }
-            if (!aarch64 && relocation.type == RcuRelType::Rel32) {
+            if (!aarch64 && type == RcuRelType::Rel32) {
                 uint64_t value = 0;
                 int64_t displacement = 0;
                 if (!AddSignedAddress(*targetAddress, relocation.addend, value) ||
@@ -486,7 +512,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 }
                 Patch32(*buffer, patchAt, static_cast<uint32_t>(static_cast<int32_t>(displacement)));
             }
-            else if (relocation.type == RcuRelType::Abs64) {
+            else if (type == RcuRelType::Abs64) {
                 uint64_t value = 0;
                 if (!AddSignedAddress(*targetAddress, relocation.addend, value)) {
                     const std::string error =
@@ -496,8 +522,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 }
                 if (aarch64) {
                     std::string error;
-                    if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, *targetAddress, relocation.addend,
-                                                *siteAddress, symbol.name, "ELF writer", error)) {
+                    if (!ApplyAArch64Relocation(*buffer, patchAt, type, *targetAddress, relocation.addend, *siteAddress,
+                                                symbol.name, "ELF writer", error)) {
                         auto notes = RelocationNotes(reference, error);
                         Error(std::move(error), std::move(notes));
                     }
@@ -516,7 +542,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                     WriteU64(*dynamicRelocations, imported ? 0 : value);
                 }
             }
-            else if (!aarch64 && relocation.type == RcuRelType::Abs32) {
+            else if (!aarch64 && type == RcuRelType::Abs32) {
                 uint64_t value = 0;
                 if (!AddSignedAddress(*targetAddress, relocation.addend, value) ||
                     value > std::numeric_limits<uint32_t>::max()) {
@@ -529,8 +555,8 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
             else {
                 std::string error;
-                if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, *targetAddress, relocation.addend,
-                                            *siteAddress, symbol.name, "ELF writer", error)) {
+                if (!ApplyAArch64Relocation(*buffer, patchAt, type, *targetAddress, relocation.addend, *siteAddress,
+                                            symbol.name, "ELF writer", error)) {
                     auto notes = RelocationNotes(reference, error);
                     Error(std::move(error), std::move(notes));
                 }
@@ -838,10 +864,35 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
     }
 
+    // Imported data, sorted. A FreeBSD executable defines its own `environ` and `__progname`, so a datum it defines
+    // is not imported: its slot holds the address of the executable's own word.
+    std::vector<std::string> dataImportNames;
+    std::unordered_map<std::string, uint32_t> ownDataOffsets;
+    for (const auto &symbol : exportedDataSymbols) {
+        ownDataOffsets.emplace(symbol.name, symbol.dataOffset);
+    }
+    for (const auto &name : dataImportLib | std::views::keys) {
+        dataImportNames.push_back(name);
+    }
+    std::ranges::sort(dataImportNames);
+    std::vector<std::string> importedDataNames;
+    for (const std::string &name : dataImportNames) {
+        if (!ownDataOffsets.contains(name)) {
+            importedDataNames.push_back(name);
+        }
+    }
+    const size_t m = importedDataNames.size();
+
     // Deterministic set of needed libraries.
     std::vector<std::string> neededLibs;
     for (const auto &name : importNames) {
         const std::string &lib = importLib.at(name);
+        if (std::ranges::find(neededLibs, lib) == neededLibs.end()) {
+            neededLibs.push_back(lib);
+        }
+    }
+    for (const auto &name : importedDataNames) {
+        const std::string &lib = dataImportLib.at(name);
         if (std::ranges::find(neededLibs, lib) == neededLibs.end()) {
             neededLibs.push_back(lib);
         }
@@ -866,6 +917,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < n; ++i) {
         nameStrOff[i] = internStr(importNames[i]);
     }
+    std::vector<uint32_t> dataNameStrOff(m);
+    for (size_t i = 0; i < m; ++i) {
+        dataNameStrOff[i] = internStr(importedDataNames[i]);
+    }
     std::vector<uint32_t> exportedNameStrOff(exportedDataSymbols.size());
     for (size_t i = 0; i < exportedDataSymbols.size(); ++i) {
         exportedNameStrOff[i] = internStr(exportedDataSymbols[i].name);
@@ -882,7 +937,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // .dynsym: index 0 is STN_UNDEF, followed by undefined STT_FUNC imports
     // and any executable-defined symbols needed by the runtime loader.
-    const size_t nsym = n + 1 + exportedDataSymbols.size() + sharedExports.size();
+    const size_t nsym = n + m + 1 + exportedDataSymbols.size() + sharedExports.size();
     Buf dynsym;
     WriteZeros(dynsym, 24); // null symbol
     for (size_t i = 0; i < n; ++i) {
@@ -893,6 +948,15 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         WriteU16(dynsym, 0);             // st_shndx: SHN_UNDEF
         WriteU64(dynsym, 0);             // st_value
         WriteU64(dynsym, 0);             // st_size
+    }
+    for (size_t i = 0; i < m; ++i) {
+        importDynsymIndex[importedDataNames[i]] = static_cast<uint32_t>(n + i + 1);
+        WriteU32(dynsym, dataNameStrOff[i]); // st_name
+        WriteU8(dynsym, 0x11);               // st_info: STB_GLOBAL | STT_OBJECT
+        WriteU8(dynsym, 0);                  // st_other
+        WriteU16(dynsym, 0);                 // st_shndx: SHN_UNDEF
+        WriteU64(dynsym, 0);                 // st_value
+        WriteU64(dynsym, 0);                 // st_size
     }
     for (size_t i = 0; i < exportedDataSymbols.size(); ++i) {
         WriteU32(dynsym, exportedNameStrOff[i]); // st_name
@@ -919,6 +983,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     std::vector<uint32_t> bucket(nbucket, 0);
     std::vector<uint32_t> chain(nsym, 0);
     std::vector<std::string> dynSymbolNames = importNames;
+    dynSymbolNames.insert(dynSymbolNames.end(), importedDataNames.begin(), importedDataNames.end());
     for (const auto &symbol : exportedDataSymbols) {
         dynSymbolNames.push_back(symbol.name);
     }
@@ -957,14 +1022,15 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             relativeRelocationCount += relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
         }
     }
-    const size_t relaDynSz = relativeRelocationCount * 24;
+    const size_t relaDynSz = (relativeRelocationCount + m) * 24;
     // x86-64 opens the PLT with one 16-byte resolver trampoline; the AArch64
     // header is twice that, since it pushes the stub's GOT pointer and the
     // return address before it reaches the resolver the way its own stubs do.
     const size_t pltHeaderSz = profile.pltHeaderSize;
     const size_t pltEntrySz = profile.pltEntrySize;
     const size_t pltSz = pltHeaderSz + n * pltEntrySz;
-    const size_t gotSz = (3 + n) * 8;
+    // One slot per imported function the PLT binds, then one per imported datum.
+    const size_t gotSz = (3 + n + dataImportNames.size()) * 8;
     // The stub an import's calls are bound to, which is what its name resolves
     // to everywhere in the image.
     const auto pltStubOffset = [&](const size_t index) { return pltHeaderSz + index * pltEntrySz; };
@@ -1129,6 +1195,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     for (size_t i = 0; i < n; ++i) {
         WriteU64(got, aarch64Plt ? pltVA : pltVA + pltStubOffset(i) + 6);
     }
+    // A datum's slot is filled by the loader, or here when the executable defines the datum itself.
+    for (size_t i = 0; i < dataImportNames.size(); ++i) {
+        const std::string &name = dataImportNames[i];
+        dataImportSlots[name] = gotVA + (3 + n + i) * 8;
+        const auto own = ownDataOffsets.find(name);
+        WriteU64(got, own == ownDataOffsets.end() ? 0 : dataVA + own->second);
+    }
 
     // 8. .rela.plt — one JUMP_SLOT per import, in GOT order, which is also the
     //    order the resolver turns a stub's GOT slot back into an index in.
@@ -1213,6 +1286,11 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     }
 
     Buf relaDyn;
+    for (size_t i = 0; i < m; ++i) {
+        WriteU64(relaDyn, dataImportSlots.at(importedDataNames[i]));                   // r_offset
+        WriteU64(relaDyn, static_cast<uint64_t>(n + i + 1) << 32 | dynRelocs.globDat); // r_info
+        WriteU64(relaDyn, 0);                                                          // r_addend
+    }
     applyRelocs(importAddresses, textBuf, rodataBuf, dataBuf, sectionBases, isShared ? &relaDyn : nullptr);
     if (!errors.empty()) {
         return false;

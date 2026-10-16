@@ -454,11 +454,21 @@ void AnalysisContext::RegisterBuiltins() {
     }
 }
 
+TypeRef AnalysisContext::ResolveIndexedType(const TypeExpr &type) {
+    // Indexing types a declaration ahead of checking it, and checking resolves the same type again and reports what
+    // is wrong with it, so whatever indexing finds is left for checking to say once.
+    const std::size_t diagnosticCount = diags.size();
+    TypeRef resolved = ResolveType(type);
+    diags.resize(diagnosticCount);
+    return resolved;
+}
+
 void AnalysisContext::CollectModule(const Module &module) {
     currentFile = module.name;
     currentPackage = packageName;
     const std::string *selfPackageName = packageName.empty() ? nullptr : &packageName;
-    programIndex.CollectModule(module, selfPackageName, [this](const TypeExpr &type) { return ResolveType(type); });
+    programIndex.CollectModule(module, selfPackageName,
+                               [this](const TypeExpr &type) { return ResolveIndexedType(type); });
 }
 
 void AnalysisContext::IndexDeclarations() {
@@ -471,8 +481,8 @@ void AnalysisContext::IndexDeclarations() {
             currentFile = entry.module->name;
             for (const auto &declaration : entry.module->items) {
                 programIndex.CollectDeclaration(
-                    *declaration, rootScope, currentFile, [this](const TypeExpr &type) { return ResolveType(type); },
-                    &package.name);
+                    *declaration, rootScope, currentFile,
+                    [this](const TypeExpr &type) { return ResolveIndexedType(type); }, &package.name);
             }
         }
     }

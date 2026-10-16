@@ -111,6 +111,10 @@ private:
                 ResolveLinkConstant(function->dllConst, function->dll, function->location, "library name");
                 ResolveLinkConstant(function->symbolNameConst, function->symbolName, function->location, "symbol name");
             }
+            else if (auto *variable = AstCast<ExternVarDecl>(decl.get())) {
+                ResolveLinkConstant(variable->dllConst, variable->dll, variable->location, "library name");
+                ResolveLinkConstant(variable->symbolNameConst, variable->symbolName, variable->location, "symbol name");
+            }
             else if (auto *block = AstCast<ExternBlockDecl>(decl.get())) {
                 ResolveLinkConstant(block->dllConst, block->dll, block->location, "library name");
                 ResolveLinkConstants(block->items);

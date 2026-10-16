@@ -937,6 +937,13 @@ struct ExternFuncDecl : Decl {
 struct ExternVarDecl : Decl {
     std::string name;
     TypeExprPtr type;
+    /// The library the data is imported from, as for an extern function, and the constant naming it before `when`
+    /// folding resolves it.
+    std::string dll;
+    std::string dllConst;
+    /// The name to import when it differs from `name`, from the second `#Link` argument.
+    std::string symbolName;
+    std::string symbolNameConst;
 };
 
 // #Link("...") extern { func ...; ... }

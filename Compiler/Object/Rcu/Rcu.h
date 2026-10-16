@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -90,6 +91,10 @@ constexpr uint16_t TlsOffset32 = 4;
 /// The linker makes one descriptor per variable, so the relocation names the variable and the linker finds its
 /// descriptor.
 constexpr uint16_t TlvDescriptorRel32 = 5;
+/// A 32-bit PC-relative field addressing the slot that holds an imported data symbol's address rather than the symbol
+/// itself: the IAT entry on PE, a GOT entry on ELF, and a non-lazy pointer on Mach-O. The relocation names the symbol,
+/// and the linker finds its slot, which the loader fills.
+constexpr uint16_t ImportSlotRel32 = 6;
 
 constexpr uint16_t AArch64Call26 = 16;
 constexpr uint16_t AArch64Jump26 = 17;
@@ -112,6 +117,10 @@ constexpr uint16_t AArch64TlsLo12Nc = 30;
 /// address; ARM64_RELOC_TLVP_LOAD_PAGE21 and _PAGEOFF12 name the same fields.
 constexpr uint16_t AArch64TlvDescriptorPage21 = 31;
 constexpr uint16_t AArch64TlvDescriptorPageOff12 = 32;
+/// The page and page offset of an imported data symbol's slot, in the `adrp` and the 64-bit `ldr` that read its
+/// address: R_AARCH64_ADR_GOT_PAGE and LD64_GOT_LO12_NC name the same fields on ELF.
+constexpr uint16_t AArch64ImportSlotPage21 = 33;
+constexpr uint16_t AArch64ImportSlotLo12Nc = 34;
 } // namespace RcuRelType
 
 /// The architecture byte an object built for `arch` carries, or RcuArch::Unknown when RCU has no encoding for that
@@ -155,6 +164,12 @@ constexpr uint16_t AArch64TlvDescriptorPageOff12 = 32;
         return "TLS_OFFSET_32";
     case RcuRelType::TlvDescriptorRel32:
         return "TLV_DESCRIPTOR_REL_32";
+    case RcuRelType::ImportSlotRel32:
+        return "IMPORT_SLOT_REL_32";
+    case RcuRelType::AArch64ImportSlotPage21:
+        return "AARCH64_IMPORT_SLOT_PAGE21";
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+        return "AARCH64_IMPORT_SLOT_LO12_NC";
     case RcuRelType::AArch64Call26:
         return "AARCH64_CALL26";
     case RcuRelType::AArch64Jump26:
@@ -209,7 +224,23 @@ constexpr std::string_view kTlsIndexSymbol = "_tls_index";
 /// Whether a relocation is an AArch64 instruction-field kind, whose immediate is split across an instruction word.
 [[nodiscard]] constexpr bool IsAArch64InstructionRelocationType(const uint16_t type) noexcept {
     return (type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64MovwUabsG3) ||
-           (type >= RcuRelType::AArch64TlsHi12 && type <= RcuRelType::AArch64TlvDescriptorPageOff12);
+           (type >= RcuRelType::AArch64TlsHi12 && type <= RcuRelType::AArch64ImportSlotLo12Nc);
+}
+
+/// The plain PC-relative relocation an import-slot relocation is applied as once the linker has found the slot: the
+/// instruction reads the slot's contents, so it addresses the slot as it would any other data. Nothing for any other
+/// kind.
+[[nodiscard]] constexpr std::optional<uint16_t> PlainImportSlotRelocation(const uint16_t type) noexcept {
+    switch (type) {
+    case RcuRelType::ImportSlotRel32:
+        return RcuRelType::Rel32;
+    case RcuRelType::AArch64ImportSlotPage21:
+        return RcuRelType::AArch64AdrPrelPgHi21;
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+        return RcuRelType::AArch64LdstAbsLo12Nc;
+    default:
+        return std::nullopt;
+    }
 }
 
 constexpr uint16_t RCU_SEC_EXTERNAL = 0xFFFF;

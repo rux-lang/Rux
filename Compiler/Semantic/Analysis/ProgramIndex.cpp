@@ -429,6 +429,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     else if (const auto *global = AstCast<const GlobalDecl>(&declaration)) {
         ownType(global->type.get());
     }
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&declaration)) {
+        ownType(externVariable->type.get());
+    }
     auto defineSimple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind publicKind,
                             std::string resolvedType = {}, bool isMut = false) {
         Symbol symbol;
@@ -584,7 +587,25 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         }
     }
     else if (const auto *externVariable = AstCast<const ExternVarDecl>(&declaration)) {
-        defineSimple(Symbol::Kind::Var, externVariable->name, SemanticSymbol::Kind::Var, "extern", true);
+        Symbol symbol;
+        symbol.kind = Symbol::Kind::Var;
+        symbol.name = externVariable->name;
+        symbol.location = externVariable->location;
+        symbol.isMut = true;
+        symbol.isPublic = externVariable->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
+        symbol.declaration = externVariable;
+        // Typed up front, as a module variable is, so a use reads the type the foreign data has.
+        if (externVariable->type) {
+            const auto provisional = ProvisionalRepresentation(*externVariable->type);
+            symbol.type = provisional ? *provisional : resolveType(*externVariable->type);
+        }
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
+            publicSymbols.push_back({SemanticSymbol::Kind::Var, externVariable->name, sourceName,
+                                     externVariable->location, "extern", true});
+        }
     }
     else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&declaration)) {
         for (const auto &item : externBlock->items) {

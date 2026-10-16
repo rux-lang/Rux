@@ -123,9 +123,13 @@ LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *poo
         }
     }
     globalVars.clear();
+    externVars.clear();
     for (const auto &mod : hir.modules) {
         for (const auto &global : mod.globals) {
             globalVars[global.name] = &global;
+        }
+        for (const auto &variable : mod.externVars) {
+            externVars.emplace(variable.name, &variable);
         }
     }
     // Calling conventions are resolved package-wide: a call may target an
@@ -1014,9 +1018,17 @@ LirModule HirToLirContext::LowerSelfContainedModule(const HirModule &mod) {
     return lm;
 }
 
+LirReg HirToLirContext::ExternVarAddr(const HirExternVar &variable) {
+    if (!std::ranges::contains(reachedExternVars, &variable)) {
+        reachedExternVars.push_back(&variable);
+    }
+    return EmitGlobalAddr(variable.name, variable.type);
+}
+
 LirModule HirToLirContext::LowerModule(const HirModule &mod) {
     // funcConvs is populated package-wide in Run() before any module is
     // lowered, so cross-module (imported) calls resolve correctly.
+    reachedExternVars.clear();
     LirModule lm;
     lm.name = mod.name;
     for (const auto &iface : mod.interfaces) {
@@ -1089,7 +1101,7 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         lm.typeAliases.push_back({ta.name, ta.isPublic, ta.type});
     }
     for (const auto &ev : mod.externVars) {
-        lm.externVars.push_back({ev.name, ev.isPublic, ev.type, ev.isExported});
+        lm.externVars.push_back({ev.name, ev.isPublic, ev.type, ev.isExported, ev.dll});
     }
     for (const auto &ef : mod.externFuncs) {
         LirFunc lf;
@@ -1129,6 +1141,14 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
             lm.vtables.push_back(std::move(vt));
         }
     }
+    // An extern variable another module declares is declared here too, with its library, since this module's code
+    // reaches it.
+    for (const HirExternVar *variable : reachedExternVars) {
+        if (std::ranges::none_of(lm.externVars, [&](const LirExternVar &own) { return own.name == variable->name; })) {
+            lm.externVars.push_back({variable->name, false, variable->type, false, variable->dll});
+        }
+    }
+    reachedExternVars.clear();
     return lm;
 }
 

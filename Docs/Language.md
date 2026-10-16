@@ -313,6 +313,21 @@ Members are always named through their value, such as `self.length`; a receiver 
 
 A method may be called as `Type::Method(receiver, args...)`, with an explicit first receiver argument and the same borrowing, mutability and ownership rules as a call through a value. Methods follow the same variadic and default-argument rules as free functions. A typed variadic parameter receives a slice of its elements, accepts compatible explicit elements or a spread, and may be empty. Generic functions can infer their type arguments from variadic elements. Overload selection, for functions and methods alike, checks every variadic element, prefers a fixed overload filled exactly over one needing defaults or a variadic tail only when argument conversions tie, and diagnoses remaining ambiguity. A `#Format()` parameter on a method receives the same literal-placeholder check as a free function.
 
+### Extern variables
+
+`extern Name: Type;` declares data a library defines: storage this program reads and writes but does not own. It names the library it is imported from with `#Link("library")` before it or on the `extern { ... }` block holding it, and `#Link("library", "symbol")` gives it a Rux name that differs from the exported symbol. A declaration with no library is an error: `extern variable 'Name' must name the library it is imported from`. Its type must have a C ABI mapping, as an extern parameter's must.
+
+```rux
+#Link("libc.so.6")
+extern opterr: int32;
+
+func Quiet() {
+    opterr = 0;
+}
+```
+
+A read, an assignment and `@Name` all reach the library's own storage. The loader writes the variable's address into a slot of the program, which the code reads it from: an import address table entry on Windows, a GOT entry on Linux and FreeBSD, and a non-lazy pointer on macOS. A FreeBSD executable defines `environ` and `__progname` itself, so an extern variable naming one of them reaches the executable's own word. As with a module variable, nothing moves out of an extern variable: `<-Name` is rejected with `cannot move out of extern variable 'Name'`.
+
 ### Attributes
 
 An attribute is a `#Name(...)` call written before what it describes. Before a declaration, `#Abi(.Win64)` selects a calling convention, `#Link("library")` describes how an extern declaration is imported, `#NoReturn()` marks a function that never returns to its caller, `#Test()` marks a function that a test build of its package runs, `#Unsendable()` marks a struct, variant or union whose values stay on the thread that made them, `#Allow("naming.type")` suppresses one lint rule for that declaration, and `#Error("message")` and `#Warn("message")` report at each use. `#Format()` is the one attribute written before a parameter:

@@ -81,6 +81,12 @@ private:
     std::unordered_map<std::string, const HirConst *> globalConsts;
     /// Module variables of every module, by linker name: each is one storage location reached through its address.
     std::unordered_map<std::string, const HirGlobal *> globalVars;
+    /// Extern variables of every module, by the symbol they import, and those the module being lowered reaches:
+    /// each module that reaches one declares it, so its back end loads the address from the import slot.
+    std::unordered_map<std::string, const HirExternVar *> externVars;
+    std::vector<const HirExternVar *> reachedExternVars;
+    /// The address of an extern variable's data, which the loader fills into the import slot the name stands for.
+    LirReg ExternVarAddr(const HirExternVar &variable);
     std::unordered_map<std::string, LocalConstValue> localConsts;
     std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
     /// The drop glue of every droppable type, keyed by its spelling.

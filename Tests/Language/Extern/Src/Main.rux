@@ -12,12 +12,30 @@ import Core::Assert;
 import Core::{ #Error, #target };
 import Core::{ int32, uint };
 
-// `#Link` takes a constant declared in this file, so the runtime is selected while compiling.
+// `#Link` takes a constant declared in this file, so the runtime is selected while compiling. Each system also has a
+// plain `int` flag that is safe to change and restore, for the extern variable below: `opterr` in the Unix C runtimes,
+// and `_fmode` in the classic C runtime on Windows, since the universal one exports no data.
 when #target.os {
-    .FreeBSD => const CRuntime = "libc.so.7";
-    .Linux => const CRuntime = "libc.so.6";
-    .macOS => const CRuntime = "libSystem.B.dylib";
-    .Windows => const CRuntime = "ucrtbase.dll";
+    .FreeBSD => {
+        const CRuntime = "libc.so.7";
+        const DataRuntime = "libc.so.7";
+        const FlagSymbol = "opterr";
+    }
+    .Linux => {
+        const CRuntime = "libc.so.6";
+        const DataRuntime = "libc.so.6";
+        const FlagSymbol = "opterr";
+    }
+    .macOS => {
+        const CRuntime = "libSystem.B.dylib";
+        const DataRuntime = "libSystem.B.dylib";
+        const FlagSymbol = "opterr";
+    }
+    .Windows => {
+        const CRuntime = "ucrtbase.dll";
+        const DataRuntime = "msvcrt.dll";
+        const FlagSymbol = "_fmode";
+    }
     else => #Error("Unsupported operating system")
 }
 
@@ -48,6 +66,11 @@ extern func AbsoluteValue(n: int32) -> int32;
 // documented rather than worked around — so what is pinned here is that the declaration form is accepted.
 #Link(CRuntime)
 extern func printf(format: *char8, ...) -> int32;
+
+// An extern variable is data the runtime owns, read and written in place through the slot the loader fills with its
+// address. The two-argument `#Link` gives each system's flag the same Rux name.
+#Link(DataRuntime, FlagSymbol)
+extern RuntimeFlag: int32;
 
 // `#NoReturn()` on an extern says control does not come back. Declared, obviously not called.
 #NoReturn()
@@ -83,6 +106,17 @@ func Main() -> int {
     buffer[2] = c8'c';
     buffer[3] = c8'\0';
     Assert(strlen(@buffer[0]) == 3u, "a pointer into local storage is an ordinary argument");
+
+    // An extern variable is the runtime's own storage: a write is seen by the next read, and `@` addresses the same
+    // word.
+    let saved = RuntimeFlag;
+    RuntimeFlag = 7i32;
+    Assert(RuntimeFlag == 7i32, "a write to an extern variable is read back");
+    let flag: *var int32 = @RuntimeFlag;
+    *flag = 9i32;
+    Assert(RuntimeFlag == 9i32, "'@' addresses the variable itself");
+    RuntimeFlag = saved;
+    Assert(RuntimeFlag == saved, "and the runtime's value is restored");
 
     return 0;
 }

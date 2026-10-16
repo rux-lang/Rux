@@ -490,8 +490,17 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         }
     }
     else if (auto *externVar = AstCast<const ExternVarDecl>(&decl)) {
+        if (externVar->dll.empty()) {
+            EmitError(
+                externVar->location,
+                std::format("extern variable '{}' must name the library it is imported from", externVar->name),
+                {"foreign data is reached through the library that defines it"},
+                "write '#Link(\"library\")' before it, or declare it in a '#Link(\"library\") extern { ... }' block");
+        }
         ValidateArrayType(*externVar->type);
-        ValidateStoredType(ResolveType(*externVar->type), externVar->location, "extern variable");
+        const TypeRef type = ResolveType(*externVar->type);
+        ValidateStoredType(type, externVar->location, "extern variable");
+        ValidateCAbiType(type, externVar->type->location, std::format("extern variable '{}'", externVar->name));
     }
     else if (auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
         CheckAbiForTarget(externBlock->callConv, externBlock->abiLocation);

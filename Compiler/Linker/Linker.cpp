@@ -62,9 +62,11 @@ namespace {
     case RcuRelType::AArch64TstBr14:
         return "supported range: -32768 to 32764 bytes, aligned to 4 bytes";
     case RcuRelType::AArch64AdrPrelPgHi21:
+    case RcuRelType::AArch64ImportSlotPage21:
         return "supported range: -4294967296 to 4294963200 bytes, aligned to 4096 bytes";
     case RcuRelType::AArch64Prel32:
     case RcuRelType::Rel32:
+    case RcuRelType::ImportSlotRel32:
         return "supported range: -2147483648 to 2147483647 bytes";
     case RcuRelType::Abs32:
         return "supported range: 0 to 4294967295";

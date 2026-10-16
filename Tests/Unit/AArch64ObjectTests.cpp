@@ -808,6 +808,40 @@ TEST_CASE("an AArch64 relative relocation carries no x86-64 displacement bias") 
     CHECK(arm.Relocation(arm.SectionHeader(*armRela), 0) == std::array<std::int64_t, 3>{261, 1, 16});
 }
 
+TEST_CASE("ELF objects read imported data through its GOT slot") {
+    // An extern variable's address is read from the slot the loader fills, so its relocation names the GOT entry:
+    // GOTPCREL with the same -4 bias as PC32 on x86-64, and the GOT page and 64-bit load offset on AArch64.
+    RcuFile intelFile;
+    intelFile.sourcePath = "Library.rux";
+    intelFile.sections.push_back(TextSection({0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00})); // mov rax, [rip + 0]
+    intelFile.sections.back().relocs.push_back({3, 0, RcuRelType::ImportSlotRel32, 0});
+    intelFile.symbols.push_back({"environ", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+    NativeObject object;
+    std::string error;
+    REQUIRE_MESSAGE(WriteNativeObject(intelFile, Target::OS::Linux, Target::Arch::X86_64, object, error), error);
+    const ElfObject intel(std::move(object.bytes));
+    const auto intelRela = intel.FindSection(".rela.text");
+    REQUIRE(intelRela.has_value());
+    CHECK(intel.Relocation(intel.SectionHeader(*intelRela), 0) == std::array<std::int64_t, 3>{9, 1, -4});
+
+    auto armFile = ObjectOf({
+        {0x90000000, RcuRelType::AArch64ImportSlotPage21}, // adrp x0, slot
+        {0xF9400000, RcuRelType::AArch64ImportSlotLo12Nc}, // ldr x0, [x0, slot]
+    });
+    const auto arm = WriteAArch64(armFile);
+    const auto armRela = arm.FindSection(".rela.text");
+    REQUIRE(armRela.has_value());
+    const auto header = arm.SectionHeader(*armRela);
+    CHECK(arm.Relocation(header, 0)[0] == 311); // R_AARCH64_ADR_GOT_PAGE
+    CHECK(arm.Relocation(header, 1)[0] == 312); // R_AARCH64_LD64_GOT_LO12_NC
+
+    // The slot holds a 64-bit address, so only a 64-bit load reads it.
+    armFile.sections[0].data = {0x00, 0x00, 0x40, 0xB9, 0x00, 0x00, 0x40, 0xB9}; // ldr w0, [x0]
+    armFile.sections[0].relocs = {{0, 0, RcuRelType::AArch64ImportSlotLo12Nc, 0}};
+    CHECK_FALSE(WriteNativeObject(armFile, Target::OS::Linux, Target::Arch::AArch64, object, error));
+    CHECK(error.find("64-bit unsigned-offset LDR") != std::string::npos);
+}
+
 TEST_CASE("AArch64 Mach-O objects relocate against symbols with explicit addends") {
     RcuFile file;
     file.arch = RcuArch::AArch64;

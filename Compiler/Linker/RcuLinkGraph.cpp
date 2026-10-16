@@ -53,6 +53,9 @@ namespace {
     case RcuRelType::Rel32:
     case RcuRelType::TlsOffset32:
     case RcuRelType::TlvDescriptorRel32:
+    case RcuRelType::ImportSlotRel32:
+    case RcuRelType::AArch64ImportSlotPage21:
+    case RcuRelType::AArch64ImportSlotLo12Nc:
     case RcuRelType::AArch64TlsHi12:
     case RcuRelType::AArch64TlsLo12Nc:
     case RcuRelType::AArch64TlvDescriptorPage21:
@@ -98,7 +101,7 @@ namespace {
 }
 
 [[nodiscard]] constexpr bool IsAArch64Relocation(const std::uint16_t type) noexcept {
-    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64TlvDescriptorPageOff12;
+    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64ImportSlotLo12Nc;
 }
 
 void InvalidObject(std::vector<RcuLinkDiagnostic> &diagnostics, std::string message,

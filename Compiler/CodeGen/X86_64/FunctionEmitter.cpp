@@ -7,6 +7,7 @@
 #include "CodeGen/X86_64/ScalarCast.h"
 #include "CodeGen/X86_64/ScalarMachine.h"
 #include "CodeGen/X86_64/ScalarMemory.h"
+#include "Object/Rcu/Rcu.h"
 
 #include <algorithm>
 #include <limits>
@@ -1240,8 +1241,15 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     case LirOpcode::GlobalAddr: {
         const std::uint32_t symbol = hooks.ResolveGlobalSymbol(instruction.strArg);
         std::uint32_t relocationOffset;
-        encoder.LeaRaxRip(relocationOffset);
-        hooks.AddTextRelocation(relocationOffset, symbol);
+        // Imported data lives in another image: its address is read from the slot the loader fills.
+        if (hooks.IsImportedData(instruction.strArg)) {
+            encoder.MovRaxRip(relocationOffset);
+            hooks.AddTypedTextRelocation(relocationOffset, symbol, RcuRelType::ImportSlotRel32);
+        }
+        else {
+            encoder.LeaRaxRip(relocationOffset);
+            hooks.AddTextRelocation(relocationOffset, symbol);
+        }
         hooks.StoreA(instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     }

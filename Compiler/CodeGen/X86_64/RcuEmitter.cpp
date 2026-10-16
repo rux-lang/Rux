@@ -348,6 +348,9 @@ std::uint32_t X86_64ModuleEmitter::ResolveMachineSymbol(const X86_64Machine::Sym
 }
 
 bool X86_64ModuleEmitter::GenMachineFunc(const LirFunc &func) {
+    if (ReachesImportedData(func)) {
+        return false;
+    }
     const X86_64Machine::SelectionContext context{layouts, interfaceNames, targetOs, backtrace.enabled};
     auto selected = X86_64Machine::SelectFunction(func, context);
     if (!selected) {

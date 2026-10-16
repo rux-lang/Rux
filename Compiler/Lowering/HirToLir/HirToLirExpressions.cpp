@@ -166,6 +166,9 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         if (const auto it = globalVars.find(e->name); it != globalVars.end()) {
             return EmitLoad(GlobalStorageAddr(*it->second), e->type);
         }
+        if (const auto it = externVars.find(e->name); it != externVars.end() && !locals.contains(e->name)) {
+            return EmitLoad(ExternVarAddr(*it->second), e->type);
+        }
         // The word the entry stub fills, which the linker defines rather than any module.
         if (e->name == kProcessStartFrameSymbol) {
             return EmitLoad(EmitGlobalAddr(e->name, e->type), e->type);
@@ -1137,6 +1140,10 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         // A module variable is its storage: reading, writing and `@` all start from the one address.
         if (const auto global = globalVars.find(e->name); global != globalVars.end()) {
             return GlobalStorageAddr(*global->second);
+        }
+        // So is foreign data, at the address the loader put in its import slot.
+        if (const auto external = externVars.find(e->name); external != externVars.end()) {
+            return ExternVarAddr(*external->second);
         }
         // A slice-typed constant lives in read-only data under its own
         // name, so indexing or reading .length works off that address. A
