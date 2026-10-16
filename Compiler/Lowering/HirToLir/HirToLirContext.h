@@ -283,6 +283,9 @@ private:
     /// Traps before an integer `/` or `%` whose divisor is zero, or whose signed quotient does not fit its type.
     void EmitDivisionChecks(LirReg dividend, LirReg divisor, const HirExpr &divisorExpr, const TypeRef &type,
                             const SourceLocation &location);
+    /// Traps before a shift whose count, known only when it runs, is negative or at least the shifted type's width.
+    void EmitShiftCheck(LirReg count, const HirExpr &countExpr, const TypeRef &shiftedType,
+                        const SourceLocation &location);
     LirReg LowerVariantEquality(const HirVariantEqualityExpr &expression);
     LirReg LowerAggregateEquality(const HirAggregateEqualityExpr &expression);
     LirReg EqualityOperandStorage(const HirExpr &operand, const TypeRef &type);

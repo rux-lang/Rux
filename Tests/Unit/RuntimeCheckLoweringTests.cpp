@@ -216,6 +216,27 @@ func Main() -> int {
                      Report("division by zero", "Remainder", 2, 14));
 }
 
+TEST_CASE("a shift count outside the width stops the program with a panic") {
+    CheckTrapsOnHost(R"(func Shift(value: int32, count: int32) -> int32 {
+    return value << count;
+}
+
+func Main() -> int {
+    return Shift(1, 32) as int;
+}
+)",
+                     Report("shift count out of range", "Shift", 2, 18));
+
+    CheckTrapsOnHost(R"(func Main() -> int {
+    var value: uint128 = 1;
+    var count: int = -1;
+    value >>= count;
+    return value as int;
+}
+)",
+                     Report("shift count out of range", "Main", 4, 11));
+}
+
 TEST_CASE("a signed minimum divided by minus one stops the program with a panic") {
     CheckTrapsOnHost(R"(func Divide(a: int64, b: int64) -> int64 {
     return a / b;

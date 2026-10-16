@@ -117,6 +117,35 @@ void HirToLirContext::EmitDivisionChecks(const LirReg dividend, const LirReg div
     }
 }
 
+void HirToLirContext::EmitShiftCheck(const LirReg count, const HirExpr &countExpr, const TypeRef &shiftedType,
+                                     const SourceLocation &location) {
+    // A literal count was checked while compiling.
+    const std::optional<std::uint64_t> bytes = shiftedType.SizeInBytes();
+    if (!bytes || HirCast<const HirLiteralExpr>(&countExpr) || !countExpr.type.IsInteger()) {
+        return;
+    }
+    // A count masked to fewer bits than the width, as in `value << (n & 31)`, is in range whatever `n` is.
+    if (const auto *masked = HirCast<const HirBinaryExpr>(&countExpr);
+        masked && masked->op == TokenKind::Amp && !countExpr.type.IsSigned()) {
+        for (const HirExpr *operand : {masked->left.get(), masked->right.get()}) {
+            const auto *mask = HirCast<const HirLiteralExpr>(operand);
+            std::uint64_t value = 0;
+            std::string digits = mask ? mask->value : std::string{};
+            std::erase(digits, '_');
+            if (mask && std::from_chars(digits.data(), digits.data() + digits.size(), value).ec == std::errc{} &&
+                value < *bytes * 8) {
+                return;
+            }
+        }
+    }
+    // Read as unsigned, a negative count is larger than any width, so one comparison refuses both.
+    const LirReg unsignedCount = EmitCastIfNeeded(count, countExpr.type, TypeRef::MakeUInt64());
+    const LirReg inRange =
+        EmitBinary(LirOpcode::CmpLt, unsignedCount, EmitConst(std::to_string(*bytes * 8), TypeRef::MakeUInt64()),
+                   TypeRef::MakeBool());
+    EmitTrapUnless(inRange, "shift count out of range", location);
+}
+
 LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = HirCast<const HirLiteralExpr>(&expr)) {
         if (IsStringSliceLiteral(*e)) {
@@ -651,6 +680,9 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
     if (e.op == TK::Slash || e.op == TK::Percent) {
         EmitDivisionChecks(lhs, rhs, *e.right, e.type, e.location);
     }
+    if (countsOperand && (e.type.IsInteger() || e.type.IsChar())) {
+        EmitShiftCheck(rhs, *e.right, e.type, e.location);
+    }
     return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, rhs, e.type);
 }
 
@@ -708,6 +740,11 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
                                      : EmitCastIfNeeded(val, e.value->type, e.type);
             if (e.op == TokenKind::SlashAssign || e.op == TokenKind::PercentAssign) {
                 EmitDivisionChecks(current, operand, *e.value, e.type, e.location);
+            }
+            if ((e.op == TokenKind::LessLessAssign || e.op == TokenKind::GreaterGreaterAssign ||
+                 e.op == TokenKind::GreaterGreaterGreaterAssign) &&
+                (e.type.IsInteger() || e.type.IsChar())) {
+                EmitShiftCheck(operand, *e.value, e.type, e.location);
             }
             val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current, operand, e.type);
         }

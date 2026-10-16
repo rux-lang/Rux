@@ -218,7 +218,7 @@ TEST_CASE("Unrolling flattens a constant loop whose limit its header defines") {
             var value: uint64 = 0u64;
             var index: uint = 0u;
             while index < 8u {
-                value = value | ((at[index] as uint64) << ((index * 8u) as uint64));
+                value = value | ((at[index] as uint64) << ((index * 8u) as uint64 & 63u64));
                 index += 1u;
             }
             return value;

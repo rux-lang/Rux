@@ -706,6 +706,25 @@ TypeRef AnalysisContext::CheckUnary(const TokenKind op, const TypeRef &operand, 
     }
 }
 
+void AnalysisContext::CheckShiftCount(const TypeRef &shifted, const Expr &count, std::string_view operatorName) {
+    // A count known while compiling is checked here; any other is checked when the shift runs.
+    const std::optional<std::uint64_t> bytes = shifted.SizeInBytes();
+    const std::optional<std::int64_t> value = EvalConstInteger(count);
+    if (!bytes || !value) {
+        return;
+    }
+    const std::int64_t width = static_cast<std::int64_t>(*bytes * 8);
+    if (*value >= 0 && *value < width) {
+        return;
+    }
+    EmitError(
+        count.location,
+        std::format("shift count {} is out of range for '{}', which takes counts from 0 to {}", *value,
+                    shifted.ToString(), width - 1),
+        {std::format("a '{}' by the width or more, or by a negative count, has no meaningful result", operatorName)},
+        *value >= width ? "to clear the value, assign zero" : "shift the other way by the positive count");
+}
+
 TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType, const TypeRef &rightType,
                                      const Expr &leftExpression, const Expr &rightExpression,
                                      const SourceLocation location, const BinaryExpr *binaryExpression) {
@@ -936,6 +955,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             EmitError(location, std::format("operator '{}' requires an integer right operand, but found '{}'",
                                             operatorName, right.ToString()));
         }
+        else {
+            CheckShiftCount(left, rightExpression, operatorName);
+        }
         return left;
     case TK::GreaterGreaterGreater:
         if (!left.IsSigned()) {
@@ -945,6 +967,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
         if (!right.IsInteger()) {
             EmitError(location, std::format("operator '{}' requires an integer right operand, but found '{}'",
                                             operatorName, right.ToString()));
+        }
+        else {
+            CheckShiftCount(left, rightExpression, operatorName);
         }
         return left;
     case TK::AmpAmp:

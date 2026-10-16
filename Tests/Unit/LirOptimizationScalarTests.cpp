@@ -119,7 +119,7 @@ TEST_CASE("Scalar combines recognize only same-value complementary unsigned shif
         func Signed(value: int64) -> int64 { return (value >> 19) | (value << 45); }
         func Wrong(value: uint64) -> uint64 { return (value >> 19) | (value << 44); }
         func Variable(value: uint64, n: uint64) -> uint64 { return (value >> n) | (value << (64 - n)); }
-        func Boundary(value: uint64) -> uint64 { return (value >> 0) | (value << 64); }
+        func Boundary(value: uint64) -> uint64 { return (value >> 0) | (value << 63); }
     )");
     Optimization::LirScalarCombines combines;
     CHECK(combines.Run(package, {}) == Optimization::PassChange::Changed);

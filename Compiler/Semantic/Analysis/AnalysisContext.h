@@ -522,6 +522,8 @@ private:
     /// The field names of a named variant case, comma-separated, for a help line.
     [[nodiscard]] static std::string FieldNameList(const EnumDecl::Variant &variant);
     /// Refuses building a named variant case with call syntax, which would give its fields by position.
+    /// Refuses a shift whose count, known while compiling, is negative or at least the width of the shifted type.
+    void CheckShiftCount(const TypeRef &shifted, const Expr &count, std::string_view operatorName);
     void EmitNamedCaseCalled(SourceLocation location, std::string_view variantName, const EnumDecl::Variant &variant);
     [[nodiscard]] TypeRef EnumVariantConstructorType(const EnumDecl &declaration, const EnumDecl::Variant &variant,
                                                      const std::vector<TypeRef> &typeArguments = {});

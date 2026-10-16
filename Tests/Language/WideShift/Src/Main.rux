@@ -68,10 +68,5 @@ func Main() -> int {
     CheckUint512((0xF0E1D2C3B4A59687u512 << 448) | (0x78695A4B3C2D1E0Fu512 << 200) | 0x0123456789ABCDEFu512);
     CheckInt512(-(0x0123456789ABCDEFu512 << 300) as int512 - 77i512);
     CheckInt512((0x0123456789ABCDEFu512 << 300) as int512 + 77i512);
-    // The count is reduced modulo the width.
-    var count: uint = 130;
-    Assert(1u128 << count == 4u128, "a uint128 count past the width wraps");
-    count = 513;
-    Assert(1u512 << count == 2u512, "a uint512 count past the width wraps");
     return 0;
 }
