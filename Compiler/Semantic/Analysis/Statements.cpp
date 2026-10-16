@@ -1146,7 +1146,16 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
         // A positional payload lists every field; one written with field names may leave some out, as a structure
         // pattern may.
-        if (resolved && resolved->form == EnumDecl::Form::Variant && !enumPattern->braced) {
+        if (resolved && resolved->form == EnumDecl::Form::Variant && !variant->namedFields.empty() &&
+            !enumPattern->args.empty()) {
+            // A named case's fields have no order a reader can rely on, so its payload is matched by name only.
+            EmitError(enumPattern->location,
+                      std::format("pattern for '{}::{}' binds its fields by position, but the case names them",
+                                  resolved->declaration->name, variantName),
+                      {std::format("'{}::{}' is declared with named fields", resolved->declaration->name, variantName)},
+                      std::format("match it by name, as '.{} {{ {} }}'", variantName, FieldNameList(*variant)));
+        }
+        else if (resolved && resolved->form == EnumDecl::Form::Variant && !enumPattern->braced) {
             const std::size_t expectedFields = variant->fields.size() + variant->namedFields.size();
             if (actualFields != expectedFields) {
                 EmitError(enumPattern->location,

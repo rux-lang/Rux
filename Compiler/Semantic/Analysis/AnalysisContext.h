@@ -519,6 +519,10 @@ private:
     bool DeduceTypeArgument(const TypeRef &paramType, const TypeRef &argType,
                             const std::unordered_set<std::string> &typeParamNames,
                             std::unordered_map<std::string, TypeRef> &substitutions);
+    /// The field names of a named variant case, comma-separated, for a help line.
+    [[nodiscard]] static std::string FieldNameList(const EnumDecl::Variant &variant);
+    /// Refuses building a named variant case with call syntax, which would give its fields by position.
+    void EmitNamedCaseCalled(SourceLocation location, std::string_view variantName, const EnumDecl::Variant &variant);
     [[nodiscard]] TypeRef EnumVariantConstructorType(const EnumDecl &declaration, const EnumDecl::Variant &variant,
                                                      const std::vector<TypeRef> &typeArguments = {});
 

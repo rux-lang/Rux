@@ -695,6 +695,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                                                    ? "1 was"
                                                                    : std::format("{} were", e->typeArgs.size())));
                         }
+                        if (!variant->namedFields.empty()) {
+                            EmitNamedCaseCalled(e->location, path->segments[0], *variant);
+                            return EnumType(decl, typeArgs);
+                        }
                         const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
                         const std::size_t paramCount = constructor->inner.empty() ? 0 : constructor->inner.size() - 1;
                         bool callAccepted = argTypes.size() == paramCount;

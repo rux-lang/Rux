@@ -747,6 +747,27 @@ bool AnalysisContext::DeduceTypeArguments(const FuncDecl &declaration, const std
     return substitutions.size() == declaration.typeParams.size();
 }
 
+std::string AnalysisContext::FieldNameList(const EnumDecl::Variant &variant) {
+    std::string names;
+    for (const auto &field : variant.namedFields) {
+        names += names.empty() ? field.name : ", " + field.name;
+    }
+    return names;
+}
+
+void AnalysisContext::EmitNamedCaseCalled(SourceLocation location, std::string_view variantName,
+                                          const EnumDecl::Variant &variant) {
+    std::string fields;
+    for (const auto &field : variant.namedFields) {
+        fields += std::format("{}{}: ...", fields.empty() ? "" : ", ", field.name);
+    }
+    EmitError(location,
+              std::format("variant case '{}::{}' has named fields, so it cannot be built with call syntax", variantName,
+                          variant.name),
+              {"a named case is built with struct-literal syntax, which gives every field by name"},
+              std::format("write '{}::{} {{ {} }}'", variantName, variant.name, fields));
+}
+
 TypeRef AnalysisContext::EnumVariantConstructorType(const EnumDecl &declaration, const EnumDecl::Variant &variant,
                                                     const std::vector<TypeRef> &typeArguments) {
     const auto savedTypeParams = currentTypeParams;
