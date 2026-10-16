@@ -32,9 +32,10 @@ extend Atomic<T> {
     }
 
     // The address every operation goes through. The shared reference is the point: the value is changed through
-    // atomic instructions only, which is safe however many threads hold it.
+    // atomic instructions only, which is safe however many threads hold it. A cast cannot add write access to a `*T`,
+    // so the address is retyped through `*opaque`, which says that this one is deliberate.
     func Address(self: &Atomic<T>) -> *var T {
-        return (@self.value) as *var T;
+        return (@self.value) as *opaque as *var T;
     }
 
     /// The current value, read with sequential consistency.

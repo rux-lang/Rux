@@ -11,6 +11,8 @@ import Sync::{ LockWord, TryLockWord, UnlockWord, WaitWhile, WakeAll };
 /// For data that a lock protects, `Mutex<T>` keeps the two together and releases the lock for you.
 /// @see https://rux-lang.dev/docs/api/sync/lock#lock
 pub struct Lock {
+    // Changed through atomic instructions on a shared reference, so its address is retyped to `*var` through `*opaque`:
+    // a cast cannot add write access to a `*uint32` directly.
     word: uint32;
 }
 
@@ -29,20 +31,20 @@ extend Lock {
     /// Takes the lock, waiting while another thread holds it.
     /// @see https://rux-lang.dev/docs/api/sync/lock#acquire
     pub func Acquire(self: &Lock) {
-        LockWord((@self.word) as *var uint32);
+        LockWord((@self.word) as *opaque as *var uint32);
     }
 
     /// Takes the lock if nobody holds it, without waiting.
     /// @returns whether the lock was taken
     /// @see https://rux-lang.dev/docs/api/sync/lock#try-acquire
     pub func TryAcquire(self: &Lock) -> bool {
-        return TryLockWord((@self.word) as *var uint32);
+        return TryLockWord((@self.word) as *opaque as *var uint32);
     }
 
     /// Releases the lock this thread holds, letting one waiting thread take it.
     /// @see https://rux-lang.dev/docs/api/sync/lock#release
     pub func Release(self: &Lock) {
-        UnlockWord((@self.word) as *var uint32);
+        UnlockWord((@self.word) as *opaque as *var uint32);
     }
 }
 
@@ -77,7 +79,7 @@ extend Once {
     /// @param initialize the function to run once
     /// @see https://rux-lang.dev/docs/api/sync/lock#call
     pub func Call(self: &Once, initialize: func()) {
-        let state = (@self.state) as *var uint32;
+        let state = (@self.state) as *opaque as *var uint32;
         if AtomicLoad(state, MemoryOrder::Acquire) == OnceComplete { return; }
         if AtomicCompareExchange(state, OnceIncomplete, OnceRunning, MemoryOrder::Acquire, MemoryOrder::Acquire) ==
            OnceIncomplete {

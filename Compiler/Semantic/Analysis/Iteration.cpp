@@ -102,6 +102,10 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
         shape.itemType = subject->inner[0];
         return shape;
     }
+    // A pointer can be indexed but has no length, so a loop over it would have nothing to stop at.
+    if (subject->kind == TypeRef::Kind::Pointer) {
+        return std::nullopt;
+    }
     if (auto element = IndexElementType(subject)) {
         shape.kind = IterationShape::Kind::Indexed;
         shape.itemType = *element;
@@ -179,6 +183,12 @@ void AnalysisContext::EmitNotIterable(const SourceLocation location, const TypeR
             notes.push_back(
                 std::format("type '{}' declares 'Iterate', but it does not return an iterator", subject.ToString()));
         }
+    }
+    if (subject->kind == TypeRef::Kind::Pointer) {
+        EmitError(location, std::format("cannot iterate over pointer '{}'", subject.ToString()),
+                  {"a pointer has no length, so nothing says where the loop would end"},
+                  "iterate a slice of the memory it points at, as in 'for value in p[..count]'");
+        return;
     }
     EmitError(location, std::format("cannot iterate over '{}'", subject.ToString()), std::move(notes),
               "iterate an array, a slice, a range, or a type declaring 'Next' or 'Iterate'");

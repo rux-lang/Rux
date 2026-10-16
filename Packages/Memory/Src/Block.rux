@@ -60,7 +60,7 @@ pub func Move(destination: *var opaque, source: *opaque, length: uint) {
     if length == 0 { return; }
     let target = destination as *var byte;
     let origin = source as *byte;
-    if target == origin as *var byte { return; }
+    if target == origin { return; }
 
     // Copying forward is right when the destination is below the source, because every byte read has not yet been
     // written. When the destination is above and the ranges overlap, the same order would overwrite bytes still to

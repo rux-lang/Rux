@@ -1,0 +1,16 @@
+// A cast never gives a read-only pointer write access, and a pointer has no length to iterate over.
+func Write(values: int32[3]) -> int32 {
+    let x: int = 5;
+    let p = @x as *var int;
+    *p = 9;
+    let first = @values[0];
+    var sum: int32 = 0;
+    for value in first {
+        sum += value;
+    }
+    for value in first[..3] {
+        sum += value;
+    }
+    let handle = @x as *opaque as *var int;
+    return sum;
+}
