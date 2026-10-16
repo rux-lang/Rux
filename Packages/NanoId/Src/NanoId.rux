@@ -7,7 +7,8 @@
 
 import Core::Ordering;
 import Entropy::EntropyError;
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter, WriteBytes };
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter,
+               WriteBytes, WriteDisplayAligned };
 
 /// A Nano ID of the standard form: twenty-one characters from `NanoIdAlphabet`.
 /// Copy, holding its text inline and owning nothing. Equality and ordering compare the text byte by byte.
@@ -130,6 +131,7 @@ extend NanoId : Display {
     /// @returns success when the whole identifier was accepted
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-display
     pub func WriteDisplay(self: &NanoId, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectStyle(spec)?;
         return WriteBytes(writer, self.Text());
     }

@@ -1,6 +1,6 @@
 import Core::{ Assert, Failed, Panic };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
-import Time::{ Date, DateTime, OffsetDateTime, TimeOfDay, UtcOffset };
+import Time::{ Date, DateTime, OffsetDateTime, TimeOfDay, Timestamp, UtcOffset };
 
 // What a calendar value looks like, and the one thing it refuses to do.
 // The refusal is the subject worth testing hardest. A `DateTime` holds no offset, so it must not write one: not
@@ -142,5 +142,14 @@ func Main() -> int {
     Assert(Refused(day, Spec("hyphenated")), "a style belonging to another domain is refused");
     Assert(Refused(day, Spec(".3")), "and a date has nothing to apply a precision to");
     Assert(Refused(utc, Spec(".3")), "nor has an offset");
+
+    // A width pads the whole rendering, which each value writes in pieces.
+    Assert(Shown(day, Spec("<12"), "2026-09-07  "), "a date pads on the right");
+    Assert(Shown(day, Spec(">12"), "  2026-09-07"), "and on the left");
+    Assert(Shown(day, Spec("*^14"), "**2026-09-07**"), "and around it, with a fill");
+    Assert(Shown(day, Spec("<4"), "2026-09-07"), "a width the text already passes adds nothing");
+    Assert(Shown(shownMoment, Spec("<27"), "2026-09-07T12:34:56+02:00  "), "an offset date-time pads too");
+    let stamp: Display = Timestamp::FromUnixSeconds(0i64);
+    Assert(Shown(stamp, Spec(">22"), "  1970-01-01T00:00:00Z"), "and so does a timestamp");
     return 0;
 }

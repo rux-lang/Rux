@@ -269,6 +269,9 @@ func Main() -> int {
     Assert(Shown(value, Spec("urn"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "and urn selects the URN one");
     Assert(Shown(nil, plain, "00000000-0000-0000-0000-000000000000"), "the nil UUID shows as all zeros");
     Assert(Shown(max, plain, "ffffffff-ffff-ffff-ffff-ffffffffffff"), "and the max UUID as all fs, in lower case");
+    Assert(Shown(nil, Spec("*<38"), "00000000-0000-0000-0000-000000000000**"), "a width pads the canonical form");
+    Assert(Shown(nil, Spec(">45urn"), "urn:uuid:00000000-0000-0000-0000-000000000000"),
+           "and the URN form, which already fills it");
     Assert(Inspected(value, plain, canonical), "Debug writes the same text");
     Assert(Inspected(value, Spec("urn"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
            "and answers to the same styles");

@@ -13,7 +13,7 @@
 // text at all. It is refused with `ValueOutOfRange` before anything is written, because a destination that has
 // already received "+2724" and then learns the value cannot be spelled is a destination holding a lie.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, WriteDisplayAligned };
 
 // The first second the four-digit calendar can spell: 0000-01-01T00:00:00Z, which is epoch day -719468.
 const CalendarFloorSecond: int64 = -62167219200;
@@ -84,6 +84,7 @@ extend Timestamp : Display {
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp#write-display
     pub func WriteDisplay(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectTimestampStyle(spec)?;
         if spec.StyleIs("unix") { return WriteUnixSeconds(writer, self, spec); }
         return WriteCalendarForm(writer, self, spec);

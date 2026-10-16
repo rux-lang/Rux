@@ -518,6 +518,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Width on dates, times and identifiers** — `{:<25}` had no effect on `Date`, `TimeOfDay`, `UtcOffset`, `DateTime`, `OffsetDateTime`, `Timestamp`, `Duration`, `Uuid` and `NanoId`, whose `Display` writes its text in pieces past the spec's padding. `Text::WriteDisplayAligned` renders such a value into local room and pads it, and each of them now calls it when the placeholder has a width.
 - **`Compress` takes text** — `Compress` and `Decompress` took only `byte[..]` while the Io streams carry `char8[..]`, so compressing text needed a pointer-slice cast. Both now also take `char8[..]`.
 - **`StringView` compares views as they stand** — `Equals` and `Compare` took only a borrowed `&StringView`, so `a.View().Equals(b.View())` was refused. Both now also take a view by value, which is what a fresh `View()` gives; the borrowed forms remain, so `StringView` still meets `Equatable` and `Comparable`.
 - **`Atomic` module variables** — `Atomic<T>` had no compile-time constant, so it could not be a module variable (`call to 'Atomic' is not a compile-time value`). Every integer width now has `Zero` and `bool` has `False`, and an alias of a generic type's instantiation names the constants its extension declares, so `type Hits = Atomic<uint64>;` makes `var Count: Hits = Hits::Zero;` valid.

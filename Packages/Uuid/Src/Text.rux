@@ -21,7 +21,8 @@
 // and no way to learn it. Every writer here checks the room it needs before it writes a byte, so a refusal leaves
 // the destination exactly as it was and a success is always the complete form.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes };
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes,
+               WriteDisplayAligned };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
 /// @see https://rux-lang.dev/docs/api/uuid/text#uuid-text-length
@@ -263,6 +264,7 @@ extend Uuid : Display {
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-display
     pub func WriteDisplay(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         AcceptsUuidSpec(spec)?;
         if spec.StyleIs("urn") { WriteBytes(writer, "urn:uuid:")?; }
         var text: char8[36];

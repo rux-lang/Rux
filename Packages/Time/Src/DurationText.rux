@@ -9,7 +9,8 @@
 // computed in `uint64` so that the most negative duration — whose magnitude has no positive counterpart in
 // `int64` — comes out right rather than wrapping to itself.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes,
+               WriteDisplayAligned };
 
 // The magnitude of `value` as whole seconds and a fraction, both non-negative, with the sign reported separately.
 // For a negative duration the normalized fields are not the magnitude: -1.5 is stored as (-2, 5e8), so the whole
@@ -106,6 +107,7 @@ extend Duration : Display {
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration#write-display
     pub func WriteDisplay(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectDurationStyle(spec)?;
         var whole: uint64 = 0;
         var fraction: uint32 = 0;

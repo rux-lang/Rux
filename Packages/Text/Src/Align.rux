@@ -78,3 +78,32 @@ pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8
     WriteBytes(writer, rendered)?;
     return WriteFill(writer, spec, after);
 }
+
+/// Writes `value`'s text under `spec`, applying the spec's width, fill and alignment around the text the value writes
+/// itself.
+/// For a value whose `WriteDisplay` writes its text in pieces, which `WriteAligned` cannot pad: such a value calls
+/// this first when `spec` has a width. The value writes into 256 bytes of local room under the spec with no width,
+/// which is what keeps its own call from coming back here, and the room is then padded into `writer`. A rendering too
+/// long for the room is written through unpadded, since a width that short would add no padding anyway.
+/// Reports whatever the value or the writer reported.
+/// @param writer the destination
+/// @param value the value to render
+/// @param spec what the placeholder asked for
+/// @returns success when the padded rendering was accepted in full
+/// @see https://rux-lang.dev/docs/api/text/format-spec#write-display-aligned
+pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: FormatSpec) -> ! FormatError {
+    var unpadded = spec;
+    unpadded.width = 0;
+    if spec.width == 0u { return value.WriteDisplay(writer, unpadded); }
+    var room: char8[256];
+    var buffer = BufferWriter((@room[0])[..256]);
+    let into: &var TextWriter = buffer;
+    match value.WriteDisplay(into, unpadded) {
+        .Success(_) => {},
+        .Failure(error) => {
+            if error != FormatError::InsufficientCapacity { fail error; }
+            return value.WriteDisplay(writer, unpadded);
+        }
+    }
+    return WriteAligned(writer, spec, buffer.Written(), false);
+}

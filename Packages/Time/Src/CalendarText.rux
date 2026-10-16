@@ -10,7 +10,8 @@
 // anyway without Time depending on it. Every field here has a known width, so the loops are fixed and nothing
 // allocates: a year is four digits or as many as it needs, everything else is exactly two.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes,
+               WriteDisplayAligned };
 
 /// A date and time together with the offset from UTC they are stated in.
 /// `DateTime` deliberately carries no offset, since what offset a bare date and time is in is usually the caller's
@@ -152,6 +153,7 @@ extend Date : Display {
     /// @returns success when the whole date was accepted
     /// @see https://rux-lang.dev/docs/api/time/date#write-display
     pub func WriteDisplay(self: &Date, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectCalendarStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         WriteYear(writer, self.year)?;
@@ -185,6 +187,7 @@ extend TimeOfDay : Display {
     /// @returns success when the whole time was accepted
     /// @see https://rux-lang.dev/docs/api/time/time-of-day#write-display
     pub func WriteDisplay(self: &TimeOfDay, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectCalendarStyle(spec)?;
         WriteFixed(writer, self.hour as uint32, 2)?;
         WriteAscii(writer, c8':')?;
@@ -219,6 +222,7 @@ extend UtcOffset : Display {
     /// @returns success when the whole offset was accepted
     /// @see https://rux-lang.dev/docs/api/time/utc-offset#write-display
     pub func WriteDisplay(self: &UtcOffset, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectCalendarStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         let total = self.TotalSeconds();
@@ -257,6 +261,7 @@ extend DateTime : Display {
     /// @returns success when the whole date and time were accepted
     /// @see https://rux-lang.dev/docs/api/time/date-time#write-display
     pub func WriteDisplay(self: &DateTime, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectCalendarStyle(spec)?;
         WriteDateOnly(writer, self.date)?;
         WriteAscii(writer, c8'T')?;
@@ -299,6 +304,7 @@ extend OffsetDateTime : Display {
     /// @see https://rux-lang.dev/docs/api/time/offset-date-time#write-display
     pub func WriteDisplay(self: &OffsetDateTime, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectCalendarStyle(spec)?;
         self.dateTime.WriteDisplay(writer, spec)?;
         return WriteOffsetOnly(writer, self.offset);

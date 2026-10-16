@@ -3,7 +3,7 @@
 
 import Core::{ Failed, Ordering };
 import NanoId::{ NanoId, NanoIdParseError };
-import Text::{ BufferWriter, Display, FormatSpec, ParseFailure, TextWriter };
+import Text::{ BufferWriter, Display, FormatSpec, ParseFailure, ParseFormatSpec, TextWriter };
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
@@ -29,11 +29,15 @@ func Refusal(text: char8[..], at: uint) -> int {
 }
 
 func Shown(value: NanoId, expected: char8[..]) -> bool {
+    return ShownWith(value, FormatSpec::Plain(), expected);
+}
+
+func ShownWith(value: NanoId, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[32];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = value;
-    if Failed(shown.WriteDisplay(sink, FormatSpec::Plain())) { return false; }
+    if Failed(shown.WriteDisplay(sink, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -50,6 +54,16 @@ func Main() -> int {
     let text = "V1StGXR8_Z5jdHi6B-myT";
     let parsed = NanoId::Parse(text) catch { else => return 7 };
     if !Same(parsed.Text(), text) || !Shown(parsed, text) { return 8; }
+    // A width pads the identifier like any other text.
+    var spec = FormatSpec::Plain();
+    spec = ParseFormatSpec(">23") catch { else => return 30 };
+    var padded: char8[23] = [' '; 23];
+    var at: uint = 2;
+    for unit in text {
+        padded[at] = unit;
+        at = at + 1;
+    }
+    if !ShownWith(parsed, spec, padded[..]) { return 31; }
     let later = NanoId::Parse("V1StGXR8_Z5jdHi6B-myU") catch { else => return 9 };
     if parsed.Compare(later) != Ordering::Less || later.Compare(parsed) != Ordering::Greater { return 10; }
     if parsed.Equals(later) { return 11; }
