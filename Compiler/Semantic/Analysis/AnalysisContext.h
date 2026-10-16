@@ -159,7 +159,9 @@ struct AnalysisState {
     /// Whether each native match, keyed by its first arm's pattern, covers its subject, so control flow can ask after
     /// the arms are checked.
     std::unordered_map<const Pattern *, bool> nativeMatchExhaustive;
-    /// What each tuple match, keyed by its first arm's pattern, leaves uncovered, or nothing when its arms cover it.
+    /// What each tuple match, keyed by its first arm's pattern, leaves uncovered, or nothing when its arms cover it. An
+    /// enum or variant match whose cases are covered only by several arms together, such as '.Light(true)' and
+    /// '.Light(false)', is recorded here as covered.
     std::unordered_map<const Pattern *, std::optional<std::string>> tupleMatchMissing;
     /// Types an instantiation named for the first time, which nothing written concretely spells. A generic body
     /// composing `Option<V>` mentions no such type until `V` is decided, so the walks over what the program wrote

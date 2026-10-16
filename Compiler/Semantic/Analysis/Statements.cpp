@@ -1343,6 +1343,12 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
             missing.push_back(enumName + "::" + variant.name);
         }
     }
+    // A case no single arm covers may still be covered by several together, as '.Light(true)' and '.Light(false)'
+    // cover 'Light(bool)'; the coverage solver decides over the payloads.
+    if (!missing.empty() && !patterns.empty() && patterns.front() && !MissingMatchValues(patterns, subjectType)) {
+        tupleMatchMissing.insert_or_assign(patterns.front(), std::nullopt);
+        return;
+    }
     if (!missing.empty()) {
         std::string names;
         for (const auto &name : missing) {
@@ -1395,6 +1401,10 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
     const EnumDecl *declaration = EnumNamed(enumName);
     if (!declaration) {
         return false;
+    }
+    if (const auto solved = patterns.empty() ? tupleMatchMissing.end() : tupleMatchMissing.find(patterns.front());
+        solved != tupleMatchMissing.end() && !solved->second) {
+        return true;
     }
     std::unordered_set<std::string> covered;
     for (const Pattern *pattern : patterns) {

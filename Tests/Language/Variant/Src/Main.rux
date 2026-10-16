@@ -291,6 +291,26 @@ func CheckPointerCasts() {
     Assert(UnwrapCount(*(parcelAddress as *Parcel)) == 42i64, "a narrow variant round-trips through its address");
 }
 
+// The arms of one case together cover it when they take every payload, so a match need not end in 'else'.
+variant Lamp {
+    Off,
+    Light(bool)
+}
+
+func Brightness(lamp: Lamp) -> int {
+    return match lamp {
+        .Off => 0,
+        .Light(true) => 2,
+        .Light(false) => 1
+    };
+}
+
+func CheckPayloadCoverage() {
+    Assert(Brightness(Lamp::Off) == 0, "an uncovered-looking case still matches its own arm");
+    Assert(Brightness(Lamp::Light(true)) == 2, "a true payload takes the true arm");
+    Assert(Brightness(Lamp::Light(false)) == 1, "a false payload takes the false arm");
+}
+
 func Main() -> int {
     CheckUnitCases();
     CheckGenericCases();
@@ -302,5 +322,6 @@ func Main() -> int {
     CheckNestedCases();
     CheckEquality();
     CheckPointerCasts();
+    CheckPayloadCoverage();
     return 0;
 }
