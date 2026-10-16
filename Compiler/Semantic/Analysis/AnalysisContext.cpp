@@ -163,6 +163,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , valueCopies(output.valueCopies)
     , callableBindings(output.callableBindings)
     , functionReferenceBindings(output.functionReferenceBindings)
+    , asmSymbolDeclarations(output.asmSymbolDeclarations)
     , defaultConstructors(output.defaultConstructors)
     , symbolIdentities(output.symbolIdentities)
     , vtableIdentities(output.vtableIdentities)

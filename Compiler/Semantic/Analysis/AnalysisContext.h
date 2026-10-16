@@ -960,6 +960,7 @@ private:
     std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     std::unordered_map<const Expr *, ResolvedCallableBinding> &functionReferenceBindings;
+    std::unordered_map<const AsmOperand *, const Decl *> &asmSymbolDeclarations;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;

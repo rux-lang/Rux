@@ -329,8 +329,11 @@ struct SemanticFacts {
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
-    /// A generic function named as a value, with the type arguments the destination's function type gave it.
+    /// A function named as a value: a generic one with the type arguments the destination's function type gave it,
+    /// the overload an overloaded name's destination chose, or the function a module path names.
     std::unordered_map<const Expr *, ResolvedCallableBinding> functionReferenceBindings;
+    /// The function or module variable each name in an asm body stands for, which lowering spells by linker name.
+    std::unordered_map<const AsmOperand *, const Decl *> asmSymbolDeclarations;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, bool> effectiveVisibilities;
     /// Effectively public declarations owned by the package being compiled, rather than by one of its dependencies.
@@ -426,6 +429,8 @@ struct SemanticModel {
     /// overload an overloaded name's destination chose, or the function a module path names -- or null for any other
     /// expression.
     [[nodiscard]] const ResolvedCallableBinding *TryGetFunctionReferenceBinding(const Expr &reference) const noexcept;
+    /// The function or module variable an asm operand's symbol names, or null for a label or an extern.
+    [[nodiscard]] const Decl *TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept;
 
     /// Returns null for initialized declarations and declarations whose type has no eligible default constructor.
     [[nodiscard]] const ResolvedDefaultConstructor *TryGetDefaultConstructor(const LetStmt &statement) const noexcept;

@@ -3,3 +3,5 @@
 25:14: error: 'Depth' in asm func 'Names' is not a label, a function or a module variable
 26:14: error: 'opterr' in asm func 'Names' is not a label, a function or a module variable
 27:10: error: 'x' in asm func 'Names' is not a label, a function or a module variable
+29:14: error: 'Counter' in a memory operand is reached relative to 'rip', so the operand must be '[rip + Counter]'
+30:14: error: 'Counter' in a memory operand is reached relative to 'rip', so the operand must be '[rip + Counter]'

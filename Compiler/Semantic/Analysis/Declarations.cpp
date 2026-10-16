@@ -242,7 +242,7 @@ void AnalysisContext::CheckAsmBodySymbols(const FuncDecl &d) {
         }
     }
     std::unordered_set<std::string> reported;
-    const auto check = [&](const std::string &name, const SourceLocation &location) {
+    const auto check = [&](const AsmOperand &operand, const std::string &name, const SourceLocation &location) {
         if (name.empty() || labels.contains(name) || reported.contains(name)) {
             return;
         }
@@ -251,6 +251,13 @@ void AnalysisContext::CheckAsmBodySymbols(const FuncDecl &d) {
         if (Symbol *symbol = currentScope->Lookup(name)) {
             const auto *global = AstCast<const GlobalDecl>(symbol->declaration);
             if (symbol->kind == Symbol::Kind::Func || (global && !global->isThreadLocal)) {
+                // The body spells the name as written; lowering spells it as the linker knows the declaration.
+                if (global) {
+                    asmSymbolDeclarations.insert_or_assign(&operand, global);
+                }
+                else if (symbol->funcOverloads.size() == 1) {
+                    asmSymbolDeclarations.insert_or_assign(&operand, symbol->funcOverloads.front());
+                }
                 return;
             }
             if (symbol->kind == Symbol::Kind::Const) {
@@ -280,10 +287,19 @@ void AnalysisContext::CheckAsmBodySymbols(const FuncDecl &d) {
             // An AArch64 condition is written where a symbol could be, as the last operand of `csel`.
             if (operand.kind == AsmOperand::Kind::Sym &&
                 !(instr.arch == Target::Arch::AArch64 && IsAArch64ConditionName(operand.name))) {
-                check(operand.name, operand.location);
+                check(operand, operand.name, operand.location);
             }
             if (operand.kind == AsmOperand::Kind::Mem) {
-                check(operand.memSym, operand.location);
+                check(operand, operand.memSym, operand.location);
+                // x86-64 encodes a symbol in a memory operand only relative to the next instruction.
+                if (instr.arch == Target::Arch::X86_64 && !operand.memSym.empty() && operand.memBase != "rip") {
+                    EmitError(operand.location,
+                              std::format("'{}' in a memory operand is reached relative to 'rip', so the operand must "
+                                          "be '[rip + {}]'",
+                                          operand.memSym, operand.memSym),
+                              {"a symbol cannot be added to a base or index register, and alone it would be a 32-bit "
+                               "absolute address"});
+                }
             }
         }
     }

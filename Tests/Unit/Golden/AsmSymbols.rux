@@ -26,6 +26,8 @@ asm func Names(x: int64) -> int64 {
     mov rax, qword [rip + opterr]
     call x
     call dnoe
+    mov rax, qword [Counter]
+    mov rax, qword [rbx + Counter]
 done:
     ret
 }

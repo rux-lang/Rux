@@ -334,6 +334,18 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.isAsm = d.isAsm;
     hf.isNoReturn = d.isNoReturn;
     hf.asmBody = d.asmBody;
+    // A name in the body reaches a function or module variable through the name the linker knows it by.
+    for (std::size_t instruction = 0; instruction < d.asmBody.size(); ++instruction) {
+        for (std::size_t index = 0; index < d.asmBody[instruction].operands.size(); ++index) {
+            const Decl *named = model.TryGetAsmSymbolDeclaration(d.asmBody[instruction].operands[index]);
+            const ResolvedSymbolIdentity *identity = named ? model.TryGetSymbolIdentity(*named) : nullptr;
+            if (!identity || identity->linkerName.empty()) {
+                continue;
+            }
+            AsmOperand &operand = hf.asmBody[instruction].operands[index];
+            (operand.kind == AsmOperand::Kind::Mem ? operand.memSym : operand.name) = identity->linkerName;
+        }
+    }
     hf.callConv = d.callConv;
     hf.typeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     hf.params = LowerParams(d.params);

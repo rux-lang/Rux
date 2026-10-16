@@ -272,6 +272,11 @@ const ResolvedCallableBinding *SemanticModel::TryGetFunctionReferenceBinding(con
     return binding == facts.functionReferenceBindings.end() ? nullptr : &binding->second;
 }
 
+const Decl *SemanticModel::TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept {
+    const auto declaration = facts.asmSymbolDeclarations.find(&operand);
+    return declaration == facts.asmSymbolDeclarations.end() ? nullptr : declaration->second;
+}
+
 const ResolvedDefaultConstructor *SemanticModel::TryGetDefaultConstructor(const LetStmt &statement) const noexcept {
     const auto constructor = facts.defaultConstructors.find(&statement);
     return constructor == facts.defaultConstructors.end() ? nullptr : &constructor->second;
