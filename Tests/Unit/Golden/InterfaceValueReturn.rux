@@ -1,5 +1,5 @@
-// An interface value made at a return would point at storage the function gives up; one the function was handed is
-// passed on.
+// An interface value made in a function, at the return or in a local first, would point at storage the function gives
+// up; one the function was handed is passed on, through a local too.
 interface Named {
     func Id(self: &Self) -> int;
 }
@@ -19,6 +19,28 @@ func Make() -> Named {
 }
 
 func Forward(value: Named) -> Named {
+    return value;
+}
+
+func MakeLocal() -> Named {
+    let value: Named = Plain { id: 5 };
+    return value;
+}
+
+func MakeAssigned(given: Named) -> Named {
+    var value = given;
+    value = Plain { id: 6 };
+    return value;
+}
+
+func MakeCopied() -> Named {
+    let first: Named = Plain { id: 7 };
+    let second = first;
+    return second;
+}
+
+func ForwardLocal(given: Named) -> Named {
+    let value = given;
     return value;
 }
 

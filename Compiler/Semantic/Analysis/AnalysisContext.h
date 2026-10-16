@@ -427,6 +427,9 @@ private:
     void RecordViewSources(const Symbol &local, const Expr &value, const TypeRef &type);
     /// Reports a value that leaves the function, as `what` says, while it views one of the function's local arrays.
     void CheckViewEscape(const Expr &value, const TypeRef &type, SourceLocation location, std::string_view what);
+    /// Whether storing `value` as `targetType` makes an interface value that points at this function's storage: a
+    /// concrete value made into one, or a local that may already hold one.
+    [[nodiscard]] bool MakesFrameInterfaceValue(const Expr &value, const TypeRef &valueType, const TypeRef &targetType);
     /// After an assignment: a store into a local records the views it took; a store that outlives the call, into a
     /// module variable or through a pointer or reference, may not take a view of a local array.
     void CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType, SourceLocation location);
@@ -1066,6 +1069,8 @@ private:
     std::unordered_set<const Symbol *> functionLocals;
     /// For each local holding views, the local arrays those views may point into.
     std::unordered_map<const Symbol *, std::vector<const Symbol *>> viewSources;
+    /// The locals that may hold an interface value made in the function, which points at the function's own storage.
+    std::unordered_set<const Symbol *> frameInterfaceLocals;
     bool checkingPlainAssignmentTarget = false;
     bool checkingBorrowProjectionRoot = false;
     /// The field path, such as `start.x`, that the local about to be read is read through, so a part written on its

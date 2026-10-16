@@ -465,6 +465,8 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (initializerAccepted && TypeHoldsView(declarationType)) {
             initialViews = LocalArraysViewed(*letStatement->init, declarationType);
         }
+        const bool makesFrameInterface =
+            initializerAccepted && MakesFrameInterfaceValue(*letStatement->init, initializerType, declarationType);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
         symbol.name = letStatement->name;
@@ -474,6 +476,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr || defaultConstructor);
         if (defined && !initialViews.empty()) {
             viewSources[defined] = std::move(initialViews);
+        }
+        if (defined && initializerAccepted && makesFrameInterface) {
+            frameInterfaceLocals.insert(defined);
         }
         if (defined && defined->type.IsFallible()) {
             fallibleLocals.push_back({defined, currentScope});
@@ -780,7 +785,20 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
                 currentReturnType->kind == TypeRef::Kind::Named && interfaceDecls.contains(currentReturnType->name);
             const bool valueIsInterface =
                 valueType->kind == TypeRef::Kind::Named && interfaceDecls.contains(valueType->name);
-            if (returnsInterface && !valueIsInterface) {
+            const auto *returnedName = AstCast<const IdentExpr>(value);
+            const Symbol *returnedLocal = returnedName ? currentScope->Lookup(returnedName->name) : nullptr;
+            if (returnsInterface && valueIsInterface && returnedLocal && frameInterfaceLocals.contains(returnedLocal)) {
+                const std::string function =
+                    currentFunctionDecl ? std::format("'{}'", currentFunctionDecl->name) : "the function";
+                EmitError(
+                    location,
+                    std::format("cannot return interface value '{}', which holds a value made in {}",
+                                returnedLocal->name, function),
+                    {std::format("'{}' points at storage {} gives up when it returns", returnedLocal->name, function)},
+                    "return the concrete type, and let the caller make the interface value");
+                returnAccepted = false;
+            }
+            else if (returnsInterface && !valueIsInterface) {
                 EmitError(location,
                           std::format("cannot return '{}' as interface value '{}'", valueType.ToString(),
                                       currentReturnType.ToString()),

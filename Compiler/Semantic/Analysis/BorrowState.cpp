@@ -1146,9 +1146,25 @@ void AnalysisContext::CheckViewEscape(const Expr &value, const TypeRef &type, co
               "return an owned container such as a 'Vector', or take the storage as a parameter");
 }
 
+bool AnalysisContext::MakesFrameInterfaceValue(const Expr &value, const TypeRef &valueType, const TypeRef &targetType) {
+    const auto isInterface = [this](const TypeRef &type) {
+        return !type.IsUnknown() && type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
+    };
+    if (!isInterface(targetType) || valueType.IsUnknown()) {
+        return false;
+    }
+    if (!isInterface(valueType)) {
+        return true;
+    }
+    const auto *identifier = AstCast<const IdentExpr>(&value);
+    const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+    return symbol != nullptr && frameInterfaceLocals.contains(symbol);
+}
+
 void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType,
                                           const SourceLocation location) {
-    if (targetType.IsUnknown() || !TypeHoldsView(targetType)) {
+    const bool makesFrameInterface = MakesFrameInterfaceValue(value, CheckedExpressionType(value), targetType);
+    if (targetType.IsUnknown() || (!TypeHoldsView(targetType) && !makesFrameInterface)) {
         return;
     }
     // Walk to the name the target is part of, noting whether the way there leaves the local's own storage.
@@ -1182,6 +1198,15 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
         return;
     }
     const bool local = functionLocals.contains(symbol);
+    if (makesFrameInterface) {
+        // A local keeps it, as a view of a local array; storing it anywhere that outlives the call is not tracked.
+        if (local && !throughIndirection) {
+            frameInterfaceLocals.insert(symbol);
+        }
+        if (!TypeHoldsView(targetType)) {
+            return;
+        }
+    }
     if (local && !throughIndirection && symbol->type->kind != TypeRef::Kind::Reference) {
         RecordViewSources(*symbol, value, targetType);
         return;
