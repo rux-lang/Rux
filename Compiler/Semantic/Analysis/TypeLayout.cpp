@@ -413,6 +413,7 @@ bool AnalysisContext::SkipsReusedFunction(const FuncDecl &function) const {
 }
 
 void AnalysisContext::CheckDecl(const Decl &decl) {
+    const CheckingDeclaration checking(*this, decl);
     if (auto *fn = AstCast<const FuncDecl>(&decl)) {
         if (SkipsReusedFunction(*fn)) {
             ResolveReusedParameters(*fn);

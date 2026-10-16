@@ -292,11 +292,15 @@ AnalysisContext::ScopedTypeOwner::ScopedTypeOwner(AnalysisContext &context, cons
     : context(context)
     , scope(context.currentScope)
     , file(context.currentFile)
-    , package(context.currentPackage) {
-    if (const auto *owner = context.programIndex.TypeOwner(type); owner && owner->scope) {
-        context.currentScope = owner->scope;
-        context.currentFile = owner->sourceName;
-        context.currentPackage = owner->ownerPackage;
+    , package(context.currentPackage)
+    , owner(context.resolvingTypeOwner) {
+    if (const auto *info = context.programIndex.TypeOwner(type); info && info->scope) {
+        context.currentScope = info->scope;
+        context.currentFile = info->sourceName;
+        context.currentPackage = info->ownerPackage;
+    }
+    if (const Decl *declaration = context.programIndex.TypeOwnerDeclaration(type)) {
+        context.resolvingTypeOwner = declaration;
     }
 }
 
@@ -304,6 +308,7 @@ AnalysisContext::ScopedTypeOwner::~ScopedTypeOwner() {
     context.currentScope = scope;
     context.currentFile = std::move(file);
     context.currentPackage = std::move(package);
+    context.resolvingTypeOwner = owner;
 }
 
 const EnumDecl *AnalysisContext::EnumNamed(const std::string &name) const {

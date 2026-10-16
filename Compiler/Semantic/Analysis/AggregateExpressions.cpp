@@ -370,9 +370,13 @@ TypeRef AnalysisContext::StructFieldType(const TypeRef &objectType, const std::s
 
 void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression) {
     const auto structure = structDecls.find(NominalTypeName(expression.typeName));
+    if (structure != structDecls.end()) {
+        NoteDeclarationUse(*structure->second, expression.location);
+    }
     if (structure == structDecls.end()) {
         if (const auto unionType = unionDecls.find(NominalTypeName(expression.typeName));
             unionType != unionDecls.end()) {
+            NoteDeclarationUse(*unionType->second, expression.location);
             if (!expression.typeArgs.empty()) {
                 EmitError(expression.location, std::format("union initializer for '{}' does not accept type arguments",
                                                            expression.typeName));

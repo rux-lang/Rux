@@ -11,9 +11,11 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -215,6 +217,14 @@ struct AnalysisState {
     /// The module-level imports bound before signatures were resolved. Checking their module's declarations binds them
     /// again, and the errors that second binding repeats are dropped.
     std::unordered_set<const UseDecl *> appliedImports;
+    /// The uses of a `#Warn` or `#Error` declaration already reported, by declaration, file and offset: a type is
+    /// resolved and a generic body checked more than once, and each use is reported once.
+    std::set<std::tuple<const Decl *, std::string, std::uint32_t>> reportedDeclarationUses;
+    /// The declarations being checked, innermost last: a use of one of them inside it is not reported, and a use found
+    /// outside any declaration or function is one an earlier phase found, which checking finds again.
+    std::vector<const Decl *> declarationsBeingChecked;
+    /// The declaration whose signature or field type is being resolved, for as long as it is.
+    const Decl *resolvingTypeOwner = nullptr;
 };
 
 class AnalysisContext final : private AnalysisState {
@@ -468,6 +478,25 @@ private:
     /// then restores the enclosing declaration's. Bounds are scoped exactly like `currentTypeParams`, and a checker
     /// that saved one without restoring the other would report the wrong declaration's promises. A null `parameters`
     /// declares none of its own, which is how an extend block over a non-generic type enters.
+    /// Marks a declaration as being checked for as long as it lives, so uses of it inside it are not reported.
+    class CheckingDeclaration {
+    public:
+        CheckingDeclaration(AnalysisContext &owner, const Decl &declaration)
+            : context(owner) {
+            context.declarationsBeingChecked.push_back(&declaration);
+        }
+
+        ~CheckingDeclaration() {
+            context.declarationsBeingChecked.pop_back();
+        }
+
+        CheckingDeclaration(const CheckingDeclaration &) = delete;
+        CheckingDeclaration &operator=(const CheckingDeclaration &) = delete;
+
+    private:
+        AnalysisContext &context;
+    };
+
     class ScopedTypeParameterBounds {
     public:
         ScopedTypeParameterBounds(AnalysisContext &owner, const std::vector<TypeParameter> *parameters,
@@ -1025,6 +1054,7 @@ private:
         Scope *scope;
         std::string file;
         std::string package;
+        const Decl *owner;
     };
 
     [[nodiscard]] const EnumDecl *EnumNamed(const std::string &name) const;
@@ -1284,6 +1314,12 @@ private:
                                                    std::unordered_set<std::string> &activeTypes);
     [[nodiscard]] Symbol *LookupCalleeSymbol(const Expr &callee) const;
     void EmitCallSiteDiagnostics(const Decl &declaration, SourceLocation location) const;
+    /// Reports a use of a declaration that carries `#Warn` or `#Error`, once per place it is written, unless the use is
+    /// inside the declaration itself or an extension of the type it declares.
+    void NoteDeclarationUse(const Decl &declaration, SourceLocation location);
+    /// `NoteDeclarationUse` for the declaration a name resolved to: an extern function, a function with one overload,
+    /// or whatever else the symbol was declared by.
+    void NoteSymbolUse(const Symbol &symbol, SourceLocation location);
     void RecordFunctionBinding(const CallExpr &call, const FuncDecl &declaration,
                                ResolvedCallableBinding::DispatchKind dispatch,
                                std::unordered_map<std::string, TypeRef> substitutions = {},

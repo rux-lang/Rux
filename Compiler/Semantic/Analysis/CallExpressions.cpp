@@ -362,12 +362,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
                 }
             }
-            if (!decl->warnMessage.empty()) {
-                EmitWarning(CallSiteLocation(*e), decl->warnMessage);
-            }
-            if (!decl->errorMessage.empty()) {
-                EmitError(CallSiteLocation(*e), decl->errorMessage);
-            }
+            NoteDeclarationUse(*decl, CallSiteLocation(*e));
             CheckTypeArgumentConstraints(decl->typeParams, substitutions, e->location,
                                          std::format("function '{}'", ident->name));
             QueueGenericInstantiation(*decl, substitutions,
@@ -459,6 +454,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 return constructedType;
             }
 
+            NoteDeclarationUse(*constructor, CallSiteLocation(*e));
             const auto substitutions = MethodTypeSubstitutions(constructedType);
             QueueGenericInstantiation(*constructor, substitutions,
                                       expression.callee ? expression.callee->location : expression.location);
@@ -523,12 +519,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (const FuncDecl *method =
                 LookupMethodCall(receiverType, field->field, *e, argTypes, 0, methodSubstitutions)) {
             bool callAccepted = true;
-            if (!method->warnMessage.empty()) {
-                EmitWarning(CallSiteLocation(*e), method->warnMessage);
-            }
-            if (!method->errorMessage.empty()) {
-                EmitError(CallSiteLocation(*e), method->errorMessage);
-            }
+            NoteDeclarationUse(*method, CallSiteLocation(*e));
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);
             // A method of a generic type is an instantiation like any other: its body was checked with the type's
             // parameters standing for nothing in particular, and the questions that could not be answered then --
@@ -832,7 +823,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
     Symbol *calleeSymbol = LookupCalleeSymbol(*e->callee);
     if (calleeSymbol && calleeSymbol->externDecl) {
-        EmitCallSiteDiagnostics(*calleeSymbol->externDecl, CallSiteLocation(*e));
+        NoteDeclarationUse(*calleeSymbol->externDecl, CallSiteLocation(*e));
     }
 
     TypeRef calleeType = CheckExpr(*e->callee);
@@ -897,7 +888,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 if (arityOk) {
                     CheckFormatArguments(*e, *decl, false);
                 }
-                EmitCallSiteDiagnostics(*decl, CallSiteLocation(*e));
+                NoteDeclarationUse(*decl, CallSiteLocation(*e));
                 RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct,
                                       std::move(substitutions));
             }
@@ -935,6 +926,78 @@ Symbol *AnalysisContext::LookupCalleeSymbol(const Expr &callee) const {
         current = current->moduleScope->Lookup(path->segments[i]);
     }
     return current;
+}
+
+void AnalysisContext::NoteDeclarationUse(const Decl &declaration, const SourceLocation location) {
+    if (declaration.warnMessage.empty() && declaration.errorMessage.empty()) {
+        return;
+    }
+    // Indexing and resolving signatures resolve types that checking the declaration resolves again; only checking
+    // reports. A declaration's own body, fields and extensions name it without using it the way the attribute warns
+    // about.
+    if (!currentFunctionDecl && declarationsBeingChecked.empty()) {
+        return;
+    }
+    if (&declaration == currentFunctionDecl || &declaration == resolvingTypeOwner ||
+        std::ranges::contains(declarationsBeingChecked, &declaration)) {
+        return;
+    }
+    std::string_view typeName;
+    if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
+        typeName = structure->name;
+    }
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
+        typeName = enumeration->name;
+    }
+    else if (const auto *unionDeclaration = AstCast<const UnionDecl>(&declaration)) {
+        typeName = unionDeclaration->name;
+    }
+    if (!typeName.empty()) {
+        if (inImpl && NamedBaseTypeName(currentSelfType) == typeName) {
+            return;
+        }
+        if (std::ranges::any_of(declarationsBeingChecked, [&](const Decl *checking) {
+                const auto *extension = AstCast<const ImplDecl>(checking);
+                return extension && BaseTypeName(extension->typeName) == typeName;
+            })) {
+            return;
+        }
+        // A field or method signature of the type, resolved while checking something that uses it.
+        if (resolvingTypeOwner) {
+            const ImplDecl *extension = AstCast<const ImplDecl>(resolvingTypeOwner);
+            if (const auto *method = AstCast<const FuncDecl>(resolvingTypeOwner)) {
+                const auto impl = methodImpls.find(method);
+                extension = impl != methodImpls.end() ? impl->second : nullptr;
+            }
+            if (extension && BaseTypeName(extension->typeName) == typeName) {
+                return;
+            }
+        }
+        if (currentFunctionDecl) {
+            if (const auto impl = methodImpls.find(currentFunctionDecl);
+                impl != methodImpls.end() && impl->second->typeName == typeName) {
+                return;
+            }
+        }
+    }
+    if (!reportedDeclarationUses.emplace(&declaration, currentFile, location.offset).second) {
+        return;
+    }
+    EmitCallSiteDiagnostics(declaration, location);
+}
+
+void AnalysisContext::NoteSymbolUse(const Symbol &symbol, const SourceLocation location) {
+    if (symbol.externDecl) {
+        NoteDeclarationUse(*symbol.externDecl, location);
+    }
+    else if (symbol.kind == Symbol::Kind::Func) {
+        if (symbol.funcOverloads.size() == 1) {
+            NoteDeclarationUse(*symbol.funcOverloads.front(), location);
+        }
+    }
+    else if (symbol.declaration) {
+        NoteDeclarationUse(*symbol.declaration, location);
+    }
 }
 
 void AnalysisContext::EmitCallSiteDiagnostics(const Decl &declaration, const SourceLocation location) const {

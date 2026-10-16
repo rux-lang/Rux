@@ -621,6 +621,11 @@ const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::TypeOwner(con
     return owner == typeOwners.end() ? nullptr : InfoFor(*owner->second);
 }
 
+const Decl *SemanticProgramIndex::TypeOwnerDeclaration(const TypeExpr &type) const {
+    const auto owner = typeOwners.find(&type);
+    return owner == typeOwners.end() ? nullptr : owner->second;
+}
+
 const std::string &SemanticProgramIndex::NominalName(const Decl &declaration) const {
     if (const auto identity = nominalNames.find(&declaration); identity != nominalNames.end())
         return identity->second;

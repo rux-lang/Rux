@@ -309,6 +309,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
                     EmitGenericArityError(expr, std::format("type alias '{}'", t->name), 0, resolvedArgs.size());
                     return TypeRef::MakeUnknown();
                 }
+                NoteDeclarationUse(*alias, expr.location);
                 if (!checkingTypeAliases.insert(alias).second) {
                     EmitError(expr.location, std::format("type alias '{}' has a cyclic definition", alias->name));
                     return TypeRef::MakeUnknown();
@@ -322,6 +323,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
 
         if (const EnumDecl *enumeration = EnumNamed(NominalTypeName(t->name))) {
             const auto &decl = *enumeration;
+            NoteDeclarationUse(decl, expr.location);
             if (resolvedArgs.size() != decl.typeParams.size()) {
                 EmitGenericArityError(expr, std::format("variant type '{}'", t->name), decl.typeParams.size(),
                                       resolvedArgs.size());
@@ -332,6 +334,9 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         }
 
         if (auto structType = ResolveStructTypeReference(expr, NominalTypeName(t->name), resolvedArgs)) {
+            if (const auto structure = structDecls.find(NominalTypeName(t->name)); structure != structDecls.end()) {
+                NoteDeclarationUse(*structure->second, expr.location);
+            }
             return *structType;
         }
 
@@ -350,6 +355,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             }
         }
         if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
+            NoteSymbolUse(*sym, expr.location);
             // Return base type if no generic arguments are provided
             if (t->typeArgs.empty() && !sym->type.IsUnknown()) {
                 return sym->type;
@@ -396,11 +402,13 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         }
         const std::string name = NominalTypeName(fullPath);
         if (const auto enumeration = enumDecls.find(name); enumeration != enumDecls.end()) {
+            NoteDeclarationUse(*enumeration->second, expr.location);
             if (!IsAccessible(*enumeration->second))
                 EmitPrivacyError(expr.location, *enumeration->second, "type", fullPath);
             return EnumType(*enumeration->second);
         }
         if (const auto structure = structDecls.find(name); structure != structDecls.end()) {
+            NoteDeclarationUse(*structure->second, expr.location);
             if (!IsAccessible(*structure->second))
                 EmitPrivacyError(expr.location, *structure->second, "type", fullPath);
             return *ResolveStructTypeReference(expr, name, {});

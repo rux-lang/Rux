@@ -375,6 +375,7 @@ void AnalysisContext::PrecheckModuleInScope(const Module &module, Scope &scope) 
 }
 
 void AnalysisContext::PrecheckDecl(const Decl &declaration) {
+    const CheckingDeclaration checking(*this, declaration);
     if (const auto *structDecl = AstCast<const StructDecl>(&declaration)) {
         CheckStructDecl(*structDecl);
     }

@@ -34,6 +34,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
         Symbol *sym = currentScope->Lookup(e->name);
         if (sym) {
+            NoteSymbolUse(*sym, e->location);
             if (sym->kind == Symbol::Kind::Const && sym->declaration) {
                 constantReferences[e] = static_cast<const ConstDecl *>(sym->declaration);
             }
@@ -81,6 +82,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             return TypeRef::MakeUnknown();
         }
         if (e->segments.size() >= 2 && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
+            NoteSymbolUse(*first, e->location);
             if (first->kind == Symbol::Kind::Type) {
                 if (e->segments.size() == 2) {
                     const AssociatedConstantLookup lookup = LookupAssociatedConstant(*first, e->segments[1]);
@@ -100,6 +102,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                             EmitPrivacyError(e->location, *constant, "associated constant", constant->name);
                             return TypeRef::MakeUnknown();
                         }
+                        NoteDeclarationUse(*constant, e->location);
                         const TypeRef type = CheckAssociatedConstant(*constant);
                         associatedConstants[e] = constant;
                         return type;
@@ -163,6 +166,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                 EmitError(e->location, std::format("'{}' is a function, not a module", methodName));
                 return TypeRef::MakeUnknown();
             }
+            NoteDeclarationUse(*method, e->location);
             return AssociatedFunctionType(receiverType, *method);
         }
         Symbol *current = first;
@@ -187,6 +191,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             }
             current = item;
         }
+        NoteSymbolUse(*current, e->location);
         if (current->kind == Symbol::Kind::Const && current->declaration) {
             constantReferences[e] = static_cast<const ConstDecl *>(current->declaration);
         }

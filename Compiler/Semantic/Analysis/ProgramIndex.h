@@ -108,6 +108,8 @@ public:
     void FinalizeVisibility();
     void FinalizeNominalIdentities();
     [[nodiscard]] const DeclarationInfo *TypeOwner(const TypeExpr &type) const;
+    /// The declaration a signature or field type is written in, or nullptr for a type written in a body.
+    [[nodiscard]] const Decl *TypeOwnerDeclaration(const TypeExpr &type) const;
     [[nodiscard]] const std::string &NominalName(const Decl &declaration) const;
 
     [[nodiscard]] const auto &NominalNames() const {

@@ -352,7 +352,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                 QueueGenericInstantiation(*defaultConstructor, substitutions);
                 defaultConstructors.insert_or_assign(letStatement,
                                                      ResolvedDefaultConstructor{defaultConstructor, declarationType});
-                EmitCallSiteDiagnostics(*defaultConstructor, letStatement->location);
+                NoteDeclarationUse(*defaultConstructor, letStatement->location);
             }
             else if (eligible.size() > 1) {
                 EmitError(letStatement->location,

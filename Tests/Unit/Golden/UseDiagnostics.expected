@@ -1,0 +1,8 @@
+47:12: warning: use Point2
+50:20: warning: use Point2
+55:17: warning: use Point2
+56:16: warning: Count is an alias for int64
+56:24: error: Limit is gone; use Bound
+57:16: warning: Mode is replaced by Style
+58:17: warning: build a Meter with a literal
+59:39: warning: use Twice
