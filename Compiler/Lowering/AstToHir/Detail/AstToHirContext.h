@@ -126,6 +126,12 @@ protected:
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
+    /// The generic extensions that implement an interface, by the base name of the type they extend: each
+    /// instantiation a module converts to the interface gets a vtable of that module's own.
+    std::unordered_map<std::string, std::vector<const ImplDecl *>> genericInterfaceImpls;
+    /// The instance vtables the module being lowered has made, by type and interface, and the blocks that emit them.
+    std::unordered_map<std::string, std::string> instanceVtableLabels;
+    std::vector<HirImplBlock> instanceVtables;
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
     std::vector<std::vector<const DeferStmt *>> deferStack;
@@ -331,6 +337,9 @@ private:
     [[nodiscard]] HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression);
     [[nodiscard]] HirExprPtr LowerIntrinsicExpr(const IntrinsicExpr &expression) const;
     [[nodiscard]] TypeRef StructInitFieldType(const StructInitExpr &expression, const std::string &fieldName);
+    /// The vtable label of `type`'s implementation of `interfaceName`, made for the module being lowered when the
+    /// implementation is a generic extension; empty when there is none.
+    [[nodiscard]] std::string InterfaceVtableLabel(const TypeRef &type, const std::string &interfaceName);
     [[nodiscard]] std::optional<TypeRef> InterfaceImplementationType(const TypeRef &expressionType,
                                                                      const TypeRef &targetType) const;
 

@@ -64,10 +64,36 @@ std::vector<const FuncDecl *> AnalysisContext::ConstructorCandidates(const TypeR
 
 bool AnalysisContext::ExtensionAppliesTo(const FuncDecl &method, const TypeRef &receiver) const {
     const auto implementation = methodImpls.find(&method);
-    if (implementation == methodImpls.end() || !implementation->second->extendedType) {
+    return implementation == methodImpls.end() || ImplementationAppliesTo(*implementation->second, receiver);
+}
+
+const ImplDecl *AnalysisContext::GenericInterfaceImplementation(const TypeRef &type,
+                                                                const InterfaceDecl &interface) const {
+    if (type->kind != TypeRef::Kind::Named) {
+        return nullptr;
+    }
+    const std::string typeName = NamedBaseTypeName(type);
+    for (const ImplDecl *implementation : implDecls) {
+        if (!implementation->interfaceName || ImplTypeParams(*implementation).empty() ||
+            BaseTypeName(*implementation->interfaceName) != interface.name) {
+            continue;
+        }
+        const auto extended = typeNodeTypes.find(implementation->extendedType.get());
+        if (extended == typeNodeTypes.end() || NamedBaseTypeName(extended->second) != typeName) {
+            continue;
+        }
+        if (ImplementationAppliesTo(*implementation, type)) {
+            return implementation;
+        }
+    }
+    return nullptr;
+}
+
+bool AnalysisContext::ImplementationAppliesTo(const ImplDecl &implementation, const TypeRef &receiver) const {
+    if (!implementation.extendedType) {
         return true;
     }
-    const auto extended = typeNodeTypes.find(implementation->second->extendedType.get());
+    const auto extended = typeNodeTypes.find(implementation.extendedType.get());
     const TypeRef *named = &receiver;
     if (((*named)->kind == TypeRef::Kind::Pointer || (*named)->kind == TypeRef::Kind::Reference) &&
         !(*named)->inner.empty()) {
@@ -84,7 +110,7 @@ bool AnalysisContext::ExtensionAppliesTo(const FuncDecl &method, const TypeRef &
     if (written.empty() || written.size() != actual.size()) {
         return true;
     }
-    const std::vector<std::string> parameters = ImplTypeParams(*implementation->second);
+    const std::vector<std::string> parameters = ImplTypeParams(implementation);
     for (std::size_t index = 0; index < written.size(); ++index) {
         const TypeRef &argument = written[index];
         const bool isParameter =

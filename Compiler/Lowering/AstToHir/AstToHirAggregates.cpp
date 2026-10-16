@@ -497,6 +497,53 @@ TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, c
     return TypeRef::MakeUnknown();
 }
 
+std::string AstToHirContext::InterfaceVtableLabel(const TypeRef &type, const std::string &interfaceName) {
+    if (const auto known = typeInterfaceVtables.find(type.ToString()); known != typeInterfaceVtables.end()) {
+        if (const auto label = known->second.find(interfaceName); label != known->second.end()) {
+            return label->second;
+        }
+    }
+    const std::string key = type.ToString() + "|" + interfaceName;
+    if (const auto made = instanceVtableLabels.find(key); made != instanceVtableLabels.end()) {
+        return made->second;
+    }
+    const std::string typeName = NamedBaseTypeName(type);
+    const auto implementations = genericInterfaceImpls.find(typeName);
+    const auto interface = interfaceDecls.find(interfaceName);
+    if (implementations == genericInterfaceImpls.end() || interface == interfaceDecls.end()) {
+        return {};
+    }
+    for (const ImplDecl *implementation : implementations->second) {
+        if (BaseTypeNameImpl(*implementation->interfaceName) != interface->second->name) {
+            continue;
+        }
+        // The instance's methods are emitted into this module as its other generic instances are, so the table is
+        // the module's own too: its label carries the module, and two modules never define the same one.
+        const std::string label = std::format("__vtable__{}__{}__{:016x}", MangleTypeName(type),
+                                              interface->second->name, std::hash<std::string>{}(currentFile));
+        HirImplBlock block;
+        block.typeName = typeName;
+        block.interfaceName = interface->second->name;
+        block.location = implementation->location;
+        block.vtableLabel = label;
+        const TypeRef savedSelfType = currentSelfType;
+        for (const auto &requirement : interface->second->methods) {
+            const auto method = std::ranges::find_if(implementation->methods, [&](const auto &candidate) {
+                return candidate->name == requirement->name && candidate->typeParams.empty();
+            });
+            if (method == implementation->methods.end()) {
+                return {};
+            }
+            block.vtableEntries.push_back(ConcreteMethodCalleeName(typeName, type, **method));
+        }
+        currentSelfType = savedSelfType;
+        instanceVtableLabels.emplace(key, label);
+        instanceVtables.push_back(std::move(block));
+        return label;
+    }
+    return {};
+}
+
 std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRef &expressionType,
                                                                     const TypeRef &targetType) const {
     TypeRef target = targetType->kind == TypeRef::Kind::Reference && !targetType->inner.empty()
@@ -512,7 +559,13 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
     }
     const auto hasVtable = [&](const TypeRef &type) {
         const auto implementation = typeInterfaceVtables.find(type.ToString());
-        return implementation != typeInterfaceVtables.end() && implementation->second.contains(target->name);
+        if (implementation != typeInterfaceVtables.end() && implementation->second.contains(target->name)) {
+            return true;
+        }
+        // A generic extension implements the interface for every instantiation it applies to.
+        const auto generic = genericInterfaceImpls.find(NamedBaseTypeName(type));
+        return type->kind == TypeRef::Kind::Named && generic != genericInterfaceImpls.end() &&
+               interfaceDecls.contains(target->name);
     };
     if (hasVtable(expression)) {
         return expression;
@@ -713,13 +766,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
                 coercion->location = expression.location;
                 coercion->type = targetType;
                 coercion->borrowed = true;
-                const auto type = typeInterfaceVtables.find(implementationType->ToString());
-                if (type != typeInterfaceVtables.end()) {
-                    const auto label = type->second.find(referent->name);
-                    if (label != type->second.end()) {
-                        coercion->vtableLabel = label->second;
-                    }
-                }
+                coercion->vtableLabel = InterfaceVtableLabel(*implementationType, referent->name);
                 coercion->value = std::move(lowered);
                 return coercion;
             }
@@ -755,11 +802,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
             coercion->type = targetType;
             const auto interface = interfaceDecls.find(targetType->name);
             if (interface != interfaceDecls.end() && !interface->second->methods.empty()) {
-                if (const auto type = typeInterfaceVtables.find(typeName); type != typeInterfaceVtables.end()) {
-                    if (const auto label = type->second.find(targetType->name); label != type->second.end()) {
-                        coercion->vtableLabel = label->second;
-                    }
-                }
+                coercion->vtableLabel = InterfaceVtableLabel(*implementationType, targetType->name);
             }
             // A value with a destructor that an interface value takes over lives in a hidden local of the scope the
             // coercion is written in, which destroys it when the scope ends, as it would a named local; the interface

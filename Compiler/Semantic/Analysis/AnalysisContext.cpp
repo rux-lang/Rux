@@ -72,6 +72,18 @@ bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, con
     if (implements(expressionType)) {
         return true;
     }
+    // A generic extension implements the interface for every instantiation it applies to. Each one converted is an
+    // instance of its methods, which the vtable the conversion lowers to calls.
+    if (const ImplDecl *generic = GenericInterfaceImplementation(expressionType, *target->second)) {
+        auto &self = const_cast<AnalysisContext &>(*this);
+        const auto substitutions = self.MethodTypeSubstitutions(expressionType);
+        for (const auto &method : generic->methods) {
+            if (method->typeParams.empty()) {
+                self.QueueGenericInstantiation(*method, substitutions, generic->location);
+            }
+        }
+        return true;
+    }
     // A writable view weakens to a read-only one, and an interface implemented for the read-only view is reached the
     // same way: `var char8[..]` is passed where `Display` is wanted as its `char8[..]` would be.
     if (expressionType.IsWritableSlice()) {

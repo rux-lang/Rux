@@ -68,6 +68,7 @@ AstToHirContext::AstToHirContext(const AstToHirContext &prepared, std::vector<Di
     , methodsByType(prepared.methodsByType)
     , interfaceDecls(prepared.interfaceDecls)
     , typeInterfaceVtables(prepared.typeInterfaceVtables)
+    , genericInterfaceImpls(prepared.genericInterfaceImpls)
     , methodImpl(prepared.methodImpl)
     , cleanupPlanner(prepared.model)
     , functionOrigins(prepared.functionOrigins)
@@ -84,6 +85,7 @@ void AstToHirContext::ResetModuleState() {
     zeroizationOrdinal = 0;
     nativeOrdinal = 0;
     returnOrdinal = 0;
+    interfaceValueOrdinal = 0;
     cleanupPlanner.ResetBindingIds();
 }
 
@@ -478,6 +480,9 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
             if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
                 typeInterfaceVtables[typeName][identity->interfaceName] = identity->linkerName;
             }
+            else if (!ImplTypeParams(*implDecl).empty()) {
+                genericInterfaceImpls[typeName].push_back(implDecl);
+            }
         }
     }
 }
@@ -504,6 +509,11 @@ HirModule AstToHirContext::LowerModule(const Module &module) {
     }
     monomorphizedFuncs.clear();
     generatedMonomorphizedFuncNames.clear();
+    for (HirImplBlock &vtable : instanceVtables) {
+        loweredModule.impls.push_back(std::move(vtable));
+    }
+    instanceVtables.clear();
+    instanceVtableLabels.clear();
     declarationOnly = false;
 
     // Lowering an instantiation's fields resolves types of its own, so the queue is walked by index rather than

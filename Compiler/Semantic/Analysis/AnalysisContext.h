@@ -534,6 +534,10 @@ private:
     /// Whether a method's extension is one of `receiver`'s: `extend Pair<int32>` extends `Pair<int32>` and no other
     /// instantiation, while `extend Pair<T>` and `extend Pair` extend them all.
     [[nodiscard]] bool ExtensionAppliesTo(const FuncDecl &method, const TypeRef &receiver) const;
+    [[nodiscard]] bool ImplementationAppliesTo(const ImplDecl &implementation, const TypeRef &receiver) const;
+    /// The generic extension that implements `interface` for `type`, an instantiation of the type it extends.
+    [[nodiscard]] const ImplDecl *GenericInterfaceImplementation(const TypeRef &type,
+                                                                 const InterfaceDecl &interface) const;
     /// The methods of `receiver` named `methodName`, accessible or not, whose extension is one of the receiver's.
     [[nodiscard]] std::vector<const FuncDecl *> ApplicableMethods(const TypeRef &receiver,
                                                                   const std::string &methodName) const;
