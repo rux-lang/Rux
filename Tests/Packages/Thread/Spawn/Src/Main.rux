@@ -31,8 +31,13 @@ func Identify(unused: uint8) -> uint64 {
     return CurrentId();
 }
 
-func Bump(counter: *var uint64) -> () {
+// Written without a return type, which is a function returning the unit, so its threads join to `()`.
+func Bump(counter: *var uint64) {
     AtomicFetchAdd(counter, 1u64, MemoryOrder::Release);
+}
+
+func BumpTwice(counter: *var uint64) -> () {
+    AtomicFetchAdd(counter, 2u64, MemoryOrder::Release);
 }
 
 // Starts a thread and lets its handle go out of scope, which detaches it.
@@ -85,6 +90,13 @@ func Main() -> int {
         Yield();
         spins = spins + 1u64;
     }
+
+    // A thread without a result and one returning the unit join the same way.
+    var unitless = Spawn(Bump, @finished) catch { else => return 31 };
+    var unit = Spawn(BumpTwice, @finished) catch { else => return 32 };
+    unitless.Join();
+    unit.Join();
+    Assert(AtomicLoad(@finished, MemoryOrder::Acquire) == 5u64, "joined threads without a result ran");
 
     // A larger stack holds a deeper recursion.
     let options = ThreadOptions().WithStackSize(16u * 1024u * 1024u);

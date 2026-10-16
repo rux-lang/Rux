@@ -156,7 +156,7 @@ struct Work {
     finished: Mutex<uint64>;
 }
 
-func FinishWork(work: Work) -> () {
+func FinishWork(work: Work) {
     Increment(work.finished);
     work.group.Done();
 }

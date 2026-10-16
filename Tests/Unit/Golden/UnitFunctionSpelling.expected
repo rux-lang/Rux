@@ -1,0 +1,2 @@
+15:10: error: no matching overload for 'Takes' with argument types (())
+16:10: error: no matching overload for 'Takes' with argument types (func())

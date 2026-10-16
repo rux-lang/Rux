@@ -56,7 +56,14 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
             if (val != LirNoReg && !retType.IsUnknown() && (*s->value)->type != retType) {
                 val = EmitCast(val, (*s->value)->type, retType);
             }
-            Return({val}, retType);
+            // A generic instantiated for a void function, such as a `Join` whose result type is a function's missing
+            // return type, returns that "value" as nothing.
+            if (val == LirNoReg && retType.IsOpaque()) {
+                Return(std::nullopt, retType);
+            }
+            else {
+                Return({val}, retType);
+            }
         }
         else {
             EmitActivePartialCleanups();

@@ -18,7 +18,7 @@ using ParserDumpDetail::DeclarationPrinter;
         if (index != 0) {
             result += ", ";
         }
-        result += types[index].ToString();
+        result += types[index].DisplayString();
     }
     return result;
 }

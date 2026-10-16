@@ -492,6 +492,11 @@ HirTypeLayout HirToLirContext::TypeLayoutOf(const TypeRef &type) const {
 }
 
 LirReg HirToLirContext::EmitLoad(LirReg ptr, TypeRef type) {
+    // The result of a void call has no register, so a generic slot of that type holds nothing to read back: the
+    // store into it was dropped, and so is the load.
+    if (type.IsOpaque()) {
+        return LirNoReg;
+    }
     const LirReg r = NewReg();
     LirInstr i;
     i.dst = r;
@@ -514,6 +519,9 @@ LirReg HirToLirContext::EmitNamedLoad(std::string name, TypeRef type) {
 }
 
 void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type, const bool isVolatile) {
+    if (val == LirNoReg && type.IsOpaque()) {
+        return;
+    }
     LirInstr i;
     i.dst = LirNoReg;
     i.op = LirOpcode::Store;

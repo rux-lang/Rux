@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -418,8 +419,9 @@ struct TypeRef {
 
     /// The spelling a diagnostic shows for a value of this type. It is `ToString()`, except for the two internal
     /// placeholders `opaque` stands in: "no value" (a call to a function without a return type, an assignment) reads
-    /// as the unit `()`, and the still-untyped absence of a bare `none` reads as `none`. Source writes `opaque` only
-    /// behind a pointer, so neither placeholder can be mistaken for a written type.
+    /// as the unit `()`, and the still-untyped absence of a bare `none` reads as `none`. A function type without a
+    /// return type is spelled without its arrow, as source writes it. Source writes `opaque` only behind a pointer, so
+    /// no placeholder can be mistaken for a written type.
     [[nodiscard]] std::string DisplayString() const;
 
     /// The name a generic instantiation is identified by: `Base<Arg, Arg>`, or plain `Base` with no arguments. One
@@ -633,7 +635,21 @@ inline std::string TypeRef::DisplayString() const {
     if (node->kind == Kind::Optional && node->inner.size() == 1 && node->inner[0].IsOpaque()) {
         return "none";
     }
-    return ToString();
+    // A function without a return type is written without an arrow, `func(T)`, and reads that way wherever it appears
+    // in the spelling; `opaque` after an arrow is only ever that placeholder, since a written one sits behind a
+    // pointer.
+    std::string spelling = ToString();
+    constexpr std::string_view placeholder = " -> opaque";
+    for (std::size_t at = spelling.find(placeholder); at != std::string::npos; at = spelling.find(placeholder, at)) {
+        const std::size_t end = at + placeholder.size();
+        if (end < spelling.size() &&
+            (std::isalnum(static_cast<unsigned char>(spelling[end])) || spelling[end] == '_')) {
+            at = end;
+            continue;
+        }
+        spelling.erase(at, placeholder.size());
+    }
+    return spelling;
 }
 } // namespace Rux
 
