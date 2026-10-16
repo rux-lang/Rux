@@ -370,6 +370,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         if (isAssignable && simpleAssignment && target->kind != TypeRef::Kind::Reference) {
             ReportPartWriteIntoEmptyLocal(*assignment->target, "write", assignment->location);
             RecordPlaceReplacement(*assignment, writtenReference != nullptr);
+            CheckViewAssignment(*assignment->target, *assignment->value, target, assignment->location);
         }
         if (isAssignable && !simpleAssignment && !target.IsUnknown() && !value.IsUnknown()) {
             const TypeRef result = CheckBinary(assignment->op, target, value, *assignment->target, *assignment->value,

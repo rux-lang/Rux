@@ -69,6 +69,9 @@ bool AnalysisContext::MayNeedDestruction(const TypeRef &type) {
 Symbol *AnalysisContext::DefineTrackedLocal(Symbol symbol, const bool initialized) {
     Symbol *defined = Define(std::move(symbol));
     if (defined) {
+        // A new local starts with no views; its storage may reuse an address a finished scope's local had.
+        functionLocals.insert(defined);
+        viewSources.erase(defined);
         // Fixed arrays are raw inline storage and may be populated element-by-element. Until element-level definite
         // initialization exists, tracking the aggregate as uninitialized produces false paths for every fill loop. An
         // array whose elements need destruction cannot be filled that way, because its drop flag covers it whole and

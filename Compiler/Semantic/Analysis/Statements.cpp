@@ -425,6 +425,12 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             return;
         }
 
+        // What the initializer's views point into is read before the binding is defined, while its names still mean
+        // what they meant in the initializer.
+        std::vector<const Symbol *> initialViews;
+        if (initializerAccepted && TypeHoldsView(declarationType)) {
+            initialViews = LocalArraysViewed(*letStatement->init, declarationType);
+        }
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
         symbol.name = letStatement->name;
@@ -432,6 +438,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         symbol.type = declarationType;
         symbol.isMut = letStatement->isMut;
         Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr || defaultConstructor);
+        if (defined && !initialViews.empty()) {
+            viewSources[defined] = std::move(initialViews);
+        }
         if (defined && defined->type.IsFallible()) {
             fallibleLocals.push_back({defined, currentScope});
         }
@@ -719,6 +728,15 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
         EmitError(location, std::format("'return' requires a value of type '{}'", currentReturnType.ToString()));
     }
     if (returnAccepted) {
+        // A view the result holds is converted to the success or present value it travels in.
+        TypeRef viewTarget = currentReturnType;
+        if (viewTarget.IsFallible()) {
+            viewTarget = viewTarget.FallibleSuccess();
+        }
+        else if (viewTarget.IsOptional() && !viewTarget->inner.empty()) {
+            viewTarget = viewTarget->inner.front();
+        }
+        CheckViewEscape(*value, viewTarget, location, "returned value");
         ConsumeRecordedValue(*value, ValueConsumptionKind::Return, location);
     }
     trackedFlowReachable = false;

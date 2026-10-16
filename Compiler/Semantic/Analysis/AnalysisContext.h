@@ -397,6 +397,20 @@ private:
     /// pointer shares is its user's to vouch for.
     [[nodiscard]] std::optional<std::string> UnsendablePart(const TypeRef &type);
     void ValidateStoredType(const TypeRef &type, SourceLocation location, std::string_view subject);
+    /// Whether a value of `type` holds a view -- a slice, in itself or in any field, element or payload -- whose
+    /// storage must outlive the value. Pointers do not count: what a raw pointer reaches is its user's to vouch for.
+    [[nodiscard]] bool TypeHoldsView(const TypeRef &type);
+    /// The arrays local to the current function, parameters passed by value included, that a view in `expression`
+    /// may point into once it is converted to `targetType`: slices of them, the views locals were given from them,
+    /// and aggregates built from either.
+    [[nodiscard]] std::vector<const Symbol *> LocalArraysViewed(const Expr &expression, const TypeRef &targetType);
+    /// Records what a local's views may point into after it takes `value`, adding to what it held before.
+    void RecordViewSources(const Symbol &local, const Expr &value, const TypeRef &type);
+    /// Reports a value that leaves the function, as `what` says, while it views one of the function's local arrays.
+    void CheckViewEscape(const Expr &value, const TypeRef &type, SourceLocation location, std::string_view what);
+    /// After an assignment: a store into a local records the views it took; a store that outlives the call, into a
+    /// module variable or through a pointer or reference, may not take a view of a local array.
+    void CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType, SourceLocation location);
     /// Rejects a type that `HasCAbiMapping` refuses where it would cross a C ABI boundary as `subject`: the type
     /// itself, or any scalar a by-value aggregate of it holds -- a struct or union field, an array element or a tuple
     /// element, however deeply nested. A pointer, reference or slice crosses as an address, so nothing behind one is
@@ -963,6 +977,13 @@ private:
     std::unordered_set<std::string> referenceStorageChecks;
     /// The types `UnsendablePart` is inside, so a recursive type ends its own walk.
     std::unordered_set<std::string> sendableChecks;
+    /// The answers of `TypeHoldsView`, and the types it is inside, so a recursive type ends its own walk.
+    std::unordered_map<std::string, bool> viewHoldingTypes;
+    std::unordered_set<std::string> viewHoldingChecks;
+    /// The locals of the functions being checked, parameters included: the storage that ends with the call.
+    std::unordered_set<const Symbol *> functionLocals;
+    /// For each local holding views, the local arrays those views may point into.
+    std::unordered_map<const Symbol *, std::vector<const Symbol *>> viewSources;
     bool checkingPlainAssignmentTarget = false;
     bool checkingBorrowProjectionRoot = false;
     /// The field path, such as `start.x`, that the local about to be read is read through, so a part written on its

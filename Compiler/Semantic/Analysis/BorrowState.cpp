@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <format>
+#include <functional>
 #include <ranges>
+#include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -919,5 +923,255 @@ void AnalysisContext::ValidateStoredType(const TypeRef &type, const SourceLocati
                   {"references are non-owning aliases and cannot escape into aggregate storage"},
                   "store the owned value or a raw pointer when an address must outlive the borrow");
     }
+}
+} // namespace Rux::SemanticDetail
+
+namespace Rux::SemanticDetail {
+bool AnalysisContext::TypeHoldsView(const TypeRef &type) {
+    if (type.IsSlice()) {
+        return true;
+    }
+    if (type->kind == TypeRef::Kind::Array || type->kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
+        type.IsFallible()) {
+        return std::ranges::any_of(type->inner, [&](const TypeRef &element) { return TypeHoldsView(element); });
+    }
+    if (type->kind != TypeRef::Kind::Named) {
+        return false;
+    }
+    if (const auto known = viewHoldingTypes.find(type->name); known != viewHoldingTypes.end()) {
+        return known->second;
+    }
+    if (!viewHoldingChecks.insert(type->name).second) {
+        return false;
+    }
+    const std::string base = BaseTypeName(type->name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
+    const auto substitutionsFor = [&](const std::vector<TypeParameter> &parameters) {
+        std::unordered_map<std::string, TypeRef> substitutions;
+        for (std::size_t index = 0; index < std::min(arguments.size(), parameters.size()); ++index) {
+            substitutions.emplace(parameters[index].name, arguments[index]);
+        }
+        return substitutions;
+    };
+    bool holds = false;
+    if (const auto structure = structDecls.find(base); structure != structDecls.end()) {
+        const auto substitutions = substitutionsFor(structure->second->typeParams);
+        holds = std::ranges::any_of(structure->second->fields, [&](const StructDecl::Field &field) {
+            return TypeHoldsView(ResolveTypeWithSubstitution(*field.type, substitutions));
+        });
+    }
+    else if (const auto enumeration = enumDecls.find(base); enumeration != enumDecls.end()) {
+        const auto substitutions = substitutionsFor(enumeration->second->typeParams);
+        for (const EnumDecl::Variant &variant : enumeration->second->variants) {
+            for (const auto &field : variant.fields) {
+                holds = holds || TypeHoldsView(ResolveTypeWithSubstitution(*field, substitutions));
+            }
+            for (const auto &field : variant.namedFields) {
+                holds = holds || TypeHoldsView(ResolveTypeWithSubstitution(*field.type, substitutions));
+            }
+        }
+    }
+    else if (const auto unionType = unionDecls.find(base); unionType != unionDecls.end()) {
+        holds = std::ranges::any_of(unionType->second->fields, [&](const UnionDecl::Field &field) {
+            return TypeHoldsView(ResolveType(*field.type));
+        });
+    }
+    viewHoldingChecks.erase(type->name);
+    viewHoldingTypes.emplace(type->name, holds);
+    return holds;
+}
+
+namespace {
+/// The local whose own storage `expression` names: the local itself, or a part of it reached by fields and indexes,
+/// never through a pointer, a reference or a view, which reach storage the local does not hold.
+const Symbol *LocalStorageRoot(const Expr &expression, Scope &scope, const std::unordered_set<const Symbol *> &locals,
+                               const std::function<TypeRef(const Expr &)> &typeOf) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
+        const Symbol *symbol = scope.Lookup(identifier->name);
+        if (symbol == nullptr || symbol->kind != Symbol::Kind::Var || !locals.contains(symbol)) {
+            return nullptr;
+        }
+        const TypeRef &type = symbol->type;
+        const bool indirect =
+            type->kind == TypeRef::Kind::Reference || type->kind == TypeRef::Kind::Pointer || type.IsSlice();
+        return indirect ? nullptr : symbol;
+    }
+    const Expr *object = nullptr;
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
+        object = field->object.get();
+    }
+    else if (const auto *index = AstCast<const IndexExpr>(&expression);
+             index && !AstCast<const RangeExpr>(index->index.get())) {
+        object = index->object.get();
+    }
+    if (object == nullptr) {
+        return nullptr;
+    }
+    const TypeRef objectType = typeOf(*object);
+    if (objectType->kind == TypeRef::Kind::Reference || objectType->kind == TypeRef::Kind::Pointer ||
+        objectType.IsSlice()) {
+        return nullptr;
+    }
+    return LocalStorageRoot(*object, scope, locals, typeOf);
+}
+
+void AddUnique(std::vector<const Symbol *> &into, const Symbol *symbol) {
+    if (!std::ranges::contains(into, symbol)) {
+        into.push_back(symbol);
+    }
+}
+} // namespace
+
+std::vector<const Symbol *> AnalysisContext::LocalArraysViewed(const Expr &expression, const TypeRef &targetType) {
+    std::vector<const Symbol *> viewed;
+    const std::function<TypeRef(const Expr &)> typeOf = [this](const Expr &part) {
+        return CheckedExpressionType(part);
+    };
+    const auto addAll = [&](const std::vector<const Symbol *> &symbols) {
+        for (const Symbol *symbol : symbols) {
+            AddUnique(viewed, symbol);
+        }
+    };
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
+        return LocalArraysViewed(*move->operand, targetType);
+    }
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
+        addAll(LocalArraysViewed(*ternary->thenExpr, targetType));
+        addAll(LocalArraysViewed(*ternary->elseExpr, targetType));
+        return viewed;
+    }
+    const TypeRef type = typeOf(expression);
+    // A fixed array where a view is expected is viewed in place, as `return buffer` from a function returning a slice.
+    if (type->kind == TypeRef::Kind::Array && targetType.IsSlice()) {
+        if (const Symbol *root = LocalStorageRoot(expression, *currentScope, functionLocals, typeOf)) {
+            AddUnique(viewed, root);
+        }
+        return viewed;
+    }
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
+        if (AstCast<const RangeExpr>(index->index.get())) {
+            // Slicing an array the function holds views its storage; slicing a view views what that view does.
+            if (typeOf(*index->object)->kind == TypeRef::Kind::Array) {
+                if (const Symbol *root = LocalStorageRoot(*index->object, *currentScope, functionLocals, typeOf)) {
+                    AddUnique(viewed, root);
+                }
+                return viewed;
+            }
+            return LocalArraysViewed(*index->object, TypeRef::MakeUnknown());
+        }
+        return TypeHoldsView(type) ? LocalArraysViewed(*index->object, TypeRef::MakeUnknown()) : viewed;
+    }
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
+        return TypeHoldsView(type) ? LocalArraysViewed(*field->object, TypeRef::MakeUnknown()) : viewed;
+    }
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
+        const Symbol *symbol = currentScope->Lookup(identifier->name);
+        if (const auto sources = symbol ? viewSources.find(symbol) : viewSources.end(); sources != viewSources.end()) {
+            addAll(sources->second);
+        }
+        return viewed;
+    }
+    if (const auto *structure = AstCast<const StructInitExpr>(&expression)) {
+        for (const StructInitExpr::Field &field : structure->fields) {
+            addAll(LocalArraysViewed(*field.value, StructFieldType(type, field.name)));
+        }
+        return viewed;
+    }
+    if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
+        const bool sequence = targetType->kind == TypeRef::Kind::Array || targetType.IsSlice();
+        const TypeRef element =
+            sequence && !targetType->inner.empty() ? targetType->inner.front() : TypeRef::MakeUnknown();
+        for (const ExprPtr &item : array->elements) {
+            addAll(LocalArraysViewed(*item, element));
+        }
+        return viewed;
+    }
+    if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
+        for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
+            const TypeRef element = targetType->kind == TypeRef::Kind::Tuple && index < targetType->inner.size()
+                                      ? targetType->inner[index]
+                                      : TypeRef::MakeUnknown();
+            addAll(LocalArraysViewed(*tuple->elements[index], element));
+        }
+    }
+    return viewed;
+}
+
+void AnalysisContext::RecordViewSources(const Symbol &local, const Expr &value, const TypeRef &type) {
+    if (type.IsUnknown() || !TypeHoldsView(type)) {
+        return;
+    }
+    const std::vector<const Symbol *> viewed = LocalArraysViewed(value, type);
+    if (viewed.empty()) {
+        return;
+    }
+    // Every store adds to what the local may view rather than replacing it: a branch that stores another view leaves
+    // the first one possible on the path that skipped it.
+    auto &sources = viewSources[&local];
+    for (const Symbol *symbol : viewed) {
+        AddUnique(sources, symbol);
+    }
+}
+
+void AnalysisContext::CheckViewEscape(const Expr &value, const TypeRef &type, const SourceLocation location,
+                                      const std::string_view what) {
+    if (type.IsUnknown() || !TypeHoldsView(type)) {
+        return;
+    }
+    const std::vector<const Symbol *> viewed = LocalArraysViewed(value, type);
+    if (viewed.empty()) {
+        return;
+    }
+    const Symbol &array = *viewed.front();
+    const std::string function = currentFunctionDecl ? currentFunctionDecl->name : std::string("the function");
+    EmitError(location,
+              std::format("{} views local array '{}', which is freed when '{}' returns", what, array.name, function),
+              {std::format("'{}' is declared at {}:{}", array.name, array.location.line, array.location.column),
+               "a slice is a view of storage it does not own, and that storage must outlive it"},
+              "return an owned container such as a 'Vector', or take the storage as a parameter");
+}
+
+void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType,
+                                          const SourceLocation location) {
+    if (targetType.IsUnknown() || !TypeHoldsView(targetType)) {
+        return;
+    }
+    // Walk to the name the target is part of, noting whether the way there leaves the local's own storage.
+    const Expr *root = &target;
+    bool throughIndirection = false;
+    const auto indirect = [this](const Expr &object, const bool viewIsIndirect) {
+        const TypeRef objectType = CheckedExpressionType(object);
+        return objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference ||
+               (viewIsIndirect && objectType.IsSlice());
+    };
+    while (true) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
+            throughIndirection = throughIndirection || indirect(*field->object, false);
+            root = field->object.get();
+        }
+        else if (const auto *index = AstCast<const IndexExpr>(root)) {
+            throughIndirection = throughIndirection || indirect(*index->object, true);
+            root = index->object.get();
+        }
+        else if (const auto *unary = AstCast<const UnaryExpr>(root); unary && unary->op == TokenKind::Star) {
+            throughIndirection = true;
+            root = unary->operand.get();
+        }
+        else {
+            break;
+        }
+    }
+    const auto *identifier = AstCast<const IdentExpr>(root);
+    const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+    if (symbol == nullptr || symbol->kind != Symbol::Kind::Var) {
+        return;
+    }
+    const bool local = functionLocals.contains(symbol);
+    if (local && !throughIndirection && symbol->type->kind != TypeRef::Kind::Reference) {
+        RecordViewSources(*symbol, value, targetType);
+        return;
+    }
+    // A module variable, or storage reached through a pointer or a reference, outlives the call.
+    CheckViewEscape(value, targetType, location, "stored value");
 }
 } // namespace Rux::SemanticDetail

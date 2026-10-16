@@ -408,7 +408,7 @@ Extension blocks may contain ordinary typed constants as well as methods. The on
 
 ### Writable sequence views
 
-`T[..]` is a read-only slice and `var T[..]` is a writable slice. Both contain a data pointer and an element count. The storage must outlive the view. Copying a view copies its descriptor, not its elements.
+`T[..]` is a read-only slice and `var T[..]` is a writable slice. Both contain a data pointer and an element count. The storage must outlive the view, and within a function the compiler checks it: a value that views an array the function holds — a local, or a parameter passed by value — cannot be returned or stored through a pointer, a reference or into a module variable, whether it is a slice of the array, the array itself converted to a slice, a local given such a view, or a structure, array or tuple built from one. A view that comes back from a call is not followed into the callee, so `Spec::WithOptions(local[..])` returned from a function is not caught. Copying a view copies its descriptor, not its elements.
 
 ```rux
 var values: int[3] = [1, 2, 3];
