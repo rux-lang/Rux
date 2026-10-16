@@ -166,8 +166,8 @@ pub extern {
     /// @param moduleHandle the module, or null for the executable
     /// @param buffer receives the path
     /// @param size how many units `buffer` holds
-    /// @returns the path's length without its terminator, `size` when it was cut, or zero on failure with the reason
-    /// in `GetLastError`
+    /// @returns the path's length without its terminator, `size` when it was cut, or zero on failure with the
+    ///   reason in `GetLastError`
     /// @see https://rux-lang.dev/docs/api/windows/process#get-module-file-name-w
     /// @see https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew
     func GetModuleFileNameW(moduleHandle: *opaque, buffer: *var uint16, size: uint32) -> uint32;
