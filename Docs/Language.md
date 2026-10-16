@@ -389,6 +389,7 @@ Associated constants are source members, visible where they are imported:
 - An alias spelling imports its canonical width: `import Core::byte;` makes both `byte::Max` and `uint8::Max` available, and they are the same constant.
 - A glob import, `import Pkg::Module::*;`, imports the extensions of every primitive that module extends.
 - A user alias such as `type Tiny = int8;` reaches the extensions in force where it is declared and those imported where it is used, so `Tiny::Max` works wherever `Tiny` is visible.
+- An alias of a generic type's instantiation names the constants an extension of that instantiation declares: with `type Hits = Atomic<uint64>;`, `Hits::Zero` is the `Zero` of `extend Atomic<uint64>`, which is how a module variable of a generic type starts as a constant.
 - Depending on Core without importing exposes nothing, and a dependency's imports never reach its consumers.
 - When two imported extensions declare the same constant, a use of it is ambiguous and is rejected; importing both is not.
 

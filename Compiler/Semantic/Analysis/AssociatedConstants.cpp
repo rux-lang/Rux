@@ -96,10 +96,32 @@ AnalysisContext::AssociatedConstantLookup AnalysisContext::LookupAssociatedConst
         }
         return result;
     }
+    // An alias names the constants of the type it stands for, a generic type's instantiation included: with
+    // `type Hits = Atomic<uint64>`, `Hits::Zero` is the `Zero` that `extend Atomic<uint64>` declares.
+    std::string typeName = type.name;
+    std::string typeOwner = type.ownerPackage;
+    if (AstCast<const TypeAliasDecl>(type.declaration) && type.type->kind == TypeRef::Kind::Named) {
+        typeName = type.type->name;
+        const std::string base = BaseTypeName(typeName);
+        const Decl *declaration = nullptr;
+        if (const auto structure = structDecls.find(base); structure != structDecls.end()) {
+            declaration = structure->second;
+        }
+        else if (const auto enumeration = enumDecls.find(base); enumeration != enumDecls.end()) {
+            declaration = enumeration->second;
+        }
+        else if (const auto unionType = unionDecls.find(base); unionType != unionDecls.end()) {
+            declaration = unionType->second;
+        }
+        if (const auto info = declaration ? declarationInfos.find(declaration) : declarationInfos.end();
+            info != declarationInfos.end()) {
+            typeOwner = info->second.ownerPackage;
+        }
+    }
     for (const ImplDecl *implementation : implDecls) {
         const auto owner = declarationInfos.find(implementation);
-        if (owner == declarationInfos.end() || owner->second.ownerPackage != type.ownerPackage ||
-            implementation->typeName != type.name) {
+        if (owner == declarationInfos.end() || owner->second.ownerPackage != typeOwner ||
+            implementation->typeName != typeName) {
             continue;
         }
         for (const auto &constant : implementation->constants) {

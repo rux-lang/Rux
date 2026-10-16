@@ -5,6 +5,14 @@
 import Atomic::Atomic;
 import Core::MemoryOrder;
 
+// A module variable starts as a constant: each width's `Zero`, reached through an alias of its instantiation.
+type Hits = Atomic<uint64>;
+type Level = Atomic<int32>;
+type Flag = Atomic<bool>;
+var Count: Hits = Hits::Zero;
+var Depth: Level = Level::Zero;
+var Ready: Flag = Flag::False;
+
 func Main() -> int {
     let counter = Atomic<int64>(10);
     if counter.Load() != 10 { return 1; }
@@ -68,5 +76,11 @@ func Main() -> int {
     let pointer = Atomic<*int32>(@first as *int32);
     if *pointer.Load() != 1 { return 23; }
     if *pointer.Exchange(@second as *int32) != 1 || *pointer.Load() != 2 { return 24; }
+
+    if Count.Load() != 0u64 || Depth.Load() != 0i32 || Ready.Load() { return 25; }
+    Count.FetchAdd(3u64);
+    Depth.FetchSub(2i32);
+    Ready.Store(true);
+    if Count.Load() != 3u64 || Depth.Load() != -2i32 || !Ready.Load() { return 26; }
     return 0;
 }

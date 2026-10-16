@@ -218,3 +218,84 @@ extend Atomic<T> {
         return AtomicFetchXor(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 }
+
+// Constants a module variable can start as, since a call such as `Atomic(0u64)` is no compile-time value. A generic
+// constant would need a zero of every `T`, so each width declares its own, reached through an alias:
+// `type Hits = Atomic<uint64>;` and then `var Count: Hits = Hits::Zero;`.
+
+extend Atomic<int8> {
+    /// An atomic `int8` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<int8>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int8
+    pub const Zero: Atomic<int8> = Atomic<int8> { value: 0i8 };
+}
+
+extend Atomic<int16> {
+    /// An atomic `int16` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<int16>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int16
+    pub const Zero: Atomic<int16> = Atomic<int16> { value: 0i16 };
+}
+
+extend Atomic<int32> {
+    /// An atomic `int32` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<int32>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int32
+    pub const Zero: Atomic<int32> = Atomic<int32> { value: 0i32 };
+}
+
+extend Atomic<int64> {
+    /// An atomic `int64` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<int64>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int64
+    pub const Zero: Atomic<int64> = Atomic<int64> { value: 0i64 };
+}
+
+extend Atomic<int> {
+    /// An atomic `int` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<int>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int
+    pub const Zero: Atomic<int> = Atomic<int> { value: 0 };
+}
+
+extend Atomic<uint8> {
+    /// An atomic `uint8` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<uint8>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint8
+    pub const Zero: Atomic<uint8> = Atomic<uint8> { value: 0u8 };
+}
+
+extend Atomic<uint16> {
+    /// An atomic `uint16` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<uint16>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint16
+    pub const Zero: Atomic<uint16> = Atomic<uint16> { value: 0u16 };
+}
+
+extend Atomic<uint32> {
+    /// An atomic `uint32` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<uint32>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint32
+    pub const Zero: Atomic<uint32> = Atomic<uint32> { value: 0u32 };
+}
+
+extend Atomic<uint64> {
+    /// An atomic `uint64` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<uint64>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint64
+    pub const Zero: Atomic<uint64> = Atomic<uint64> { value: 0u64 };
+}
+
+extend Atomic<uint> {
+    /// An atomic `uint` holding zero, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<uint>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint
+    pub const Zero: Atomic<uint> = Atomic<uint> { value: 0u };
+}
+
+extend Atomic<bool> {
+    /// An atomic `bool` holding false, as a constant, so a module variable can start as one through an alias of
+    /// `Atomic<bool>`.
+    /// @see https://rux-lang.dev/docs/api/atomic/atomic#false
+    pub const False: Atomic<bool> = Atomic<bool> { value: false };
+}
