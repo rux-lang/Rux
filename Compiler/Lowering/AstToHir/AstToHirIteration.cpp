@@ -36,28 +36,32 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
 
     PushScope();
 
-    // The iterator itself: the subject when it is already one, or what the container's `Iterate` handed out.
-    auto iterator = std::make_unique<HirLetStmt>();
-    iterator->location = statement.location;
-    iterator->isMut = true;
-    iterator->name = iteratorName;
-    iterator->type = iteratorType;
-    HirExprPtr subject = LowerExpr(*statement.iterable);
-    if (fact.kind == ResolvedIteration::Kind::Iterable) {
-        iterator->init = LowerConventionCall(*fact.entry, std::move(subject), statement.location);
-        iterator->type = iterator->init->type;
+    // The iterator itself: the subject when it is already one, or what the container's `Iterate` handed out. An
+    // iterator the source names as a place is advanced where it is, with no local of the loop's own.
+    TypeRef iteratorSlotType = iteratorType;
+    if (!fact.advancesInPlace) {
+        auto iterator = std::make_unique<HirLetStmt>();
+        iterator->location = statement.location;
+        iterator->isMut = true;
+        iterator->name = iteratorName;
+        iterator->type = iteratorType;
+        HirExprPtr subject = LowerExpr(*statement.iterable);
+        if (fact.kind == ResolvedIteration::Kind::Iterable) {
+            iterator->init = LowerConventionCall(*fact.entry, std::move(subject), statement.location);
+            iterator->type = iterator->init->type;
+        }
+        else {
+            iterator->init = std::move(subject);
+        }
+        iteratorSlotType = iterator->type;
+        HirSymbol iteratorSymbol;
+        iteratorSymbol.kind = HirSymbol::Kind::Var;
+        iteratorSymbol.name = iteratorName;
+        iteratorSymbol.type = iteratorSlotType;
+        iteratorSymbol.isMut = true;
+        Define(iteratorSymbol);
+        scope->block.stmts.push_back(std::move(iterator));
     }
-    else {
-        iterator->init = std::move(subject);
-    }
-    const TypeRef iteratorSlotType = iterator->type;
-    HirSymbol iteratorSymbol;
-    iteratorSymbol.kind = HirSymbol::Kind::Var;
-    iteratorSymbol.name = iteratorName;
-    iteratorSymbol.type = iteratorSlotType;
-    iteratorSymbol.isMut = true;
-    Define(iteratorSymbol);
-    scope->block.stmts.push_back(std::move(iterator));
 
     auto loop = std::make_unique<HirLoopStmt>();
     loop->location = statement.location;
@@ -69,11 +73,18 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
 
     // `Next` reports the item or the end, so the loop body is the arm that received an item and the exit is the arm
     // that did not.
-    auto advance = std::make_unique<HirVarExpr>();
-    advance->location = statement.location;
-    advance->name = iteratorName;
-    advance->type = iteratorSlotType;
-    auto reported = LowerConventionCall(*fact.advance, std::move(advance), statement.location);
+    HirExprPtr advanced;
+    if (fact.advancesInPlace) {
+        advanced = LowerExpr(*statement.iterable);
+    }
+    else {
+        auto local = std::make_unique<HirVarExpr>();
+        local->location = statement.location;
+        local->name = iteratorName;
+        local->type = iteratorSlotType;
+        advanced = std::move(local);
+    }
+    auto reported = LowerConventionCall(*fact.advance, std::move(advanced), statement.location);
     const TypeRef reportedType = reported->type;
 
     const std::string itemName = ItemBindingName(ordinal);

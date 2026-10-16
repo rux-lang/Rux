@@ -220,6 +220,9 @@ struct ResolvedIteration {
     const FuncDecl *entry = nullptr;
     /// The native optional `Next` reports: presence continues the loop and outer absence ends it.
     TypeRef reportedType;
+    /// An iterator the source names as a place -- a variable, a field, an element -- is advanced where it is, so the
+    /// loop leaves it where the walk stopped. Any other iterator is a temporary the loop advances.
+    bool advancesInPlace = false;
 };
 
 /// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation

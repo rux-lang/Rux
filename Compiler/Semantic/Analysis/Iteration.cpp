@@ -164,6 +164,26 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.advance = shape.advance;
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
+    // A loop over an iterator variable walks the variable itself, so `Next` writes it, and it has to be writable.
+    const Expr &subject = *statement.iterable;
+    const auto *index = AstCast<const IndexExpr>(&subject);
+    const auto *unary = AstCast<const UnaryExpr>(&subject);
+    const bool place = AstCast<const IdentExpr>(&subject) || AstCast<const SelfExpr>(&subject) ||
+                       AstCast<const FieldExpr>(&subject) || (index && !IsIndexOperatorCall(*index)) ||
+                       (unary && unary->op == TokenKind::Star);
+    if (shape.kind == IterationShape::Kind::Iterator && place) {
+        iteration.advancesInPlace = true;
+        if (PlaceIsImmutable(subject)) {
+            const auto *identifier = AstCast<const IdentExpr>(&subject);
+            const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+            EmitError(subject.location,
+                      identifier ? std::format("cannot advance immutable iterator '{}'", identifier->name)
+                                 : std::string("cannot advance an immutable iterator"),
+                      {"a loop over an iterator advances it where it is, and 'Next' writes it"},
+                      binding && binding->kind == Symbol::Kind::Var ? ImmutableBindingHelp(*binding)
+                                                                    : std::optional<std::string>{});
+        }
+    }
     iterations.insert_or_assign(&statement, iteration);
 }
 

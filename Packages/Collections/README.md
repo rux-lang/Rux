@@ -112,7 +112,7 @@ All three borrow their storage. The storage must outlive the iterator and every 
 
 `IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as `(<-values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
 
-A `for` loop over an iterator _value_ walks a copy of it, so the iterator the caller holds is left where it was. A loop is not a way to advance an iterator someone else is also reading.
+A `for` loop over an iterator _variable_ advances that variable, so a loop that stops early leaves it where the walk stopped and a later loop or `Next` call resumes there. Iterate over a fresh iterator, or over the container, to walk from the start without touching the caller's.
 
 For example, `for element in numbers.MutableReferences() { *element = *element * 2; }` doubles the stored numbers.
 

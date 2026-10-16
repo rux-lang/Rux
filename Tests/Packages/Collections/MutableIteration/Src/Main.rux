@@ -63,8 +63,8 @@ func Main() -> int {
     Assert(*readable == 11, "read-only iteration sees the same storage");
     var copied = MutableReferenceIterator<int32>(view);
     for element in copied { *element = *element * 2; }
-    Assert(copied.Next() is *var int32, "for walks a cursor copy");
-    Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the copied cursor still borrows original elements");
+    Assert(copied.Next() == none, "for advances the cursor variable itself");
+    Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the cursor borrows the original elements");
 
     var system = SystemAllocator();
     let allocator: Allocator = system;

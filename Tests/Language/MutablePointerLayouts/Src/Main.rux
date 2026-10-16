@@ -57,10 +57,11 @@ func Main() -> int {
     match first { .Some(pointer) => { if *pointer != 1 { return 1; } }, .None => { return 2; } }
     for pointer in cursor { Change<int32>(pointer, Inspect<int32>(pointer) + 10); }
     if values[0] != 11 || values[1] != 12 || values[2] != 13 { return 3; }
-    // The for loop owns a copy of its cursor. Exhaust the original with direct calls as well.
+    // The for loop advances the cursor itself, so it is exhausted; a fresh one walks the changed values again.
+    var again = Cursor<int32> { data: @values[0], length: 3, position: 0 };
     var sum = 0;
     loop {
-        match cursor.Next() { pointer? => { sum = sum + *pointer; }, none => { break; } }
+        match again.Next() { pointer? => { sum = sum + *pointer; }, none => { break; } }
     }
     if sum != 36 { return 11; }
     match cursor.Next() { _? => { return 4; }, none => {} }

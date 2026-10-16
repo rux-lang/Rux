@@ -86,14 +86,13 @@ const std::string kIterationPrelude = R"(
 TEST_CASE("a loop over an iterator advances it and matches what it reports") {
     const HirPackage package = LowerSource(kIterationPrelude + R"(
         func Walk() -> int32 {
-            var counter = Counter { value: 0i32, limit: 3i32 };
             var total = 0i32;
-            for item in counter { total = total + item; }
+            for item in (Counter { value: 0i32, limit: 3i32 }) { total = total + item; }
             return total;
         }
     )");
 
-    const HirScopeStmt &scope = RequireIterationScope(RequireFunction(package, "Walk"), 2);
+    const HirScopeStmt &scope = RequireIterationScope(RequireFunction(package, "Walk"), 1);
     // The iterator is a local of the loop's own scope, so nothing is allocated and nothing outlives the loop.
     const auto *iterator = dynamic_cast<const HirLetStmt *>(scope.block.stmts.front().get());
     REQUIRE(iterator != nullptr);
@@ -120,14 +119,13 @@ TEST_CASE("a loop over an iterator advances it and matches what it reports") {
 TEST_CASE("the item arm binds the loop variable and the end arm leaves the loop") {
     const HirPackage package = LowerSource(kIterationPrelude + R"(
         func Walk() -> int32 {
-            var counter = Counter { value: 0i32, limit: 3i32 };
             var total = 0i32;
-            for item in counter { total = total + item; }
+            for item in (Counter { value: 0i32, limit: 3i32 }) { total = total + item; }
             return total;
         }
     )");
 
-    const HirMatchStmt &step = RequireAdvanceStep(RequireIterationScope(RequireFunction(package, "Walk"), 2));
+    const HirMatchStmt &step = RequireAdvanceStep(RequireIterationScope(RequireFunction(package, "Walk"), 1));
     const auto *itemBody = dynamic_cast<const HirBlockExpr *>(step.arms[0].body.get());
     REQUIRE(itemBody != nullptr);
     REQUIRE_FALSE(itemBody->block.stmts.empty());
@@ -164,16 +162,14 @@ TEST_CASE("nested convention-driven loops advance separate iterators") {
     const HirPackage package = LowerSource(kIterationPrelude + R"(
         func Walk() -> int32 {
             var count = 0i32;
-            var outer = Counter { value: 0i32, limit: 3i32 };
-            for first in outer {
-                var inner = Counter { value: 0i32, limit: 3i32 };
-                for second in inner { count = count + 1i32; }
+            for first in (Counter { value: 0i32, limit: 3i32 }) {
+                for second in (Counter { value: 0i32, limit: 3i32 }) { count = count + 1i32; }
             }
             return count;
         }
     )");
 
-    const HirScopeStmt &outerScope = RequireIterationScope(RequireFunction(package, "Walk"), 2);
+    const HirScopeStmt &outerScope = RequireIterationScope(RequireFunction(package, "Walk"), 1);
     const auto *outerIterator = dynamic_cast<const HirLetStmt *>(outerScope.block.stmts.front().get());
     REQUIRE(outerIterator != nullptr);
 
@@ -189,6 +185,35 @@ TEST_CASE("nested convention-driven loops advance separate iterators") {
     const auto *innerIterator = dynamic_cast<const HirLetStmt *>(innerScope->block.stmts.front().get());
     REQUIRE(innerIterator != nullptr);
     CHECK_NE(outerIterator->name, innerIterator->name);
+}
+
+TEST_CASE("a loop over an iterator variable advances the variable where it is") {
+    const HirPackage package = LowerSource(kIterationPrelude + R"(
+        func Walk() -> int32 {
+            var counter = Counter { value: 0i32, limit: 3i32 };
+            var total = 0i32;
+            for item in counter { total = total + item; }
+            return total;
+        }
+    )");
+
+    // No local of the loop's own: the scope holds only the loop, and `Next` is called on the variable's address.
+    const HirScopeStmt &scope = RequireIterationScope(RequireFunction(package, "Walk"), 2);
+    REQUIRE_EQ(scope.block.stmts.size(), 1);
+    const auto *loop = dynamic_cast<const HirLoopStmt *>(scope.block.stmts.front().get());
+    REQUIRE(loop != nullptr);
+    REQUIRE_EQ(loop->body.stmts.size(), 1);
+    const auto *step = dynamic_cast<const HirMatchStmt *>(loop->body.stmts.front().get());
+    REQUIRE(step != nullptr);
+    CHECK_EQ(CalleeName(*step->subject), "Counter::Next");
+    const auto *call = dynamic_cast<const HirCallExpr *>(step->subject.get());
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(call->args.size(), 1);
+    const auto *address = dynamic_cast<const HirUnaryExpr *>(call->args.front().get());
+    REQUIRE(address != nullptr);
+    const auto *variable = dynamic_cast<const HirVarExpr *>(address->operand.get());
+    REQUIRE(variable != nullptr);
+    CHECK_EQ(variable->name, "counter");
 }
 
 TEST_CASE("arrays, slices and ranges keep the direct loop they already lowered to") {
