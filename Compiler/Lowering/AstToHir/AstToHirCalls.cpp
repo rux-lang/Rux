@@ -101,6 +101,12 @@ HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr 
         receiver->type = declared.IsUnknown() ? receiver->type : declared;
         return receiver;
     }
+    // A view receiver is the view, which a call passes by its address as it passes any view argument, so it needs no
+    // address taken; a writable view calling a read-only view's method is weakened to the view the method takes.
+    if (receiver->type.IsSlice() && declared.IsSlice()) {
+        receiver->type = declared;
+        return receiver;
+    }
     auto address = std::make_unique<HirUnaryExpr>();
     address->location = receiver->location;
     address->op = TokenKind::At;

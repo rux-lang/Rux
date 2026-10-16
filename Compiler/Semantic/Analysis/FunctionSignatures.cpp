@@ -189,6 +189,10 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
             programIndex.BindImplementationMethods(*extension, NamedBaseTypeName(receiver),
                                                    extension->interfaceName ? NominalTypeName(*extension->interfaceName)
                                                                             : std::string{});
+            // The methods of a read-only view are a writable view's too; those of `extend var T[..]` stay its own.
+            if (receiver.IsSlice() && !receiver.IsWritableSlice()) {
+                programIndex.ShareImplementationMethods(*extension, receiver.WithWritableInner(true).ToString());
+            }
         }
         for (const auto &method : extension->methods) {
             auto parameters = receiverParameters;
@@ -260,6 +264,10 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
             programIndex.BindImplementationMethods(*extension, NamedBaseTypeName(receiver),
                                                    extension->interfaceName ? NominalTypeName(*extension->interfaceName)
                                                                             : std::string{});
+            // The methods of a read-only view are a writable view's too; those of `extend var T[..]` stay its own.
+            if (receiver.IsSlice() && !receiver.IsWritableSlice()) {
+                programIndex.ShareImplementationMethods(*extension, receiver.WithWritableInner(true).ToString());
+            }
         }
         for (const auto &method : extension->methods) {
             auto parameters = receiverParameters;

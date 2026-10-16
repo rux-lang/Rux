@@ -203,7 +203,9 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
     // Slice extension methods are keyed on the full element-specific spelling (e.g. `int[..]`) so `extend
     // int[..]` stays distinct from `extend char8[..]`; named types collapse to their base name so generic
     // instantiations share one method set.
-    if (named->IsSlice()) {
+    // A fixed array is keyed the same way, by its element and its length, so `extend int[3]` is the method set of
+    // exactly `int[3]`.
+    if (named->IsSlice() || ((*named)->kind == TypeRef::Kind::Array && (*named)->arrayLength)) {
         return named->ToString();
     }
     if ((*named)->kind == TypeRef::Kind::Named) {

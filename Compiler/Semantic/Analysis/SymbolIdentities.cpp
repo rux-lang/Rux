@@ -126,7 +126,16 @@ std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const Type
 
 void AnalysisContext::RecordMethodIdentityRecipe(ResolvedCallableBinding &binding, const FuncDecl &method) const {
     assert(binding.receiverType && "method binding is missing its receiver type");
-    const std::string typeName = NamedBaseTypeName(*binding.receiverType);
+    std::string typeName = NamedBaseTypeName(*binding.receiverType);
+    // A concrete extension names its methods after its own type, which the receiver need not spell the same way: a
+    // writable view calls the methods of `extend int[..]`, and they are `int[..]::...` whoever calls them.
+    if (const auto implementation = methodImpls.find(&method);
+        implementation != methodImpls.end() && ImplTypeParams(*implementation->second).empty()) {
+        if (const auto extended = typeNodeTypes.find(implementation->second->extendedType.get());
+            extended != typeNodeTypes.end()) {
+            typeName = NamedBaseTypeName(extended->second);
+        }
+    }
     binding.linkerNameBase = typeName + "::" + method.name;
     binding.linkerNameHasOverloadSignature = MethodIsOverloadedForIdentity(typeName, method.name);
     if (binding.linkerNameHasOverloadSignature) {

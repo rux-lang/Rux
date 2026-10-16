@@ -118,6 +118,9 @@ public:
 
     void BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName,
                                    const std::string &interfaceName = {});
+    /// Makes an extension's methods also callable on `receiverName`, keeping them where they are: a writable view
+    /// can do whatever a read-only view of the same elements can.
+    void ShareImplementationMethods(const ImplDecl &declaration, const std::string &receiverName);
     void CollectModule(const Module &module, const std::string *packageName, const ResolveType &resolveType);
     /// Define `declaration` in `scope`; `lookupScope`, the file's own scope by default, is where its signature and body
     /// are later resolved.

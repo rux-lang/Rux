@@ -325,6 +325,14 @@ const std::string *SemanticProgramIndex::FileImporting(const Scope &root, const 
     return nullptr;
 }
 
+void SemanticProgramIndex::ShareImplementationMethods(const ImplDecl &declaration, const std::string &receiverName) {
+    for (const auto &method : declaration.methods) {
+        auto &candidates = methods[receiverName][method->name];
+        if (!std::ranges::contains(candidates, method.get()))
+            candidates.push_back(method.get());
+    }
+}
+
 void SemanticProgramIndex::BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName,
                                                      const std::string &interfaceName) {
     const std::string base = BaseTypeName(declaration.typeName);
