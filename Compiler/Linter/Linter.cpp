@@ -418,6 +418,9 @@ private:
         else if (const auto *enumeration = AstCast<const EnumDecl>(&decl)) {
             typeParameters = &enumeration->typeParams;
         }
+        else if (const auto *interface = AstCast<const InterfaceDecl>(&decl)) {
+            typeParameters = &interface->typeParams;
+        }
 
         for (const auto &tag : decl.documentation.tags) {
             const bool duplicate = std::ranges::any_of(decl.documentation.issues, [&](const auto &issue) {

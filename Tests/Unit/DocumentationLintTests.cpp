@@ -36,6 +36,10 @@ struct Box<T> {}
 /// @typeParam T Carried value type.
 variant Option<T> { None, Some(T) }
 
+/// Yields values one at a time.
+/// @typeParam T Yielded value type.
+interface Cursor<T> {}
+
 /// Reads bytes.
 /// @param buffer Destination bytes.
 /// @returns Bytes read.
