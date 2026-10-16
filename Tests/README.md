@@ -112,7 +112,7 @@ Related C++ cases are grouped by responsibility: semantic type and binding facts
 
 ## Running Concurrently
 
-Use `./Bin/rux test --release --jobs 16` (with `.exe` on Windows), or repository helpers with `-Jobs N` / `--jobs N`. Helpers and CI default to at most four available processors; direct `rux test` defaults to one. Failures do not cancel later packages. Output and diagnostics are collected per package and rendered in discovery order, with artifact collisions serialized.
+Use `./Bin/rux test --release --jobs 16` (with `.exe` on Windows), or repository helpers with `-Jobs N` / `--jobs N`. Helpers and CI default to at most four available processors; direct `rux test` defaults to one per logical core. Failures do not cancel later packages. Output and diagnostics are collected per package and rendered in discovery order, with artifact collisions serialized.
 
 The existing `rux-tests` executable has disjoint CTest source groups: Numeric, Frontend, Lowering, Backends, Driver, Cli, and Optimization. `Unit.GroupCoverage` enumerates registrations and checks exact coverage, including skipped cases and reference-vector includes. A shared-artifact resource lock protects fixture groups. `ctest --test-dir Build --parallel 16 --output-on-failure -C Release` also runs repository and installer behavior checks exactly once. Direct doctest filters remain available for focused checks.
 

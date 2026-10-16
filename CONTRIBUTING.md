@@ -39,7 +39,7 @@ Thanks for your interest in contributing to the Rux programming language! This p
 
 ## Process Documentation
 
-Compiler component ownership is described in [Architecture](Docs/Architecture.md). See the workflow guide's [build and test throughput](Docs/Workflow.md#build-and-test-throughput) section for stable build metadata, compilation launchers, PCH, ThinLTO, and repeatable measurements. Repository verification uses up to four test workers; `rux test --jobs N` defaults to one worker when invoked directly.
+Compiler component ownership is described in [Architecture](Docs/Architecture.md). See the workflow guide's [build and test throughput](Docs/Workflow.md#build-and-test-throughput) section for stable build metadata, compilation launchers, PCH, ThinLTO, and repeatable measurements. Repository verification uses up to four test workers; `rux test --jobs N` defaults to one worker per logical core when invoked directly.
 
 For anything beyond the quick start, see the detailed guides:
 
