@@ -694,6 +694,8 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
     Expect(TokenKind::LeftBrace, "expected '{'");
     bool sawElse = false;
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        // Where this arm started: an arm whose body does not parse consumes nothing, and the loop must not spin on it.
+        const std::size_t armStart = pos;
         WhenDecl::Branch branch;
         branch.location = CurrentLocation();
         if (Match(TokenKind::ElseKeyword)) {
@@ -717,11 +719,22 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
             const std::string name = Advance().text;
             branch.directive = name == "Error" ? WhenDecl::Directive::Error : WhenDecl::Directive::Warn;
             Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
-            if (Check(TokenKind::StringLiteral)) {
+            if (Check(TokenKind::StringLiteral) && Peek(1).Is(TokenKind::RightParen)) {
                 branch.directiveMessage = DecodeStringLiteralText(Advance().text);
             }
             else {
                 EmitError(CurrentLocation(), std::format("'#{}' message must be a string literal", name));
+                // Skip the rest of the message, nested parentheses included, so the arm ends at its ')'.
+                std::size_t depth = 0;
+                while (!IsAtEnd() && !Check(TokenKind::RightBrace) && !(depth == 0 && Check(TokenKind::RightParen))) {
+                    if (Check(TokenKind::LeftParen)) {
+                        ++depth;
+                    }
+                    else if (Check(TokenKind::RightParen)) {
+                        --depth;
+                    }
+                    Advance();
+                }
             }
             Expect(TokenKind::RightParen, "expected ')'");
         }
@@ -747,6 +760,10 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
 
         decl->branches.push_back(std::move(branch));
         Match(TokenKind::Comma); // optional separator
+        if (pos == armStart) {
+            EmitError(CurrentLocation(), "expected a 'when' match arm, or '}' to close the match");
+            break;
+        }
         if (sawElse && !Check(TokenKind::RightBrace)) {
             EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
         }

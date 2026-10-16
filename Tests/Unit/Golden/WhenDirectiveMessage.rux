@@ -1,0 +1,13 @@
+// A '#Error' or '#Warn' arm of a declaration-level 'when' takes a string literal; any other message is reported, and
+// parsing goes on after it.
+const Message = "unsupported target";
+
+when #target.pointerBits {
+    32 => #Error(Message)
+    16 => #Warn("prefix " + Message)
+    else => #Warn(Describe(Message))
+}
+
+func Main() -> int {
+    return 0;
+}
