@@ -159,14 +159,19 @@ pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
         index = index + 1;
     }
     var filters = Vector<char8[..]>(SystemAllocator());
-    for text in texts.AsSlice() {
-        let argument = text.Bytes();
+    // Each argument is read where the vector keeps it: the filters are views of that text, which a loop variable,
+    // a copy destroyed at the end of its pass, would leave dangling.
+    let arguments = texts.AsSlice();
+    index = 0;
+    while index < arguments.length {
+        let argument = arguments[index].Bytes();
         if SameText(argument, "--quick") { options.minimumTime = Duration::FromMilliseconds(10); }
         else if argument.length > 0u && argument[0] == c8'-' {
             PrintLine("unknown option '{}'; the option is --quick", argument);
             return 2;
         }
         else { filters.Push(argument) catch { else => return 2 }; }
+        index = index + 1;
     }
     options.filters = filters.AsSlice();
     return RunBenchmarksWith(benchmarks, options);
