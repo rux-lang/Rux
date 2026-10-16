@@ -1077,6 +1077,21 @@ std::vector<const Symbol *> AnalysisContext::LocalArraysViewed(const Expr &expre
         }
         return viewed;
     }
+    // A call's result may view whatever the views it was handed view: `spec.WithOptions(options[..])` returns a spec
+    // holding that slice. Nothing in a signature says which argument a returned view comes from, so every argument
+    // holding views, and a method's receiver, is taken to be one, as a single borrowed input is in lifetime elision.
+    if (const auto *call = AstCast<const CallExpr>(&expression); call && TypeHoldsView(type)) {
+        for (const ExprPtr &argument : call->args) {
+            if (TypeHoldsView(typeOf(*argument))) {
+                addAll(LocalArraysViewed(*argument, TypeRef::MakeUnknown()));
+            }
+        }
+        if (const auto *method = AstCast<const FieldExpr>(call->callee.get());
+            method && TypeHoldsView(typeOf(*method->object))) {
+            addAll(LocalArraysViewed(*method->object, TypeRef::MakeUnknown()));
+        }
+        return viewed;
+    }
     if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         const bool sequence = targetType->kind == TypeRef::Kind::Array || targetType.IsSlice();
         const TypeRef element =

@@ -53,6 +53,34 @@ func Fallible() -> int32[..] ! bool {
     return options[..];
 }
 
+extend Spec {
+    func WithOptions(self: &Spec, options: int32[..]) -> Spec {
+        return Spec { name: self.name, options: options };
+    }
+}
+
+func Middle(values: int32[..]) -> int32[..] {
+    return values[1..];
+}
+
+// A call's result may view what its arguments and receiver view.
+func ThroughCall() -> int32[..] {
+    let options: int32[3] = [1, 2, 3];
+    return Middle(options[..]);
+}
+
+func ThroughBuilder() -> Spec {
+    let options: int32[2] = [1, 2];
+    let spec = Spec { name: "spec", options: Table[..] };
+    return spec.WithOptions(options[..]);
+}
+
+func ThroughReceiver() -> Spec {
+    let options: int32[2] = [1, 2];
+    let spec = Spec { name: "spec", options: options[..] };
+    return spec.WithOptions(Table[..]);
+}
+
 // Allowed: the caller's storage, module storage, a length, and a local view kept local.
 func Caller(options: int32[..]) -> int32[..] {
     return options[1..];
@@ -66,6 +94,10 @@ func Length() -> uint {
     let options: int32[2] = [1, 2];
     let view = options[..];
     return view.length;
+}
+
+func CallOnCallerStorage(values: int32[..]) -> int32[..] {
+    return Middle(values);
 }
 
 func Local() -> int32 {
