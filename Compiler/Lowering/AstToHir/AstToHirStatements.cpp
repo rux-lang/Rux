@@ -248,6 +248,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         }
         else if (const auto sliceElement = IndexElementType(lowered->iterable->type)) {
             elementType = *sliceElement;
+            lowered->elementCopy = BuildCopyPlan(elementType);
         }
         lowered->varType = elementType;
         HirSymbol *outer = currentScope->Lookup(statement->variable);

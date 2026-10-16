@@ -544,6 +544,9 @@ struct HirForStmt : HirStmt {
     HirBlock body;
     /// Nonzero for an owned induction value; every iteration marks this flag live before entering the body.
     std::uint64_t bindingId = 0;
+    /// How an array or slice element is copied into the induction variable, which then owns its copy: a custom `=`
+    /// for a type that declares one, a bitwise copy otherwise.
+    HirCopyPlan elementCopy;
     /// True when `variable` names a mutable variable already in scope, which the loop reuses as its induction variable
     /// rather than introducing a fresh binding. The loop then mutates that outer variable, so its final value persists
     /// after the loop (e.g. `for k in k..7` leaves k == 7).

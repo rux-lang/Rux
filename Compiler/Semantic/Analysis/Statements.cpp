@@ -526,6 +526,15 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         else if (auto shape = IterationShapeOf(iterableType)) {
             elementType = shape->itemType;
             RecordIteration(*forStatement, *shape);
+            // A direct loop over an array or a slice copies each element into the loop variable, leaving the sequence
+            // its own, so an element that cannot be copied cannot be visited this way.
+            if (shape->kind == IterationShape::Kind::Indexed && ClassifyTypeProperties(elementType).IsMoveOnly()) {
+                EmitError(forStatement->iterable->location,
+                          std::format("'for' cannot copy elements of move-only type '{}' out of '{}'",
+                                      elementType.DisplayString(), iterableType.DisplayString()),
+                          {"a direct loop over an array or a slice gives each pass a copy of its element"},
+                          "loop over the indices and borrow each element in place");
+            }
         }
         else if (!iterableType.IsUnknown()) {
             EmitNotIterable(forStatement->iterable->location, iterableType);
