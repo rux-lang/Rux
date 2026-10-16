@@ -25,6 +25,8 @@ namespace Rux::HirToLirDetail {
 LirFunc HirToLirContext::SynthesizeDropGlueFunc(const DropGluePlan &plan) {
     currentFunction = plan.symbol;
     locals.clear();
+    hiddenLocals.clear();
+    bindingSlots.clear();
     localConsts.clear();
     enumPayloadSlots.clear();
     dropFlags.clear();
@@ -290,7 +292,10 @@ void HirToLirContext::EmitCleanup(const HirDropAction &action) {
         return;
     }
     LirReg address = LirNoReg;
-    if (const auto local = locals.find(action.name); local != locals.end()) {
+    if (const auto bound = bindingSlots.find(action.bindingId); action.bindingId != 0 && bound != bindingSlots.end()) {
+        address = bound->second;
+    }
+    else if (const auto local = locals.find(action.name); local != locals.end()) {
         address = local->second;
     }
     if (address == LirNoReg) {

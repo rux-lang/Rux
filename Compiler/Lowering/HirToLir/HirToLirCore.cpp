@@ -1306,6 +1306,8 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     currentSourceFile = hf.sourceFile;
     currentSourceFunction = hf.sourceFunction.empty() ? hf.name : hf.sourceFunction;
     locals.clear();
+    hiddenLocals.clear();
+    bindingSlots.clear();
     localConsts.clear();
     enumPayloadSlots.clear();
     partialCleanupFrames.clear();
@@ -1344,14 +1346,14 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
         const TypeRef &type = param.type;
         const LirReg pr = DefineParameter(param.isVariadic ? TypeRef::MakePointer(type) : type);
         if (param.isVariadic) {
-            locals[name] = pr;
+            BindLocal(name, pr, param.bindingId);
             lf.params.push_back({pr, TypeRef::MakePointer(type), name});
         }
         else if (IsInterfaceType(type)) {
             // Interface values are 16-byte fat ptrs; callers pass their
             // address. pr holds that address directly — no extra
             // alloca.
-            locals[name] = pr;
+            BindLocal(name, pr, param.bindingId);
             lf.params.push_back({pr, TypeRef::MakePointer(type), name, true});
         }
         else if (IsViewType(type)) {
@@ -1359,13 +1361,13 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
             // callers pass a pointer. pr holds that pointer directly — FieldPtr
             // handles the indirection. Register with Pointer<type> so
             // ResolveFieldOffset can compute field offsets.
-            locals[name] = pr;
+            BindLocal(name, pr, param.bindingId);
             lf.params.push_back({pr, TypeRef::MakePointer(type), name, true});
         }
         else {
             const LirReg slot = EmitAlloca(type);
             EmitStore(pr, slot, type);
-            locals[name] = slot;
+            BindLocal(name, slot, param.bindingId);
             lf.params.push_back({pr, type, name});
         }
     }
@@ -1391,8 +1393,36 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     return lf;
 }
 
+void HirToLirContext::BindLocal(const std::string &name, const LirReg slot, const std::uint64_t bindingId) {
+    const auto previous = locals.find(name);
+    hiddenLocals.emplace_back(name, previous == locals.end() ? std::nullopt : std::optional<LirReg>(previous->second));
+    locals[name] = slot;
+    if (bindingId != 0) {
+        bindingSlots[bindingId] = slot;
+    }
+}
+
+void HirToLirContext::LeaveLocalScope(const std::size_t mark) {
+    while (hiddenLocals.size() > mark) {
+        auto &[name, previous] = hiddenLocals.back();
+        if (previous) {
+            locals[name] = *previous;
+        }
+        else {
+            locals.erase(name);
+        }
+        hiddenLocals.pop_back();
+    }
+}
+
 // Block / statement lowering
 void HirToLirContext::LowerBlock(const HirBlock &block) {
+    const std::size_t scope = EnterLocalScope();
+    LowerBlockStatements(block);
+    LeaveLocalScope(scope);
+}
+
+void HirToLirContext::LowerBlockStatements(const HirBlock &block) {
     for (const auto &stmt : block.stmts) {
         if (IsTerminated()) {
             break;

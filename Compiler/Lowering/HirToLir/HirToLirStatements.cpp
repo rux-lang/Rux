@@ -10,7 +10,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
     if (auto *s = HirCast<const HirLetStmt>(&stmt)) {
         LirReg slot = EmitAlloca(s->type);
         if (!s->pattern) {
-            locals[s->name] = slot;
+            BindLocal(s->name, slot, s->bindingId);
         }
         // A declaration with no initializer owns nothing yet. Marking it live would have the scope destroy whatever
         // its storage happened to hold, which for a droppable type means calling a destructor on garbage. It becomes
@@ -95,13 +95,18 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
+    // A name a condition, a pattern or a loop variable binds is scoped to the statement, like one bound in its body.
     if (auto *s = HirCast<const HirIfStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerIf(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
     if (auto *s = HirCast<const HirWhileStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerWhile(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
@@ -116,7 +121,9 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
     }
 
     if (auto *s = HirCast<const HirForStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerFor(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
@@ -125,7 +132,9 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
     if (auto *s = HirCast<const HirMatchStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerMatch(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
@@ -293,7 +302,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         // The iterable has been lowered in the enclosing scope; now bind the
         // loop variable name to its induction slot for the loop body.
-        locals[s.variable] = slot;
+        BindLocal(s.variable, slot, s.bindingId);
 
         // i = range.start
         LirReg loPtr = EmitFieldPtr(iterSlot, "start", elemType);
@@ -380,7 +389,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         // The iterable has been lowered in the enclosing scope; now bind the
         // loop variable name to its induction slot for the loop body.
-        locals[s.variable] = slot;
+        BindLocal(s.variable, slot, s.bindingId);
 
         LirReg dataPtr = iterSlot;
         LirReg length = LirNoReg;

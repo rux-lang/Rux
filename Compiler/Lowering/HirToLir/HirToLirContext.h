@@ -73,6 +73,11 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> genericPayloadEnums;
     CheckedLirBuilder *builder = nullptr;
     std::unordered_map<std::string, LirReg> locals;
+    /// What each binding of a name in `locals` hid, innermost last, so leaving a scope gives the hidden names back.
+    std::vector<std::pair<std::string, std::optional<LirReg>>> hiddenLocals;
+    /// The slot of every binding with a drop flag, by its identity: a cleanup finds its binding even where a nested
+    /// binding of the same name hides it.
+    std::unordered_map<std::uint64_t, LirReg> bindingSlots;
     std::unordered_map<std::string, const HirConst *> globalConsts;
     /// Module variables of every module, by linker name: each is one storage location reached through its address.
     std::unordered_map<std::string, const HirGlobal *> globalVars;
@@ -223,7 +228,18 @@ private:
     void PopPartialCleanupFrame();
     void EmitActivePartialCleanups();
 
+    /// Lowers a block's statements in a scope of their own: the names they bind are gone once the block ends.
     void LowerBlock(const HirBlock &block);
+    void LowerBlockStatements(const HirBlock &block);
+    /// Binds a name to its slot, hiding until the enclosing scope ends any binding the name already had.
+    void BindLocal(const std::string &name, LirReg slot, std::uint64_t bindingId = 0);
+
+    /// Where the bindings of a scope starting now begin; `LeaveLocalScope` with it unbinds them again.
+    [[nodiscard]] std::size_t EnterLocalScope() const noexcept {
+        return hiddenLocals.size();
+    }
+
+    void LeaveLocalScope(std::size_t mark);
     void LowerStmt(const HirStmt &statement);
     void LowerIf(const HirIfStmt &statement);
     void LowerWhile(const HirWhileStmt &statement);

@@ -223,7 +223,7 @@ LirReg HirToLirContext::LowerNativeSubsetPattern(const HirNativeSubsetPattern &p
     const LirReg narrowed = EmitAlloca(pattern.subsetType);
     EmitStore(EmitLoad(subjectSlot, pattern.subsetType), narrowed, pattern.subsetType);
     EmitStore(narrowedTag, narrowed, tagType);
-    locals[binding->name] = narrowed;
+    BindLocal(binding->name, narrowed, binding->bindingId);
     MarkBindingLive(binding->bindingId, true);
     const LirReg bound = EmitConst("1", TypeRef::MakeBool());
     const std::uint32_t bindPred = builder->CurrentBlock();
@@ -398,6 +398,8 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         std::uint32_t nextBlock = isLast ? unmatchedBlock.value_or(untakenBlock.value_or(mergeBlock))
                                          : NewBlock(std::format("match.next{}", i));
         std::vector<std::pair<LirReg, TypeRef>> residual;
+        // What an arm's pattern binds is the arm's alone.
+        const std::size_t scope = EnterLocalScope();
         LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload, subjectSlot,
                                          s.subject->consumption.has_value(), residual);
         Branch(matched, bodyBlock, nextBlock);
@@ -406,6 +408,7 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         LowerExpr(*arm.body);
         // A pattern binding owns whatever it matched out of the subject, and the arm is the whole of its life.
         EmitCleanups(arm.cleanups);
+        LeaveLocalScope(scope);
         if (!IsTerminated()) {
             Jump(mergeBlock);
         }
@@ -455,7 +458,7 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
     if (auto *p = HirCast<const HirBindingPattern>(&pat)) {
         const TypeRef bindType = p->type.IsUnknown() ? subjectType : p->type;
         LirReg bindSlot = EmitAlloca(bindType);
-        locals[p->name] = bindSlot;
+        BindLocal(p->name, bindSlot, p->bindingId);
         LirReg val = EmitLoad(subjectPtr, bindType);
         EmitStore(val, bindSlot, bindType);
         MarkBindingLive(p->bindingId, true);
@@ -545,12 +548,13 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
         // A borrowed native payload is named where it lies, so writing through the binding writes the subject.
         if (p->alias && subjectSlot != LirNoReg) {
             // The payload's address is a byte offset into the subject; field access needs it typed as the payload.
-            locals[p->name] =
-                EmitCast(subjectSlot, TypeRef::MakePointer(TypeRef::MakeChar8()), TypeRef::MakePointer(p->type));
+            BindLocal(p->name,
+                      EmitCast(subjectSlot, TypeRef::MakePointer(TypeRef::MakeChar8()), TypeRef::MakePointer(p->type)),
+                      p->bindingId);
             return EmitConst("1", TypeRef::MakeBool());
         }
         LirReg bindSlot = EmitAlloca(p->type);
-        locals[p->name] = bindSlot;
+        BindLocal(p->name, bindSlot, p->bindingId);
         EmitStore(subjectVal, bindSlot, p->type);
         // Live once it holds something. A binding that does not own what it took carries no identifier at all, so
         // this is a no-op for it and no cleanup was recorded for it either.
@@ -801,15 +805,15 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         return;
     }
     if (auto *initBlockExpr = HirCast<const HirBlockExpr>(&expr)) {
-        LowerBlock(initBlockExpr->block);
+        // The block's bindings stay visible to the value it ends with.
+        const std::size_t scope = EnterLocalScope();
+        LowerBlockStatements(initBlockExpr->block);
         // A block that left the function reaches no slot. Storing anything after its terminator would put an
         // instruction in a block the verifier has already closed.
-        if (IsTerminated()) {
-            return;
-        }
-        if (initBlockExpr->value) {
+        if (!IsTerminated() && initBlockExpr->value) {
             StoreExprIntoSlot(*initBlockExpr->value, slot, type);
         }
+        LeaveLocalScope(scope);
         return;
     }
     if (auto *initLitExpr = HirCast<const HirLiteralExpr>(&expr); initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
@@ -1160,6 +1164,7 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
         const std::uint32_t nextBlock = isLast ? unmatchedBlock.value_or(untakenBlock.value_or(mergeBlock))
                                                : NewBlock(std::format("match.expr.store.next{}", i));
         std::vector<std::pair<LirReg, TypeRef>> residual;
+        const std::size_t scope = EnterLocalScope();
         const LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, e.subject->type, subjectPayload, subjectSlot,
                                                e.subject->consumption.has_value(), residual);
         Branch(matched, bodyBlock, nextBlock);
@@ -1170,6 +1175,7 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
             EmitCleanups(arm.cleanups);
             Jump(mergeBlock);
         }
+        LeaveLocalScope(scope);
         if (!isLast) {
             SetBlock(nextBlock);
         }

@@ -339,15 +339,21 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         return EmitConst("false", TypeRef::MakeBool());
     }
     if (auto *e = HirCast<const HirBlockExpr>(&expr)) {
-        LowerBlock(e->block);
+        // The block's bindings stay visible to the value it ends with.
+        const std::size_t scope = EnterLocalScope();
+        LowerBlockStatements(e->block);
         if (IsTerminated()) {
+            LeaveLocalScope(scope);
             return LirNoReg;
         }
         // A block carrying a trailing expression evaluates to it. Blocks lowered from source carry none and keep
         // producing a placeholder, so this changes nothing a program can already write.
         if (e->value) {
-            return LowerExpr(*e->value);
+            const LirReg value = LowerExpr(*e->value);
+            LeaveLocalScope(scope);
+            return value;
         }
+        LeaveLocalScope(scope);
         return EmitConst("0", e->type);
     }
     if (auto *e = HirCast<const HirRangeExpr>(&expr)) {
