@@ -311,10 +311,23 @@ bool Parser::IsTypeArgListAhead() const noexcept {
     }
 
     int angleDepth = 0;
+    int bracketDepth = 0;
     for (std::size_t ahead = 0;; ++ahead) {
         switch (Peek(ahead).kind) {
         case TokenKind::Less:
             ++angleDepth;
+            continue;
+        case TokenKind::LeftBracket:
+            ++bracketDepth;
+            continue;
+        case TokenKind::RightBracket:
+            --bracketDepth;
+            continue;
+        // A fixed array argument spells its length, `Box<int32[2]>`; outside a bracket a number is a comparison.
+        case TokenKind::IntLiteral:
+            if (bracketDepth <= 0) {
+                return false;
+            }
             continue;
         case TokenKind::Greater:
         case TokenKind::GreaterGreater:
@@ -331,8 +344,6 @@ bool Parser::IsTypeArgListAhead() const noexcept {
         case TokenKind::Star:
         case TokenKind::LeftParen:
         case TokenKind::RightParen:
-        case TokenKind::LeftBracket:
-        case TokenKind::RightBracket:
         case TokenKind::Comma:
         case TokenKind::ColonColon:
         case TokenKind::SelfKeyword:

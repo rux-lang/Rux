@@ -1,0 +1,39 @@
+import Allocator::SystemAllocator;
+import Collections::{ SmallVector, Vector };
+import Core::Assert;
+
+// A fixed array is a type argument like any other. Semantic analysis used to read `int32[2]` back out of
+// `Holder<int32[2]>` as a plain name that only looked like an array, so a field of that type could not be indexed,
+// and a generic method instantiated for it was never emitted: the image then imported the missing function from the
+// system and failed to load before `Main` ran.
+
+struct Holder<T> {
+    value: T;
+}
+
+func Second<T>(holder: Holder<T[3]>) -> T {
+    return holder.value[1];
+}
+
+func Main() -> int {
+    var pair = Holder<int32[2]> { value: [1, 2] };
+    Assert(pair.value[1] == 2, "a field of an array type argument is indexable");
+    pair.value[0] = 7;
+    Assert(pair.value[0] == 7, "and writable through the index");
+
+    let grid = Holder<int32[2][3]> { value: [[1, 2], [3, 4], [5, 6]] };
+    Assert(grid.value[2][1] == 6, "a nested array type argument keeps both lengths");
+    Assert(Second(Holder<uint8[3]> { value: [4u8, 5u8, 6u8] }) == 5u8, "an array type is deduced through a field");
+
+    var pairs = Vector<int32[2]>(SystemAllocator());
+    Assert(pairs.Length() == 0u, "a vector of arrays is created");
+    pairs.Push([3i32, 4i32]) catch { else => return 1 };
+    pairs.Push([5i32, 6i32]) catch { else => return 2 };
+    Assert(pairs.Length() == 2u, "a vector of arrays grows");
+    Assert(pairs.AsSlice()[1][0] == 5, "and hands its arrays back whole");
+
+    var small = SmallVector<uint64[2]>(SystemAllocator());
+    small.Push([8u64, 9u64]) catch { else => return 3 };
+    Assert(small.Length() == 1u && small.AsSlice()[0][1] == 9u64, "a small vector of arrays holds them inline");
+    return 0;
+}

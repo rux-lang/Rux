@@ -157,6 +157,19 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
     if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
         return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, str.size() - 2)));
     }
+    // A fixed array spells its length in the brackets, so `Holder<int32[2]>` hands back a two-element array; read as a
+    // plain name, it would print the same and still be no array -- not indexable, and no instance would be emitted.
+    if (str.back() == ']') {
+        const std::size_t open = str.rfind('[');
+        if (open != std::string::npos && open + 1 < str.size() - 1) {
+            const char *first = str.data() + open + 1;
+            const char *last = str.data() + str.size() - 1;
+            std::uint64_t length = 0;
+            if (const auto [end, error] = std::from_chars(first, last, length); error == std::errc{} && end == last) {
+                return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, open)), length);
+            }
+        }
+    }
 
     if (str[0] == '(' && str.back() == ')') {
         std::vector<TypeRef> elems;
