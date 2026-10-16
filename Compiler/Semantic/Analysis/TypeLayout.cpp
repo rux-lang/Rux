@@ -74,7 +74,6 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
 
     if (inputType->kind == TypeRef::Kind::Named) {
         const std::string baseName = BaseTypeName(inputType->name);
-        std::unordered_map<std::string, TypeRef> localSubs = substitutions;
         const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(inputType->name);
         // A generic declaration's fields name only its own parameters, so they are mapped to the arguments, read in
         // the caller's terms, and nothing else: the caller's parameters may share their names.
@@ -94,7 +93,7 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
                 LayoutOfEnum(*enumeration->second, declarationSubstitutions(enumeration->second->typeParams)));
         }
         if (const auto unionType = unionDecls.find(baseName); unionType != unionDecls.end()) {
-            return finish(LayoutOfUnion(*unionType->second, localSubs));
+            return finish(LayoutOfUnion(*unionType->second, substitutions));
         }
 
         // Interface values are fat pointers: {data, vtable}.
@@ -105,11 +104,11 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
                 return finish(ResolvedTypeLayout{16, 8});
             }
             if (sym->kind == Symbol::Kind::Type && !sym->type.IsUnknown() && !(sym->type == inputType)) {
-                return finish(LayoutOfTypeRef(sym->type, localSubs));
+                return finish(LayoutOfTypeRef(sym->type, substitutions));
             }
         }
         if (!inputType->inner.empty()) {
-            return finish(LayoutOfTypeRef(inputType->inner[0], localSubs));
+            return finish(LayoutOfTypeRef(inputType->inner[0], substitutions));
         }
         return finish(std::nullopt);
     }
