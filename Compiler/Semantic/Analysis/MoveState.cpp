@@ -557,13 +557,6 @@ void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expres
                   std::format("add an arm for {}, or an 'else' arm", missing));
         return;
     }
-    if (subjectType.IsInteger()) {
-        EmitError(
-            expression.location,
-            std::format("match on '{}' is not exhaustive; its arms do not cover every value", subjectType.ToString()),
-            {}, "add an 'else' arm");
-        return;
-    }
     if (subjectType->kind == TypeRef::Kind::Tuple && !patterns.empty()) {
         if (const auto found = tupleMatchMissing.find(patterns.front());
             found != tupleMatchMissing.end() && found->second) {
@@ -572,7 +565,20 @@ void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expres
                 std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), *found->second), {},
                 "add arms for the missing values, or an 'else' arm");
         }
+        return;
     }
+    // Enums, variants and native forms report their missing cases where their patterns are validated, and a subject
+    // spelled with type parameters is decided per instantiation. Any other subject -- an integer, a character, a
+    // float, a string, a structure -- has more values than arms can list, so only an arm that takes every value covers
+    // it.
+    const bool caseType = subjectType->kind == TypeRef::Kind::Named && EnumNamed(BaseTypeName(subjectType->name));
+    if (subjectType.IsUnknown() || caseType || IsNativeMatchSubject(subjectType) ||
+        MentionsTypeParameter(subjectType)) {
+        return;
+    }
+    EmitError(expression.location,
+              std::format("match on '{}' is not exhaustive; its arms do not cover every value", subjectType.ToString()),
+              {}, "add an 'else' arm");
 }
 
 TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
@@ -663,7 +669,7 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     }
     else {
         // An expression has to produce a value whatever the subject holds. Enums and native subjects report their
-        // missing cases through pattern validation; a bool or an integer has its own values to name here.
+        // missing cases through pattern validation; every other subject is reported here.
         ReportNonExhaustiveMatchExpression(expression, patterns, subjectType);
         exits.push_back(matchEntry);
     }

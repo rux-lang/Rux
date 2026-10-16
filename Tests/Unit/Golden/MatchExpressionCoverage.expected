@@ -1,5 +1,9 @@
-5:24: error: match on 'bool8' is not exhaustive; missing false
-6:23: error: match on 'bool8' is not exhaustive; missing true
-7:19: error: match on 'bool8' is not exhaustive; missing false
-9:19: error: match on 'int32' is not exhaustive; its arms do not cover every value
-10:18: error: match on 'int32' is not exhaustive; its arms do not cover every value
+12:24: error: match on 'bool8' is not exhaustive; missing false
+13:23: error: match on 'bool8' is not exhaustive; missing true
+14:19: error: match on 'bool8' is not exhaustive; missing false
+16:19: error: match on 'int32' is not exhaustive; its arms do not cover every value
+17:18: error: match on 'int32' is not exhaustive; its arms do not cover every value
+24:21: error: match on 'char32' is not exhaustive; its arms do not cover every value
+25:20: error: match on 'float64' is not exhaustive; its arms do not cover every value
+26:18: error: match on 'Point' is not exhaustive; its arms do not cover every value
+27:16: error: match on 'char8[..]' is not exhaustive; its arms do not cover every value
