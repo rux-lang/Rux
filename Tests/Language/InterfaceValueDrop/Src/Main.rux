@@ -1,0 +1,66 @@
+import Core::Assert;
+
+// An interface value owns what it was made from, and the value is destroyed exactly once, when the scope the interface
+// value was made in ends -- as a named local of that scope would be.
+interface Named {
+    func Id(self: &Self) -> int;
+}
+
+struct Tracked {
+    drops: *var int;
+    id: int;
+}
+
+extend Tracked : Named {
+    func Id(self: &Tracked) -> int {
+        return self.id;
+    }
+
+    func ~Tracked(self: &var Tracked) {
+        *self.drops = *self.drops + 1;
+    }
+}
+
+func Read(value: Named) -> int {
+    return value.Id();
+}
+
+func Local(drops: *var int) -> int {
+    let value: Named = Tracked { drops: drops, id: 7 };
+    return value.Id();
+}
+
+func Argument(drops: *var int) -> int {
+    return Read(Tracked { drops: drops, id: 3 });
+}
+
+func Moved(drops: *var int) -> int {
+    var tracked = Tracked { drops: drops, id: 5 };
+    let value: Named = <-tracked;
+    return value.Id();
+}
+
+func Repeated(drops: *var int) -> int {
+    var total = 0;
+    for i in 0..3 {
+        let value: Named = Tracked { drops: drops, id: i };
+        total += value.Id();
+    }
+    return total;
+}
+
+func Main() -> int {
+    var drops = 0;
+    Assert(Local(@drops) == 7, "a local interface value reads what it holds");
+    Assert(drops == 1, "and destroys it when its scope ends");
+    drops = 0;
+    Assert(Argument(@drops) == 3, "an interface argument reads what it holds");
+    Assert(drops == 1, "and the caller destroys it once");
+    drops = 0;
+    Assert(Moved(@drops) == 5, "a moved value is held by the interface value");
+    Assert(drops == 1, "and destroyed once, not also as the moved-from variable");
+    drops = 0;
+    Assert(Repeated(@drops) == 3, "each pass makes its own interface value");
+    Assert(drops == 3, "and each pass destroys its own");
+    return 0;
+}

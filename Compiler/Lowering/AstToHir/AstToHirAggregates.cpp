@@ -761,6 +761,33 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
                     }
                 }
             }
+            // A value with a destructor that an interface value takes over lives in a hidden local of the scope the
+            // coercion is written in, which destroys it when the scope ends, as it would a named local; the interface
+            // value borrows it. Without one, nothing destroyed what the interface value held.
+            const std::string hiddenName = std::format("$interface.{}", interfaceValueOrdinal);
+            if (const std::uint64_t bindingId = RegisterCleanupBinding(hiddenName, lowered->type, expression.location);
+                bindingId != 0) {
+                ++interfaceValueOrdinal;
+                auto hidden = std::make_unique<HirLetStmt>();
+                hidden->location = expression.location;
+                hidden->name = hiddenName;
+                hidden->type = lowered->type;
+                hidden->bindingId = bindingId;
+                auto held = std::make_unique<HirVarExpr>();
+                held->location = expression.location;
+                held->name = hiddenName;
+                held->type = lowered->type;
+                hidden->init = std::move(lowered);
+                coercion->value = std::move(held);
+                coercion->borrowed = true;
+                auto scope = std::make_unique<HirBlockExpr>();
+                scope->location = expression.location;
+                scope->type = targetType;
+                scope->block.location = expression.location;
+                scope->block.stmts.push_back(std::move(hidden));
+                scope->value = std::move(coercion);
+                return scope;
+            }
             coercion->value = std::move(lowered);
             return coercion;
         }

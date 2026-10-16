@@ -133,6 +133,8 @@ protected:
     /// `break` or `continue` runs the defers registered inside the loop before it jumps.
     std::vector<std::pair<std::string, std::size_t>> loopDeferBases;
     std::size_t returnOrdinal = 0;
+    /// Names the value an interface value owns, which a scope destroys like a local of its own.
+    std::size_t interfaceValueOrdinal = 0;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
 
