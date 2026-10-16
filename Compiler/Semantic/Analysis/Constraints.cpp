@@ -271,10 +271,19 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
                                          const std::vector<TypeRef> &interfaceArguments) {
     if (IsSendableMarker(interface) && argument->kind != TypeRef::Kind::TypeParam) {
         if (const auto part = UnsendablePart(argument)) {
-            reason = *part == argument.DisplayString()
-                       ? std::format("'{}' stays on the thread that made it", *part)
-                       : std::format("'{}' holds '{}', which stays on the thread that made it",
-                                     argument.DisplayString(), *part);
+            const bool itself = *part == argument.DisplayString() ||
+                                (argument->kind == TypeRef::Kind::Named && *part == BaseTypeName(argument->name));
+            if (argument->kind == TypeRef::Kind::Reference) {
+                reason = std::format("'{}' is a reference, which cannot leave the call that borrowed it", *part);
+            }
+            else if (itself) {
+                reason = std::format("'{}' is declared '#Unsendable()', so it stays on the thread that made it",
+                                     argument.DisplayString());
+            }
+            else {
+                reason =
+                    std::format("'{}' holds '{}', which is declared '#Unsendable()'", argument.DisplayString(), *part);
+            }
             return false;
         }
         return true;
