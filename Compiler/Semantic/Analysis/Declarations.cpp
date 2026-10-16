@@ -241,6 +241,137 @@ void AnalysisContext::CheckAbiForTarget(const CallingConvention convention,
               "write '#Abi(.C)', or keep the x86-64 declaration in a 'when #target.arch' arm");
 }
 
+std::optional<std::string> AnalysisContext::FindByValueCycle(const TypeRef &type, const std::string_view target,
+                                                             std::unordered_set<std::string> &visiting) {
+    const auto inside = [](std::optional<std::string> found, const std::string_view member) {
+        if (found) {
+            found = found->empty() ? std::string(member) : std::format("{}.{}", member, *found);
+        }
+        return found;
+    };
+    // An optional, a fallible and a sum hold their members in place, as a tuple and a fixed array do.
+    if (type->kind == TypeRef::Kind::Tuple || type.IsOptional() || type.IsFallible() || type.IsSum() ||
+        (type->kind == TypeRef::Kind::Array && type->arrayLength)) {
+        for (const TypeRef &member : type->inner) {
+            if (auto found = FindByValueCycle(member, target, visiting)) {
+                return found;
+            }
+        }
+        return std::nullopt;
+    }
+    if (type->kind != TypeRef::Kind::Named) {
+        return std::nullopt;
+    }
+    const std::string baseName = BaseTypeName(type->name);
+    if (baseName == target) {
+        return std::string{};
+    }
+    if (!visiting.insert(type->name).second) {
+        return std::nullopt;
+    }
+    std::optional<std::string> found;
+    std::unordered_map<std::string, TypeRef> substitutions;
+    const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type->name);
+    const auto substitute = [&](const std::vector<TypeParameter> &parameters) {
+        for (std::size_t index = 0; index < std::min(parameters.size(), typeArgs.size()); ++index) {
+            substitutions[parameters[index].name] = typeArgs[index];
+        }
+    };
+    if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
+        substitute(structure->second->typeParams);
+        for (const auto &field : structure->second->fields) {
+            if ((found =
+                     inside(FindByValueCycle(ResolveTypeWithSubstitution(*field.type, substitutions), target, visiting),
+                            field.name))) {
+                break;
+            }
+        }
+    }
+    else if (const EnumDecl *enumeration = EnumNamed(baseName)) {
+        substitute(enumeration->typeParams);
+        for (const auto &variant : enumeration->variants) {
+            for (const auto &field : variant.fields) {
+                if ((found =
+                         inside(FindByValueCycle(ResolveTypeWithSubstitution(*field, substitutions), target, visiting),
+                                variant.name))) {
+                    break;
+                }
+            }
+            for (const auto &field : variant.namedFields) {
+                if (found) {
+                    break;
+                }
+                found =
+                    inside(FindByValueCycle(ResolveTypeWithSubstitution(*field.type, substitutions), target, visiting),
+                           std::format("{}.{}", variant.name, field.name));
+            }
+            if (found) {
+                break;
+            }
+        }
+    }
+    else if (const auto unionType = unionDecls.find(baseName); unionType != unionDecls.end()) {
+        for (const auto &field : unionType->second->fields) {
+            if ((found = inside(FindByValueCycle(ResolveTypeWithSubstitution(*field.type, {}), target, visiting),
+                                field.name))) {
+                break;
+            }
+        }
+    }
+    visiting.erase(type->name);
+    return found;
+}
+
+void AnalysisContext::CheckByValueCycle(const Decl &declaration, const std::string_view kind, const std::string &name) {
+    const std::string identity = NominalTypeName(name);
+    std::unordered_set<std::string> visiting;
+    std::optional<std::string> path;
+    // The fields are resolved in the declaration's own terms, its type parameters included; what resolving them
+    // reports is reported where the declaration itself is checked, so only the cycle is kept from here.
+    const std::size_t diagnosticCount = diags.size();
+    const auto savedTypeParams = currentTypeParams;
+    if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
+        currentTypeParams = TypeParameterNames(structure->typeParams);
+    }
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
+        currentTypeParams = TypeParameterNames(enumeration->typeParams);
+    }
+    const auto check = [&](const TypeExpr &field, const std::string_view member) {
+        if (!path) {
+            if (auto found = FindByValueCycle(ResolveType(field), BaseTypeName(identity), visiting)) {
+                path = found->empty() ? std::string(member) : std::format("{}.{}", member, *found);
+            }
+        }
+    };
+    if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
+        for (const auto &field : structure->fields) {
+            check(*field.type, field.name);
+        }
+    }
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
+        for (const auto &variant : enumeration->variants) {
+            for (const auto &field : variant.fields) {
+                check(*field, variant.name);
+            }
+            for (const auto &field : variant.namedFields) {
+                check(*field.type, std::format("{}.{}", variant.name, field.name));
+            }
+        }
+    }
+    else if (const auto *unionType = AstCast<const UnionDecl>(&declaration)) {
+        for (const auto &field : unionType->fields) {
+            check(*field.type, field.name);
+        }
+    }
+    currentTypeParams = savedTypeParams;
+    diags.resize(diagnosticCount);
+    if (path) {
+        EmitError(declaration.location, std::format("{} '{}' contains itself by value through '{}'", kind, name, *path),
+                  {"a value that holds itself in place would have no finite size"},
+                  std::format("hold it behind a pointer, as '*{0}' or '(*{0})?'", name));
+    }
+}
+
 void AnalysisContext::CheckStructDecl(const StructDecl &d) {
     auto savedTypeParams = currentTypeParams;
     currentTypeParams = TypeParameterNames(d.typeParams);
@@ -270,6 +401,7 @@ void AnalysisContext::CheckStructDecl(const StructDecl &d) {
 
     PopScope();
     currentTypeParams = savedTypeParams;
+    CheckByValueCycle(d, "struct", d.name);
 }
 
 void AnalysisContext::CheckEnumDecl(const EnumDecl &d) {
@@ -365,6 +497,9 @@ void AnalysisContext::CheckEnumDecl(const EnumDecl &d) {
         }
     }
     currentTypeParams = savedTypeParams;
+    if (d.IsVariant()) {
+        CheckByValueCycle(d, "variant", d.name);
+    }
 }
 
 void AnalysisContext::CheckUnionDecl(const UnionDecl &d) {
@@ -377,6 +512,7 @@ void AnalysisContext::CheckUnionDecl(const UnionDecl &d) {
         ValidateStoredType(ResolveType(*field.type), field.location,
                            std::format("field '{}' in union '{}'", field.name, d.name));
     }
+    CheckByValueCycle(d, "union", d.name);
 }
 
 void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {

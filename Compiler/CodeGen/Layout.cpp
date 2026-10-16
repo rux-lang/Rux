@@ -263,8 +263,10 @@ void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &la
     // order sized such a field as a word, and everything laid out from that wrote and read the wrong offsets.
     // Each pass resolves one more level of nesting, so the loop runs at most as deep as structs nest by value --
     // and a by-value cycle cannot exist, since a struct cannot contain itself.
+    // Analysis refuses a by-value cycle, so the passes are capped at the number of structs as a backstop rather than
+    // left to grow a cycle's size forever.
     bool changed = true;
-    while (changed) {
+    for (std::size_t pass = 0; changed && pass <= structs.size(); ++pass) {
         changed = false;
         for (const auto &s : structs) {
             StructLayout computed = ComputeStructLayout(s, layouts, interfaceNames);

@@ -438,6 +438,13 @@ private:
 
     /// The first scalar `type` holds by value that has no C ABI mapping, with the field path leading to it ("" when
     /// it is `type` itself), or nothing when every scalar it holds crosses as C passes it.
+    /// The path of fields through which `type` holds a value of the type named `target` in place, as `next` or
+    /// `inner.next`, or nothing when every way there goes through a pointer, a reference, a view or an interface.
+    [[nodiscard]] std::optional<std::string> FindByValueCycle(const TypeRef &type, std::string_view target,
+                                                              std::unordered_set<std::string> &visiting);
+    /// Refuses a struct, enum or union whose own fields hold a value of it in place, which would have no finite size.
+    void CheckByValueCycle(const Decl &declaration, std::string_view kind, const std::string &name);
+
     struct CAbiViolation {
         std::string path;
         TypeRef type;
