@@ -672,6 +672,14 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                       "declare a local with 'var' and no 'pub', or move the declaration out of the function");
             return;
         }
+        // A function's code is emitted once, outside every other function, so it is declared where that holds.
+        if (const auto *function = AstCast<const FuncDecl>(declarationStatement->decl.get())) {
+            EmitError(function->location,
+                      std::format("function '{}' cannot be declared inside a function body", function->name),
+                      {"functions are declared at the top level, in a module, or in an extend block"},
+                      "move the function out of the body; there are no closures, so it cannot capture locals");
+            return;
+        }
         if (const auto *constant = AstCast<const ConstDecl>(declarationStatement->decl.get())) {
             localConstants.insert(constant);
         }

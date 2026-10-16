@@ -21,6 +21,36 @@
 namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
+void AnalysisContext::CheckMainSignature(const FuncDecl &declaration, const TypeRef &returnType) {
+    // Only the executable's own entry point: a `Main` of a dependency, or one inside a module, is an ordinary function.
+    if (!context.checksEntryPoint || context.outputKind != OutputKind::Executable || currentPackage != packageName) {
+        return;
+    }
+    if (const auto *info = programIndex.InfoFor(declaration); info == nullptr || !info->modulePath.empty()) {
+        return;
+    }
+    const bool takesNothing = declaration.params.empty();
+    // No result is a success that exits with 0, as finishing a fallible `Main` is.
+    const bool integer = returnType.IsInteger() || returnType.IsOpaque();
+    const bool fallible =
+        returnType.IsFallible() && (returnType.FallibleSuccess().IsUnit() || returnType.FallibleSuccess().IsInteger());
+    if (returnType.IsUnknown() || (takesNothing && declaration.typeParams.empty() && (integer || fallible))) {
+        return;
+    }
+    const std::string written =
+        declaration.returnType ? std::format("'{}'", returnType.DisplayString()) : std::string("no result");
+    EmitError(
+        declaration.location,
+        std::format(
+            "'Main' must take no parameters and return nothing, an integer, '! E' or an integer '! E', but it {}{}",
+            takesNothing && declaration.typeParams.empty()
+                ? ""
+                : (declaration.typeParams.empty() ? "takes parameters and " : "is generic and "),
+            declaration.returnType ? std::format("returns {}", written) : "has no result"),
+        {"the result of 'Main' is the process's exit status, which no other form defines"},
+        "declare it as 'func Main() -> int', 'func Main() -> ! E' or 'func Main() -> int ! E'");
+}
+
 void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
     if (SkipsReusedFunction(d)) {
         ResolveReusedParameters(d);
@@ -55,6 +85,10 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
                          std::format("the return value of '#Abi' function '{}'", d.name));
     }
 
+    if (!isMethod && d.name == "Main") {
+        CheckMainSignature(d, retType);
+    }
+
     auto savedRet = currentReturnType;
     currentReturnType = retType;
     const bool savedNoReturn = currentFunctionNoReturn;
@@ -73,13 +107,22 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
     const TypeRef savedSelfType = DeclareReceiver(d, isMethod);
 
     bool seenDefault = false;
-    for (const auto &param : d.params) {
+    for (std::size_t index = 0; index < d.params.size(); ++index) {
+        const Param &param = d.params[index];
         if (param.IsReceiver()) {
             continue;
         }
         ValidateArrayType(*param.type);
         if (param.isVariadic) {
             seenDefault = false; // variadic ends fixed params; reset
+            // The arguments past the fixed ones all fill the variadic parameter, so nothing can follow it.
+            if (index + 1 < d.params.size()) {
+                EmitError(param.location,
+                          std::format("variadic parameter '{}' of '{}' must be its last parameter", param.name, d.name),
+                          {"a variadic parameter takes every argument after the fixed ones, so none is left for a "
+                           "parameter after it"},
+                          std::format("move '{}' to the end of the parameter list", param.name));
+            }
         }
         else if (param.defaultValue) {
             seenDefault = true;
@@ -223,6 +266,60 @@ void AnalysisContext::CheckEnumDecl(const EnumDecl &d) {
     }
     const std::string_view declarationName = d.IsVariant() ? "variant" : "enum";
     const std::string_view caseName = d.IsVariant() ? "case" : "enumerator";
+    // Every enumerator's value, written or the one after the previous, must be one the backing type holds: a value
+    // cut to fit would make two enumerators equal, or name a number no program wrote.
+    if (!d.IsVariant() && baseType.IsInteger()) {
+        std::optional<std::int64_t> next = 0;
+        for (const auto &enumerator : d.variants) {
+            std::optional<std::int64_t> value = next;
+            // A 64-bit unsigned value past the signed range is checked by its width alone, which it fits.
+            bool wideUnsigned = false;
+            if (enumerator.discriminant) {
+                value = std::nullopt;
+                if (const auto parts = SplitIntegerLiteral(*enumerator.discriminant)) {
+                    std::string digits;
+                    for (const char c : parts->digits) {
+                        if (c != '_') {
+                            digits.push_back(c);
+                        }
+                    }
+                    std::uint64_t magnitude = 0;
+                    const char *end = digits.data() + digits.size();
+                    if (const auto [stop, error] =
+                            std::from_chars(digits.data(), end, magnitude, static_cast<int>(parts->base));
+                        error == std::errc{} && stop == end) {
+                        constexpr auto limit = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+                        if (!parts->negative && magnitude <= limit) {
+                            value = static_cast<std::int64_t>(magnitude);
+                        }
+                        else if (!parts->negative && !baseType.IsSigned() &&
+                                 PrimitiveBits(baseType->kind, 64).value_or(0) >= 64) {
+                            wideUnsigned = true;
+                        }
+                        else if (parts->negative && magnitude <= limit + 1) {
+                            value = magnitude == limit + 1 ? std::numeric_limits<std::int64_t>::min()
+                                                           : -static_cast<std::int64_t>(magnitude);
+                        }
+                    }
+                }
+            }
+            const bool fits = value && ConstantFitsTarget(*value, baseType);
+            if (!fits && !wideUnsigned && (value || enumerator.discriminant)) {
+                EmitError(enumerator.location,
+                          value ? std::format("enumerator '{}::{}' has the value {}, which the backing type '{}' "
+                                              "cannot hold",
+                                              d.name, enumerator.name, *value, baseType.DisplayString())
+                                : std::format("enumerator '{}::{}' has a value the backing type '{}' cannot hold",
+                                              d.name, enumerator.name, baseType.DisplayString()),
+                          {enumerator.discriminant
+                               ? "a value outside the backing type's range would be cut to fit"
+                               : "an enumerator without '=' takes the value after the previous one"},
+                          "give it a value inside the backing type's range, or declare a wider backing type");
+            }
+            next =
+                value && *value < std::numeric_limits<std::int64_t>::max() ? std::optional(*value + 1) : std::nullopt;
+        }
+    }
     std::unordered_set<std::string> seen;
     for (const auto &variant : d.variants) {
         if (!seen.insert(variant.name).second) {

@@ -1,0 +1,4 @@
+14:5: error: enumerator 'Size::Big' has the value 300, which the backing type 'uint8' cannot hold
+19:5: error: enumerator 'Wrap::Next' has the value 256, which the backing type 'uint8' cannot hold
+4:10: error: variadic parameter 'args' of 'Bad' must be its last parameter
+32:5: error: function 'Helper' cannot be declared inside a function body

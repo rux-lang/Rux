@@ -397,6 +397,9 @@ private:
     /// pointer shares is its user's to vouch for.
     [[nodiscard]] std::optional<std::string> UnsendablePart(const TypeRef &type);
     void ValidateStoredType(const TypeRef &type, SourceLocation location, std::string_view subject);
+    /// Refuses an executable's `Main` that takes parameters, is generic, or returns anything but nothing, an integer,
+    /// or a fallible whose success is either.
+    void CheckMainSignature(const FuncDecl &declaration, const TypeRef &returnType);
     /// Whether a value of `type` holds a view -- a slice, in itself or in any field, element or payload -- whose
     /// storage must outlive the value. Pointers do not count: what a raw pointer reaches is its user's to vouch for.
     [[nodiscard]] bool TypeHoldsView(const TypeRef &type);

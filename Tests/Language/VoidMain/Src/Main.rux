@@ -1,0 +1,21 @@
+import Core::Assert;
+
+// A `Main` without a result succeeds by finishing, and the process exits with 0: the exit status used to be whatever
+// the result register happened to hold. An early `return;` is a success too.
+
+var Calls: int = 0;
+
+func Count() -> int {
+    Calls = Calls + 1;
+    return Calls * 41;
+}
+
+func Main() {
+    // Leaves a non-zero value where an integer result would go, which must not become the status.
+    let last = Count() + 1;
+    Assert(last == 42, "the program ran");
+    if Calls == 1 {
+        return;
+    }
+    Assert(false, "an early return leaves Main");
+}

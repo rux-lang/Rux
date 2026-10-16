@@ -383,6 +383,15 @@ void HirToLirContext::Branch(const LirReg cond, const std::uint32_t trueTarget, 
                             .cases = {}});
 }
 
+void HirToLirContext::ReturnNothing() {
+    // The entry point's result is the process's exit status, so a `Main` without one reports success.
+    if (voidEntryPoint) {
+        Return(EmitConst("0", TypeRef::MakeInt()), TypeRef::MakeInt());
+        return;
+    }
+    Return(std::nullopt, TypeRef::MakeOpaque());
+}
+
 void HirToLirContext::Return(const std::optional<LirReg> val, TypeRef type) const {
     LirTerminator t;
     t.kind = LirTermKind::Return;
@@ -1309,6 +1318,11 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     lf.isNoReturn = hf.isNoReturn;
     lf.callConv = hf.callConv;
     lf.returnType = hf.returnType;
+    // The root package's `Main` alone keeps its bare name; without a result it still owes the process a status.
+    voidEntryPoint = lf.name == "Main" && hf.params.empty() && hf.returnType.IsOpaque();
+    if (voidEntryPoint) {
+        lf.returnType = TypeRef::MakeInt();
+    }
     // An asm function is an opaque blob of raw x86-64: no params to spill,
     // no basic blocks, no automatic prologue/epilogue. Its instructions are
     // carried verbatim to the code generator, which encodes them directly.
@@ -1363,7 +1377,7 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     if (hf.body) {
         LowerBlock(*hf.body);
         if (!IsTerminated()) {
-            Return(std::nullopt, TypeRef::MakeOpaque());
+            ReturnNothing();
         }
     }
     builder = nullptr;

@@ -1,0 +1,36 @@
+// Declarations the compiler used to accept and then mis-build: a variadic parameter that is not last, a function
+// declared inside another, and enumerators whose values the backing type cannot hold.
+
+func Bad(args: int32..., last: int32) -> int32 {
+    return last;
+}
+
+func Good(first: int32, rest: int32...) -> int32 {
+    return first;
+}
+
+enum Size: uint8 {
+    Small = 1,
+    Big = 300
+}
+
+enum Wrap: uint8 {
+    Last = 255,
+    Next
+}
+
+enum Signed: int8 {
+    Low = -128,
+    High = 127
+}
+
+enum Wide: uint64 {
+    Top = 18446744073709551615
+}
+
+func Outer() -> int32 {
+    func Helper() -> int32 {
+        return 1;
+    }
+    return 0;
+}

@@ -103,6 +103,8 @@ private:
     /// Where lowering reports; a worker lowering one module points it at that module's own list.
     std::vector<Diagnostic> *diagnostics;
     std::string currentFunction;
+    /// Whether the function being lowered is the entry point `Main` declared without a result.
+    bool voidEntryPoint = false;
     /// The logical file and user-facing function name a compiler-inserted runtime check in the current function
     /// reports.
     std::string currentSourceFile;
@@ -143,6 +145,8 @@ private:
     void Terminate(LirTerminator terminator) const;
     void Jump(std::uint32_t target) const;
     void Branch(LirReg cond, std::uint32_t trueTarget, std::uint32_t falseTarget) const;
+    /// Returns from a function without a result, which for a `Main` without one is the exit status 0.
+    void ReturnNothing();
     void Return(std::optional<LirReg> value, TypeRef type) const;
     void Unreachable() const;
     /// Stops the program with `Panic: <message>` and the current function's source location at `location`, exactly as

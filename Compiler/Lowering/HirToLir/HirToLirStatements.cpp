@@ -68,7 +68,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         else {
             EmitActivePartialCleanups();
             EmitCleanups(s->cleanups);
-            Return(std::nullopt, TypeRef::MakeOpaque());
+            ReturnNothing();
         }
         return;
     }
