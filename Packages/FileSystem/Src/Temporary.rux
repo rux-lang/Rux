@@ -13,7 +13,7 @@ import Allocator::Allocator;
 import Core::{ #target };
 import Entropy::NextUint64;
 import Io::{ IoError, IoErrorKind };
-import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
+import Path::{ IsSeparator, OsString, OsStringView, OsUnit, Path, PathBuffer };
 
 when #target.os == .Windows {
     import Windows::{ GetLastError, GetTempPathW };

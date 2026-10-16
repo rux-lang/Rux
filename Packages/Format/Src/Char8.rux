@@ -5,7 +5,7 @@
 // Writing the byte on its own would produce something that is not UTF-8, and the promise that it is holds every
 // reader of the result together.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
 
 /// The character written in place of anything that is not one.
 /// @see https://rux-lang.dev/docs/api/format/character-text#replacement-character

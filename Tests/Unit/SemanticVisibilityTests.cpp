@@ -686,3 +686,48 @@ TEST_CASE("an int variable selects the overload of its own width, and a caller i
     CHECK(ambiguous->help->contains("'3i64'"));
     CHECK_FALSE(ambiguous->help->contains("rename"));
 }
+
+TEST_CASE("an import belongs to the file that writes it, including the module blocks in that file") {
+    const std::vector<Source> library = {{"library.rux", R"(
+        pub func Clamp(value: int) -> int { return value; }
+        pub struct Gauge { value: int; }
+    )"}};
+    const auto diagnostics = AnalyzePackages(
+        {
+            {"first.rux", R"(
+                import Library::{ Clamp, Gauge };
+                func First() -> int { return Clamp(1); }
+                module Tools {
+                    func Nested() -> int { return Clamp(2); }
+                }
+            )"},
+            {"second.rux", R"(
+                func Second() -> int { return Clamp(3); }
+                func Main() -> int { return First() + Second(); }
+            )"},
+        },
+        library);
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "name 'Clamp' is not defined in this scope");
+    CHECK_EQ(diagnostics[0].sourceName, "second.rux");
+    CHECK_EQ(diagnostics[0].help.value_or(""), "import 'Clamp' in this file too");
+}
+
+TEST_CASE("an imported function joins the overloads the package declares under its name") {
+    const std::vector<Source> library = {{"library.rux", R"(
+        pub func Scale(value: int) -> int { return value; }
+    )"}};
+    const auto joined = AnalyzePackages(
+        {
+            {"first.rux", R"(
+                import Library::Scale;
+                func Scale(value: bool) -> int { return 0; }
+                func Main() -> int { return Scale(2) + Scale(true); }
+            )"},
+            {"second.rux", R"(
+                func Other() -> int { return Scale(false); }
+            )"},
+        },
+        library);
+    CHECK_MESSAGE(joined.empty(), Messages(joined));
+}

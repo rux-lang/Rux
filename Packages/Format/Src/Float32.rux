@@ -5,7 +5,7 @@
 // styles ask for scientific notation.
 
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // The largest finite float32, held here as the float64 it widens to exactly.
 const MaxFinite32 = 3.4028234663852886e38;

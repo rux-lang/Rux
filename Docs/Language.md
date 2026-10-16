@@ -70,6 +70,8 @@ pub module Text::Utf8 {
 }
 ```
 
+An import belongs to the file that writes it. One written at the top of a file names its items in that file, including the `module` blocks in it, and one written inside a `module` block names them in that block of that file; the other files of the package see neither, and a use there is `name 'Assert' is not defined in this scope`, with a note naming the file that does import it. A package's own declarations are shared by all its files with no import, and a package never re-exports what it imports: `import Format::Display;` does not find the `Display` that Format imports from Text. An imported function joins the overload set of a same-named function the package declares, as before.
+
 A public item is effectively public only when every module containing it is public. `pub module Text::Utf8` publishes both synthesized path segments. A `pub` declaration below a private module remains package-private. Named, multi-item, and qualified imports report an attempt to import a private declaration and point back to its declaration; a glob import simply omits private declarations. When a function or method name has public and private overloads, cross-package overload resolution sees only the public set, and diagnostics do not reveal the private candidates.
 
 Struct and union fields, methods, associated functions, constructors, and source-level operators also default to package-private:

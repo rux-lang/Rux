@@ -8,7 +8,7 @@
 // the bits rather than comparing values: it costs a mask instead of a call into the software comparison.
 
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // The exponent field and the stored significand field of a float16, and the sign bit.
 const ExponentMask16: uint16 = 0x7C00;

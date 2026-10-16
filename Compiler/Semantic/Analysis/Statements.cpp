@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <filesystem>
 #include <format>
 #include <functional>
 #include <optional>
@@ -153,10 +154,25 @@ void AnalysisContext::EmitUndefinedName(const SourceLocation location, const std
         return;
     }
     std::optional<std::string> help;
-    if (const Symbol *suggestion = currentScope->Suggest(name)) {
+    std::vector<std::string> notes;
+    // An import written in another file of the package is that file's alone.
+    const Scope *fileScope = nullptr;
+    for (const Scope *scope = currentScope; scope != nullptr; scope = scope->Parent()) {
+        if (scope->Declarations() != nullptr) {
+            fileScope = scope;
+        }
+    }
+    const Scope *root = fileScope ? fileScope->Declarations() : nullptr;
+    if (const std::string *importing = root ? programIndex.FileImporting(*root, name) : nullptr;
+        importing && *importing != currentFile) {
+        notes.push_back(std::format("'{}' imports '{}', but an import belongs to the file that writes it",
+                                    std::filesystem::path(*importing).filename().string(), name));
+        help = std::format("import '{}' in this file too", name);
+    }
+    else if (const Symbol *suggestion = currentScope->Suggest(name)) {
         help = std::format("did you mean '{}'?", suggestion->name);
     }
-    EmitError(location, std::format("name '{}' is not defined in this scope", name), {}, std::move(help));
+    EmitError(location, std::format("name '{}' is not defined in this scope", name), std::move(notes), std::move(help));
 }
 
 void AnalysisContext::PushScope() {
@@ -688,7 +704,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         programIndex.CollectDeclaration(
             *declarationStatement->decl, *currentScope, currentFile,
-            [this](const TypeExpr &type) { return ResolveType(type); }, &currentPackage);
+            [this](const TypeExpr &type) { return ResolveType(type); }, &currentPackage, {}, true, currentScope);
         CheckDecl(*declarationStatement->decl);
     }
     else if (const auto *deferStatement = AstCast<const DeferStmt>(&statement)) {

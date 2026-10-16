@@ -8,9 +8,10 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic, Succeeded };
-import Format::{ ByteCursor, TextWriter };
+import Format::ByteCursor;
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlValue,
                TomlWriteDocument };
+import Text::TextWriter;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

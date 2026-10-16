@@ -7,8 +7,7 @@
 // One helper decides that for every overload rather than each repeating the rule. There are twenty-two of them,
 // and a rule written twenty-two times is a rule that will be written wrongly once.
 
-import Format::Display;
-import Text::{ String, StringView };
+import Text::{ Display, String, StringView };
 
 /// Writes a newline to standard output.
 /// @returns the failure, or `none` when the whole value was written

@@ -3,9 +3,8 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic, Succeeded };
-import Format::{ TextWriter };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
-import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView };
+import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextWriter };
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView();

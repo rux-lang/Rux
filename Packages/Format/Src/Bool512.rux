@@ -2,7 +2,7 @@
 // The seventh boolean width renders exactly as the other six do. A boolean's text has nothing to do with how many
 // bytes it is stored in, and a width that rendered differently would be a width a caller had to remember.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
 
 extend bool512 : Display {
     /// Writes `true` or `false`.

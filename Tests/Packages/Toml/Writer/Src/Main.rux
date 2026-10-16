@@ -5,8 +5,8 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic, Succeeded };
-import Format::{ ByteCursor, TextWriter };
-import Text::{ BufferWriter, FormatError, StringView, TextError };
+import Format::ByteCursor;
+import Text::{ BufferWriter, FormatError, StringView, TextError, TextWriter };
 import Time::UtcOffset;
 import Toml::{ TomlKind, TomlParse, TomlValue, TomlWriteDocument };
 

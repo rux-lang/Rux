@@ -1,7 +1,7 @@
 // A `bool16` is the word `true` or the word `false`.
 // Lower case, unquoted, and the same for `Debug`: there is no second way to read a boolean.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
 
 extend bool16 : Display {
     /// Writes `true` or `false`.

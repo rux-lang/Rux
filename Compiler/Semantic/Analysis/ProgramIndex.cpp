@@ -98,8 +98,9 @@ SemanticDiagnostic DuplicateDeclaration(const Symbol &previous, const Symbol &sy
         SemanticDiagnostic::Severity::Error, sourceName, symbol.location, message, {DeclarationNote(previous)}, {}, {}};
 }
 
-Scope::Scope(Scope *parentScope)
-    : parent(parentScope) {
+Scope::Scope(Scope *parentScope, Scope *declarationScope)
+    : parent(parentScope)
+    , declarations(declarationScope) {
 }
 
 bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, const std::string &sourceName) {
@@ -108,8 +109,11 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
     }
     if (auto iterator = table.find(symbol.name); iterator != table.end()) {
         if (iterator->second.kind == Symbol::Kind::Func && symbol.kind == Symbol::Kind::Func) {
-            iterator->second.funcOverloads.insert(iterator->second.funcOverloads.end(), symbol.funcOverloads.begin(),
-                                                  symbol.funcOverloads.end());
+            for (const FuncDecl *overload : symbol.funcOverloads) {
+                if (!std::ranges::contains(iterator->second.funcOverloads, overload)) {
+                    iterator->second.funcOverloads.push_back(overload);
+                }
+            }
             if (iterator->second.type.IsUnknown() && !symbol.type.IsUnknown()) {
                 iterator->second.type = symbol.type;
             }
@@ -128,28 +132,44 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
 }
 
 Symbol *Scope::Lookup(const std::string &name) {
-    auto iterator = table.find(name);
-    if (iterator != table.end()) {
-        return &iterator->second;
+    if (Symbol *local = LookupLocal(name)) {
+        return local;
     }
     return parent ? parent->Lookup(name) : nullptr;
 }
 
 Symbol *Scope::LookupLocal(const std::string &name) {
+    if (Symbol *own = LookupOwn(name)) {
+        return own;
+    }
+    return declarations ? declarations->LookupLocal(name) : nullptr;
+}
+
+Symbol *Scope::LookupOwn(const std::string &name) {
     auto iterator = table.find(name);
     return iterator == table.end() ? nullptr : &iterator->second;
+}
+
+Scope *Scope::Declarations() const {
+    return declarations;
 }
 
 const Symbol *Scope::Suggest(const std::string &name) const {
     const Symbol *best = nullptr;
     std::size_t bestDistance = std::numeric_limits<std::size_t>::max();
-    for (const Scope *scope = this; scope != nullptr; scope = scope->parent) {
-        for (const auto &[candidate, symbol] : scope->table) {
+    const auto consider = [&](const Scope &scope) {
+        for (const auto &[candidate, symbol] : scope.table) {
             const std::size_t distance = EditDistance(name, candidate);
             if (distance < bestDistance || (distance == bestDistance && best != nullptr && candidate < best->name)) {
                 best = &symbol;
                 bestDistance = distance;
             }
+        }
+    };
+    for (const Scope *scope = this; scope != nullptr; scope = scope->parent) {
+        consider(*scope);
+        for (const Scope *through = scope->declarations; through != nullptr; through = through->declarations) {
+            consider(*through);
         }
     }
     const std::size_t threshold = name.size() < 4 ? 1 : std::min<std::size_t>(3, (name.size() + 2) / 3);
@@ -168,6 +188,7 @@ void Scope::Remap(const std::unordered_map<const Scope *, Scope *> &copies) {
         return copy == copies.end() ? scope : copy->second;
     };
     parent = copyOf(parent);
+    declarations = copyOf(declarations);
     for (auto &[name, symbol] : table) {
         static_cast<void>(name);
         symbol.moduleScope = copyOf(symbol.moduleScope);
@@ -237,6 +258,12 @@ SemanticProgramIndex::SemanticProgramIndex(const SemanticProgramIndex &base,
         static_cast<void>(function);
         scope = copyOf(scope);
     }
+    for (const auto &[key, scope] : base.fileScopes) {
+        fileScopes.emplace(std::pair{copyOf(const_cast<Scope *>(key.first)), key.second}, copyOf(scope));
+    }
+    for (const auto &[key, scope] : base.fileModuleScopes) {
+        fileModuleScopes.emplace(std::pair{copyOf(const_cast<Scope *>(key.first)), key.second}, copyOf(scope));
+    }
     for (auto &[declaration, info] : declarationInfos) {
         static_cast<void>(declaration);
         info.scope = copyOf(info.scope);
@@ -269,6 +296,35 @@ Scope &SemanticProgramIndex::ModuleScopeFor(const std::string &name, Scope &pare
     return parent;
 }
 
+Scope &SemanticProgramIndex::FileScopeFor(const std::string &sourceName, Scope &root) {
+    const std::pair<const Scope *, std::string> key{&root, sourceName};
+    if (const auto known = fileScopes.find(key); known != fileScopes.end()) {
+        return *known->second;
+    }
+    scopes.push_back(std::make_unique<Scope>(root.Parent(), &root));
+    fileScopes.emplace(key, scopes.back().get());
+    return *scopes.back();
+}
+
+Scope &SemanticProgramIndex::FileModuleScopeFor(Scope &enclosing, const std::string &name, Scope &module) {
+    const std::pair<const Scope *, std::string> key{&enclosing, name};
+    if (const auto known = fileModuleScopes.find(key); known != fileModuleScopes.end()) {
+        return *known->second;
+    }
+    scopes.push_back(std::make_unique<Scope>(&enclosing, &module));
+    fileModuleScopes.emplace(key, scopes.back().get());
+    return *scopes.back();
+}
+
+const std::string *SemanticProgramIndex::FileImporting(const Scope &root, const std::string &name) const {
+    for (const auto &[key, scope] : fileScopes) {
+        if (key.first == &root && scope->LookupOwn(name) != nullptr) {
+            return &key.second;
+        }
+    }
+    return nullptr;
+}
+
 void SemanticProgramIndex::BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName,
                                                      const std::string &interfaceName) {
     const std::string base = BaseTypeName(declaration.typeName);
@@ -295,12 +351,14 @@ void SemanticProgramIndex::CollectModule(const Module &module, const std::string
 
 void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
                                               const ResolveType &resolveType, const std::string *packageName,
-                                              const std::string &modulePath, const bool containingModulesPublic) {
+                                              const std::string &modulePath, const bool containingModulesPublic,
+                                              Scope *lookupScope) {
     const bool isGlobal = &scope == &globalScope;
+    Scope &lookup = lookupScope ? *lookupScope : FileScopeFor(sourceName, scope);
     const std::string ownerPackage = packageName ? *packageName : std::string{};
     const bool isEffectivelyPublic = containingModulesPublic && declaration.isPublic;
     declarationInfos.insert_or_assign(
-        &declaration, DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic, &scope});
+        &declaration, DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic, &lookup});
     const auto ownType = [&](const TypeExpr *type) {
         if (type)
             typeOwners.emplace(type, &declaration);
@@ -382,7 +440,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     };
 
     if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
-        functionScopes[function] = &scope;
+        functionScopes[function] = &lookup;
         functionSources[function] = sourceName;
         functions[function->name].push_back(function);
         // The package is part of where a function lives, not only the `module` blocks around it. Two packages both
@@ -522,7 +580,8 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     }
     else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&declaration)) {
         for (const auto &item : externBlock->items) {
-            CollectDeclaration(*item, scope, sourceName, resolveType, packageName, modulePath, containingModulesPublic);
+            CollectDeclaration(*item, scope, sourceName, resolveType, packageName, modulePath, containingModulesPublic,
+                               &lookup);
         }
     }
     else if (const auto *module = AstCast<const ModuleDecl>(&declaration)) {
@@ -553,9 +612,10 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         if (packageName) {
             packageScopes[*packageName][childPath] = moduleScope;
         }
+        Scope &moduleLookup = FileModuleScopeFor(lookup, module->name, *moduleScope);
         for (const auto &item : module->items) {
             CollectDeclaration(*item, *moduleScope, sourceName, resolveType, packageName, childPath,
-                               isEffectivelyPublic);
+                               isEffectivelyPublic, &moduleLookup);
         }
     }
     else if (const auto *implementation = AstCast<const ImplDecl>(&declaration)) {
@@ -571,14 +631,14 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         for (const auto &method : implementation->methods) {
             methods[typeName][method->name].push_back(method.get());
             methodImplementations[method.get()] = implementation;
-            functionScopes[method.get()] = &scope;
+            functionScopes[method.get()] = &lookup;
             functionSources[method.get()] = sourceName;
             functionModulePaths[method.get()] =
                 packageName && !packageName->empty() ? JoinModulePath(*packageName, modulePath) : modulePath;
             declarationInfos.insert_or_assign(
                 method.get(),
                 DeclarationInfo{ownerPackage, modulePath, sourceName,
-                                containingModulesPublic && extendedTypePublic && method->isPublic, &scope});
+                                containingModulesPublic && extendedTypePublic && method->isPublic, &lookup});
         }
         if (implementation->interfaceName) {
             implementedInterfaces[typeName].insert(*implementation->interfaceName);

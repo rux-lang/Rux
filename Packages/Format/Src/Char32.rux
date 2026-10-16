@@ -2,7 +2,7 @@
 // A `char32` is checked when it is made, so a value that is not a scalar value cannot ordinarily be in one. It is
 // still checked here, because raw storage can contain one and the writer must preserve valid UTF-8.
 
-import Text::{ IsScalarValue, TextError };
+import Text::{ Debug, Display, IsScalarValue, RejectStyle, TextError };
 
 extend char32 : Display {
     /// Writes this character, or the replacement character when the value is not one.

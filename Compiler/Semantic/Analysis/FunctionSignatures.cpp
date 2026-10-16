@@ -154,9 +154,12 @@ TypeRef AnalysisContext::MakeFuncTypeWithSubstitution(const std::vector<Param> &
 
 void AnalysisContext::ResolveModuleSignatures(const Module &module) {
     currentFile = module.name;
+    Scope *const savedScope = currentScope;
+    currentScope = &programIndex.FileScopeFor(module.name, *currentScope);
     for (const auto &declaration : module.items) {
         ResolveDeclSignature(*declaration);
     }
+    currentScope = savedScope;
 }
 
 void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
@@ -211,15 +214,18 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
     }
     else if (const auto *nested = AstCast<const ModuleDecl>(&declaration)) {
         Scope &moduleScope = programIndex.ModuleScopeFor(nested->name, globalScope);
+        Scope *savedScope = currentScope;
+        currentScope = &ModuleScopeFor(nested->name, *currentScope);
         for (const auto &item : nested->items) {
             ResolveDeclSignatureInScope(*item, moduleScope);
         }
+        currentScope = savedScope;
     }
 }
 
 void AnalysisContext::ResolveModuleSignaturesInScope(const Module &module, Scope &scope) {
     Scope *savedScope = currentScope;
-    currentScope = &scope;
+    currentScope = &programIndex.FileScopeFor(module.name, scope);
     currentFile = module.name;
     for (const auto &declaration : module.items) {
         ResolveDeclSignatureInScope(*declaration, scope);
@@ -279,9 +285,12 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
     }
     else if (const auto *nested = AstCast<const ModuleDecl>(&declaration)) {
         Scope &moduleScope = programIndex.ModuleScopeFor(nested->name, scope);
+        Scope *savedScope = currentScope;
+        currentScope = &ModuleScopeFor(nested->name, *currentScope);
         for (const auto &item : nested->items) {
             ResolveDeclSignatureInScope(*item, moduleScope);
         }
+        currentScope = savedScope;
     }
 }
 
@@ -349,11 +358,14 @@ void AnalysisContext::ValidateFunctionSignature(const FuncDecl &declaration,
 
 void AnalysisContext::CheckModule(const Module &module) {
     currentFile = module.name;
+    Scope *const savedScope = currentScope;
+    currentScope = &programIndex.FileScopeFor(module.name, *currentScope);
     checkingDeclarationsOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
     for (const auto &declaration : module.items) {
         CheckDecl(*declaration);
     }
     checkingDeclarationsOnly = false;
+    currentScope = savedScope;
 }
 
 void AnalysisContext::PrecheckModule(const Module &module) {
@@ -361,10 +373,13 @@ void AnalysisContext::PrecheckModule(const Module &module) {
     // A reused module's constants are checked when something checked here reads them: its own code is reused, so
     // nothing else needs them, and a generated table can hold many thousands of elements.
     checkingDeclarationsOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
+    Scope *const savedScope = currentScope;
+    currentScope = &programIndex.FileScopeFor(module.name, *currentScope);
     for (const auto &declaration : module.items) {
         PrecheckDecl(*declaration);
     }
     checkingDeclarationsOnly = false;
+    currentScope = savedScope;
 }
 
 void AnalysisContext::PrecheckModuleInScope(const Module &module, Scope &scope) {

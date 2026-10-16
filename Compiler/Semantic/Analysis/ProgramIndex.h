@@ -3,6 +3,7 @@
 #include "Semantic/Model/SemanticModel.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -49,11 +50,17 @@ struct Symbol {
 
 class Scope {
 public:
-    explicit Scope(Scope *parentScope = nullptr);
+    /// A scope looking through to `declarations` holds only what one file adds to them -- its imports -- and finds the
+    /// names `declarations` holds as if they were its own, before any enclosing scope's.
+    explicit Scope(Scope *parentScope = nullptr, Scope *declarations = nullptr);
 
     bool Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, const std::string &sourceName);
     [[nodiscard]] Symbol *Lookup(const std::string &name);
     [[nodiscard]] Symbol *LookupLocal(const std::string &name);
+    /// A name this scope itself holds, not one it looks through to.
+    [[nodiscard]] Symbol *LookupOwn(const std::string &name);
+    /// The scope this one looks through to, or nullptr.
+    [[nodiscard]] Scope *Declarations() const;
     [[nodiscard]] const Symbol *Suggest(const std::string &name) const;
     [[nodiscard]] Scope *Parent() const;
     [[nodiscard]] const std::unordered_map<std::string, Symbol> &Table() const;
@@ -64,6 +71,7 @@ public:
 
 private:
     Scope *parent;
+    Scope *declarations;
     std::unordered_map<std::string, Symbol> table;
 };
 
@@ -98,13 +106,25 @@ public:
     [[nodiscard]] Scope &CreatePackageRoot(const std::string &packageName);
     void RegisterPackageRoot(const std::string &packageName, Scope &scope);
     [[nodiscard]] Scope &ModuleScopeFor(const std::string &name, Scope &parent) const;
+    /// The scope the declarations of one source file are checked in: the imports written at the top of that file,
+    /// looking through to the package `root` the file's declarations belong to. Other files do not see them.
+    [[nodiscard]] Scope &FileScopeFor(const std::string &sourceName, Scope &root);
+    /// The scope a `module` block of one file is checked in, inside `enclosing`, the scope of what contains the block
+    /// in that file: the imports written in that block, looking through to the module's declarations, which every
+    /// file's blocks of the module share.
+    [[nodiscard]] Scope &FileModuleScopeFor(Scope &enclosing, const std::string &name, Scope &module);
+    /// Another file of the package whose root is `root` that imports `name` at its top, or nullptr.
+    [[nodiscard]] const std::string *FileImporting(const Scope &root, const std::string &name) const;
 
     void BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName,
                                    const std::string &interfaceName = {});
     void CollectModule(const Module &module, const std::string *packageName, const ResolveType &resolveType);
+    /// Define `declaration` in `scope`; `lookupScope`, the file's own scope by default, is where its signature and body
+    /// are later resolved.
     void CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
                             const ResolveType &resolveType, const std::string *packageName = nullptr,
-                            const std::string &modulePath = {}, bool containingModulesPublic = true);
+                            const std::string &modulePath = {}, bool containingModulesPublic = true,
+                            Scope *lookupScope = nullptr);
     void FinalizeVisibility();
     void FinalizeNominalIdentities();
     [[nodiscard]] const DeclarationInfo *TypeOwner(const TypeExpr &type) const;
@@ -197,6 +217,10 @@ private:
     Scope globalScope;
     PackageScopes packageScopes;
     std::vector<std::unique_ptr<Scope>> scopes;
+    /// File scopes by the package root they look through to and the file: two packages may each have a file of one
+    /// name.
+    std::map<std::pair<const Scope *, std::string>, Scope *> fileScopes;
+    std::map<std::pair<const Scope *, std::string>, Scope *> fileModuleScopes;
     std::unordered_map<std::string, const StructDecl *> structs;
     std::unordered_map<std::string, const EnumDecl *> enums;
     std::unordered_map<std::string, const UnionDecl *> unions;

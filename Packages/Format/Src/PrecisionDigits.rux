@@ -14,6 +14,7 @@
 // of the rounding can run the whole length of the digits — 9.99 at one decimal is 10.0, not 9.10 — so it is
 // propagated rather than applied to the last digit alone.
 
+import Text::{ FormatError, WriteAligned };
 
 /// The largest precision a narrow float renders at.
 /// Eleven hundred, which is exactly enough rather than round: the smallest `float64` subnormal is `2^-1074` and

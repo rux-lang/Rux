@@ -7,7 +7,7 @@
 // the most negative value of any signed width has no positive counterpart to negate into, and two's complement in
 // the unsigned type is right for it and for every other value.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
+import Text::{ Debug, Display, FormatBase, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
 
 // The digits of a `uint128`, least significant first, in the spec's base.
 func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint128, negative: bool) -> ! FormatError {

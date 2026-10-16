@@ -5,7 +5,7 @@
 // fixed notation instead, and the `e` and `E` styles for scientific notation, both written in Scientific.rux and
 // PrecisionDigits.rux.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // The largest finite float64. Anything past it is an infinity, which is how
 // the tests below classify a value without reading its bits.

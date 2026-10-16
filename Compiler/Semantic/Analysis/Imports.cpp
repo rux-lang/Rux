@@ -23,9 +23,12 @@ using Layout::AlignUp;
 
 void AnalysisContext::ApplyModuleImports(const Module &mod) {
     currentFile = mod.name;
+    Scope *const savedScope = currentScope;
+    currentScope = &programIndex.FileScopeFor(mod.name, *currentScope);
     for (const auto &decl : mod.items) {
         ApplyDeclImports(*decl);
     }
+    currentScope = savedScope;
 }
 
 void AnalysisContext::ApplyModuleImportsInScope(const Module &mod, Scope &scope) {
@@ -73,9 +76,12 @@ void AnalysisContext::ReapplyUseDecl(const UseDecl &useDecl) {
 
 void AnalysisContext::RefreshModuleImports(const Module &module) {
     currentFile = module.name;
+    Scope *const savedScope = currentScope;
+    currentScope = &programIndex.FileScopeFor(module.name, *currentScope);
     for (const auto &declaration : module.items) {
         RefreshDeclImports(*declaration);
     }
+    currentScope = savedScope;
 }
 
 void AnalysisContext::RefreshModuleImportsInScope(const Module &module, Scope &scope) {
@@ -101,7 +107,9 @@ void AnalysisContext::RefreshDeclImports(const Decl &declaration) {
 }
 
 Scope &AnalysisContext::ModuleScopeFor(const std::string &name, Scope &parent) {
-    return programIndex.ModuleScopeFor(name, parent);
+    // A module block is checked in a scope of its file's own, so what the block imports stays in that file.
+    Scope &module = programIndex.ModuleScopeFor(name, parent);
+    return &module == &parent ? parent : programIndex.FileModuleScopeFor(parent, name, module);
 }
 
 std::string AnalysisContext::ModulePathForImport(const UseDecl &d) {
@@ -304,15 +312,39 @@ void AnalysisContext::PromoteFromPackage(const UseDecl &d, const std::string &pk
 }
 
 void AnalysisContext::DefineImportedSymbol(const Symbol &sym) {
-    if (Symbol *existing = currentScope->LookupLocal(sym.name)) {
+    // An import belongs to the file, or the module block of a file, that writes it, so it goes into that file's own
+    // scope. A declaration of the package or module under the same name is still there: a function joins its overload
+    // set, as it would in one shared scope, and anything else makes the import a duplicate.
+    Symbol imported = sym;
+    if (Scope *declarations = currentScope->Declarations()) {
+        if (const Symbol *own = declarations->LookupLocal(sym.name)) {
+            if (own->kind == Symbol::Kind::Func && sym.kind == Symbol::Kind::Func) {
+                for (const FuncDecl *overload : own->funcOverloads) {
+                    if (!std::ranges::contains(imported.funcOverloads, overload)) {
+                        imported.funcOverloads.push_back(overload);
+                    }
+                }
+                if (!imported.externDecl) {
+                    imported.externDecl = own->externDecl;
+                }
+            }
+            else if (own->kind != sym.kind || own->declaration != sym.declaration ||
+                     own->location.line != sym.location.line || own->location.column != sym.location.column ||
+                     own->ownerPackage != sym.ownerPackage) {
+                diags.push_back(DuplicateDeclaration(*own, sym, currentFile));
+                return;
+            }
+        }
+    }
+    if (Symbol *existing = currentScope->LookupOwn(sym.name)) {
         if (existing->kind == sym.kind && existing->location.line == sym.location.line &&
             existing->location.column == sym.location.column && existing->ownerPackage == sym.ownerPackage &&
             existing->declaration == sym.declaration) {
-            *existing = sym;
+            *existing = std::move(imported);
             return;
         }
     }
-    currentScope->Define(sym, diags, currentFile);
+    currentScope->Define(std::move(imported), diags, currentFile);
 }
 
 void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,

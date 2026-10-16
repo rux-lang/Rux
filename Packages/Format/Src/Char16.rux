@@ -3,7 +3,7 @@
 // two of them, and one of them is all this sees. So it is written as the replacement character rather than as an
 // ill-formed sequence.
 
-import Text::{ IsScalarValue, TextError };
+import Text::{ Debug, Display, IsScalarValue, RejectStyle, TextError };
 
 extend char16 : Display {
     /// Writes this code unit's character, or the replacement character when it is half of one.
