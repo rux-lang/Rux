@@ -24,6 +24,16 @@ func Sum(box: Box<Wide>) -> int64 {
     return box.value.a + box.value.b;
 }
 
+// A type's own parameters may be passed back to it swapped; each name means the parameter of whoever writes it.
+struct Entry<K, V> {
+    key: K;
+    value: V;
+}
+
+func Flip<K, V>(entry: Entry<V, K>) -> Entry<K, V> {
+    return Entry<K, V> { key: entry.value, value: entry.key };
+}
+
 func Main() -> int {
     // A type argument wider than a pointer.
     let wide = Box<Wide> { value: Wide { a: 1i64, b: 2i64 } };
@@ -62,6 +72,10 @@ func Main() -> int {
 
     // Crossing a call boundary.
     Assert(Sum(wide) == 3i64, "an instantiation passed by value arrives whole");
+
+    let entry = Entry<int32, bool> { key: 3, value: true };
+    let swapped = Flip<bool, int32>(entry);
+    Assert(swapped.key && swapped.value == 3, "swapped parameters keep each field's own type");
 
     return 0;
 }

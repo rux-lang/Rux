@@ -34,7 +34,9 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
     if ((inputType->kind == TypeRef::Kind::Named || inputType->kind == TypeRef::Kind::TypeParam) &&
         substitutions.contains(inputType->name) &&
         substitutions.at(inputType->name).ToString() != inputType.ToString()) {
-        return LayoutOfTypeRef(substitutions.at(inputType->name), substitutions);
+        // A substitution is already in the terms of whoever asked, so it is laid out as it is: applying the map to it
+        // again would chase `K -> V -> K` forever when a type's own parameters are passed swapped.
+        return LayoutOfTypeRef(substitutions.at(inputType->name), {});
     }
 
     const std::string &key = inputType.ToString();
@@ -74,19 +76,22 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
         const std::string baseName = BaseTypeName(inputType->name);
         std::unordered_map<std::string, TypeRef> localSubs = substitutions;
         const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(inputType->name);
-        if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
-            const std::size_t count = std::min(structure->second->typeParams.size(), typeArgs.size());
+        // A generic declaration's fields name only its own parameters, so they are mapped to the arguments, read in
+        // the caller's terms, and nothing else: the caller's parameters may share their names.
+        const auto declarationSubstitutions = [&](const std::vector<TypeParameter> &parameters) {
+            std::unordered_map<std::string, TypeRef> own;
+            const std::size_t count = std::min(parameters.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
-                localSubs[structure->second->typeParams[i].name] = typeArgs[i];
+                own.emplace(parameters[i].name, SubstituteTypeParameters(typeArgs[i], substitutions));
             }
-            return finish(LayoutOfStruct(*structure->second, localSubs));
+            return own;
+        };
+        if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
+            return finish(LayoutOfStruct(*structure->second, declarationSubstitutions(structure->second->typeParams)));
         }
         if (const auto enumeration = enumDecls.find(baseName); enumeration != enumDecls.end()) {
-            const std::size_t count = std::min(enumeration->second->typeParams.size(), typeArgs.size());
-            for (std::size_t i = 0; i < count; ++i) {
-                localSubs[enumeration->second->typeParams[i].name] = typeArgs[i];
-            }
-            return finish(LayoutOfEnum(*enumeration->second, localSubs));
+            return finish(
+                LayoutOfEnum(*enumeration->second, declarationSubstitutions(enumeration->second->typeParams)));
         }
         if (const auto unionType = unionDecls.find(baseName); unionType != unionDecls.end()) {
             return finish(LayoutOfUnion(*unionType->second, localSubs));
@@ -241,7 +246,7 @@ AnalysisContext::LayoutOfEnum(const EnumDecl &decl, const std::unordered_map<std
             continue;
         }
         hasPayload = true;
-        const auto payload = LayoutOfFields(fields, substitutions);
+        const auto payload = LayoutOfFields(fields, {});
         if (!payload) {
             return std::nullopt;
         }
@@ -318,16 +323,17 @@ AnalysisContext::LayoutOfStruct(const StructDecl &decl, const std::unordered_map
     std::uint64_t offset = 0;
     std::uint64_t maxAlign = 1;
     for (const auto &field : decl.fields) {
+        // The field's type is resolved under the substitutions, so it is laid out as it is.
         const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
         std::optional<ResolvedTypeLayout> fieldLayout;
         if (fieldType->kind == TypeRef::Kind::Array && !fieldType->arrayLength && !fieldType->inner.empty()) {
-            const auto elementLayout = LayoutOfTypeRef(fieldType->inner[0], substitutions);
+            const auto elementLayout = LayoutOfTypeRef(fieldType->inner[0], {});
             if (elementLayout) {
                 fieldLayout = ResolvedTypeLayout{0, elementLayout->alignment};
             }
         }
         else {
-            fieldLayout = LayoutOfTypeRef(fieldType, substitutions);
+            fieldLayout = LayoutOfTypeRef(fieldType, {});
         }
         if (!fieldLayout) {
             return std::nullopt;
@@ -353,7 +359,7 @@ AnalysisContext::LayoutOfUnion(const UnionDecl &decl, const std::unordered_map<s
     std::uint64_t alignment = 1;
     for (const auto &field : decl.fields) {
         const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
-        const auto fieldLayout = LayoutOfTypeRef(fieldType, substitutions);
+        const auto fieldLayout = LayoutOfTypeRef(fieldType, {});
         if (!fieldLayout) {
             return std::nullopt;
         }
