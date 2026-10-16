@@ -81,5 +81,17 @@ func Main() -> int {
     }
     Assert(fromSum == 18, "An open-ended range should iterate upward from its start");
 
+    // Bounds of different widths meet in the wider type, so an end past the start's type is not truncated.
+    let low: int32 = 2147483646;
+    let high: int64 = 2147483649;
+    var wideCount: int = 0;
+    var wideLast: int64 = 0;
+    for i in low..high {
+        wideCount += 1;
+        wideLast = i;
+    }
+    Assert(wideCount == 3, "a range widened to its end's type should run to that end");
+    Assert(wideLast == 2147483648, "a range widened to its end's type should count past the start type's maximum");
+
     return 0;
 }

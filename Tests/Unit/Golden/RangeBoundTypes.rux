@@ -1,0 +1,16 @@
+// The bounds of a range meet in one type as an operator's operands do; neither is converted to a type that cannot
+// hold it.
+func Main() -> int {
+    let small: int32 = 1;
+    let wide: int64 = 5000000000;
+    let count: uint32 = 4;
+    let widened = small..wide;
+    let mixed = small..count;
+    let literal = 0u8..300;
+    let fits = 0u8..200;
+    var total: int64 = 0;
+    for value in widened {
+        total += value;
+    }
+    return 0;
+}

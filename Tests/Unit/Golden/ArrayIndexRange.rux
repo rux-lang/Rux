@@ -12,3 +12,14 @@ func Main() -> int {
     let unchecked = view[9];
     return (last + ahead + behind + nothing + unchecked) as int;
 }
+
+// A constant slice bound must lie within the array as well.
+func Slices() -> int {
+    let primes: int32[4] = [2, 3, 5, 7];
+    let whole = primes[0..4];
+    let past = primes[1..9];
+    let start = primes[5..];
+    let inclusive = primes[..=4];
+    let lastInclusive = primes[..=3];
+    return (whole.length + past.length + start.length + inclusive.length + lastInclusive.length) as int;
+}

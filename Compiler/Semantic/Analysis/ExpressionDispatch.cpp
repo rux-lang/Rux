@@ -363,6 +363,44 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         else if (e->lo && e->hi && loType.IsInteger() && UnsuffixedIntegerLiteralFits(*e->hi, loType)) {
             elemType = loType;
         }
+        else if (e->lo && e->hi && loType.IsInteger() && hiType.IsInteger() && loType != hiType) {
+            // Bounds of different integer types meet in one type as an operator's operands do, or in the type of the
+            // bound that holds every value of the other, so neither is converted to a type that cannot hold it.
+            const auto holdsEvery = [](const TypeRef &from, const TypeRef &to) {
+                const std::optional<std::uint64_t> fromBytes = from.SizeInBytes();
+                const std::optional<std::uint64_t> toBytes = to.SizeInBytes();
+                if (!fromBytes || !toBytes || (from.IsSigned() && !to.IsSigned())) {
+                    return false;
+                }
+                return from.IsSigned() == to.IsSigned() ? *fromBytes <= *toBytes : *fromBytes < *toBytes;
+            };
+            if (IsUnsuffixedIntegerLiteral(*e->hi) && !IsUnsuffixedIntegerLiteral(*e->lo) &&
+                IsIntegerLiteralOutOfRangeFor(*e->hi, loType)) {
+                EmitError(e->hi->location,
+                          std::format("integer literal is out of range for type '{}'", loType.ToString()));
+            }
+            else if (IsUnsuffixedIntegerLiteral(*e->lo) && !IsUnsuffixedIntegerLiteral(*e->hi) &&
+                     IsIntegerLiteralOutOfRangeFor(*e->lo, hiType)) {
+                EmitError(e->lo->location,
+                          std::format("integer literal is out of range for type '{}'", hiType.ToString()));
+            }
+            else if (const std::optional<TypeRef> common = CommonOperandType(*e->lo, loType, *e->hi, hiType)) {
+                elemType = *common;
+            }
+            else if (holdsEvery(hiType, loType)) {
+                elemType = loType;
+            }
+            else if (holdsEvery(loType, hiType)) {
+                elemType = hiType;
+            }
+            else {
+                EmitError(
+                    e->location,
+                    std::format("range bounds '{}' and '{}' have no common type", loType.ToString(), hiType.ToString()),
+                    {"neither bound's type holds every value of the other"},
+                    "convert one bound with 'as' to the type the range should use");
+            }
+        }
         if (elemType.IsUnknown()) {
             return TypeRef::MakeRangeFull();
         }

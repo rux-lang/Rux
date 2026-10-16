@@ -460,7 +460,7 @@ A scalar width widens implicitly to any scalar width at least as wide — `char3
 
 ### Range types
 
-Range expressions and annotations use the same punctuation family. Bounds in a two-sided range have one type.
+Range expressions and annotations use the same punctuation family. Bounds in a two-sided range have one type. Bounds written with different integer types meet in one, as an operator's operands do: an unsuffixed literal or constant takes the other bound's type when it fits, and otherwise the range takes the type of the bound that holds every value of the other, so with `a: int32` and `b: int64`, `a..b` is an `int64..int64`. Bounds of which neither holds the other, such as `int32` and `uint32`, are an error (`range bounds 'int32' and 'uint32' have no common type`), and so is a literal bound that the other bound's type cannot hold, as in `0u8..300`.
 
 | Expression | Type        | Members          |
 | ---------- | ----------- | ---------------- |
@@ -634,7 +634,7 @@ The two branches of a conditional `condition ? a : b` produce one type, as the a
 
 ## Indexing
 
-Built-in indexing of an array or a slice is bounds-checked on every target and in every build profile. `a[i]`, as a read, a write, or a compound assignment, stops the program with `Panic: index out of range`, followed by the function, file, line, and column of the subscript, unless `i` names an element; a negative index is never in range. A range subscript is checked the same way: `a[start..end]` requires `start <= end <= a.length`, and an inclusive end must be below the length. A constant index into a fixed array is checked when the program is compiled instead, so `primes[7]` on an `int32[4]` is an error. Indexing or slicing a raw pointer is not checked, because a pointer carries no length; the caller vouches for what it addresses. A release build removes a check it proves always passes.
+Built-in indexing of an array or a slice is bounds-checked on every target and in every build profile. `a[i]`, as a read, a write, or a compound assignment, stops the program with `Panic: index out of range`, followed by the function, file, line, and column of the subscript, unless `i` names an element; a negative index is never in range. A range subscript is checked the same way: `a[start..end]` requires `start <= end <= a.length`, and an inclusive end must be below the length. A constant index into a fixed array is checked when the program is compiled instead, so `primes[7]` on an `int32[4]` is an error, and so are constant slice bounds past its end, as in `primes[1..9]` (`slice end 9 is out of range for an array of 4 elements`). Indexing or slicing a raw pointer is not checked, because a pointer carries no length; the caller vouches for what it addresses. A release build removes a check it proves always passes.
 
 A type indexes itself by declaring the indexing operators in an `extend` block, the same way it declares `==` or `<`. `[]` reads one element and `[]=` writes one:
 

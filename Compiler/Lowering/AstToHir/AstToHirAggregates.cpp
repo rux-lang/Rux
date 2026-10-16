@@ -956,15 +956,17 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         if (range->hi) {
             lowered->hi = LowerExpr(*range->hi);
         }
-        if (range->lo && lowered->hi && lowered->hi->type.IsInteger() &&
-            UnsuffixedIntegerLiteralFits(*range->lo, lowered->hi->type)) {
-            lowered->lo = LowerExprAs(*range->lo, lowered->hi->type);
-        }
-        else if (range->hi && lowered->lo && lowered->lo->type.IsInteger() &&
-                 UnsuffixedIntegerLiteralFits(*range->hi, lowered->lo->type)) {
-            lowered->hi = LowerExprAs(*range->hi, lowered->lo->type);
-        }
         lowered->type = ResolvedExpressionType(*range);
+        // A literal bound takes the range's element type; any other bound is widened to it when the range is built.
+        if (!lowered->type->inner.empty() && lowered->type->inner[0].IsInteger()) {
+            const TypeRef &element = lowered->type->inner[0];
+            if (range->lo && UnsuffixedIntegerLiteralFits(*range->lo, element)) {
+                lowered->lo = LowerExprAs(*range->lo, element);
+            }
+            if (range->hi && UnsuffixedIntegerLiteralFits(*range->hi, element)) {
+                lowered->hi = LowerExprAs(*range->hi, element);
+            }
+        }
         return lowered;
     }
     if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {

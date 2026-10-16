@@ -624,6 +624,34 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
     }
 }
 
+void AnalysisContext::CheckConstantSliceBounds(const RangeExpr &range, const std::uint64_t length) {
+    // A fixed array's extent is known here, so a constant bound past it is reported now, as a constant index is.
+    const auto signedLength = static_cast<std::int64_t>(length);
+    if (range.lo) {
+        if (const auto start = EvalConstInteger(*range.lo); start && (*start < 0 || *start > signedLength)) {
+            EmitError(range.lo->location,
+                      std::format("slice start {} is out of range for an array of {} element{}", *start, length,
+                                  length == 1 ? "" : "s"),
+                      {}, std::format("valid starts are 0 through {}", length));
+        }
+    }
+    if (range.hi) {
+        if (const auto end = EvalConstInteger(*range.hi)) {
+            const std::int64_t exclusiveEnd = range.inclusive ? *end + 1 : *end;
+            if (exclusiveEnd < 0 || exclusiveEnd > signedLength) {
+                std::string help = range.inclusive
+                                     ? (length == 0 ? std::string("an empty array has no element to include")
+                                                    : std::format("valid inclusive ends are 0 through {}", length - 1))
+                                     : std::format("valid ends are 0 through {}", length);
+                EmitError(range.hi->location,
+                          std::format("slice end {} is out of range for an array of {} element{}", *end, length,
+                                      length == 1 ? "" : "s"),
+                          {}, std::move(help));
+            }
+        }
+    }
+}
+
 std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &expression) {
     if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         const bool wasProjectionRoot = checkingBorrowProjectionRoot;
@@ -707,6 +735,10 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             // slice keeps the slice's writability; and a range of a pointer views the elements it addresses, writably
             // when the pointee is, but only with an end bound, since the pointer alone has no length to run to.
             if (objectValueType->kind == TypeRef::Kind::Array && !objectValueType->inner.empty()) {
+                if (const auto *range = AstCast<const RangeExpr>(index->index.get());
+                    range && objectValueType->arrayLength) {
+                    CheckConstantSliceBounds(*range, *objectValueType->arrayLength);
+                }
                 const bool writable = objectType->kind == TypeRef::Kind::Reference
                                         ? objectType->inner.front().isMut
                                         : PlaceIsWritable(*index->object, objectType);

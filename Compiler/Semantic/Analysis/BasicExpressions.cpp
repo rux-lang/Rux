@@ -738,6 +738,49 @@ void AnalysisContext::CheckShiftCount(const TypeRef &shifted, const Expr &count,
         *value >= width ? "to clear the value, assign zero" : "shift the other way by the positive count");
 }
 
+std::optional<TypeRef> AnalysisContext::CommonOperandType(const Expr &leftExpr, const TypeRef &leftType,
+                                                          const Expr &rightExpr, const TypeRef &rightType) {
+    if ((leftType.IsInteger() && rightType.IsChar()) || (rightType.IsInteger() && leftType.IsChar())) {
+        return leftType.IsInteger() ? leftType : rightType;
+    }
+    if (leftType.IsChar() && rightType.IsChar()) {
+        return leftType;
+    }
+    if (leftType.IsInteger() && rightType.IsInteger()) {
+        // An unsuffixed literal or a constant expression carries the default `int`, and takes the other operand's
+        // type when its value fits there, whichever side it is written on: `2 * count` and `count * 2` are both
+        // the type of `count`.
+        if (leftType->kind == TypeRef::Kind::Int && rightType->kind != TypeRef::Kind::Int &&
+            CanAssignExprTo(leftExpr, leftType, rightType)) {
+            return rightType;
+        }
+        if (rightType->kind == TypeRef::Kind::Int && leftType->kind != TypeRef::Kind::Int &&
+            CanAssignExprTo(rightExpr, rightType, leftType)) {
+            return leftType;
+        }
+        // Otherwise the narrower operand widens to the wider one's type, exactly as an assignment would widen it,
+        // so `small + big` is as wide as `big + small`. Operands of different signedness have no such type: one
+        // of them would change value.
+        if (leftType.IsSigned() != rightType.IsSigned()) {
+            return std::nullopt;
+        }
+        if (rightType.IsAssignableTo(leftType)) {
+            return leftType;
+        }
+        if (leftType.IsAssignableTo(rightType)) {
+            return rightType;
+        }
+        return std::nullopt;
+    }
+    if (CanAssignExprTo(rightExpr, rightType, leftType)) {
+        return leftType;
+    }
+    if (CanAssignExprTo(leftExpr, leftType, rightType)) {
+        return rightType;
+    }
+    return std::nullopt;
+}
+
 TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType, const TypeRef &rightType,
                                      const Expr &leftExpression, const Expr &rightExpression,
                                      const SourceLocation location, const BinaryExpr *binaryExpression) {
@@ -795,46 +838,8 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     const auto isNumericOrChar = [](const TypeRef &type) { return type.IsNumeric() || type.IsChar(); };
     const auto isIntegerOrChar = [](const TypeRef &type) { return type.IsInteger() || type.IsChar(); };
     const auto compatibleType = [&](const Expr &leftExpr, const TypeRef &leftType, const Expr &rightExpr,
-                                    const TypeRef &rightType) -> std::optional<TypeRef> {
-        if ((leftType.IsInteger() && rightType.IsChar()) || (rightType.IsInteger() && leftType.IsChar())) {
-            return leftType.IsInteger() ? leftType : rightType;
-        }
-        if (leftType.IsChar() && rightType.IsChar()) {
-            return leftType;
-        }
-        if (leftType.IsInteger() && rightType.IsInteger()) {
-            // An unsuffixed literal or a constant expression carries the default `int`, and takes the other operand's
-            // type when its value fits there, whichever side it is written on: `2 * count` and `count * 2` are both
-            // the type of `count`.
-            if (leftType->kind == TypeRef::Kind::Int && rightType->kind != TypeRef::Kind::Int &&
-                CanAssignExprTo(leftExpr, leftType, rightType)) {
-                return rightType;
-            }
-            if (rightType->kind == TypeRef::Kind::Int && leftType->kind != TypeRef::Kind::Int &&
-                CanAssignExprTo(rightExpr, rightType, leftType)) {
-                return leftType;
-            }
-            // Otherwise the narrower operand widens to the wider one's type, exactly as an assignment would widen it,
-            // so `small + big` is as wide as `big + small`. Operands of different signedness have no such type: one
-            // of them would change value.
-            if (leftType.IsSigned() != rightType.IsSigned()) {
-                return std::nullopt;
-            }
-            if (rightType.IsAssignableTo(leftType)) {
-                return leftType;
-            }
-            if (leftType.IsAssignableTo(rightType)) {
-                return rightType;
-            }
-            return std::nullopt;
-        }
-        if (CanAssignExprTo(rightExpr, rightType, leftType)) {
-            return leftType;
-        }
-        if (CanAssignExprTo(leftExpr, leftType, rightType)) {
-            return rightType;
-        }
-        return std::nullopt;
+                                    const TypeRef &rightType) {
+        return CommonOperandType(leftExpr, leftType, rightExpr, rightType);
     };
 
     // Two integers of different signedness are the one pair the operators cannot widen to a common type, so the error
