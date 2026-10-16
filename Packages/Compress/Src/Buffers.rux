@@ -112,6 +112,19 @@ pub func Compress(allocator: Allocator, data: byte[..], format: Format, level: L
     return Collect(allocator, @gathered)?;
 }
 
+/// Compresses text in `format` at `level`: its UTF-8 bytes, as the Io streams carry them, so text needs no cast to
+/// bytes first.
+/// @param allocator what the result and the compressor's buffers are kept in
+/// @param data the text
+/// @param format the container to write
+/// @param level how hard to compress
+/// @returns the compressed bytes, or fails when the allocator refused
+/// @see https://rux-lang.dev/docs/api/compress/buffers#compress
+pub func Compress(allocator: Allocator, data: char8[..], format: Format, level: Level = Level::Default)
+    -> Vector<byte> ! IoError {
+    return Compress(allocator, (data.data as *byte)[..data.length], format, level)?;
+}
+
 /// Decompresses `data`, a whole stream in `format`.
 /// @param allocator what the result and the decompressor's buffers are kept in
 /// @param data the compressed stream
@@ -140,4 +153,14 @@ pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vec
         }
     }
     return Collect(allocator, @gathered)?;
+}
+
+/// Decompresses `data`, a whole stream in `format` held as `char8` units, such as bytes read from an Io stream.
+/// @param allocator what the result and the decompressor's buffers are kept in
+/// @param data the compressed stream
+/// @param format the container it is in
+/// @returns the data, or fails with `InvalidInput` for damaged or truncated input
+/// @see https://rux-lang.dev/docs/api/compress/buffers#decompress
+pub func Decompress(allocator: Allocator, data: char8[..], format: Format) -> Vector<byte> ! IoError {
+    return Decompress(allocator, (data.data as *byte)[..data.length], format)?;
 }

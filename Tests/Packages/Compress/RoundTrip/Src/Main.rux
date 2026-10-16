@@ -155,5 +155,12 @@ func Main() -> int {
         .Success(_) => Assert(false, "text is not a zlib stream"),
         .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "text is not a zlib stream")
     }
+
+    // Text compresses as its UTF-8 bytes, with no cast to bytes first, and a stream held as text decompresses.
+    let text = "the same text, the same text, the same text, the same text";
+    let packedText = Compress(SystemAllocator(), text, Format::Gzip) catch { else => return 13 };
+    let asText = (packedText.AsSlice().data as *char8)[..packedText.Length()];
+    let unpackedText = Decompress(SystemAllocator(), asText, Format::Gzip) catch { else => return 14 };
+    Assert(SameBytes(unpackedText.AsSlice(), (text.data as *byte)[..text.length]), "text round-trips");
     return 0;
 }
