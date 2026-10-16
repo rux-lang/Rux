@@ -1,0 +1,24 @@
+// A flexible array tail has no length of its own: the struct records how many elements were allocated after it, so
+// the tail is indexed as a pointer is, without a check, and sliced with the recorded count.
+import Core::Assert;
+import Memory::{ Alloc, Free };
+
+struct Packet {
+    length: uint32;
+    bytes: uint8[];
+}
+
+func Main() -> int {
+    let count: uint = 3;
+    let packet = Alloc(sizeof(Packet) + count) as *var Packet;
+    if packet == null {
+        return 1;
+    }
+    defer Free(packet);
+    packet.length = 3;
+    packet.bytes[0] = 7;
+    packet.bytes[2] = 9;
+    let view = packet.bytes[..count];
+    Assert(view.length == 3 && view[0] == 7 && view[2] == 9, "tail indexed and sliced");
+    return 0;
+}

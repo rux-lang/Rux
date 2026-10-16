@@ -999,7 +999,12 @@ HirToLirContext::IndexedStorage HirToLirContext::LowerIndexedStorage(const HirEx
     const bool viaReference = object.type->kind == TypeRef::Kind::Reference && !object.type->inner.empty();
     const TypeRef &valueType = viaReference ? object.type->inner.front() : object.type;
     IndexedStorage storage;
-    if (IsArrayType(valueType)) {
+    if (IsArrayType(valueType) && !valueType->arrayLength) {
+        // A flexible tail has no length of its own; the struct records how many elements were allocated after it, so
+        // its elements are the program's to vouch for, as a pointer's are.
+        storage.data = viaReference ? LowerExpr(object) : LowerLValue(object);
+    }
+    else if (IsArrayType(valueType)) {
         storage.data = viaReference ? LowerExpr(object) : LowerLValue(object);
         storage.constantLength = valueType->arrayLength.value_or(0);
         storage.length = EmitConst(std::to_string(*storage.constantLength), lengthType);

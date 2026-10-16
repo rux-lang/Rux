@@ -739,6 +739,15 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             // slice keeps the slice's writability; and a range of a pointer views the elements it addresses, writably
             // when the pointee is, but only with an end bound, since the pointer alone has no length to run to.
             if (objectValueType->kind == TypeRef::Kind::Array && !objectValueType->inner.empty()) {
+                // A flexible tail has no length to run a slice to, so its end is written, as a pointer's is.
+                if (!objectValueType->arrayLength && !indexType.RangeHasEnd()) {
+                    EmitError(index->location,
+                              std::format("cannot slice flexible array '{}' without an end bound",
+                                          objectValueType.ToString()),
+                              {"a flexible array tail has no length; the struct records how many elements it holds"},
+                              "write 'tail[..n]' or 'tail[a..b]' with the recorded count");
+                    return TypeRef::MakeUnknown();
+                }
                 if (const auto *range = AstCast<const RangeExpr>(index->index.get());
                     range && objectValueType->arrayLength) {
                     CheckConstantSliceBounds(*range, *objectValueType->arrayLength);
