@@ -360,11 +360,24 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
                                                    const std::unordered_map<std::string, TypeRef> &substitutions,
                                                    const SourceLocation location, const std::string &subject) {
     for (const TypeParameter &parameter : parameters) {
-        if (parameter.bounds.empty()) {
-            continue;
-        }
         const auto argument = substitutions.find(parameter.name);
         if (argument == substitutions.end() || argument->second.IsUnknown()) {
+            continue;
+        }
+        // A generic body is checked once, for every type its parameter may stand for, so nothing there proves a value
+        // of that type is not stored: in a field, a thread's context, a collection. A reference may not be stored
+        // beyond the call that borrowed it, so it is no type argument.
+        if (TypeStoresReference(argument->second)) {
+            EmitError(location,
+                      std::format("type argument '{}' of {} cannot be or hold a reference",
+                                  argument->second.DisplayString(), subject),
+                      {std::format("type parameter '{}' may be stored by the generic code, and a reference cannot "
+                                   "outlive the call that borrowed it",
+                                   parameter.name)},
+                      "pass an owned value, or a raw pointer when the address must be shared");
+            continue;
+        }
+        if (parameter.bounds.empty()) {
             continue;
         }
 
