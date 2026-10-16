@@ -177,7 +177,10 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         // statements, so it is validated when the assembler encodes it —
         // except for the one thing the assembler for the target cannot
         // say, which is that the body was written for the other one.
-        CheckAsmBodyArchitecture(d);
+        // A body for the other machine reads its registers as names, so its names are checked only once it is not.
+        if (CheckAsmBodyArchitecture(d)) {
+            CheckAsmBodySymbols(d);
+        }
     }
     else if (!d.body) {
         if (d.intrinsicName.empty() && !(isMethod && (IsSpecialOperationName(d.name) || IsDestructorName(d.name)))) {
@@ -209,7 +212,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
 // reaches this far is one the build needs AnalysisContext::and no assembler can encode, so
 // it is an error: `when #target.arch` is how a function written twice
 // reaches both machines, AnalysisContext::and every first-party body uses it.
-void AnalysisContext::CheckAsmBodyArchitecture(const FuncDecl &d) const {
+bool AnalysisContext::CheckAsmBodyArchitecture(const FuncDecl &d) const {
     const Target::Arch target = context.target.arch;
     for (const auto &instr : d.asmBody) {
         if (instr.mnemonic.empty()) {
@@ -222,7 +225,67 @@ void AnalysisContext::CheckAsmBodyArchitecture(const FuncDecl &d) const {
         EmitError(instr.location,
                   std::format("'{}' is an {} instruction, but asm func '{}' is compiled for {}", instr.mnemonic,
                               Target::ToDisplayString(mnemonicArch), d.name, Target::ToDisplayString(target)));
-        return;
+        return false;
+    }
+    return true;
+}
+
+// A name in an asm body becomes a relocation the linker resolves, so one that names nothing would fail only when the
+// program links, or, against a shared library, when it starts. A body's names are its own labels, functions and
+// module variables: those have one address the code can reach. A constant, a parameter or a local has none, a
+// thread-local variable is reached through the thread pointer, and an extern variable through its import slot.
+void AnalysisContext::CheckAsmBodySymbols(const FuncDecl &d) {
+    std::unordered_set<std::string> labels;
+    for (const auto &instr : d.asmBody) {
+        if (!instr.labelDef.empty()) {
+            labels.insert(instr.labelDef);
+        }
+    }
+    std::unordered_set<std::string> reported;
+    const auto check = [&](const std::string &name, const SourceLocation &location) {
+        if (name.empty() || labels.contains(name) || reported.contains(name)) {
+            return;
+        }
+        std::optional<std::string> note;
+        std::string help = "define the label in the body, or declare the function or module variable it names";
+        if (Symbol *symbol = currentScope->Lookup(name)) {
+            const auto *global = AstCast<const GlobalDecl>(symbol->declaration);
+            if (symbol->kind == Symbol::Kind::Func || (global && !global->isThreadLocal)) {
+                return;
+            }
+            if (symbol->kind == Symbol::Kind::Const) {
+                note = std::format("'{}' is a constant, which has no storage", name);
+                help = "write its value as an immediate";
+            }
+            else if (global) {
+                note = std::format("'{}' is a thread-local variable, reached through the thread pointer", name);
+                help = "pass its address to the function as an argument";
+            }
+            else if (AstCast<const ExternVarDecl>(symbol->declaration)) {
+                note = std::format("'{}' is an extern variable, reached through the slot the loader fills", name);
+                help = "pass its address to the function as an argument";
+            }
+            else if (symbol->kind == Symbol::Kind::Var) {
+                note = std::format("'{}' is a parameter or a local, which has no address of its own", name);
+                help = "read a parameter from the register or stack slot the calling convention puts it in";
+            }
+        }
+        reported.insert(name);
+        EmitError(location,
+                  std::format("'{}' in asm func '{}' is not a label, a function or a module variable", name, d.name),
+                  note ? std::vector<std::string>{*note} : std::vector<std::string>{}, help);
+    };
+    for (const auto &instr : d.asmBody) {
+        for (const auto &operand : instr.operands) {
+            // An AArch64 condition is written where a symbol could be, as the last operand of `csel`.
+            if (operand.kind == AsmOperand::Kind::Sym &&
+                !(instr.arch == Target::Arch::AArch64 && IsAArch64ConditionName(operand.name))) {
+                check(operand.name, operand.location);
+            }
+            if (operand.kind == AsmOperand::Kind::Mem) {
+                check(operand.memSym, operand.location);
+            }
+        }
     }
 }
 

@@ -1653,7 +1653,10 @@ private:
     /// Whether a call is to a function that never returns: a '#NoReturn' function or extern, or 'Panic'.
     [[nodiscard]] bool CallNeverReturns(const CallExpr &call) const;
     void CheckAbiForTarget(CallingConvention convention, const std::optional<SourceLocation> &location);
-    void CheckAsmBodyArchitecture(const FuncDecl &d) const;
+    /// Whether every instruction of an asm body belongs to the target architecture; reports the first that does not.
+    bool CheckAsmBodyArchitecture(const FuncDecl &d) const;
+    /// Report each name an asm body reaches that is not one of its labels, a function or a module variable.
+    void CheckAsmBodySymbols(const FuncDecl &d);
 
     void CheckStructDecl(const StructDecl &d);
 

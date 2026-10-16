@@ -1,0 +1,5 @@
+23:10: error: 'dnoe' in asm func 'Names' is not a label, a function or a module variable
+24:10: error: 'Limit' in asm func 'Names' is not a label, a function or a module variable
+25:14: error: 'Depth' in asm func 'Names' is not a label, a function or a module variable
+26:14: error: 'opterr' in asm func 'Names' is not a label, a function or a module variable
+27:10: error: 'x' in asm func 'Names' is not a label, a function or a module variable
