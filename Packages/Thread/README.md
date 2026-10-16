@@ -35,7 +35,7 @@ func Main() -> int {
 
 ## Design
 
-Rux has no closures, so a thread runs a function on a context value the caller moves to it, and leaves the function's result for whoever joins it. `Spawn(entry, context)` returns a `JoinHandle<R>`; `Join` waits for the thread and returns the result. Dropping the handle, or calling `Detach`, lets the thread run on and release itself when it finishes, destroying a result nobody took.
+Rux has no closures, so a thread runs a function on a context value the caller moves to it, and leaves the function's result for whoever joins it. `Spawn(entry, context)` returns a `JoinHandle<R>`; `Join` waits for the thread and returns the result. The context and the result must be `Core::Sendable`, so neither can be a reference or hold an `Rc`. Dropping the handle, or calling `Detach`, lets the thread run on and release itself when it finishes, destroying a result nobody took.
 
 On Linux, FreeBSD and macOS threads are started with the C library's `pthread_create`, which gives each one its stack and its thread-local block, so a program that starts threads is linked against the C library. On Windows they are started with `CreateThread`. Each thread has its own copy of every `thread var`, starting at its initial value.
 

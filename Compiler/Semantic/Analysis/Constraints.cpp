@@ -5,6 +5,9 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
+#include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -186,10 +189,99 @@ AnalysisContext::ScopedTypeParameterBounds::~ScopedTypeParameterBounds() {
     context.currentTypeParamBounds = std::move(saved);
 }
 
+std::optional<std::string> AnalysisContext::UnsendablePart(const TypeRef &type) {
+    if (type->kind == TypeRef::Kind::Reference) {
+        return type.DisplayString();
+    }
+    if (type->kind == TypeRef::Kind::Array || type->kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
+        type.IsFallible()) {
+        for (const TypeRef &element : type->inner) {
+            if (auto part = UnsendablePart(element)) {
+                return part;
+            }
+        }
+        return std::nullopt;
+    }
+    if (type->kind != TypeRef::Kind::Named || !sendableChecks.insert(type->name).second) {
+        return std::nullopt;
+    }
+    const std::string base = BaseTypeName(type->name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
+    const auto substitutionsFor = [&](const std::vector<TypeParameter> &parameters) {
+        std::unordered_map<std::string, TypeRef> substitutions;
+        for (std::size_t index = 0; index < std::min(arguments.size(), parameters.size()); ++index) {
+            substitutions.emplace(parameters[index].name, arguments[index]);
+        }
+        return substitutions;
+    };
+    std::optional<std::string> part;
+    if (const auto structure = structDecls.find(base); structure != structDecls.end()) {
+        if (structure->second->isUnsendable) {
+            part = base;
+        }
+        const auto substitutions = substitutionsFor(structure->second->typeParams);
+        for (const StructDecl::Field &field : structure->second->fields) {
+            if (part) {
+                break;
+            }
+            part = UnsendablePart(ResolveTypeWithSubstitution(*field.type, substitutions));
+        }
+    }
+    else if (const auto enumeration = enumDecls.find(base); enumeration != enumDecls.end()) {
+        if (enumeration->second->isUnsendable) {
+            part = base;
+        }
+        const auto substitutions = substitutionsFor(enumeration->second->typeParams);
+        for (const EnumDecl::Variant &variant : enumeration->second->variants) {
+            for (const auto &field : variant.fields) {
+                if (!part) {
+                    part = UnsendablePart(ResolveTypeWithSubstitution(*field, substitutions));
+                }
+            }
+            for (const auto &field : variant.namedFields) {
+                if (!part) {
+                    part = UnsendablePart(ResolveTypeWithSubstitution(*field.type, substitutions));
+                }
+            }
+        }
+    }
+    else if (const auto unionType = unionDecls.find(base); unionType != unionDecls.end()) {
+        if (unionType->second->isUnsendable) {
+            part = base;
+        }
+        for (const UnionDecl::Field &field : unionType->second->fields) {
+            if (!part) {
+                part = UnsendablePart(ResolveType(*field.type));
+            }
+        }
+    }
+    sendableChecks.erase(type->name);
+    return part;
+}
+
+namespace {
+/// The compiler-known marker a thread's context and result are bound by: an interface named `Sendable` that requires
+/// nothing. A type satisfies it unless it is or holds a type declared `#Unsendable()`, or a reference.
+bool IsSendableMarker(const InterfaceDecl &interface) {
+    return interface.name == "Sendable" && interface.methods.empty() && interface.typeParams.empty();
+}
+} // namespace
+
 bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason,
                                          const std::vector<TypeRef> &interfaceArguments) {
-    // An interface that requires nothing is satisfied by everything, so a marker bound costs no conformance work.
-    if (interface.methods.empty()) {
+    if (IsSendableMarker(interface) && argument->kind != TypeRef::Kind::TypeParam) {
+        if (const auto part = UnsendablePart(argument)) {
+            reason = *part == argument.DisplayString()
+                       ? std::format("'{}' stays on the thread that made it", *part)
+                       : std::format("'{}' holds '{}', which stays on the thread that made it",
+                                     argument.DisplayString(), *part);
+            return false;
+        }
+        return true;
+    }
+    // An interface that requires nothing is satisfied by everything, so a marker bound costs no conformance work. A
+    // type parameter given for `Sendable` has to carry the bound itself, which the check below asks of it.
+    if (interface.methods.empty() && !(IsSendableMarker(interface) && argument->kind == TypeRef::Kind::TypeParam)) {
         return true;
     }
 
@@ -403,6 +495,11 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
             if (argument->second->kind == TypeRef::Kind::TypeParam) {
                 help =
                     std::format("add the bound to the enclosing declaration, as in '{}: {}'", argumentName, bound.name);
+            }
+            else if (IsSendableMarker(*bound.interface)) {
+                // No extension makes a type sendable: what it holds decides, so the help points at what to hold.
+                help = "keep the value on the thread that made it, or share it through a type made for threads, such "
+                       "as 'Arc' in place of 'Rc'";
             }
             else {
                 help =

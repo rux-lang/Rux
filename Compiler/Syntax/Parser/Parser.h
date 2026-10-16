@@ -148,10 +148,12 @@ private:
         bool usedSymbol = false;
         bool usedNoReturn = false;
         bool usedTest = false;
+        bool usedUnsendable = false;
         bool usedAbi = false;
         SourceLocation linkLocation;
         SourceLocation noReturnLocation;
         SourceLocation testLocation;
+        SourceLocation unsendableLocation;
         SourceLocation abiLocation;
         SourceLocation allowLocation;
     };

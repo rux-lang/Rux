@@ -392,6 +392,10 @@ private:
     void ValidateCallReferenceBorrows(const CallExpr &call, const std::vector<TypeRef> &parameterTypes);
     void BeginReceiverReferenceBorrow(const CallExpr &call, const Expr &receiver, const TypeRef &referenceType);
     [[nodiscard]] bool TypeStoresReference(const TypeRef &type);
+    /// The type declared `#Unsendable()` that `type` is or holds, through fields, elements and payloads, or nothing
+    /// when every value of `type` may move to another thread. Raw pointers and functions hold nothing here: what a
+    /// pointer shares is its user's to vouch for.
+    [[nodiscard]] std::optional<std::string> UnsendablePart(const TypeRef &type);
     void ValidateStoredType(const TypeRef &type, SourceLocation location, std::string_view subject);
     /// Rejects a type that `HasCAbiMapping` refuses where it would cross a C ABI boundary as `subject`: the type
     /// itself, or any scalar a by-value aggregate of it holds -- a struct or union field, an array element or a tuple
@@ -957,6 +961,8 @@ private:
     const Stmt *currentBorrowStatement = nullptr;
     std::vector<const Stmt *> savedBorrowStatements;
     std::unordered_set<std::string> referenceStorageChecks;
+    /// The types `UnsendablePart` is inside, so a recursive type ends its own walk.
+    std::unordered_set<std::string> sendableChecks;
     bool checkingPlainAssignmentTarget = false;
     bool checkingBorrowProjectionRoot = false;
     /// The field path, such as `start.x`, that the local about to be read is read through, so a part written on its

@@ -6,7 +6,7 @@
 // nobody took, so a handle dropped while its thread still runs is safe: the thread finishes, finds itself last, and
 // cleans up. Joining takes the result first, then lets go.
 
-import Core::{ AtomicFetchSub, AtomicStore, MemoryOrder, Panic };
+import Core::{ AtomicFetchSub, AtomicStore, MemoryOrder, Panic, Sendable };
 import Memory::{ AlignUp, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
 import Thread::{ NativeDetach, NativeJoin, NativeStart, ThreadError };
 
@@ -123,7 +123,7 @@ extend JoinHandle<R> {
 /// @param context the value the function is called with
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn
-pub func Spawn<T, R>(entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
+pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
     return SpawnWith<T, R>(ThreadOptions(), entry, <-context);
 }
 
@@ -135,7 +135,8 @@ pub func Spawn<T, R>(entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadE
 /// @param context the value the function is called with
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn-with
-pub func SpawnWith<T, R>(options: ThreadOptions, entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
+pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func(T) -> R, context: T)
+    -> JoinHandle<R> ! ThreadError {
     let contextOffset = ContextOffset<T, R>();
     let resultOffset = ResultOffset<T, R>();
     let length = PageAlign(resultOffset + sizeof(R));

@@ -661,6 +661,9 @@ struct Decl {
     /// Lint rules explicitly suppressed for this declaration. A type-level suppression also covers the fields and
     /// variants owned by that type.
     std::vector<std::string> allowedLints;
+    /// Written `#Unsendable()` before a type declaration: a value of the type, or of anything holding one, belongs to
+    /// the thread that made it and is no `Sendable` type argument.
+    bool isUnsendable = false;
     virtual ~Decl() = default;
     /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
     mutable const std::type_info *cachedType = nullptr;

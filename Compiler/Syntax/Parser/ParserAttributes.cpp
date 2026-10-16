@@ -94,14 +94,15 @@ std::string Parser::DecodeStringLiteralText(const std::string &text) {
 /// declaration, `#Allow` suppresses a named lint rule for one declaration, `#Link` describes how an extern declaration
 /// is imported (`#Library` and `#Symbol` are retained as compatibility spellings), and `#When` conditionally includes
 /// the declaration at compile time, `#Abi(...)` selects a calling convention, `#NoReturn()` marks a function that
-/// never returns to its caller, and `#Test()` marks a function that a test build of its package runs.
+/// never returns to its caller, `#Test()` marks a function that a test build of its package runs, and `#Unsendable()`
+/// marks a type whose values stay on the thread that made them.
 void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();
     const std::string name = Advance().text;
 
     if (name != "Error" && name != "Warn" && name != "Allow" && name != "Link" && name != "Library" &&
-        name != "Symbol" && name != "NoReturn" && name != "Test" && name != "Abi") {
+        name != "Symbol" && name != "NoReturn" && name != "Test" && name != "Unsendable" && name != "Abi") {
         // `#Intrinsic("Name")` became the `intrinsic` keyword, which takes its
         // name from the declaration instead of repeating it in a string.
         EmitError(nameLoc, name == "Intrinsic"
@@ -144,6 +145,22 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         attrs.testLocation = attributeLoc;
         if (!Check(TokenKind::RightParen)) {
             EmitError(CurrentLocation(), "'#Test' does not accept arguments");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        return;
+    }
+
+    if (name == "Unsendable") {
+        if (attrs.usedUnsendable) {
+            EmitError(nameLoc, "duplicate '#Unsendable' attribute");
+        }
+        attrs.usedUnsendable = true;
+        attrs.unsendableLocation = attributeLoc;
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#Unsendable' does not accept arguments");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
@@ -477,6 +494,15 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
         }
         else {
             EmitError(attrs.testLocation, "'#Test' can only be applied to a function");
+        }
+    }
+
+    if (attrs.usedUnsendable) {
+        if (AstCast<StructDecl>(decl.get()) || AstCast<EnumDecl>(decl.get()) || AstCast<UnionDecl>(decl.get())) {
+            decl->isUnsendable = true;
+        }
+        else {
+            EmitError(attrs.unsendableLocation, "'#Unsendable' can only be applied to a struct, variant or union");
         }
     }
 

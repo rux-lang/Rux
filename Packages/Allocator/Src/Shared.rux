@@ -23,8 +23,10 @@ func DestroySharedValue<T>(value: *var T) {
 }
 
 /// A shared, counted handle to one value, for use on one thread. Copying a handle shares the value.
+/// Its count is not atomic, so a handle is not `Sendable`: a thread's context cannot hold one.
 /// @typeParam T the value's type
 /// @see https://rux-lang.dev/docs/api/allocator/shared#rc
+#Unsendable()
 pub struct Rc<T> {
     block: *var SharedBlock<T>;
     allocator: Allocator;
