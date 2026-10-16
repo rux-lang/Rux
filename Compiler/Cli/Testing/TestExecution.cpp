@@ -12,6 +12,7 @@ using namespace System;
 TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, const bool color,
                            const std::span<const std::string_view> arguments) {
     TestOutcome outcome;
+    outcome.runner = SourcesDeclareTests(package.dir);
     const auto started = std::chrono::steady_clock::now();
     auto Finish = [&]() {
         outcome.duration = ElapsedMs(started);
@@ -64,6 +65,11 @@ TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, con
     outcome.output = std::move(run->output);
 
     outcome.status = outcome.exitCode == 0 ? TestStatus::Passed : TestStatus::Failed;
+    // The runner's code and line for filters that chose no test: both, so that a program of its own that happens to
+    // exit with 3 still fails.
+    if (!arguments.empty() && outcome.exitCode == 3 && outcome.output.contains("no test matches the filter")) {
+        outcome.status = TestStatus::NoMatch;
+    }
     return Finish();
 }
 } // namespace Rux::CliSupport

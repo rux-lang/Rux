@@ -227,17 +227,20 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                                std::make_move_iterator(sourceTestPackages.end()));
     const auto &testPackages = discovered.packages;
     if (!discovered.anyRootExists && testPackages.empty()) {
-        output.Success("Passed", std::format("0 tests in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
+        output.Success("Passed",
+                       std::format("0 test packages in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
         output.Detail("No test directory found at 'Tests/'");
         return 0;
     }
     if (testPackages.empty()) {
-        output.Success("Passed", std::format("0 tests in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
+        output.Success("Passed",
+                       std::format("0 test packages in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
         output.Detail("No executable test packages found under 'Tests/'");
         return 0;
     }
 
-    output.Progress("Running", Reporting::FormatCount(testPackages.size(), "test"));
+    // What runs is a package each, however many tests each package holds.
+    output.Progress("Running", Reporting::FormatCount(testPackages.size(), "test package"));
 
     auto ReportCapturedOutput = [&](const std::string_view captured) {
         if (captured.empty()) {
@@ -254,6 +257,9 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     // captured diagnostics or program output that explains it.
     int passed = 0;
     int failed = 0;
+    int unmatched = 0;
+    // Runners that had a test their filters matched, which is what a run with filters is for.
+    int matchedRunners = 0;
     const auto suiteStart = std::chrono::steady_clock::now();
     std::vector<TestTask> tasks;
     for (const auto &package : testPackages) {
@@ -284,9 +290,21 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             if (!outcome.executable.empty())
                 output.Verbose(std::format("Running '{}'", outcome.executable.string()));
             const auto detail = std::format("{} in {}", label, Reporting::FormatDuration(outcome.duration));
-            if (outcome.status == TestStatus::Passed) {
+            if (outcome.runner && outcome.status != TestStatus::NoMatch && outcome.status != TestStatus::BuildError) {
+                ++matchedRunners;
+            }
+            if (outcome.status == TestStatus::NoMatch) {
+                ++unmatched;
+                output.Success("Skipped", std::format("{} (no test matches)", detail));
+            }
+            else if (outcome.status == TestStatus::Passed) {
                 ++passed;
                 output.Success("Passed", detail);
+                // Arguments for the runner ask it for something, such as `--list` or a filter, so what it said is
+                // the answer and is shown even when the package passed.
+                if (!testArguments.empty()) {
+                    ReportCapturedOutput(outcome.output);
+                }
             }
             else {
                 ++failed;
@@ -303,6 +321,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     diagnostics.Note("the test executable could not be launched");
                     break;
                 case TestStatus::Passed:
+                case TestStatus::NoMatch:
                     break;
                 }
                 diagnostics.Write(outcome.diagnostics, MessageVisibility::Always);
@@ -312,16 +331,24 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             output.Flush();
         });
     const auto elapsed = ElapsedMs(suiteStart);
-    const int total = passed + failed;
+    const int total = passed + failed + unmatched;
+    // Filters that no package had a test for ran nothing, which a misspelt name must not pass for.
+    const bool nothingMatched = unmatched > 0 && matchedRunners == 0;
+    if (nothingMatched) {
+        diagnostics.Error("no test matches the filter in any package");
+        diagnostics.Help("run 'rux test -- --list' to see the test names");
+    }
     if (!opts.quiet) {
-        const auto totals = std::format("{} in {} ({} passed, {} failed)", Reporting::FormatCount(total, "test"),
-                                        Reporting::FormatDuration(elapsed), passed, failed);
-        if (failed == 0) {
+        std::string totals =
+            std::format("{} in {} ({} passed, {} failed", Reporting::FormatCount(total, "test package"),
+                        Reporting::FormatDuration(elapsed), passed, failed);
+        totals += unmatched > 0 ? std::format(", {} without a matching test)", unmatched) : ")";
+        if (failed == 0 && !nothingMatched) {
             output.Success("Passed", totals);
         }
         else {
             output.Failure("Failed", totals);
         }
     }
-    return failed == 0 ? 0 : 1;
+    return failed == 0 && !nothingMatched ? 0 : 1;
 }

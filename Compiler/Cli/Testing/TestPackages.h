@@ -28,6 +28,9 @@ struct TestDiscovery {
 
 enum class TestStatus {
     Passed,
+    /// A test runner given filters had no test they match. It is no failure of the package, since `rux test` hands one
+    /// set of filters to every package, but a run in which no package matched anything has run nothing.
+    NoMatch,
     Failed,
     BuildError,
     LaunchError
@@ -35,6 +38,8 @@ enum class TestStatus {
 
 struct TestOutcome {
     TestStatus status = TestStatus::Passed;
+    /// Whether the package's sources mark tests, so a generated runner read the arguments as filters.
+    bool runner = false;
     int exitCode = 0;
     std::string output;
     std::string diagnostics;

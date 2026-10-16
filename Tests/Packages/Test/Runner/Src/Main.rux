@@ -91,4 +91,21 @@ func Filtering() -> ! TestFailure {
     ExpectEqual(RunTestsWith(table[..], options), 1)?;
     options.list = true;
     ExpectEqual(RunTestsWith(table[..], options), 0)?;
+
+    // A filter that matches nothing reports so with a code of its own, listing or not, rather than passing with
+    // nothing run.
+    options.filter = "Fails";
+    ExpectEqual(RunTestsWith(table[..], options), 3)?;
+    options.list = false;
+    ExpectEqual(RunTestsWith(table[..], options), 3)?;
+
+    // Several filters choose every test any of them matches.
+    options.exact = false;
+    options.filter = "";
+    let passing = ["Nothing", "Passes"];
+    options.filters = passing[..];
+    ExpectEqual(RunTestsWith(table[..], options), 0)?;
+    let both = ["Passes", "Fails"];
+    options.filters = both[..];
+    ExpectEqual(RunTestsWith(table[..], options), 1)?;
 }

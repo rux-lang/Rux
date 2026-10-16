@@ -101,8 +101,12 @@ func RunChild() -> int {
         input.Read(chunk[..]) catch { else => 0u };
         return 0;
     }
-    return 99;
+    // No mode this test starts itself in, such as a filter `rux test` hands every package: the parent's run, then.
+    return NotAChild;
 }
+
+// What `RunChild` answers when its first argument names no child mode.
+const NotAChild: int = -1;
 
 // A command that starts this executable again in `mode`.
 func NewSelf(program: OsStringView, mode: char8[..]) -> Command {
@@ -123,7 +127,10 @@ func Same(bytes: char8[..], text: char8[..]) -> bool {
 }
 
 func Main() -> int {
-    if ArgumentCount() > 1u { return RunChild(); }
+    if ArgumentCount() > 1u {
+        let code = RunChild();
+        if code != NotAChild { return code; }
+    }
     let program = Argument(0) ?? OsStringView();
     let allocator = SystemAllocator();
 

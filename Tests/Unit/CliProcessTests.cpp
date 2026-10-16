@@ -348,7 +348,7 @@ Type = "Executable"
     CHECK(result.exitCode == 0);
     CHECK(result.output.contains("Testing EmptyTests v0.1.0 (Debug, " +
                                  Driver::TargetDisplayName(Rux::Target::TargetTriple::Host()) + ")"));
-    CHECK(result.output.contains("Passed 0 tests in "));
+    CHECK(result.output.contains("Passed 0 test packages in "));
     CHECK(result.output.contains("No test directory found at 'Tests/'"));
 
     const auto quiet = Run(std::array<std::string_view, 4>{"--manifest", manifest, "test", "--quiet"});
@@ -457,7 +457,7 @@ Type = "Executable"
                     "Panic: " + std::string(messages[index]) + "\n  at Main (Src/Main.rux:2:22)\n";
                 CHECK(report.contains("  Output:\n" + Reporting::Indent(failure, 2)));
             }
-            CHECK(normalized.contains("Failed 5 tests in "));
+            CHECK(normalized.contains("Failed 5 test packages in "));
             CHECK(normalized.contains("(1 passed, 4 failed)"));
             CHECK_FALSE(normalized.contains("[FAILED]"));
             for (std::size_t index = 0; index < probeResults.size(); ++index) {
@@ -481,9 +481,9 @@ Type = "Executable"
     CHECK(normalizedQuiet.contains("note: the test package did not compile"));
     CHECK(normalizedQuiet.contains("  Output:\n"));
     CHECK_FALSE(normalizedQuiet.contains("Testing TestReport"));
-    CHECK_FALSE(normalizedQuiet.contains("Running 5 tests"));
+    CHECK_FALSE(normalizedQuiet.contains("Running 5 test packages"));
     CHECK_FALSE(normalizedQuiet.contains("Passed Pass"));
-    CHECK_FALSE(normalizedQuiet.contains("Failed 5 tests"));
+    CHECK_FALSE(normalizedQuiet.contains("Failed 5 test packages"));
 
     std::error_code error;
     std::filesystem::remove_all(root, error);

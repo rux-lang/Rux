@@ -22,9 +22,11 @@ pub struct TestCase {
 /// Which tests a run chooses and how it reports them. `Copy`.
 /// @see https://rux-lang.dev/docs/api/test/runner#test-options
 pub struct TestOptions {
-    /// Run only tests whose names hold this text, or every test when it is empty.
+    /// Run only tests whose names hold this text, or every test when it is empty and `filters` is too.
     pub filter: char8[..];
-    /// Whether `filter` must be the whole name rather than part of it.
+    /// More texts like `filter`: a test runs when its name holds any of them, or `filter`.
+    pub filters: char8[..][..];
+    /// Whether a filter must be the whole name rather than part of it.
     pub exact: bool;
     /// Leave out tests whose names hold this text, unless it is empty.
     pub skip: char8[..];
@@ -39,7 +41,7 @@ extend TestOptions {
     /// @returns the options
     /// @see https://rux-lang.dev/docs/api/test/runner#test-options-new
     pub func TestOptions() -> TestOptions {
-        return TestOptions { filter: "", exact: false, skip: "", list: false, quiet: false };
+        return TestOptions { filter: "", filters: [], exact: false, skip: "", list: false, quiet: false };
     }
 }
 
@@ -60,12 +62,25 @@ func SameText(left: char8[..], right: char8[..]) -> bool {
     return left.length == right.length && Holds(left, right);
 }
 
-// Whether `options` choose the test called `name`.
+// Whether `filter` chooses the test called `name` under `options`.
+func Matches(options: TestOptions, filter: char8[..], name: char8[..]) -> bool {
+    return options.exact ? SameText(name, filter) : Holds(name, filter);
+}
+
+// Whether `options` name any filter at all.
+func Filters(options: TestOptions) -> bool {
+    return options.filter.length > 0u || options.filters.length > 0u;
+}
+
+// Whether `options` choose the test called `name`: any filter matches, or there is none.
 func Chooses(options: TestOptions, name: char8[..]) -> bool {
     if options.skip.length > 0u && Holds(name, options.skip) { return false; }
-    if options.filter.length == 0u { return true; }
-    if options.exact { return SameText(name, options.filter); }
-    return Holds(name, options.filter);
+    if !Filters(options) { return true; }
+    if options.filter.length > 0u && Matches(options, options.filter, name) { return true; }
+    for filter in options.filters {
+        if Matches(options, filter, name) { return true; }
+    }
+    return false;
 }
 
 // Milliseconds with three decimals, as text in `into`.
@@ -75,15 +90,22 @@ func Milliseconds(span: Duration) -> float64 {
 }
 
 /// Runs the tests that `options` choose, in order, and reports each as `ok`, `FAILED` with its message, or
-/// `skipped` with its reason, then a summary of the counts and the time taken.
+/// `skipped` with its reason, then a summary of the counts and the time taken. A filter that chooses no test at all is
+/// reported as `no test matches` and given a code of its own, so that `rux test`, which hands one filter to every
+/// package, can fail the run when no package had a test it matched instead of passing with nothing run.
 /// @param tests the tests
 /// @param options which to run and how to report them
-/// @returns 0 when none failed, 1 when some did
+/// @returns 0 when none failed, 1 when some did, 3 when filters chose no test
 /// @see https://rux-lang.dev/docs/api/test/runner#run-tests-with
 pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
     var chosen: uint = 0;
     for test in tests {
         if Chooses(options, test.name) { chosen = chosen + 1; }
+    }
+    if chosen == 0u && Filters(options) {
+        PrintLine("no test matches the filter{}; {} tests are filtered out", options.exact ? " exactly" : "",
+                  tests.length);
+        return 3;
     }
     if options.list {
         for test in tests {
@@ -134,11 +156,13 @@ pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
     return failures.Length() == 0u ? 0 : 1;
 }
 
-/// Runs the tests the process's arguments choose. A plain argument is a filter that a test's name must hold;
-/// `--exact` makes it the whole name, `--skip <text>` leaves out names holding the text, `--list` lists the chosen
-/// tests without running them, and `--quiet` reports only failures and the summary.
+/// Runs the tests the process's arguments choose. A plain argument is a filter that a test's name must hold, and a
+/// test runs when its name holds any of them; `--exact` makes each the whole name, `--skip <text>` leaves out names
+/// holding the text, `--list` lists the chosen tests without running them, and `--quiet` reports only failures and
+/// the summary.
 /// @param tests the tests
-/// @returns 0 when none failed, 1 when some did, 2 for arguments it does not understand
+/// @returns 0 when none failed, 1 when some did, 2 for arguments it does not understand, 3 when filters chose no
+///   test
 /// @see https://rux-lang.dev/docs/api/test/runner#run-tests
 pub func RunTests(tests: TestCase[..]) -> int {
     var options = TestOptions();
@@ -152,6 +176,7 @@ pub func RunTests(tests: TestCase[..]) -> int {
         index = index + 1;
     }
     let arguments = texts.AsSlice();
+    var filters = Vector<char8[..]>(SystemAllocator());
     index = 0;
     while index < arguments.length {
         let argument = arguments[index].Bytes();
@@ -166,8 +191,9 @@ pub func RunTests(tests: TestCase[..]) -> int {
             PrintLine("unknown option '{}'; the options are --exact, --skip <text>, --list and --quiet", argument);
             return 2;
         }
-        else { options.filter = argument; }
+        else { filters.Push(argument) catch { else => return 2 }; }
         index = index + 1;
     }
+    options.filters = filters.AsSlice();
     return RunTestsWith(tests, options);
 }

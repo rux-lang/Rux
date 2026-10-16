@@ -44,8 +44,10 @@ extend BenchmarkResult {
 /// Which benchmarks a run chooses and how long each is measured. `Copy`.
 /// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-options
 pub struct BenchmarkOptions {
-    /// Run only benchmarks whose names hold this text, or every benchmark when it is empty.
+    /// Run only benchmarks whose names hold this text, or every benchmark when it is empty and `filters` is too.
     pub filter: char8[..];
+    /// More texts like `filter`: a benchmark runs when its name holds any of them, or `filter`.
+    pub filters: char8[..][..];
     /// How long the measured run must last, at the least.
     pub minimumTime: Duration;
     /// The most iterations one run makes, which ends the growth for work too fast to reach `minimumTime`.
@@ -57,7 +59,7 @@ extend BenchmarkOptions {
     /// @returns the options
     /// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-options-new
     pub func BenchmarkOptions() -> BenchmarkOptions {
-        return BenchmarkOptions { filter: "", minimumTime: Duration::FromMilliseconds(200),
+        return BenchmarkOptions { filter: "", filters: [], minimumTime: Duration::FromMilliseconds(200),
                                   maximumIterations: 1000000000u64 };
     }
 }
@@ -109,6 +111,16 @@ pub func Measure(run: func(uint64), options: BenchmarkOptions) -> BenchmarkResul
     return result;
 }
 
+// Whether `options` choose the benchmark called `name`: any filter holds in it, or there is none.
+func ChoosesBenchmark(options: BenchmarkOptions, name: char8[..]) -> bool {
+    if options.filter.length == 0u && options.filters.length == 0u { return true; }
+    if options.filter.length > 0u && Holds(name, options.filter) { return true; }
+    for filter in options.filters {
+        if Holds(name, filter) { return true; }
+    }
+    return false;
+}
+
 /// Measures the benchmarks that `options` choose, in order, and reports each as its time per iteration and the
 /// iterations it was measured over, then how many were measured.
 /// @param benchmarks the benchmarks
@@ -118,7 +130,7 @@ pub func Measure(run: func(uint64), options: BenchmarkOptions) -> BenchmarkResul
 pub func RunBenchmarksWith(benchmarks: BenchmarkCase[..], options: BenchmarkOptions) -> int {
     var measured: uint = 0;
     for benchmark in benchmarks {
-        if options.filter.length == 0u || Holds(benchmark.name, options.filter) {
+        if ChoosesBenchmark(options, benchmark.name) {
             measured = measured + 1;
             let result = Measure(benchmark.run, options);
             PrintLine("bench {} ... {:.1} ns/iter ({} iterations)", benchmark.name, result.NanosecondsPerIteration(),
@@ -129,8 +141,8 @@ pub func RunBenchmarksWith(benchmarks: BenchmarkCase[..], options: BenchmarkOpti
     return 0;
 }
 
-/// Measures the benchmarks the process's arguments choose. A plain argument is a filter that a benchmark's name must
-/// hold, and `--quick` measures each for 10 milliseconds rather than 200, for checking that benchmarks still run.
+/// Measures the benchmarks the process's arguments choose. A plain argument is a filter, and a benchmark runs when
+/// its name holds any of them; `--quick` measures each for 10 milliseconds rather than 200, for checking that benchmarks still run.
 /// @param benchmarks the benchmarks
 /// @returns 0, or 2 for arguments it does not understand
 /// @see https://rux-lang.dev/docs/api/test/benchmark#run-benchmarks
@@ -145,6 +157,7 @@ pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
         texts.Push(<-text) catch { else => return 2 };
         index = index + 1;
     }
+    var filters = Vector<char8[..]>(SystemAllocator());
     for text in texts.AsSlice() {
         let argument = text.Bytes();
         if SameText(argument, "--quick") { options.minimumTime = Duration::FromMilliseconds(10); }
@@ -152,7 +165,8 @@ pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
             PrintLine("unknown option '{}'; the option is --quick", argument);
             return 2;
         }
-        else { options.filter = argument; }
+        else { filters.Push(argument) catch { else => return 2 }; }
     }
+    options.filters = filters.AsSlice();
     return RunBenchmarksWith(benchmarks, options);
 }
