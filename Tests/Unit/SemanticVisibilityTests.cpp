@@ -268,7 +268,12 @@ TEST_CASE("generic instantiations enforce operator visibility from the generic p
         }
     )"}},
                                           {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(rejected, "operator '<' is not defined for 'Ranked'"), Messages(rejected));
+    // The operator exists, so it is reported as private to its package rather than as missing.
+    const SemanticDiagnostic *hidden = FindMessage(rejected, "operator '<' of 'Ranked' is private to package");
+    REQUIRE_MESSAGE(hidden != nullptr, Messages(rejected));
+    CHECK_FALSE(HasMessage(rejected, "is not defined for 'Ranked'"));
+    REQUIRE(hidden->help.has_value());
+    CHECK(hidden->help->contains("'pub'"));
 }
 
 TEST_CASE("a structure pattern names only the fields visible across packages") {

@@ -126,10 +126,15 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
         return true;
     }
     if ((*declared)->kind == TypeRef::Kind::Reference && receiverType->kind == TypeRef::Kind::Pointer) {
+        // Dereferencing the pointer is the explicit step that vouches for it, after which the pointee is borrowed
+        // like any place; the help writes that step out with the receiver as it was spelled, when it is a name.
+        const auto *named = AstCast<const IdentExpr>(&receiver);
+        const std::string pointer = named ? named->name : "pointer";
         EmitError(call.location,
-                  std::format("cannot create safe receiver '{}' from raw pointer '{}'", declared->ToString(),
-                              receiverType.ToString()),
-                  {"raw pointers do not prove a valid non-null borrow"}, "call the method on an owning value");
+                  std::format("cannot call method '{}', whose receiver is '{}', through raw pointer '{}'", method.name,
+                              declared->DisplayString(), receiverType.DisplayString()),
+                  {"a raw pointer does not prove a valid, non-null borrow, so it is not borrowed implicitly"},
+                  std::format("dereference it where it is known to be valid: '(*{}).{}(...)'", pointer, method.name));
         return false;
     }
     if ((*declared)->kind == TypeRef::Kind::Pointer && receiverType->kind == TypeRef::Kind::Reference) {

@@ -7,9 +7,12 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <format>
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -235,12 +238,49 @@ void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &func
     }
 }
 
+namespace {
+/// A condition's type as the message about it shows it: `bool` is what source writes for `bool8`, so the expected and
+/// the found type read in the same words, as in `bool ! RegexError`.
+std::string ConditionTypeSpelling(const TypeRef &type) {
+    std::string spelling = type.DisplayString();
+    constexpr std::string_view canonical = "bool8";
+    for (std::size_t at = spelling.find(canonical); at != std::string::npos; at = spelling.find(canonical, at)) {
+        const std::size_t end = at + canonical.size();
+        const bool wordStart =
+            at == 0 || !(std::isalnum(static_cast<unsigned char>(spelling[at - 1])) || spelling[at - 1] == '_');
+        const bool wordEnd = end == spelling.size() ||
+                             !(std::isalnum(static_cast<unsigned char>(spelling[end])) || spelling[end] == '_');
+        if (wordStart && wordEnd) {
+            spelling.replace(at, canonical.size(), "bool");
+            at += 4;
+        }
+        else {
+            at = end;
+        }
+    }
+    return spelling;
+}
+} // namespace
+
 void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLocation location,
                                             const std::string_view construct) const {
-    if (!type.IsUnknown() && !type.IsBool()) {
-        EmitError(location, std::format("condition for '{}' must have type 'bool', but found '{}'", construct,
-                                        type.DisplayString()));
+    if (type.IsUnknown() || type.IsBool()) {
+        return;
     }
+    // A condition that can fail or be absent is one handling step away from a `bool`, which the help names.
+    std::optional<std::string> help;
+    if (type.IsFallible() && type->inner.size() == 2 && type->inner[0].IsBool()) {
+        help = std::format("handle the '{}' with 'catch', or propagate it with '?'", type->inner[1].DisplayString());
+    }
+    else if (type.IsOptional() && !type->inner.empty() && type->inner[0].IsBool()) {
+        help = "give the absent case a value with '?\?', or match the optional";
+    }
+    EmitError(location,
+              std::format("{} must have type 'bool', but found '{}'",
+                          construct == "pattern guard" ? std::string(construct)
+                                                       : std::format("condition for '{}'", construct),
+                          ConditionTypeSpelling(type)),
+              {}, std::move(help));
 }
 
 void AnalysisContext::CheckStatement(const Stmt &statement) {
@@ -401,10 +441,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
     }
     else if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
         TypeRef condition = ReadBorrowedScalar(*ifStatement->condition, CheckExpr(*ifStatement->condition));
-        if (!condition.IsUnknown() && !condition.IsBool()) {
-            EmitError(ifStatement->condition->location,
-                      std::format("condition for 'if' must have type 'bool', but found '{}'", condition.ToString()));
-        }
+        CheckBooleanCondition(condition, ifStatement->condition->location, "if");
         TrackedFlow fallthrough = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
 
@@ -414,11 +451,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         for (const auto &elseIf : ifStatement->elseIfs) {
             RestoreTrackedFlow(fallthrough);
             TypeRef elseIfCondition = ReadBorrowedScalar(*elseIf.condition, CheckExpr(*elseIf.condition));
-            if (!elseIfCondition.IsUnknown() && !elseIfCondition.IsBool()) {
-                EmitError(elseIf.condition->location,
-                          std::format("condition for 'else if' must have type 'bool', but found '{}'",
-                                      elseIfCondition.ToString()));
-            }
+            CheckBooleanCondition(elseIfCondition, elseIf.condition->location, "else if");
             fallthrough = SaveTrackedFlow();
             CheckBlock(*elseIf.block);
             exits.push_back(SaveTrackedFlow());
@@ -439,10 +472,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
 
         TypeRef condition = ReadBorrowedScalar(*whileStatement->condition, CheckExpr(*whileStatement->condition));
-        if (!condition.IsUnknown() && !condition.IsBool()) {
-            EmitError(whileStatement->condition->location,
-                      std::format("condition for 'while' must have type 'bool', but found '{}'", condition.ToString()));
-        }
+        CheckBooleanCondition(condition, whileStatement->condition->location, "while");
 
         const TrackedFlow loopEntry = SaveTrackedFlow();
         TrackedLoop loop = CheckTrackedLoopBody(*whileStatement->body, whileStatement->label);
@@ -487,11 +517,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             condition = ReadBorrowedScalar(*doWhileStatement->condition, CheckExpr(*doWhileStatement->condition));
             RestoreTrackedFlow(unreachableExit);
         }
-        if (!condition.IsUnknown() && !condition.IsBool()) {
-            EmitError(
-                doWhileStatement->condition->location,
-                std::format("condition for 'do-while' must have type 'bool', but found '{}'", condition.ToString()));
-        }
+        CheckBooleanCondition(condition, doWhileStatement->condition->location, "do-while");
         const auto *literal = AstCast<const LiteralExpr>(doWhileStatement->condition.get());
         const bool alwaysTrue =
             literal && literal->token.kind == TokenKind::BoolLiteral && literal->token.text == "true";
@@ -1000,10 +1026,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, PatternBorrow::Owned);
         const TypeRef guardType = CheckExpr(*guardedPattern->guard);
         currentPatternBorrow = savedBorrow;
-        if (!guardType.IsUnknown() && !guardType.IsBool()) {
-            EmitError(guardedPattern->guard->location,
-                      std::format("pattern guard must have type 'bool', but found '{}'", guardType.ToString()));
-        }
+        CheckBooleanCondition(guardType, guardedPattern->guard->location, "pattern guard");
         CheckGuardKeepsBindings(*guardedPattern);
     }
     else if (const auto *rangePattern = AstCast<const RangePattern>(&pattern)) {

@@ -1,0 +1,55 @@
+// Diagnostics that used to blame the wrong thing or mix two spellings of one type.
+
+variant ParseError {
+    Bad
+}
+
+struct Counter {
+    value: int32;
+}
+
+extend Counter {
+    func Bump(self: &Counter) -> int32 {
+        return self.value;
+    }
+}
+
+interface Source<T> {
+    func Next(self: &var Self) -> T?;
+}
+
+struct Numbers {
+    left: int32;
+}
+
+extend Numbers: Source<int32> {
+    func Next(self: &var Numbers) -> int32? {
+        return none;
+    }
+}
+
+func Keep<I: Source<T>, T>(source: I, keep: func(T) -> bool) -> int32 {
+    return 0;
+}
+
+func Curve(value: int32) -> int32 {
+    return value;
+}
+
+func Check(text: char8[..]) -> bool ! ParseError {
+    return true;
+}
+
+func Main() -> int {
+    // The fault is the second argument: the first fixes 'I' and 'T'.
+    let kept = Keep(Numbers { left: 1 }, Curve);
+    // A fallible condition reads 'bool', the spelling the source wrote.
+    if Check("x") {
+        return 1;
+    }
+    // A method is not called through a raw pointer implicitly.
+    var counter = Counter { value: 1 };
+    let pointer: *Counter = @counter;
+    let bumped = pointer.Bump();
+    return 0;
+}

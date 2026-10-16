@@ -1103,6 +1103,49 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return TypeRef::MakeBool();
             }
 
+            // An operator the type declares but this package cannot see, as when generic code in another package
+            // compares the type, is reported as private rather than as missing.
+            const auto hiddenOperator = [&](const std::string &name) -> const FuncDecl * {
+                const auto type = methodsByType.find(NamedBaseTypeName(left));
+                if (type == methodsByType.end()) {
+                    return nullptr;
+                }
+                const auto declared = type->second.find(name);
+                if (declared == type->second.end() || declared->second.empty() ||
+                    !AccessibleMethodCandidates(left, name).empty()) {
+                    return nullptr;
+                }
+                return declared->second.front();
+            };
+            std::vector<std::string> serving = {std::string(operatorName)};
+            if (operation == TK::BangEqual) {
+                serving.emplace_back("==");
+            }
+            else if (operation == TK::Greater || ordered) {
+                serving.emplace_back("<");
+            }
+            for (const std::string &name : serving) {
+                if (const FuncDecl *hidden = hiddenOperator(name)) {
+                    const auto info = declarationInfos.find(hidden);
+                    const std::string owner =
+                        info == declarationInfos.end() ? std::string{} : PackageDisplayName(info->second.ownerPackage);
+                    std::vector<std::string> notes;
+                    if (info != declarationInfos.end() && !info->second.sourceName.empty()) {
+                        notes.push_back(std::format("'{}' is declared at '{}':{}:{}", name, info->second.sourceName,
+                                                    hidden->location.line, hidden->location.column));
+                    }
+                    notes.emplace_back("code in another package, such as a generic collection, uses only the "
+                                       "operators it can see");
+                    EmitError(
+                        location,
+                        std::format("operator '{}' of '{}' is private to package '{}'", name, left.DisplayString(),
+                                    owner),
+                        std::move(notes),
+                        std::format("add 'pub' to '{}' and to the declaration of '{}'", left.DisplayString(), name));
+                    return TypeRef::MakeBool();
+                }
+            }
+
             // Ordering requires declared operators; structural equality alone does not define an order.
             std::string help = std::format("declare '{}' on '{}'", operatorName, left.ToString());
             if (operation == TK::BangEqual) {

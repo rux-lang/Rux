@@ -288,6 +288,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 for (std::size_t index = 0; index < substitutionCount; ++index) {
                     candidateSubstitutions.emplace(candidate.typeParams[index].name, ResolveType(*e->typeArgs[index]));
                 }
+                // The arguments supply the rest, as they did when the call was matched, so the argument reported is
+                // the one that does not fit rather than the first one whose parameter is still a type parameter.
+                if (candidateSubstitutions.size() < candidate.typeParams.size()) {
+                    DeduceTypeArguments(candidate, argTypes, candidateSubstitutions, e);
+                }
                 const TypeRef candidateType =
                     MakeFuncTypeWithSubstitution(candidate.params, candidate.returnType, candidateSubstitutions,
                                                  TypeParameterNames(candidate.typeParams));
