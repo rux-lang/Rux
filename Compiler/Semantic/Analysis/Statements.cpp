@@ -759,6 +759,22 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
         }
         else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown()) {
             returnAccepted = true;
+            // An interface value made here would hold storage of this function, which the return ends; one the
+            // function was handed, or got from a call, is passed on as it is.
+            const bool returnsInterface =
+                currentReturnType->kind == TypeRef::Kind::Named && interfaceDecls.contains(currentReturnType->name);
+            const bool valueIsInterface =
+                valueType->kind == TypeRef::Kind::Named && interfaceDecls.contains(valueType->name);
+            if (returnsInterface && !valueIsInterface) {
+                EmitError(location,
+                          std::format("cannot return '{}' as interface value '{}'", valueType.ToString(),
+                                      currentReturnType.ToString()),
+                          {"an interface value made at a return would point at storage the function gives up when it "
+                           "returns"},
+                          std::format("return '{}' itself, and let the caller make the interface value",
+                                      valueType.ToString()));
+                returnAccepted = false;
+            }
         }
     }
     // A unit result, or a fallible whose success carries the unit, completes without a written value: `return;` is

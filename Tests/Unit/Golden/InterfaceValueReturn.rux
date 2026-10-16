@@ -1,0 +1,28 @@
+// An interface value made at a return would point at storage the function gives up; one the function was handed is
+// passed on.
+interface Named {
+    func Id(self: &Self) -> int;
+}
+
+struct Plain {
+    id: int;
+}
+
+extend Plain : Named {
+    func Id(self: &Plain) -> int {
+        return self.id;
+    }
+}
+
+func Make() -> Named {
+    return Plain { id: 4 };
+}
+
+func Forward(value: Named) -> Named {
+    return value;
+}
+
+func Main() -> int {
+    let value = Make();
+    return value.Id() - 4;
+}
