@@ -70,6 +70,7 @@ AstToHirContext::AstToHirContext(const AstToHirContext &prepared, std::vector<Di
     , typeInterfaceVtables(prepared.typeInterfaceVtables)
     , methodImpl(prepared.methodImpl)
     , cleanupPlanner(prepared.model)
+    , functionOrigins(prepared.functionOrigins)
     , diagnostics(&outputDiagnostics) {
 }
 
@@ -352,129 +353,6 @@ void AstToHirContext::RegisterBuiltins() {
     }
 }
 
-void AstToHirContext::CollectModule(const Module &module) {
-    currentFile = module.name;
-    for (const auto &declaration : module.items) {
-        CollectDecl(*declaration);
-    }
-}
-
-TypeRef AstToHirContext::MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
-                                      const std::vector<std::string> &typeParams) {
-    const auto savedTypeParams = currentTypeParams;
-    currentTypeParams = typeParams;
-
-    std::vector<TypeRef> paramTypes;
-    for (const auto &param : params) {
-        if (!param.isVariadic) {
-            paramTypes.push_back(ResolveType(*param.type));
-        }
-    }
-    TypeRef resultType = returnType ? ResolveType(**returnType) : TypeRef::MakeOpaque();
-
-    currentTypeParams = savedTypeParams;
-    return TypeRef::MakeFunc(std::move(paramTypes), resultType);
-}
-
-std::string AstToHirContext::NominalName(const Decl &declaration) const {
-    return model.TryGetSymbolIdentity(declaration)->linkerName;
-}
-
-void AstToHirContext::CollectDecl(const Decl &decl) {
-    const auto simple = [this](HirSymbol::Kind kind, const std::string &name, TypeRef type = {}) {
-        HirSymbol symbol;
-        symbol.kind = kind;
-        symbol.name = name;
-        symbol.type = type;
-        globalScope.Define(std::move(symbol));
-    };
-    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
-        HirSymbol symbol;
-        symbol.kind = HirSymbol::Kind::Func;
-        symbol.name = function->name;
-        symbol.type = MakeFuncType(function->params, function->returnType, TypeParameterNames(function->typeParams));
-        symbol.isNoReturn = function->isNoReturn;
-        symbol.intrinsicName = function->intrinsicName;
-        symbol.funcOverloads.push_back(function);
-        globalScope.Define(std::move(symbol));
-    }
-    else if (const auto *structDecl = AstCast<const StructDecl>(&decl)) {
-        structDecls[NominalName(*structDecl)] = structDecl;
-        simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(NominalName(*structDecl)));
-    }
-    else if (const auto *enumDecl = AstCast<const EnumDecl>(&decl)) {
-        enumDecls[NominalName(*enumDecl)] = enumDecl;
-        simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
-    }
-    else if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
-        unionDecls[NominalName(*unionDecl)] = unionDecl;
-        simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(NominalName(*unionDecl)));
-    }
-    else if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
-        simple(HirSymbol::Kind::Interface, interfaceDecl->name, TypeRef::MakeNamed(NominalName(*interfaceDecl)));
-        interfaceDecls[NominalName(*interfaceDecl)] = interfaceDecl;
-    }
-    else if (const auto *constDecl = AstCast<const ConstDecl>(&decl)) {
-        HirSymbol symbol;
-        symbol.kind = HirSymbol::Kind::Const;
-        symbol.name = constDecl->name;
-        // A reused module's constant that nothing read was never checked, so its type was never resolved either.
-        symbol.type =
-            constDecl->type && model.TryGetSymbolIdentity(*constDecl) ? ResolveType(**constDecl->type) : TypeRef{};
-        symbol.intrinsicName = constDecl->intrinsicName;
-        globalScope.Define(std::move(symbol));
-    }
-    else if (const auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
-        HirSymbol symbol;
-        symbol.kind = HirSymbol::Kind::Var;
-        symbol.name = globalDecl->name;
-        symbol.type = ResolveType(*globalDecl->type);
-        symbol.isMut = true;
-        globalScope.Define(std::move(symbol));
-    }
-    else if (const auto *aliasDecl = AstCast<const TypeAliasDecl>(&decl)) {
-        simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
-    }
-    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&decl)) {
-        HirSymbol symbol;
-        symbol.kind = HirSymbol::Kind::Func;
-        symbol.name = externFunction->name;
-        symbol.type = MakeFuncType(externFunction->params, externFunction->returnType);
-        symbol.isNoReturn = externFunction->isNoReturn;
-        globalScope.Define(std::move(symbol));
-    }
-    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&decl)) {
-        HirSymbol symbol;
-        symbol.kind = HirSymbol::Kind::Var;
-        symbol.name = externVariable->name;
-        symbol.isMut = true;
-        globalScope.Define(std::move(symbol));
-    }
-    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
-        for (const auto &item : externBlock->items) {
-            CollectDecl(*item);
-        }
-    }
-    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
-        for (const auto &item : moduleDecl->items) {
-            CollectDecl(*item);
-        }
-    }
-    else if (const auto *implDecl = AstCast<const ImplDecl>(&decl)) {
-        const TypeRef *receiver = implDecl->extendedType ? model.TryGetType(*implDecl->extendedType) : nullptr;
-        const std::string typeName = receiver ? NamedBaseTypeName(*receiver) : BaseTypeName(implDecl->typeName);
-        for (const auto &method : implDecl->methods) {
-            methodsByType[typeName][method->name].push_back(method.get());
-            methodImpl[method.get()] = implDecl;
-        }
-        if (implDecl->interfaceName) {
-            if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
-                typeInterfaceVtables[typeName][identity->interfaceName] = identity->linkerName;
-            }
-        }
-    }
-}
-
 namespace {
 /// The module path a source file corresponds to, relative to the package root, so the identity does not depend on where
 /// the package was checked out.
@@ -534,6 +412,139 @@ std::string FilePathToModulePath(const std::string &filePath) {
     return result;
 }
 } // namespace
+
+void AstToHirContext::CollectModule(const Module &module) {
+    currentFile = module.name;
+    currentModulePath = FilePathToModulePath(module.name);
+    declModulePath.clear();
+    for (const auto &declaration : module.items) {
+        CollectDecl(*declaration);
+    }
+}
+
+TypeRef AstToHirContext::MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
+                                      const std::vector<std::string> &typeParams) {
+    const auto savedTypeParams = currentTypeParams;
+    currentTypeParams = typeParams;
+
+    std::vector<TypeRef> paramTypes;
+    for (const auto &param : params) {
+        if (!param.isVariadic) {
+            paramTypes.push_back(ResolveType(*param.type));
+        }
+    }
+    TypeRef resultType = returnType ? ResolveType(**returnType) : TypeRef::MakeOpaque();
+
+    currentTypeParams = savedTypeParams;
+    return TypeRef::MakeFunc(std::move(paramTypes), resultType);
+}
+
+std::string AstToHirContext::NominalName(const Decl &declaration) const {
+    return model.TryGetSymbolIdentity(declaration)->linkerName;
+}
+
+void AstToHirContext::CollectDecl(const Decl &decl) {
+    const auto simple = [this](HirSymbol::Kind kind, const std::string &name, TypeRef type = {}) {
+        HirSymbol symbol;
+        symbol.kind = kind;
+        symbol.name = name;
+        symbol.type = type;
+        globalScope.Define(std::move(symbol));
+    };
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Func;
+        symbol.name = function->name;
+        symbol.type = MakeFuncType(function->params, function->returnType, TypeParameterNames(function->typeParams));
+        symbol.isNoReturn = function->isNoReturn;
+        symbol.intrinsicName = function->intrinsicName;
+        symbol.funcOverloads.push_back(function);
+        globalScope.Define(std::move(symbol));
+        functionOrigins.emplace(function, DeclarationOrigin{currentFile, currentModulePath, declModulePath});
+    }
+    else if (const auto *structDecl = AstCast<const StructDecl>(&decl)) {
+        structDecls[NominalName(*structDecl)] = structDecl;
+        simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(NominalName(*structDecl)));
+    }
+    else if (const auto *enumDecl = AstCast<const EnumDecl>(&decl)) {
+        enumDecls[NominalName(*enumDecl)] = enumDecl;
+        simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
+    }
+    else if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
+        unionDecls[NominalName(*unionDecl)] = unionDecl;
+        simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(NominalName(*unionDecl)));
+    }
+    else if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
+        simple(HirSymbol::Kind::Interface, interfaceDecl->name, TypeRef::MakeNamed(NominalName(*interfaceDecl)));
+        interfaceDecls[NominalName(*interfaceDecl)] = interfaceDecl;
+    }
+    else if (const auto *constDecl = AstCast<const ConstDecl>(&decl)) {
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Const;
+        symbol.name = constDecl->name;
+        // A reused module's constant that nothing read was never checked, so its type was never resolved either.
+        symbol.type =
+            constDecl->type && model.TryGetSymbolIdentity(*constDecl) ? ResolveType(**constDecl->type) : TypeRef{};
+        symbol.intrinsicName = constDecl->intrinsicName;
+        globalScope.Define(std::move(symbol));
+    }
+    else if (const auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Var;
+        symbol.name = globalDecl->name;
+        symbol.type = ResolveType(*globalDecl->type);
+        symbol.isMut = true;
+        globalScope.Define(std::move(symbol));
+    }
+    else if (const auto *aliasDecl = AstCast<const TypeAliasDecl>(&decl)) {
+        simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
+    }
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&decl)) {
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Func;
+        symbol.name = externFunction->name;
+        symbol.type = MakeFuncType(externFunction->params, externFunction->returnType);
+        symbol.isNoReturn = externFunction->isNoReturn;
+        globalScope.Define(std::move(symbol));
+    }
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&decl)) {
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Var;
+        symbol.name = externVariable->name;
+        symbol.isMut = true;
+        globalScope.Define(std::move(symbol));
+    }
+    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
+        for (const auto &item : externBlock->items) {
+            CollectDecl(*item);
+        }
+    }
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
+        const std::string savedModulePath = currentModulePath;
+        const std::string savedDeclModulePath = declModulePath;
+        currentModulePath = currentModulePath.empty() ? moduleDecl->name : currentModulePath + "::" + moduleDecl->name;
+        declModulePath = declModulePath.empty() ? moduleDecl->name : declModulePath + "::" + moduleDecl->name;
+        for (const auto &item : moduleDecl->items) {
+            CollectDecl(*item);
+        }
+        currentModulePath = savedModulePath;
+        declModulePath = savedDeclModulePath;
+    }
+    else if (const auto *implDecl = AstCast<const ImplDecl>(&decl)) {
+        const TypeRef *receiver = implDecl->extendedType ? model.TryGetType(*implDecl->extendedType) : nullptr;
+        const std::string typeName = receiver ? NamedBaseTypeName(*receiver) : BaseTypeName(implDecl->typeName);
+        for (const auto &method : implDecl->methods) {
+            methodsByType[typeName][method->name].push_back(method.get());
+            methodImpl[method.get()] = implDecl;
+            functionOrigins.emplace(method.get(), DeclarationOrigin{currentFile, currentModulePath, declModulePath});
+        }
+        if (implDecl->interfaceName) {
+            if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
+                typeInterfaceVtables[typeName][identity->interfaceName] = identity->linkerName;
+            }
+        }
+    }
+}
 
 void AstToHirContext::BeginModule(const Module &module) {
     ResetModuleState();

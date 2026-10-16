@@ -130,6 +130,17 @@ protected:
     std::size_t returnOrdinal = 0;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
+
+    /// Where a function or method was declared: its source file, the module path `Source.module` reads there, and the
+    /// path of any `module` blocks around it. A generic instance is lowered into the module that uses it, but its
+    /// panics, assertions and compile-time source values still name the place its body was written.
+    struct DeclarationOrigin {
+        std::string file;
+        std::string modulePath;
+        std::string declModulePath;
+    };
+
+    std::unordered_map<const FuncDecl *, DeclarationOrigin> functionOrigins;
     /// Where lowering reports; a worker lowering one module points it at that module's own list.
     std::vector<Diagnostic> *diagnostics;
 

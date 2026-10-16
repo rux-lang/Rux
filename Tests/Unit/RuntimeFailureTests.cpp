@@ -206,6 +206,55 @@ TEST_CASE("runtime failure lowering preserves qualified function, logical path, 
     CHECK_EQ(panic->source.Get().column, 9);
 }
 
+TEST_CASE("a generic instance reports failures at the file its body was written in") {
+    const auto triple = Target::TargetTriple::From(Target::OS::Linux, Target::Arch::X86_64);
+    REQUIRE(triple.has_value());
+    CompileTimeContext context;
+    context.target = Driver::TargetContextForTriple(*triple);
+    context.targetTriple = triple->CanonicalName();
+    context.sourceRoot = "Project";
+
+    // The instance of `Check` is lowered into Main.rux, which uses it, but its panic is written in Generic.rux.
+    const auto parse = [](const std::string &source, const std::string &path) {
+        Lexer lexer(source, path);
+        auto lexed = lexer.Tokenize();
+        REQUIRE_FALSE(lexed.HasErrors());
+        Parser parser(std::move(lexed.tokens), path);
+        auto parsed = parser.Parse();
+        CAPTURE(parsed.diagnostics.empty() ? std::string{} : parsed.diagnostics.front().message);
+        REQUIRE_FALSE(parsed.HasErrors());
+        return parsed;
+    };
+    auto generic = parse(std::string(kRuntimePrelude) + R"(
+pub func Check<T>(value: T, ok: bool) -> T {
+    if !ok {
+        Panic("not ok");
+    }
+    return value;
+}
+)",
+                         "Project/Src/Generic.rux");
+    auto main = parse(R"(
+func Main() -> int {
+    return Check(1, false);
+}
+)",
+                      "Project/Src/Main.rux");
+
+    SemanticAnalyzer analyzer({&generic.module, &main.module}, {}, "RuntimeFailureTest", context);
+    auto model = analyzer.Analyze();
+    CAPTURE(model.diagnostics.empty() ? std::string{} : model.diagnostics.front().message);
+    REQUIRE_FALSE(model.HasErrors());
+    AstToHirLowering hirLowering(model);
+    HirToLirLowering lirLowering(hirLowering.Generate(), context.target);
+    const LirPackage package = lirLowering.Generate();
+
+    const LirInstr *panic = FindFailure(package, LirOpcode::Panic, "Check");
+    REQUIRE(panic != nullptr);
+    CHECK_EQ(panic->source.Get().file, "Src/Generic.rux");
+    CHECK_EQ(panic->source.Get().line, 6);
+}
+
 TEST_CASE("ELF, PE, and Mach-O images preserve runtime failure text on both backends") {
     for (const Target::OS os : {Target::OS::FreeBSD, Target::OS::Linux, Target::OS::Windows, Target::OS::MacOS}) {
         for (const Target::Arch arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {

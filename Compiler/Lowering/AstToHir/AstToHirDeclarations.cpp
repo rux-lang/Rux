@@ -254,6 +254,16 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         hf.location = d.location;
         return hf;
     }
+    // An instance is lowered into whichever module uses it, but its body is read where it was written: a panic in
+    // `Channel<uint64>` names the package's file, not the caller's.
+    const std::string savedFile = currentFile;
+    const std::string savedModulePath = currentModulePath;
+    const std::string savedDeclModulePath = declModulePath;
+    if (const auto origin = functionOrigins.find(&d); origin != functionOrigins.end()) {
+        currentFile = origin->second.file;
+        currentModulePath = origin->second.modulePath;
+        declModulePath = origin->second.declModulePath;
+    }
     auto savedTypeParams = currentTypeParams;
     currentTypeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     auto savedSubstitutions = currentSubstitutions;
@@ -343,6 +353,9 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     currentTypeParams = savedTypeParams;
     currentSubstitutions = savedSubstitutions;
     currentFunctionName = savedFuncName;
+    currentFile = savedFile;
+    currentModulePath = savedModulePath;
+    declModulePath = savedDeclModulePath;
     return hf;
 }
 
