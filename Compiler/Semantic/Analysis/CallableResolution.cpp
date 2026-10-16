@@ -282,6 +282,50 @@ AnalysisContext::ResolveInterfaceMethodVariadicType(const FuncDecl &method, cons
     return ResolveRequirementType(*method.params.back().type, selfType, interface, interfaceArguments);
 }
 
+std::optional<AnalysisContext::SignatureMismatch>
+AnalysisContext::RequirementSignatureMismatch(const TypeRef &receiver, const FuncDecl &method,
+                                              const FuncDecl &requirement, const InterfaceDecl &interface,
+                                              const std::vector<TypeRef> &interfaceArguments) {
+    const std::vector<TypeRef> requiredParameters =
+        ResolveInterfaceMethodParamTypes(requirement, receiver, &interface, interfaceArguments);
+    const std::optional<TypeRef> requiredVariadic =
+        ResolveInterfaceMethodVariadicType(requirement, receiver, &interface, interfaceArguments);
+    const TypeRef requiredResult =
+        ResolveInterfaceMethodReturnType(requirement, receiver, &interface, interfaceArguments);
+    const std::vector<TypeRef> declaredParameters = ResolveMethodParamTypes(receiver, method, {}, false);
+    const std::optional<TypeRef> declaredVariadic = ResolveMethodVariadicType(receiver, method);
+    const TypeRef declaredResult = ResolveMethodReturnType(receiver, method);
+
+    const auto unknown = [](const TypeRef &type) { return type.IsUnknown() || type->kind == TypeRef::Kind::TypeParam; };
+    if (std::ranges::any_of(requiredParameters, unknown) || std::ranges::any_of(declaredParameters, unknown) ||
+        unknown(requiredResult) || unknown(declaredResult) || (requiredVariadic && unknown(*requiredVariadic)) ||
+        (declaredVariadic && unknown(*declaredVariadic))) {
+        return std::nullopt;
+    }
+    if (requiredParameters == declaredParameters && requiredResult == declaredResult &&
+        requiredVariadic.has_value() == declaredVariadic.has_value() &&
+        (!requiredVariadic || *requiredVariadic == *declaredVariadic)) {
+        return std::nullopt;
+    }
+    const auto spell = [](const std::vector<TypeRef> &parameters, const std::optional<TypeRef> &variadic,
+                          const TypeRef &result) {
+        std::string text = "(";
+        for (std::size_t index = 0; index < parameters.size(); ++index) {
+            text += (index == 0 ? "" : ", ") + parameters[index].DisplayString();
+        }
+        if (variadic) {
+            text += (parameters.empty() ? "" : ", ") + variadic->DisplayString() + "...";
+        }
+        text += ")";
+        if (!result.IsOpaque()) {
+            text += " -> " + result.DisplayString();
+        }
+        return text;
+    };
+    return SignatureMismatch{spell(requiredParameters, requiredVariadic, requiredResult),
+                             spell(declaredParameters, declaredVariadic, declaredResult)};
+}
+
 std::vector<TypeRef> AnalysisContext::ResolveInterfaceMethodParamTypes(const FuncDecl &method, const TypeRef &selfType,
                                                                        const InterfaceDecl *interface,
                                                                        const std::vector<TypeRef> &interfaceArguments) {

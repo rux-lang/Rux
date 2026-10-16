@@ -405,6 +405,15 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
             EmitError(method->location, std::format("duplicate method '{}' in interface '{}'", method->name, d.name));
         }
         ValidateRequirementReceiver(*method, d.name);
+        // A requirement names what an implementation provides; there is no default to inherit, so a body would be
+        // dropped without a word.
+        if (method->body) {
+            EmitError(
+                method->location,
+                std::format("requirement '{}' of interface '{}' cannot have a body", method->name, d.name),
+                {"an interface declares what its implementations provide; it supplies no default"},
+                std::format("end the requirement with ';', and write the body in each 'extend Type : {}'", d.name));
+        }
         if (method->returnType) {
             ValidateStoredType(ResolveType(**method->returnType), method->returnType->get()->location,
                                "interface method return type");
@@ -572,6 +581,44 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
                     for (const auto &m : d.methods) {
                         if (m->name == requirement->name) {
                             CheckImplementationReceiver(*m, *requirement, *d.interfaceName, d.typeName);
+                        }
+                    }
+                }
+                // Every call through the interface is typed by the requirement and reaches this method, so the
+                // method has to take and return exactly what the requirement says. A generic block is checked in
+                // its instances, through the bounds that use it.
+                if (ImplTypeParams(d).empty() && d.extendedType) {
+                    const TypeRef receiver = ResolveType(*d.extendedType);
+                    std::vector<TypeRef> interfaceArguments;
+                    for (const TypeExprPtr &argument : d.interfaceTypeArgs) {
+                        interfaceArguments.push_back(ResolveType(*argument));
+                    }
+                    for (const auto &requirement : interface->methods) {
+                        std::optional<SignatureMismatch> mismatch;
+                        const FuncDecl *mismatched = nullptr;
+                        bool matched = false;
+                        for (const auto &m : d.methods) {
+                            if (m->name != requirement->name || receiver.IsUnknown()) {
+                                continue;
+                            }
+                            if (auto found = RequirementSignatureMismatch(receiver, *m, *requirement, *interface,
+                                                                          interfaceArguments)) {
+                                mismatch = std::move(found);
+                                mismatched = m.get();
+                            }
+                            else {
+                                matched = true;
+                            }
+                        }
+                        if (!matched && mismatch) {
+                            EmitError(mismatched->location,
+                                      std::format("method '{}' does not match the requirement of interface '{}'",
+                                                  requirement->name, *d.interfaceName),
+                                      {std::format("'{}' requires '{}{}'", *d.interfaceName, requirement->name,
+                                                   mismatch->required),
+                                       std::format("'{}' declares '{}{}'", d.typeName, requirement->name,
+                                                   mismatch->declared)},
+                                      "declare the method with the parameters and result the interface requires");
                         }
                     }
                 }

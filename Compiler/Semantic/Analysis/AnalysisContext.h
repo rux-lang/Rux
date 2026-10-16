@@ -1224,6 +1224,18 @@ private:
     [[nodiscard]] TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType,
                                                            const InterfaceDecl *interface = nullptr,
                                                            const std::vector<TypeRef> &interfaceArguments = {});
+
+    /// The written parameters, variadic element and result of `method` on `receiver` against those `requirement` of
+    /// `interface` asks for, spelled `(int32, bool) -> float64` for a diagnostic. Empty when they agree, or when either
+    /// side names a type that is not known yet.
+    struct SignatureMismatch {
+        std::string required;
+        std::string declared;
+    };
+
+    [[nodiscard]] std::optional<SignatureMismatch>
+    RequirementSignatureMismatch(const TypeRef &receiver, const FuncDecl &method, const FuncDecl &requirement,
+                                 const InterfaceDecl &interface, const std::vector<TypeRef> &interfaceArguments);
     [[nodiscard]] std::vector<TypeRef>
     ResolveInterfaceMethodParamTypes(const FuncDecl &method, const TypeRef &selfType,
                                      const InterfaceDecl *interface = nullptr,

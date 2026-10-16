@@ -335,10 +335,9 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
                                  interface.name, required->name, argument.ToString());
             return false;
         }
-        // A generic interface fixes the types its operations work with, and the method found by name has to agree,
-        // since every call through the bound is typed by the requirement and lowered to that method.
-        if (!interface.typeParams.empty() && !interfaceArguments.empty() &&
-            std::ranges::none_of(interfaceArguments, [](const TypeRef &type) {
+        // The method found by name has to take and return what the requirement says, since every call through the
+        // bound is typed by the requirement and lowered to that method.
+        if (std::ranges::none_of(interfaceArguments, [](const TypeRef &type) {
                 return type.IsUnknown() || type->kind == TypeRef::Kind::TypeParam;
             })) {
             const TypeRef requiredReturn =
@@ -348,6 +347,12 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
                 reason =
                     std::format("method '{}' of type '{}' returns '{}', but the bound requires '{}'", required->name,
                                 argument.ToString(), actualReturn.ToString(), requiredReturn.ToString());
+                return false;
+            }
+            if (const auto mismatch =
+                    RequirementSignatureMismatch(argument, *operation, *required, interface, interfaceArguments)) {
+                reason = std::format("method '{}' of type '{}' takes '{}', but the bound requires '{}'", required->name,
+                                     argument.ToString(), mismatch->declared, mismatch->required);
                 return false;
             }
         }

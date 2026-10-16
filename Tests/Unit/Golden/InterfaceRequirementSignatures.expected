@@ -1,0 +1,4 @@
+6:5: error: requirement 'Describe' of interface 'Shape' cannot have a body
+16:5: error: method 'Area' does not match the requirement of interface 'Shape'
+20:5: error: method 'Scale' does not match the requirement of interface 'Shape'
+71:23: error: type argument 'Triangle' does not satisfy interface bound 'Shape' on type parameter 'T'
