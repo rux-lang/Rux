@@ -230,8 +230,18 @@ void AnalysisContext::CheckBlock(const Block &block) {
 
 void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType) {
     CheckBlock(block);
+    if (function.isNoReturn) {
+        // A caller of a function that never returns goes on into code marked unreachable, so its body must not end.
+        if (!function.isAsm && !BlockDefinitelyReturns(block)) {
+            EmitError(function.location,
+                      std::format("'#NoReturn' function '{}' can reach the end of its body", function.name),
+                      {"a call to it would come back to code that assumes it does not"},
+                      "end every path with 'Panic', a call to another '#NoReturn' function, or an endless 'loop'");
+        }
+        return;
+    }
     if (!returnType.IsUnknown() && !returnType.IsOpaque() && !CompletesWithoutValue(returnType) &&
-        !function.isNoReturn && !BlockDefinitelyReturns(block)) {
+        !BlockDefinitelyReturns(block)) {
         EmitError(function.location,
                   std::format("function '{}' must return a value of type '{}' on every control-flow path",
                               function.name, returnType.ToString()));
@@ -286,16 +296,9 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
 void AnalysisContext::CheckStatement(const Stmt &statement) {
     if (const auto *expressionStatement = AstCast<const ExprStmt>(&statement)) {
         CheckFallibleDiscard(CheckExpr(*expressionStatement->expr), expressionStatement->location);
-        if (const auto *call = AstCast<const CallExpr>(expressionStatement->expr.get())) {
-            const auto binding = callableBindings.find(call);
-            const auto *function = binding == callableBindings.end()
-                                     ? nullptr
-                                     : AstCast<const FuncDecl>(binding->second.selectedDeclaration);
-            const auto *callee = AstCast<const IdentExpr>(call->callee.get());
-            const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
-            if ((function && function->isNoReturn) || (symbol && symbol->intrinsicName == "Panic")) {
-                trackedFlowReachable = false;
-            }
+        if (const auto *call = AstCast<const CallExpr>(expressionStatement->expr.get());
+            call && CallNeverReturns(*call)) {
+            trackedFlowReachable = false;
         }
     }
     else if (const auto *letStatement = AstCast<const LetStmt>(&statement)) {
@@ -796,11 +799,28 @@ bool AnalysisContext::IsDivergingExpression(const Expr &expression) const {
         return true;
     }
     const auto *call = AstCast<const CallExpr>(&expression);
-    const auto *callee = call ? AstCast<const IdentExpr>(call->callee.get()) : nullptr;
-    const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
+    return call && CallNeverReturns(*call);
+}
+
+bool AnalysisContext::CallNeverReturns(const CallExpr &call) const {
+    // The declaration the call was bound to answers for a qualified name, a method or an overload; a name the binding
+    // does not cover, such as an extern function or the Panic intrinsic, answers through its symbol.
+    if (const auto binding = callableBindings.find(&call); binding != callableBindings.end()) {
+        if (const auto *function = AstCast<const FuncDecl>(binding->second.selectedDeclaration);
+            function && function->isNoReturn) {
+            return true;
+        }
+        if (const auto *external = AstCast<const ExternFuncDecl>(binding->second.selectedDeclaration);
+            external && external->isNoReturn) {
+            return true;
+        }
+    }
+    const Symbol *symbol = LookupCalleeSymbol(*call.callee);
     return symbol &&
-           (symbol->intrinsicName == "Panic" ||
-            std::ranges::any_of(symbol->funcOverloads, [](const FuncDecl *function) { return function->isNoReturn; }));
+           (symbol->intrinsicName == "Panic" || (symbol->externDecl && symbol->externDecl->isNoReturn) ||
+            (!symbol->funcOverloads.empty() && std::ranges::all_of(symbol->funcOverloads, [](const FuncDecl *function) {
+                return function->isNoReturn;
+            })));
 }
 
 void AnalysisContext::EnterLoopLabel(const std::string &label, const SourceLocation location) {
@@ -1432,12 +1452,7 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
             return true;
         }
         if (const auto *expression = AstCast<const ExprStmt>(&statement)) {
-            const auto *call = AstCast<const CallExpr>(expression->expr.get());
-            const auto *callee = call ? AstCast<const IdentExpr>(call->callee.get()) : nullptr;
-            const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
-            return symbol && (symbol->intrinsicName == "Panic" ||
-                              std::ranges::any_of(symbol->funcOverloads,
-                                                  [](const FuncDecl *function) { return function->isNoReturn; }));
+            return IsDivergingExpression(*expression->expr);
         }
         if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
             if (!ifStatement->elseBlock || !blockReturns(*ifStatement->thenBlock) ||

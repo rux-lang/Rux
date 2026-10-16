@@ -1,0 +1,47 @@
+// A '#NoReturn' function must not reach the end of its body: a caller goes on into code that assumes it never comes
+// back. Ending in 'Panic', an endless loop, or a call to another '#NoReturn' function, qualified or not, is enough.
+#NoReturn()
+intrinsic func Panic(message: char8[..]);
+
+#NoReturn()
+func Stop(code: int32) {
+    if code > 0 {
+        Panic("stopped");
+    }
+}
+
+#NoReturn()
+func Fail() {
+    Panic("failed");
+}
+
+#NoReturn()
+func Spin() {
+    loop {}
+}
+
+module Exits {
+    #NoReturn()
+    pub func Quit() {
+        Panic("quit");
+    }
+}
+
+#NoReturn()
+func Delegate() {
+    Exits::Quit();
+}
+
+#NoReturn()
+func Chain(code: int32) {
+    if code > 0 {
+        Fail();
+    }
+    else {
+        Spin();
+    }
+}
+
+func Main() -> int {
+    Stop(1);
+}

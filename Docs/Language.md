@@ -321,6 +321,8 @@ It marks a format string: a `char8[..]` parameter followed by a variadic paramet
 
 `#Warn("message")` and `#Error("message")` report at every use of what they mark, once per place it is written: a call, a function used as a value, a constructor call, a struct literal, and a type, constant, alias, enum or variant named anywhere, a signature or another type's field included. Uses inside the marked declaration itself, its fields, and the extensions of the type it declares are not reported.
 
+A `#NoReturn()` function cannot `return`, and its body must not reach its end: every path ends in `Panic`, a call to another `#NoReturn` function or extern, qualified or not, or an endless `loop`, and a body that can finish is an error (`'#NoReturn' function 'Stop' can reach the end of its body`).
+
 `#Abi` names one of `.C`, `.SysV` and `.Win64`. AArch64 has one calling convention, which `.C` names, so `.SysV` or `.Win64` in a build for AArch64 is an error (`'#Abi(.Win64)' names an x86-64 calling convention, which a build for AArch64 cannot use`); a declaration written for both machines keeps its x86-64 convention in a `when #target.arch` arm.
 
 ## Values, References, and Raw Pointers

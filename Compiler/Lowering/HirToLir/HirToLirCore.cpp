@@ -1377,7 +1377,14 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     if (hf.body) {
         LowerBlock(*hf.body);
         if (!IsTerminated()) {
-            ReturnNothing();
+            // Analysis refuses a '#NoReturn' body that can end, so this is only a backstop for one it could not see
+            // through: coming back would continue the caller in code it marked unreachable.
+            if (hf.isNoReturn) {
+                EmitRuntimeTrap("'#NoReturn' function returned", hf.location);
+            }
+            else {
+                ReturnNothing();
+            }
         }
     }
     builder = nullptr;

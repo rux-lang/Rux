@@ -1599,6 +1599,8 @@ private:
     // it is an error: `when #target.arch` is how a function written twice
     // reaches both machines, and every first-party body uses it.
     /// Refuses an x86-64 calling convention named by '#Abi' in a build for a machine that has only its own.
+    /// Whether a call is to a function that never returns: a '#NoReturn' function or extern, or 'Panic'.
+    [[nodiscard]] bool CallNeverReturns(const CallExpr &call) const;
     void CheckAbiForTarget(CallingConvention convention, const std::optional<SourceLocation> &location);
     void CheckAsmBodyArchitecture(const FuncDecl &d) const;
 
