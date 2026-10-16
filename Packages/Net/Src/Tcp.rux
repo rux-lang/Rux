@@ -50,7 +50,7 @@ extend TcpListener {
     }
 
     /// Waits for a connection and accepts it.
-    /// @returns the connected stream and the peer's address
+    /// @returns the connected stream, whose `PeerAddress` says who connected
     /// @see https://rux-lang.dev/docs/api/net/tcp#accept
     pub func Accept(self: &TcpListener) -> TcpStream ! IoError {
         var peer = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Unspecified()), port: 0 };

@@ -376,15 +376,23 @@ func SendSocket(handle: uint64, bytes: char8[..], target: SocketAddress?) -> uin
     }
 }
 
-// Receives bytes, filling in where they came from when `source` is given.
+// The Winsock error a receive reports when the datagram was longer than the buffer.
+const WsaMessageTooLong: int32 = 10040;
+
+// Receives bytes, filling in where they came from when `source` is given. A datagram longer than `into` is cut to fit.
 func ReceiveSocket(handle: uint64, into: var char8[..], source: *var SocketAddress) -> uint ! IoError {
     var raw = RawAddress { bytes: [0u8; 32], length: 32 };
     let address: *var opaque = source == null ? null : (@raw.bytes[0]) as *var opaque;
     when #target.os == .Windows {
         var length: int32 = 32;
         let count = into.length > 0x40000000u ? 0x40000000i32 : into.length as int32;
-        let received = recvfrom(handle, into.data as *var opaque, count, 0, address, source == null ? null : @length);
-        if received < 0 { fail LastFailure(0); }
+        var received = recvfrom(handle, into.data as *var opaque, count, 0, address, source == null ? null : @length);
+        if received < 0 {
+            // A datagram longer than the buffer fills it and the rest is lost, as on the other systems; Windows says so
+            // by failing with WSAEMSGSIZE after filling the buffer and the source.
+            if WSAGetLastError() != WsaMessageTooLong { fail LastFailure(0); }
+            received = count;
+        }
         if source != null { *source = Decode(@raw.bytes[0]) ?? *source; }
         return received as uint;
     }

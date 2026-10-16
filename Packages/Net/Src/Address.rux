@@ -1,10 +1,11 @@
 // Internet addresses and the socket addresses made of one and a port: reading them from text and writing them back.
 // IPv4 addresses are read in dotted-decimal form only, without the octal and hexadecimal forms some C libraries
 // accept, which are a frequent source of confusion. IPv6 addresses are read with `::` compression and an embedded
-// IPv4 tail, and written in the canonical form of RFC 5952.
+// IPv4 tail, and written in the canonical form of RFC 5952, which writes an IPv4-mapped address with its IPv4 tail in
+// dotted-decimal form.
 
 import Allocator::Allocator;
-import Text::{ String, TextError };
+import Text::{ Display, FormatError, FormatSpec, RejectStyle, String, TextError, TextWriter, WriteAligned };
 
 /// An IPv4 address. `Copy`.
 /// @see https://rux-lang.dev/docs/api/net/address#ipv4-address
@@ -135,6 +136,35 @@ extend Ipv4Address {
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-loopback
     pub func IsLoopback(self: &Ipv4Address) -> bool {
         return self.octets[0] == 127u8;
+    }
+
+    /// Whether this is the unspecified address, `0.0.0.0`, which binds every local address.
+    /// @returns true for `0.0.0.0`
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-unspecified
+    pub func IsUnspecified(self: &Ipv4Address) -> bool {
+        return self.octets[0] == 0u8 && self.octets[1] == 0u8 && self.octets[2] == 0u8 && self.octets[3] == 0u8;
+    }
+
+    /// Whether this is a private address of RFC 1918: in `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`.
+    /// @returns true for a private address
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-private
+    pub func IsPrivate(self: &Ipv4Address) -> bool {
+        return self.octets[0] == 10u8 || (self.octets[0] == 172u8 && (self.octets[1] & 0xF0u8) == 16u8) ||
+               (self.octets[0] == 192u8 && self.octets[1] == 168u8);
+    }
+
+    /// Whether this is a link-local address, in `169.254.0.0/16`.
+    /// @returns true for a link-local address
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-link-local
+    pub func IsLinkLocal(self: &Ipv4Address) -> bool {
+        return self.octets[0] == 169u8 && self.octets[1] == 254u8;
+    }
+
+    /// Whether this is a multicast address, in `224.0.0.0/4`.
+    /// @returns true for a multicast address
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-multicast
+    pub func IsMulticast(self: &Ipv4Address) -> bool {
+        return (self.octets[0] & 0xF0u8) == 224u8;
     }
 
     /// Writes the address in dotted-decimal form into `into`, at most 15 characters.
@@ -275,11 +305,67 @@ extend Ipv6Address {
         return self.octets[15] == 1u8;
     }
 
-    /// Writes the address in the canonical form of RFC 5952 into `into`, at most 39 characters.
+    /// Whether this is the unspecified address, `::`, which binds every local address.
+    /// @returns true for `::`
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-unspecified
+    pub func IsUnspecified(self: &Ipv6Address) -> bool {
+        var index: uint = 0;
+        while index < 16u {
+            if self.octets[index] != 0u8 { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    /// Whether this is a unique local address of RFC 4193, in `fc00::/7`: the IPv6 counterpart of a private IPv4
+    /// address.
+    /// @returns true for a unique local address
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-private
+    pub func IsPrivate(self: &Ipv6Address) -> bool {
+        return (self.octets[0] & 0xFEu8) == 0xFCu8;
+    }
+
+    /// Whether this is a link-local address, in `fe80::/10`.
+    /// @returns true for a link-local address
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-link-local
+    pub func IsLinkLocal(self: &Ipv6Address) -> bool {
+        return self.octets[0] == 0xFEu8 && (self.octets[1] & 0xC0u8) == 0x80u8;
+    }
+
+    /// Whether this is a multicast address, in `ff00::/8`.
+    /// @returns true for a multicast address
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-multicast
+    pub func IsMulticast(self: &Ipv6Address) -> bool {
+        return self.octets[0] == 0xFFu8;
+    }
+
+    /// The IPv4 address this one maps, for an address in `::ffff:0:0/96`, or none for any other.
+    /// @returns the mapped IPv4 address
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv6-as-mapped-ipv4
+    pub func AsMappedIpv4(self: &Ipv6Address) -> Ipv4Address? {
+        var index: uint = 0;
+        while index < 10u {
+            if self.octets[index] != 0u8 { return none; }
+            index = index + 1;
+        }
+        if self.octets[10] != 0xFFu8 || self.octets[11] != 0xFFu8 { return none; }
+        return Ipv4Address::New(self.octets[12], self.octets[13], self.octets[14], self.octets[15]);
+    }
+
+    /// Writes the address in the canonical form of RFC 5952 into `into`, at most 45 characters. An IPv4-mapped
+    /// address keeps its IPv4 tail in dotted-decimal form, as `::ffff:192.0.2.1`.
     /// @param into where to write
     /// @returns how many characters the text takes, which is more than were written when `into` is too short
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-write-text
     pub func WriteText(self: &Ipv6Address, into: var char8[..]) -> uint {
+        match self.AsMappedIpv4() {
+            .Some(mapped) => {
+                var at: uint = 0;
+                for c in "::ffff:" { at = Put(into, at, c); }
+                return at + mapped.WriteText(at < into.length ? into[at..] : into[into.length..]);
+            },
+            none => {}
+        }
         var groups: uint16[8] = [0u16; 8];
         var group: uint = 0;
         while group < 8u {
@@ -405,7 +491,35 @@ extend IpAddress {
         return self.version6 ? self.v6.IsLoopback() : self.v4.IsLoopback();
     }
 
-    /// Writes the address into `into`, at most 39 characters.
+    /// Whether this is the unspecified address, `0.0.0.0` or `::`.
+    /// @returns true for the unspecified address
+    /// @see https://rux-lang.dev/docs/api/net/address#ip-is-unspecified
+    pub func IsUnspecified(self: &IpAddress) -> bool {
+        return self.version6 ? self.v6.IsUnspecified() : self.v4.IsUnspecified();
+    }
+
+    /// Whether this is a private IPv4 address or a unique local IPv6 address.
+    /// @returns true for a private address
+    /// @see https://rux-lang.dev/docs/api/net/address#ip-is-private
+    pub func IsPrivate(self: &IpAddress) -> bool {
+        return self.version6 ? self.v6.IsPrivate() : self.v4.IsPrivate();
+    }
+
+    /// Whether this is a link-local address.
+    /// @returns true for a link-local address
+    /// @see https://rux-lang.dev/docs/api/net/address#ip-is-link-local
+    pub func IsLinkLocal(self: &IpAddress) -> bool {
+        return self.version6 ? self.v6.IsLinkLocal() : self.v4.IsLinkLocal();
+    }
+
+    /// Whether this is a multicast address.
+    /// @returns true for a multicast address
+    /// @see https://rux-lang.dev/docs/api/net/address#ip-is-multicast
+    pub func IsMulticast(self: &IpAddress) -> bool {
+        return self.version6 ? self.v6.IsMulticast() : self.v4.IsMulticast();
+    }
+
+    /// Writes the address into `into`, at most 45 characters.
     /// @param into where to write
     /// @returns how many characters the text takes
     /// @see https://rux-lang.dev/docs/api/net/address#ip-write-text
@@ -499,7 +613,7 @@ extend SocketAddress {
     /// @returns the text
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-to-string
     pub func ToString(self: &SocketAddress, allocator: Allocator) -> String ! TextError {
-        var buffer: char8[48] = ['\0'; 48];
+        var buffer: char8[56] = ['\0'; 56];
         let length = self.WriteText(buffer[..]);
         return String::FromBytes(allocator, buffer[..length])?;
     }
@@ -510,5 +624,67 @@ extend SocketAddress {
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-equals
     pub func Equals(self: &SocketAddress, other: SocketAddress) -> bool {
         return self.port == other.port && self.ip.Equals(other.ip);
+    }
+}
+
+// The address types' text for a reader, as `WriteText` writes it, padded to the placeholder's width.
+
+extend Ipv4Address : Display {
+    /// Writes the address in dotted-decimal form, under the placeholder's width, fill and alignment. No style is
+    /// understood. Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole address was accepted
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv4-write-display
+    pub func WriteDisplay(self: &Ipv4Address, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        var text: char8[16] = ['\0'; 16];
+        let length = self.WriteText(text[..]);
+        return WriteAligned(writer, spec, text[..length], false);
+    }
+}
+
+extend Ipv6Address : Display {
+    /// Writes the address in the canonical form of RFC 5952, under the placeholder's width, fill and alignment. No
+    /// style is understood. Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole address was accepted
+    /// @see https://rux-lang.dev/docs/api/net/address#ipv6-write-display
+    pub func WriteDisplay(self: &Ipv6Address, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        var text: char8[48] = ['\0'; 48];
+        let length = self.WriteText(text[..]);
+        return WriteAligned(writer, spec, text[..length], false);
+    }
+}
+
+extend IpAddress : Display {
+    /// Writes the address as its IPv4 or IPv6 form does, under the placeholder's width, fill and alignment. No
+    /// style is understood. Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole address was accepted
+    /// @see https://rux-lang.dev/docs/api/net/address#ip-write-display
+    pub func WriteDisplay(self: &IpAddress, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        var text: char8[48] = ['\0'; 48];
+        let length = self.WriteText(text[..]);
+        return WriteAligned(writer, spec, text[..length], false);
+    }
+}
+
+extend SocketAddress : Display {
+    /// Writes the address and port, an IPv6 address in brackets, under the placeholder's width, fill and alignment.
+    /// No style is understood. Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole address was accepted
+    /// @see https://rux-lang.dev/docs/api/net/address#socket-address-write-display
+    pub func WriteDisplay(self: &SocketAddress, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        var text: char8[56] = ['\0'; 56];
+        let length = self.WriteText(text[..]);
+        return WriteAligned(writer, spec, text[..length], false);
     }
 }

@@ -7,6 +7,8 @@
 // translation loses detail, and the detail is sometimes the diagnosis. Success is not in the set: an operation that
 // can fail returns a native fallible, and `IoError` is only ever its failure.
 
+import Text::{ Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
+
 /// What an I/O operation reported.
 /// @see https://rux-lang.dev/docs/api/io/io-error#io-error-kind
 pub enum IoErrorKind: int32 {
@@ -92,5 +94,95 @@ extend IoError {
     /// @see https://rux-lang.dev/docs/api/io/io-error#is-transient
     pub func IsTransient(self: &IoError) -> bool {
         return self.kind == IoErrorKind::Interrupted || self.kind == IoErrorKind::WouldBlock;
+    }
+}
+
+// The words each kind reads as, lower case so they fit inside a sentence.
+func DescribeKind(kind: &IoErrorKind) -> char8[..] {
+    return match kind {
+        .EndOfStream => "end of stream",
+        .NotFound => "not found",
+        .PermissionDenied => "permission denied",
+        .AlreadyExists => "already exists",
+        .IsDirectory => "is a directory",
+        .NotDirectory => "not a directory",
+        .StorageFull => "storage full",
+        .Interrupted => "interrupted",
+        .WouldBlock => "would block",
+        .InvalidHandle => "invalid handle",
+        .InvalidInput => "invalid input",
+        .TimedOut => "timed out",
+        .WriteZero => "write returned zero",
+        .InvalidText => "invalid UTF-8 text",
+        .LimitExceeded => "limit exceeded",
+        .ConnectionRefused => "connection refused",
+        .ConnectionReset => "connection reset",
+        .ConnectionAborted => "connection aborted",
+        .NotConnected => "not connected",
+        .AddressInUse => "address in use",
+        .AddressUnavailable => "address unavailable",
+        .Unreachable => "unreachable",
+        .BrokenPipe => "broken pipe",
+        .Other => "other error"
+    };
+}
+
+extend IoErrorKind : Display {
+    /// Writes the kind as lower-case words, such as `not found`, under the placeholder's width, fill and alignment.
+    /// No style is understood. Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole text was accepted
+    /// @see https://rux-lang.dev/docs/api/io/io-error#io-error-kind-write-display
+    pub func WriteDisplay(self: &IoErrorKind, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        return WriteAligned(writer, spec, DescribeKind(self), false);
+    }
+}
+
+extend IoError : Display {
+    /// Writes the kind as lower-case words, and the platform's code after them when there is one, as
+    /// `not found (os error 2)`, under the placeholder's width, fill and alignment. No style is understood. Reports
+    /// whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole text was accepted
+    /// @see https://rux-lang.dev/docs/api/io/io-error#write-display
+    pub func WriteDisplay(self: &IoError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        var text: char8[64] = ['\0'; 64];
+        var length: uint = 0;
+        for c in DescribeKind(self.kind) {
+            text[length] = c;
+            length = length + 1;
+        }
+        if self.raw != 0 {
+            for c in " (os error " {
+                text[length] = c;
+                length = length + 1;
+            }
+            // The magnitude, digits last first, then reversed into place, with the sign a negative code carries.
+            var magnitude = self.raw < 0 ? (-(self.raw as int64)) as uint64 : self.raw as uint64;
+            if self.raw < 0 {
+                text[length] = '-';
+                length = length + 1;
+            }
+            var digits: char8[20] = ['0'; 20];
+            var count: uint = 0;
+            while true {
+                digits[count] = (0x30u64 + magnitude % 10u64) as uint8 as char8;
+                count = count + 1;
+                magnitude = magnitude / 10u64;
+                if magnitude == 0u64 { break; }
+            }
+            while count > 0u {
+                count = count - 1;
+                text[length] = digits[count];
+                length = length + 1;
+            }
+            text[length] = ')';
+            length = length + 1;
+        }
+        return WriteAligned(writer, spec, text[..length], false);
     }
 }

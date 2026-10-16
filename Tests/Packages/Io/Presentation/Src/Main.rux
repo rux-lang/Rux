@@ -263,5 +263,18 @@ func Main() -> int {
     Assert(ToIoError(tooSmall).kind == IoErrorKind::LimitExceeded,
            "and reaches a stream's caller as a bound that was met");
 
+    // An I/O failure reads as words, with the platform's code when it has one, and takes the placeholder's width.
+    var shown: char8[96];
+    var shownWriter = BufferWriter((@shown[0])[..96]);
+    let shownOut: &var TextWriter = shownWriter;
+    let notFound = IoError { kind: IoErrorKind::NotFound, raw: 2 };
+    let noListener = IoError::Of(IoErrorKind::ConnectionRefused);
+    let negativeCode = IoError { kind: IoErrorKind::Other, raw: -5 };
+    Assert(Succeeded(WriteFormat(shownOut, "{}|{}|{:<10}|{}", notFound, noListener, IoErrorKind::TimedOut, negativeCode)),
+           "I/O failures render");
+    Assert(Same(shownWriter.Written(),
+                "not found (os error 2)|connection refused|timed out |other error (os error -5)"),
+           "as their kind's words and the platform code");
+
     return 0;
 }
