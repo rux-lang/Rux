@@ -646,9 +646,14 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             if (argTypes[i].IsUnknown() || parameter.IsUnknown()) {
                 continue;
             }
+            // A literal array or tuple is typed element by element, so `[3, 4]` reaches an `int32[2]` parameter.
+            const bool literalAggregate =
+                call != nullptr && call->args.size() == argTypes.size() &&
+                (AstCast<const ArrayExpr>(call->args[i].get()) || AstCast<const TupleExpr>(call->args[i].get())) &&
+                CanAssignExprTo(*call->args[i], argTypes[i], parameter);
             if (!argTypes[i].IsAssignableTo(parameter) && !argTypes[i].CanImplicitlyBorrowTo(parameter) &&
                 !argTypes[i].CanReadScalarTo(parameter) && !CanConvertToInterface(argTypes[i], parameter) &&
-                !(argTypes[i].IsInteger() && parameter.IsInteger())) {
+                !(argTypes[i].IsInteger() && parameter.IsInteger()) && !literalAggregate) {
                 return false;
             }
         }
@@ -666,7 +671,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         const std::optional<TypeRef> variadicElement = ResolveMethodVariadicType(receiverType, *decl);
         const auto paramTypes =
             BoundParameterTypes(*decl, !receiverIsArgument, fixedTypes, variadicElement, argTypes.size(), call);
-        if (paramTypes && ArgumentsReachOverload(argTypes, *paramTypes)) {
+        if (paramTypes && ArgumentsReachOverload(argTypes, *paramTypes, call)) {
             matches.push_back({decl, *paramTypes});
         }
     }

@@ -272,7 +272,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                           std::format("call to '{}' is ambiguous: {} overloads accept argument types ({})", ident->name,
                                       ambiguousOverloads.size(), ArgumentTypes(argTypes)),
                           std::move(notes),
-                          "rename one of the overloads, or remove a default value that makes them overlap");
+                          AmbiguousCallHelp(
+                              "rename one of the overloads, or remove a default value that makes them overlap"));
                 return TypeRef::MakeUnknown();
             }
             if (!decl) {
@@ -595,7 +596,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     EmitError(e->location,
                               std::format("call to method '{}' is ambiguous: {} overloads accept argument types ({})",
                                           field->field, ambiguousOverloads.size(), ArgumentTypes(argTypes)),
-                              std::move(notes), "rename one of the overloads, or convert an argument explicitly");
+                              std::move(notes),
+                              AmbiguousCallHelp("rename one of the overloads, or convert an argument explicitly"));
                     return TypeRef::MakeUnknown();
                 }
                 if (diags.size() == diagnosticsBeforeLookup) {
@@ -801,11 +803,12 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                             for (const FuncDecl *candidate : ambiguousOverloads) {
                                 notes.push_back(declarationNote(*candidate, true));
                             }
-                            EmitError(e->location,
-                                      std::format("call to '{}' is ambiguous: {} overloads accept argument types ({})",
-                                                  callable, ambiguousOverloads.size(), ArgumentTypes(argTypes)),
-                                      std::move(notes),
-                                      "rename one of the overloads, or convert an argument explicitly");
+                            EmitError(
+                                e->location,
+                                std::format("call to '{}' is ambiguous: {} overloads accept argument types ({})",
+                                            callable, ambiguousOverloads.size(), ArgumentTypes(argTypes)),
+                                std::move(notes),
+                                AmbiguousCallHelp("rename one of the overloads, or convert an argument explicitly"));
                             return TypeRef::MakeUnknown();
                         }
                         if (diags.size() == diagnosticsBeforeLookup) {

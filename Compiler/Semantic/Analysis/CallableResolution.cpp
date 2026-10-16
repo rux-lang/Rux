@@ -338,11 +338,16 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
             if (argTypes[i].IsUnknown() || funcType->inner[i].IsUnknown()) {
                 continue;
             }
+            // A literal array or tuple is typed element by element, so `[3, 4]` reaches an `int32[2]` parameter.
+            const bool literalAggregate =
+                call != nullptr && call->args.size() == argTypes.size() &&
+                (AstCast<const ArrayExpr>(call->args[i].get()) || AstCast<const TupleExpr>(call->args[i].get())) &&
+                CanAssignExprTo(*call->args[i], argTypes[i], funcType->inner[i]);
             if (!argTypes[i].IsAssignableTo(funcType->inner[i]) && !argTypes[i].CanReadScalarTo(funcType->inner[i]) &&
                 !argTypes[i].CanImplicitlyBorrowTo(funcType->inner[i]) &&
                 !CanConvertToInterface(argTypes[i], funcType->inner[i]) &&
                 !(argTypes[i].IsInteger() && funcType->inner[i].IsInteger()) &&
-                !DefaultLiteralReachesNative(argTypes[i], funcType->inner[i])) {
+                !DefaultLiteralReachesNative(argTypes[i], funcType->inner[i]) && !literalAggregate) {
                 return nullptr;
             }
         }
@@ -377,28 +382,47 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
         if (!boundTypes) {
             continue;
         }
-        if (ArgumentsReachOverload(argTypes, *boundTypes)) {
+        if (ArgumentsReachOverload(argTypes, *boundTypes, call)) {
             matches.push_back({decl, *boundTypes});
         }
     }
     return SelectOverload(matches, argTypes);
 }
 
+std::string AnalysisContext::AmbiguousCallHelp(const std::string_view authorHelp) const {
+    const bool callerOwnsOne = std::ranges::any_of(ambiguousOverloads, [this](const FuncDecl *overload) {
+        const auto found = declarationInfos.find(overload);
+        return found == declarationInfos.end() || found->second.ownerPackage == currentPackage;
+    });
+    if (callerOwnsOne) {
+        return std::string(authorHelp);
+    }
+    return "give an unsuffixed literal argument the width it means, as in '3i64', or convert an argument with 'as'";
+}
+
 bool AnalysisContext::ArgumentsReachOverload(const std::vector<TypeRef> &argTypes,
-                                             const std::vector<TypeRef> &parameterTypes) {
+                                             const std::vector<TypeRef> &parameterTypes, const CallExpr *call) {
+    // The written arguments, when the call is known, so a literal is told apart from a value that has its type.
+    const bool expressions = call != nullptr && call->args.size() == argTypes.size();
     for (std::size_t i = 0; i < argTypes.size() && i < parameterTypes.size(); ++i) {
         const TypeRef &paramType = parameterTypes[i];
         if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
             continue;
         }
         // An unsuffixed integer literal carries the default `int`, which is assignable to no other integer width, so
-        // it is let reach any integer parameter; an explicitly typed argument is never silently narrowed to another
-        // width.
-        const bool literalToInteger = (argTypes[i]->kind == TypeRef::Kind::Int && paramType.IsInteger()) ||
+        // it is let reach any integer parameter it fits; a variable of type `int`, like any explicitly typed argument,
+        // is never silently narrowed to another width. Without the call, every `int` argument is taken as a literal.
+        const bool literalToInteger = (argTypes[i]->kind == TypeRef::Kind::Int && paramType.IsInteger() &&
+                                       (!expressions || CanAssignExprTo(*call->args[i], argTypes[i], paramType))) ||
                                       DefaultLiteralReachesNative(argTypes[i], paramType);
+        // A literal array or tuple is typed element by element, so `[3, 4]` reaches an `int32[2]` parameter.
+        const bool literalAggregate =
+            expressions &&
+            (AstCast<const ArrayExpr>(call->args[i].get()) || AstCast<const TupleExpr>(call->args[i].get())) &&
+            CanAssignExprTo(*call->args[i], argTypes[i], paramType);
         const bool assignable = argTypes[i].IsAssignableTo(paramType) || argTypes[i].CanReadScalarTo(paramType) ||
                                 argTypes[i].CanImplicitlyBorrowTo(paramType) ||
-                                CanConvertToInterface(argTypes[i], paramType) || literalToInteger;
+                                CanConvertToInterface(argTypes[i], paramType) || literalToInteger || literalAggregate;
         if (!assignable) {
             return false;
         }

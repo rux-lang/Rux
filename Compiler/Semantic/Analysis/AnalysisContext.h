@@ -1064,11 +1064,15 @@ private:
     };
 
     /// Whether every argument reaches its parameter: exactly, through a borrow, a scalar read, an interface view or an
-    /// assignable conversion, or as an unsuffixed literal.
+    /// assignable conversion, or as an unsuffixed literal that fits. `call`, when known, tells a literal from a value.
     [[nodiscard]] bool ArgumentsReachOverload(const std::vector<TypeRef> &argTypes,
-                                              const std::vector<TypeRef> &parameterTypes);
+                                              const std::vector<TypeRef> &parameterTypes,
+                                              const CallExpr *call = nullptr);
     const FuncDecl *SelectOverload(const std::vector<OverloadMatch> &matches,
                                    const std::vector<TypeRef> &argumentTypes);
+    /// The help for a call `ambiguousOverloads` tie on: `authorHelp`, which asks for a change to the overloads, when
+    /// one of them is the calling package's own, and otherwise how the caller makes its arguments pick one.
+    [[nodiscard]] std::string AmbiguousCallHelp(std::string_view authorHelp) const;
     [[nodiscard]] const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
                                                          const std::vector<TypeRef> &argumentTypes,
                                                          const std::vector<TypeExprPtr> &typeArguments,

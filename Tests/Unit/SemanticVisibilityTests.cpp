@@ -647,3 +647,37 @@ TEST_CASE("a module path that repeats its package name resolves alike for item a
     REQUIRE(missing[0].help.has_value());
     CHECK_EQ(*missing[0].help, "did you mean 'import Library::Rectangle::Area'?");
 }
+
+TEST_CASE("an int variable selects the overload of its own width, and a caller is told how to pick one") {
+    const std::string library = R"(
+        pub func Midpoint(a: int64, b: int64) -> int64 { return a; }
+        pub func Midpoint(a: int32, b: int32) -> int32 { return a; }
+        pub func Midpoint(a: uint64, b: uint64) -> uint64 { return a; }
+        pub func Midpoint(a: uint32, b: uint32) -> uint32 { return a; }
+    )";
+    const auto variables = AnalyzePackages({{"main.rux", R"(
+            import Library::Midpoint;
+            func Main() -> int {
+                let a: int = 3;
+                let b: int = 8;
+                let middle: int64 = Midpoint(a, b);
+                return 0;
+            }
+        )"}},
+                                           {{"math.rux", library}});
+    CHECK_MESSAGE(variables.empty(), Messages(variables));
+
+    const auto literals = AnalyzePackages({{"main.rux", R"(
+            import Library::Midpoint;
+            func Main() -> int {
+                let middle = Midpoint(3, 8);
+                return 0;
+            }
+        )"}},
+                                          {{"math.rux", library}});
+    const SemanticDiagnostic *ambiguous = FindMessage(literals, "call to 'Midpoint' is ambiguous");
+    REQUIRE_MESSAGE(ambiguous != nullptr, Messages(literals));
+    REQUIRE(ambiguous->help.has_value());
+    CHECK(ambiguous->help->contains("'3i64'"));
+    CHECK_FALSE(ambiguous->help->contains("rename"));
+}

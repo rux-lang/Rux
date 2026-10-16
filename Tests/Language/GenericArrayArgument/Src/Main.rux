@@ -27,8 +27,8 @@ func Main() -> int {
 
     var pairs = Vector<int32[2]>(SystemAllocator());
     Assert(pairs.Length() == 0u, "a vector of arrays is created");
-    pairs.Push([3i32, 4i32]) catch { else => return 1 };
-    pairs.Push([5i32, 6i32]) catch { else => return 2 };
+    pairs.Push([3, 4]) catch { else => return 1 };
+    pairs.Push([5, 6]) catch { else => return 2 };
     Assert(pairs.Length() == 2u, "a vector of arrays grows");
     Assert(pairs.AsSlice()[1][0] == 5, "and hands its arrays back whole");
 
