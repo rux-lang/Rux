@@ -152,6 +152,25 @@ extend StringView {
         return Ordering::Equal;
     }
 
+    /// Whether this view and `other` hold the same bytes, as `Equals` with a borrowed view answers. A view is a small
+    /// value, so this form takes one as it stands, such as the result of `View()`, which a borrowed parameter cannot.
+    /// @param other the value to compare against
+    /// @returns whether both hold the same bytes
+    /// @see https://rux-lang.dev/docs/api/text/string-view#equals
+    pub func Equals(self: &StringView, other: StringView) -> bool {
+        let borrowed: &StringView = other;
+        return self.Equals(borrowed);
+    }
+
+    /// How this view orders against `other`, as `Compare` with a borrowed view answers, taking the view as it stands.
+    /// @param other the value to compare against
+    /// @returns how the two order byte by byte, which is code-point order for UTF-8
+    /// @see https://rux-lang.dev/docs/api/text/string-view#compare
+    pub func Compare(self: &StringView, other: StringView) -> Ordering {
+        let borrowed: &StringView = other;
+        return self.Compare(borrowed);
+    }
+
     /// A walk over this view's scalar values.
     /// `self` is borrowed and must outlive the walk.
     /// @returns a cursor over the text's scalar values
