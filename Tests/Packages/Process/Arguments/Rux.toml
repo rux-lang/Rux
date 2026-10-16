@@ -8,6 +8,7 @@ Type = "Executable"
 Description = "Package test for Process: the command-line arguments."
 
 [Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
 Core = { Path = "../../../../Packages/Core" }
 Path = { Path = "../../../../Packages/Path" }
 Process = { Path = "../../../../Packages/Process" }

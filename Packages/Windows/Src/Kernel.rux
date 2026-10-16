@@ -160,6 +160,18 @@ pub extern {
     /// @see https://learn.microsoft.com/windows/win32/api/processenv/nf-processenv-getcommandlinew
     func GetCommandLineW() -> *uint16;
 
+    /// Retrieves the full path of the file a module was loaded from; a null module is the process's executable.
+    /// The path is NUL-terminated when it fits. When it does not, it is cut to `size` units, the last of them the
+    /// terminator, and the call returns `size`.
+    /// @param moduleHandle the module, or null for the executable
+    /// @param buffer receives the path
+    /// @param size how many units `buffer` holds
+    /// @returns the path's length without its terminator, `size` when it was cut, or zero on failure with the reason
+    /// in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process#get-module-file-name-w
+    /// @see https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew
+    func GetModuleFileNameW(moduleHandle: *opaque, buffer: *var uint16, size: uint32) -> uint32;
+
     /// Retrieves the current directory.
     /// @param bufferLength how many units `buffer` holds
     /// @param buffer the bytes

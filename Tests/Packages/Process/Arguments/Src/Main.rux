@@ -1,9 +1,25 @@
 // The test runner starts this program with no arguments of its own, so what can be checked here is the shape: the
 // program's own name is argument zero, the count agrees with every way of walking the arguments, and asking past the
-// end answers none. The values of real arguments are checked by starting a program with some.
+// end answers none. The values of real arguments are checked by starting a program with some. The executable's own
+// path, unlike argument zero, comes from the system: an absolute path to this very file.
 
-import Path::OsStringView;
-import Process::{ Argument, ArgumentCount, Arguments };
+import Allocator::SystemAllocator;
+import Path::{ IsAbsolute, OsStringView, OsUnit };
+import Process::{ Argument, ArgumentCount, Arguments, CurrentExecutable };
+
+// Whether `units` holds the ASCII text `name` anywhere.
+func Contains(units: OsUnit[..], name: char8[..]) -> bool {
+    var start: uint = 0;
+    while start + name.length <= units.length {
+        var index: uint = 0;
+        while index < name.length && units[start + index] as uint32 == name[index] as uint8 as uint32 {
+            index = index + 1;
+        }
+        if index == name.length { return true; }
+        start = start + 1;
+    }
+    return false;
+}
 
 func Main() -> int {
     let count = ArgumentCount();
@@ -32,18 +48,13 @@ func Main() -> int {
     if skipped != count - 1 { return 7; }
 
     // The program's name names this test's executable.
-    let units = program.Units();
-    var found = false;
-    let name = "Arguments";
-    var start: uint = 0;
-    while start + name.length <= units.length && !found {
-        var index: uint = 0;
-        while index < name.length && units[start + index] as uint32 == name[index] as uint8 as uint32 {
-            index = index + 1;
-        }
-        found = index == name.length;
-        start = start + 1;
-    }
-    if !found { return 8; }
+    if !Contains(program.Units(), "Arguments") { return 8; }
+
+    // So does the system's path to the executable, which is absolute and ends in its file name.
+    let executable = CurrentExecutable(SystemAllocator()) catch { else => return 9 };
+    let path = executable.AsPath();
+    if !IsAbsolute(path) { return 10; }
+    let file = path.FileName() ?? OsStringView();
+    if !Contains(file.Units(), "Arguments") { return 11; }
     return 0;
 }

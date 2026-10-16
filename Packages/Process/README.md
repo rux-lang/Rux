@@ -15,6 +15,7 @@ rux add Rux/Process
 | `Arguments`   | `ArgumentCount`, `Argument`, and `Arguments` for walking them in order                    |
 | `Environment` | `Variable` for one value by name, `Environment` for walking every `EnvironmentVariable`, and `SetVariable` and `RemoveVariable` |
 | `Exit`        | `Exit`, which ends the process with a status, and `CurrentId`                             |
+| `Executable`  | `CurrentExecutable`, the path of the file the process is running, as the system loaded it |
 | `Command`     | `Command`, which describes a program to start, and `Stdio` for its standard streams       |
 | `Child`       | `Child` with `Wait`, `TryWait` and `Kill`, its `ExitStatus`, and the `PipeReader` and `PipeWriter` streams |
 | `Capture`     | `Command::Capture`, which runs a program and keeps its output, error and status           |

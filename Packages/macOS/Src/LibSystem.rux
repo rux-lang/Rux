@@ -185,6 +185,16 @@ extern {
     /// @see https://keith.github.io/xcode-man-pages/environ.7.html
     pub func _NSGetArgv() -> ***char8;
 
+    /// Copies the path of the process's executable into `buffer`, NUL-terminated.
+    /// The path is the one the executable was loaded by, which may be relative or pass through symbolic links. When
+    /// `buffer` is too short nothing is copied and `size` is set to the size needed.
+    /// @param buffer receives the path
+    /// @param size the buffer's size in bytes, or the size needed when it is too short
+    /// @returns zero on success, or -1 when the buffer is too short
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-executable-path
+    /// @see https://keith.github.io/xcode-man-pages/dyld.3.html
+    pub func _NSGetExecutablePath(buffer: *var char8, size: *var uint32) -> int32;
+
     /// The address of the process's environment vector.
     /// The vector holds NUL-terminated `name=value` byte strings ended by a null. It is the C library's own `environ`,
     /// so a call that changes the environment may replace the vector it points to.
