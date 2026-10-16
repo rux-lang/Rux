@@ -484,6 +484,13 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         else if (literal->value.kind == TokenKind::CharLiteral) {
             lowered->value = DecodeCharLiteral(literal->value.text);
         }
+        else if (literal->value.kind == TokenKind::StringLiteral) {
+            // Matched against the subject's own code units, so the literal is encoded at the subject's width.
+            lowered->value = DecodeStringLiteral(literal->value.text);
+            if (subjectType.IsSlice() && !subjectType->inner.empty() && subjectType->inner[0].IsChar()) {
+                lowered->type = subjectType;
+            }
+        }
         else {
             lowered->value = literal->value.text;
         }

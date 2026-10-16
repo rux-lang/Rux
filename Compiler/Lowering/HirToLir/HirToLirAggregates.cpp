@@ -483,12 +483,61 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
     }
 }
 
+/// A string literal matches a character slice holding the same code units: the lengths agree, then every unit does.
+/// Comparing the two views themselves would compare where they point, which no literal arm would ever match.
+LirReg HirToLirContext::LowerStringPattern(const HirLiteralPattern &pattern, const LirReg subjectVal,
+                                           const TypeRef &subjectType, LirReg subjectSlot) {
+    if (subjectSlot == LirNoReg) {
+        subjectSlot = EmitAlloca(subjectType);
+        EmitStore(subjectVal, subjectSlot, subjectType);
+    }
+    TypeRef elementType = pattern.type->inner[0];
+    elementType.isMut = false;
+    const TypeRef dataType = TypeRef::MakePointer(elementType);
+    const TypeRef indexType = TypeRef::MakeUInt64();
+    const LirReg data = EmitLoad(EmitFieldPtr(subjectSlot, "data", dataType), dataType);
+    const LirReg length = EmitLoad(EmitFieldPtr(subjectSlot, "length", indexType), indexType);
+    const LirReg literal = EmitStringAddr(pattern.value, elementType);
+    const LirReg literalLength = EmitConst(std::to_string(StringLiteralLength(pattern.value, elementType)), indexType);
+
+    const LirReg matched = EmitAlloca(TypeRef::MakeBool());
+    EmitStore(EmitConst("0", TypeRef::MakeBool()), matched, TypeRef::MakeBool());
+    const LirReg index = EmitAlloca(indexType);
+    EmitStore(EmitConst("0", indexType), index, indexType);
+
+    const std::uint32_t condBlock = NewBlock("match.string.cond");
+    const std::uint32_t bodyBlock = NewBlock("match.string.unit");
+    const std::uint32_t equalBlock = NewBlock("match.string.equal");
+    const std::uint32_t doneBlock = NewBlock("match.string.done");
+    Branch(EmitBinary(LirOpcode::CmpEq, length, literalLength, TypeRef::MakeBool()), condBlock, doneBlock);
+
+    SetBlock(condBlock);
+    const LirReg at = EmitLoad(index, indexType);
+    Branch(EmitBinary(LirOpcode::CmpLt, at, literalLength, TypeRef::MakeBool()), bodyBlock, equalBlock);
+
+    SetBlock(bodyBlock);
+    const LirReg unit = EmitLoad(EmitIndexPtr(data, at, elementType), elementType);
+    const LirReg expected = EmitLoad(EmitIndexPtr(literal, at, elementType), elementType);
+    EmitStore(EmitBinary(LirOpcode::Add, at, EmitConst("1", indexType), indexType), index, indexType);
+    Branch(EmitBinary(LirOpcode::CmpEq, unit, expected, TypeRef::MakeBool()), condBlock, doneBlock);
+
+    SetBlock(equalBlock);
+    EmitStore(EmitConst("1", TypeRef::MakeBool()), matched, TypeRef::MakeBool());
+    Jump(doneBlock);
+
+    SetBlock(doneBlock);
+    return EmitLoad(matched, TypeRef::MakeBool());
+}
+
 LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, const TypeRef &subjectType,
                                      const std::vector<LirReg> *enumPayload, LirReg subjectSlot) {
     if (HirCast<const HirWildcardPattern>(&pat)) {
         return EmitConst("1", TypeRef::MakeBool());
     }
     if (auto *p = HirCast<const HirLiteralPattern>(&pat)) {
+        if (p->type.IsSlice() && !p->type->inner.empty() && p->type->inner[0].IsChar()) {
+            return LowerStringPattern(*p, subjectVal, subjectType, subjectSlot);
+        }
         LirReg lit = EmitConst(p->value, p->type);
         return EmitBinary(LirOpcode::CmpEq, subjectVal, lit, TypeRef::MakeBool());
     }
