@@ -526,6 +526,16 @@ HirPatternPtr AstToHirContext::LowerNativeSelection(const TypeRef &subjectType, 
         return NativeCasePattern(subjectType, NativePresentTag, payload, std::move(inner), location);
     }
     case NativeSelection::Kind::Invalid:
+        // A generic body is also lowered in its own terms, where `n: int32` on a `T | U` subject selects nothing until
+        // the type parameters are substituted. That body only gives the instances their shape, so the arm is one no
+        // value takes, and it still binds the name its body reads.
+        if (!TypeIsConcrete(subjectType) || !TypeIsConcrete(annotation)) {
+            auto never = std::make_unique<HirNativeSubsetPattern>();
+            never->location = location;
+            never->subsetType = subjectType;
+            never->binding = binding(annotation);
+            return never;
+        }
         diagnostics->push_back(
             {Diagnostic::Severity::Error,
              currentFile,

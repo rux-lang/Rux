@@ -28,7 +28,20 @@ func Describe(error: ReadError) -> int32 {
     };
 }
 
+// A typed arm may name a concrete member of a sum of type parameters; it selects that member after substitution.
+func PickInt32<T, U>(value: T | U) -> int32 {
+    return match value {
+        n: int32 => n,
+        else => -1i32
+    };
+}
+
 func Main() -> int {
+    let number: int32 | bool = 5i32;
+    let flag: int32 | bool = true;
+    Assert(PickInt32<int32, bool>(number) == 5i32, "a concrete typed arm selects its member after substitution");
+    Assert(PickInt32<int32, bool>(flag) == -1i32, "and leaves the other member to the next arm");
+
     // Different arguments keep two members; equal ones collapse to one type.
     let different = Choose<int32, int64>(false, 1i32, 2i64);
     let right = match different {
