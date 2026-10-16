@@ -570,6 +570,21 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (const auto namedMethods = typeMethods->second.find(field->field);
                 namedMethods != typeMethods->second.end() && !namedMethods->second.empty()) {
                 const std::vector<const FuncDecl *> candidates = AccessibleMethodCandidates(receiverType, field->field);
+                const std::vector<const FuncDecl *> applicable = ApplicableMethods(receiverType, field->field);
+                if (applicable.empty()) {
+                    // Every method of the name extends another instantiation of the type.
+                    std::vector<std::string> notes;
+                    for (const FuncDecl *method : namedMethods->second) {
+                        if (const auto implementation = methodImpls.find(method); implementation != methodImpls.end()) {
+                            notes.push_back(std::format("'{}' is declared in 'extend {}'", field->field,
+                                                        implementation->second->typeName));
+                        }
+                    }
+                    EmitError(field->location,
+                              std::format("type '{}' has no method '{}'", receiverType.ToString(), field->field),
+                              std::move(notes), "call it on the instantiation its extension names");
+                    return TypeRef::MakeUnknown();
+                }
                 if (candidates.empty()) {
                     EmitPrivacyError(field->location, *namedMethods->second.front(), "method", field->field);
                     return TypeRef::MakeUnknown();

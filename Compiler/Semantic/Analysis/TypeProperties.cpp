@@ -62,10 +62,45 @@ std::vector<const FuncDecl *> AnalysisContext::ConstructorCandidates(const TypeR
     return result;
 }
 
-std::vector<const FuncDecl *> AnalysisContext::AccessibleMethodCandidates(const TypeRef &receiverType,
-                                                                          const std::string &methodName) const {
-    const std::string typeName = NamedBaseTypeName(receiverType);
-    const auto type = methodsByType.find(typeName);
+bool AnalysisContext::ExtensionAppliesTo(const FuncDecl &method, const TypeRef &receiver) const {
+    const auto implementation = methodImpls.find(&method);
+    if (implementation == methodImpls.end() || !implementation->second->extendedType) {
+        return true;
+    }
+    const auto extended = typeNodeTypes.find(implementation->second->extendedType.get());
+    const TypeRef *named = &receiver;
+    if (((*named)->kind == TypeRef::Kind::Pointer || (*named)->kind == TypeRef::Kind::Reference) &&
+        !(*named)->inner.empty()) {
+        named = &(*named)->inner[0];
+    }
+    if (extended == typeNodeTypes.end() || extended->second->kind != TypeRef::Kind::Named ||
+        (*named)->kind != TypeRef::Kind::Named) {
+        return true;
+    }
+    // Each argument the extension writes concretely has to be the receiver's; one of the extension's own parameters
+    // takes any argument.
+    const std::vector<TypeRef> written = ParseTypeArgsFromTypeName(extended->second->name);
+    const std::vector<TypeRef> actual = ParseTypeArgsFromTypeName((*named)->name);
+    if (written.empty() || written.size() != actual.size()) {
+        return true;
+    }
+    const std::vector<std::string> parameters = ImplTypeParams(*implementation->second);
+    for (std::size_t index = 0; index < written.size(); ++index) {
+        const TypeRef &argument = written[index];
+        const bool isParameter =
+            (argument->kind == TypeRef::Kind::TypeParam || argument->kind == TypeRef::Kind::Named) &&
+            std::ranges::contains(parameters, argument->name);
+        if (!isParameter && !MentionsTypeParameter(argument) && !MentionsTypeParameter(actual[index]) &&
+            !(argument == actual[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<const FuncDecl *> AnalysisContext::ApplicableMethods(const TypeRef &receiverType,
+                                                                 const std::string &methodName) const {
+    const auto type = methodsByType.find(NamedBaseTypeName(receiverType));
     if (type == methodsByType.end()) {
         return {};
     }
@@ -75,7 +110,14 @@ std::vector<const FuncDecl *> AnalysisContext::AccessibleMethodCandidates(const 
     }
     std::vector<const FuncDecl *> result;
     std::ranges::copy_if(named->second, std::back_inserter(result),
-                         [this](const FuncDecl *method) { return IsAccessible(*method); });
+                         [&](const FuncDecl *method) { return ExtensionAppliesTo(*method, receiverType); });
+    return result;
+}
+
+std::vector<const FuncDecl *> AnalysisContext::AccessibleMethodCandidates(const TypeRef &receiverType,
+                                                                          const std::string &methodName) const {
+    std::vector<const FuncDecl *> result = ApplicableMethods(receiverType, methodName);
+    std::erase_if(result, [this](const FuncDecl *method) { return !IsAccessible(*method); });
     return result;
 }
 

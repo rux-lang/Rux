@@ -632,8 +632,9 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     if (methodIt == typeIt->second.end()) {
         return nullptr;
     }
-    const std::vector<const FuncDecl *> accessible =
-        requireAccessible ? AccessibleMethodCandidates(receiverType, methodName) : methodIt->second;
+    const std::vector<const FuncDecl *> accessible = requireAccessible
+                                                       ? AccessibleMethodCandidates(receiverType, methodName)
+                                                       : ApplicableMethods(receiverType, methodName);
     const auto &overloads = accessible;
     if (overloads.empty()) {
         return nullptr;

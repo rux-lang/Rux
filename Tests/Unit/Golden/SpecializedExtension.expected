@@ -1,0 +1,1 @@
+25:21: error: type 'Pair<int64>' has no method 'Sum'

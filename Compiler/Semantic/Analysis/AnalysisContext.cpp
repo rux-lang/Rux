@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <filesystem>
 #include <format>
 #include <utility>
 
@@ -473,6 +474,50 @@ void AnalysisContext::IndexDeclarations() {
     }
     programIndex.FinalizeNominalIdentities();
     programIndex.FinalizeVisibility();
+    RecordDiagnosticTypeNames();
+}
+
+void AnalysisContext::RecordDiagnosticTypeNames() {
+    diagnosticTypeNames.clear();
+    const auto join = [](const std::string &left, const std::string &right) {
+        return left.empty() ? right : right.empty() ? left : left + "::" + right;
+    };
+    for (const auto &[declaration, identity] : programIndex.NominalNames()) {
+        std::string name;
+        if (const auto *structure = AstCast<const StructDecl>(declaration))
+            name = structure->name;
+        else if (const auto *enumeration = AstCast<const EnumDecl>(declaration))
+            name = enumeration->name;
+        else if (const auto *unionDeclaration = AstCast<const UnionDecl>(declaration))
+            name = unionDeclaration->name;
+        else if (const auto *interface = AstCast<const InterfaceDecl>(declaration))
+            name = interface->name;
+        const SemanticProgramIndex::DeclarationInfo *info = programIndex.InfoFor(*declaration);
+        if (name.empty() || identity == name || !info) {
+            continue;
+        }
+        // Two packages declare the name, so each keeps its package; a package without a namespace is identified by
+        // its manifest path, and shown by the folder that holds it.
+        std::string owner = PackageDisplayName(info->ownerPackage);
+        if (owner.starts_with("local:")) {
+            owner = std::filesystem::path(owner.substr(6)).parent_path().filename().string();
+        }
+        diagnosticTypeNames.emplace_back(identity, join(join(owner, info->modulePath), name));
+    }
+    std::ranges::sort(diagnosticTypeNames, [](const auto &left, const auto &right) {
+        return left.first.size() != right.first.size() ? left.first.size() > right.first.size()
+                                                       : left.first < right.first;
+    });
+}
+
+std::string AnalysisContext::DiagnosticTypeNames(std::string text) const {
+    for (const auto &[identity, display] : diagnosticTypeNames) {
+        for (std::size_t at = text.find(identity); at != std::string::npos;
+             at = text.find(identity, at + display.size())) {
+            text.replace(at, identity.size(), display);
+        }
+    }
+    return text;
 }
 
 bool AnalysisContext::IsAccessible(const Symbol &symbol) const {

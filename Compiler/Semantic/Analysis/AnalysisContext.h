@@ -227,6 +227,10 @@ struct AnalysisState {
     std::vector<const Decl *> declarationsBeingChecked;
     /// The declaration whose signature or field type is being resolved, for as long as it is.
     const Decl *resolvingTypeOwner = nullptr;
+    /// Each type identity qualified by its package because another package declares the same name, longest first,
+    /// with the name a diagnostic shows for it: the name it was declared with, under its package's display name. A
+    /// manifest path is no name a reader wrote.
+    std::vector<std::pair<std::string, std::string>> diagnosticTypeNames;
 };
 
 class AnalysisContext final : private AnalysisState {
@@ -525,7 +529,14 @@ private:
                                                   const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] bool TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason,
                                           const std::vector<TypeRef> &interfaceArguments = {});
-    [[nodiscard]] const FuncDecl *SelectBoundOperation(const std::string &typeName, const FuncDecl &required) const;
+    [[nodiscard]] const FuncDecl *SelectBoundOperation(const TypeRef &receiver, const std::string &typeName,
+                                                       const FuncDecl &required) const;
+    /// Whether a method's extension is one of `receiver`'s: `extend Pair<int32>` extends `Pair<int32>` and no other
+    /// instantiation, while `extend Pair<T>` and `extend Pair` extend them all.
+    [[nodiscard]] bool ExtensionAppliesTo(const FuncDecl &method, const TypeRef &receiver) const;
+    /// The methods of `receiver` named `methodName`, accessible or not, whose extension is one of the receiver's.
+    [[nodiscard]] std::vector<const FuncDecl *> ApplicableMethods(const TypeRef &receiver,
+                                                                  const std::string &methodName) const;
     /// Deduces type arguments from the fixed arguments and, past them, from each argument the variadic parameter
     /// collects. `call` says which argument is spread, so it deduces from the variadic slice rather than an element.
     bool DeduceTypeArguments(const FuncDecl &declaration, const std::vector<TypeRef> &argumentTypes,
@@ -1336,6 +1347,9 @@ private:
                                                    std::unordered_set<std::string> &activeTypes);
     [[nodiscard]] Symbol *LookupCalleeSymbol(const Expr &callee) const;
     void EmitCallSiteDiagnostics(const Decl &declaration, SourceLocation location) const;
+    void RecordDiagnosticTypeNames();
+    /// `text` with every package-qualified type identity spelled as `diagnosticTypeNames` says.
+    [[nodiscard]] std::string DiagnosticTypeNames(std::string text) const;
     /// Reports a use of a declaration that carries `#Warn` or `#Error`, once per place it is written, unless the use is
     /// inside the declaration itself or an extension of the type it declares.
     void NoteDeclarationUse(const Decl &declaration, SourceLocation location);

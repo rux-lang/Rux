@@ -143,7 +143,7 @@ void AnalysisContext::DeduceTypeArgumentsFromBounds(const std::vector<TypeParame
                     continue;
                 }
                 for (const auto &required : bound.interface->methods) {
-                    const FuncDecl *operation = SelectBoundOperation(typeName, *required);
+                    const FuncDecl *operation = SelectBoundOperation(receiver, typeName, *required);
                     if (!operation) {
                         continue;
                     }
@@ -329,7 +329,7 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
     witness.interfaceName = programIndex.NominalName(interface);
     witness.typeName = typeName;
     for (const auto &required : interface.methods) {
-        const FuncDecl *operation = SelectBoundOperation(typeName, *required);
+        const FuncDecl *operation = SelectBoundOperation(argument, typeName, *required);
         if (!operation) {
             reason = std::format("interface '{}' requires method '{}', which type '{}' does not implement",
                                  interface.name, required->name, argument.ToString());
@@ -363,17 +363,25 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
     return true;
 }
 
-const FuncDecl *AnalysisContext::SelectBoundOperation(const std::string &typeName, const FuncDecl &required) const {
+const FuncDecl *AnalysisContext::SelectBoundOperation(const TypeRef &receiver, const std::string &typeName,
+                                                      const FuncDecl &required) const {
     const auto methods = methodsByType.find(typeName);
     if (methods == methodsByType.end()) {
         return nullptr;
     }
-    const auto named = methods->second.find(required.name);
-    if (named == methods->second.end() || named->second.empty()) {
+    const auto found = methods->second.find(required.name);
+    if (found == methods->second.end() || found->second.empty()) {
         return nullptr;
     }
-    if (named->second.size() == 1) {
-        return named->second.front();
+    std::vector<const FuncDecl *> applicable;
+    std::ranges::copy_if(found->second, std::back_inserter(applicable),
+                         [&](const FuncDecl *method) { return ExtensionAppliesTo(*method, receiver); });
+    const auto *named = &applicable;
+    if (named->empty()) {
+        return nullptr;
+    }
+    if (named->size() == 1) {
+        return named->front();
     }
 
     // An overloaded name needs the overload the interface asked for. Written arity is what the interface states, since
@@ -388,7 +396,7 @@ const FuncDecl *AnalysisContext::SelectBoundOperation(const std::string &typeNam
         return count;
     };
     const FuncDecl *selected = nullptr;
-    for (const FuncDecl *candidate : named->second) {
+    for (const FuncDecl *candidate : *named) {
         if (writtenCount(*candidate) != writtenCount(required)) {
             continue;
         }

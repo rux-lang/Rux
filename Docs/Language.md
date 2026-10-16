@@ -485,6 +485,8 @@ Range expressions and annotations use the same punctuation family. Bounds in a t
 
 Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary two-sided ranges exclude it. A `for` over an inclusive range visits its end last and stops there, even when the end is its type's maximum, so `for v in start..=255` over `uint8` never wraps around; a range whose start is past its end visits nothing. The full range selects an entire array or slice. A pointer requires an explicit end.
 
+An extension of one instantiation of a generic type, such as `extend Pair<int32>`, gives methods to that instantiation alone: calling one on a `Pair<int64>` is `type 'Pair<int64>' has no method 'Sum'`, with a note naming the extension it is declared in. `extend Pair<T>` gives methods to every instantiation.
+
 Concrete extensions such as `extend int[..]` and `extend char8[..]` have separate method sets. A writable view, `var int[..]`, also calls the methods of `extend int[..]`, as it is passed wherever an `int[..]` is taken, while the methods of `extend var int[..]` stay off read-only views. A fixed array has a method set of its own, keyed by its element and its length: `extend int[3]` gives methods to `int[3]` and to no other array. Generic slice extensions such as `extend T[..]` are rejected; generic reusable algorithms remain ordinary functions.
 
 ## Copy and Move

@@ -134,6 +134,15 @@ void AnalysisContext::EmitError(const SourceLocation location, std::string messa
             notes.push_back(std::move(note));
         }
     }
+    if (!diagnosticTypeNames.empty()) {
+        message = DiagnosticTypeNames(std::move(message));
+        for (std::string &note : notes) {
+            note = DiagnosticTypeNames(std::move(note));
+        }
+        if (help) {
+            help = DiagnosticTypeNames(std::move(*help));
+        }
+    }
     diags.push_back({SemanticDiagnostic::Severity::Error,
                      currentFile,
                      location,
@@ -144,7 +153,13 @@ void AnalysisContext::EmitError(const SourceLocation location, std::string messa
 }
 
 void AnalysisContext::EmitWarning(const SourceLocation location, std::string message) const {
-    diags.push_back({SemanticDiagnostic::Severity::Warning, currentFile, location, std::move(message), {}, {}, {}});
+    diags.push_back({SemanticDiagnostic::Severity::Warning,
+                     currentFile,
+                     location,
+                     DiagnosticTypeNames(std::move(message)),
+                     {},
+                     {},
+                     {}});
 }
 
 void AnalysisContext::EmitUndefinedName(const SourceLocation location, const std::string &name) const {
