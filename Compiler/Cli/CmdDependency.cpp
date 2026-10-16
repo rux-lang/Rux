@@ -10,6 +10,7 @@
 #include "Cli/Reporter.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
+#include "Package/Cache.h"
 #include "Package/Credentials.h"
 #include "Package/Manifest.h"
 #include "Package/Registry.h"
@@ -137,6 +138,32 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
         return 0;
     }
 
+    // An omitted requirement accepts any stable release.
+    VersionRange requirement = parsedSpec->version.value_or(*VersionRange::Parse("*"));
+    const std::string version = requirement.Text();
+    const auto identity = QualifiedIdentity(*parsedSpec->ns, parsedSpec->name);
+
+    // A package already installed, such as a standard `Rux/*` package installed with the compiler, resolves without
+    // the registry, which a build would not ask either: it is what the requirement will resolve to.
+    if (registryArg.empty()) {
+        if (const auto installed = FindInstalledPackage(*parsedSpec->ns, parsedSpec->name, requirement)) {
+            const bool changed =
+                manifest->AddRegistryDependency(parsedSpec->name, *parsedSpec->ns, std::move(requirement));
+            if (changed && !manifest->Save(*manifestPath)) {
+                diagnostics.Error(std::format("could not write manifest '{}'", manifestPath->string()));
+                diagnostics.Help("check the manifest's file permissions, then retry");
+                output.Failure("Failed", std::format("to add dependency '{}' in {}", spec,
+                                                     Reporting::FormatDuration(ElapsedMs(started))));
+                return 1;
+            }
+            output.Success(changed ? "Added" : "Unchanged", std::format("dependency '{}@{}' in {}", identity, version,
+                                                                        Reporting::FormatDuration(ElapsedMs(started))));
+            output.Detail(std::format("Installed: {} at {}", installed->version.Text(), installed->root.string()));
+            output.Detail(std::format("Manifest: {}", manifestPath->string()));
+            return 0;
+        }
+    }
+
     // Confirm the package exists before writing a requirement that could never
     // resolve. The index is the cheapest route that answers that question.
     const std::string base = ResolveRegistryBase(registryArg);
@@ -147,16 +174,24 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
         for (const auto &note : problem.notes) {
             diagnostics.Note(note);
         }
-        diagnostics.Help(problem.help.value_or(
-            std::format("verify '{}' exists in the registry or choose another '--registry' URL", spec)));
+        // The standard packages are not served by the registry: they come with the compiler.
+        if (parsedSpec->ns->Text() == "Rux") {
+            diagnostics.Note(std::format("standard packages such as '{}' are installed with the compiler, not "
+                                         "downloaded from the registry",
+                                         identity));
+            diagnostics.Help(std::format("reinstall Rux to restore its standard packages, or write '{} = {{ "
+                                         "Namespace = \"Rux\", Version = \"{}\" }}' under [Dependencies] in Rux.toml",
+                                         packageName, version));
+        }
+        else {
+            diagnostics.Help(problem.help.value_or(
+                std::format("verify '{}' exists in the registry or choose another '--registry' URL", spec)));
+        }
         output.Failure("Failed", std::format("to add registry dependency '{}' in {}", spec,
                                              Reporting::FormatDuration(ElapsedMs(started))));
         return 1;
     }
 
-    // An omitted requirement accepts any stable release.
-    VersionRange requirement = parsedSpec->version.value_or(*VersionRange::Parse("*"));
-    const std::string version = requirement.Text();
     const bool changed = manifest->AddRegistryDependency(parsedSpec->name, *parsedSpec->ns, std::move(requirement));
     if (changed && !manifest->Save(*manifestPath)) {
         diagnostics.Error(std::format("could not write manifest '{}'", manifestPath->string()));
@@ -165,7 +200,6 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
                                              Reporting::FormatDuration(ElapsedMs(started))));
         return 1;
     }
-    const auto identity = QualifiedIdentity(*parsedSpec->ns, parsedSpec->name);
     output.Success(changed ? "Added" : "Unchanged", std::format("registry dependency '{}@{}' in {}", identity, version,
                                                                 Reporting::FormatDuration(ElapsedMs(started))));
     output.Detail(std::format("Registry: {}", base));
