@@ -64,6 +64,33 @@ func ReturnsLiteral() -> int {
     return 7;
 }
 
+// A pass that leaves the loop body by `continue` or `break` runs the defers it registered, as a pass that reaches
+// the end of the body does.
+func RunsOnLoopExits(counter: *var int) {
+    var pass = 0;
+    loop {
+        defer *counter = *counter + 1;
+        pass += 1;
+        if pass < 3 {
+            continue;
+        }
+        break;
+    }
+}
+
+// A labeled `break` out of an inner loop runs the defers of both bodies it leaves, innermost first.
+func RunsOnLabeledBreak(order: *var int) {
+    outer: for i in 0..5 {
+        defer *order = *order * 10 + 2;
+        for j in 0..5 {
+            defer *order = *order * 10 + 1;
+            if j == 0 {
+                break outer;
+            }
+        }
+    }
+}
+
 func Main() -> int {
     // Deferred statements run in reverse registration order. The log digits record the order they ran in.
     var log: int = 0;
@@ -105,5 +132,12 @@ func Main() -> int {
     Assert(ReturnsOriginalVariable() == 1, "the return reads the variable before its defer");
     Assert(ReturnsOriginalExpression() == 2, "the return expression is evaluated before deferred mutation");
     Assert(ReturnsLiteral() == 7, "a returned literal is preserved");
+
+    var exits: int = 0;
+    RunsOnLoopExits(@exits);
+    Assert(exits == 3, "the defer ran on each 'continue' and on the 'break'");
+    var order: int = 0;
+    RunsOnLabeledBreak(@order);
+    Assert(order == 12, "a labeled 'break' ran the inner body's defer, then the outer body's");
     return 0;
 }

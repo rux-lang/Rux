@@ -709,9 +709,19 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
     }
     else if (const auto *deferStatement = AstCast<const DeferStmt>(&statement)) {
         if (deferStatement->deferredStmt) {
+            std::optional<DeferredContext> saved =
+                std::exchange(checkingDeferred, DeferredContext{loopDepth, activeLabels});
             CheckStatement(*deferStatement->deferredStmt);
+            checkingDeferred = std::move(saved);
         }
     }
+}
+
+void AnalysisContext::EmitExitFromDeferred(const SourceLocation location, const std::string_view keyword,
+                                           std::string help) {
+    EmitError(location, std::format("'{}' cannot leave a deferred statement", keyword),
+              {"a deferred statement runs while its scope is already being left, so it cannot leave it another way"},
+              std::move(help));
 }
 
 bool AnalysisContext::CompletesWithoutValue(const TypeRef &returnType) noexcept {
@@ -721,6 +731,9 @@ bool AnalysisContext::CompletesWithoutValue(const TypeRef &returnType) noexcept 
 void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation location) {
     if (currentFunctionNoReturn) {
         EmitError(location, "return is not allowed in a '#NoReturn' function");
+    }
+    if (checkingDeferred) {
+        EmitExitFromDeferred(location, "return", "move the 'return' out of the 'defer'");
     }
     bool returnAccepted = false;
     if (value) {
@@ -770,6 +783,9 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
 }
 
 void AnalysisContext::CheckFail(const Expr *value, const SourceLocation location) {
+    if (checkingDeferred) {
+        EmitExitFromDeferred(location, "fail", "move the 'fail' out of the 'defer'");
+    }
     const TypeRef valueType = value ? CheckExpr(*value) : TypeRef::MakeUnknown();
     if (!currentReturnType.IsFallible()) {
         if (!currentReturnType.IsUnknown()) {
@@ -803,6 +819,13 @@ void AnalysisContext::CheckLoopExit(const bool isContinue, const std::string &la
     }
     else if (!label.empty() && !activeLabels.contains(label)) {
         EmitError(location, std::format("'{}' refers to unknown loop label '{}'", keyword, label));
+    }
+    // A loop the deferred statement is written inside is outside it, and leaving it would leave the deferred
+    // statement too; a loop written inside the deferred statement is its own.
+    else if (checkingDeferred && (label.empty() ? loopDepth == checkingDeferred->loopDepth
+                                                : activeLabels.count(label) == checkingDeferred->labels.count(label))) {
+        EmitExitFromDeferred(location, keyword,
+                             std::format("a '{}' in a 'defer' can only leave a loop written inside it", keyword));
     }
     else {
         RecordTrackedLoopExit(label, isContinue);

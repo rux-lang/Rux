@@ -966,6 +966,14 @@ private:
     bool currentFunctionNoReturn = false;
     int loopDepth = 0;
     std::unordered_multiset<std::string> activeLabels;
+
+    /// While a deferred statement is checked: the loop depth and the labels outside it, which it cannot leave to.
+    struct DeferredContext {
+        int loopDepth = 0;
+        std::unordered_multiset<std::string> labels;
+    };
+
+    std::optional<DeferredContext> checkingDeferred;
     /// For each loop being checked, innermost last, the expressions its body has recorded types for.
     std::vector<std::vector<const Expr *>> loopCheckedExpressions;
     /// The parameters of the function whose default value is being checked, none of which a default may read.
@@ -1509,6 +1517,8 @@ private:
     /// The checks a `fail value` makes: an enclosing fallible function and an operand that fits its error channel.
     void CheckFail(const Expr *value, SourceLocation location);
     /// The checks a `break` or `continue`, with its optional label, makes against the enclosing loops.
+    /// Refuses leaving a deferred statement by `keyword`, which would leave a scope already being left.
+    void EmitExitFromDeferred(SourceLocation location, std::string_view keyword, std::string help);
     void CheckLoopExit(bool isContinue, const std::string &label, SourceLocation location);
     /// Whether evaluating `expression` never produces a value: a diverging form, or a call to `Panic` or a
     /// no-return function. Such an expression never decides the type of the expression it stands in.

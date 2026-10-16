@@ -129,6 +129,9 @@ protected:
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
     std::vector<std::vector<const DeferStmt *>> deferStack;
+    /// For each loop being lowered, innermost last: its label and how many defer scopes were open around it, so a
+    /// `break` or `continue` runs the defers registered inside the loop before it jumps.
+    std::vector<std::pair<std::string, std::size_t>> loopDeferBases;
     std::size_t returnOrdinal = 0;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
@@ -176,6 +179,10 @@ protected:
 
     [[nodiscard]] HirBlock LowerBlock(const Block &block);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
+    CleanupPlanner::LoopToken BeginLoop(const std::string &label);
+    void EndLoop(CleanupPlanner::LoopToken token);
+    /// A `break` or `continue` that first runs the defers registered inside the loop it leaves.
+    [[nodiscard]] HirStmtPtr LowerLoopExit(HirStmtPtr jump, const std::string &label, SourceLocation location);
     [[nodiscard]] HirStmtPtr LowerFunctionReturn(HirExprPtr value, SourceLocation location);
     /// A binding pattern of `type`. A destructuring `let` passes `discardsParts`: it owns the whole initializer, so a
     /// part it binds to `_`, or a structure field it leaves out, is destroyed where it is discarded.

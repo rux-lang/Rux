@@ -54,7 +54,7 @@ A struct keeps declaration order, places each field at the next multiple of its 
 
 A `return expr;` evaluates and preserves `expr` exactly once before running deferred statements. The accepted copy or move into the return value happens during this evaluation. Later changes to source locals do not change the captured value, including fields of an aggregate; a returned pointer still points to its original storage.
 
-On return, registered defers run in reverse registration order, from the innermost active scope outward, followed by the existing ownership cleanup. A transferred value is destroyed by its eventual owner, and a copied source remains subject to normal cleanup. A void return runs the same deferred statements without capturing a value. Each function has its own defer stack, including instantiated generic functions.
+On return, registered defers run in reverse registration order, from the innermost active scope outward, followed by the existing ownership cleanup. A transferred value is destroyed by its eventual owner, and a copied source remains subject to normal cleanup. A void return runs the same deferred statements without capturing a value. A `break` or `continue` runs, the same way, the defers registered in the scopes it leaves, up to and including the body of the loop it targets, so a pass of a loop body runs its defers however it ends. A deferred statement cannot itself leave its scope: `return`, `fail`, `?`, and a `break` or `continue` out of it are errors (`'return' cannot leave a deferred statement`); a loop written inside the deferred statement may still be left. Each function has its own defer stack, including instantiated generic functions.
 
 ## Package Visibility
 

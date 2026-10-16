@@ -64,7 +64,7 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     loop->label = statement.label;
     loop->body.location = statement.location;
 
-    const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement.label);
+    const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement.label);
     PushScope();
 
     // `Next` reports the item or the end, so the loop body is the arm that received an item and the exit is the arm
@@ -146,7 +146,7 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
 
     AppendCurrentScopeCleanups(loop->body);
     PopScope();
-    cleanupPlanner.EndLoop(cleanupLoop);
+    EndLoop(cleanupLoop);
     scope->block.stmts.push_back(std::move(loop));
 
     AppendCurrentScopeCleanups(scope->block);

@@ -1,0 +1,5 @@
+4:11: error: 'fail' cannot leave a deferred statement
+5:22: error: '?' cannot leave a deferred statement
+11:15: error: 'return' cannot leave a deferred statement
+12:15: error: 'break' cannot leave a deferred statement
+13:15: error: 'continue' cannot leave a deferred statement

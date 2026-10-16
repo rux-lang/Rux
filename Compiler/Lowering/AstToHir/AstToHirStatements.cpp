@@ -71,6 +71,46 @@ HirBlock AstToHirContext::LowerBlock(const Block &block) {
     return loweredBlock;
 }
 
+CleanupPlanner::LoopToken AstToHirContext::BeginLoop(const std::string &label) {
+    loopDeferBases.emplace_back(label, deferStack.size());
+    return cleanupPlanner.BeginLoop(label);
+}
+
+void AstToHirContext::EndLoop(const CleanupPlanner::LoopToken token) {
+    cleanupPlanner.EndLoop(token);
+    loopDeferBases.pop_back();
+}
+
+HirStmtPtr AstToHirContext::LowerLoopExit(HirStmtPtr jump, const std::string &label, const SourceLocation location) {
+    // The defer scopes opened inside the loop the jump leaves: the innermost loop, or the one with the label.
+    auto target = loopDeferBases.rbegin();
+    if (!label.empty()) {
+        target = std::ranges::find_if(loopDeferBases.rbegin(), loopDeferBases.rend(),
+                                      [&](const auto &loop) { return loop.first == label; });
+    }
+    if (target == loopDeferBases.rend()) {
+        return jump;
+    }
+    std::vector<const Stmt *> deferred;
+    for (std::size_t scope = deferStack.size(); scope > target->second; --scope) {
+        const auto &registered = deferStack[scope - 1];
+        for (auto statement = registered.rbegin(); statement != registered.rend(); ++statement) {
+            if ((*statement)->deferredStmt)
+                deferred.push_back((*statement)->deferredStmt.get());
+        }
+    }
+    if (deferred.empty()) {
+        return jump;
+    }
+    auto exit = std::make_unique<HirScopeStmt>();
+    exit->location = location;
+    exit->block.location = location;
+    for (const Stmt *statement : deferred)
+        exit->block.stmts.push_back(LowerStmt(*statement));
+    exit->block.stmts.push_back(std::move(jump));
+    return exit;
+}
+
 HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLocation location) {
     auto returned = std::make_unique<HirReturnStmt>();
     returned->location = location;
@@ -202,9 +242,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->location = statement->location;
         lowered->label = statement->label;
         lowered->condition = LowerExpr(*statement->condition);
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         return lowered;
     }
 
@@ -212,9 +252,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirDoWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         lowered->condition = LowerExpr(*statement->condition);
         return lowered;
     }
@@ -223,9 +263,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirLoopStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         return lowered;
     }
 
@@ -254,7 +294,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         HirSymbol *outer = currentScope->Lookup(statement->variable);
         lowered->reusesOuterVar =
             outer != nullptr && outer->kind == HirSymbol::Kind::Var && outer->isMut && outer->type == elementType;
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         PushScope();
         if (!lowered->reusesOuterVar) {
             HirSymbol variable;
@@ -268,7 +308,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->body = LowerBlock(*statement->body);
         AppendCurrentScopeCleanups(lowered->body);
         PopScope();
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         return lowered;
     }
 
@@ -314,7 +354,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->location = stmt.location;
         lowered->label = statement->label;
         lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
-        return lowered;
+        return LowerLoopExit(std::move(lowered), statement->label, stmt.location);
     }
 
     if (const auto *statement = AstCast<const ContinueStmt>(&stmt)) {
@@ -322,7 +362,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->location = stmt.location;
         lowered->label = statement->label;
         lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
-        return lowered;
+        return LowerLoopExit(std::move(lowered), statement->label, stmt.location);
     }
 
     if (const auto *statement = AstCast<const DeferStmt>(&stmt)) {

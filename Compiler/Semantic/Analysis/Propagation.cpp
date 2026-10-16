@@ -125,6 +125,10 @@ TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const
 }
 
 std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expression) {
+    if (checkingDeferred) {
+        EmitExitFromDeferred(expression.location, "?",
+                             "handle the failure inside the 'defer', with 'catch' or a 'match' on both channels");
+    }
     const TypeRef operandType = CheckExpr(*expression.operand);
     if (operandType.IsUnknown()) {
         return TypeRef::MakeUnknown();
