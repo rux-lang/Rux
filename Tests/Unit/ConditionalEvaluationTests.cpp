@@ -454,7 +454,7 @@ module Demo {
     CHECK(values["fileName"] == "test.rux");
     CHECK(values["filePath"] == "test.rux");
     CHECK(values["function"] == "Demo::Values");
-    CHECK(values["moduleName"] == "test::Demo");
+    CHECK(values["moduleName"] == "Demo");
     CHECK(values["date"] == "1970-01-01");
     CHECK(values["time"] == "00:00:00");
     CHECK(values["timestamp"] == "0");

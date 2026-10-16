@@ -24,7 +24,6 @@ public:
             if (!module->bodiesNeedConditionalFolding)
                 continue;
             currentFile = module->name;
-            currentModulePath = FilePathToModulePath(module->name);
             currentDeclModulePath.clear();
             currentFunction.clear();
             SyncEvaluatorContext();
@@ -40,11 +39,10 @@ private:
     std::vector<Diagnostic> &diags;
     std::string currentFile;
     std::string currentFunction;
-    std::string currentModulePath;
     std::string currentDeclModulePath;
 
     void SyncEvaluatorContext() {
-        evaluator.SetSourceContext(currentFile, currentModulePath, currentFunction);
+        evaluator.SetSourceContext(currentFile, currentDeclModulePath, currentFunction);
     }
 
     void AppendDiagnostics(std::vector<Diagnostic> diagnostics) {
@@ -104,9 +102,7 @@ private:
             }
         }
         else if (auto *module = AstCast<ModuleDecl>(&decl)) {
-            const std::string savedModule = currentModulePath;
             const std::string savedDeclModule = currentDeclModulePath;
-            currentModulePath = currentModulePath.empty() ? module->name : currentModulePath + "::" + module->name;
             currentDeclModulePath =
                 currentDeclModulePath.empty() ? module->name : currentDeclModulePath + "::" + module->name;
             SyncEvaluatorContext();
@@ -115,7 +111,6 @@ private:
                     ResolveDeclBodies(*item);
                 }
             }
-            currentModulePath = savedModule;
             currentDeclModulePath = savedDeclModule;
             SyncEvaluatorContext();
         }

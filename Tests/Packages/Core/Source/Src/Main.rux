@@ -17,6 +17,26 @@ func SliceEquals(a: char8[..], b: char8[..]) -> bool {
     return true;
 }
 
+module Tools {
+    pub func ModuleName() -> char8[..] {
+        return #source.module;
+    }
+
+    module Inner {
+        pub func ModuleName() -> char8[..] {
+            return #source.module;
+        }
+    }
+}
+
+func CallerLine(line: uint = #source.line) -> uint {
+    return line;
+}
+
+func CallerColumn(column: uint = #source.column) -> uint {
+    return column;
+}
+
 func Main() -> int {
     // The location is one-based, so both coordinates sit past zero.
     Assert(#source.line > 0, "line");
@@ -27,10 +47,18 @@ func Main() -> int {
     Assert(SliceEquals(#source.fileName, "Main.rux"), "fileName");
     Assert(SliceEquals(#source.function, "Main"), "function");
 
-    // The full paths and the module name are populated.
+    // The full paths are populated, and the module path names `module` blocks only, so it is empty at the top of a
+    // file.
     Assert(#source.file.length > 0, "file");
     Assert(#source.filePath.length > 0, "filePath");
-    Assert(#source.module.length > 0, "module");
+    Assert(SliceEquals(#source.module, ""), "module at the top of a file");
+    Assert(SliceEquals(Tools::ModuleName(), "Tools"), "module inside a module block");
+    Assert(SliceEquals(Tools::Inner::ModuleName(), "Tools::Inner"), "module inside nested module blocks");
+
+    // A `#source` read in a default value reports the call, not the declaration.
+    let callLine = #source.line;
+    Assert(CallerLine() == callLine + 1, "a default value reads the line of the call");
+    Assert(CallerColumn() == 12, "a default value reads the column of the call");
 
     // The value tracks the line it is read on: a read further down the file
     // reports a greater line than one above it.

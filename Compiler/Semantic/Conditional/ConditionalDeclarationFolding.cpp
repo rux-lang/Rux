@@ -22,7 +22,7 @@ public:
     void Run(const std::vector<Module *> &modules) {
         for (auto *module : modules) {
             currentFile = module->name;
-            currentModulePath = FilePathToModulePath(module->name);
+            currentModulePath.clear();
             SyncEvaluatorContext();
             evaluator.SetImports(*module);
             ResolveDecls(module->items);

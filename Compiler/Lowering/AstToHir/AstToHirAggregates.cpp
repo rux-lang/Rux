@@ -250,10 +250,11 @@ HirExprPtr AstToHirContext::LowerCompilerParamField(const std::string &root, con
         return object;
     }
     if (root == "Source") {
+        const SourceLocation site = sourceSiteOverride.value_or(location);
         if (field == "line")
-            return CompilerLiteral(location, TypeRef::MakeUInt(), std::to_string(location.line));
+            return CompilerLiteral(location, TypeRef::MakeUInt(), std::to_string(site.line));
         if (field == "column")
-            return CompilerLiteral(location, TypeRef::MakeUInt(), std::to_string(location.column));
+            return CompilerLiteral(location, TypeRef::MakeUInt(), std::to_string(site.column));
         if (field == "file" || field == "fileName")
             return CompilerString(location, std::filesystem::path(currentFile).filename().string());
         if (field == "filePath")
@@ -261,7 +262,7 @@ HirExprPtr AstToHirContext::LowerCompilerParamField(const std::string &root, con
         if (field == "function")
             return CompilerString(location, currentFunctionName);
         if (field == "module")
-            return CompilerString(location, currentModulePath);
+            return CompilerString(location, declModulePath);
     }
     return nullptr;
 }
@@ -395,7 +396,7 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         break;
     case Kind::Module:
         type = TypeRef::MakeText(TypeRef::Kind::Char8);
-        value = currentModulePath;
+        value = declModulePath;
         break;
     case Kind::CompilerVersion:
         type = TypeRef::MakeText(TypeRef::Kind::Char8);

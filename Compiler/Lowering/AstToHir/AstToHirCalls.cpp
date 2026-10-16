@@ -128,7 +128,10 @@ HirExprPtr AstToHirContext::LowerDefaultArgument(const Expr &expression, const T
         callSiteIntrinsic.kind = intrinsic->kind;
         return LowerArgumentAs(callSiteIntrinsic, targetType);
     }
-    return LowerArgumentAs(expression, targetType);
+    const std::optional<SourceLocation> savedSite = std::exchange(sourceSiteOverride, callSiteLocation);
+    HirExprPtr lowered = LowerArgumentAs(expression, targetType);
+    sourceSiteOverride = savedSite;
+    return lowered;
 }
 
 std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,
@@ -164,7 +167,7 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
         const std::size_t typeIndex = typeOffset + i;
         const TypeRef parameterType =
             typeIndex + 1 < functionType->inner.size() ? functionType->inner[typeIndex] : TypeRef::MakeUnknown();
-        arguments.push_back(LowerDefaultArgument(**parameters[i]->defaultValue, parameterType, call.location));
+        arguments.push_back(LowerDefaultArgument(**parameters[i]->defaultValue, parameterType, CallSiteLocation(call)));
     }
 
     if (!binding.variadicBoundary) {

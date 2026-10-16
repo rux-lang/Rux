@@ -353,69 +353,8 @@ void AstToHirContext::RegisterBuiltins() {
     }
 }
 
-namespace {
-/// The module path a source file corresponds to, relative to the package root, so the identity does not depend on where
-/// the package was checked out.
-std::string FilePathToModulePath(const std::string &filePath) {
-    const std::string generic = std::filesystem::path(filePath).generic_string();
-    std::vector<std::string> parts;
-    std::string current;
-    for (const char character : generic) {
-        if (character == '/') {
-            if (!current.empty()) {
-                parts.push_back(current);
-                current.clear();
-            }
-        }
-        else {
-            current += character;
-        }
-    }
-    if (!current.empty()) {
-        parts.push_back(current);
-    }
-
-    std::size_t sourceIndex = std::string::npos;
-    for (std::size_t i = 0; i < parts.size(); ++i) {
-        if (parts[i] == "Src" || parts[i] == "src") {
-            sourceIndex = i;
-        }
-    }
-
-    std::vector<std::string> moduleParts;
-    if (sourceIndex != std::string::npos && sourceIndex + 1 < parts.size()) {
-        for (std::size_t i = sourceIndex + 1; i < parts.size(); ++i) {
-            std::string part = parts[i];
-            if (i + 1 == parts.size()) {
-                if (const auto dot = part.rfind('.'); dot != std::string::npos) {
-                    part = part.substr(0, dot);
-                }
-            }
-            moduleParts.push_back(std::move(part));
-        }
-    }
-    else {
-        std::string stem = parts.empty() ? filePath : parts.back();
-        if (const auto dot = stem.rfind('.'); dot != std::string::npos) {
-            stem = stem.substr(0, dot);
-        }
-        moduleParts.push_back(std::move(stem));
-    }
-
-    std::string result;
-    for (std::size_t i = 0; i < moduleParts.size(); ++i) {
-        if (i != 0) {
-            result += "::";
-        }
-        result += moduleParts[i];
-    }
-    return result;
-}
-} // namespace
-
 void AstToHirContext::CollectModule(const Module &module) {
     currentFile = module.name;
-    currentModulePath = FilePathToModulePath(module.name);
     declModulePath.clear();
     for (const auto &declaration : module.items) {
         CollectDecl(*declaration);
@@ -460,7 +399,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.intrinsicName = function->intrinsicName;
         symbol.funcOverloads.push_back(function);
         globalScope.Define(std::move(symbol));
-        functionOrigins.emplace(function, DeclarationOrigin{currentFile, currentModulePath, declModulePath});
+        functionOrigins.emplace(function, DeclarationOrigin{currentFile, declModulePath});
     }
     else if (const auto *structDecl = AstCast<const StructDecl>(&decl)) {
         structDecls[NominalName(*structDecl)] = structDecl;
@@ -520,14 +459,11 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         }
     }
     else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
-        const std::string savedModulePath = currentModulePath;
         const std::string savedDeclModulePath = declModulePath;
-        currentModulePath = currentModulePath.empty() ? moduleDecl->name : currentModulePath + "::" + moduleDecl->name;
         declModulePath = declModulePath.empty() ? moduleDecl->name : declModulePath + "::" + moduleDecl->name;
         for (const auto &item : moduleDecl->items) {
             CollectDecl(*item);
         }
-        currentModulePath = savedModulePath;
         declModulePath = savedDeclModulePath;
     }
     else if (const auto *implDecl = AstCast<const ImplDecl>(&decl)) {
@@ -536,7 +472,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         for (const auto &method : implDecl->methods) {
             methodsByType[typeName][method->name].push_back(method.get());
             methodImpl[method.get()] = implDecl;
-            functionOrigins.emplace(method.get(), DeclarationOrigin{currentFile, currentModulePath, declModulePath});
+            functionOrigins.emplace(method.get(), DeclarationOrigin{currentFile, declModulePath});
         }
         if (implDecl->interfaceName) {
             if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
@@ -549,7 +485,6 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
 void AstToHirContext::BeginModule(const Module &module) {
     ResetModuleState();
     currentFile = module.name;
-    currentModulePath = FilePathToModulePath(module.name);
     declModulePath.clear();
 }
 
@@ -657,14 +592,11 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         module.typeAliases.push_back(LowerTypeAlias(*aliasDecl));
     }
     else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
-        const std::string savedModulePath = currentModulePath;
         const std::string savedDeclModulePath = declModulePath;
-        currentModulePath = currentModulePath.empty() ? moduleDecl->name : currentModulePath + "::" + moduleDecl->name;
         declModulePath = declModulePath.empty() ? moduleDecl->name : declModulePath + "::" + moduleDecl->name;
         for (const auto &item : moduleDecl->items) {
             LowerTopLevelDecl(*item, module);
         }
-        currentModulePath = savedModulePath;
         declModulePath = savedDeclModulePath;
     }
 }

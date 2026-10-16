@@ -984,7 +984,7 @@ func Selected() -> int {
         #compiler.version > SemanticVersion(1, 2, 2) &&
         #compiler.version >= SemanticVersion(1, 2, 3) &&
         #source.function == "Selected" &&
-        #source.module == "test" {
+        #source.module == "" {
         return 1;
     } else {
         return 0;

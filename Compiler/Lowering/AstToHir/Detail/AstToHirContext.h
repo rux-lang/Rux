@@ -95,7 +95,9 @@ protected:
     std::vector<std::unique_ptr<HirScope>> ownedScopes;
     std::string currentFile;
     std::string currentFunctionName;
-    std::string currentModulePath;
+    /// Where a default argument being lowered is called from: a `#source` read in the default reports the call, not
+    /// the declaration it is written in.
+    std::optional<SourceLocation> sourceSiteOverride;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     /// Distinguishes the bindings two propagations in one expression introduce; only their uniqueness matters.
     std::size_t propagationOrdinal = 0;
@@ -131,12 +133,11 @@ protected:
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
 
-    /// Where a function or method was declared: its source file, the module path `Source.module` reads there, and the
-    /// path of any `module` blocks around it. A generic instance is lowered into the module that uses it, but its
-    /// panics, assertions and compile-time source values still name the place its body was written.
+    /// Where a function or method was declared: its source file and the path of any `module` blocks around it, which
+    /// `Source.module` reads. A generic instance is lowered into the module that uses it, but its panics, assertions
+    /// and compile-time source values still name the place its body was written.
     struct DeclarationOrigin {
         std::string file;
-        std::string modulePath;
         std::string declModulePath;
     };
 
