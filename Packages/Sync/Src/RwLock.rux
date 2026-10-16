@@ -46,7 +46,7 @@ extend RwLock<T> {
     /// A new lock guarding `value`. Running out of memory for it is a program error.
     /// @param value the value to guard
     /// @returns the first handle to it
-    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#rw-lock
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#rw-lock-new
     pub func RwLock(value: T) -> RwLock<T> {
         return RwLock<T> {
             block: AllocateBlock(RwLockBlock<T> { references: 1, state: 0, waiters: 0, value: <-value })

@@ -95,7 +95,7 @@ extend QueryBuilder {
     /// An empty query.
     /// @param allocator what the query is kept in
     /// @returns the builder
-    /// @see https://rux-lang.dev/docs/api/url/query#query-builder
+    /// @see https://rux-lang.dev/docs/api/url/query#query-builder-new
     pub func QueryBuilder(allocator: Allocator) -> QueryBuilder {
         return QueryBuilder { bytes: Bytes(allocator) };
     }

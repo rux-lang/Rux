@@ -518,6 +518,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **API reference routing** — constructors whose `@see` named their type's own URL, such as `Channel::Channel` on `sync/channel#channel`, now have fragments of their own (`#channel-new`), and members that pointed at a page other than their type's (`TcpListener::SetNonBlocking`, `Command::Capture`, `TimeZone::Load`) now point at their type's page, so the site's API renderer accepts Process, TimeZone, Net, Thread, Sync, Url and the platform packages.
 - **`rux add` for installed packages** — `rux add Rux/Io` failed with a registry 404, because the registry does not serve the standard packages, so they had to be written into `Rux.toml` by hand. A package already installed in the package cache, as the standard packages are with the compiler, is now added without the registry, and a `Rux/*` package that is missing says it comes with the compiler and shows the manifest line to write.
 - **Every command links its own reference page** — `rux help --json` and the text help gave `check`, `info`, `lint`, `login`, `logout`, `pack` and `publish` the generic `https://rux-lang.dev/docs/cli`; each now links its page, such as `/docs/cli/check`, as the other commands do.
 - **`@typeParam` on a generic interface** — `rux lint` warned that `@typeParam T` on `Core::Cursor<T>` does not name a type parameter, because the check read the type parameters of functions, structures and variants but not of interfaces.

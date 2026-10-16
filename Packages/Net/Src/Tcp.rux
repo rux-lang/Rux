@@ -70,14 +70,14 @@ extend TcpListener {
     /// `WouldBlock` when no connection is waiting; the streams it gives start blocking all the same.
     /// @param enabled whether calls fail rather than wait
     /// @returns success when the mode is set
-    /// @see https://rux-lang.dev/docs/api/net/tcp-listener#set-non-blocking
+    /// @see https://rux-lang.dev/docs/api/net/tcp#listener-set-non-blocking
     pub func SetNonBlocking(self: &TcpListener, enabled: bool) -> ! IoError {
         SetSocketNonBlocking(self.handle, enabled)?;
     }
 
     /// The listener as a `Poller` watches it, valid while the listener is open.
     /// @returns the source to register
-    /// @see https://rux-lang.dev/docs/api/net/tcp-listener#poll-source
+    /// @see https://rux-lang.dev/docs/api/net/tcp#listener-poll-source
     pub func PollSource(self: &TcpListener) -> PollSource {
         return PollSource { handle: self.handle };
     }
@@ -152,14 +152,14 @@ extend TcpStream {
     /// A non-blocking socket is meant for a `Poller`, which says when a call would not wait.
     /// @param enabled whether calls fail rather than wait
     /// @returns success when the mode is set
-    /// @see https://rux-lang.dev/docs/api/net/tcp-stream#set-non-blocking
+    /// @see https://rux-lang.dev/docs/api/net/tcp#set-non-blocking
     pub func SetNonBlocking(self: &TcpStream, enabled: bool) -> ! IoError {
         SetSocketNonBlocking(self.handle, enabled)?;
     }
 
     /// The stream as a `Poller` watches it, valid while the stream is open.
     /// @returns the source to register
-    /// @see https://rux-lang.dev/docs/api/net/tcp-stream#poll-source
+    /// @see https://rux-lang.dev/docs/api/net/tcp#poll-source
     pub func PollSource(self: &TcpStream) -> PollSource {
         return PollSource { handle: self.handle };
     }

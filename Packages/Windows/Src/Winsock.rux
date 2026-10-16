@@ -11,7 +11,7 @@ pub struct WsaData {
 extend WsaData {
     /// Zeroed storage for `WSAStartup` to fill.
     /// @returns the storage
-    /// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-data
+    /// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-data-new
     pub func WsaData() -> WsaData {
         return WsaData { storage: [0u64; 51] };
     }

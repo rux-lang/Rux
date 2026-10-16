@@ -39,7 +39,7 @@ extend Channel<T> {
     /// A channel with room for `capacity` values. Zero capacity is a program error, as is running out of memory.
     /// @param capacity how many values may wait in the channel at once
     /// @returns the first handle to it
-    /// @see https://rux-lang.dev/docs/api/sync/channel#channel
+    /// @see https://rux-lang.dev/docs/api/sync/channel#channel-new
     pub func Channel(capacity: uint) -> Channel<T> {
         if capacity == 0u { Panic("a channel needs room for at least one value"); }
         let slots = Alloc(capacity * sizeof(T)) as *var T;

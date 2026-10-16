@@ -95,7 +95,7 @@ extend TimeZone {
     /// @param allocator what the zone is kept in
     /// @param name the zone's name, such as `Europe/Paris`
     /// @returns the zone, or fails with `NotFound`, `InvalidName` or `InvalidData`
-    /// @see https://rux-lang.dev/docs/api/timezone/system#load
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#load
     pub func Load(allocator: Allocator, name: char8[..]) -> TimeZone ! TimeZoneError {
         if !IsZoneName(name) { fail TimeZoneError::InvalidName; }
         var directory = Vector<char8>(allocator);
@@ -141,7 +141,7 @@ extend TimeZone {
     /// which describe the current year's practice and so not the zone's history.
     /// @param allocator what the zone is kept in
     /// @returns the zone, or fails when the system's setting cannot be read
-    /// @see https://rux-lang.dev/docs/api/timezone/system#local
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#local
     pub func Local(allocator: Allocator) -> TimeZone ! TimeZoneError {
         when #target.os == .Windows {
             return TimeZone::WindowsLocal(allocator)?;

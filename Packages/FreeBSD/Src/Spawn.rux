@@ -18,7 +18,7 @@ pub struct SpawnFileActions {
 extend SpawnFileActions {
     /// Zeroed storage for `posix_spawn_file_actions_init` to initialize.
     /// @returns the storage
-    /// @see https://rux-lang.dev/docs/api/freebsd/spawn#spawn-file-actions
+    /// @see https://rux-lang.dev/docs/api/freebsd/spawn#spawn-file-actions-new
     pub func SpawnFileActions() -> SpawnFileActions {
         return SpawnFileActions { storage: [0u64; 16] };
     }

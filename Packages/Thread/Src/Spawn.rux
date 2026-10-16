@@ -36,7 +36,7 @@ pub struct ThreadOptions {
 extend ThreadOptions {
     /// The defaults: the system's own stack size.
     /// @returns the default options
-    /// @see https://rux-lang.dev/docs/api/thread/spawn#thread-options
+    /// @see https://rux-lang.dev/docs/api/thread/spawn#thread-options-new
     pub func ThreadOptions() -> ThreadOptions {
         return ThreadOptions { stackSize: 0 };
     }

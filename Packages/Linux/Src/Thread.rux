@@ -23,7 +23,7 @@ pub struct PThreadAttributes {
 extend PThreadAttributes {
     /// Zeroed storage for `pthread_attr_init` to initialize.
     /// @returns the storage
-    /// @see https://rux-lang.dev/docs/api/linux/thread#p-thread-attributes
+    /// @see https://rux-lang.dev/docs/api/linux/thread#p-thread-attributes-new
     pub func PThreadAttributes() -> PThreadAttributes {
         return PThreadAttributes { storage: [0u64; 8] };
     }

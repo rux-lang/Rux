@@ -80,7 +80,7 @@ extend Command {
     /// @param allocator what the command's parts are kept in
     /// @param program the program's name or path, as UTF-8 text
     /// @returns the command
-    /// @see https://rux-lang.dev/docs/api/process/command#command
+    /// @see https://rux-lang.dev/docs/api/process/command#command-new
     pub func Command(allocator: Allocator, program: char8[..]) -> Command {
         var command = Command {
             allocator: allocator, words: Buffer<OsUnit>(allocator), wordCount: 0,

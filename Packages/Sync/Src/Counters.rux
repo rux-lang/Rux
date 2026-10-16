@@ -25,7 +25,7 @@ extend Semaphore {
     /// A semaphore holding `permits` permits. Running out of memory for it is a program error.
     /// @param permits how many permits there are to start with
     /// @returns the first handle to it
-    /// @see https://rux-lang.dev/docs/api/sync/counters#semaphore
+    /// @see https://rux-lang.dev/docs/api/sync/counters#semaphore-new
     pub func Semaphore(permits: uint32) -> Semaphore {
         return Semaphore { block: AllocateBlock(SemaphoreBlock { references: 1, permits: permits, waiters: 0 }) };
     }
@@ -109,7 +109,7 @@ extend Barrier {
     /// A barrier for `parties` threads. Zero parties is a program error. Running out of memory is one too.
     /// @param parties how many threads each round waits for
     /// @returns the first handle to it
-    /// @see https://rux-lang.dev/docs/api/sync/counters#barrier
+    /// @see https://rux-lang.dev/docs/api/sync/counters#barrier-new
     pub func Barrier(parties: uint32) -> Barrier {
         if parties == 0u32 { Panic("a barrier needs at least one party"); }
         return Barrier {
@@ -168,7 +168,7 @@ extend WaitGroup {
 
     /// A wait group with nothing pending. Running out of memory for it is a program error.
     /// @returns the first handle to it
-    /// @see https://rux-lang.dev/docs/api/sync/counters#wait-group
+    /// @see https://rux-lang.dev/docs/api/sync/counters#wait-group-new
     pub func WaitGroup() -> WaitGroup {
         return WaitGroup { block: AllocateBlock(WaitGroupBlock { references: 1, pending: 0 }) };
     }

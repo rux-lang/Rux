@@ -39,7 +39,7 @@ extend Mutex<T> {
     /// A new lock guarding `value`. Running out of memory for it is a program error.
     /// @param value the value to guard
     /// @returns the first handle to it
-    /// @see https://rux-lang.dev/docs/api/sync/mutex#mutex
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#mutex-new
     pub func Mutex(value: T) -> Mutex<T> {
         return Mutex<T> { block: AllocateBlock(MutexBlock<T> { references: 1, word: 0, value: <-value }) };
     }
@@ -132,7 +132,7 @@ extend Condition {
 
     /// A new condition. Running out of memory for it is a program error.
     /// @returns the first handle to it
-    /// @see https://rux-lang.dev/docs/api/sync/mutex#condition
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#condition-new
     pub func Condition() -> Condition {
         return Condition { block: AllocateBlock(ConditionBlock { references: 1, sequence: 0 }) };
     }

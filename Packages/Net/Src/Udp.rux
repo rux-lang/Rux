@@ -100,14 +100,14 @@ extend UdpSocket {
     /// A non-blocking socket is meant for a `Poller`, which says when a call would not wait.
     /// @param enabled whether calls fail rather than wait
     /// @returns success when the mode is set
-    /// @see https://rux-lang.dev/docs/api/net/udp-socket#set-non-blocking
+    /// @see https://rux-lang.dev/docs/api/net/udp#set-non-blocking
     pub func SetNonBlocking(self: &UdpSocket, enabled: bool) -> ! IoError {
         SetSocketNonBlocking(self.handle, enabled)?;
     }
 
     /// The socket as a `Poller` watches it, valid while the socket is open.
     /// @returns the source to register
-    /// @see https://rux-lang.dev/docs/api/net/udp-socket#poll-source
+    /// @see https://rux-lang.dev/docs/api/net/udp#poll-source
     pub func PollSource(self: &UdpSocket) -> PollSource {
         return PollSource { handle: self.handle };
     }
