@@ -93,6 +93,50 @@ std::optional<TypeRef> AnalysisContext::InstantiateFunctionReference(const Ident
     return std::nullopt;
 }
 
+// Overloads share a name and differ by signature, so a name used as a value, with no arguments to choose by, is the
+// overload whose type its destination expects: `let f: func(int32) -> int32 = Scale;` is `Scale(value: int32)`.
+std::optional<TypeRef> AnalysisContext::SelectOverloadedFunctionValue(const Expr &reference, const Symbol &symbol) {
+    if (symbol.funcOverloads.size() < 2) {
+        return std::nullopt;
+    }
+    std::vector<std::string> notes;
+    std::optional<TypeRef> example;
+    for (const FuncDecl *overload : symbol.funcOverloads) {
+        if (!overload->typeParams.empty()) {
+            continue;
+        }
+        const TypeRef type = FunctionType(*overload);
+        example = example ? example : type;
+        notes.push_back(std::format("overload '{}' has type '{}'", symbol.name, type.ToString()));
+    }
+    const auto expected = expectedExpressionTypes.find(&reference);
+    if (expected != expectedExpressionTypes.end() && expected->second->kind == TypeRef::Kind::Func) {
+        for (const FuncDecl *overload : symbol.funcOverloads) {
+            if (overload->typeParams.empty() && FunctionType(*overload) == expected->second) {
+                RecordFunctionValue(reference, *overload);
+                return expected->second;
+            }
+        }
+        EmitError(reference.location,
+                  std::format("no overload of '{}' has type '{}'", symbol.name, expected->second.ToString()), notes);
+        return TypeRef::MakeUnknown();
+    }
+    EmitError(reference.location,
+              std::format("overloaded function '{}' has no function type here to choose an overload by", symbol.name),
+              notes,
+              example ? std::format("give the value a function type, as in 'let f: {} = {};'", example->ToString(),
+                                    symbol.name)
+                      : std::string{});
+    return TypeRef::MakeUnknown();
+}
+
+void AnalysisContext::RecordFunctionValue(const Expr &reference, const FuncDecl &function) {
+    ResolvedCallableBinding binding;
+    binding.dispatch = ResolvedCallableBinding::DispatchKind::Direct;
+    binding.selectedDeclaration = &function;
+    functionReferenceBindings.insert_or_assign(&reference, std::move(binding));
+}
+
 std::string AnalysisContext::InstantiationNote(const FuncDecl &declaration,
                                                const std::unordered_map<std::string, TypeRef> &substitutions) const {
     std::vector<std::string> names;

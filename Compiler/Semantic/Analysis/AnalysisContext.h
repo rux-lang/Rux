@@ -569,6 +569,11 @@ private:
     /// function or nothing says what it is instantiated with.
     [[nodiscard]] std::optional<TypeRef> InstantiateFunctionReference(const IdentExpr &identifier,
                                                                       const Symbol &symbol);
+    /// The type of an overloaded function named as a value: the overload its destination's function type names, or an
+    /// error when no overload or no function type says which. Nullopt when the name has one overload.
+    std::optional<TypeRef> SelectOverloadedFunctionValue(const Expr &reference, const Symbol &symbol);
+    /// Record that `reference`, a name or module path used as a value, stands for `function`.
+    void RecordFunctionValue(const Expr &reference, const FuncDecl &function);
     bool DeduceTypeArgument(const TypeRef &paramType, const TypeRef &argType,
                             const std::unordered_set<std::string> &typeParamNames,
                             std::unordered_map<std::string, TypeRef> &substitutions);
@@ -951,7 +956,7 @@ private:
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
-    std::unordered_map<const IdentExpr *, ResolvedCallableBinding> &functionReferenceBindings;
+    std::unordered_map<const Expr *, ResolvedCallableBinding> &functionReferenceBindings;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;

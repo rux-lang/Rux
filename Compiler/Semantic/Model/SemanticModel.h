@@ -330,7 +330,7 @@ struct SemanticFacts {
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     /// A generic function named as a value, with the type arguments the destination's function type gave it.
-    std::unordered_map<const IdentExpr *, ResolvedCallableBinding> functionReferenceBindings;
+    std::unordered_map<const Expr *, ResolvedCallableBinding> functionReferenceBindings;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, bool> effectiveVisibilities;
     /// Effectively public declarations owned by the package being compiled, rather than by one of its dependencies.
@@ -422,9 +422,10 @@ struct SemanticModel {
     /// lifetime of this model.
     [[nodiscard]] const ResolvedCallableBinding *TryGetCallableBinding(const CallExpr &call) const noexcept;
 
-    /// The instantiation a generic function named as a value stands for, or null for any other identifier.
-    [[nodiscard]] const ResolvedCallableBinding *
-    TryGetFunctionReferenceBinding(const IdentExpr &identifier) const noexcept;
+    /// The function a name or module path used as a value stands for -- the instantiation of a generic function, the
+    /// overload an overloaded name's destination chose, or the function a module path names -- or null for any other
+    /// expression.
+    [[nodiscard]] const ResolvedCallableBinding *TryGetFunctionReferenceBinding(const Expr &reference) const noexcept;
 
     /// Returns null for initialized declarations and declarations whose type has no eligible default constructor.
     [[nodiscard]] const ResolvedDefaultConstructor *TryGetDefaultConstructor(const LetStmt &statement) const noexcept;

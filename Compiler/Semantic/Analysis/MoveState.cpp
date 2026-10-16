@@ -1206,9 +1206,27 @@ void AnalysisContext::ConsumeRecordedValue(const Expr &expression, const ValueCo
 }
 
 std::vector<TypeRef> AnalysisContext::CheckCallArgumentValues(const CallExpr &call) {
+    // Arguments are checked before an overload is chosen, so only a callee with one declaration says what each
+    // parameter is. A function named as an argument for a function-typed parameter takes its overload or type
+    // arguments from that parameter's type.
+    std::optional<TypeRef> calleeType;
+    if (const auto *callee = AstCast<const IdentExpr>(call.callee.get())) {
+        if (const Symbol *symbol = currentScope->Lookup(callee->name);
+            symbol && symbol->kind == Symbol::Kind::Func && symbol->funcOverloads.size() == 1 &&
+            symbol->funcOverloads.front()->typeParams.empty()) {
+            calleeType = FunctionType(*symbol->funcOverloads.front());
+        }
+    }
     std::vector<TypeRef> types;
     types.reserve(call.args.size());
-    for (const auto &argument : call.args) {
+    for (std::size_t index = 0; index < call.args.size(); ++index) {
+        const auto &argument = call.args[index];
+        if (calleeType && (*calleeType)->kind == TypeRef::Kind::Func && index + 1 < (*calleeType)->inner.size() &&
+            (*calleeType)->inner[index]->kind == TypeRef::Kind::Func &&
+            (AstCast<const IdentExpr>(argument.get()) || AstCast<const PathExpr>(argument.get())) &&
+            !expectedExpressionTypes.contains(argument.get())) {
+            expectedExpressionTypes.insert_or_assign(argument.get(), (*calleeType)->inner[index]);
+        }
         const auto recorded = expressionTypes.find(argument.get());
         const TypeRef type = recorded == expressionTypes.end() ? CheckExpr(*argument) : recorded->second;
         types.push_back(type);

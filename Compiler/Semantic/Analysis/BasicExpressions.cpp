@@ -343,6 +343,11 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         TypeRef target = CheckExpr(*assignment->target);
         indexAssignmentTarget = savedAssignmentIndex;
         checkingPlainAssignmentTarget = savedAssignmentTarget;
+        // A function named as the value takes its overload or type arguments from the function type it is stored as.
+        if (simpleAssignment && target->kind == TypeRef::Kind::Func &&
+            (AstCast<const IdentExpr>(assignment->value.get()) || AstCast<const PathExpr>(assignment->value.get()))) {
+            expectedExpressionTypes.insert_or_assign(assignment->value.get(), target);
+        }
         TypeRef value = CheckExpr(*assignment->value);
         // `a = b = 7` reads as a chain, but the inner assignment is a statement-like expression with no value.
         if (const auto *inner = AstCast<const AssignExpr>(assignment->value.get())) {

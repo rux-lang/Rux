@@ -54,6 +54,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                                           e->name));
                     return TypeRef::MakeUnknown();
                 }
+                if (std::optional<TypeRef> selected = SelectOverloadedFunctionValue(*e, *sym)) {
+                    return *selected;
+                }
             }
             return ReadTrackedSymbol(*sym, e->location);
         }
@@ -198,6 +201,15 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         else if (current->kind == Symbol::Kind::Var && (AstCast<const GlobalDecl>(current->declaration) ||
                                                         AstCast<const ExternVarDecl>(current->declaration))) {
             globalReferences[e] = current->declaration;
+        }
+        else if (current->kind == Symbol::Kind::Func) {
+            if (std::optional<TypeRef> selected = SelectOverloadedFunctionValue(*e, *current)) {
+                return *selected;
+            }
+            // A path names its function by declaration, so lowering need not find it again by its last segment.
+            if (current->funcOverloads.size() == 1 && current->funcOverloads.front()->typeParams.empty()) {
+                RecordFunctionValue(*e, *current->funcOverloads.front());
+            }
         }
         return ReadTrackedSymbol(*current, e->location);
     }

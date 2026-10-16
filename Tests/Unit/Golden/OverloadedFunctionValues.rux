@@ -1,0 +1,16 @@
+// An overloaded function named as a value is chosen by the function type its destination expects. With no function
+// type to choose by, or none an overload has, the name is an error that lists the overloads.
+func Scale(value: int32) -> int32 {
+    return value;
+}
+
+func Scale(value: int64) -> int64 {
+    return value;
+}
+
+func Main() -> int {
+    let unchosen = Scale;
+    let mismatched: func(float64) -> float64 = Scale;
+    let chosen: func(int64) -> int64 = Scale;
+    return chosen(0) as int;
+}

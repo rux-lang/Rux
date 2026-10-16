@@ -267,9 +267,8 @@ const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallEx
     return binding == facts.callableBindings.end() ? nullptr : &binding->second;
 }
 
-const ResolvedCallableBinding *
-SemanticModel::TryGetFunctionReferenceBinding(const IdentExpr &identifier) const noexcept {
-    const auto binding = facts.functionReferenceBindings.find(&identifier);
+const ResolvedCallableBinding *SemanticModel::TryGetFunctionReferenceBinding(const Expr &reference) const noexcept {
+    const auto binding = facts.functionReferenceBindings.find(&reference);
     return binding == facts.functionReferenceBindings.end() ? nullptr : &binding->second;
 }
 

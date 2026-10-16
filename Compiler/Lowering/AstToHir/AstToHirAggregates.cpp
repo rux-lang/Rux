@@ -954,6 +954,14 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         return lowered;
     }
     if (const auto *path = AstCast<const PathExpr>(&expression)) {
+        // A module path naming a function, an overload among several included, is that function's address.
+        if (const ResolvedCallableBinding *binding = model.TryGetFunctionReferenceBinding(expression)) {
+            auto lowered = std::make_unique<HirVarExpr>();
+            lowered->location = path->location;
+            lowered->type = ResolvedExpressionType(expression);
+            lowered->name = binding->linkerName;
+            return lowered;
+        }
         if (const ConstDecl *constant = model.TryGetAssociatedConstant(expression)) {
             if (const auto *value = model.TryGetConstantValue(*constant)) {
                 return CompilerLiteral(path->location, value->type, value->literal);
