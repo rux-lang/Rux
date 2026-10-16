@@ -274,6 +274,12 @@ private:
 
     // Symbols
 
+    // The library a source extern comes from. One without `#Link` on Windows comes from KERNEL32, and saying so here
+    // is what lets the linker tell it from a call that nothing defines and nothing declares.
+    [[nodiscard]] std::string ExternLibrary(const LirFunc &func) const {
+        return func.dll.empty() && targetOs == Target::OS::Windows ? std::string("KERNEL32.DLL") : func.dll;
+    }
+
     std::uint32_t GetOrAddExtern(const std::string &name, const std::uint8_t kind, const std::string &dll = {}) {
         if (const auto it = externSyms.find(name); it != externSyms.end()) {
             return it->second;

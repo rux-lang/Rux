@@ -518,6 +518,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **A call nothing defines fails the Windows link** — a call whose target no module defined and no `extern` declared was imported from KERNEL32, so the image failed to load with no output (exit 127 from Git Bash) instead of the build failing. A source `extern` without `#Link` now records KERNEL32 as its library when it is compiled, and the PE linker reports any other external function as `undefined symbol`.
 - **Width on dates, times and identifiers** — `{:<25}` had no effect on `Date`, `TimeOfDay`, `UtcOffset`, `DateTime`, `OffsetDateTime`, `Timestamp`, `Duration`, `Uuid` and `NanoId`, whose `Display` writes its text in pieces past the spec's padding. `Text::WriteDisplayAligned` renders such a value into local room and pads it, and each of them now calls it when the placeholder has a width.
 - **`Compress` takes text** — `Compress` and `Decompress` took only `byte[..]` while the Io streams carry `char8[..]`, so compressing text needed a pointer-slice cast. Both now also take `char8[..]`.
 - **`StringView` compares views as they stand** — `Equals` and `Compare` took only a borrowed `&StringView`, so `a.View().Equals(b.View())` was refused. Both now also take a view by value, which is what a fresh `View()` gives; the borrowed forms remain, so `StringView` still meets `Equatable` and `Comparable`.

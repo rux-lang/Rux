@@ -573,12 +573,32 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         }
     }
 
+    // Every extern a source declares names its library, KERNEL32 when it wrote none. A function referenced with no
+    // library is one nothing defines and nothing declares, which the loader would refuse with no message at all.
+    std::vector<std::string> undefined;
     for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
         if (external.kind != RcuSymKind::ExternFunc) {
             continue;
         }
         const auto explicitDll = explicitImportDll.find(external.name);
-        importDll[external.name] = explicitDll == explicitImportDll.end() ? "KERNEL32.DLL" : explicitDll->second;
+        if (explicitDll == explicitImportDll.end()) {
+            if (!importDll.contains(external.name)) {
+                undefined.push_back(external.name);
+            }
+            continue;
+        }
+        importDll[external.name] = explicitDll->second;
+    }
+    if (!undefined.empty()) {
+        std::ranges::sort(undefined);
+        std::string names;
+        for (const std::string &name : undefined) {
+            names += std::format("{}'{}'", names.empty() ? "" : ", ", name);
+        }
+        Error(std::format("undefined symbol{} {}: no object defines {} and no extern declares {}",
+                          undefined.size() == 1 ? "" : "s", names, undefined.size() == 1 ? "it" : "them",
+                          undefined.size() == 1 ? "it" : "them"));
+        return false;
     }
 
     // Sorted for determinism

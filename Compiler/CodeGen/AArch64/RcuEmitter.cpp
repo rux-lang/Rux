@@ -92,7 +92,7 @@ void AArch64ModuleEmitter::GenAsmFunc(const LirFunc &func) {
 
 void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
     if (func.isExtern) {
-        GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
+        GetOrAddExtern(func.name, RcuSymKind::ExternFunc, ExternLibrary(func));
         return;
     }
     currentFunc = func.name;

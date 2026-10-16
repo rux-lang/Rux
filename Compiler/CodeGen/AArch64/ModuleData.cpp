@@ -11,7 +11,7 @@ namespace Rux::AArch64Detail {
 void AArch64ModuleEmitter::PredeclareFunctions() {
     for (const auto &func : mod.funcs) {
         if (func.isExtern) {
-            GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
+            GetOrAddExtern(func.name, RcuSymKind::ExternFunc, ExternLibrary(func));
             continue;
         }
         if (funcSyms.contains(func.name)) {

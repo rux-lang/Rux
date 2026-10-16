@@ -75,7 +75,7 @@ void X86_64ModuleEmitter::GenAsmFunc(const LirFunc &func) {
 // Function generation
 void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
     if (func.isExtern) {
-        GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
+        GetOrAddExtern(func.name, RcuSymKind::ExternFunc, ExternLibrary(func));
         return;
     }
     // Stabilize function-entry alignment when preceding instruction sequences change.

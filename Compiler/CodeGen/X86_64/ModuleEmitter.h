@@ -178,9 +178,21 @@ private:
         return idx;
     }
 
+    // The library a source extern comes from. One without `#Link` on Windows comes from KERNEL32, and saying so here
+    // is what lets the linker tell it from a call that nothing defines and nothing declares.
+    [[nodiscard]] std::string ExternLibrary(const LirFunc &func) const {
+        return func.dll.empty() && targetOs == Target::OS::Windows ? std::string("KERNEL32.DLL") : func.dll;
+    }
+
     void PredeclareFunctions() {
         for (const auto &func : mod.funcs) {
-            if (func.isExtern || funcSyms.contains(func.name)) {
+            // An extern is declared up front with its library: a call reached before its declaration would otherwise
+            // declare the symbol without one.
+            if (func.isExtern) {
+                GetOrAddExtern(func.name, RcuSymKind::ExternFunc, ExternLibrary(func));
+                continue;
+            }
+            if (funcSyms.contains(func.name)) {
                 continue;
             }
             funcSyms[func.name] = DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,

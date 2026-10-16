@@ -151,7 +151,7 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     first.symbols.push_back({"Main", "int", 0, 21, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     first.symbols.push_back({"Helper", "", 21, 1, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     first.symbols.push_back(
-        {"GetCurrentProcessId", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+        {"GetCurrentProcessId", "KERNEL32.DLL", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     first.symbols.push_back({"Second", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
     RcuFile second;
@@ -436,6 +436,39 @@ TEST_CASE("PE linker preserves the missing x86-64 entry diagnostic") {
     CHECK_FALSE(std::filesystem::exists(output));
 }
 
+TEST_CASE("PE linker refuses a call that nothing defines and no extern declares") {
+    // An extern a source declares names its library; a reference with none is to a function that does not exist,
+    // which used to be imported from KERNEL32 and leave an image the loader refused without a word.
+    RcuFile object;
+    object.sourcePath = "Main.rux";
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    text.data = {0xE8, 0, 0, 0, 0, 0xE8, 0, 0, 0, 0, 0xC3};
+    text.relocs.push_back({1, 1, RcuRelType::Rel32, 0});
+    text.relocs.push_back({6, 2, RcuRelType::Rel32, 0});
+    object.sections.push_back(std::move(text));
+    object.symbols.push_back({"Main", "int", 0, 11, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    object.symbols.push_back(
+        {"GetCurrentProcessId", "KERNEL32.DLL", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    object.symbols.push_back(
+        {"Vector_Length_int32_2", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+    const auto output = PeTestPath();
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    Linker linker({std::move(object)}, "Undefined", {}, ArtifactKind::Executable, Target::OS::Windows,
+                  Target::Arch::X86_64);
+    CHECK_FALSE(linker.Link(output));
+    REQUIRE_FALSE(linker.Errors().empty());
+    CAPTURE(linker.Errors().front().message);
+    CHECK(linker.Errors().front().message.contains("undefined symbol 'Vector_Length_int32_2'"));
+    CHECK_FALSE(linker.Errors().front().message.contains("GetCurrentProcessId"));
+    CHECK_FALSE(std::filesystem::exists(output));
+}
+
 namespace {
 int64_t SignExtend(const uint64_t value, const unsigned bits) {
     const uint64_t sign = uint64_t{1} << (bits - 1);
@@ -503,7 +536,7 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     first.symbols.push_back({"Main", "int", 0, 36, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     first.symbols.push_back({"Helper", "", 36, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     first.symbols.push_back(
-        {"GetCurrentProcessId", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+        {"GetCurrentProcessId", "KERNEL32.DLL", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     first.symbols.push_back({"Second", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     first.symbols.push_back({"Constant", "", 0, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
 
