@@ -99,3 +99,52 @@ TEST_CASE("garbage collection drops unreached functions and data and keeps what 
     REQUIRE_FALSE(again.HasErrors());
     CHECK_FALSE(CollectUnreachable(objects, again, 0xCC));
 }
+
+TEST_CASE("garbage collection keeps the names a function table points at") {
+    RcuFile object;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    // Main [0, 16) reads the function table; nothing else reads the names.
+    text.data.assign(16, 0x90);
+    text.relocs.push_back({1, 1, RcuRelType::Rel32, -4});
+    RcuSection rodata;
+    rodata.name = ".rodata";
+    rodata.type = RcuSecType::RoData;
+    rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+    rodata.alignment = 8;
+    // The table's one entry: Main's address, its length, its name's address and its name's length; then the name.
+    rodata.data.assign(40, 0);
+    rodata.data[32] = 'M';
+    rodata.data[33] = 'a';
+    rodata.data[34] = 'i';
+    rodata.data[35] = 'n';
+    rodata.relocs.push_back({0, 0, RcuRelType::Abs64, 0});
+    rodata.relocs.push_back({16, 2, RcuRelType::Abs64, 0});
+    object.sections.push_back(std::move(text));
+    object.sections.push_back(std::move(rodata));
+    object.symbols.push_back({"Main", "", 0, 16, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    object.symbols.push_back(
+        {std::string(kFunctionTablePrefix) + "0", "", 0, 32, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Global});
+    object.symbols.push_back({"__str0", "", 32, 5, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+    // A constant nothing reads, so the collection has something to drop.
+    object.symbols.push_back({"Unread", "", 37, 3, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+    object.sections[RCU_RODATA_IDX].data[37] = 1;
+
+    std::vector<RcuFile> objects{object};
+    const auto graph = RcuLinkGraph::Build(objects, "Test", ArtifactKind::Executable, Target::Arch::X86_64);
+    REQUIRE_FALSE(graph.HasErrors());
+    REQUIRE(CollectUnreachable(objects, graph, 0xCC));
+
+    const RcuFile &kept = objects.front();
+    CHECK(Find(kept, "Unread") == nullptr);
+    const RcuSymbol *name = Find(kept, "__str0");
+    REQUIRE(name != nullptr);
+    const RcuSection &rodata2 = kept.sections[RCU_RODATA_IDX];
+    REQUIRE(rodata2.relocs.size() == 2);
+    CHECK(rodata2.relocs[1].sectionOffset == 16);
+    CHECK(kept.symbols[rodata2.relocs[1].symbolIndex].name == "__str0");
+    CHECK(rodata2.data[name->value] == 'M');
+}

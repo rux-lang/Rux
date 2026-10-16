@@ -186,9 +186,17 @@ bool CollectUnreachable(std::vector<RcuFile> &objects, const RcuLinkGraph &graph
         const RcuLinkReference &reference = references[index];
         const RcuFile &object = objects[reference.objectIndex];
         const auto offset = object.sections[reference.sectionIndex].relocs[reference.relocationIndex].sectionOffset;
-        // What a function table names stays only if something else keeps it.
-        if (!reference.definition || inFunctionTable(reference.objectIndex, reference.sectionIndex, offset))
+        if (!reference.definition)
             continue;
+        // A function a function table names stays only if something else keeps it. The name beside it is data only
+        // the table reads, so it is kept with the table: dropping it left every name of a trace a null pointer.
+        if (inFunctionTable(reference.objectIndex, reference.sectionIndex, offset)) {
+            const RcuFile &owner = objects[reference.definition->objectIndex];
+            const RcuSymbol &target = owner.symbols[reference.definition->symbolIndex];
+            if (target.sectionIdx >= owner.sections.size() ||
+                owner.sections[target.sectionIdx].type == RcuSecType::Text)
+                continue;
+        }
         auto &section = atoms[reference.objectIndex].sections[reference.sectionIndex];
         if (section.collectable)
             section.references.emplace_back(offset, index);
