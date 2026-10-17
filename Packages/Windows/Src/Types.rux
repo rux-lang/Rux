@@ -118,24 +118,26 @@ pub struct Win32FindDataA {
 /// is 64 KiB rather than a page. A reservation therefore wastes address space that a page-granular system would not.
 /// @see https://rux-lang.dev/docs/api/windows/system-info
 pub struct SystemInfo {
-    /// The processor architecture, or a union member on the oldest releases; not read by this package.
-    processorArchitecture: uint32;
+    /// The processor architecture, such as `PROCESSOR_ARCHITECTURE_AMD64`, in the low 16 bits.
+    /// The field is a union in C whose upper 16 bits are reserved, so the architecture is
+    /// `(processorArchitecture & 0xFFFF) as uint16`.
+    pub processorArchitecture: uint32;
     /// The size of a page, which is what memory protection is applied at.
     pub pageSize: uint32;
     /// The lowest address an application may have.
-    minimumApplicationAddress: *var opaque;
+    pub minimumApplicationAddress: *var opaque;
     /// The highest address an application may have.
-    maximumApplicationAddress: *var opaque;
+    pub maximumApplicationAddress: *var opaque;
     /// A mask of the processors this process may run on.
-    activeProcessorMask: uint64;
-    /// How many logical processors the machine has.
-    numberOfProcessors: uint32;
-    /// The processor type, obsolete and not read by this package.
-    processorType: uint32;
+    pub activeProcessorMask: uint64;
+    /// How many logical processors the machine has in the calling process's processor group.
+    pub numberOfProcessors: uint32;
+    /// The processor type, obsolete; read `processorArchitecture` instead.
+    pub processorType: uint32;
     /// The granularity a reservation's base address is rounded to, which is not the page size.
-    allocationGranularity: uint32;
-    /// The processor revision level.
-    processorLevel: uint16;
-    /// The processor revision.
-    processorRevision: uint16;
+    pub allocationGranularity: uint32;
+    /// The processor level, which depends on the architecture: the family on x86-64.
+    pub processorLevel: uint16;
+    /// The processor revision, which depends on the architecture: the model and stepping on x86-64.
+    pub processorRevision: uint16;
 }

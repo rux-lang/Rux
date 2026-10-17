@@ -469,7 +469,9 @@ TEST_CASE("Windows keeps its failure sentinels and error codes distinct") {
                                                                       {"ERROR_FILE_EXISTS", 80},
                                                                       {"ERROR_INVALID_PARAMETER", 87},
                                                                       {"ERROR_DISK_FULL", 112},
+                                                                      {"ERROR_INSUFFICIENT_BUFFER", 122},
                                                                       {"ERROR_ALREADY_EXISTS", 183},
+                                                                      {"ERROR_MORE_DATA", 234},
                                                                       {"ERROR_INVALID_ADDRESS", 487},
                                                                       {"ERROR_COMMITMENT_LIMIT", 1455},
                                                                       {"ERROR_PRIVILEGE_NOT_HELD", 1314}}) {

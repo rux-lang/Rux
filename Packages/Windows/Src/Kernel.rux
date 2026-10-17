@@ -135,6 +135,14 @@ pub extern {
         findFileData: *Win32FindDataA
     ) -> bool32;
 
+    /// Detaches the calling process from its console, closing the console when no other process is attached to it.
+    /// A window program built as a console program calls it first, so the console that started with it goes away.
+    /// The standard handles still name the old console afterwards, and writing to them fails.
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/console#free-console
+    /// @see https://learn.microsoft.com/en-us/windows/console/freeconsole
+    func FreeConsole() -> bool32;
+
     /// Frees the loaded dynamic-link library (DLL) module and, if necessary, decrements its reference count.
     /// When the reference count reaches zero, the module is unloaded from the address space of the calling process
     /// and the handle is no longer valid
@@ -171,6 +179,15 @@ pub extern {
     /// @see https://rux-lang.dev/docs/api/windows/process#get-module-file-name-w
     /// @see https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew
     func GetModuleFileNameW(moduleHandle: *opaque, buffer: *var uint16, size: uint32) -> uint32;
+
+    /// Retrieves the handle of a module the process has loaded; a null name is the process's executable.
+    /// The handle is not counted, so it is not passed to `FreeLibrary`. It is what a window class names as its
+    /// instance, and what `CreateWindowExW` is given with it.
+    /// @param moduleName the NUL-terminated UTF-16 module name, or null for the executable
+    /// @returns the module, or null on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process#get-module-handle-w
+    /// @see https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlew
+    func GetModuleHandleW(moduleName: *char16) -> *var opaque;
 
     /// Retrieves the current directory.
     /// @param bufferLength how many units `buffer` holds

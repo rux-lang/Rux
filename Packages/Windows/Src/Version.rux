@@ -1,0 +1,55 @@
+// The version of Windows the program runs on, read from ntdll, which every process has loaded.
+// `GetVersionExW` is not bound here, on purpose: since Windows 8.1 it reports the version the program's manifest
+// declares support for, and a program with no manifest is told 6.2, Windows 8, on every later release.
+// `RtlGetVersion` reports the true version whatever the manifest says. Windows 11 still reports major version 10;
+// it is told apart from Windows 10 by its build number, which starts at 22000.
+
+/// The `RTL_OSVERSIONINFOEXW` that `RtlGetVersion` fills in.
+/// @see https://rux-lang.dev/docs/api/windows/version#os-version-info-ex
+pub struct OsVersionInfoEx {
+    /// The structure's size in bytes, `sizeof(OsVersionInfoEx)`, which the caller sets before the call.
+    pub size: uint32;
+    /// The major version: 10 for both Windows 10 and Windows 11.
+    pub majorVersion: uint32;
+    /// The minor version: 0 for both Windows 10 and Windows 11.
+    pub minorVersion: uint32;
+    /// The build number, such as 26100, which tells the releases apart.
+    pub buildNumber: uint32;
+    /// The platform: 2, `VER_PLATFORM_WIN32_NT`, on every supported release.
+    pub platformId: uint32;
+    /// The NUL-terminated UTF-16 name of the latest service pack, empty on current releases.
+    pub csdVersion: char16[128];
+    /// The major version of the latest service pack.
+    pub servicePackMajor: uint16;
+    /// The minor version of the latest service pack.
+    pub servicePackMinor: uint16;
+    /// The `VER_SUITE_` bits saying which product suites are installed.
+    pub suiteMask: uint16;
+    /// Whether this is a workstation, `VER_NT_WORKSTATION`, a domain controller or a server.
+    pub productType: uint8;
+    /// Reserved.
+    pub reserved: uint8;
+}
+
+/// `VER_NT_WORKSTATION`: the product type of a desktop edition, as opposed to a server.
+/// @see https://rux-lang.dev/docs/api/windows/version#ver-nt-workstation
+#Allow("naming.const")
+pub const VER_NT_WORKSTATION: uint8 = 1;
+
+/// `VER_PLATFORM_WIN32_NT`: the platform of every supported Windows release.
+/// @see https://rux-lang.dev/docs/api/windows/version#ver-platform-win32-nt
+#Allow("naming.const")
+pub const VER_PLATFORM_WIN32_NT: uint32 = 2;
+
+#Link("ntdll.dll")
+pub extern {
+    /// Reads the true version of the running system, whatever the program's manifest declares.
+    /// The caller sets `size` first; the call fills in every other field, `csdVersion` and the fields after it
+    /// included, because the size says the structure is the extended one. It returns an `NTSTATUS` rather than a
+    /// `Bool`, and sets nothing `GetLastError` reports.
+    /// @param info the structure to fill, with `size` set to `sizeof(OsVersionInfoEx)`
+    /// @returns zero, `STATUS_SUCCESS`, which is the only status the call returns
+    /// @see https://rux-lang.dev/docs/api/windows/version#rtl-get-version
+    /// @see https://learn.microsoft.com/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlgetversion
+    func RtlGetVersion(info: *var OsVersionInfoEx) -> int32;
+}

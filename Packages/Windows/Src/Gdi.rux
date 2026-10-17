@@ -1,0 +1,139 @@
+// The Gdi32 entry points for drawing text in a window: making a font, choosing it and the text colors for a device
+// context, and writing a run of UTF-16 text.
+// A font is a GDI object the program owns until it passes it to `DeleteObject`, and it must not be deleted while a
+// device context still has it selected. A device context comes from `BeginPaint` and is lent for one paint only.
+
+/// `FW_NORMAL`: the regular weight of a font.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#fw-normal
+#Allow("naming.const")
+pub const FW_NORMAL: int32 = 400;
+
+/// `FW_SEMIBOLD`: the weight between regular and bold, which Windows uses for headings.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#fw-semibold
+#Allow("naming.const")
+pub const FW_SEMIBOLD: int32 = 600;
+
+/// `FW_BOLD`: the bold weight of a font.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#fw-bold
+#Allow("naming.const")
+pub const FW_BOLD: int32 = 700;
+
+/// `DEFAULT_CHARSET`: let the font mapper choose the character set from the face name.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#default-charset
+#Allow("naming.const")
+pub const DEFAULT_CHARSET: uint32 = 1;
+
+/// `OUT_DEFAULT_PRECIS`: let the font mapper decide how closely the font must match.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#out-default-precis
+#Allow("naming.const")
+pub const OUT_DEFAULT_PRECIS: uint32 = 0;
+
+/// `CLIP_DEFAULT_PRECIS`: clip characters the default way.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#clip-default-precis
+#Allow("naming.const")
+pub const CLIP_DEFAULT_PRECIS: uint32 = 0;
+
+/// `CLEARTYPE_QUALITY`: draw the font with ClearType smoothing.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#cleartype-quality
+#Allow("naming.const")
+pub const CLEARTYPE_QUALITY: uint32 = 5;
+
+/// `DEFAULT_PITCH`: let the font mapper choose fixed or variable pitch.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#default-pitch
+#Allow("naming.const")
+pub const DEFAULT_PITCH: uint32 = 0;
+
+/// `TRANSPARENT`: text is drawn without filling the cell behind it.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#transparent
+#Allow("naming.const")
+pub const TRANSPARENT: int32 = 1;
+
+/// `OPAQUE`: text is drawn on a cell filled with the background color.
+/// @see https://rux-lang.dev/docs/api/windows/gdi#opaque
+#Allow("naming.const")
+pub const OPAQUE: int32 = 2;
+
+#Link("Gdi32.dll")
+pub extern {
+    /// Creates a logical font, which the mapper matches to the closest installed font when it is selected.
+    /// A negative height asks for that many pixels of character height without the internal leading, which is how a
+    /// point size is given: `-(points * dpi / 72)`.
+    /// @param height the character height in pixels, negative for the character height without the leading
+    /// @param width the average character width, or zero to derive it from the height
+    /// @param escapement the angle of the text line, in tenths of a degree
+    /// @param orientation the angle of each character, in tenths of a degree
+    /// @param weight the weight, such as `FW_NORMAL`
+    /// @param italic non-zero for italic
+    /// @param underline non-zero for underlined
+    /// @param strikeOut non-zero for struck out
+    /// @param charSet the character set, usually `DEFAULT_CHARSET`
+    /// @param outPrecision how closely the font must match, usually `OUT_DEFAULT_PRECIS`
+    /// @param clipPrecision how characters are clipped, usually `CLIP_DEFAULT_PRECIS`
+    /// @param quality how it is smoothed, such as `CLEARTYPE_QUALITY`
+    /// @param pitchAndFamily the pitch and family, usually `DEFAULT_PITCH`
+    /// @param faceName the NUL-terminated UTF-16 face name, such as `Segoe UI`
+    /// @returns the font, which the caller deletes with `DeleteObject`, or null on failure
+    /// @see https://rux-lang.dev/docs/api/windows/gdi#create-font-w
+    /// @see https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-createfontw
+    func CreateFontW(
+        height: int32,
+        width: int32,
+        escapement: int32,
+        orientation: int32,
+        weight: int32,
+        italic: uint32,
+        underline: uint32,
+        strikeOut: uint32,
+        charSet: uint32,
+        outPrecision: uint32,
+        clipPrecision: uint32,
+        quality: uint32,
+        pitchAndFamily: uint32,
+        faceName: *char16
+    ) -> *var opaque;
+
+    /// Deletes a GDI object such as a font, giving back what the system holds for it.
+    /// An object still selected into a device context is not deleted, and the call fails.
+    /// @param object the object to delete
+    /// @returns non-zero on success, and zero when the handle is not valid or the object is still selected
+    /// @see https://rux-lang.dev/docs/api/windows/gdi#delete-object
+    /// @see https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-deleteobject
+    func DeleteObject(object: *var opaque) -> bool32;
+
+    /// Selects a font or another GDI object into a device context, replacing the one of the same kind.
+    /// The object replaced is returned so it can be selected back before the context is given up.
+    /// @param deviceContext the device context
+    /// @param object the object to select
+    /// @returns the object it replaced, or null on failure
+    /// @see https://rux-lang.dev/docs/api/windows/gdi#select-object
+    /// @see https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-selectobject
+    func SelectObject(deviceContext: *var opaque, object: *var opaque) -> *var opaque;
+
+    /// Sets whether text is drawn on a filled cell or straight onto what is already there.
+    /// @param deviceContext the device context
+    /// @param mode `TRANSPARENT` or `OPAQUE`
+    /// @returns the mode before the call, or zero on failure
+    /// @see https://rux-lang.dev/docs/api/windows/gdi#set-bk-mode
+    /// @see https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-setbkmode
+    func SetBkMode(deviceContext: *var opaque, mode: int32) -> int32;
+
+    /// Sets the color text is drawn in.
+    /// @param deviceContext the device context
+    /// @param color the color as `0x00BBGGRR`, such as one from `GetSysColor`
+    /// @returns the color before the call, or `CLR_INVALID` (`0xFFFFFFFF`) on failure
+    /// @see https://rux-lang.dev/docs/api/windows/gdi#set-text-color
+    /// @see https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-settextcolor
+    func SetTextColor(deviceContext: *var opaque, color: uint32) -> uint32;
+
+    /// Draws a run of UTF-16 text with its top-left corner at a point, in the selected font and text color.
+    /// The run is counted rather than NUL-terminated, and is not wrapped or clipped to the window.
+    /// @param deviceContext the device context
+    /// @param x the left edge, in pixels
+    /// @param y the top edge, in pixels
+    /// @param text the UTF-16 units to draw
+    /// @param count how many units to draw
+    /// @returns non-zero on success, and zero on failure
+    /// @see https://rux-lang.dev/docs/api/windows/gdi#text-out-w
+    /// @see https://learn.microsoft.com/windows/win32/api/wingdi/nf-wingdi-textoutw
+    func TextOutW(deviceContext: *var opaque, x: int32, y: int32, text: *char16, count: int32) -> bool32;
+}

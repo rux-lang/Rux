@@ -1,0 +1,157 @@
+import Core::{ #target, OperatingSystem };
+
+when #target.os == OperatingSystem::Windows {
+    import Windows::{ ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_MORE_DATA, GetLastError,
+                      GetLogicalProcessorInformationEx, GetNativeSystemInfo, GetPhysicallyInstalledSystemMemory,
+                      GlobalMemoryStatusEx, HKEY_LOCAL_MACHINE, MemoryStatusEx, OsVersionInfoEx,
+                      ProcessorRelationshipHeader, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
+                      RelationProcessorCore, RtlGetVersion, SystemInfo, VER_PLATFORM_WIN32_NT };
+
+    // Every value a program would show about the machine is read here, and each is checked against another source
+    // that must agree with it: the version against the registry, the memory against itself and the firmware, the
+    // cores against the logical processors. A wrong structure size or a wrong field order shows up as a disagreement.
+
+    // The registry keys and values the test reads, each a NUL-terminated UTF-16 string whose `.data` Windows takes
+    // as it is.
+    const CurrentVersion = c16"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+    const CentralProcessor = c16"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
+    const CurrentBuildNumber = c16"CurrentBuildNumber";
+    const MissingValue = c16"NoSuchValueHere";
+    const ProcessorNameString = c16"ProcessorNameString";
+    const ProductName = c16"ProductName";
+    const UpdateBuildRevision = c16"UBR";
+
+    // A string value read into a fixed buffer; the length is in UTF-16 units without the terminator.
+    func ReadString(subKey: char16[..], name: char16[..], buffer: *var char16, units: uint32) -> int32 {
+        var size: uint32 = units * 2;
+        let status = RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, subKey.data, name.data, RRF_RT_REG_SZ, null,
+                                  buffer as *var opaque, @size);
+        if status != 0 {
+            return -1;
+        }
+        return (size / 2) as int32 - 1;
+    }
+
+    func Main() -> int {
+        // The true version: major 10 on both Windows 10 and Windows 11, on the NT platform.
+        var version: OsVersionInfoEx;
+        version.size = sizeof(OsVersionInfoEx) as uint32;
+        if RtlGetVersion(@version) != 0 {
+            return 1;
+        }
+        if version.majorVersion < 10 || version.platformId != VER_PLATFORM_WIN32_NT || version.buildNumber == 0 {
+            return 2;
+        }
+
+        // The registry keeps the build as text; it must be the number RtlGetVersion reported.
+        var text: char16[64] = [0 as char16; 64];
+        let length = ReadString(CurrentVersion, CurrentBuildNumber, @text[0], 64);
+        if length <= 0 {
+            return 3;
+        }
+        var build: uint32 = 0;
+        for index in 0..(length as uint) {
+            let unit = text[index] as uint32;
+            if unit < 0x30 || unit > 0x39 {
+                return 4;
+            }
+            build = build * 10 + (unit - 0x30);
+        }
+        if build != version.buildNumber {
+            return 5;
+        }
+
+        // A number value comes back as four bytes and says so through the size.
+        var revision: uint32 = 0;
+        var revisionSize: uint32 = 4;
+        if RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, CurrentVersion.data, UpdateBuildRevision.data,
+                        RRF_RT_REG_DWORD, null, @revision as *var opaque, @revisionSize) != 0 || revisionSize != 4 {
+            return 6;
+        }
+
+        // A buffer too small for the value is refused with the size it needs, not truncated.
+        var small: char16[2] = [0 as char16; 2];
+        var smallSize: uint32 = 4;
+        if RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, CurrentVersion.data, ProductName.data, RRF_RT_REG_SZ,
+                        null, @small[0] as *var opaque, @smallSize) as uint32 != ERROR_MORE_DATA || smallSize <= 4 {
+            return 7;
+        }
+
+        // A missing value is the same code as a missing file, and comes back as the result rather than through
+        // GetLastError.
+        var missing: char16[8] = [0 as char16; 8];
+        var missingSize: uint32 = 16;
+        if RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, CurrentVersion.data, MissingValue.data,
+                        RRF_RT_REG_SZ, null, @missing[0] as *var opaque, @missingSize) as uint32
+           != ERROR_FILE_NOT_FOUND {
+            return 8;
+        }
+
+        // The processor's name is in the hardware description.
+        var processor: char16[128] = [0 as char16; 128];
+        if ReadString(CentralProcessor, ProcessorNameString, @processor[0], 128) <= 0 {
+            return 9;
+        }
+
+        // Memory: the usable total is below what is fitted, the available part below the total, and the load a
+        // percentage.
+        var memory: MemoryStatusEx;
+        memory.length = sizeof(MemoryStatusEx) as uint32;
+        if GlobalMemoryStatusEx(@memory) == 0 {
+            return 10;
+        }
+        if memory.totalPhysical == 0 || memory.availablePhysical > memory.totalPhysical || memory.memoryLoad > 100 {
+            return 11;
+        }
+        var installed: uint64 = 0;
+        if GetPhysicallyInstalledSystemMemory(@installed) == 0 {
+            return 12;
+        }
+        if installed * 1024 < memory.totalPhysical {
+            return 13;
+        }
+
+        // The machine's architecture is one this compiler targets.
+        var system: SystemInfo;
+        GetNativeSystemInfo(@system);
+        let architecture = system.processorArchitecture & 0xFFFF;
+        if architecture != 9 && architecture != 12 {
+            return 14;
+        }
+        if system.numberOfProcessors == 0 {
+            return 15;
+        }
+
+        // Measuring first fails with the size it needs; filling then writes records that add up to that size.
+        var needed: uint32 = 0;
+        if GetLogicalProcessorInformationEx(RelationProcessorCore, null, @needed) != 0 {
+            return 16;
+        }
+        if GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed == 0 || needed > 65536 {
+            return 17;
+        }
+        var records: uint8[65536] = [0; 65536];
+        var filled: uint32 = needed;
+        if GetLogicalProcessorInformationEx(RelationProcessorCore, @records[0] as *var opaque, @filled) == 0 {
+            return 18;
+        }
+        var cores: uint32 = 0;
+        var offset: uint32 = 0;
+        while offset < filled {
+            let header = (@records[offset as uint]) as *ProcessorRelationshipHeader;
+            if header.relationship != RelationProcessorCore || header.size == 0 {
+                return 19;
+            }
+            offset += header.size;
+            cores += 1;
+        }
+        if offset != filled || cores == 0 || cores > system.numberOfProcessors {
+            return 20;
+        }
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

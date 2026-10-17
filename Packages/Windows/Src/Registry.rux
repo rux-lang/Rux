@@ -1,0 +1,58 @@
+// The Advapi32 entry point for reading one value out of the registry, and the keys and type flags it takes.
+// A registry call reports failure differently from the rest of Win32: it returns the error code itself, as an
+// `LSTATUS`, and leaves `GetLastError` as it was. Zero is `ERROR_SUCCESS`, and a missing key or value is
+// `ERROR_FILE_NOT_FOUND`, the same code a missing file gives.
+
+/// `HKEY_LOCAL_MACHINE`: the predefined key holding the machine's own settings, readable by every user.
+/// The predefined keys are 32-bit values sign-extended to a pointer, so on a 64-bit system this one is
+/// `0xFFFFFFFF80000002`, not `0x80000002`; it is cast at the call: `HKEY_LOCAL_MACHINE as *var opaque`.
+/// @see https://rux-lang.dev/docs/api/windows/registry#hkey-local-machine
+#Allow("naming.const")
+pub const HKEY_LOCAL_MACHINE: uint64 = 0xFFFFFFFF80000002;
+
+/// `HKEY_CURRENT_USER`: the predefined key holding the settings of the user the program runs as.
+/// @see https://rux-lang.dev/docs/api/windows/registry#hkey-current-user
+#Allow("naming.const")
+pub const HKEY_CURRENT_USER: uint64 = 0xFFFFFFFF80000001;
+
+/// `RRF_RT_REG_SZ`: accept a string value, which the call returns NUL-terminated.
+/// @see https://rux-lang.dev/docs/api/windows/registry#rrf-rt-reg-sz
+#Allow("naming.const")
+pub const RRF_RT_REG_SZ: uint32 = 0x00000002;
+
+/// `RRF_RT_REG_DWORD`: accept a 32-bit number value.
+/// @see https://rux-lang.dev/docs/api/windows/registry#rrf-rt-reg-dword
+#Allow("naming.const")
+pub const RRF_RT_REG_DWORD: uint32 = 0x00000010;
+
+/// `RRF_RT_REG_QWORD`: accept a 64-bit number value.
+/// @see https://rux-lang.dev/docs/api/windows/registry#rrf-rt-reg-qword
+#Allow("naming.const")
+pub const RRF_RT_REG_QWORD: uint32 = 0x00000040;
+
+#Link("Advapi32.dll")
+pub extern {
+    /// Reads one value of a registry key, checking its type and terminating a string value.
+    /// Unlike `RegQueryValueExW`, a string is always NUL-terminated in the buffer, and a value of a type the flags
+    /// do not accept is refused with `ERROR_UNSUPPORTED_TYPE` rather than returned as bytes. The size is in bytes,
+    /// not UTF-16 units, on the way in and on the way out. The error is the result itself; `GetLastError` is not set.
+    /// @param key an open key or a predefined one such as `HKEY_LOCAL_MACHINE`, cast to a pointer
+    /// @param subKey the NUL-terminated UTF-16 path below `key`, or null for `key` itself
+    /// @param value the NUL-terminated UTF-16 value name, or null for the key's default value
+    /// @param flags the `RRF_RT_` types to accept, combined with `|`
+    /// @param valueType receives the value's type, or null
+    /// @param data receives the value, or null to ask only for its size
+    /// @param size how many bytes `data` holds on entry, and how many were written or are needed on return
+    /// @returns zero on success, `ERROR_MORE_DATA` when `data` is too small, or another Win32 error code
+    /// @see https://rux-lang.dev/docs/api/windows/registry#reg-get-value-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winreg/nf-winreg-reggetvaluew
+    func RegGetValueW(
+        key: *var opaque,
+        subKey: *char16,
+        value: *char16,
+        flags: uint32,
+        valueType: *var uint32,
+        data: *var opaque,
+        size: *var uint32
+    ) -> int32;
+}

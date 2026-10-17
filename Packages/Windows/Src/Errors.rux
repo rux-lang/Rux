@@ -66,6 +66,16 @@ pub const ERROR_INVALID_PARAMETER: uint32 = 87;
 #Allow("naming.const")
 pub const ERROR_DISK_FULL: uint32 = 112;
 
+/// `ERROR_INSUFFICIENT_BUFFER`: the buffer was too small; the call set its length argument to the bytes needed.
+/// @see https://rux-lang.dev/docs/api/windows/errors#error-insufficient-buffer
+#Allow("naming.const")
+pub const ERROR_INSUFFICIENT_BUFFER: uint32 = 122;
+
+/// `ERROR_MORE_DATA`: the buffer was too small for the value; a registry call reports this one instead.
+/// @see https://rux-lang.dev/docs/api/windows/errors#error-more-data
+#Allow("naming.const")
+pub const ERROR_MORE_DATA: uint32 = 234;
+
 /// `ERROR_PRIVILEGE_NOT_HELD`: the account lacks a privilege the operation requires.
 /// What refuses `CreateSymbolicLinkW` on a machine without Developer Mode, where creating a symbolic link needs
 /// `SeCreateSymbolicLinkPrivilege` — a restriction no other supported system places on the same operation.

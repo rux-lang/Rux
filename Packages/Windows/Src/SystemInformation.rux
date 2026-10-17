@@ -1,0 +1,100 @@
+// What the machine is made of: its memory, its processor cores, and the architecture it really is.
+// Two numbers for memory are not the same. `GetPhysicallyInstalledSystemMemory` reports what the firmware says is
+// fitted, and `GlobalMemoryStatusEx` what the system can use, which is less by whatever the firmware and devices
+// reserve. A 64-bit process on an emulating system sees its own architecture through `GetSystemInfo`, and the
+// machine's through `GetNativeSystemInfo`.
+
+/// The `MEMORYSTATUSEX` that `GlobalMemoryStatusEx` fills in, with every size in bytes.
+/// @see https://rux-lang.dev/docs/api/windows/system-information#memory-status-ex
+pub struct MemoryStatusEx {
+    /// The structure's size in bytes, `sizeof(MemoryStatusEx)`, which the caller sets before the call.
+    pub length: uint32;
+    /// How much of the physical memory is in use, as a percentage from 0 to 100.
+    pub memoryLoad: uint32;
+    /// The physical memory the system can use.
+    pub totalPhysical: uint64;
+    /// The physical memory that is free or can be freed at once.
+    pub availablePhysical: uint64;
+    /// The memory the system can commit, physical memory and page file together.
+    pub totalPageFile: uint64;
+    /// The part of that commit limit the calling process can still commit.
+    pub availablePageFile: uint64;
+    /// The user-mode address space of the calling process.
+    pub totalVirtual: uint64;
+    /// The part of that address space neither reserved nor committed.
+    pub availableVirtual: uint64;
+    /// Reserved; always zero.
+    pub availableExtendedVirtual: uint64;
+}
+
+/// The header that begins every record `GetLogicalProcessorInformationEx` writes.
+/// The records differ in size, so the buffer is walked by adding each record's `size` to reach the next one; the
+/// rest of a record depends on its relationship and is not described here.
+/// @see https://rux-lang.dev/docs/api/windows/system-information#processor-relationship-header
+pub struct ProcessorRelationshipHeader {
+    /// What the record describes, such as `RelationProcessorCore`.
+    pub relationship: uint32;
+    /// The record's size in bytes, header included.
+    pub size: uint32;
+}
+
+/// `RelationProcessorCore`: a record per physical core, however many logical processors it runs.
+/// @see https://rux-lang.dev/docs/api/windows/system-information#relation-processor-core
+pub const RelationProcessorCore: uint32 = 0;
+
+/// `RelationProcessorPackage`: a record per physical processor package, the chip in a socket.
+/// @see https://rux-lang.dev/docs/api/windows/system-information#relation-processor-package
+pub const RelationProcessorPackage: uint32 = 3;
+
+/// `PROCESSOR_ARCHITECTURE_INTEL`: 32-bit x86.
+/// @see https://rux-lang.dev/docs/api/windows/system-information#processor-architecture-intel
+#Allow("naming.const")
+pub const PROCESSOR_ARCHITECTURE_INTEL: uint16 = 0;
+
+/// `PROCESSOR_ARCHITECTURE_ARM64`: 64-bit Arm.
+/// @see https://rux-lang.dev/docs/api/windows/system-information#processor-architecture-arm64
+#Allow("naming.const")
+pub const PROCESSOR_ARCHITECTURE_ARM64: uint16 = 12;
+
+/// `PROCESSOR_ARCHITECTURE_AMD64`: x86-64, from AMD or Intel.
+/// @see https://rux-lang.dev/docs/api/windows/system-information#processor-architecture-amd64
+#Allow("naming.const")
+pub const PROCESSOR_ARCHITECTURE_AMD64: uint16 = 9;
+
+#Link("Kernel32.dll")
+pub extern {
+    /// Reports the machine's physical memory and how much of it, and of the commit limit, is in use.
+    /// @param status the structure to fill, with `length` set to `sizeof(MemoryStatusEx)`
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/system-information#global-memory-status-ex
+    /// @see https://learn.microsoft.com/windows/win32/api/sysinfoapi/nf-sysinfoapi-globalmemorystatusex
+    func GlobalMemoryStatusEx(status: *var MemoryStatusEx) -> bool32;
+
+    /// Reads the processor relationships of one kind, such as one record per core, into a caller's buffer.
+    /// Asked with too small a buffer, or none, the call fails with `ERROR_INSUFFICIENT_BUFFER` and sets `length` to
+    /// the bytes needed, so it is called once to measure and once to fill.
+    /// @param relationship which records to write, such as `RelationProcessorCore`
+    /// @param buffer receives the records, each beginning with a `ProcessorRelationshipHeader`, or null to measure
+    /// @param length how many bytes `buffer` holds on entry, and how many were written or are needed on return
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/system-information#get-logical-processor-information-ex
+    /// @see https://learn.microsoft.com/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlogicalprocessorinformationex
+    func GetLogicalProcessorInformationEx(relationship: uint32, buffer: *var opaque, length: *var uint32) -> bool32;
+
+    /// Reads what `GetSystemInfo` does, but for the machine rather than for the calling process.
+    /// The two differ only under emulation, where an x86-64 program on an Arm machine is told it runs on x86-64 by
+    /// `GetSystemInfo` and on Arm by this call. It cannot fail, and the structure is always filled.
+    /// @param info receives the system information
+    /// @see https://rux-lang.dev/docs/api/windows/system-information#get-native-system-info
+    /// @see https://learn.microsoft.com/windows/win32/api/sysinfoapi/nf-sysinfoapi-getnativesysteminfo
+    func GetNativeSystemInfo(info: *var SystemInfo);
+
+    /// Reports the physical memory the firmware says is fitted, in kibibytes.
+    /// This is more than `GlobalMemoryStatusEx` reports as total, by what the firmware and devices reserve. It fails
+    /// with `ERROR_INVALID_DATA` when the firmware's memory tables are missing or malformed.
+    /// @param kilobytes receives the fitted memory in kibibytes
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/system-information#get-physically-installed-system-memory
+    /// @see https://learn.microsoft.com/windows/win32/api/sysinfoapi/nf-sysinfoapi-getphysicallyinstalledsystemmemory
+    func GetPhysicallyInstalledSystemMemory(kilobytes: *var uint64) -> bool32;
+}

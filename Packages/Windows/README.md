@@ -1,6 +1,6 @@
 # Windows
 
-Windows platform bindings: Win32 declarations linked straight against `Kernel32.dll`, with no C runtime in between.
+Windows platform bindings: Win32 declarations linked straight against the system's own libraries — `Kernel32.dll`, `User32.dll`, `Gdi32.dll`, `Advapi32.dll`, `ntdll.dll` and the rest — with no C runtime in between.
 
 ## Installation
 
@@ -24,6 +24,11 @@ rux add Rux/Windows
 | `ProcessControl` | `CreateProcessW` and its structures, `CreatePipe`, handle inheritance, `GetExitCodeProcess`, `TerminateProcess` and `SetEnvironmentVariableW` |
 | `TimeZone`  | `GetTimeZoneInformation`, `TimeZoneInformation` and `TimeZoneRuleDate`                 |
 | `Winsock`   | `WSAStartup`, `WSAGetLastError`, the Ws2_32 socket calls, `ioctlsocket` with `FIONBIO`, `WSAPoll` with `WsaPollFd` and the `POLL*` flags, `getaddrinfo` and `freeaddrinfo`, `WsaData`, `AddressInfo` and the socket constants |
+| `Window`    | `RegisterClassExW`, `CreateWindowExW`, `DefWindowProcW`, the `GetMessageW` loop, `BeginPaint`/`EndPaint`, `MessageBoxW`, per-monitor DPI, `WindowClassEx`, `Message`, `PaintStruct`, `Rect` and the `WS_`, `WM_` and `SW_` values |
+| `Gdi`       | `CreateFontW`, `SelectObject`, `SetBkMode`, `SetTextColor`, `TextOutW` and `DeleteObject`, with the font weights and quality values |
+| `Registry`  | `RegGetValueW`, the predefined keys and the `RRF_RT_` type flags |
+| `Version`   | `RtlGetVersion` and `OsVersionInfoEx`, the true version of the running system |
+| `SystemInformation` | `GlobalMemoryStatusEx` with `MemoryStatusEx`, `GetPhysicallyInstalledSystemMemory`, `GetNativeSystemInfo`, and `GetLogicalProcessorInformationEx` for counting cores |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
@@ -35,9 +40,17 @@ Two failure sentinels, and they are not the same. A handle-returning call report
 
 Windows separates reserving address space from committing storage to it, which no other supported system does. A reserved page may not be touched; committing is what makes it usable. `MEM_RELEASE` requires a size of zero and the exact base address the reservation returned. Releasing a reservation twice **fails**, with `ERROR_INVALID_ADDRESS`, where POSIX's `munmap` on an already-unmapped range succeeds — so code that treats a double release as harmless is portable in one direction only.
 
+**Ask `RtlGetVersion`, not `GetVersionExW`, which version is running.** Since Windows 8.1, `GetVersionExW` reports the version a program's manifest says it supports, and a program with no manifest — every Rux program today — is told 6.2 on every later release. `RtlGetVersion` reports the truth. Windows 11 still reports major version 10; its build numbers start at 22000, and that is how it is told apart. The registry's `ProductName` still says "Windows 10" on Windows 11 too.
+
+**A registry call returns its error.** `RegGetValueW` gives back a Win32 code as its result and leaves `GetLastError` alone, so reading `GetLastError` after a failed registry read reports whatever failed before it. A missing key or value is `ERROR_FILE_NOT_FOUND`, and a buffer too small is `ERROR_MORE_DATA`, where most of Win32 says `ERROR_INSUFFICIENT_BUFFER`. The predefined keys are 32-bit values sign-extended to a pointer, so `HKEY_LOCAL_MACHINE` is `0xFFFFFFFF80000002`.
+
+**A window procedure is an ordinary Rux function.** Its type is `WindowProcedure`, and it is called on the thread that created the window, with the platform's C convention, which is what a Rux function uses on Windows. A Rux program is built as a console program, so a program that only shows windows calls `FreeConsole` first.
+
+**UTF-16 strings must be aligned.** The kernel refuses a UTF-16 string that is not on a two-byte boundary, with `ERROR_NOACCESS`. A `c16"..."` literal is always aligned to its code unit, whether it is a `const` or written at the call, so `name.data` can be passed directly; a buffer of bytes reinterpreted as `char16` must be aligned by its owner.
+
 ## What is tested
 
-`Tests/Packages/Windows/Failures` covers the three sentinels, the Win32 code each kind of failure leaves behind, the different codes the virtual allocator and the heap give for the same impossible size, the release rules, and the `NTSTATUS` domain staying clear of `GetLastError`. `Tests/Packages/Windows/Platform` covers the reserve-then-commit split, protection, the entropy source and the clocks; `Tests/Packages/Windows/Constants` covers the enumerated values. `Tests/Unit/PlatformBindingContractTests.cpp` additionally checks, on any host, that the sentinels differ, that every `ERROR_` constant holds its published value, and that no two of them share a number.
+`Tests/Packages/Windows/Failures` covers the three sentinels, the Win32 code each kind of failure leaves behind, the different codes the virtual allocator and the heap give for the same impossible size, the release rules, and the `NTSTATUS` domain staying clear of `GetLastError`. `Tests/Packages/Windows/Platform` covers the reserve-then-commit split, protection, the entropy source and the clocks; `Tests/Packages/Windows/Constants` covers the enumerated values. `Tests/Packages/Windows/SystemInformation` checks the true version against the registry's build number, the registry's typed reads and its two failure codes, memory against what is fitted, and the core count against the logical processors. `Tests/Packages/Windows/Window` registers a class, creates a message-only window whose Rux procedure receives `WM_CREATE`, a sent message with both parameters intact and `WM_DESTROY`, and makes and deletes a font, so nothing is ever shown. `Tests/Unit/PlatformBindingContractTests.cpp` additionally checks, on any host, that the sentinels differ, that every `ERROR_` constant holds its published value, and that no two of them share a number.
 
 Unlike the three POSIX packages, all of this runs where it is developed, so every number in it was read out of a running program rather than out of documentation.
 

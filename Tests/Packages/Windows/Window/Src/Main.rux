@@ -1,0 +1,120 @@
+import Core::{ #target, OperatingSystem };
+
+when #target.os == OperatingSystem::Windows {
+    import Windows::{ CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateWindowExW, DEFAULT_CHARSET,
+                      DEFAULT_PITCH, DefWindowProcW, DeleteObject, DestroyWindow, FW_NORMAL, GetDpiForWindow,
+                      GetModuleHandleW, HWND_MESSAGE, IDC_ARROW, LoadCursorW, OUT_DEFAULT_PRECIS, RegisterClassExW,
+                      SendMessageW, UnregisterClassW, WM_CREATE, WM_DESTROY, WM_USER, WindowClassEx };
+
+    // A window is the one Win32 object whose code the system calls back, so the test is mostly about that call: the
+    // procedure is an ordinary Rux function, and every message that reaches it proves the convention and the four
+    // arguments arrive as the system sent them. The window is message-only, so nothing is ever shown on screen.
+
+    const ClassName = c16"RuxWindowTest";
+    const FaceName = c16"Segoe UI";
+
+    // What the procedure saw, kept where the test can read it after each call.
+    var Created: uint32 = 0;
+    var Destroyed: uint32 = 0;
+    var LastWParam: uint = 0;
+    var LastLParam: int = 0;
+
+    func Procedure(window: *var opaque, message: uint32, wParam: uint, lParam: int) -> int {
+        if message == WM_CREATE {
+            Created += 1;
+            return 0;
+        }
+        if message == WM_DESTROY {
+            Destroyed += 1;
+            return 0;
+        }
+        if message == WM_USER + 1 {
+            LastWParam = wParam;
+            LastLParam = lParam;
+            return 0x5EED;
+        }
+        return DefWindowProcW(window, message, wParam, lParam);
+    }
+
+    func Main() -> int {
+        let instance = GetModuleHandleW(null);
+        if instance == null {
+            return 1;
+        }
+
+        let windowClass = WindowClassEx {
+            size: sizeof(WindowClassEx) as uint32,
+            style: 0,
+            windowProcedure: Procedure,
+            classExtra: 0,
+            windowExtra: 0,
+            instance: instance,
+            icon: null,
+            cursor: LoadCursorW(null, IDC_ARROW as *char16),
+            background: null,
+            menuName: null,
+            className: ClassName.data,
+            smallIcon: null
+        };
+        if windowClass.cursor == null {
+            return 2;
+        }
+        if RegisterClassExW(@windowClass) == 0 {
+            return 3;
+        }
+
+        // WM_CREATE arrives before CreateWindowExW returns.
+        let window = CreateWindowExW(0, ClassName.data, null, 0, 0, 0, 0, 0, HWND_MESSAGE as *var opaque, null,
+                                     instance, null);
+        if window == null {
+            return 4;
+        }
+        if Created != 1 {
+            return 5;
+        }
+
+        // A sent message on the owning thread is a direct call, so its answer and both parameters come straight back;
+        // the parameters are chosen so a swapped or truncated argument cannot pass.
+        let answer = SendMessageW(window, WM_USER + 1, 0xFFFFFFFF00000001, -2);
+        if answer != 0x5EED {
+            return 6;
+        }
+        if LastWParam != 0xFFFFFFFF00000001 || LastLParam != -2 {
+            return 7;
+        }
+
+        // Without DPI awareness a window reports 96, and in no case zero.
+        if GetDpiForWindow(window) == 0 {
+            return 8;
+        }
+
+        let font = CreateFontW(-12, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                               CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, FaceName.data);
+        if font == null {
+            return 9;
+        }
+        if DeleteObject(font) == 0 {
+            return 10;
+        }
+
+        // Destroying sends WM_DESTROY, and only then may the class go.
+        if DestroyWindow(window) == 0 {
+            return 11;
+        }
+        if Destroyed != 1 {
+            return 12;
+        }
+        if UnregisterClassW(ClassName.data, instance) == 0 {
+            return 13;
+        }
+        // A second registration of the same name succeeds again once it is gone.
+        if RegisterClassExW(@windowClass) == 0 || UnregisterClassW(ClassName.data, instance) == 0 {
+            return 14;
+        }
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

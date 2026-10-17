@@ -1,0 +1,524 @@
+// The User32 entry points a desktop program needs to open a window: registering a class, creating the window,
+// running its message loop and answering what the system sends it, plus the per-monitor DPI calls that keep it sharp.
+// A window belongs to the thread that created it, and every message for it is delivered to that thread's loop, so the
+// window procedure runs on the creating thread and nowhere else. A creating call reports failure as null or zero with
+// the reason in `GetLastError`; a message call reports nothing, and its result means what the message says it does.
+
+/// A window procedure: the function the system calls with each message for a window of a class.
+/// Its arguments are the window, the message number and the two message parameters, and its result is the message's
+/// answer, which `DefWindowProcW` supplies for every message the procedure does not handle itself. A Rux function of
+/// this type is passed directly; it is called with the platform's C convention on the thread that owns the window.
+/// @see https://rux-lang.dev/docs/api/windows/window#window-procedure
+pub type WindowProcedure = func(*var opaque, uint32, uint, int) -> int;
+
+/// A point in pixels, the `POINT` most window calls take.
+/// @see https://rux-lang.dev/docs/api/windows/window#point
+pub struct Point {
+    /// The horizontal coordinate, growing to the right.
+    pub x: int32;
+    /// The vertical coordinate, growing downward.
+    pub y: int32;
+}
+
+/// A rectangle in pixels, the `RECT` that window sizes and paint regions are given as.
+/// The right and bottom edges are exclusive, so the width is `right - left` and the height `bottom - top`.
+/// @see https://rux-lang.dev/docs/api/windows/window#rect
+pub struct Rect {
+    /// The left edge.
+    pub left: int32;
+    /// The top edge.
+    pub top: int32;
+    /// The right edge, one past the last column.
+    pub right: int32;
+    /// The bottom edge, one past the last row.
+    pub bottom: int32;
+}
+
+/// The `MSG` that `GetMessageW` fills in: one message taken from the calling thread's queue.
+/// @see https://rux-lang.dev/docs/api/windows/window#message
+pub struct Message {
+    /// The window the message is for, or null for a message to the thread itself.
+    pub window: *var opaque;
+    /// The message number, such as `WM_DESTROY`.
+    pub message: uint32;
+    /// The first message parameter, whose meaning depends on the message.
+    pub wParam: uint;
+    /// The second message parameter, whose meaning depends on the message.
+    pub lParam: int;
+    /// When the message was posted, in milliseconds since the system started.
+    pub time: uint32;
+    /// Where the cursor was when the message was posted, in screen coordinates.
+    pub point: Point;
+    /// Reserved for the system.
+    pub privateData: uint32;
+}
+
+/// The `WNDCLASSEXW` that `RegisterClassExW` reads: what every window of a class shares.
+/// The class name and menu name are read during registration only; the system keeps its own copies.
+/// @see https://rux-lang.dev/docs/api/windows/window#window-class-ex
+pub struct WindowClassEx {
+    /// The structure's size in bytes, `sizeof(WindowClassEx)`.
+    pub size: uint32;
+    /// The class style bits, such as `CS_HREDRAW`, combined with `|`.
+    pub style: uint32;
+    /// The function that answers the messages for every window of the class.
+    pub windowProcedure: WindowProcedure;
+    /// Extra bytes the system keeps per class, usually zero.
+    pub classExtra: int32;
+    /// Extra bytes the system keeps per window, usually zero.
+    pub windowExtra: int32;
+    /// The module the procedure is in, from `GetModuleHandleW(null)` for the program itself.
+    pub instance: *var opaque;
+    /// The large icon, or null for the default.
+    pub icon: *var opaque;
+    /// The cursor shown over the window, or null to leave it to the procedure.
+    pub cursor: *var opaque;
+    /// The brush the background is erased with, or a `COLOR_` index plus one cast to a pointer, or null.
+    pub background: *var opaque;
+    /// The NUL-terminated UTF-16 menu resource name, or null for no menu.
+    pub menuName: *char16;
+    /// The NUL-terminated UTF-16 class name that `CreateWindowExW` names the class by.
+    pub className: *char16;
+    /// The small icon, or null to derive it from the large one.
+    pub smallIcon: *var opaque;
+}
+
+/// The `PAINTSTRUCT` that `BeginPaint` fills in and `EndPaint` reads back.
+/// @see https://rux-lang.dev/docs/api/windows/window#paint-struct
+pub struct PaintStruct {
+    /// The device context to draw with until `EndPaint`.
+    pub deviceContext: *var opaque;
+    /// Non-zero when the background still has to be erased.
+    pub erase: bool32;
+    /// The part of the window that needs painting, in client coordinates.
+    pub paint: Rect;
+    /// Reserved for the system.
+    pub restore: bool32;
+    /// Reserved for the system.
+    pub includeUpdate: bool32;
+    /// Reserved for the system.
+    pub reserved: uint8[32];
+}
+
+/// `CS_HREDRAW`: repaint the whole window when its width changes.
+/// @see https://rux-lang.dev/docs/api/windows/window#cs-hredraw
+#Allow("naming.const")
+pub const CS_HREDRAW: uint32 = 0x0002;
+
+/// `CS_VREDRAW`: repaint the whole window when its height changes.
+/// @see https://rux-lang.dev/docs/api/windows/window#cs-vredraw
+#Allow("naming.const")
+pub const CS_VREDRAW: uint32 = 0x0001;
+
+/// `WS_OVERLAPPED`: a top-level window with a title bar and a border.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-overlapped
+#Allow("naming.const")
+pub const WS_OVERLAPPED: uint32 = 0x00000000;
+
+/// `WS_CAPTION`: the window has a title bar.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-caption
+#Allow("naming.const")
+pub const WS_CAPTION: uint32 = 0x00C00000;
+
+/// `WS_SYSMENU`: the title bar has the window menu and the close button.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-sysmenu
+#Allow("naming.const")
+pub const WS_SYSMENU: uint32 = 0x00080000;
+
+/// `WS_THICKFRAME`: the window has a sizing border.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-thickframe
+#Allow("naming.const")
+pub const WS_THICKFRAME: uint32 = 0x00040000;
+
+/// `WS_MINIMIZEBOX`: the title bar has a minimize button.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-minimizebox
+#Allow("naming.const")
+pub const WS_MINIMIZEBOX: uint32 = 0x00020000;
+
+/// `WS_MAXIMIZEBOX`: the title bar has a maximize button.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-maximizebox
+#Allow("naming.const")
+pub const WS_MAXIMIZEBOX: uint32 = 0x00010000;
+
+/// `WS_CHILD`: the window lives inside its parent's client area.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-child
+#Allow("naming.const")
+pub const WS_CHILD: uint32 = 0x40000000;
+
+/// `WS_VISIBLE`: the window is shown as soon as it is created.
+/// @see https://rux-lang.dev/docs/api/windows/window#ws-visible
+#Allow("naming.const")
+pub const WS_VISIBLE: uint32 = 0x10000000;
+
+/// `CW_USEDEFAULT`: let the system choose the position or size.
+/// @see https://rux-lang.dev/docs/api/windows/window#cw-usedefault
+#Allow("naming.const")
+pub const CW_USEDEFAULT: int32 = -2147483648;
+
+/// `SW_SHOW`: show the window at its current size and position and activate it.
+/// @see https://rux-lang.dev/docs/api/windows/window#sw-show
+#Allow("naming.const")
+pub const SW_SHOW: int32 = 5;
+
+/// `WM_CREATE`: the window has been created and is not yet shown; answer zero to keep it.
+/// @see https://rux-lang.dev/docs/api/windows/window#wm-create
+#Allow("naming.const")
+pub const WM_CREATE: uint32 = 0x0001;
+
+/// `WM_DESTROY`: the window is being destroyed; a main window posts the quit message here.
+/// @see https://rux-lang.dev/docs/api/windows/window#wm-destroy
+#Allow("naming.const")
+pub const WM_DESTROY: uint32 = 0x0002;
+
+/// `WM_PAINT`: part of the window needs drawing, between `BeginPaint` and `EndPaint`.
+/// @see https://rux-lang.dev/docs/api/windows/window#wm-paint
+#Allow("naming.const")
+pub const WM_PAINT: uint32 = 0x000F;
+
+/// `WM_CLOSE`: the user asked to close the window; the default answer destroys it.
+/// @see https://rux-lang.dev/docs/api/windows/window#wm-close
+#Allow("naming.const")
+pub const WM_CLOSE: uint32 = 0x0010;
+
+/// `WM_SETFONT`: a control should draw with the font handle in `wParam`.
+/// @see https://rux-lang.dev/docs/api/windows/window#wm-setfont
+#Allow("naming.const")
+pub const WM_SETFONT: uint32 = 0x0030;
+
+/// `WM_USER`: the first message number a program may give its own messages within one window class.
+/// @see https://rux-lang.dev/docs/api/windows/window#wm-user
+#Allow("naming.const")
+pub const WM_USER: uint32 = 0x0400;
+
+/// `WM_DPICHANGED`: the window moved to a monitor with another scale.
+/// The new DPI is in both halves of `wParam`, and `lParam` points to the `Rect` the system suggests for the window.
+/// @see https://rux-lang.dev/docs/api/windows/window#wm-dpichanged
+#Allow("naming.const")
+pub const WM_DPICHANGED: uint32 = 0x02E0;
+
+/// `COLOR_WINDOW`: the system color of a window's background, for `GetSysColor` and `GetSysColorBrush`.
+/// @see https://rux-lang.dev/docs/api/windows/window#color-window
+#Allow("naming.const")
+pub const COLOR_WINDOW: int32 = 5;
+
+/// `COLOR_WINDOWTEXT`: the system color of text in a window.
+/// @see https://rux-lang.dev/docs/api/windows/window#color-windowtext
+#Allow("naming.const")
+pub const COLOR_WINDOWTEXT: int32 = 8;
+
+/// `COLOR_GRAYTEXT`: the system color of text that is shown but not active.
+/// @see https://rux-lang.dev/docs/api/windows/window#color-graytext
+#Allow("naming.const")
+pub const COLOR_GRAYTEXT: int32 = 17;
+
+/// `MB_OK`: the message box has one OK button.
+/// @see https://rux-lang.dev/docs/api/windows/window#mb-ok
+#Allow("naming.const")
+pub const MB_OK: uint32 = 0x00000000;
+
+/// `MB_ICONERROR`: the message box shows the error icon.
+/// @see https://rux-lang.dev/docs/api/windows/window#mb-iconerror
+#Allow("naming.const")
+pub const MB_ICONERROR: uint32 = 0x00000010;
+
+/// `SWP_NOMOVE`: `SetWindowPos` keeps the window where it is and ignores `x` and `y`.
+/// @see https://rux-lang.dev/docs/api/windows/window#swp-nomove
+#Allow("naming.const")
+pub const SWP_NOMOVE: uint32 = 0x0002;
+
+/// `SWP_NOZORDER`: `SetWindowPos` keeps the window's place in the stacking order and ignores `insertAfter`.
+/// @see https://rux-lang.dev/docs/api/windows/window#swp-nozorder
+#Allow("naming.const")
+pub const SWP_NOZORDER: uint32 = 0x0004;
+
+/// `SWP_NOACTIVATE`: `SetWindowPos` does not activate the window.
+/// @see https://rux-lang.dev/docs/api/windows/window#swp-noactivate
+#Allow("naming.const")
+pub const SWP_NOACTIVATE: uint32 = 0x0010;
+
+/// `IDC_ARROW`: the standard arrow cursor, as the resource number `LoadCursorW` takes in place of a name.
+/// It is a number, not a string, so it is cast to the name pointer: `IDC_ARROW as *char16`.
+/// @see https://rux-lang.dev/docs/api/windows/window#idc-arrow
+#Allow("naming.const")
+pub const IDC_ARROW: uint64 = 32512;
+
+/// `IDI_APPLICATION`: the default application icon, as the resource number `LoadIconW` takes in place of a name.
+/// @see https://rux-lang.dev/docs/api/windows/window#idi-application
+#Allow("naming.const")
+pub const IDI_APPLICATION: uint64 = 32512;
+
+/// `HWND_MESSAGE`: the parent that makes a window message-only, never shown and never enumerated.
+/// It is `-3` as a pointer, so it is cast at the call: `HWND_MESSAGE as *var opaque`.
+/// @see https://rux-lang.dev/docs/api/windows/window#hwnd-message
+#Allow("naming.const")
+pub const HWND_MESSAGE: uint64 = 0xFFFFFFFFFFFFFFFD;
+
+/// `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`: the process draws for each monitor's own scale.
+/// It is `-4` as a pointer, so it is cast at the call. Without it the system stretches the window's pixels on any
+/// monitor scaled above 100%, which is what makes an old program's text blurry.
+/// @see https://rux-lang.dev/docs/api/windows/window#dpi-awareness-context-per-monitor-aware-v2
+#Allow("naming.const")
+pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: uint64 = 0xFFFFFFFFFFFFFFFC;
+
+#Link("User32.dll")
+pub extern {
+    /// Grows a client rectangle to the window rectangle that holds it, at a given DPI.
+    /// The result includes the title bar and borders the style adds, measured for that DPI rather than the system's.
+    /// @param rect the client rectangle on entry, and the window rectangle on return
+    /// @param style the window's `WS_` style
+    /// @param menu non-zero when the window has a menu bar
+    /// @param exStyle the window's extended style
+    /// @param dpi the DPI to measure the frame at, usually from `GetDpiForWindow`
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#adjust-window-rect-ex-for-dpi
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-adjustwindowrectexfordpi
+    func AdjustWindowRectExForDpi(rect: *var Rect, style: uint32, menu: bool32, exStyle: uint32, dpi: uint32) -> bool32;
+
+    /// Prepares a window for painting and fills in what needs painting.
+    /// Called only in answer to `WM_PAINT`, and always paired with `EndPaint`, which validates the region.
+    /// @param window the window being painted
+    /// @param paint receives the device context and the region to paint
+    /// @returns the device context to draw with, or null when none is available
+    /// @see https://rux-lang.dev/docs/api/windows/window#begin-paint
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-beginpaint
+    func BeginPaint(window: *var opaque, paint: *var PaintStruct) -> *var opaque;
+
+    /// Creates a window of a registered class.
+    /// The procedure receives `WM_CREATE` before this call returns, so the window is already set up when it does.
+    /// @param exStyle the extended style bits, usually zero
+    /// @param className the NUL-terminated UTF-16 name of a registered class
+    /// @param windowName the NUL-terminated UTF-16 title, or null
+    /// @param style the `WS_` style bits, combined with `|`
+    /// @param x the left edge, or `CW_USEDEFAULT`
+    /// @param y the top edge, or `CW_USEDEFAULT`
+    /// @param width the width, or `CW_USEDEFAULT`
+    /// @param height the height, or `CW_USEDEFAULT`
+    /// @param parent the parent or owner window, `HWND_MESSAGE` for a message-only window, or null
+    /// @param menu the menu, or for a child window its identifier, or null
+    /// @param instance the module the class was registered by
+    /// @param parameter a value passed through to `WM_CREATE`, or null
+    /// @returns the new window, or null on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#create-window-ex-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-createwindowexw
+    func CreateWindowExW(
+        exStyle: uint32,
+        className: *char16,
+        windowName: *char16,
+        style: uint32,
+        x: int32,
+        y: int32,
+        width: int32,
+        height: int32,
+        parent: *var opaque,
+        menu: *var opaque,
+        instance: *var opaque,
+        parameter: *var opaque
+    ) -> *var opaque;
+
+    /// Answers a message the way the system does when a window procedure does not handle it.
+    /// A procedure passes every message it does not answer itself on to this call, unchanged, and returns its result.
+    /// @param window the window the message is for
+    /// @param message the message number
+    /// @param wParam the first message parameter
+    /// @param lParam the second message parameter
+    /// @returns the message's default answer
+    /// @see https://rux-lang.dev/docs/api/windows/window#def-window-proc-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-defwindowprocw
+    func DefWindowProcW(window: *var opaque, message: uint32, wParam: uint, lParam: int) -> int;
+
+    /// Destroys a window and its children, sending them `WM_DESTROY`.
+    /// Only the thread that created the window may destroy it.
+    /// @param window the window to destroy
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#destroy-window
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-destroywindow
+    func DestroyWindow(window: *var opaque) -> bool32;
+
+    /// Hands a message to the window procedure of the window it is for.
+    /// @param message a message from `GetMessageW`
+    /// @returns what the window procedure returned
+    /// @see https://rux-lang.dev/docs/api/windows/window#dispatch-message-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-dispatchmessagew
+    func DispatchMessageW(message: *Message) -> int;
+
+    /// Ends the painting `BeginPaint` began and marks the region painted.
+    /// @param window the window being painted
+    /// @param paint the structure `BeginPaint` filled in
+    /// @returns non-zero, always
+    /// @see https://rux-lang.dev/docs/api/windows/window#end-paint
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-endpaint
+    func EndPaint(window: *var opaque, paint: *PaintStruct) -> bool32;
+
+    /// Retrieves the window's client area, whose top-left corner is always zero.
+    /// @param window the window
+    /// @param rect receives the client area
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#get-client-rect
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getclientrect
+    func GetClientRect(window: *var opaque, rect: *var Rect) -> bool32;
+
+    /// Retrieves the DPI of the monitor the window is on, which is 96 at 100% scaling.
+    /// A process that is not DPI aware always receives 96.
+    /// @param window the window
+    /// @returns the window's DPI, or zero when `window` is not a window
+    /// @see https://rux-lang.dev/docs/api/windows/window#get-dpi-for-window
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getdpiforwindow
+    func GetDpiForWindow(window: *var opaque) -> uint32;
+
+    /// Waits for the next message of the calling thread and takes it from the queue.
+    /// The result has three meanings, not two: positive for a message, zero for `WM_QUIT`, which ends the loop, and
+    /// -1 for an error with the reason in `GetLastError`, which a loop testing only for non-zero would spin on.
+    /// @param message receives the message
+    /// @param window the window to take messages for, or null for every window of the thread
+    /// @param filterMin the lowest message number to take, or zero for no filter
+    /// @param filterMax the highest message number to take, or zero for no filter
+    /// @returns positive for a message, zero for `WM_QUIT`, or -1 on failure
+    /// @see https://rux-lang.dev/docs/api/windows/window#get-message-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getmessagew
+    func GetMessageW(message: *var Message, window: *var opaque, filterMin: uint32, filterMax: uint32) -> int32;
+
+    /// Retrieves one of the system colors, as `0x00BBGGRR`.
+    /// @param index a `COLOR_` value
+    /// @returns the color, or zero for an index the system does not know
+    /// @see https://rux-lang.dev/docs/api/windows/window#get-sys-color
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getsyscolor
+    func GetSysColor(index: int32) -> uint32;
+
+    /// Retrieves the brush of one of the system colors, which the system owns and must not be deleted.
+    /// @param index a `COLOR_` value
+    /// @returns the brush, or null for an index the system does not know
+    /// @see https://rux-lang.dev/docs/api/windows/window#get-sys-color-brush
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getsyscolorbrush
+    func GetSysColorBrush(index: int32) -> *var opaque;
+
+    /// Marks part of the window as needing paint, so the next pass of the loop sends `WM_PAINT`.
+    /// @param window the window
+    /// @param rect the part to mark, or null for the whole client area
+    /// @param erase non-zero to erase the background before painting
+    /// @returns non-zero on success, and zero on failure
+    /// @see https://rux-lang.dev/docs/api/windows/window#invalidate-rect
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-invalidaterect
+    func InvalidateRect(window: *var opaque, rect: *Rect, erase: bool32) -> bool32;
+
+    /// Loads a cursor; with a null instance and a resource number such as `IDC_ARROW`, one of the system's.
+    /// A system cursor is shared and must not be destroyed.
+    /// @param instance the module holding the cursor, or null for a system cursor
+    /// @param name the NUL-terminated UTF-16 resource name, or a resource number cast to a pointer
+    /// @returns the cursor, or null on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#load-cursor-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-loadcursorw
+    func LoadCursorW(instance: *var opaque, name: *char16) -> *var opaque;
+
+    /// Loads an icon; with a null instance and a resource number such as `IDI_APPLICATION`, one of the system's.
+    /// A system icon is shared and must not be destroyed.
+    /// @param instance the module holding the icon, or null for a system icon
+    /// @param name the NUL-terminated UTF-16 resource name, or a resource number cast to a pointer
+    /// @returns the icon, or null on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#load-icon-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-loadiconw
+    func LoadIconW(instance: *var opaque, name: *char16) -> *var opaque;
+
+    /// Shows a modal message box and waits for the user to close it.
+    /// @param window the owner window, or null
+    /// @param text the NUL-terminated UTF-16 message
+    /// @param caption the NUL-terminated UTF-16 title, or null for "Error"
+    /// @param style the `MB_` bits choosing the buttons and the icon
+    /// @returns the button the user chose, such as `IDOK`, or zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#message-box-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-messageboxw
+    func MessageBoxW(window: *var opaque, text: *char16, caption: *char16, style: uint32) -> int32;
+
+    /// Posts `WM_QUIT` to the calling thread, which makes its `GetMessageW` return zero.
+    /// A main window calls it from `WM_DESTROY`, so closing the window ends the loop.
+    /// @param exitCode the code the quit message carries in `wParam`
+    /// @see https://rux-lang.dev/docs/api/windows/window#post-quit-message
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-postquitmessage
+    func PostQuitMessage(exitCode: int32);
+
+    /// Registers a window class that `CreateWindowExW` can then create windows of.
+    /// A class name is per module: registering one twice fails with `ERROR_CLASS_ALREADY_EXISTS`.
+    /// @param windowClass what the class's windows share, with `size` set to `sizeof(WindowClassEx)`
+    /// @returns the class atom, or zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#register-class-ex-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-registerclassexw
+    func RegisterClassExW(windowClass: *WindowClassEx) -> uint16;
+
+    /// Sends a message to a window and waits for its procedure to answer.
+    /// On the window's own thread this is a direct call of the procedure; from another thread it waits for the
+    /// owner's loop to deliver it.
+    /// @param window the window
+    /// @param message the message number
+    /// @param wParam the first message parameter
+    /// @param lParam the second message parameter
+    /// @returns the procedure's answer
+    /// @see https://rux-lang.dev/docs/api/windows/window#send-message-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-sendmessagew
+    func SendMessageW(window: *var opaque, message: uint32, wParam: uint, lParam: int) -> int;
+
+    /// Sets how the process is told about display scale, which only takes effect before its first window exists.
+    /// Fails with `ERROR_ACCESS_DENIED` when the awareness is already set, by an earlier call or a manifest.
+    /// @param context a `DPI_AWARENESS_CONTEXT_` value cast to a pointer
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#set-process-dpi-awareness-context
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setprocessdpiawarenesscontext
+    func SetProcessDpiAwarenessContext(context: *var opaque) -> bool32;
+
+    /// Changes the window's size, position or stacking order with one call.
+    /// @param window the window
+    /// @param insertAfter the window to place it after, ignored with `SWP_NOZORDER`
+    /// @param x the new left edge
+    /// @param y the new top edge
+    /// @param width the new width
+    /// @param height the new height
+    /// @param flags `SWP_` bits saying which of the values to apply
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#set-window-pos
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowpos
+    func SetWindowPos(
+        window: *var opaque,
+        insertAfter: *var opaque,
+        x: int32,
+        y: int32,
+        width: int32,
+        height: int32,
+        flags: uint32
+    ) -> bool32;
+
+    /// Changes the window's title, or a control's text.
+    /// @param window the window
+    /// @param text the NUL-terminated UTF-16 text
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#set-window-text-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowtextw
+    func SetWindowTextW(window: *var opaque, text: *char16) -> bool32;
+
+    /// Shows, hides, minimizes or restores a window.
+    /// @param window the window
+    /// @param command an `SW_` value, such as `SW_SHOW`
+    /// @returns non-zero when the window was visible before, and zero when it was hidden; it reports no failure
+    /// @see https://rux-lang.dev/docs/api/windows/window#show-window
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-showwindow
+    func ShowWindow(window: *var opaque, command: int32) -> bool32;
+
+    /// Translates key presses into character messages, posted to the same queue.
+    /// @param message a message from `GetMessageW`
+    /// @returns non-zero when a character message was posted
+    /// @see https://rux-lang.dev/docs/api/windows/window#translate-message
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-translatemessage
+    func TranslateMessage(message: *Message) -> bool32;
+
+    /// Removes a window class once no window of it remains.
+    /// @param className the NUL-terminated UTF-16 class name
+    /// @param instance the module that registered it
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/window#unregister-class-w
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-unregisterclassw
+    func UnregisterClassW(className: *char16, instance: *var opaque) -> bool32;
+
+    /// Paints any part of the window that needs it now, rather than when the loop is next idle.
+    /// @param window the window
+    /// @returns non-zero on success, and zero on failure
+    /// @see https://rux-lang.dev/docs/api/windows/window#update-window
+    /// @see https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-updatewindow
+    func UpdateWindow(window: *var opaque) -> bool32;
+}
