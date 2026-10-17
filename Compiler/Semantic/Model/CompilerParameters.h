@@ -3,8 +3,9 @@
 // The compiler-supplied values a package declares with `intrinsic #name: Root;`.
 //
 // The compiler fills in a fixed set of fields for each root, and nothing else: a declaration naming a field outside the
-// set would read storage nobody wrote. Semantic analysis checks declarations against this one table, and both the
-// compile-time evaluator and lowering answer exactly the fields it lists.
+// set would read storage nobody wrote, while a field declared with another type would give semantic analysis a shape
+// different from the value lowering supplies. Semantic analysis checks declarations against this one table, and both
+// the compile-time evaluator and lowering answer exactly the fields it lists.
 
 #include <algorithm>
 #include <array>
@@ -12,20 +13,59 @@
 #include <string_view>
 
 namespace Rux {
+enum class CompilerParameterFieldKind {
+    Value,
+    Enum,
+    Struct,
+};
+
+struct CompilerParameterField {
+    std::string_view name;
+    std::string_view type;
+    CompilerParameterFieldKind kind = CompilerParameterFieldKind::Value;
+};
+
 struct CompilerParameterRoot {
     std::string_view name;
-    std::span<const std::string_view> fields;
+    std::span<const CompilerParameterField> fields;
 };
 
 namespace CompilerParameterDetail {
-inline constexpr std::array<std::string_view, 8> TargetFields{"os",          "arch",      "abi",          "endian",
-                                                              "pointerBits", "dataModel", "objectFormat", "triple"};
-inline constexpr std::array<std::string_view, 10> BuildFields{"profile",   "mode",   "optimization", "debugAssertions",
-                                                              "debugInfo", "isTest", "outputKind",   "timestamp",
-                                                              "date",      "time"};
-inline constexpr std::array<std::string_view, 7> SourceFields{"line",     "column",   "file",  "fileName",
-                                                              "filePath", "function", "module"};
-inline constexpr std::array<std::string_view, 1> CompilerFields{"version"};
+using Kind = CompilerParameterFieldKind;
+inline constexpr std::array<CompilerParameterField, 8> TargetFields{{
+    {"os", "OperatingSystem", Kind::Enum},
+    {"arch", "Architecture", Kind::Enum},
+    {"abi", "ApplicationBinaryInterface", Kind::Enum},
+    {"endian", "Endianness", Kind::Enum},
+    {"pointerBits", "uint"},
+    {"dataModel", "DataModel", Kind::Enum},
+    {"objectFormat", "ObjectFormat", Kind::Enum},
+    {"triple", "char8[..]"},
+}};
+inline constexpr std::array<CompilerParameterField, 10> BuildFields{{
+    {"profile", "char8[..]"},
+    {"mode", "BuildMode", Kind::Enum},
+    {"optimization", "OptimizationMode", Kind::Enum},
+    {"debugAssertions", "bool"},
+    {"debugInfo", "bool"},
+    {"isTest", "bool"},
+    {"outputKind", "OutputKind", Kind::Enum},
+    {"timestamp", "uint64"},
+    {"date", "char8[..]"},
+    {"time", "char8[..]"},
+}};
+inline constexpr std::array<CompilerParameterField, 7> SourceFields{{
+    {"line", "uint"},
+    {"column", "uint"},
+    {"file", "char8[..]"},
+    {"fileName", "char8[..]"},
+    {"filePath", "char8[..]"},
+    {"function", "char8[..]"},
+    {"module", "char8[..]"},
+}};
+inline constexpr std::array<CompilerParameterField, 1> CompilerFields{{
+    {"version", "SemanticVersion", Kind::Struct},
+}};
 } // namespace CompilerParameterDetail
 
 /// Every root the compiler supplies a value for, with the fields it fills in. `Config` carries no fields; its values
@@ -44,10 +84,20 @@ inline constexpr std::array<CompilerParameterRoot, 5> CompilerParameterRoots{{
     return found == CompilerParameterRoots.end() ? nullptr : &*found;
 }
 
+/// The field the compiler supplies under `root`, or null when it supplies no field by that name.
+[[nodiscard]] inline const CompilerParameterField *FindCompilerParameterField(const std::string_view root,
+                                                                              const std::string_view field) noexcept {
+    const CompilerParameterRoot *found = FindCompilerParameterRoot(root);
+    if (!found) {
+        return nullptr;
+    }
+    const auto supplied = std::ranges::find(found->fields, field, &CompilerParameterField::name);
+    return supplied == found->fields.end() ? nullptr : &*supplied;
+}
+
 /// Whether the compiler fills in `field` of a `root` value.
 [[nodiscard]] inline bool IsSuppliedCompilerParameterField(const std::string_view root,
                                                            const std::string_view field) noexcept {
-    const CompilerParameterRoot *found = FindCompilerParameterRoot(root);
-    return found && std::ranges::contains(found->fields, field);
+    return FindCompilerParameterField(root, field) != nullptr;
 }
 } // namespace Rux

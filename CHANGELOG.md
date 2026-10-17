@@ -521,6 +521,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Compiler-supplied field types** — a replacement package could declare a supported `#target`, `#build`, `#source`, or `#compiler` field with a different type from the value the compiler actually supplies, so semantic analysis and lowering disagreed about one expression. The shared compiler-parameter table now owns each field's type as well as its name, and declarations with a mismatched type are rejected before lowering.
 - **Compiler feature detection for `#when` attributes** — `#compiler.HasFeature("when-attribute")` now reports the same supported feature during conditional folding that ordinary compile-time lowering reports, so a `when` guard does not incorrectly take its fallback branch.
 
 - **One method name in two specialized extensions** — `extend Pair<int32>` and `extend Pair<int64>` that both declared `Sum` were refused as duplicate overloads, and their methods would have shared one linker name. Methods of extensions that name different instantiations no longer compete, and a specialized extension's type is part of its overloaded method's linker name; a generic extension's method of the same signature is still refused.

@@ -282,19 +282,41 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
         return;
     }
     for (const StructDecl::Field &field : structure->fields) {
-        if (IsSuppliedCompilerParameterField(root->name, field.name)) {
+        const CompilerParameterField *suppliedField = FindCompilerParameterField(root->name, field.name);
+        if (!suppliedField) {
+            std::string supplied;
+            for (const CompilerParameterField &candidate : root->fields) {
+                supplied += std::format("{}'{}'", supplied.empty() ? "" : ", ", candidate.name);
+            }
+            EmitError(declaration.location,
+                      std::format("field '{}' of '{}' is not one the compiler supplies for '{}'", field.name, root->name,
+                                  declaration.name),
+                      {},
+                      supplied.empty() ? std::format("remove the fields of '{}'; the compiler supplies none", root->name)
+                                       : std::format("remove '{}'; the compiler supplies {}", field.name, supplied));
             continue;
         }
-        std::string supplied;
-        for (const std::string_view name : root->fields) {
-            supplied += std::format("{}'{}'", supplied.empty() ? "" : ", ", name);
+
+        const TypeRef actual = ResolveType(*field.type);
+        bool matches = false;
+        if (suppliedField->kind == CompilerParameterFieldKind::Value) {
+            matches = actual.ToString() == suppliedField->type;
         }
-        EmitError(declaration.location,
-                  std::format("field '{}' of '{}' is not one the compiler supplies for '{}'", field.name, root->name,
-                              declaration.name),
-                  {},
-                  supplied.empty() ? std::format("remove the fields of '{}'; the compiler supplies none", root->name)
-                                   : std::format("remove '{}'; the compiler supplies {}", field.name, supplied));
+        else if (actual->kind == TypeRef::Kind::Named) {
+            if (suppliedField->kind == CompilerParameterFieldKind::Enum) {
+                const auto found = enumDecls.find(actual->name);
+                matches = found != enumDecls.end() && found->second->name == suppliedField->type;
+            }
+            else {
+                const auto found = structDecls.find(actual->name);
+                matches = found != structDecls.end() && found->second->name == suppliedField->type;
+            }
+        }
+        if (!matches && !actual.IsUnknown()) {
+            EmitError(field.location,
+                      std::format("field '{}' of '{}' must have type '{}', but has '{}'", field.name, root->name,
+                                  suppliedField->type, actual.ToString()));
+        }
     }
 }
 
