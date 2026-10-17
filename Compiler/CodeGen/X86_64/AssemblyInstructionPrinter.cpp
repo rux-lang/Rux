@@ -1845,8 +1845,9 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         return true;
     case LirOpcode::StringAddr: {
         const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
+        const auto unitSize = static_cast<std::uint32_t>(SizeOfRuntime(elementType));
         const std::string label =
-            modulePrinter.InternString(EncodeStringLiteral(instruction.strArg, SizeOfRuntime(elementType)));
+            modulePrinter.InternString(EncodeStringLiteral(instruction.strArg, SizeOfRuntime(elementType)), unitSize);
         Instruction("lea", std::format("rax, [rel {}]", label));
         StoreA(instruction.dst, instruction.type);
         return true;

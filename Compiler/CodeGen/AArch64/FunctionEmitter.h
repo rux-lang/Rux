@@ -36,7 +36,8 @@ public:
     virtual void SlotAddress(A64Reg destination, LirReg reg) = 0;
     virtual void CopyBlock(A64Reg destination, std::int64_t destinationOffset, A64Reg source, std::int64_t sourceOffset,
                            int size, bool paired) = 0;
-    [[nodiscard]] virtual std::uint32_t InternStringLiteral(const std::string &value) = 0;
+    /// Interns a literal already encoded at `unitSize` bytes per code unit, aligned to that unit.
+    [[nodiscard]] virtual std::uint32_t InternStringLiteral(const std::string &value, std::uint32_t unitSize) = 0;
     [[nodiscard]] virtual std::uint32_t ResolveGlobalSymbol(const std::string &name) = 0;
     virtual void LoadSymbolAddress(A64Reg destination, std::uint32_t symbol) = 0;
     /// Whether `name` is data imported from a library, whose address the code reads from the slot the loader fills.

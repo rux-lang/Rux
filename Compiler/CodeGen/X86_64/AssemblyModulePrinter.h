@@ -26,7 +26,8 @@ public:
     [[nodiscard]] bool DeclareFunction(const LirFunc &function);
     void DeclareExtern(const std::string &name);
 
-    [[nodiscard]] std::string InternString(const std::string &value);
+    /// Interns a literal encoded at `unitSize` bytes per code unit, aligned to that unit as the object emitter does.
+    [[nodiscard]] std::string InternString(const std::string &value, std::uint32_t unitSize = 1);
     [[nodiscard]] std::string InternFloat32(const std::string &value);
     [[nodiscard]] std::string InternFloat64(const std::string &value);
     [[nodiscard]] std::string CreateLocalLabel(std::string_view prefix);

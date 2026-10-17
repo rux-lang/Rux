@@ -770,7 +770,9 @@ void Selector::SelectAddress(const LirInstr &instruction) {
     case LirOpcode::StringAddr: {
         const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
         Address address;
-        address.symbol = Symbol({SymbolRef::Kind::String, EncodeStringLiteral(instruction.strArg, Size(elementType))});
+        const auto unitSize = static_cast<std::uint32_t>(Size(elementType));
+        address.symbol =
+            Symbol({SymbolRef::Kind::String, EncodeStringLiteral(instruction.strArg, Size(elementType)), unitSize});
         Emit(Op::AddressOf, 8, {Operand::Def(destination), Operand::Mem(address)}).rematerializable = true;
         return;
     }

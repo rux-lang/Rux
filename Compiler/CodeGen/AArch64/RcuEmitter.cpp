@@ -180,7 +180,7 @@ std::uint32_t AArch64ModuleEmitter::ResolveMachineSymbol(const AArch64Machine::S
     case Kind::Function:
         return ResolveCallSymbol(symbol.text);
     case Kind::String:
-        return InternStringLiteral(symbol.text);
+        return InternStringLiteral(symbol.text, symbol.unitSize);
     case Kind::Float32:
         return InternF32(symbol.text);
     case Kind::Float64:

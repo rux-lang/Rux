@@ -37,6 +37,10 @@ TEST_CASE("x86-64 assembly module printing owns deterministic sections") {
     CHECK(printer.InternString("shared") == "__str0");
     CHECK(printer.InternFloat32("1.25") == "__f32_1");
     CHECK(printer.InternFloat64("2.5") == "__f64_2");
+    // The same bytes as a UTF-16 literal are a literal of their own, aligned to the code unit.
+    CHECK(printer.InternString(std::string("h\0i\0", 4), 2) == "__str3");
+    CHECK(printer.InternString(std::string("h\0i\0", 4), 2) == "__str3");
+    CHECK(printer.InternString(std::string("h\0i\0", 4)) == "__str4");
     printer.TextLabel("Main");
     printer.TextInstruction("ret");
     const std::string output = printer.Finalize();
@@ -54,4 +58,6 @@ TEST_CASE("x86-64 assembly module printing owns deterministic sections") {
     CHECK(output.find("global PublishedValue\nPublishedValue:  ; int64 = 42") != std::string::npos);
     CHECK(output.find("Widget_vtable:\n    dq Widget_Draw\n    dq Widget_Drop") != std::string::npos);
     CHECK(output.find("__str0:\n    db    115, 104, 97, 114, 101, 100, 0") != std::string::npos);
+    CHECK(output.find("align 2\n__str3:\n    db    104, 0, 105, 0, 0") != std::string::npos);
+    CHECK(output.find("align 2\n__str4:") == std::string::npos);
 }

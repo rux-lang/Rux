@@ -95,6 +95,38 @@ TEST_CASE("a string literal's read-only data is transcoded into its own encoding
         CHECK_EQ(RodataOf(object, "__str0"), Utf8Bytes);
         CHECK_EQ(RodataOf(object, "__str1"), Utf16Bytes);
         CHECK_EQ(RodataOf(object, "__str2"), Utf32Bytes);
+
+        // The UTF-8 literal is eleven bytes, so packing the next one straight after it would put it at an odd
+        // offset; each wider literal is padded to its own code unit instead.
+        const RcuSymbol *sixteen = FindSymbol(object, "__str1");
+        const RcuSymbol *thirtyTwo = FindSymbol(object, "__str2");
+        REQUIRE(sixteen != nullptr);
+        REQUIRE(thirtyTwo != nullptr);
+        CHECK_EQ(sixteen->value % 2, 0);
+        CHECK_EQ(thirtyTwo->value % 4, 0);
+    }
+}
+
+TEST_CASE("a wider literal is never shared with narrower bytes that spell the same encoding") {
+    // `c8"h\0i\0\0"` is byte for byte what `c16"hi"` encodes to, but it sits at any offset, so handing it back for
+    // the UTF-16 literal would give that literal an alignment it does not have.
+    const std::string source = R"(
+        func Main() -> int {
+            let odd = c8"x";
+            let bytes = c8"h\0i\0\0";
+            let sixteen = c16"hi";
+            return (odd.length + bytes.length + sixteen.length) as int;
+        }
+    )";
+
+    for (const RcuFile &object : {EmitX86_64(source), EmitAArch64(source)}) {
+        const RcuSymbol *bytes = FindSymbol(object, "__str1");
+        const RcuSymbol *sixteen = FindSymbol(object, "__str2");
+        REQUIRE(bytes != nullptr);
+        REQUIRE(sixteen != nullptr);
+        CHECK_EQ(RodataOf(object, "__str1"), RodataOf(object, "__str2"));
+        CHECK_NE(bytes->value, sixteen->value);
+        CHECK_EQ(sixteen->value % 2, 0);
     }
 }
 

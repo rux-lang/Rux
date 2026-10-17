@@ -332,7 +332,7 @@ std::uint32_t X86_64ModuleEmitter::ResolveMachineSymbol(const X86_64Machine::Sym
     case Kind::Function:
         return ResolveCallSymbol(symbol.text);
     case Kind::String:
-        return InternStr(symbol.text);
+        return InternStr(symbol.text, symbol.unitSize);
     case Kind::Float32:
         return InternF32(symbol.text);
     case Kind::Float64:

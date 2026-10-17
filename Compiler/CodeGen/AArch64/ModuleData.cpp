@@ -24,19 +24,23 @@ void AArch64ModuleEmitter::PredeclareFunctions() {
 
 // `bytes` is already encoded at its element width; the terminator is one
 // more element of zeroes, which AlignRodata's zero fill cannot be relied on
-// to supply.
-std::uint32_t AArch64ModuleEmitter::InternStringLiteral(const std::string &bytes) {
-    if (const auto symbol = moduleBuilder.InternedLiteral("string", bytes)) {
+// to supply. A UTF-16 or UTF-32 literal is first padded to its code unit,
+// since the pool packs literals back to back, and the width is part of the
+// key so a UTF-8 literal with the same bytes never stands in for it.
+std::uint32_t AArch64ModuleEmitter::InternStringLiteral(const std::string &bytes, const std::uint32_t unitSize) {
+    const std::string family = unitSize > 1 ? std::format("string{}", unitSize * 8) : std::string("string");
+    if (const auto symbol = moduleBuilder.InternedLiteral(family, bytes)) {
         return *symbol;
     }
+    const auto offset =
+        unitSize > 1 ? AlignRodata(static_cast<int>(unitSize)) : static_cast<std::uint32_t>(RodataData().size());
     auto &data = RodataData();
-    const auto offset = static_cast<std::uint32_t>(data.size());
     for (const unsigned char byte : bytes) {
         data.push_back(byte);
     }
     data.push_back(0);
     const std::uint32_t idx = AddRodataConst(std::format("__str{}", constIdx++), offset);
-    (void)moduleBuilder.RecordInternedLiteral("string", bytes, idx);
+    (void)moduleBuilder.RecordInternedLiteral(family, bytes, idx);
     return idx;
 }
 

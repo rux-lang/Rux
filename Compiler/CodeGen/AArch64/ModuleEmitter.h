@@ -319,7 +319,11 @@ private:
     // `bytes` is already encoded at its element width; the terminator is one
     // more element of zeroes, which AlignRodata's zero fill cannot be relied on
     // to supply.
-    std::uint32_t InternStringLiteral(const std::string &bytes) override;
+    std::uint32_t InternStringLiteral(const std::string &bytes, std::uint32_t unitSize) override;
+
+    std::uint32_t InternStringLiteral(const std::string &bytes) {
+        return InternStringLiteral(bytes, 1);
+    }
 
     std::uint32_t InternF32(const std::string &literal);
 

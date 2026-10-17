@@ -653,8 +653,9 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     }
     case LirOpcode::StringAddr: {
         const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
+        const auto unitSize = static_cast<std::uint32_t>(RuntimeSize(elementType));
         const std::uint32_t symbol =
-            hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, RuntimeSize(elementType)));
+            hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, RuntimeSize(elementType)), unitSize);
         const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
         hooks.LoadSymbolAddress(address, symbol);
         hooks.StoreToSlot(address, instruction.dst, instruction.type);

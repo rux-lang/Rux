@@ -23,7 +23,8 @@ public:
     virtual void LoadA(LirReg reg, const TypeRef &type) const = 0;
     virtual void LoadB(LirReg reg, const TypeRef &type) const = 0;
     virtual void StoreA(LirReg reg, const TypeRef &type) const = 0;
-    [[nodiscard]] virtual std::uint32_t InternStringLiteral(const std::string &value) = 0;
+    /// Interns a literal already encoded at `unitSize` bytes per code unit, aligned to that unit.
+    [[nodiscard]] virtual std::uint32_t InternStringLiteral(const std::string &value, std::uint32_t unitSize) = 0;
     [[nodiscard]] virtual std::uint32_t InternFloat32Literal(const std::string &value) = 0;
     [[nodiscard]] virtual std::uint32_t InternFloat64Literal(const std::string &value) = 0;
     [[nodiscard]] virtual std::uint32_t InternFloatSignMask(bool float32) = 0;

@@ -207,7 +207,7 @@ private:
         return moduleBuilder.AlignSection(RcuModuleSection::RoData, static_cast<std::uint16_t>(align));
     }
 
-    uint32_t InternStr(const std::string &val);
+    uint32_t InternStr(const std::string &val, std::uint32_t unitSize = 1);
 
     uint32_t InternF32(const std::string &val);
 
@@ -221,8 +221,8 @@ private:
         return float32 ? InternF32SignMask() : InternF64SignMask();
     }
 
-    [[nodiscard]] std::uint32_t InternStringLiteral(const std::string &value) override {
-        return InternStr(value);
+    [[nodiscard]] std::uint32_t InternStringLiteral(const std::string &value, const std::uint32_t unitSize) override {
+        return InternStr(value, unitSize);
     }
 
     [[nodiscard]] std::uint32_t InternFloat32Literal(const std::string &value) override {

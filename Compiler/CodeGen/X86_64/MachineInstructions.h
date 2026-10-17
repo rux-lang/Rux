@@ -215,6 +215,9 @@ struct SymbolRef {
 
     Kind kind = Kind::Global;
     std::string text;
+    /// For a string literal, the size of its code unit in bytes: 1, 2 or 4. It is also the literal's alignment, since
+    /// a UTF-16 or UTF-32 literal read through a pointer, or handed to an API that checks, must sit on its unit.
+    std::uint32_t unitSize = 1;
 
     friend bool operator==(const SymbolRef &, const SymbolRef &) = default;
 };

@@ -30,12 +30,17 @@ namespace Rux::X86_64Detail {
     }
 }
 
-uint32_t X86_64ModuleEmitter::InternStr(const std::string &val) {
-    if (const auto symbol = moduleBuilder.InternedLiteral("string", val)) {
+// A literal sits on its code unit: one encoded as UTF-16 or UTF-32 is padded to 2 or 4 bytes first, since the pool
+// packs literals back to back and the one before may end at any byte. The width is part of the key, so a UTF-8
+// literal whose bytes happen to match never stands in for a wider one at a looser alignment.
+uint32_t X86_64ModuleEmitter::InternStr(const std::string &val, const std::uint32_t unitSize) {
+    const std::string family = unitSize > 1 ? std::format("string{}", unitSize * 8) : std::string("string");
+    if (const auto symbol = moduleBuilder.InternedLiteral(family, val)) {
         return *symbol;
     }
+    const auto off =
+        unitSize > 1 ? AlignRodata(static_cast<int>(unitSize)) : static_cast<uint32_t>(RodataData().size());
     auto &data = RodataData();
-    const auto off = static_cast<uint32_t>(data.size());
     for (unsigned char c : val) {
         data.push_back(c);
     }
@@ -43,7 +48,7 @@ uint32_t X86_64ModuleEmitter::InternStr(const std::string &val) {
     std::string lbl = std::format("__str{}", constIdx++);
     const uint32_t idx = DefineDataSymbol(std::move(lbl), {}, RcuSymKind::Const, RcuSymVis::Local,
                                           RcuModuleSection::RoData, off, static_cast<uint32_t>(val.size() + 1));
-    (void)moduleBuilder.RecordInternedLiteral("string", val, idx);
+    (void)moduleBuilder.RecordInternedLiteral(family, val, idx);
     return idx;
 }
 

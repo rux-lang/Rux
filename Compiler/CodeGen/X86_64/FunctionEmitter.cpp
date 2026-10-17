@@ -1255,8 +1255,9 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     }
     case LirOpcode::StringAddr: {
         const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
+        const auto unitSize = static_cast<std::uint32_t>(SizeOfRuntime(elementType));
         const std::uint32_t symbol =
-            hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, SizeOfRuntime(elementType)));
+            hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, SizeOfRuntime(elementType)), unitSize);
         std::uint32_t relocationOffset;
         encoder.LeaRaxRip(relocationOffset);
         hooks.AddTextRelocation(relocationOffset, symbol);

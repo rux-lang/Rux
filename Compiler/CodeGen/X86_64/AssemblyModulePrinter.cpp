@@ -140,13 +140,17 @@ void AssemblyModulePrinter::DeclareGlobal(const std::string &name) {
     globals << "global " << name << '\n';
 }
 
-std::string AssemblyModulePrinter::InternString(const std::string &value) {
-    if (const auto existing = stringLabels.find(value); existing != stringLabels.end()) {
+std::string AssemblyModulePrinter::InternString(const std::string &value, const std::uint32_t unitSize) {
+    const std::string key = unitSize > 1 ? std::format("{}:{}", unitSize, value) : value;
+    if (const auto existing = stringLabels.find(key); existing != stringLabels.end()) {
         return existing->second;
     }
 
     std::string label = std::format("__str{}", constantIndex++);
-    stringLabels[value] = label;
+    stringLabels[key] = label;
+    if (unitSize > 1) {
+        rodata << "align " << unitSize << '\n';
+    }
     rodata << label << ":\n    db    ";
     for (const unsigned char character : value) {
         rodata << static_cast<int>(character) << ", ";

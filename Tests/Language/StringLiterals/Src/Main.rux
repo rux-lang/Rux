@@ -61,6 +61,16 @@ func Main() -> int {
     Assert(eight.data != null, "a string literal has data");
     Assert(sixteen.data != null, "a wide string literal has data");
 
+    // Each literal sits on its own code unit, even straight after one of an odd byte count, which is what lets a
+    // wide literal go to an API that reads it a unit at a time or refuses a misaligned string.
+    let odd: char8[..] = "abc";
+    let wide16: char16[..] = c16"abc";
+    let wide32: char32[..] = c32"abc";
+    Assert(odd.length == 3u, "an odd number of UTF-8 code units");
+    Assert((wide16.data as uint) % 2 == 0, "a UTF-16 literal is aligned to two bytes");
+    Assert((wide32.data as uint) % 4 == 0, "a UTF-32 literal is aligned to four bytes");
+    Assert((rocket16.data as uint) % 2 == 0, "a UTF-16 literal after a four-byte one is aligned too");
+
     // Indexing yields one code unit of the string's own encoding.
     Assert(eight[0] == c8'H', "the first UTF-8 code unit");
     Assert(eight[4] == c8'o', "the last UTF-8 code unit");
