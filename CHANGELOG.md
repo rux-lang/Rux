@@ -309,6 +309,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 #### CLI / Package Manager
 
+- **`rux info --json` manifest compatibility metadata** — package inspection now exposes the manifest's optional `MinRux` requirement and `ReadmeFile` path alongside the existing package metadata, so registry and tooling integrations can see compiler compatibility and packaged documentation without reparsing `Rux.toml`.
 - **`rux info --json` manifest schema version** — package inspection now identifies the Version 1 manifest schema with `manifestVersion`, allowing machine-readable consumers to distinguish the manifest contract from the package's own version.
 - **`rux test` runs `#Test()` functions** — besides the executable packages under `Tests/`, `rux test` builds and runs every package or workspace member whose sources mark `#Test()` functions, libraries included, through a generated runner, and passes the arguments after `--` to every test program, so `rux test -- Parser` runs only the tests whose names hold `Parser`.
 - **`rux doc`** — generates deterministic, self-contained HTML API documentation after the normal compiler frontend and semantic analysis succeed. Outer `///` comments support a safe Markdown subset, target and define selection match `rux check`, public API is the default, `--document-private-items` includes private declarations, and managed-directory markers prevent `--output` from replacing unrelated files.
