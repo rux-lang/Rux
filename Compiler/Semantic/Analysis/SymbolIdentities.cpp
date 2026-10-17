@@ -85,6 +85,20 @@ bool AnalysisContext::MethodIsOverloadedForIdentity(const std::string &typeName,
     return method != type->second.end() && method->second.size() > 1;
 }
 
+std::optional<TypeRef> AnalysisContext::SpecializedExtensionType(const FuncDecl &method) const {
+    const auto implementation = methodImpls.find(&method);
+    if (implementation == methodImpls.end() || !ImplTypeParams(*implementation->second).empty() ||
+        !implementation->second->extendedType) {
+        return std::nullopt;
+    }
+    const auto extended = typeNodeTypes.find(implementation->second->extendedType.get());
+    if (extended == typeNodeTypes.end() || extended->second->kind != TypeRef::Kind::Named ||
+        ParseTypeArgsFromTypeName(extended->second->name).empty()) {
+        return std::nullopt;
+    }
+    return extended->second;
+}
+
 std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const TypeRef &receiverType,
                                               const std::unordered_map<std::string, TypeRef> &substitutions) const {
     const std::string typeName = NamedBaseTypeName(receiverType);
@@ -92,6 +106,12 @@ std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const Type
     if (MethodIsOverloadedForIdentity(typeName, method.name)) {
         name += "__";
         bool first = true;
+        // Methods of `extend Pair<int32>` and `extend Pair<int64>` may share a name and parameters, so a specialized
+        // extension's own type leads the signature.
+        if (const std::optional<TypeRef> specialized = SpecializedExtensionType(method)) {
+            name += MangleTypeName(*specialized);
+            first = false;
+        }
         // A variadic parameter is part of the signature like any other, as a slice of its elements, so overloads that
         // differ only in what they collect are two symbols.
         for (const auto &parameter : method.params) {
@@ -139,6 +159,9 @@ void AnalysisContext::RecordMethodIdentityRecipe(ResolvedCallableBinding &bindin
     binding.linkerNameBase = typeName + "::" + method.name;
     binding.linkerNameHasOverloadSignature = MethodIsOverloadedForIdentity(typeName, method.name);
     if (binding.linkerNameHasOverloadSignature) {
+        if (const std::optional<TypeRef> specialized = SpecializedExtensionType(method)) {
+            binding.linkerOverloadTypes.push_back(*specialized);
+        }
         for (const auto &parameter : method.params) {
             if (parameter.name != "self") {
                 binding.linkerOverloadTypes.push_back(IdentityParameterType(parameter, binding.substitutions));

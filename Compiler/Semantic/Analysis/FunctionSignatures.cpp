@@ -350,6 +350,10 @@ void AnalysisContext::ValidateFunctionSignature(const FuncDecl &declaration,
         if (previous == &declaration) {
             break;
         }
+        // Methods of `extend Pair<int32>` and `extend Pair<int64>` belong to different instantiations.
+        if (isMethod && !ExtensionsOverlap(declaration, *previous)) {
+            continue;
+        }
         const auto previousSignature = ResolveFunctionSignature(*previous, isMethod);
         if (previousSignature && SameFunctionSignature(*signature, *previousSignature)) {
             const auto source = functionDeclFiles.find(previous);

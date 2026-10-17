@@ -89,6 +89,42 @@ const ImplDecl *AnalysisContext::GenericInterfaceImplementation(const TypeRef &t
     return nullptr;
 }
 
+bool AnalysisContext::ExtensionsOverlap(const FuncDecl &left, const FuncDecl &right) const {
+    const auto leftImplementation = methodImpls.find(&left);
+    const auto rightImplementation = methodImpls.find(&right);
+    if (leftImplementation == methodImpls.end() || rightImplementation == methodImpls.end() ||
+        !leftImplementation->second->extendedType || !rightImplementation->second->extendedType) {
+        return true;
+    }
+    const auto leftType = typeNodeTypes.find(leftImplementation->second->extendedType.get());
+    const auto rightType = typeNodeTypes.find(rightImplementation->second->extendedType.get());
+    if (leftType == typeNodeTypes.end() || rightType == typeNodeTypes.end() ||
+        leftType->second->kind != TypeRef::Kind::Named || rightType->second->kind != TypeRef::Kind::Named) {
+        return true;
+    }
+    const std::vector<TypeRef> leftArguments = ParseTypeArgsFromTypeName(leftType->second->name);
+    const std::vector<TypeRef> rightArguments = ParseTypeArgsFromTypeName(rightType->second->name);
+    if (leftArguments.size() != rightArguments.size()) {
+        return true;
+    }
+    const std::vector<std::string> leftParameters = ImplTypeParams(*leftImplementation->second);
+    const std::vector<std::string> rightParameters = ImplTypeParams(*rightImplementation->second);
+    const auto concrete = [this](const TypeRef &argument, const std::vector<std::string> &parameters) {
+        const bool isParameter =
+            (argument->kind == TypeRef::Kind::TypeParam || argument->kind == TypeRef::Kind::Named) &&
+            std::ranges::contains(parameters, argument->name);
+        return !isParameter && !MentionsTypeParameter(argument);
+    };
+    // Two extensions that write different concrete arguments at one position never extend the same instantiation.
+    for (std::size_t index = 0; index < leftArguments.size(); ++index) {
+        if (concrete(leftArguments[index], leftParameters) && concrete(rightArguments[index], rightParameters) &&
+            !(leftArguments[index] == rightArguments[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool AnalysisContext::ImplementationAppliesTo(const ImplDecl &implementation, const TypeRef &receiver) const {
     if (!implementation.extendedType) {
         return true;

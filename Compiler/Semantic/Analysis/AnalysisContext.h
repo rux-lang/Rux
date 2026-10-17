@@ -549,6 +549,8 @@ private:
     /// Whether a method's extension is one of `receiver`'s: `extend Pair<int32>` extends `Pair<int32>` and no other
     /// instantiation, while `extend Pair<T>` and `extend Pair` extend them all.
     [[nodiscard]] bool ExtensionAppliesTo(const FuncDecl &method, const TypeRef &receiver) const;
+    /// Whether the extensions declaring two methods can extend one instantiation, so the methods compete for it.
+    [[nodiscard]] bool ExtensionsOverlap(const FuncDecl &left, const FuncDecl &right) const;
     [[nodiscard]] bool ImplementationAppliesTo(const ImplDecl &implementation, const TypeRef &receiver) const;
     /// The generic extension that implements `interface` for `type`, an instantiation of the type it extends.
     [[nodiscard]] const ImplDecl *GenericInterfaceImplementation(const TypeRef &type,
@@ -1768,6 +1770,8 @@ private:
 
     bool MethodIsOverloadedForIdentity(const std::string &typeName, const std::string &methodName) const;
 
+    /// The type a method's extension names when it extends one instantiation of a generic type, as `Pair<int32>`.
+    [[nodiscard]] std::optional<TypeRef> SpecializedExtensionType(const FuncDecl &method) const;
     std::string MethodLinkerName(const FuncDecl &method, const TypeRef &receiverType,
                                  const std::unordered_map<std::string, TypeRef> &substitutions) const;
 
