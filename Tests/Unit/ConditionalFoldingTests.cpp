@@ -973,6 +973,7 @@ func Selected() -> int {
     when #config.Has("sqlite") &&
         #config.Get("allocator") == "mimalloc" &&
         #compiler.HasFeature("conditional-compilation") &&
+        #compiler.HasFeature("when-attribute") &&
         !#compiler.HasFeature("imaginary-feature") &&
         #compiler.version.major == 1 &&
         #compiler.version.minor == 2 &&

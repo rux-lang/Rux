@@ -82,7 +82,7 @@ constexpr std::array TargetFeatureVariants{"AVX",  "AVX2",  "AVX512", "NEON",  "
 constexpr std::array CompilerFeatures{
     "conditional-compilation",    "namespaced-intrinsics",    "target-intrinsics",   "build-intrinsics",
     "compiler-feature-detection", "source-location-defaults", "extern-symbol-names", "link-attribute",
-    "no-return-attribute"};
+    "no-return-attribute",        "when-attribute"};
 
 template <std::size_t N>
 void RegisterVariants(std::unordered_map<std::string, std::vector<std::string>> &enums, const std::string &name,
