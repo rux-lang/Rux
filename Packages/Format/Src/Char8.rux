@@ -1,28 +1,23 @@
 // A `char8` is one byte of UTF-8, which is not the same thing as one character.
-//
 // A byte below 0x80 is a whole character and is written as it stands. A byte above that is one piece of a character
 // spread over several, and a writer takes whole characters — so what is written for one is the replacement
 // character, U+FFFD, which is what "there was something here and it could not be represented" looks like in text.
 // Writing the byte on its own would produce something that is not UTF-8, and the promise that it is holds every
 // reader of the result together.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
 
 /// The character written in place of anything that is not one.
-///
-/// @see https://rux-lang.dev/docs/api/format/replacement-character
+/// @see https://rux-lang.dev/docs/api/format/character-text#replacement-character
 pub const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
 
 extend char8 : Display {
     /// Writes this byte, or the replacement character when it is not a whole one.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char8/write-display
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char8-write-display
     pub func WriteDisplay(self: &char8, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         if (self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
@@ -34,19 +29,15 @@ extend char8 : Display {
 
 extend char8 : Debug {
     /// The same byte, quoted, with one that is not a whole character preserved as `\x{nn}`.
-    ///
     /// Where `Display` writes U+FFFD, this writes the byte itself. Two different stray bytes render alike under
     /// `Display` and differently here, which is the point of having both: one is for a reader and the other is for
     /// somebody working out which byte arrived.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char8/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char8-write-debug
     pub func WriteDebug(self: &char8, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        return WriteCharacterDebug(writer, self as uint64, (self as uint32) <= 0x7Fu32);
+        return WriteCharacterDebug(writer, self as uint64, (self as uint32) <= 0x7F);
     }
 }

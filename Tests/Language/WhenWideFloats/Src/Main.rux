@@ -1,0 +1,22 @@
+import Core::Assert;
+import Core::{ float80, float128, float256, float512 };
+
+const Wide: float64 = 16777216.0f32;
+
+when float80::Max < float80::Infinity && float80::MinPositive > 0.0f80 &&
+     float128::Max < float128::Infinity && float128::Lowest == -float128::Max &&
+     float256::Epsilon + 1.0f256 > 1.0f256 && float256::MinPositive > 0.0f256 &&
+     float512::Max < float512::Infinity && float512::MinPositive > 0.0f512 &&
+     float512::NaN != float512::NaN &&
+     1.0e400f128 > 1.0e300f64 && 1.0e-400f128 > 0.0f128 &&
+     9007199254740993.0f128 > 9007199254740992.0f128 &&
+     5.0f128 % 2.0f128 == 1.0f128 && Wide + 1.0f32 > Wide {
+    const Selected = true;
+} else {
+    const Selected = MissingWideFloatEvaluation();
+}
+
+func Main() -> int {
+    Assert(Selected, "wide conditions");
+    return 0;
+}

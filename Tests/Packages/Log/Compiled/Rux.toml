@@ -1,0 +1,20 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Compiled"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Log: the LogLevel build define drops records below it whatever a logger's level."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Log = { Path = "../../../../Packages/Log" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Log"
+
+[Build.Defines]
+LogLevel = "warn"

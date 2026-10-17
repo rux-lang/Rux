@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Zones"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for TimeZone: tz database files against zoneinfo, POSIX rules, and skipped and repeated local times."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Time = { Path = "../../../../Packages/Time" }
+TimeZone = { Path = "../../../../Packages/TimeZone" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/TimeZone"

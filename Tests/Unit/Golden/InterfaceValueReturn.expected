@@ -1,0 +1,4 @@
+18:5: error: cannot return 'Plain' as interface value 'Named'
+27:5: error: cannot return interface value 'value', which holds a value made in 'MakeLocal'
+33:5: error: cannot return interface value 'value', which holds a value made in 'MakeAssigned'
+39:5: error: cannot return interface value 'second', which holds a value made in 'MakeCopied'

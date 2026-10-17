@@ -1,5 +1,7 @@
 #include "Linker/RcuLinkGraph.h"
 
+#include "Parallel/WorkerPool.h"
+
 #include <algorithm>
 #include <bit>
 #include <format>
@@ -49,6 +51,15 @@ namespace {
         return 8;
     case RcuRelType::Abs32:
     case RcuRelType::Rel32:
+    case RcuRelType::TlsOffset32:
+    case RcuRelType::TlvDescriptorRel32:
+    case RcuRelType::ImportSlotRel32:
+    case RcuRelType::AArch64ImportSlotPage21:
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+    case RcuRelType::AArch64TlsHi12:
+    case RcuRelType::AArch64TlsLo12Nc:
+    case RcuRelType::AArch64TlvDescriptorPage21:
+    case RcuRelType::AArch64TlvDescriptorPageOff12:
     case RcuRelType::AArch64Call26:
     case RcuRelType::AArch64Jump26:
     case RcuRelType::AArch64CondBr19:
@@ -77,6 +88,8 @@ namespace {
         return RcuSecType::Data;
     case RCU_BSS_IDX:
         return RcuSecType::Bss;
+    case RCU_TLS_IDX:
+        return RcuSecType::Tls;
     default:
         return std::nullopt;
     }
@@ -84,11 +97,11 @@ namespace {
 
 [[nodiscard]] constexpr bool IsLinkableSectionType(const std::uint32_t type) noexcept {
     return type == RcuSecType::Text || type == RcuSecType::RoData || type == RcuSecType::Data ||
-           type == RcuSecType::Bss;
+           type == RcuSecType::Bss || type == RcuSecType::Tls;
 }
 
 [[nodiscard]] constexpr bool IsAArch64Relocation(const std::uint16_t type) noexcept {
-    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64Prel64;
+    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64ImportSlotLo12Nc;
 }
 
 void InvalidObject(std::vector<RcuLinkDiagnostic> &diagnostics, std::string message,
@@ -154,9 +167,6 @@ void ValidateObject(const RcuFile &object, const std::string_view packageName, c
                 continue;
             }
             const std::size_t width = RelocationWidth(relocation.type);
-            const std::string symbol = relocation.symbolIndex < object.symbols.size()
-                                         ? object.symbols[relocation.symbolIndex].name
-                                         : std::format("<index {}>", relocation.symbolIndex);
             if (relocation.symbolIndex >= object.symbols.size()) {
                 InvalidObject(diagnostics,
                               std::format("RCU object '{}' has a relocation in section '{}' with an invalid symbol "
@@ -166,6 +176,7 @@ void ValidateObject(const RcuFile &object, const std::string_view packageName, c
                                            relocation.sectionOffset, relocation.symbolIndex, object.symbols.size())});
                 continue;
             }
+            const std::string &symbol = object.symbols[relocation.symbolIndex].name;
             if (width == 0) {
                 InvalidObject(
                     diagnostics,
@@ -181,8 +192,7 @@ void ValidateObject(const RcuFile &object, const std::string_view packageName, c
                                 RcuRelTypeName(relocation.type), symbol),
                     {std::format("source section: '{}'; offset: {}", section.name, relocation.sectionOffset)});
             }
-            if (IsAArch64Relocation(relocation.type) && relocation.type <= RcuRelType::AArch64MovwUabsG3 &&
-                section.type != RcuSecType::Text) {
+            if (IsAArch64InstructionRelocationType(relocation.type) && section.type != RcuSecType::Text) {
                 InvalidObject(diagnostics,
                               std::format("RCU object '{}' uses instruction relocation '{}' outside a text section",
                                           objectName, RcuRelTypeName(relocation.type)),
@@ -203,7 +213,8 @@ void ValidateObject(const RcuFile &object, const std::string_view packageName, c
 } // namespace
 
 RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const std::string_view packageName,
-                                 const ArtifactKind artifactKind, const Target::Arch targetArchitecture) {
+                                 const ArtifactKind artifactKind, const Target::Arch targetArchitecture,
+                                 Parallel::WorkerPool *pool) {
     RcuLinkGraph graph;
     const std::uint8_t expectedArchitecture = RcuArchFor(targetArchitecture);
     if (expectedArchitecture == RcuArch::Unknown) {
@@ -228,8 +239,15 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
         return graph;
     }
 
-    std::unordered_map<std::string, RcuSymbolLocation> definitionsByName;
-    std::unordered_map<std::string, RcuSymbolLocation> strongDefinitions;
+    // Keys view the names in the objects, which outlive building the graph, so indexing copies no name.
+    std::size_t symbolCount = 0;
+    for (const RcuFile &object : objects)
+        symbolCount += object.symbols.size();
+    std::unordered_map<std::string_view, RcuSymbolLocation> definitionsByName;
+    std::unordered_map<std::string_view, RcuSymbolLocation> strongDefinitions;
+    definitionsByName.reserve(symbolCount);
+    strongDefinitions.reserve(symbolCount);
+    graph.definitions.reserve(symbolCount);
     for (std::size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
         const RcuFile &object = objects[objectIndex];
         for (std::size_t symbolIndex = 0; symbolIndex < object.symbols.size(); ++symbolIndex) {
@@ -239,7 +257,7 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
             }
             const RcuSymbolLocation location{objectIndex, symbolIndex};
             graph.definitions.push_back({symbol.name, location, symbol.kind, symbol.visibility});
-            if (symbol.visibility == RcuSymVis::Global) {
+            if (RcuSymVis::IsGlobal(symbol.visibility)) {
                 const auto [existing, inserted] = strongDefinitions.emplace(symbol.name, location);
                 if (!inserted) {
                     RcuLinkDiagnostic diagnostic = Diagnostic(RcuLinkDiagnosticKind::DuplicateDefinition, symbol.name);
@@ -254,26 +272,29 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
             }
             const auto existing = definitionsByName.find(symbol.name);
             if (existing == definitionsByName.end() ||
-                (objects[existing->second.objectIndex].symbols[existing->second.symbolIndex].visibility !=
-                     RcuSymVis::Global &&
-                 symbol.visibility == RcuSymVis::Global)) {
+                (!RcuSymVis::IsGlobal(
+                     objects[existing->second.objectIndex].symbols[existing->second.symbolIndex].visibility) &&
+                 RcuSymVis::IsGlobal(symbol.visibility))) {
                 definitionsByName[symbol.name] = location;
             }
         }
     }
 
-    std::ranges::sort(graph.definitions, {}, [](const RcuLinkDefinition &definition) {
-        return std::tuple(definition.name, definition.location.objectIndex, definition.location.symbolIndex);
+    std::ranges::sort(graph.definitions, [](const RcuLinkDefinition &left, const RcuLinkDefinition &right) {
+        return std::tie(left.name, left.location.objectIndex, left.location.symbolIndex) <
+               std::tie(right.name, right.location.objectIndex, right.location.symbolIndex);
     });
     for (const auto &[name, location] : definitionsByName) {
         const RcuSymbol &symbol = objects[location.objectIndex].symbols[location.symbolIndex];
-        graph.namedDefinitions.push_back({name, location, symbol.kind, symbol.visibility});
+        graph.namedDefinitions.push_back({std::string(name), location, symbol.kind, symbol.visibility});
     }
     std::ranges::sort(graph.namedDefinitions, {}, &RcuLinkDefinition::name);
 
     if (artifactKind != ArtifactKind::Executable) {
+        // A library exports only its own interface. A dependency's public definitions are compiled into the same
+        // objects and stay linkable across them, but they are Global rather than Exported.
         for (const RcuLinkDefinition &definition : graph.namedDefinitions) {
-            if (definition.visibility != RcuSymVis::Local) {
+            if (definition.visibility == RcuSymVis::Exported) {
                 graph.exportRoots.push_back(definition.location);
             }
         }
@@ -285,10 +306,12 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
         graph.diagnostics.push_back(Diagnostic(RcuLinkDiagnosticKind::MissingEntryPoint, "Main"));
     }
 
-    std::map<std::string, RcuReferencedExternal> externalsByName;
-    std::unordered_set<std::string> undefinedSymbols;
-    for (std::size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
+    // Each object's relocations resolve against the definitions alone, so objects are resolved side by side; their
+    // references are then joined in object order, which is also where externals and undefined symbols are counted.
+    std::vector<std::vector<RcuLinkReference>> objectReferences(objects.size());
+    const auto resolveObject = [&](const std::size_t objectIndex) {
         const RcuFile &object = objects[objectIndex];
+        auto &resolved = objectReferences[objectIndex];
         for (std::size_t sectionIndex = 0; sectionIndex < object.sections.size(); ++sectionIndex) {
             const RcuSection &section = object.sections[sectionIndex];
             for (std::size_t relocationIndex = 0; relocationIndex < section.relocs.size(); ++relocationIndex) {
@@ -313,26 +336,47 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
                                              ? RcuLinkResolution::LocalDefinition
                                              : RcuLinkResolution::CrossObjectDefinition;
                 }
-                else if (IsExtern(symbol)) {
-                    reference.resolution = RcuLinkResolution::External;
-                    auto &[name, kind, referenceIndices] = externalsByName[symbol.name];
-                    name = symbol.name;
-                    kind = symbol.kind;
-                    referenceIndices.push_back(graph.references.size());
-                }
                 else {
-                    reference.resolution = RcuLinkResolution::Unresolved;
-                    if (!symbol.name.empty() && undefinedSymbols.insert(symbol.name).second) {
-                        RcuLinkDiagnostic diagnostic = Diagnostic(RcuLinkDiagnosticKind::UndefinedSymbol, symbol.name);
-                        diagnostic.objectName = ObjectName(object, packageName, objectIndex);
-                        diagnostic.notes.push_back(std::format("referenced by RCU object '{}', section '{}', offset {}",
-                                                               diagnostic.objectName, section.name,
-                                                               relocation.sectionOffset));
-                        graph.diagnostics.push_back(std::move(diagnostic));
-                    }
+                    reference.resolution =
+                        IsExtern(symbol) ? RcuLinkResolution::External : RcuLinkResolution::Unresolved;
                 }
-                graph.references.push_back(reference);
+                resolved.push_back(reference);
             }
+        }
+    };
+    if (pool != nullptr)
+        pool->ForEach(objects.size(), resolveObject);
+    else
+        for (std::size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex)
+            resolveObject(objectIndex);
+
+    std::size_t referenceCount = 0;
+    for (const auto &resolved : objectReferences)
+        referenceCount += resolved.size();
+    graph.references.reserve(referenceCount);
+    std::map<std::string, RcuReferencedExternal> externalsByName;
+    std::unordered_set<std::string> undefinedSymbols;
+    for (std::size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
+        const RcuFile &object = objects[objectIndex];
+        for (const RcuLinkReference &reference : objectReferences[objectIndex]) {
+            const RcuSymbol &symbol = object.symbols[reference.symbolIndex];
+            if (reference.resolution == RcuLinkResolution::External) {
+                auto &[name, kind, referenceIndices] = externalsByName[symbol.name];
+                name = symbol.name;
+                kind = symbol.kind;
+                referenceIndices.push_back(graph.references.size());
+            }
+            else if (reference.resolution == RcuLinkResolution::Unresolved && !symbol.name.empty() &&
+                     undefinedSymbols.insert(symbol.name).second) {
+                const RcuSection &section = object.sections[reference.sectionIndex];
+                RcuLinkDiagnostic diagnostic = Diagnostic(RcuLinkDiagnosticKind::UndefinedSymbol, symbol.name);
+                diagnostic.objectName = ObjectName(object, packageName, objectIndex);
+                diagnostic.notes.push_back(std::format("referenced by RCU object '{}', section '{}', offset {}",
+                                                       diagnostic.objectName, section.name,
+                                                       section.relocs[reference.relocationIndex].sectionOffset));
+                graph.diagnostics.push_back(std::move(diagnostic));
+            }
+            graph.references.push_back(reference);
         }
     }
     for (auto &[name, external] : externalsByName) {

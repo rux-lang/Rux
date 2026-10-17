@@ -1,10 +1,8 @@
 // A fixed run of bytes being filled from the front.
-//
 // Every primitive has a longest possible rendering that is known in advance — twenty digits for a `uint64`, a
 // handful more for a float's sign, point and exponent — so the digits go into a buffer on the stack and reach the
 // writer in one call. Nothing here allocates, which is the point: printing a number should not need an allocator to
 // exist, let alone succeed.
-//
 // A cursor that runs out stops writing rather than overrunning, and says so. Every caller in this package sizes its
 // buffer from the same bound the formatter is written against, so running out means the bound is wrong; refusing
 // silently would turn that into a truncated number, which is worse than an obvious one.
@@ -14,7 +12,6 @@
 import Text::{ FormatError, TextWriter };
 
 /// A fixed buffer being filled from the front.
-///
 /// @see https://rux-lang.dev/docs/api/format/byte-cursor
 pub struct ByteCursor {
     /// The room available.
@@ -27,18 +24,16 @@ pub struct ByteCursor {
 
 extend ByteCursor {
     /// A cursor over `room`, filling from its start.
-    ///
     /// @param room how many bytes the buffer holds
     /// @returns a cursor over that storage, having written nothing
-    /// @see https://rux-lang.dev/docs/api/format/byte-cursor/new
+    /// @see https://rux-lang.dev/docs/api/format/byte-cursor#new
     pub func ByteCursor(room: var char8[..]) -> ByteCursor {
         return ByteCursor { room: room, length: 0, overran: false };
     }
 
     /// Appends one byte, or records an overrun when there is no room.
-    ///
     /// @param byte the byte
-    /// @see https://rux-lang.dev/docs/api/format/byte-cursor/push
+    /// @see https://rux-lang.dev/docs/api/format/byte-cursor#push
     pub func Push(self: &var ByteCursor, byte: char8) {
         if self.length >= self.room.length {
             self.overran = true;
@@ -49,9 +44,8 @@ extend ByteCursor {
     }
 
     /// Appends every byte of `bytes`, or records an overrun when they do not all fit.
-    ///
     /// @param bytes the bytes
-    /// @see https://rux-lang.dev/docs/api/format/byte-cursor/push-bytes
+    /// @see https://rux-lang.dev/docs/api/format/byte-cursor#push-bytes
     pub func PushBytes(self: &var ByteCursor, bytes: char8[..]) {
         var index: uint = 0;
         while index < bytes.length {
@@ -61,17 +55,15 @@ extend ByteCursor {
     }
 
     /// What has been written.
-    ///
     /// @returns the bytes written so far, borrowed
-    /// @see https://rux-lang.dev/docs/api/format/byte-cursor/written
+    /// @see https://rux-lang.dev/docs/api/format/byte-cursor#written
     pub func Written(self: &ByteCursor) -> char8[..] {
         return (self.room.data)[..self.length];
     }
 
     /// Whether a write was refused for want of room.
-    ///
     /// @returns whether more was pushed than the buffer holds, which silently dropped the excess
-    /// @see https://rux-lang.dev/docs/api/format/byte-cursor/overran
+    /// @see https://rux-lang.dev/docs/api/format/byte-cursor#overran
     pub func Overran(self: &ByteCursor) -> bool {
         return self.overran;
     }
@@ -79,18 +71,14 @@ extend ByteCursor {
 
 extend ByteCursor : TextWriter {
     /// Writes `bytes` into the buffer.
-    ///
-    /// # Failures
     /// Reports `InsufficientCapacity` when the bytes do not all fit. The cursor is a bounded destination, so this
     /// is the failure it exists to report; a `WriterFailure` is impossible, since there is no destination beyond
     /// the buffer, and the bytes are not revalidated here, so no `TextFailure` arises either.
-    ///
     /// Unlike a builder, a cursor that overruns keeps whatever fitted rather than leaving itself unchanged: the
     /// buffer is the caller's, the partial content is visible through `Written`, and `Overran` says it is partial.
-    ///
     /// @param bytes the UTF-8 run to write
     /// @returns success when every byte fitted
-    /// @see https://rux-lang.dev/docs/api/format/byte-cursor/write
+    /// @see https://rux-lang.dev/docs/api/format/byte-cursor#write
     pub func Write(self: &var ByteCursor, bytes: char8[..]) -> ! FormatError {
         self.PushBytes(bytes);
         if self.Overran() { return .Failure(FormatError::InsufficientCapacity); }

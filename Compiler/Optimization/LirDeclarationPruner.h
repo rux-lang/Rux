@@ -1,7 +1,11 @@
 #pragma once
 
 #include "BuildInfo/ArtifactKind.h"
+#include "Optimization/LirReachability.h"
 #include "Optimization/Pass.h"
+
+#include <memory>
+#include <vector>
 
 namespace Rux::Optimization {
 /**
@@ -23,7 +27,19 @@ public:
 
     PassChange Run(LirPackage &package, const PassContext &context) override;
 
+    /// Pruning removes whole declarations and rewrites no function body.
+    [[nodiscard]] bool ReportsChangedFunctions() const noexcept override {
+        return true;
+    }
+
+    /// Prune every module from its own roots (`ModuleRoots`, one list per module) through its own references only,
+    /// rather than walking the whole package from the artifact's roots.
+    void SetModuleRoots(std::shared_ptr<const std::vector<std::vector<LirModuleRoot>>> roots) noexcept {
+        moduleRoots = std::move(roots);
+    }
+
 private:
     ArtifactKind artifactKind;
+    std::shared_ptr<const std::vector<std::vector<LirModuleRoot>>> moduleRoots;
 };
 } // namespace Rux::Optimization

@@ -43,10 +43,10 @@ func Main() -> int {
     var hostile: OsUnit[4];
     when #target.os == .Windows {
         // An unpaired high surrogate between letters: a name Windows will happily keep on disk.
-        hostile[0] = 0x0061u16;
-        hostile[1] = 0xD800u16;
-        hostile[2] = 0x0062u16;
-        hostile[3] = 0x0063u16;
+        hostile[0] = 0x0061;
+        hostile[1] = 0xD800;
+        hostile[2] = 0x0062;
+        hostile[3] = 0x0063;
     }
     else {
         // Bytes that are not UTF-8: a lone continuation and an overlong lead, between letters.

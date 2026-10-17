@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Benchmark"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Test: benchmarks grow their iteration count until a run lasts long enough or reaches its cap, report time per iteration, filter by name, and keep consumed results."
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Test = { Path = "../../../../Packages/Test" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Test"

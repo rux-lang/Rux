@@ -28,6 +28,9 @@ struct TestDiscovery {
 
 enum class TestStatus {
     Passed,
+    /// A test runner given filters had no test they match. It is no failure of the package, since `rux test` hands one
+    /// set of filters to every package, but a run in which no package matched anything has run nothing.
+    NoMatch,
     Failed,
     BuildError,
     LaunchError
@@ -35,6 +38,8 @@ enum class TestStatus {
 
 struct TestOutcome {
     TestStatus status = TestStatus::Passed;
+    /// Whether the package's sources mark tests, so a generated runner read the arguments as filters.
+    bool runner = false;
     int exitCode = 0;
     std::string output;
     std::string diagnostics;
@@ -43,5 +48,10 @@ struct TestOutcome {
 };
 
 [[nodiscard]] TestDiscovery DiscoverTestPackages(std::span<const TestRoot> roots);
-[[nodiscard]] TestOutcome RunTestPackage(const TestPackage &package, Driver::CompileOptions options, bool color);
+/// Whether any source under `packageDir/Src` marks a function `#Test()`. A plain text search, so a package whose tests
+/// are commented out is still built in test mode and then reports that it has none.
+[[nodiscard]] bool SourcesDeclareTests(const std::filesystem::path &packageDir);
+/// Builds `package` in test mode and runs it with `arguments`, which a generated test runner reads as its filters.
+[[nodiscard]] TestOutcome RunTestPackage(const TestPackage &package, Driver::CompileOptions options, bool color,
+                                         std::span<const std::string_view> arguments = {});
 } // namespace Rux::CliSupport

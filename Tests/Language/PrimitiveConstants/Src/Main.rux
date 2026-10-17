@@ -1,10 +1,17 @@
-import Core::{ bool, bool16, bool32, bool8, byte, char, char16, char32, char8, float, float32, float64, int, int16, int32, int64, int8, uint, uint16, uint32, uint64, uint8 };
+import Core::{ bool, bool128, bool16, bool256, bool32, bool512, bool64, bool8, byte, char, char128, char16, char256,
+               char32, char512, char64, char8, float, float128, float16, float256, float32, float512, float64, float8,
+               float80, int, int16, int32, int64, int8, uint, uint128, uint16, uint256, uint32, uint512, uint64,
+               uint8 };
 import Core::Assert;
 
+// A compile-time condition evaluates floats as host doubles, so of the wide floats' limits it answers only the
+// infinity and the NaN, which a double holds at any width.
 when int32::Bits == 32 && int32::Bytes == 4 &&
      int32::Min == -2147483648 && int32::Max == 2147483647 &&
      uint64::Max > int64::Max && float32::Infinity > float32::Max &&
-     float32::NaN != float32::NaN {
+     float32::NaN != float32::NaN && byte::Max == 255u8 && bool::Bits == 8u && Count::Max == int32::Max &&
+     float80::Bits == 80 && float512::Bytes == 64 && float128::Infinity > 0.0 && float512::NaN != float512::NaN &&
+     char128::Bits == 128 && char512::Bytes == 64 && char512::Max == c512'\u{10FFFF}' {
     const COMPILE_TIME_CONSTANTS_WORK: bool = true;
 } else {
     const COMPILE_TIME_CONSTANTS_WORK: bool = false;
@@ -12,13 +19,22 @@ when int32::Bits == 32 && int32::Bytes == 4 &&
 
 const GLOBAL_LIMIT: int32 = int32::Max;
 
+// A local alias reaches the constants of the primitive it names.
+type Count = int32;
+
 func Main() -> int {
     Assert(COMPILE_TIME_CONSTANTS_WORK, "primitive constants work in compile-time conditions");
     Assert(GLOBAL_LIMIT == 2147483647i32, "primitive constants initialize global constants");
 
+    Assert(Count::Max == int32::Max && Count::Bits == 32u, "local alias constants");
+
     Assert(bool8::Bits == 8 && bool8::Bytes == 1, "bool8 width constants");
     Assert(bool16::Bits == 16 && bool16::Bytes == 2, "bool16 width constants");
     Assert(bool32::Bits == 32 && bool32::Bytes == 4, "bool32 width constants");
+    Assert(bool64::Bits == 64 && bool64::Bytes == 8, "bool64 width constants");
+    Assert(bool128::Bits == 128 && bool128::Bytes == 16, "bool128 width constants");
+    Assert(bool256::Bits == 256 && bool256::Bytes == 32, "bool256 width constants");
+    Assert(bool512::Bits == 512 && bool512::Bytes == 64, "bool512 width constants");
     Assert(bool::Bits == bool8::Bits && bool::Bytes == bool8::Bytes, "bool alias constants");
 
     Assert(char8::Bits == 8 && char8::Bytes == 1, "char8 width constants");
@@ -28,6 +44,18 @@ func Main() -> int {
     Assert(char32::Bits == 32 && char32::Bytes == 4, "char32 width constants");
     Assert(char32::Min as uint32 == 0u32 && char32::Max as uint32 == 0x10FFFFu32,
            "char32 range constants");
+    Assert(char64::Bits == 64 && char64::Bytes == 8, "char64 width constants");
+    Assert(char64::Min as uint64 == 0u64 && char64::Max as uint64 == 0x10FFFFu64, "char64 range constants");
+    Assert(char128::Bits == 128 && char128::Bytes == 16, "char128 width constants");
+    Assert(char128::Min as uint128 == 0u128 && char128::Max as uint128 == 0x10FFFFu128, "char128 range constants");
+    Assert(char256::Bits == 256 && char256::Bytes == 32, "char256 width constants");
+    Assert(char256::Min as uint256 == 0u256 && char256::Max as uint256 == 0x10FFFFu256, "char256 range constants");
+    Assert(char512::Bits == 512 && char512::Bytes == 64, "char512 width constants");
+    Assert(char512::Min as uint512 == 0u512 && char512::Max as uint512 == 0x10FFFFu512, "char512 range constants");
+    // Every scalar-valued width stops at the same code point, whatever room it has beyond it.
+    Assert(char64::Max as uint32 == char32::Max as uint32 && char128::Max as uint32 == char32::Max as uint32 &&
+           char256::Max as uint32 == char32::Max as uint32 && char512::Max as uint32 == char32::Max as uint32,
+           "the wide characters share char32's maximum");
     Assert(char::Max == char32::Max, "char alias constants");
 
     Assert(int8::Bits == 8 && int8::Bytes == 1 && int8::Min == -128i8 && int8::Max == 127i8,
@@ -69,6 +97,65 @@ func Main() -> int {
     Assert(float64::NaN != float64::NaN, "float64 NaN");
     Assert(float::Bits == float64::Bits && float::Max == float64::Max && float::NaN != float::NaN,
            "float alias constants");
+
+    Assert(float8::Bits == 8 && float8::Bytes == 1, "float8 width constants");
+    Assert(float8::Max == 240.0f8 && float8::Lowest == -float8::Max, "float8 finite range constants");
+    Assert(float8::MinPositive == 0.015625f8 && float8::Epsilon == 0.125f8, "float8 minimum positive and epsilon");
+    Assert(float8::Infinity > float8::Max && float8::NaN != float8::NaN, "float8 infinity and NaN");
+
+    Assert(float16::Bits == 16 && float16::Bytes == 2, "float16 width constants");
+    Assert(float16::Max == 65504.0f16 && float16::Lowest == -float16::Max, "float16 finite range constants");
+    Assert(float16::MinPositive == 6.103515625e-05f16 && float16::Epsilon == 0.0009765625f16,
+           "float16 minimum positive and epsilon");
+    Assert(float16::Infinity > float16::Max && float16::NaN != float16::NaN, "float16 infinity and NaN");
+
+    // float80 and wider take every limit from the compiler. Each is pinned by what it must satisfy: the maximum is
+    // the last finite value, the minimum positive the last normal one, and epsilon an exact power of two.
+    Assert(float80::Bits == 80 && float80::Bytes == 16, "float80 width constants: ten value bytes in sixteen");
+    Assert(float80::Lowest == -float80::Max && float80::Max > 0.0f80, "float80 finite range constants");
+    Assert(float80::Max * (1.0f80 + float80::Epsilon) == float80::Infinity && float80::Max / 2.0f80 * 2.0f80 ==
+           float80::Max, "float80 maximum is the last finite value");
+    Assert(float80::MinPositive / 2.0f80 > 0.0f80 && float80::MinPositive * float80::Epsilon / 2.0f80 == 0.0f80,
+           "float80 minimum positive is the smallest normal, with subnormals below it");
+    Assert(float80::Epsilon * 9223372036854775808.0f80 == 1.0f80 && 1.0f80 + float80::Epsilon > 1.0f80,
+           "float80 epsilon is 2^-63");
+    Assert(float80::MinPositive == float128::MinPositive as float80, "float80 shares float128's exponent range");
+    Assert(float80::Infinity > float80::Max && float80::NaN != float80::NaN, "float80 infinity and NaN");
+
+    Assert(float128::Bits == 128 && float128::Bytes == 16, "float128 width constants");
+    Assert(float128::Lowest == -float128::Max && float128::Max > float80::Max as float128,
+           "float128 finite range constants");
+    Assert(float128::Max * (1.0f128 + float128::Epsilon) == float128::Infinity && float128::Max / 2.0f128 * 2.0f128 ==
+           float128::Max, "float128 maximum is the last finite value");
+    Assert(float128::MinPositive / 2.0f128 > 0.0f128 &&
+           float128::MinPositive * float128::Epsilon / 2.0f128 == 0.0f128, "float128 minimum positive");
+    Assert(float128::Epsilon * 5192296858534827628530496329220096.0f128 == 1.0f128, "float128 epsilon is 2^-112");
+    Assert(float128::Infinity > float128::Max && float128::NaN != float128::NaN, "float128 infinity and NaN");
+
+    Assert(float256::Bits == 256 && float256::Bytes == 32, "float256 width constants");
+    Assert(float256::Lowest == -float256::Max && float256::Max > float128::Max as float256,
+           "float256 finite range constants");
+    Assert(float256::Max * (1.0f256 + float256::Epsilon) == float256::Infinity && float256::Max / 2.0f256 * 2.0f256 ==
+           float256::Max, "float256 maximum is the last finite value");
+    Assert(float256::MinPositive / 2.0f256 > 0.0f256 &&
+           float256::MinPositive * float256::Epsilon / 2.0f256 == 0.0f256, "float256 minimum positive");
+    Assert(float256::MinPositive < float128::MinPositive as float256, "below float128's");
+    Assert(float256::Epsilon * 110427941548649020598956093796432407239217743554726184882600387580788736.0f256 ==
+           1.0f256, "float256 epsilon is 2^-236");
+    Assert(float256::Infinity > float256::Max && float256::NaN != float256::NaN, "float256 infinity and NaN");
+
+    Assert(float512::Bits == 512 && float512::Bytes == 64, "float512 width constants");
+    Assert(float512::Lowest == -float512::Max && float512::Max > float256::Max as float512,
+           "float512 finite range constants");
+    Assert(float512::Max * (1.0f512 + float512::Epsilon) == float512::Infinity && float512::Max / 2.0f512 * 2.0f512 ==
+           float512::Max, "float512 maximum is the last finite value");
+    Assert(float512::MinPositive / 2.0f512 > 0.0f512 &&
+           float512::MinPositive * float512::Epsilon / 2.0f512 == 0.0f512, "float512 minimum positive");
+    Assert(float512::MinPositive < float256::MinPositive as float512, "below float256's");
+    Assert(float512::Epsilon *
+               799167628880894011233688890827050574271641124522232614619944181664095165137859998750798362384253944616915694367080095461234681773897801038410285056.0f512 ==
+               1.0f512, "float512 epsilon is 2^-488");
+    Assert(float512::Infinity > float512::Max && float512::NaN != float512::NaN, "float512 infinity and NaN");
 
     return 0;
 }

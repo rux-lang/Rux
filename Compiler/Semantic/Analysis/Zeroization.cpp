@@ -38,14 +38,14 @@ void AnalysisContext::ValidateZeroizeIntrinsic(const FuncDecl &declaration) {
     }
 
     const TypeRef memory = ResolveType(*declaration.params[0].type);
-    const auto *pointer = dynamic_cast<const PointerTypeExpr *>(declaration.params[0].type.get());
-    if (!pointer || !pointer->pointeeMut || memory.kind != TypeRef::Kind::Pointer || memory.inner.empty() ||
-        memory.inner.front().kind != TypeRef::Kind::UInt8) {
+    const auto *pointer = AstCast<const PointerTypeExpr>(declaration.params[0].type.get());
+    if (!pointer || !pointer->pointeeMut || memory->kind != TypeRef::Kind::Pointer || memory->inner.empty() ||
+        memory->inner.front()->kind != TypeRef::Kind::UInt8) {
         reject(std::format("parameter '{}' has type '{}'", declaration.params[0].name, memory.ToString()));
         return;
     }
     const TypeRef length = ResolveType(*declaration.params[1].type);
-    if (length.kind != TypeRef::Kind::UInt64) {
+    if (length->kind != TypeRef::Kind::UInt64) {
         reject(std::format("parameter '{}' has type '{}'", declaration.params[1].name, length.ToString()));
         return;
     }

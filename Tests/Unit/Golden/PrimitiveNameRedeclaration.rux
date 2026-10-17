@@ -1,0 +1,7 @@
+// A built-in type name is reserved in every scope a package declares items in.
+type bool = int32;
+struct int8 {}
+module Inner {
+    struct byte {}
+}
+func float() {}

@@ -1,0 +1,76 @@
+// Adler-32, the checksum the zlib format ends with.
+// Two running sums modulo 65521, the largest prime below 2^16: one of the bytes and one of those sums. It is weaker
+// than a CRC on short messages, and kept for the formats that require it rather than recommended for new ones.
+
+import Hash::Hasher;
+
+// The modulus, and how many bytes can be summed before the second sum could overflow 32 bits and must be reduced.
+const AdlerModulus: uint32 = 65521;
+const AdlerBatch: uint = 5552;
+
+/// The Adler-32 of a message, computed a batch of bytes at a time.
+/// `Copy`, holding only the two sums, so passing one by value takes a snapshot of the checksum so far.
+/// @see https://rux-lang.dev/docs/api/hash/adler32
+pub struct Adler32 {
+    low: uint32;
+    high: uint32;
+}
+
+extend Adler32 {
+    /// Constructs a checksum with nothing written into it yet.
+    /// @returns a hasher with nothing written to it yet
+    /// @see https://rux-lang.dev/docs/api/hash/adler32#new
+    pub func Adler32() -> Adler32 {
+        return Adler32 { low: 1, high: 0 };
+    }
+
+    /// Puts the checksum back to where `Adler32()` leaves one. Everything written so far is forgotten.
+    /// @see https://rux-lang.dev/docs/api/hash/adler32#reset
+    pub func Reset(self: &var Adler32) {
+        self.low = 1;
+        self.high = 0;
+    }
+
+    /// The checksum of everything written so far: the second sum in the high half and the first in the low half.
+    /// Writing more continues from here rather than starting over.
+    /// @returns the checksum
+    /// @see https://rux-lang.dev/docs/api/hash/adler32#value
+    pub func Value(self: &Adler32) -> uint32 {
+        return (self.high << 16) | self.low;
+    }
+}
+
+extend Adler32 : Hasher {
+    /// Adds `length` bytes at `bytes` to the checksum. A zero length changes nothing and is the one case in which
+    /// `bytes` may be null. Splitting a message across several writes gives the same answer as one write.
+    /// Runs in time proportional to `length` and allocates nothing.
+    /// @param bytes the bytes to absorb
+    /// @param length how many bytes; zero absorbs nothing
+    /// @see https://rux-lang.dev/docs/api/hash/adler32#write
+    pub func Write(self: &var Adler32, bytes: *byte, length: uint) {
+        var low = self.low;
+        var high = self.high;
+        var index: uint = 0;
+        while index < length {
+            var batch = length - index;
+            if batch > AdlerBatch { batch = AdlerBatch; }
+            let end = index + batch;
+            while index < end {
+                low = low + (*(bytes + index) as uint32);
+                high = high + low;
+                index++;
+            }
+            low = low % AdlerModulus;
+            high = high % AdlerModulus;
+        }
+        self.low = low;
+        self.high = high;
+    }
+
+    /// The checksum of everything written so far, widened to 64 bits; the upper half is always zero.
+    /// @returns the checksum
+    /// @see https://rux-lang.dev/docs/api/hash/adler32#finish
+    pub func Finish(self: &var Adler32) -> uint64 {
+        return self.Value() as uint64;
+    }
+}

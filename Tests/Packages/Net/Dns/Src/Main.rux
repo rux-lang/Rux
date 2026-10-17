@@ -1,0 +1,113 @@
+// A name server on the loopback interface, run on a thread, answers the resolver: `example.test` has one IPv4 and one
+// IPv6 address, and `missing.test` does not exist. A server that never answers makes a lookup time out.
+
+import Allocator::SystemAllocator;
+import Core::{ Assert, Panic };
+import Io::IoErrorKind;
+import Net::{ IpAddress, Ipv4Address, Resolver, SocketAddress, UdpSocket };
+import Thread::Spawn;
+import Time::Duration;
+
+func Loopback(port: uint16) -> SocketAddress {
+    return SocketAddress::New(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
+}
+
+// Whether the question name starting at byte 12 of `query` is `name`, written as DNS writes it.
+func Asks(query: uint8[..], name: uint8[..]) -> bool {
+    var index: uint = 0;
+    while index < name.length {
+        if 12u + index >= query.length || query[12u + index] != name[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Answers three queries: the IPv4 and IPv6 addresses of `example.test`, and the IPv4 addresses of `missing.test`,
+// whose answer that the name does not exist ends its lookup.
+func Serve(server: UdpSocket) -> bool {
+    let example: uint8[14] = [7, 101, 120, 97, 109, 112, 108, 101, 4, 116, 101, 115, 116, 0];
+    var answered: uint = 0;
+    while answered < 3u {
+        var query: char8[512] = [c8'\0'; 512];
+        let datagram = server.ReceiveFrom(query[..]) catch { else => return false };
+        let bytes = ((@query[0]) as *uint8)[..datagram.length];
+        // The question ends four bytes after its name's terminating zero.
+        var end: uint = 12;
+        while end < bytes.length && bytes[end] != 0u8 { end = end + 1 + bytes[end] as uint; }
+        end = end + 5;
+        if end > bytes.length { return false; }
+        let kind = bytes[end - 3] as uint16;
+        var reply: uint8[512] = [0u8; 512];
+        var index: uint = 0;
+        while index < end {
+            reply[index] = bytes[index];
+            index = index + 1;
+        }
+        // A response, recursion available; `missing.test` does not exist.
+        reply[2] = 0x81;
+        reply[3] = Asks(bytes, example[..]) ? 0x80u8 : 0x83u8;
+        reply[6] = 0;
+        reply[7] = Asks(bytes, example[..]) ? 1u8 : 0u8;
+        var at = end;
+        if Asks(bytes, example[..]) {
+            let record: uint8[10] = [0xC0, 12, 0, kind as uint8, 0, 1, 0, 0, 0, 60];
+            for byte in record {
+                reply[at] = byte;
+                at = at + 1;
+            }
+            if kind == 1u16 {
+                let data: uint8[6] = [0, 4, 10, 1, 2, 3];
+                for byte in data {
+                    reply[at] = byte;
+                    at = at + 1;
+                }
+            }
+            else {
+                reply[at] = 0;
+                reply[at + 1] = 16;
+                at = at + 2;
+                let data: uint8[16] = [0x20, 0x01, 0x0D, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5];
+                for byte in data {
+                    reply[at] = byte;
+                    at = at + 1;
+                }
+            }
+        }
+        server.SendTo(((@reply[0]) as *char8)[..at], datagram.source) catch { else => return false };
+        answered = answered + 1;
+    }
+    return true;
+}
+
+func Main() -> int {
+    let allocator = SystemAllocator();
+    let server = UdpSocket::Bind(Loopback(0)) catch { else => Panic("the name server binds") };
+    let address = server.LocalAddress() catch { else => Panic("it has an address") };
+    var serving = Spawn(Serve, <-server) catch { else => Panic("the name server starts") };
+
+    let servers: SocketAddress[1] = [address];
+    var resolver = Resolver::WithServers(allocator, servers[..]);
+    resolver.SetTimeout(Duration::FromSeconds(5));
+    let found = resolver.Lookup(allocator, "example.test", 8080) catch { else => Panic("the name resolves") };
+    let addresses = found.AsSlice();
+    Assert(addresses.length == 2u, "one IPv4 and one IPv6 address");
+    Assert(addresses[0].Equals(SocketAddress::Parse("10.1.2.3:8080") ?? Loopback(0)), "IPv4 first");
+    Assert(addresses[1].Equals(SocketAddress::Parse("[2001:db8::5]:8080") ?? Loopback(0)), "then IPv6");
+    match resolver.Lookup(allocator, "missing.test", 80) {
+        .Success(_) => Panic("the name does not exist"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a name that does not exist is not found")
+    }
+    Assert(serving.Join(), "the name server answered every query");
+
+    // A server that never answers: the lookup gives up after its one attempt.
+    let silent = UdpSocket::Bind(Loopback(0)) catch { else => Panic("the silent server binds") };
+    let quiet: SocketAddress[1] = [silent.LocalAddress() catch { else => Panic("it has an address") }];
+    var patient = Resolver::WithServers(allocator, quiet[..]);
+    patient.SetTimeout(Duration::FromMilliseconds(100));
+    patient.SetAttempts(1);
+    match patient.Lookup(allocator, "example.test", 80) {
+        .Success(_) => Panic("nobody answered"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::TimedOut, "a server that never answers times out")
+    }
+    return 0;
+}

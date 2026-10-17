@@ -1,0 +1,69 @@
+import Allocator::SystemAllocator;
+import Collections::SmallVector;
+import Core::Assert;
+
+// Elements stay inline until 64 bytes are used, then move to the heap with their order; elements that own something
+// are moved, popped and destroyed exactly once; and an element too large for the inline room goes straight to the
+// heap.
+
+var Destroyed: int32 = 0;
+
+struct Tracked {
+    value: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        Destroyed = Destroyed + 1;
+    }
+}
+
+struct Large {
+    words: uint64[9];
+}
+
+func Main() -> int {
+    var small = SmallVector<int32>(SystemAllocator());
+    Assert(small.InlineCapacity() == 16u && small.IsInline() && small.IsEmpty(), "sixteen int32 fit inline");
+    var index: int32 = 0;
+    while index < 16 {
+        small.Push(index) catch { else => return 1 };
+        index = index + 1;
+    }
+    Assert(small.IsInline() && small.Length() == 16u, "still inline when full");
+    small.Push(16) catch { else => return 2 };
+    Assert(!small.IsInline() && small.Length() == 17u && small.Capacity() >= 17u, "moves to the heap past it");
+    var ordered = true;
+    var at: uint = 0;
+    for value in small.AsSlice() {
+        if value != at as int32 { ordered = false; }
+        at = at + 1;
+    }
+    Assert(ordered && (small.Get(16) ?? -1) == 16 && small.Get(17) == none, "the order survives the move");
+    small.AsMutableSlice()[0] = 100;
+    var last: int32 = 0;
+    Assert(small.TryPop(@last) && last == 16 && (small.Get(0) ?? -1) == 100, "writes and pops");
+    small.Truncate(3);
+    Assert(small.Length() == 3u, "truncates");
+
+    var tracked = SmallVector<Tracked>(SystemAllocator());
+    var count: int32 = 0;
+    while count < 20 {
+        tracked.Push(Tracked { value: count }) catch { else => return 3 };
+        count = count + 1;
+    }
+    Assert(Destroyed == 0, "moving to the heap destroys nothing");
+    var popped = Tracked { value: -1 };
+    Assert(tracked.TryPop(@popped) && popped.value == 19, "a move-only element pops");
+    Assert(Destroyed == 0, "popping moves the element out without destroying anything");
+    tracked.Clear();
+    Assert(Destroyed == 19, "clearing destroys each remaining element once");
+
+    var large = SmallVector<Large>(SystemAllocator());
+    Assert(large.InlineCapacity() == 0u, "a 72-byte element has no inline room");
+    large.Push(Large { words: [7u64; 9] }) catch { else => return 4 };
+    Assert(!large.IsInline() && (large.Get(0) ?? Large { words: [0u64; 9] }).words[8] == 7u64, "it goes to the heap");
+    return 0;
+}

@@ -14,7 +14,7 @@ Passing vectors is what the code does when nothing is adversarial. None of the i
 
 ## What to look at first
 
-1. **`Equal`, and whether the compiler preserves it.** It is written to take the same time whichever bytes differ, because the ordinary comparison leaks where the first difference is, and that is enough to forge a tag one byte at a time. Whether the *emitted code* still has that property, at each optimization level and on both back ends, is not something the source can promise on its own.
+1. **`Equal`, and whether the compiler preserves it.** It is written to take the same time whichever bytes differ, because the ordinary comparison leaks where the first difference is, and that is enough to forge a tag one byte at a time. Whether the _emitted code_ still has that property, at each optimization level and on both back ends, is not something the source can promise on its own.
 
 2. **`Wipe`, and whether its barrier survives optimization.** Rux has no `volatile`; zeroization relies on an opaque `asm func` barrier to stop the store being removed as dead. Confirm this on every target rather than on one.
 

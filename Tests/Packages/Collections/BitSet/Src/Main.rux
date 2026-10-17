@@ -1,0 +1,47 @@
+import Allocator::SystemAllocator;
+import Collections::BitSet;
+import Core::Assert;
+
+// Bits set across word boundaries read back, counting and walking find exactly them, the set operations work word by
+// word across sets of different lengths, and shrinking forgets bits for good.
+
+func Main() -> int {
+    var bits = BitSet(SystemAllocator());
+    Assert(bits.Length() == 0u && bits.IsEmpty() && !bits.Get(5), "an empty set");
+    bits.Set(3) catch { else => return 1 };
+    bits.Set(64) catch { else => return 2 };
+    bits.Set(130) catch { else => return 3 };
+    Assert(bits.Length() == 131u && bits.Get(3) && bits.Get(64) && bits.Get(130) && !bits.Get(63), "set bits");
+    Assert(bits.Count() == 3u && !bits.IsEmpty() && !bits.Get(1000), "counting, and bits past the end are unset");
+    Assert((bits.NextSet(0) ?? 0u) == 3u && (bits.NextSet(4) ?? 0u) == 64u && (bits.NextSet(65) ?? 0u) == 130u &&
+           bits.NextSet(131) == none, "walking set bits in order");
+    bits.Reset(64);
+    bits.Toggle(3) catch { else => return 4 };
+    bits.Toggle(5) catch { else => return 5 };
+    Assert(!bits.Get(64) && !bits.Get(3) && bits.Get(5) && bits.Count() == 2u, "reset and toggle");
+
+    var other = BitSet(SystemAllocator());
+    other.Set(5) catch { else => return 6 };
+    other.Set(200) catch { else => return 7 };
+    var joined = BitSet(SystemAllocator());
+    joined.UnionWith(bits) catch { else => return 8 };
+    joined.UnionWith(other) catch { else => return 9 };
+    Assert(joined.Count() == 3u && joined.Get(200) && joined.Length() == 201u, "union grows to span both");
+    var both = BitSet(SystemAllocator());
+    both.UnionWith(joined) catch { else => return 10 };
+    both.IntersectWith(other);
+    Assert(both.Count() == 2u && both.Get(5) && both.Get(200), "intersection");
+    both.DifferenceWith(bits);
+    Assert(both.Count() == 1u && both.Get(200) && both.Equals(other) == false, "difference");
+    var copy = BitSet(SystemAllocator());
+    copy.Set(200) catch { else => return 11 };
+    Assert(both.Equals(copy), "equality ignores length");
+
+    joined.Resize(10) catch { else => return 12 };
+    Assert(joined.Count() == 1u && joined.Get(5), "shrinking drops the bits past the length");
+    joined.Resize(300) catch { else => return 13 };
+    Assert(!joined.Get(130) && !joined.Get(200) && joined.Count() == 1u, "and they stay gone after growing");
+    joined.Clear();
+    Assert(joined.IsEmpty() && joined.Length() == 300u, "clearing keeps the length");
+    return 0;
+}

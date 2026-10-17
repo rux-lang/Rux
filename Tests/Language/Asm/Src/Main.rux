@@ -1,10 +1,13 @@
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 // The same five functions on both architectures, so that `Main` below is one
 // program rather than two. On x86-64 they carry an explicit Win64 convention,
 // which exercises the calling-convention override; AArch64 has one convention
 // and nothing to override, so its bodies take their arguments where AAPCS64
 // leaves them, in x0 and x1, and return in x0.
+// A module variable an asm body reads and writes in place, reached by its address like any other symbol.
+var Counter: int64 = 42;
+
 when #target.arch {
     .X86_64 => {
         #Abi(.Win64)
@@ -62,6 +65,19 @@ when #target.arch {
             add rax, rcx
             ret
         }
+
+        // A module variable is reached relative to the instruction after the access.
+        #Abi(.Win64)
+        asm func ReadCounter() -> int64 {
+            mov rax, qword [rip + Counter]
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func WriteCounter(value: int64) {
+            mov qword [rip + Counter], rcx
+            ret
+        }
     },
     .AArch64 => {
         asm func Add(a: int64, b: int64) -> int64 {
@@ -114,6 +130,19 @@ when #target.arch {
             add x0, x0, x1
             ret
         }
+
+        // A module variable is reached through the page `adrp` finds and the offset within it the access adds.
+        asm func ReadCounter() -> int64 {
+            adrp x0, Counter
+            ldr x0, [x0, Counter]
+            ret
+        }
+
+        asm func WriteCounter(value: int64) {
+            adrp x1, Counter
+            str x0, [x1, Counter]
+            ret
+        }
     },
     else => #Error("Unsupported architecture for the inline-assembly test")
 }
@@ -151,6 +180,13 @@ func Main() -> int {
     }
     if (PlatformAbiCheck() != 0) {
         return 11;
+    }
+    if (ReadCounter() != 42) {
+        return 12;
+    }
+    WriteCounter(7);
+    if (Counter != 7 || ReadCounter() != 7) {
+        return 13;
     }
     return 0;
 }

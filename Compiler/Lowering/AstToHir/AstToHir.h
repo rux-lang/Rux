@@ -2,8 +2,11 @@
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
+#include "Parallel/WorkerPool.h"
 #include "Semantic/Model/SemanticModel.h"
 
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Rux {
@@ -26,8 +29,21 @@ public:
     /// than user-facing ones.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const noexcept;
 
+    /// Threads modules may be lowered on; null lowers them on the calling thread. The package never depends on it.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        pool = inputPool;
+    }
+
+    /// Lower only the declarations of these modules and the signatures of their non-generic functions, whose compiled
+    /// code the build reuses; analysis checked no body of theirs but the generic ones.
+    void SetDeclarationOnlyModules(std::unordered_set<const Module *> inputModules) {
+        declarationOnlyModules = std::move(inputModules);
+    }
+
 private:
     const SemanticModel &semanticModel;
     std::vector<Diagnostic> diagnostics;
+    Parallel::WorkerPool *pool = nullptr;
+    std::unordered_set<const Module *> declarationOnlyModules;
 };
 } // namespace Rux

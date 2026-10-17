@@ -5,11 +5,13 @@
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/FramePlan.h"
 #include "CodeGen/AArch64/FunctionEmitter.h"
+#include "CodeGen/AArch64/MachineInstructions.h"
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/AArch64/Registers.h"
 #include "CodeGen/BackendDiagnostics.h"
 #include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
+#include "CodeGen/GlobalData.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/RcuModuleBuilder.h"
@@ -134,13 +136,11 @@ inline constexpr std::uint32_t kNoSymbol = ~0U;
 
 class AArch64ModuleEmitter final : private AArch64FunctionEmitterHooks, private AArch64CallAndTerminatorHooks {
 public:
-    explicit AArch64ModuleEmitter(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
-                                  const std::vector<std::string> &inputPackageInterfaceNames,
+    explicit AArch64ModuleEmitter(const LirModule &module, const PackageLayouts &packageLayouts,
                                   std::string inputPackageName, const Target::OS inputTargetOs,
                                   const BuildInfo &inputBuildInfo, std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
-        , structDecls(inputStructDecls)
-        , packageInterfaceNames(inputPackageInterfaceNames)
+        , structDecls(packageLayouts.structDecls)
         , pkgName(std::move(inputPackageName))
         , targetOs(inputTargetOs)
         , buildInfo(inputBuildInfo)
@@ -151,7 +151,9 @@ public:
                          .buildTimestamp = RcuBuildTimestamp(buildInfo),
                          .ruxVersion = RcuCompilerVersion(buildInfo)})
         , enc(moduleBuilder.SectionData(RcuModuleSection::Text))
-        , callPlanner(layouts, interfaceNames, inputStructDecls, inputTargetOs) {
+        , layouts(packageLayouts.layouts)
+        , interfaceNames(packageLayouts.interfaceNames)
+        , callPlanner(layouts, interfaceNames, structDecls, inputTargetOs) {
     }
 
     RcuFile Generate();
@@ -159,7 +161,6 @@ public:
 private:
     const LirModule &mod;
     const std::vector<LirStructDecl> &structDecls;
-    const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
     Target::OS targetOs;
     const BuildInfo &buildInfo;
@@ -174,6 +175,8 @@ private:
     std::unordered_map<std::string, std::uint32_t> externSyms;
     std::unordered_map<std::string, std::uint32_t> funcSyms;
     std::unordered_map<std::string, std::uint32_t> dataSyms;
+    /// The extern variables the module reaches, whose addresses come from import slots.
+    std::unordered_set<std::string> importedData;
 
     // The counter names interned constants apart; the names are local to the
     // object and mean nothing outside it.
@@ -210,8 +213,8 @@ private:
     }
 
     // Struct field layouts and the interfaces whose values are fat pointers
-    LayoutMap layouts;
-    std::unordered_set<std::string> interfaceNames;
+    const LayoutMap &layouts;
+    const std::unordered_set<std::string> &interfaceNames;
 
     AArch64CallPlanner callPlanner;
 
@@ -273,6 +276,12 @@ private:
 
     // Symbols
 
+    // The library a source extern comes from. One without `#Link` on Windows comes from KERNEL32, and saying so here
+    // is what lets the linker tell it from a call that nothing defines and nothing declares.
+    [[nodiscard]] std::string ExternLibrary(const LirFunc &func) const {
+        return func.dll.empty() && targetOs == Target::OS::Windows ? std::string("KERNEL32.DLL") : func.dll;
+    }
+
     std::uint32_t GetOrAddExtern(const std::string &name, const std::uint8_t kind, const std::string &dll = {}) {
         if (const auto it = externSyms.find(name); it != externSyms.end()) {
             return it->second;
@@ -327,6 +336,15 @@ private:
         AddTextReloc(sectionOffset, symbol, RcuRelType::AArch64Call26);
     }
 
+    void AddTypedTextRelocation(const std::uint32_t sectionOffset, const std::uint32_t symbol,
+                                const std::uint16_t type) override {
+        AddTextReloc(sectionOffset, symbol, type);
+    }
+
+    [[nodiscard]] Target::OS TargetOs() const override {
+        return targetOs;
+    }
+
     [[nodiscard]] std::uint32_t ResolveCallSymbol(const std::string &name) override {
         if (const auto it = funcSyms.find(name); it != funcSyms.end()) {
             return it->second;
@@ -348,6 +366,29 @@ private:
         Must(enc.LoadAddress(rd, ref), "the address of a symbol");
         AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64AdrPrelPgHi21);
         AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64AddAbsLo12Nc);
+    }
+
+    [[nodiscard]] bool IsImportedData(const std::string &name) const override {
+        return importedData.contains(name);
+    }
+
+    void LoadImportedDataAddress(const A64Reg rd, const std::uint32_t symIdx) override {
+        A64SymbolRef ref{};
+        Must(enc.LoadFromSymbol(rd, ref), "the address of imported data");
+        AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64ImportSlotPage21);
+        AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64ImportSlotLo12Nc);
+    }
+
+    /// Whether a function reaches imported data, which only the established emitter loads through its slot.
+    [[nodiscard]] bool ReachesImportedData(const LirFunc &function) const {
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::GlobalAddr && importedData.contains(instruction.strArg)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     [[nodiscard]] std::uint32_t ResolveGlobalSymbol(const std::string &name) override {
@@ -743,6 +784,32 @@ private:
 
     void GenAssert(AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr);
 
+public:
+    /// Makes this module contribute to the program's stack traces.
+    void SetBacktrace(const BacktraceTables &tables) {
+        backtrace = tables;
+    }
+
+    /// Routes every function the machine selector supports through it (`MachineSelection.h`).
+    void SetMachineSelection(const bool enabled) noexcept {
+        machineSelection = enabled;
+    }
+
+private:
+    // One function this module emitted, for its stack-trace table.
+    struct FunctionRange {
+        std::uint32_t symbol = 0;
+        std::uint32_t size = 0;
+        std::string name;
+    };
+
+    BacktraceTables backtrace;
+    std::vector<FunctionRange> functionRanges;
+    void PredeclareFunctionTables();
+    void EmitFunctionTables();
+    void EmitBacktraceCall();
+    void EmitWriteStandardError(const LirInstr &instr);
+
     void GenInstr(AArch64FunctionEmitter &functionEmitter, AArch64CallEmitter &callEmitter,
                   AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr);
 
@@ -765,6 +832,12 @@ private:
     void GenAsmFunc(const LirFunc &func);
 
     void GenFunc(const LirFunc &func);
+
+    // Machine selection: a function the selector supports is selected, register-allocated and encoded there, and
+    // only its words and relocations come back here.
+    bool machineSelection = false;
+    [[nodiscard]] bool GenMachineFunc(const LirFunc &func);
+    [[nodiscard]] std::uint32_t ResolveMachineSymbol(const AArch64Machine::SymbolRef &symbol);
 
     // Module-level data
     //
@@ -790,20 +863,39 @@ private:
             AppendConstElement(element, c.elementType);
         }
 
-        dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                                            c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData,
-                                            arrayOff, static_cast<std::uint32_t>(RodataData().size()) - arrayOff);
+        dataSyms[c.name] = DefineDataSymbol(
+            c.name, c.type.ToString(), RcuSymKind::Const, RcuSymVis::ForDefinition(c.isPublic, c.isExported),
+            RcuModuleSection::RoData, arrayOff, static_cast<std::uint32_t>(RodataData().size()) - arrayOff);
     }
 
-    // A scalar constant is inlined at every use, so its symbol exists only for
-    // something to take the address of, and eight zeroed bytes in .data are
-    // what stands behind it.
-    void EmitScalarConst(const LirConstDecl &c) {
-        const auto offset = static_cast<std::uint32_t>(DataData().size());
-        DataData().insert(DataData().end(), 8, 0);
-        dataSyms[c.name] =
-            DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                             c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::Data, offset, 8);
+    // Any other constant is inlined at its uses, but its symbol is what `@C`,
+    // inline assembly, and another object or package reach it through, so it
+    // holds the value itself: the constant's bytes at its type's size and
+    // alignment, in read-only data.
+    void EmitConstValue(const LirConstDecl &c) {
+        const auto visibility = RcuSymVis::ForDefinition(c.isPublic, c.isExported);
+        if (!c.hasValueData) {
+            // A value with no layout here is never addressed through its
+            // symbol, which stays a zeroed placeholder.
+            const auto offset = static_cast<std::uint32_t>(DataData().size());
+            DataData().insert(DataData().end(), 8, 0);
+            dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const, visibility,
+                                                RcuModuleSection::Data, offset, 8);
+            return;
+        }
+        const std::vector<std::uint8_t> bytes = ConstantValueBytes(c, layouts, interfaceNames);
+        const std::uint32_t offset = AlignRodata(ConstantValueAlignment(c, layouts, interfaceNames));
+        (void)moduleBuilder.Append(RcuModuleSection::RoData, bytes);
+        dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const, visibility,
+                                            RcuModuleSection::RoData, offset, static_cast<std::uint32_t>(bytes.size()));
+    }
+
+    // A module variable is writable storage under its own name, starting as its initial value.
+    void EmitGlobal(const LirGlobal &global) {
+        const PlacedGlobal placed = PlaceGlobal(moduleBuilder, global, layouts, interfaceNames);
+        dataSyms[global.name] = DefineDataSymbol(global.name, global.type.ToString(), RcuSymKind::Data,
+                                                 RcuSymVis::ForDefinition(global.isPublic, global.isExported),
+                                                 placed.section, placed.offset, placed.size);
     }
 
     void GenModule();

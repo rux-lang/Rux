@@ -1,0 +1,75 @@
+// The command-line arguments the process was started with.
+// Each argument is native text: bytes on the Unix systems and UTF-16 code units on Windows, exactly as the system
+// handed them over. Nothing obliges an argument to be valid UTF-8 or valid UTF-16, so it is a view of native units
+// rather than `String`, and `ToText` is the fallible step to text. The first argument is the program as it was
+// invoked, which is a name or a path the caller chose rather than a reliable way to find the executable.
+// Every view borrows storage the process owns for its whole life, so arguments may be kept and passed anywhere without
+// copying.
+
+import Core::Iterator;
+import Path::OsStringView;
+
+/// How many arguments the process was started with, the program itself included.
+/// Usually at least one, since the program is passed as the first argument; a parent may pass none at all, and then
+/// this is zero. Cannot fail and allocates nothing.
+/// @returns the argument count
+/// @see https://rux-lang.dev/docs/api/process/arguments#argument-count
+pub func ArgumentCount() -> uint {
+    return NativeArgumentCount();
+}
+
+/// The argument at `index`, counting the program as argument zero, or none past the last one.
+/// The view borrows storage the process owns for its whole life. Cannot fail and allocates nothing.
+/// @param index the zero-based position of the argument
+/// @returns the argument's native units, or none when `index` is not below `ArgumentCount`
+/// @see https://rux-lang.dev/docs/api/process/arguments#argument
+pub func Argument(index: uint) -> OsStringView? {
+    if index >= NativeArgumentCount() { return none; }
+    return NativeArgument(index);
+}
+
+/// A walk over the process's arguments in order, the program first.
+/// `Copy`; each copy walks on its own from where it was copied. Holds only a position, so it allocates nothing.
+/// @see https://rux-lang.dev/docs/api/process/arguments#argument-iterator
+pub struct ArgumentIterator {
+    next: uint;
+}
+
+/// Every argument the process was started with, the program first.
+/// Cannot fail and allocates nothing. Use `Skip(1)` on the result, or start a loop at index one, to leave out the
+/// program's own name.
+/// @returns a walk over the arguments
+/// @see https://rux-lang.dev/docs/api/process/arguments#arguments
+pub func Arguments() -> ArgumentIterator {
+    return ArgumentIterator { next: 0 };
+}
+
+extend ArgumentIterator {
+    /// The walk itself, so that `for argument in Arguments()` reads every argument.
+    /// @returns a copy of this walk from its current position
+    /// @see https://rux-lang.dev/docs/api/process/arguments#argument-iterator-iterate
+    pub func Iterate(self: &ArgumentIterator) -> ArgumentIterator {
+        return ArgumentIterator { next: self.next };
+    }
+
+    /// Leaves out the next `count` arguments, as `Skip(1)` leaves out the program.
+    /// Advances the walk and returns it, so the call can be chained in a `for` header. Cannot fail.
+    /// @param count how many arguments to pass over
+    /// @returns this walk, advanced
+    /// @see https://rux-lang.dev/docs/api/process/arguments#argument-iterator-skip
+    pub func Skip(self: &var ArgumentIterator, count: uint) -> ArgumentIterator {
+        self.next = self.next + count;
+        return ArgumentIterator { next: self.next };
+    }
+}
+
+extend ArgumentIterator : Iterator {
+    /// The next argument, or none after the last.
+    /// @returns the argument's native units, borrowing storage the process owns for its whole life
+    /// @see https://rux-lang.dev/docs/api/process/arguments#argument-iterator-next
+    pub func Next(self: &var ArgumentIterator) -> OsStringView? {
+        let argument = Argument(self.next)?;
+        self.next = self.next + 1;
+        return argument;
+    }
+}

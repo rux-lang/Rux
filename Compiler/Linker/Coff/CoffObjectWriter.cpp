@@ -8,6 +8,7 @@
 #include "Linker/NativeObjectWriter.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -28,6 +29,17 @@ std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view
     table.insert(table.end(), value.begin(), value.end());
     table.push_back(0);
     return offset;
+}
+
+/// The IMAGE_SCN_ALIGN_* field for a section alignment: log2 of the byte count plus one, in bits 20-23, from 1 byte
+/// (0x0010'0000) to the 8 KB maximum (0x00E0'0000). Without it the Microsoft linker assumes sixteen bytes, which is too
+/// little for a section whose values ask for more.
+[[nodiscard]] std::optional<std::uint32_t> CoffAlignmentCharacteristic(const std::uint16_t alignment) noexcept {
+    const std::uint16_t bytes = std::max<std::uint16_t>(alignment, 1);
+    if (!std::has_single_bit(bytes) || bytes > 8192) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint32_t>(std::countr_zero(bytes) + 1) << 20U;
 }
 
 /// Whether the relocation patches an immediate inside an instruction rather than a whole word of data, which decides if
@@ -183,6 +195,16 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
             }
         }
     }
+    for (const auto &section : file.sections) {
+        if (!CoffAlignmentCharacteristic(section.alignment)) {
+            error = std::format("section {} alignment of {} bytes cannot be stated in a COFF object", section.name,
+                                section.alignment);
+            return false;
+        }
+    }
+    if (!ValidateSymbolSections(file, "COFF object writer", error)) {
+        return false;
+    }
     output.name = std::filesystem::path(file.sourcePath).stem().string();
     if (output.name.empty()) {
         output.name = "out";
@@ -201,6 +223,9 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
     std::size_t cursor = headersSize;
     for (std::size_t i = 0; i < sectionCount; ++i) {
         sectionData.push_back(file.sections[i].data);
+        if (file.sections[i].type == RcuSecType::Bss && file.sections[i].relocs.empty()) {
+            sectionData.back().clear();
+        }
         for (const auto &relocation : file.sections[i].relocs) {
             if (!ApplyCoffInlineAddend(sectionData.back(), relocation, targetArch,
                                        file.symbols[relocation.symbolIndex].name, error)) {
@@ -232,17 +257,25 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
 
     for (std::size_t i = 0; i < sectionCount; ++i) {
         const auto &section = file.sections[i];
-        WriteName8(out, section.name.c_str());
+        const bool zeroFill = section.type == RcuSecType::Bss && section.relocs.empty();
+        // A zero-fill section that carries relocations is written out with its bytes, so it is initialized data and
+        // is named so: a `.bss` holding initialized data makes link.exe warn (LNK4078) that it merges two kinds.
+        WriteName8(out, section.type == RcuSecType::Bss && !zeroFill ? ".data" : section.name.c_str());
         WriteU32(out, 0);
         WriteU32(out, 0);
-        WriteU32(out, static_cast<std::uint32_t>(sectionData[i].size()));
+        // COFF objects encode the allocation size here even without file bytes.
+        // VirtualSize is reserved for executable images.
+        WriteU32(out, static_cast<std::uint32_t>(zeroFill ? section.data.size() : sectionData[i].size()));
         WriteU32(out, rawOffsets[i]);
         WriteU32(out, relocationOffsets[i]);
         WriteU32(out, 0);
         WriteU16(out, static_cast<std::uint16_t>(section.relocs.size()));
         WriteU16(out, 0);
         std::uint32_t characteristics = 0x40000000U;
-        if ((section.flags & RcuSecFlag::Exec) != 0) {
+        if (zeroFill) {
+            characteristics |= 0x80000000U | 0x00000080U;
+        }
+        else if ((section.flags & RcuSecFlag::Exec) != 0) {
             characteristics |= 0x20000000U | 0x00000020U;
         }
         else if ((section.flags & RcuSecFlag::Write) != 0) {
@@ -251,6 +284,7 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
         else {
             characteristics |= 0x00000040U;
         }
+        characteristics |= *CoffAlignmentCharacteristic(section.alignment);
         WriteU32(out, characteristics);
     }
     for (std::size_t i = 0; i < sectionCount; ++i) {
@@ -274,7 +308,7 @@ bool WriteCoffObject(const RcuFile &file, const Target::Arch targetArch, NativeO
         const std::int16_t section = symbol.sectionIdx == RCU_SEC_EXTERNAL ? 0
                                    : symbol.sectionIdx == RCU_SEC_ABSOLUTE
                                        ? -1
-                                       : static_cast<std::int16_t>(symbol.sectionIdx + 1);
+                                       : static_cast<std::int16_t>(*SymbolSectionIndex(file, symbol.sectionIdx) + 1);
         WriteU16(out, static_cast<std::uint16_t>(section));
         WriteU16(out, symbol.kind == RcuSymKind::Func ? 0x20 : 0);
         WriteU8(out, symbol.visibility == RcuSymVis::Local ? 3 : 2);

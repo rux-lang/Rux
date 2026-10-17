@@ -86,6 +86,9 @@ namespace Rux::System {
 /// hosts or on failure.
 [[nodiscard]] std::filesystem::path WindowsSystemDirectory();
 
+/// The absolute path of the running executable, or empty when the host cannot say.
+[[nodiscard]] std::filesystem::path CurrentExecutablePath();
+
 // ---- Files ----------------------------------------------------------------------
 
 /// Restrict `path` to its owner: mode 0600 on POSIX. No-op on Windows, where the per-user profile directories these

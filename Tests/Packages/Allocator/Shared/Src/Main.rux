@@ -1,0 +1,82 @@
+import Allocator::{ Arc, Rc, SystemAllocator };
+import Core::{ Assert, AtomicFetchAdd, AtomicLoad, MemoryOrder };
+import Thread::Spawn;
+
+// Copies of a handle share one value and count themselves; the value is destroyed exactly once, when the last copy
+// goes; it can be written only while one handle holds it; and an Arc's copies can be made and dropped on many threads
+// at once without losing count.
+
+var Destroyed: int64 = 0;
+
+pub struct Tracked {
+    value: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        AtomicFetchAdd<int64>(@Destroyed, 1, MemoryOrder::Relaxed);
+    }
+}
+
+func Destroys() -> int64 {
+    return AtomicLoad<int64>(@Destroyed, MemoryOrder::Acquire);
+}
+
+func Keep(handle: Rc<Tracked>) -> uint {
+    return handle.Count();
+}
+
+// Copies the handle many times over and drops every copy, on its own thread.
+func Churn(handle: Arc<Tracked>) -> int32 {
+    var round: int32 = 0;
+    var total: int32 = 0;
+    while round < 20000 {
+        let copy = handle;
+        total = total + copy.Get().value;
+        round = round + 1;
+    }
+    return total;
+}
+
+func Counted() -> int {
+    var first = Rc::Create<Tracked>(SystemAllocator(), Tracked { value: 7 }) catch { else => return 1 };
+    Assert(first.Count() == 1u && first.Get().value == 7, "one handle");
+    match first.GetMutable() {
+        .Some(value) => value.value = 8,
+        none => Assert(false, "a lone handle can write")
+    }
+    var second = first;
+    Assert(first.Count() == 2u && second.SameAs(first) && second.Get().value == 8, "a copy shares the value");
+    Assert(first.GetMutable() == none, "a shared value cannot be written");
+    Assert(Keep(second) == 3u && first.Count() == 2u, "a copy passed by value counts while it lives");
+    second = Rc::Create<Tracked>(SystemAllocator(), Tracked { value: 9 }) catch { else => return 2 };
+    Assert(first.Count() == 1u && !second.SameAs(first) && Destroys() == 0, "reassigning releases one count");
+    let moved <- first;
+    Assert(moved.Count() == 1u && Destroys() == 0, "moving a handle does not count");
+    return 0;
+}
+
+func Threaded() -> int {
+    var shared = Arc::Create<Tracked>(SystemAllocator(), Tracked { value: 1 }) catch { else => return 3 };
+    var one = Spawn(Churn, shared) catch { else => return 4 };
+    var two = Spawn(Churn, shared) catch { else => return 5 };
+    var three = Spawn(Churn, shared) catch { else => return 6 };
+    var four = Spawn(Churn, shared) catch { else => return 7 };
+    let sum = one.Join() + two.Join() + three.Join() + four.Join();
+    Assert(sum == 80000 && shared.Count() == 1u && Destroys() == 2, "every thread's copies were counted and dropped");
+    match shared.GetMutable() {
+        .Some(value) => value.value = 2,
+        none => Assert(false, "the last handle can write")
+    }
+    return 0;
+}
+
+func Main() -> int {
+    if Counted() != 0 { return 1; }
+    Assert(Destroys() == 2, "each value is destroyed once, when its last handle goes");
+    if Threaded() != 0 { return 2; }
+    Assert(Destroys() == 3, "the value shared across threads is destroyed once");
+    return 0;
+}

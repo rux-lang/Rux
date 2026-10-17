@@ -1,5 +1,4 @@
 // uint: the pointer-sized unsigned width, and the type a length is.
-//
 // Like `int`, its size is the target's answer rather than a fixed promise, so the assertions here are relationships
 // to `#target.pointerBits` and `sizeof` rather than comparisons against 64. What is different from `int` is that
 // this is the width the language uses for sizes: `sizeof` reports one, a slice's `.length` is one, and an index is

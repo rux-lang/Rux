@@ -1,0 +1,18 @@
+// Diagnostics spell what a function without a return type returns as `()`, and its type as source writes it,
+// `func()`, rather than with the internal placeholder `opaque`.
+
+func Nothing() {}
+
+func Takes(value: int32) -> int32 {
+    return value;
+}
+
+func Takes(value: bool) -> bool {
+    return value;
+}
+
+func Main() -> int {
+    Takes(Nothing());
+    Takes(Nothing);
+    return 0;
+}

@@ -1,4 +1,5 @@
-import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex, PopHeap, Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
+import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex, PopHeap,
+                     Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
 import Core::{ Assert, Ordering, Panic };
 
 // A heap is an arrangement rather than an order, so what is checked is the arrangement itself — every element at

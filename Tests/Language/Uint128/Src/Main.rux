@@ -1,5 +1,4 @@
 // uint128: the same lanes as int128, with the sign bit spent on magnitude instead.
-//
 // The two differ in exactly the places signedness reaches: there is no sign to extend when widening, `>>` brings in
 // zeros rather than copies of the top bit, wrapping happens at zero rather than at the middle of the range, and the
 // top bit is an ordinary value bit, so a number with it set is the largest rather than the smallest. Those are the

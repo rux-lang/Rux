@@ -244,6 +244,21 @@ TEST_CASE("Linux AArch64 system-call wrappers trap through x8 and return the ker
     CheckWrappers(linux, MovX8FromX0, Svc0, /*carryMeansError=*/false);
 }
 
+TEST_CASE("Linux Exit ends the whole process through exit_group on both architectures") {
+    // Linux's `exit` ends only the calling thread; once a second thread exists, a process that leaves through it
+    // keeps running. `exit_group` is the call that ends the process, and its number is the one each table assigns.
+    const std::map<std::string, std::string> expected = {{"linux-x86_64", "231"}, {"linux-aarch64", "94"}};
+    for (const auto &[triple, number] : expected) {
+        const AssembledSource linux = AssembleSourceFor(PackageSource("Linux", "Syscall.rux"), triple);
+        INFO("Linux target ", triple);
+        CHECK(linux.diagnostics.empty());
+        CHECK(linux.constants.find("SysExit") == linux.constants.end());
+        const auto found = linux.constants.find("SysExitGroup");
+        REQUIRE(found != linux.constants.end());
+        CHECK_EQ(found->second, number);
+    }
+}
+
 TEST_CASE("macOS writes no inline assembly at all, because Apple does not support the trap interface") {
     // This package used to issue `svc #0x80` with a Darwin trap number. Apple does not support that: the numbers are
     // private, they have changed between releases, and on Apple Silicon the interface is not reachable from ordinary

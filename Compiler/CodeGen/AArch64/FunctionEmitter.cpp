@@ -20,7 +20,6 @@ constexpr unsigned kSrcAddr = 11;
 constexpr unsigned kTemp2 = 12;
 constexpr unsigned kFpTemp = 16;
 constexpr unsigned kFpTemp2 = 17;
-constexpr unsigned kFpTemp3 = 18;
 constexpr std::int32_t kFrameRecordSize = 16;
 
 [[nodiscard]] unsigned AccessWidth(const int size) {
@@ -111,20 +110,11 @@ int AArch64FunctionEmitter::RuntimeSize(const TypeRef &type) const {
 }
 
 int AArch64FunctionEmitter::RuntimeAlign(const TypeRef &type) const {
-    if (!type.IsRange() && type.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(type.name);
-        if (interfaceNames.contains(base)) {
-            return 8;
-        }
-        if (const auto it = layouts.find(base); it != layouts.end()) {
-            return it->second.alignment;
-        }
-    }
-    return AlignOf(type);
+    return RuntimeAlignmentOf(type, layouts, interfaceNames);
 }
 
 bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
-    if (IsWideInteger(type) || (IsSoftwareFloat(type) && RuntimeSize(type) > 8)) {
+    if (IsWideValue(type)) {
         return true;
     }
     if (type.IsRange()) {
@@ -134,7 +124,7 @@ bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     if (type.IsSlice()) {
         return true;
     }
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -143,8 +133,8 @@ bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(type.name);
-        return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+        const std::string base = BaseTypeName(type->name);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!type->inner.empty() && SizeOf(type) > 8);
     }
     default:
         return false;
@@ -158,12 +148,12 @@ bool AArch64FunctionEmitter::IsRegisterValue(const TypeRef &type) const {
 bool AArch64FunctionEmitter::IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto it = registerTypes.find(reg);
-    return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
-           it->second.inner[0] == pointee;
+    return it != registerTypes.end() && it->second->kind == TypeRef::Kind::Pointer && !it->second->inner.empty() &&
+           it->second->inner[0] == pointee;
 }
 
 A64Reg AArch64FunctionEmitter::FpReg(const TypeRef &type, const unsigned index) {
-    return type.kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
+    return type->kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
 }
 
 std::uint64_t AArch64FunctionEmitter::ConstantBits(const LirInstr &instruction) {
@@ -325,20 +315,19 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     case LirOpcode::Mod: {
         const TypeRef &type = instruction.type;
         if (IsFloat(type)) {
+            if (instruction.op == LirOpcode::Mod) {
+                // AArch64 has no exact remainder instruction, so lowering turns a float `%` into a call to the
+                // synthesized remainder helper (`Target::HasNativeFloatRemainder`).
+                Report(std::format("AArch64 code generation reached a {} remainder in '{}'; it must be a helper call",
+                                   type.ToString(), functionName));
+                return true;
+            }
             const auto operands = LoadFloatOperands(instruction, type);
             if (!operands) {
                 return true;
             }
             const A64Reg out = hooks.FloatResultRegister(instruction.dst, FpReg(type, kFpTemp));
-            if (instruction.op == LirOpcode::Div) {
-                Must(encoder.Fdiv(out, operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
-                hooks.StoreFpToSlot(out, instruction.dst);
-                return true;
-            }
-            const A64Reg quotient = FpReg(type, kFpTemp3);
-            Must(encoder.Fdiv(quotient, operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
-            Must(encoder.Frintz(quotient, quotient), LirOpcodeName(instruction.op));
-            Must(encoder.Fmsub(out, quotient, operands->rhs, operands->lhs), LirOpcodeName(instruction.op));
+            Must(encoder.Fdiv(out, operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
             hooks.StoreFpToSlot(out, instruction.dst);
             return true;
         }
@@ -370,6 +359,20 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             return true;
         }
         const bool logical = instruction.op == LirOpcode::Lshr;
+        if (const auto immediate = framePlan.ImmediateValues().find(instruction.srcs[1]);
+            immediate != framePlan.ImmediateValues().end()) {
+            const auto value =
+                hooks.ReadOperand(instruction.srcs[0], logical ? UnsignedIntegerType(type) : type, A64::Xn(kTemp));
+            const auto out = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+            const auto amount = static_cast<unsigned>(immediate->second & 63U);
+            const auto status =
+                instruction.op == LirOpcode::Shl
+                    ? encoder.Lsl(out, value, amount)
+                    : (logical || !type.IsSigned() ? encoder.Lsr(out, value, amount) : encoder.Asr(out, value, amount));
+            Must(status, LirOpcodeName(instruction.op));
+            hooks.StoreToSlot(out, instruction.dst, type);
+            return true;
+        }
         const auto operands =
             LoadBinaryOperands(instruction, logical ? UnsignedIntegerType(type) : type, TypeOfReg(instruction.srcs[1]));
         if (!operands) {
@@ -388,6 +391,17 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         }
         Must(status, LirOpcodeName(instruction.op));
         hooks.StoreToSlot(out, instruction.dst, type);
+        return true;
+    }
+    case LirOpcode::RotateRight: {
+        const bool word64 = instruction.type->kind == TypeRef::Kind::UInt64;
+        const auto value = hooks.ReadOperand(instruction.srcs[0], instruction.type, A64::Xn(kTemp));
+        const auto out = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        Must(encoder.Ror(word64 ? A64::Xn(out.code) : A64::Wn(out.code),
+                         word64 ? A64::Xn(value.code) : A64::Wn(value.code),
+                         static_cast<unsigned>(ParseIntegerLiteralBits(instruction.strArg).value())),
+             "rotr");
+        hooks.StoreToSlot(out, instruction.dst, instruction.type);
         return true;
     }
     case LirOpcode::Neg: {
@@ -411,6 +425,18 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         const A64Reg out = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
         Must(encoder.Neg(out, *value), LirOpcodeName(instruction.op));
         hooks.StoreToSlot(out, instruction.dst, type);
+        return true;
+    }
+    case LirOpcode::Sqrt: {
+        const auto &type = instruction.type;
+        if (!IsFloat(type) || instruction.srcs.size() != 1 || instruction.dst == LirNoReg) {
+            Report("AArch64 square root requires one native floating operand");
+            return true;
+        }
+        const A64Reg value = hooks.ReadFloatOperand(instruction.srcs[0], FpReg(type, kFpTemp));
+        const A64Reg out = hooks.FloatResultRegister(instruction.dst, FpReg(type, kFpTemp));
+        Must(encoder.Fsqrt(out, value), "sqrt");
+        hooks.StoreFpToSlot(out, instruction.dst);
         return true;
     }
     case LirOpcode::Not: {
@@ -458,13 +484,13 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             Must(encoder.Fcmp(operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
             condition = FloatCondition(instruction.op);
         }
-        else if (operandType.kind == TypeRef::Kind::Named && !operandType.IsRange() && !IsRegisterValue(operandType) &&
+        else if (operandType->kind == TypeRef::Kind::Named && !operandType.IsRange() && !IsRegisterValue(operandType) &&
                  (instruction.op == LirOpcode::CmpEq || instruction.op == LirOpcode::CmpNe)) {
             // Equality on a named value too wide for one register — an enum whose payload does not pack beside its
             // tag is the shape the frontend emits — compares the leading doubleword of each operand's slot, which
             // is the discriminant word. This matches what the x86-64 backend generates for the same LIR; wide
-            // integers and software floats never reach here because EmitWideArithmetic already claimed them, and a
-            // tuple stays refused below rather than quietly comparing only its first element.
+            // integers, wide bools and software floats never reach here because EmitWideArithmetic already claimed
+            // them, and a tuple stays refused below rather than quietly comparing only its first element.
             const A64Reg lhs = hooks.ReadRawOperand(instruction.srcs[0], 8, A64::Xn(kTemp));
             const A64Reg rhs = hooks.ReadRawOperand(instruction.srcs[1], 8, A64::Xn(kTemp2));
             Must(encoder.Cmp(lhs, rhs), LirOpcodeName(instruction.op));
@@ -505,7 +531,7 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         }
         if (srcFloat && dstFloat) {
             const A64Reg value = hooks.ReadFloatOperand(instruction.srcs[0], FpReg(srcType, kFpTemp));
-            if (srcType.kind == dstType.kind) {
+            if (srcType->kind == dstType->kind) {
                 hooks.StoreFpToSlot(value, instruction.dst);
                 return true;
             }
@@ -615,12 +641,18 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     case LirOpcode::GlobalAddr: {
         const std::uint32_t symbol = hooks.ResolveGlobalSymbol(instruction.strArg);
         const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
-        hooks.LoadSymbolAddress(address, symbol);
+        // Imported data lives in another image: its address is read from the slot the loader fills.
+        if (hooks.IsImportedData(instruction.strArg)) {
+            hooks.LoadImportedDataAddress(address, symbol);
+        }
+        else {
+            hooks.LoadSymbolAddress(address, symbol);
+        }
         hooks.StoreToSlot(address, instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     }
     case LirOpcode::StringAddr: {
-        const TypeRef elementType = instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
+        const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
         const std::uint32_t symbol =
             hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, RuntimeSize(elementType)));
         const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
@@ -677,7 +709,11 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             return true;
         }
         const A64Reg address = hooks.ReadPointerOperand(instruction.srcs[1], A64::Xn(kAddr));
-        if (IsAggregate(type) && size > 8) {
+        // An aggregate the value register only points at is copied from there whatever its size: reading the
+        // register as the value would store the address. An odd width is chunked the same way, so nothing beyond the
+        // object is touched, as the x86-64 back end does.
+        if (IsAggregate(type) &&
+            (size > 8 || IsRegPointerTo(valueReg, type) || (size != 1 && size != 2 && size != 4 && size != 8))) {
             A64Reg source = A64::Xn(kSrcAddr);
             if (IsRegPointerTo(valueReg, type)) {
                 source = hooks.ReadPointerOperand(valueReg, source);
@@ -720,8 +756,8 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             Report(std::format("AArch64 code generation reached an index with no subscript in '{}'", functionName));
             return true;
         }
-        const bool known = instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty();
-        const int elementSize = std::max(known ? RuntimeSize(instruction.type.inner[0]) : 8, 1);
+        const bool known = instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty();
+        const int elementSize = std::max(known ? RuntimeSize(instruction.type->inner[0]) : 8, 1);
         const A64Reg source = hooks.ReadPointerOperand(instruction.srcs[0], A64::Xn(kTemp));
         const A64Reg index = hooks.ReadOperand(instruction.srcs[1], TypeOfReg(instruction.srcs[1]), A64::Xn(kAddr));
         const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));

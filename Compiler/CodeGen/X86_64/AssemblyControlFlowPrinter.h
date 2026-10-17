@@ -18,6 +18,12 @@ public:
 
     void EmitFunction(const LirFunc &function);
 
+    /// Whether the package has the stack-trace printer, which every panic and failed assertion then calls.
+    bool tracesPanics = false;
+
+    /// Print each function the machine selector supports as that path emits it.
+    bool machineSelection = false;
+
 private:
     AssemblyModulePrinter &modulePrinter;
     const Layout::LayoutMap &layouts;

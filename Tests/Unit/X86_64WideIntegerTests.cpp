@@ -3,6 +3,7 @@
 #include "Linker/Linker.h"
 #include "System/Process.h"
 #include "Target/Platform.h"
+#include "TemporaryDirectory.h"
 
 #include <atomic>
 #include <doctest.h>
@@ -270,7 +271,7 @@ TEST_CASE("x86-64 RCU executes wide integer arithmetic and comparisons") {
 #if RUX_OS_WINDOWS && RUX_ARCH_X86_64
     static std::atomic_uint64_t sequence = 0;
     const std::filesystem::path output =
-        std::filesystem::temp_directory_path() / ("rux-wide-x86-64-" + std::to_string(++sequence) + ".exe");
+        Rux::Testing::TestTemporaryDirectory() / ("rux-wide-x86-64-" + std::to_string(++sequence) + ".exe");
     std::error_code error;
     std::filesystem::remove(output, error);
     Linker linker(std::move(objects), "WideInteger", {}, ArtifactKind::Executable, Target::OS::Windows,

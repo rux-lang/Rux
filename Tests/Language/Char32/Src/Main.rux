@@ -44,11 +44,10 @@ func Main() -> int {
     Assert(c32'\u{1F600}' as uint32 == 128512u32, "char32 casts to uint32");
     Assert(0x1F600u32 as char32 as uint32 == 0x1F600u32, "uint32 casts to char32 and back");
 
-    // Narrowing, which keeps the low bits of the code point rather than
-    // re-encoding it: the emoji fits in neither of the smaller types.
+    // Extracting raw low bits requires an integer conversion and explicit masking.
     let face: char32 = c32'\u{1F600}';
-    Assert(face as char16 as uint32 == 0xF600u32, "char32 truncates to char16");
-    Assert(face as char8 as uint8 == 0x00, "char32 truncates to char8");
+    Assert(((face as uint32) & 0xFFFFu32) as char16 as uint32 == 0xF600u32, "masking extracts the low code unit");
+    Assert(((face as uint32) & 0xFFu32) as char8 as uint8 == 0x00, "masking extracts the low byte");
 
     // Widening, which loses nothing in either step.
     let narrow: char8 = c8'Z';
@@ -56,12 +55,10 @@ func Main() -> int {
     Assert(narrow as char32 as uint32 == 90u32, "char8 widens to char32");
     Assert(wide as char32 as uint32 == 0x20ACu32, "char16 widens to char32");
 
-    // The surrogate range is reserved by UTF-16 and is not a code point, but it
-    // is a value a char32 can be cast to at run time, which is what an encoder
-    // has to defend itself against.
+    // Raw storage may contain a surrogate even though a checked character cast refuses one.
     var reserved: uint32 = 0xD800;
-    let surrogate = reserved as char32;
-    Assert(surrogate as uint32 == 0xD800u32, "char32 holds a surrogate value from a cast");
+    let surrogate = *((@reserved) as *char32);
+    Assert(surrogate as uint32 == 0xD800u32, "raw character storage preserves every bit");
 
     // Assignment and mutation.
     var cursor: char32 = c32'a';

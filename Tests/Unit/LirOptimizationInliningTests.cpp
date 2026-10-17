@@ -1,0 +1,490 @@
+#include "Optimization/LirInliner.h"
+#include "Optimization/LirMemoryPromotion.h"
+#include "Optimization/LirSsaVerifier.h"
+#include "OptimizerTestSupport.h"
+
+#include <unordered_set>
+
+using namespace Rux;
+using namespace Rux::Testing::OptimizerTestSupport;
+
+namespace {
+std::size_t Calls(const LirPackage &package) {
+    std::size_t count = 0;
+    for (const auto &module : package.modules) {
+        for (const auto &function : module.funcs) {
+            for (const auto &block : function.blocks) {
+                count += std::ranges::count_if(block.instrs, [](const auto &instruction) {
+                    return instruction.op == LirOpcode::Call || instruction.op == LirOpcode::CallIndirect;
+                });
+            }
+        }
+    }
+    return count;
+}
+
+std::size_t Count(const LirPackage &package, const LirOpcode op) {
+    std::size_t count = 0;
+    for (const auto &module : package.modules)
+        for (const auto &function : module.funcs)
+            for (const auto &block : function.blocks)
+                count +=
+                    std::ranges::count_if(block.instrs, [op](const auto &instruction) { return instruction.op == op; });
+    return count;
+}
+} // namespace
+
+TEST_CASE("Inlining named data addresses stays within their defining module") {
+    for (const bool crossModule : {false, true}) {
+        auto package = CompileToLir(R"(
+            const Value: uint = 17u;
+            func Read() -> uint { return *@Value; }
+            func Use() -> uint { return Read(); }
+        )",
+                                    BuildProfile::Debug);
+        auto &module = package.modules[0];
+        REQUIRE_EQ(module.funcs.size(), 2);
+        if (crossModule) {
+            LirModule other;
+            other.funcs.push_back(std::move(module.funcs.back()));
+            module.funcs.pop_back();
+            package.modules.push_back(std::move(other));
+        }
+        Optimization::LirInliner inliner;
+        CHECK(inliner.Run(package, {}) ==
+              (crossModule ? Optimization::PassChange::None : Optimization::PassChange::Changed));
+        CHECK_EQ(Calls(package), crossModule ? 1 : 0);
+        std::vector<Diagnostic> diagnostics;
+        Optimization::PassContext context;
+        context.diagnostics = &diagnostics;
+        Optimization::LirSsaVerifier verifier;
+        static_cast<void>(verifier.Run(package, context));
+        CHECK(diagnostics.empty());
+    }
+}
+
+TEST_CASE("Constant slice lengths expose masked lookup helpers to bounded inlining") {
+    auto package = CompileToLir(R"(
+        const Alphabet: char8[..] = "ABCDEFGHIJKLMNOP";
+        func Symbol(index: uint32) -> uint8 { return Alphabet[(index & 15) as uint] as uint8; }
+        func Use(index: uint32) -> uint8 { return Symbol(index); }
+    )",
+                                BuildProfile::Debug);
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+    CHECK(report.reachedFixedPoint);
+    CHECK_EQ(Calls(package), 0);
+    for (const auto &module : package.modules)
+        for (const auto &function : module.funcs)
+            for (const auto &block : function.blocks)
+                for (const auto &instruction : block.instrs)
+                    CHECK(instruction.op != LirOpcode::Panic);
+}
+
+TEST_CASE("Reusing global addresses does not reuse loads across mutable writes") {
+    auto package = CompileToLir(R"(
+        var Value: uint = 17u;
+        func Read() -> uint { return Value; }
+        func Use(pointer: *var uint) -> uint {
+            let before = Read();
+            *pointer += 1u;
+            return before + Read();
+        }
+    )",
+                                BuildProfile::Debug);
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    CHECK(pipeline.RunLir(package).reachedFixedPoint);
+    const auto &function = package.modules[0].funcs.back();
+    std::size_t addresses = 0;
+    std::size_t loads = 0;
+    for (const auto &block : function.blocks)
+        for (const auto &instruction : block.instrs) {
+            addresses += instruction.op == LirOpcode::GlobalAddr;
+            loads += instruction.op == LirOpcode::Load;
+        }
+    CHECK_EQ(addresses, 1);
+    CHECK_EQ(loads, 3); // Two global reads plus the pointer's read-modify-write, with possible aliasing.
+}
+
+TEST_CASE("Exact native square-root wrappers lower by semantics rather than function spelling") {
+    for (const auto arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {
+        for (const bool single : {false, true}) {
+            const auto type = single ? TypeRef::MakeFloat32() : TypeRef::MakeFloat64();
+            LirFunc root;
+            root.name = "ArbitraryName";
+            root.isAsm = true;
+            root.params = {{0, type, "input"}};
+            root.returnType = type;
+            AsmInstr operation;
+            operation.arch = arch;
+            operation.mnemonic = arch == Target::Arch::X86_64 ? (single ? "sqrtss" : "sqrtsd") : "fsqrt";
+            AsmOperand operand;
+            operand.kind = AsmOperand::Kind::Reg;
+            operand.name = arch == Target::Arch::X86_64 ? "xmm0" : single ? "s0" : "d0";
+            operation.operands = {operand, operand};
+            AsmInstr ret;
+            ret.arch = arch;
+            ret.mnemonic = "ret";
+            root.asmBody = {operation, ret};
+            LirFunc caller;
+            caller.name = "Caller";
+            caller.params = {{0, type, "input"}};
+            caller.returnType = type;
+            caller.blocks.resize(1);
+            LirInstr call;
+            call.op = LirOpcode::Call;
+            call.dst = 1;
+            call.srcs = {0};
+            call.strArg = root.name;
+            call.type = type;
+            caller.blocks[0].instrs = {call};
+            caller.blocks[0].term = ReturnValue(1, type);
+            LirModule module;
+            module.funcs = {root, caller};
+            LirPackage package;
+            package.modules = {module};
+            auto extraWork = package;
+            extraWork.modules[0].funcs[0].asmBody.push_back(ret);
+            Optimization::LirInliner inliner;
+            CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+            CHECK_EQ(Calls(package), 0);
+            CHECK(package.modules[0].funcs[1].blocks[0].instrs[0].op == LirOpcode::Sqrt);
+            CHECK(inliner.Run(extraWork, {}) == Optimization::PassChange::None);
+            CHECK_EQ(Calls(extraWork), 1);
+            auto &result = package.modules[0].funcs[1];
+            result.blocks[0].term = ReturnValue(0, type);
+            Optimization::LirDeadCodeElimination dead;
+            static_cast<void>(dead.Run(package, {}));
+            CHECK_EQ(result.blocks[0].instrs.size(), 1); // Keep possible FP exceptions even when unused.
+            std::vector<Diagnostic> diagnostics;
+            Optimization::PassContext context;
+            context.diagnostics = &diagnostics;
+            Optimization::LirSsaVerifier verifier;
+            static_cast<void>(verifier.Run(package, context));
+            CHECK(diagnostics.empty());
+            result.blocks[0].instrs[0].type = TypeRef::MakeInt64();
+            static_cast<void>(verifier.Run(package, context));
+            CHECK_FALSE(diagnostics.empty());
+        }
+    }
+}
+
+TEST_CASE("Bounded inlining clones branches returns and loop-edge phis") {
+    auto package = CompileToLir(R"(
+        func Select(value: int) -> int {
+            if value < 0 { return -value; }
+            if value == 0 { return 7; }
+            return value + 3;
+        }
+        func Wrap(value: int) -> int { return Select(value) + 1; }
+        func Work(limit: int) -> int {
+            var total = 0;
+            for i in 0..limit {
+                if i == 4 { total += Wrap(i); } else { total += Select(-i); }
+                total += Select(i);
+            }
+            return total;
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    REQUIRE_GT(Calls(package), 0);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    std::vector<Diagnostic> diagnostics;
+    Optimization::PassContext context;
+    context.diagnostics = &diagnostics;
+    Optimization::LirCfgVerifier cfg;
+    Optimization::LirSsaVerifier ssa;
+    static_cast<void>(cfg.Run(package, context));
+    static_cast<void>(ssa.Run(package, context));
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+        CHECK_FALSE(diagnostic.IsError());
+    }
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
+}
+
+TEST_CASE("Bounded inlining leaves mutual recursion and its wrappers callable") {
+    auto package = CompileToLir(R"(
+        func First(value: int) -> int { return value == 0 ? 1 : Second(value - 1); }
+        func Second(value: int) -> int { return value == 0 ? 2 : First(value - 1); }
+        func Wrap(value: int) -> int { return First(value); }
+        func Work(value: int) -> int { return Wrap(value); }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    const auto before = Calls(package);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
+    CHECK_EQ(Calls(package), before);
+}
+
+TEST_CASE("Inlining a wide software result introduces no numeric conversion") {
+    auto package = CompileToLir(R"(
+        func Sum(left: float128, right: float128) -> float128 { return left + right; }
+        func Work(left: float128, right: float128) -> float128 { return Sum(left, right); }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    for (const auto &module : package.modules) {
+        for (const auto &function : module.funcs) {
+            if (function.name != "Work") {
+                continue;
+            }
+            for (const auto &block : function.blocks) {
+                for (const auto &instruction : block.instrs) {
+                    CHECK(instruction.op != LirOpcode::Cast);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Leaf inlining substitutes scalar parameters with fresh definitions") {
+    auto package = CompileToLir(R"(
+        func Rotate(value: uint64, amount: uint64) -> uint64 {
+            return (value >> amount) | (value << (64 - amount));
+        }
+        func Work(input: uint64) -> uint64 { return Rotate(input, 3) ^ Rotate(input, 17); }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    REQUIRE_EQ(Calls(package), 2);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    for (const auto &module : package.modules) {
+        for (const auto &function : module.funcs) {
+            std::unordered_set<LirReg> definitions;
+            for (const auto &parameter : function.params) {
+                CHECK(definitions.insert(parameter.reg).second);
+            }
+            for (const auto &block : function.blocks) {
+                for (const auto &instruction : block.instrs) {
+                    if (instruction.dst != LirNoReg) {
+                        CHECK(definitions.insert(instruction.dst).second);
+                    }
+                }
+            }
+        }
+    }
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
+}
+
+TEST_CASE("Leaf inlining keeps recursion and indirect calls but inlines trapping helpers") {
+    auto package = CompileToLir(R"(
+        func Recurse(value: int) -> int { return Recurse(value); }
+        func Divide(value: int) -> int { return value / 0; }
+        func Work(value: int, callback: func(int) -> int) -> int {
+            return Recurse(value) + Divide(value) + callback(value);
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    const auto calls = Calls(package);
+    const auto divisions = Count(package, LirOpcode::Div);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    // The division still runs, and traps, exactly where the call did; recursion and the callback remain calls.
+    CHECK_EQ(Calls(package), calls - 1);
+    CHECK_EQ(Count(package, LirOpcode::Div), divisions + 1);
+}
+
+TEST_CASE("Leaf inlining expansion runs in the first three optimization iterations") {
+    auto package = CompileToLir(R"(
+        func Increment(value: int) -> int { return value + 1; }
+        func Work(value: int) -> int { return Increment(value); }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    Optimization::PassContext late;
+    late.iteration = 3;
+    CHECK(inliner.Run(package, late) == Optimization::PassChange::None);
+    CHECK_EQ(Calls(package), 1);
+    Optimization::PassContext third;
+    third.iteration = 2;
+    CHECK(inliner.Run(package, third) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+}
+
+TEST_CASE("Leaf inlining resolves a generic instantiation to the caller's own module") {
+    // Each module that uses an instantiation carries its own copy under the same name.
+    auto package = CompileToLir(R"(
+        func Twice(value: uint64) -> uint64 { return value * 2u64; }
+        func Work(value: uint64) -> uint64 { return Twice(value); }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    REQUIRE_FALSE(package.modules.empty());
+    LirModule copy;
+    copy.name = "copy";
+    for (const auto &function : package.modules[0].funcs)
+        if (function.name == "Twice")
+            copy.funcs.push_back(function);
+    REQUIRE_EQ(copy.funcs.size(), 1U);
+    package.modules.push_back(copy);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    for (const auto &function : package.modules[0].funcs)
+        if (function.name == "Work")
+            for (const auto &block : function.blocks)
+                for (const auto &instruction : block.instrs)
+                    CHECK(instruction.op != LirOpcode::Call);
+}
+
+TEST_CASE("Scalar reference leaf inlining preserves updates through a lowered local address") {
+    auto package = CompileToLir(R"(
+        func Bump(value: &var uint64) -> uint64 { value += 1; return value; }
+        func Work(input: uint64) -> uint64 {
+            var state = input;
+            let result = Bump(state);
+            return state + result;
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    CHECK(promotion.Run(package, {}) == Optimization::PassChange::Changed);
+}
+
+TEST_CASE("Bounded void helpers inline concrete borrowed structures and preserve return edges") {
+    auto package = CompileToLir(R"(
+        struct Pair { first: int; second: int; }
+        func Update(value: &var Pair, amount: int) {
+            if amount < 0 { value.first -= amount; return; }
+            value.second += amount;
+        }
+        func Work(value: &var Pair, amount: int) -> int {
+            Update(value, amount);
+            return value.first + value.second;
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    REQUIRE_EQ(Calls(package), 1);
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    std::vector<Diagnostic> diagnostics;
+    Optimization::PassContext context;
+    context.diagnostics = &diagnostics;
+    Optimization::LirCfgVerifier cfg;
+    Optimization::LirSsaVerifier ssa;
+    static_cast<void>(cfg.Run(package, context));
+    static_cast<void>(ssa.Run(package, context));
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+        CHECK_FALSE(diagnostic.IsError());
+    }
+}
+
+TEST_CASE("Borrowed interface and unknown aggregate helpers retain their ABI boundary") {
+    for (const bool isInterface : {false, true}) {
+        const auto reference = TypeRef::MakeReference(TypeRef::MakeNamed("Unknown"));
+        LirFunc helper;
+        helper.name = "Helper";
+        helper.params = {{0, reference, "value"}};
+        helper.blocks.resize(1);
+        helper.blocks[0].term = ReturnValue();
+        LirFunc caller = helper;
+        caller.name = "Caller";
+        LirInstr call;
+        call.op = LirOpcode::Call;
+        call.strArg = helper.name;
+        call.srcs = {0};
+        caller.blocks[0].instrs = {call};
+        LirModule module;
+        module.funcs = {helper, caller};
+        if (isInterface) {
+            module.interfaceNames = {"Unknown"};
+            LirStructDecl collision;
+            collision.name = "Unknown";
+            module.structs.push_back(collision);
+        }
+        LirPackage package;
+        package.modules.push_back(module);
+        Optimization::LirInliner inliner;
+        CHECK(inliner.Run(package, {}) == Optimization::PassChange::None);
+        CHECK_EQ(Calls(package), 1);
+    }
+}
+
+TEST_CASE("Leaf inlining loads a structure result returned through its object") {
+    auto package = CompileToLir(R"(
+        struct Pair { first: int; second: int; }
+        func Make(value: int) -> Pair { return Pair { first: value, second: value + 1 }; }
+        func Work(value: int) -> int {
+            let pair = Make(value);
+            return pair.first + pair.second;
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    CHECK_EQ(Calls(package), 0);
+    // The result is read from the object it was built in, never converted from that object's address.
+    CHECK_EQ(Count(package, LirOpcode::Cast), 0);
+    std::vector<Diagnostic> diagnostics;
+    Optimization::PassContext context;
+    context.diagnostics = &diagnostics;
+    Optimization::LirSsaVerifier verifier;
+    static_cast<void>(verifier.Run(package, context));
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("Leaf inlining admits a larger callee given the address of a caller's object") {
+    // Mix runs about seventy instructions: too many for an ordinary call, few enough for one whose state it reaches
+    // through a pointer that inlining turns into the caller's own registers.
+    auto package = CompileToLir(R"(
+        struct State { first: uint64; second: uint64; }
+        func Mix(state: &var State, value: uint64) {
+            state.first = state.first * 3u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 5u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 7u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 9u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 11u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 13u64 + value; state.second = state.second ^ state.first;
+            state.first = state.first * 15u64 + value; state.second = state.second ^ state.first;
+        }
+        func Local(value: uint64) -> uint64 {
+            var state = State { first: 1u64, second: 2u64 };
+            Mix(state, value);
+            return state.second;
+        }
+        func Forwarded(state: &var State, value: uint64) {
+            Mix(state, value);
+        }
+    )",
+                                BuildProfile::Debug);
+    Optimization::LirMemoryPromotion promotion;
+    static_cast<void>(promotion.Run(package, {}));
+    Optimization::LirInliner inliner;
+    CHECK(inliner.Run(package, {}) == Optimization::PassChange::Changed);
+    std::size_t localCalls = 0;
+    std::size_t forwardedCalls = 0;
+    for (const auto &function : package.modules[0].funcs)
+        for (const auto &block : function.blocks)
+            for (const auto &instruction : block.instrs)
+                if (instruction.op == LirOpcode::Call)
+                    (function.name == "Local" ? localCalls : forwardedCalls) += function.name != "Mix";
+    CHECK_EQ(localCalls, 0);
+    CHECK_EQ(forwardedCalls, 1);
+}

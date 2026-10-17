@@ -132,6 +132,23 @@ DeclPtr Parser::ParseDecl() {
     if (Check(TokenKind::ConstKeyword)) {
         return AttachDocumentation(ApplyAttrs(ParseConstDecl(isPublic), attrs));
     }
+    if (Check(TokenKind::VarKeyword)) {
+        return AttachDocumentation(ApplyAttrs(ParseGlobalDecl(isPublic), attrs));
+    }
+    // `thread` is a word only before `var`, so it remains an ordinary identifier everywhere else.
+    if (Check(TokenKind::Ident) && Peek().text == "thread" && Peek(1).Is(TokenKind::VarKeyword)) {
+        Advance(); // 'thread'
+        auto global = ParseGlobalDecl(isPublic);
+        if (global) {
+            global->isThreadLocal = true;
+        }
+        return AttachDocumentation(ApplyAttrs(std::move(global), attrs));
+    }
+    if (Check(TokenKind::LetKeyword)) {
+        EmitError(CurrentLocation(), "'let' is not allowed at module scope",
+                  "use 'const' for a value that never changes, or 'var' for a module variable");
+        return AttachDocumentation(nullptr);
+    }
     if (Check(TokenKind::TypeKeyword)) {
         return AttachDocumentation(ApplyAttrs(ParseTypeAliasDecl(isPublic), attrs));
     }
@@ -149,12 +166,15 @@ DeclPtr Parser::ParseDecl() {
     EmitExpected(
         CurrentLocation(), expected,
         "start a declaration with 'func', 'struct', 'enum', 'variant', 'union', 'interface', 'extend', 'module', "
-        "'import', 'const', 'type', 'extern', or 'intrinsic'");
+        "'import', 'const', 'var', 'type', 'extern', or 'intrinsic'");
     return AttachDocumentation(nullptr);
 }
 
 Param Parser::ParseParam(const bool allowVariadic) {
     Param parameter;
+    while (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+        ParseParameterAttribute(parameter);
+    }
     parameter.location = CurrentLocation();
 
     if (allowVariadic && Check(TokenKind::DotDotDot)) {
@@ -162,7 +182,7 @@ Param Parser::ParseParam(const bool allowVariadic) {
         parameter.isVariadic = true;
         parameter.name = "...";
         parameter.type = std::make_unique<NamedTypeExpr>();
-        dynamic_cast<NamedTypeExpr *>(parameter.type.get())->name = "...";
+        AstCast<NamedTypeExpr>(parameter.type.get())->name = "...";
         return parameter;
     }
 
@@ -227,6 +247,7 @@ std::vector<Param> Parser::ParseParamList(const bool allowVariadic) {
         }
         EmitExpected(CurrentLocation(), "',' between parameters", "separate adjacent parameters with ','");
     }
+    ValidateFormatParameters(params);
     return params;
 }
 

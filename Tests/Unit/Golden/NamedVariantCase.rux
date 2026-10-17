@@ -1,0 +1,19 @@
+// A named case gives its fields by name, both when it is built and when it is matched.
+variant Reading {
+    Missing,
+    Exact(float64),
+    Between { low: float64; high: float64; }
+}
+
+func Positional() -> Reading {
+    return Reading::Between(20.0, 24.0);
+}
+
+func Middle(reading: Reading) -> float64 {
+    return match reading {
+        .Between(low, high) => (low + high) / 2.0,
+        .Between { low, high } => (low + high) / 2.0,
+        .Exact(value) => value,
+        .Missing => 0.0
+    };
+}

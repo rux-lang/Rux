@@ -1,0 +1,187 @@
+// What a command accepts, described as values rather than discovered from code.
+// A command is its name, a one-line summary, an optional version, its options, its positional arguments and its
+// subcommands. Every part is a plain value holding borrowed text and borrowed slices, so a whole command line can be
+// described in constants or locals and nothing is allocated. The descriptions are what parsing checks the arguments
+// against and what the help text is written from, so the two cannot disagree.
+// `--help` and `-h` are understood by every command, and `--version` and `-V` by every command that has a version,
+// unless the command declares an option with the same name, which then takes precedence.
+
+/// One option a command accepts, such as `--output FILE` or `-v`.
+/// `Copy`; the text it holds is borrowed and must outlive the specification.
+/// @see https://rux-lang.dev/docs/api/commandline/spec#option-spec
+pub struct OptionSpec {
+    /// The long name without its dashes, such as `output` for `--output`. Never empty.
+    pub name: char8[..];
+    /// The short name, such as `o` for `-o`, or `'\0'` for none. An ASCII letter or digit.
+    pub short: char32;
+    /// What the help text calls the option's value, such as `FILE`, or empty for a flag that takes no value.
+    pub value: char8[..];
+    /// One line saying what the option does.
+    pub help: char8[..];
+}
+
+/// How a positional argument may be given.
+/// `Copy`, carrying no payload.
+/// @see https://rux-lang.dev/docs/api/commandline/spec#positional-kind
+pub enum PositionalKind {
+    /// Exactly once; parsing fails without it.
+    Required,
+    /// At most once.
+    Optional,
+    /// Any number of times, taking every remaining positional argument. Only the last positional may be this kind.
+    Remaining
+}
+
+/// One positional argument a command accepts, such as `<input>`.
+/// `Copy`; the text it holds is borrowed and must outlive the specification.
+/// @see https://rux-lang.dev/docs/api/commandline/spec#positional-spec
+pub struct PositionalSpec {
+    /// The name queries and the help text use, such as `input`. Never empty.
+    pub name: char8[..];
+    /// How the argument may be given.
+    pub kind: PositionalKind;
+    /// One line saying what the argument is.
+    pub help: char8[..];
+}
+
+/// A command: what it is called, what it accepts, and the subcommands under it.
+/// `Copy`; every slice and text it holds is borrowed and must outlive it and every parse made from it. A command with
+/// subcommands takes the first positional argument as the subcommand's name, so it should declare no positionals of
+/// its own.
+/// @see https://rux-lang.dev/docs/api/commandline/spec#command-spec
+pub struct CommandSpec {
+    /// The command's name: the program's name at the top, and the word that selects it below.
+    pub name: char8[..];
+    /// One line saying what the command does.
+    pub summary: char8[..];
+    /// The version `--version` reports, or empty when the command has none.
+    pub version: char8[..];
+    /// The options, in the order the help text lists them.
+    pub options: OptionSpec[..];
+    /// The positional arguments, in the order they are given.
+    pub positionals: PositionalSpec[..];
+    /// The subcommands, in the order the help text lists them.
+    pub commands: CommandSpec[..];
+}
+
+/// An option that is present or absent and takes no value, such as `--verbose`.
+/// @param name the long name without its dashes
+/// @param short the short name, or `'\0'` for none
+/// @param help one line saying what the option does
+/// @returns the option's specification
+/// @see https://rux-lang.dev/docs/api/commandline/spec#flag
+pub func Flag(name: char8[..], short: char32, help: char8[..]) -> OptionSpec {
+    return OptionSpec { name: name, short: short, value: "", help: help };
+}
+
+/// An option that takes a value, such as `--output FILE`.
+/// The value may follow the option as the next argument, after `=` in the long form, or directly after the short
+/// letter, so `--output a.txt`, `--output=a.txt`, `-o a.txt` and `-oa.txt` all give `a.txt`.
+/// @param name the long name without its dashes
+/// @param short the short name, or `'\0'` for none
+/// @param value what the help text calls the value, such as `FILE`; never empty
+/// @param help one line saying what the option does
+/// @returns the option's specification
+/// @see https://rux-lang.dev/docs/api/commandline/spec#value-option
+pub func ValueOption(name: char8[..], short: char32, value: char8[..], help: char8[..]) -> OptionSpec {
+    return OptionSpec { name: name, short: short, value: value, help: help };
+}
+
+/// A positional argument that must be given.
+/// @param name the name queries and the help text use
+/// @param help one line saying what the argument is
+/// @returns the positional's specification
+/// @see https://rux-lang.dev/docs/api/commandline/spec#required
+pub func Required(name: char8[..], help: char8[..]) -> PositionalSpec {
+    return PositionalSpec { name: name, kind: PositionalKind::Required, help: help };
+}
+
+/// A positional argument that may be left out.
+/// @param name the name queries and the help text use
+/// @param help one line saying what the argument is
+/// @returns the positional's specification
+/// @see https://rux-lang.dev/docs/api/commandline/spec#optional
+pub func Optional(name: char8[..], help: char8[..]) -> PositionalSpec {
+    return PositionalSpec { name: name, kind: PositionalKind::Optional, help: help };
+}
+
+/// A positional argument that takes every positional argument left, which may be none.
+/// @param name the name queries and the help text use
+/// @param help one line saying what the arguments are
+/// @returns the positional's specification
+/// @see https://rux-lang.dev/docs/api/commandline/spec#remaining
+pub func Remaining(name: char8[..], help: char8[..]) -> PositionalSpec {
+    return PositionalSpec { name: name, kind: PositionalKind::Remaining, help: help };
+}
+
+/// A command with a name and a summary, and as yet no version, options, positionals or subcommands.
+/// The `With` methods fill in the rest, each returning the changed copy.
+/// @param name the program's name, or the word that selects a subcommand
+/// @param summary one line saying what the command does
+/// @returns the command's specification
+/// @see https://rux-lang.dev/docs/api/commandline/spec#command
+pub func Command(name: char8[..], summary: char8[..]) -> CommandSpec {
+    return CommandSpec { name: name, summary: summary, version: "", options: [], positionals: [], commands: [] };
+}
+
+extend CommandSpec {
+    /// This command with `version`, which `--version` then reports.
+    /// @param version the version text, such as `1.4.2`
+    /// @returns the changed copy
+    /// @see https://rux-lang.dev/docs/api/commandline/spec#with-version
+    pub func WithVersion(self: &CommandSpec, version: char8[..]) -> CommandSpec {
+        return CommandSpec {
+            name: self.name,
+            summary: self.summary,
+            version: version,
+            options: self.options,
+            positionals: self.positionals,
+            commands: self.commands
+        };
+    }
+
+    /// This command with `options`, which must outlive it.
+    /// @param options the options, in the order the help text lists them
+    /// @returns the changed copy
+    /// @see https://rux-lang.dev/docs/api/commandline/spec#with-options
+    pub func WithOptions(self: &CommandSpec, options: OptionSpec[..]) -> CommandSpec {
+        return CommandSpec {
+            name: self.name,
+            summary: self.summary,
+            version: self.version,
+            options: options,
+            positionals: self.positionals,
+            commands: self.commands
+        };
+    }
+
+    /// This command with `positionals`, which must outlive it.
+    /// @param positionals the positional arguments, in the order they are given
+    /// @returns the changed copy
+    /// @see https://rux-lang.dev/docs/api/commandline/spec#with-positionals
+    pub func WithPositionals(self: &CommandSpec, positionals: PositionalSpec[..]) -> CommandSpec {
+        return CommandSpec {
+            name: self.name,
+            summary: self.summary,
+            version: self.version,
+            options: self.options,
+            positionals: positionals,
+            commands: self.commands
+        };
+    }
+
+    /// This command with `commands`, which must outlive it.
+    /// @param commands the subcommands, in the order the help text lists them
+    /// @returns the changed copy
+    /// @see https://rux-lang.dev/docs/api/commandline/spec#with-commands
+    pub func WithCommands(self: &CommandSpec, commands: CommandSpec[..]) -> CommandSpec {
+        return CommandSpec {
+            name: self.name,
+            summary: self.summary,
+            version: self.version,
+            options: self.options,
+            positionals: self.positionals,
+            commands: commands
+        };
+    }
+}

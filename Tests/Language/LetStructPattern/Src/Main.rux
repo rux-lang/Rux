@@ -1,0 +1,191 @@
+// Destructuring a structure in `let`.
+// A structure pattern in `let` binds each field it names, by name and in any order, and may nest tuple and structure
+// patterns. A moving destructure owns the whole value, so a field bound to `_` or left out is destroyed on the spot, in
+// the order the pattern lists it: the written fields first, then the omitted ones in declaration order. Each tracked
+// value appends its id to a log as it is destroyed and each check appends a 0 where it stands, so the log is the exact
+// order of events.
+
+import Core::Assert;
+
+struct Log {
+    count: int32;
+    order: int64;
+}
+
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+struct Segment {
+    start: Point;
+    end: Point;
+}
+
+// No destructor of its own, so a moving pattern may take its fields apart.
+struct Parcel {
+    label: Tracked;
+    contents: Tracked;
+    extra: Tracked;
+}
+
+struct Boxed<T> {
+    value: T;
+    count: int32;
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 10;
+}
+
+func Track(log: *var Log, id: int32) -> Tracked {
+    return Tracked { log: log, id: id };
+}
+
+func MakeParcel(log: *var Log) -> Parcel {
+    return Parcel { label: Track(log, 1), contents: Track(log, 2), extra: Track(log, 3) };
+}
+
+func BindsFields() {
+    let point = Point { x: 3i32, y: 4i32 };
+    let Point { x: a, y: b } <- point;
+    Assert(a == 3i32 && b == 4i32, "a moving destructure binds each field");
+}
+
+func BindsInAnyOrder() {
+    let point = Point { x: 5i32, y: 6i32 };
+    let Point { y: second, x: first } = point;
+    Assert(first == 5i32 && second == 6i32, "fields bind by name, in any order");
+    Assert(point.x == 5i32 && point.y == 6i32, "a copying destructure leaves the source intact");
+}
+
+func BindsMutably() {
+    var Point { x: x, y: y } = Point { x: 1i32, y: 2i32 };
+    x = x + 10i32;
+    y = y * 3i32;
+    Assert(x == 11i32 && y == 6i32, "'var' makes every binding of the pattern mutable");
+}
+
+func BindsNested() {
+    let segment = Segment { start: Point { x: 1i32, y: 2i32 }, end: Point { x: 3i32, y: 4i32 } };
+    let Segment { start: Point { x: x0, y: _ }, end: end } = segment;
+    Assert(x0 == 1i32 && end.x == 3i32 && end.y == 4i32, "a field may hold a nested structure pattern");
+
+    let pair = (Point { x: 7i32, y: 8i32 }, 9i32);
+    let (Point { x: px, y: py }, extra) = pair;
+    Assert(px == 7i32 && py == 8i32 && extra == 9i32, "a tuple may hold a structure pattern");
+}
+
+func BindsEveryField(log: *var Log) {
+    let parcel = MakeParcel(log);
+    let Parcel { label: label, contents: contents, extra: extra } <- parcel;
+    Mark(log);
+    Assert(label.id == 1 && contents.id == 2 && extra.id == 3, "every field is bound");
+}
+
+func DiscardsWildcardField(log: *var Log) {
+    let parcel = MakeParcel(log);
+    let Parcel { label: _, contents: contents, extra: extra } <- parcel;
+    Mark(log);
+    Assert(contents.id == 2 && extra.id == 3, "the other fields are bound");
+}
+
+func DiscardsOmittedFields(log: *var Log) {
+    let parcel = MakeParcel(log);
+    let Parcel { contents: contents } <- parcel;
+    Mark(log);
+    Assert(contents.id == 2, "the named field is bound");
+}
+
+// The written `_` field goes first, then the omitted one.
+func DiscardsInPatternOrder(log: *var Log) {
+    let parcel = MakeParcel(log);
+    let Parcel { extra: _, label: label } <- parcel;
+    Mark(log);
+    Assert(label.id == 1, "the label is bound");
+}
+
+func DiscardsFromTemporary(log: *var Log) {
+    let Parcel { extra: extra } = MakeParcel(log);
+    Mark(log);
+    Assert(extra.id == 3, "a field of a temporary is bound");
+}
+
+// A pattern that binds nothing destroys the value whole, in the structure's own reverse field order.
+func BindsNothing(log: *var Log) {
+    let parcel = MakeParcel(log);
+    let Parcel { label: _ } <- parcel;
+    Mark(log);
+}
+
+// A structure that declares its own destructor can still be discarded whole by a pattern that binds none of it.
+func DiscardsWholeTracked(log: *var Log) {
+    let tracked = Track(log, 4);
+    let Tracked { id: _ } <- tracked;
+    Mark(log);
+}
+
+func BindsGeneric(log: *var Log) {
+    let boxed = Boxed<Tracked> { value: Track(log, 5), count: 2i32 };
+    let Boxed { value: value, count: count } <- boxed;
+    Mark(log);
+    Assert(value.id == 5 && count == 2i32, "a generic structure binds its substituted field types");
+
+    let numbers = Boxed<int64> { value: 40, count: 2i32 };
+    let Boxed { value: number } = numbers;
+    Assert(number == 40, "a generic field of a scalar type is read at its width");
+}
+
+func Main() -> int {
+    BindsFields();
+    BindsInAnyOrder();
+    BindsMutably();
+    BindsNested();
+
+    var log = Log { count: 0, order: 0 };
+    BindsEveryField(@log);
+    Assert(log.count == 3 && log.order == 321, "bound fields are destroyed when their bindings end");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsWildcardField(@log);
+    Assert(log.count == 3 && log.order == 1032, "a field bound to '_' is destroyed at the destructure");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsOmittedFields(@log);
+    Assert(log.count == 3 && log.order == 1302, "omitted fields are destroyed at the destructure");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsInPatternOrder(@log);
+    Assert(log.count == 3 && log.order == 3201, "discarded fields are destroyed in pattern order");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsFromTemporary(@log);
+    Assert(log.count == 3 && log.order == 1203, "a temporary loses its unbound fields at the destructure");
+
+    log = Log { count: 0, order: 0 };
+    BindsNothing(@log);
+    Assert(log.count == 3 && log.order == 3210, "a pattern that binds nothing destroys the value whole");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsWholeTracked(@log);
+    Assert(log.count == 1 && log.order == 40, "a value whose type declares a destructor is destroyed whole");
+
+    log = Log { count: 0, order: 0 };
+    BindsGeneric(@log);
+    Assert(log.count == 1 && log.order == 5, "a bound generic field is destroyed with its binding");
+    return 0;
+}

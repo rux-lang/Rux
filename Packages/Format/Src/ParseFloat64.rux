@@ -1,29 +1,23 @@
 // Reading a decimal float, and the failure every parser in this package reports.
-//
 // `ParseError` lives here because this is where it was first needed, and it now serves every width: the integers,
 // the booleans, the characters and the wide floats all answer with it. Every case says where it was found, because
 // a reason on its own leaves a caller re-reading its own input to guess. "Invalid character" is a different report
 // from "invalid character at byte 7", and only the second lets anything underline what is wrong. The offsets are
 // into the text as given, so a parser embedded in a larger grammar adds the offset of the token it was handed and
 // the positions compose.
-//
 // `OutOfMemory` is a correction rather than an addition. The wide float parser builds exact big integers to round
 // with, and every allocation those need used to be reported as `Overflow` — which told a caller their number was
 // too large when the machine had simply run out of room. The two want different responses from a caller, so they
 // are different cases.
-//
 // The grammar this file accepts is `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`, plus the two special
 // spellings `NaN` and `Inf` exactly as formatting writes them, so what one side prints the other reads.
 
 import Text::{ ParseFailure, StringView };
 
 /// Why text could not be read as a value.
-///
 /// Failure-only: every case is a failure, and each says where in the text it was found. Success is the other channel
 /// of the `T ! ParseError` a parser returns rather than a case here.
-///
 /// Copy, carrying one offset.
-///
 /// @see https://rux-lang.dev/docs/api/format/parse-error
 pub variant ParseError {
     /// There were no bytes to read. The offset is zero, which is both the start of the text and its length.
@@ -42,11 +36,9 @@ pub variant ParseError {
 
 extend ParseError : ParseFailure {
     /// Where in the input the failure was found.
-    ///
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
-    /// @see https://rux-lang.dev/docs/api/format/parse-error/offset
+    /// @see https://rux-lang.dev/docs/api/format/parse-error#offset
     pub func Offset(self: &ParseError) -> uint {
         return match self {
             .Empty => 0u,
@@ -58,10 +50,8 @@ extend ParseError : ParseFailure {
 }
 
 /// What a decimal spells, before any format decides what to do with it.
-///
 /// Copy, holding the retained digits and the two flags the rounding needs.
-///
-/// @see https://rux-lang.dev/docs/api/format/decimal-reading
+/// @see https://rux-lang.dev/docs/api/format/parse-float#decimal-reading
 pub struct DecimalReading {
     /// The retained significant digits, as an integer.
     pub digits: FixedNat;
@@ -78,20 +68,16 @@ pub struct DecimalReading {
 }
 
 /// Reads the decimal grammar out of `str`, without deciding what float it names.
-///
 /// One scanner for both narrow widths, so what one reads the other reads: the grammar is
 /// `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`, plus the two special spellings `NaN` and `Inf` exactly as
 /// formatting writes them. The digits are kept exactly up to `RetainedDecimalDigits`, past which a nonzero one
 /// sets `truncated` and moves the exponent instead.
-///
-/// # Failures
 /// Reports `Empty` for no bytes, `InvalidCharacter` at the byte where the shape stopped matching, and
 /// `OutOfMemory` where the retained digits would not fit the workspace.
-///
 /// @param str the text to read
 /// @param reading receives what the decimal spells
 /// @returns success when the whole text was the grammar
-/// @see https://rux-lang.dev/docs/api/format/scan-decimal
+/// @see https://rux-lang.dev/docs/api/format/parse-float#scan-decimal
 pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseError {
     *reading = DecimalReading {
         digits: FixedNat(),
@@ -134,16 +120,16 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
             if afterDecimalPoint {
                 reading.exponent = reading.exponent - 1;
             }
-            if digit != 0u64 || significant {
+            if digit != 0 || significant {
                 significant = true;
                 if reading.significant < RetainedDecimalDigits {
-                    if !reading.digits.MultiplyAddSmall(10u64, digit) {
+                    if !reading.digits.MultiplyAddSmall(10, digit) {
                         fail ParseError::OutOfMemory(index);
                     }
-                    reading.significant = reading.significant + 1u;
+                    reading.significant = reading.significant + 1;
                 }
                 else {
-                    if digit != 0u64 { reading.truncated = true; }
+                    if digit != 0 { reading.truncated = true; }
                     reading.exponent = reading.exponent + 1;
                 }
             }
@@ -157,7 +143,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
         }
         break;
     }
-    if digitCount == 0u { fail ParseError::InvalidCharacter(index); }
+    if digitCount == 0 { fail ParseError::InvalidCharacter(index); }
 
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         index++;
@@ -192,20 +178,16 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
 }
 
 /// Reads `str` as the `float64` nearest what it spells, rounding to nearest with ties to even.
-///
 /// Exact: the value is formed as a ratio of integers and the quotient is taken with a sticky bit, so what comes
 /// back is the nearest `float64` and never one step off it. `NaN`, `Inf` and `-Inf` are read exactly as formatting
 /// writes them.
-///
-/// # Failures
 /// Reports `Empty`, `InvalidCharacter` and `OutOfMemory` as `ScanDecimal` does, and `Overflow` at the text's
 /// length for a value past the largest finite `float64` — refused rather than rounded to an infinity, since that
 /// would turn a number the caller wrote into one they did not. A value below the smallest subnormal is the signed
 /// zero it rounds to.
-///
 /// @param str the text to read
 /// @returns the value, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/format/parse-float64
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float64
 pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
     var reading = DecimalReading {
         digits: FixedNat(),
@@ -244,27 +226,22 @@ pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
 // Parses what a view spans, borrowing it. A view is the shape parsing wants: it copies nothing, owns
 // nothing, and the bytes are known to be text.
 /// Provides the public `ParseFloat64` operation.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
-/// @see https://rux-lang.dev/docs/api/format/parse-float64
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float64
 pub func ParseFloat64(str: StringView) -> float64 ! ParseError {
     return ParseFloat64(str.Bytes());
 }
 
 /// Reads `str` as the `float32` nearest what it spells, rounding to nearest with ties to even.
-///
 /// Read at this width's own precision rather than at a `float64`'s and narrowed. Narrowing rounds a second time,
 /// and a value that lands on a `float32` boundary can round the wrong way once it has already been rounded to
 /// fifty-three bits on the way there.
-///
-/// # Failures
 /// The failures `ParseFloat64` reports, at this width's range: `Overflow` for a value past the largest finite
 /// `float32`, and the signed zero for one below the smallest subnormal.
-///
 /// @param str the text to read
 /// @returns the value, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/format/parse-float32
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float32
 pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
     var reading = DecimalReading {
         digits: FixedNat(),
@@ -298,10 +275,9 @@ pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
 }
 
 /// The same grammar for a view.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
-/// @see https://rux-lang.dev/docs/api/format/parse-float32-view
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float32
 pub func ParseFloat32(str: StringView) -> float32 ! ParseError {
     return ParseFloat32(str.Bytes());
 }

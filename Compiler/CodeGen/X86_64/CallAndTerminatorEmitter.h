@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -35,7 +36,7 @@ public:
 
     /// Returns true exactly when the instruction is a direct or indirect call.
     [[nodiscard]] bool Emit(const LirInstr &instruction);
-    void EmitArguments(const std::vector<LirReg> &arguments, CallingConvention convention = CallingConvention::Default,
+    void EmitArguments(std::span<const LirReg> arguments, CallingConvention convention = CallingConvention::Default,
                        int startIndex = 0) const;
 
 private:
@@ -49,11 +50,11 @@ private:
     [[nodiscard]] bool IsWin64ByRefAggregate(const TypeRef &type) const;
     [[nodiscard]] bool IsSysVMemoryAggregate(const TypeRef &type) const;
     [[nodiscard]] bool IsPointerToWin64ByRefAggregate(const TypeRef &type) const;
-    [[nodiscard]] int CallFrameSize(const std::vector<LirReg> &arguments, bool win64, int startIndex) const;
-    void StoreSysVStackArguments(const std::vector<LirReg> &arguments, int startIndex) const;
+    [[nodiscard]] int CallFrameSize(std::span<const LirReg> arguments, bool win64, int startIndex) const;
+    void StoreSysVStackArguments(std::span<const LirReg> arguments, int startIndex) const;
     void StoreReturnValue(LirReg destination, const TypeRef &type) const;
     [[nodiscard]] bool EmitBitCast(const LirInstr &instruction) const;
-    void EmitPreparedCall(const LirInstr &instruction, const std::vector<LirReg> &arguments, bool indirect) const;
+    void EmitPreparedCall(const LirInstr &instruction, std::span<const LirReg> arguments, bool indirect) const;
 };
 
 class X86_64TerminatorEmitter {

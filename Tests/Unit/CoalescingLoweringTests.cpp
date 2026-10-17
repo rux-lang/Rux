@@ -112,10 +112,9 @@ TEST_CASE("coalescing parses right-associatively between logical-or and ternary"
     CHECK(dynamic_cast<const BinaryExpr *>(assignment->value.get()) != nullptr);
 }
 
-TEST_CASE("coalescing lowers to one Option match with a lazy fallback arm") {
+TEST_CASE("coalescing lowers to one presence match with a lazy fallback arm") {
     const HirPackage package = LowerCoalescingSource(R"(
-        variant Option<T> { Some(T), None }
-        func Left() -> Option<int32> { return Option::Some<int32>(7i32); }
+        func Left() -> int32? { return 7i32; }
         func Fallback() -> int32 { return 9i32; }
         func Pick() -> int32 {
             let value = Left() ?? Fallback();
@@ -130,10 +129,9 @@ TEST_CASE("coalescing lowers to one Option match with a lazy fallback arm") {
 
     const auto *some = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
     REQUIRE(some != nullptr);
-    CHECK_EQ(some->path, std::vector<std::string>{"Option", "Some"});
     CHECK(some->hasPayload);
     REQUIRE(some->discriminant.has_value());
-    CHECK_EQ(*some->discriminant, "0");
+    CHECK_EQ(*some->discriminant, "1");
     const auto *payload = dynamic_cast<const HirVarExpr *>(match.arms[0].body.get());
     REQUIRE(payload != nullptr);
     const auto *bound = dynamic_cast<const HirBindingPattern *>(some->args.front().get());
@@ -143,16 +141,14 @@ TEST_CASE("coalescing lowers to one Option match with a lazy fallback arm") {
 
     const auto *none = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
     REQUIRE(none != nullptr);
-    CHECK_EQ(none->path, std::vector<std::string>{"Option", "None"});
     CHECK_FALSE(none->hasPayload);
     REQUIRE(none->discriminant.has_value());
-    CHECK_EQ(*none->discriminant, "1");
+    CHECK_EQ(*none->discriminant, "0");
     CHECK(dynamic_cast<const HirCallExpr *>(match.arms[1].body.get()) != nullptr);
 }
 
 TEST_CASE("coalescing uses the payload custom move plan") {
     const HirPackage package = LowerCoalescingSource(R"(
-        variant Option<T> { Some(T), None }
         struct Handle { value: int32; }
         extend Handle {
             func =(self: &var Handle, other: &Handle);
@@ -160,7 +156,7 @@ TEST_CASE("coalescing uses the payload custom move plan") {
             func ~Handle(self: &var Handle) {}
         }
         func Fallback() -> Handle { return Handle { value: 9i32 }; }
-        func Pick(option: Option<Handle>) -> int32 {
+        func Pick(option: Handle?) -> int32 {
             let value = (<-option) ?? Fallback();
             return value.value;
         }

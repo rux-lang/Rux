@@ -1,5 +1,4 @@
 // A path that owns its units and can grow.
-//
 // The growable operation a path needs is exactly one: push a segment, with a separator supplied where one is
 // missing. Everything else — parent, filename, joins that produce fresh paths — reads structure and lives with
 // it; the buffer is where segments accumulate on the way to a system call.
@@ -9,9 +8,7 @@ import Memory::Copy;
 import Text::{ FromAllocError, TextError };
 
 /// An owning, growable path.
-///
 /// Move-only: it prohibits copying and gives its block back with `~PathBuffer`.
-///
 /// @see https://rux-lang.dev/docs/api/path/path-buffer
 pub struct PathBuffer {
     /// The units, or null before the first push.
@@ -29,20 +26,18 @@ extend PathBuffer {
     func =(self: &var PathBuffer, other: &PathBuffer);
 
     /// An empty buffer that has allocated nothing.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty buffer that has taken no storage yet
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/new
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#new
     pub func PathBuffer(allocator: Allocator) -> PathBuffer {
         return PathBuffer { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
     /// A buffer opening with `path`'s units.
-    ///
     /// @param allocator where the storage comes from
     /// @param path the path to act on
     /// @returns a copy of `path` this buffer owns, or an empty one when the allocator refused
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/from-path
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#from-path
     pub func FromPath(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
         var buffer = PathBuffer(allocator);
         buffer.AppendUnits(path.AsView().Units())?;
@@ -50,27 +45,23 @@ extend PathBuffer {
     }
 
     /// How many units the buffer holds.
-    ///
     /// @returns how many units the buffer holds
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/length
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#length
     pub func Length(self: &PathBuffer) -> uint {
         return self.length;
     }
 
     /// Whether the buffer holds nothing.
-    ///
     /// @returns whether the buffer holds no units
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/is-empty
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#is-empty
     pub func IsEmpty(self: &PathBuffer) -> bool {
         return self.length == 0;
     }
 
     /// The buffer as a borrowed path, which is what every reading operation takes.
-    ///
     /// The path borrows the buffer and must not outlive it or survive a push.
-    ///
     /// @returns a borrowed path over the buffer's units
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/as-path
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#as-path
     pub func AsPath(self: &PathBuffer) -> Path {
         return Path::FromView(OsStringView::FromUnits((self.data)[..self.length]));
     }
@@ -79,11 +70,11 @@ extend PathBuffer {
     func Reserve(self: &var PathBuffer, additional: uint) -> ! TextError {
         let required = self.length + additional;
         if required <= self.capacity { return; }
-        var wanted = self.capacity * 2u;
+        var wanted = self.capacity * 2;
         if wanted < required {
             wanted = required;
         }
-        if wanted < 16u {
+        if wanted < 16 {
             wanted = 16;
         }
         let unitSize = sizeof(OsUnit) as uint;
@@ -113,13 +104,11 @@ extend PathBuffer {
     }
 
     /// Appends `segment` as one more component, supplying the separator where one is missing.
-    ///
     /// A segment that is itself absolute — opening with a separator — replaces the buffer instead of extending
     /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
-    ///
     /// @param segment the component to append
     /// @returns nothing when the component was appended, or why not
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/push
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#push
     pub func Push(self: &var PathBuffer, segment: OsStringView) -> ! TextError {
         let units = segment.Units();
         if units.length == 0 { return; }
@@ -136,8 +125,7 @@ extend PathBuffer {
     }
 
     /// Gives the block back and leaves an empty buffer.
-    ///
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/release
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#release
     pub func Release(self: &var PathBuffer) {
         if self.data != null {
             let unitSize = sizeof(OsUnit) as uint;
@@ -150,18 +138,22 @@ extend PathBuffer {
         self.length = 0;
         self.capacity = 0;
     }
+
+    /// Gives the block back.
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#destructor
+    func ~PathBuffer(self: &var PathBuffer) {
+        self.Release();
+    }
 }
 
 /// A fresh buffer holding `base` with `segment` pushed onto it.
-///
 /// The join every path library means: a separator supplied where one is missing, and an absolute `segment`
 /// replacing `base` entirely.
-///
 /// @param allocator where the storage comes from
 /// @param base the path to extend
 /// @param segment the component to append
 /// @returns `base` with `segment` appended, or why it could not be
-/// @see https://rux-lang.dev/docs/api/path/join
+/// @see https://rux-lang.dev/docs/api/path/path-buffer#join
 pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBuffer ! TextError {
     var buffer = PathBuffer::FromPath(allocator, base)?;
     buffer.Push(segment)?;
@@ -170,16 +162,14 @@ pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBu
 
 /// A fresh buffer holding `path` lexically simplified: separator runs collapsed to the preferred separator, `.`
 /// segments dropped, and `..` resolved against the segment before it.
-///
 /// Lexically is the load-bearing word. Dropping `x/..` is the truth about directories and a lie about symbolic
 /// links — `a/link/..` need not be `a` when `link` points elsewhere — so this is for display, comparison and
 /// deduplication, and the filesystem-true answer is canonicalization, which asks the system. A `..` with nothing
 /// before it survives in a relative path and vanishes at the root, where there is nowhere further up.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns the path with its redundant components resolved, or why it could not be
-/// @see https://rux-lang.dev/docs/api/path/normalize
+/// @see https://rux-lang.dev/docs/api/path/path-buffer#normalize
 pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
     var buffer = PathBuffer(allocator);
 
@@ -253,13 +243,4 @@ func IsDot(segment: OsStringView) -> bool {
 func IsDoubleDot(segment: OsStringView) -> bool {
     let units = segment.Units();
     return units.length == 2 && (units.data[0] as uint32) == 0x2E && (units.data[1] as uint32) == 0x2E;
-}
-
-extend PathBuffer {
-    /// Gives the block back.
-    ///
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/destructor
-    func ~PathBuffer(self: &var PathBuffer) {
-        self.Release();
-    }
 }

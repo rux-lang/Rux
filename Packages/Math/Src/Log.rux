@@ -1,5 +1,4 @@
 // The natural logarithm.
-//
 // The exponent gives the integer part and a polynomial in the reduced mantissa gives the rest, which is the
 // shape every logarithm here uses. Error at most one ulp. Zero is negative infinity, a negative argument is a
 // NaN, and `Log1p` is the one to use when the argument is near one.
@@ -61,13 +60,12 @@ func LogNormalize(x: float64) -> LogReduction {
     return out;
 }
 
-/**
-    Computes the natural logarithm of `x`. The error is at most one ulp. Either signed zero returns negative infinity,
-    a negative value returns a NaN, positive infinity returns itself, and a NaN remains a NaN.
-    @param x Positive value whose logarithm is computed.
-    @returns The base-`e` logarithm of `x`.
-    @see https://rux-lang.dev/docs/api/math/log
-*/
+/// Computes the natural logarithm of `x`.
+/// The error is at most one ulp. Either signed zero returns negative infinity, a negative value returns a NaN, positive
+/// infinity returns itself, and a NaN remains a NaN.
+/// @param x positive value whose logarithm is computed
+/// @returns the base-`e` logarithm of `x`
+/// @see https://rux-lang.dev/docs/api/math/exponential#log
 pub func Log(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
@@ -86,12 +84,10 @@ pub func Log(x: float64) -> float64 {
     return dk * ln2Hi - ((hfsq - (r + dk * ln2Lo)) - f);
 }
 
-/**
-    Computes the natural logarithm of `x` at `float32` precision.
-    @param x Positive value whose logarithm is computed.
-    @returns The base-`e` logarithm of `x`.
-    @see https://rux-lang.dev/docs/api/math/log
-*/
+/// Computes the natural logarithm of `x` at `float32` precision.
+/// @param x positive value whose logarithm is computed
+/// @returns the base-`e` logarithm of `x`
+/// @see https://rux-lang.dev/docs/api/math/exponential#log
 pub func Log(x: float32) -> float32 {
     return Log(x as float64) as float32;
 }

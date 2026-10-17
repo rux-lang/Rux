@@ -1,0 +1,102 @@
+// The two primitives that live where they are declared rather than in shared storage: a bare lock and a once-only
+// initialization. Neither needs destroying, so either can be a module variable, which every thread names directly,
+// or a field of a value that is itself shared.
+
+import Core::{ AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder };
+import Sync::{ LockWord, TryLockWord, UnlockWord, WaitWhile, WakeAll };
+
+/// A lock that guards nothing in particular: whatever the code between `Acquire` and `Release` touches.
+/// Not reentrant: acquiring it again on the thread that holds it waits forever. Releasing it is the holder's job;
+/// releasing a lock another thread holds, or one nobody holds, is a program error the lock cannot detect.
+/// For data that a lock protects, `Mutex<T>` keeps the two together and releases the lock for you.
+/// @see https://rux-lang.dev/docs/api/sync/lock#lock
+pub struct Lock {
+    // Changed through atomic instructions on a shared reference, so its address is retyped to `*var` through `*opaque`:
+    // a cast cannot add write access to a `*uint32` directly.
+    word: uint32;
+}
+
+extend Lock {
+    /// A lock nobody holds, as a constant, so a module variable can start as one: `var Guard: Lock = Lock::Unlocked;`.
+    /// @see https://rux-lang.dev/docs/api/sync/lock#unlocked
+    pub const Unlocked: Lock = Lock { word: 0 };
+
+    /// A lock nobody holds.
+    /// @returns the lock
+    /// @see https://rux-lang.dev/docs/api/sync/lock#lock-new
+    pub func Lock() -> Lock {
+        return Lock { word: 0 };
+    }
+
+    /// Takes the lock, waiting while another thread holds it.
+    /// @see https://rux-lang.dev/docs/api/sync/lock#acquire
+    pub func Acquire(self: &Lock) {
+        LockWord((@self.word) as *opaque as *var uint32);
+    }
+
+    /// Takes the lock if nobody holds it, without waiting.
+    /// @returns whether the lock was taken
+    /// @see https://rux-lang.dev/docs/api/sync/lock#try-acquire
+    pub func TryAcquire(self: &Lock) -> bool {
+        return TryLockWord((@self.word) as *opaque as *var uint32);
+    }
+
+    /// Releases the lock this thread holds, letting one waiting thread take it.
+    /// @see https://rux-lang.dev/docs/api/sync/lock#release
+    pub func Release(self: &Lock) {
+        UnlockWord((@self.word) as *opaque as *var uint32);
+    }
+}
+
+// Once's states: nobody has started, one thread is running the initializer, it has finished.
+const OnceIncomplete: uint32 = 0;
+const OnceRunning: uint32 = 1;
+const OnceComplete: uint32 = 2;
+
+/// Runs one initialization once, however many threads ask for it at once.
+/// The first `Call` runs its function; every other waits until that has returned and then returns without running
+/// its own. Everything the function wrote is visible to every thread `Call` returns on.
+/// @see https://rux-lang.dev/docs/api/sync/lock#once
+pub struct Once {
+    state: uint32;
+}
+
+extend Once {
+    /// An initialization that has not run, as a constant, so a module variable can start as one:
+    /// `var Setup: Once = Once::Incomplete;`.
+    /// @see https://rux-lang.dev/docs/api/sync/lock#incomplete
+    pub const Incomplete: Once = Once { state: 0 };
+
+    /// An initialization that has not run.
+    /// @returns the once
+    /// @see https://rux-lang.dev/docs/api/sync/lock#once-new
+    pub func Once() -> Once {
+        return Once { state: OnceIncomplete };
+    }
+
+    /// Runs `initialize` if no call has run one yet, and returns once an initialization has finished.
+    /// An initializer that panics ends the process, so a half-finished one is never observed.
+    /// @param initialize the function to run once
+    /// @see https://rux-lang.dev/docs/api/sync/lock#call
+    pub func Call(self: &Once, initialize: func()) {
+        let state = (@self.state) as *opaque as *var uint32;
+        if AtomicLoad(state, MemoryOrder::Acquire) == OnceComplete { return; }
+        if AtomicCompareExchange(state, OnceIncomplete, OnceRunning, MemoryOrder::Acquire, MemoryOrder::Acquire) ==
+           OnceIncomplete {
+            initialize();
+            AtomicStore(state, OnceComplete, MemoryOrder::Release);
+            WakeAll(state);
+            return;
+        }
+        while AtomicLoad(state, MemoryOrder::Acquire) != OnceComplete {
+            WaitWhile(state, OnceRunning, -1);
+        }
+    }
+
+    /// Whether an initialization has finished.
+    /// @returns true once a `Call` has run its function to the end
+    /// @see https://rux-lang.dev/docs/api/sync/lock#is-completed
+    pub func IsCompleted(self: &Once) -> bool {
+        return AtomicLoad((@self.state) as *uint32, MemoryOrder::Acquire) == OnceComplete;
+    }
+}

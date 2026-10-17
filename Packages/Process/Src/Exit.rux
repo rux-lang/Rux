@@ -1,0 +1,65 @@
+// What a process can say about itself: who it is, and that it is done.
+// `Exit` ends the process at once with a status for its parent. Nothing is flushed, unwound or destroyed on the way:
+// a buffered writer that has not been flushed loses what it holds, which is why returning from `Main` is the ordinary
+// way to finish and `Exit` is for leaving from somewhere `Main` cannot be returned to.
+
+import Core::{ #Error, #target };
+
+when #target.os {
+    .Linux => import Linux::GetPid,
+    .FreeBSD => import FreeBSD::GetPid,
+    .macOS => import macOS::GetPid,
+    .Windows => import Windows::{ ExitProcess, GetCurrentProcessId },
+    else => #Error("Unsupported operating system")
+}
+
+// The Unix systems name their exit `Exit`, as this package does, so the system's is reached from a module of its own.
+module SystemExit {
+    import Core::#target;
+
+    when #target.os {
+        .Linux => import Linux::Exit,
+        .FreeBSD => import FreeBSD::Exit,
+        .macOS => import macOS::Exit,
+        else => {}
+    }
+
+    /// Ends the whole process through the system's own exit, reporting `code` to its parent.
+    /// Visible only so that `Exit` can reach it from outside this module; call `Exit` instead. Does not return.
+    /// @param code the status to report
+    /// @see https://rux-lang.dev/docs/api/process/exit#exit
+    pub func Leave(code: int32) {
+        when #target.os != .Windows {
+            Exit(code);
+        }
+    }
+}
+
+/// Ends the whole process at once, reporting `code` to its parent.
+/// Every thread stops. Nothing is flushed, unwound or destroyed: the system reclaims memory and descriptors, and data
+/// still buffered in the process is lost, so flush what must be written first. On the Unix systems the parent sees
+/// only the low eight bits of `code`; on Windows it sees all thirty-two. Does not return.
+/// @param code the status to report, zero for success by convention
+/// @see https://rux-lang.dev/docs/api/process/exit#exit
+pub func Exit(code: int32) {
+    when #target.os == .Windows {
+        ExitProcess(code as uint32);
+    }
+    else {
+        SystemExit::Leave(code);
+    }
+}
+
+/// The identifier the system gave this process.
+/// Stable for the life of the process and unique among running processes, but reused once the process has exited.
+/// Cannot fail and allocates nothing.
+/// @returns the process identifier
+/// @see https://rux-lang.dev/docs/api/process/exit#current-id
+pub func CurrentId() -> uint32 {
+    when #target.os == .Windows {
+        return GetCurrentProcessId();
+    }
+    else {
+        return GetPid() as uint32;
+    }
+}

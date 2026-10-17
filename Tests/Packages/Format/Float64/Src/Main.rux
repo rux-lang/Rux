@@ -1,7 +1,7 @@
 
 import Text::{ Display, FormatSpec, TextWriter };
 import Text::StringView;
-import Format::{ ByteCursor, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64 };
+import Format::{ ByteCursor, IsFinite, IsInfinite, IsNan, ParseError, ParseFloat64 };
 import Core::{ Failed, Succeeded };
 
 
@@ -59,9 +59,9 @@ func CheckParsedValues() -> int {
 func CheckParseErrors() -> int {
     var code = CheckParseError("", ParseError::Empty, 110);
     if code != 0 { return code; }
-    code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
+    code = CheckParseError("12x", ParseError::InvalidCharacter(2), 111);
     if code != 0 { return code; }
-    return CheckParseError("1e400", ParseError::Overflow(5u), 112);
+    return CheckParseError("1e400", ParseError::Overflow(5), 112);
 }
 
 func CheckParseOverloads() -> int {
@@ -191,6 +191,12 @@ func Main() -> int {
     // Reached through the interface rather than through the concrete type, which is how a format call reaches it.
     let code70 = Check(2.5, "2.5", 70);
     if code70 != 0 { return code70; }
+
+    // Two shortest decimals equally close to the value: the even last digit wins, for either sign.
+    code = Check(1125899906842624.75, "1125899906842624.8", 130);
+    if code != 0 { return code; }
+    code = Check(-1125899906842624.75, "-1125899906842624.8", 131);
+    if code != 0 { return code; }
 
     return 0;
 }

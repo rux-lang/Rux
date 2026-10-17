@@ -1,3 +1,0 @@
-func Main() {
-    var s: bool128 = true;
-}

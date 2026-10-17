@@ -1,20 +1,16 @@
 // A `char32` holds one Unicode scalar value, which is one to four bytes of UTF-8.
-//
 // A `char32` is checked when it is made, so a value that is not a scalar value cannot ordinarily be in one. It is
-// still checked here, because a cast can produce one and the writer's promise is worth more than the check costs.
+// still checked here, because raw storage can contain one and the writer must preserve valid UTF-8.
 
-import Text::{ IsScalarValue, TextError };
+import Text::{ Debug, Display, IsScalarValue, RejectStyle, TextError };
 
 extend char32 : Display {
     /// Writes this character, or the replacement character when the value is not one.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char32/write-display
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char32-write-display
     pub func WriteDisplay(self: &char32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let value = self as uint32;
@@ -25,17 +21,13 @@ extend char32 : Display {
 
 extend char32 : Debug {
     /// The same character, quoted, with a value that is not one preserved as `\u{xxxx}`.
-    ///
-    /// Where `Display` writes U+FFFD, this writes the value itself, so a cast that produced a surrogate and one
-    /// that produced a number past the last scalar are not the same rendering.
-    ///
-    /// # Failures
+    /// Where `Display` writes U+FFFD, this writes the value itself, so raw storage containing a surrogate and storage
+    /// containing a number past the last scalar have different renderings.
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char32/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char32-write-debug
     pub func WriteDebug(self: &char32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteCharacterDebug(writer, self as uint32 as uint64, IsScalarValue(self as uint32));
     }

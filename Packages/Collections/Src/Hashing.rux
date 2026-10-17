@@ -1,33 +1,27 @@
 // Ready-made hash and equality callbacks for the key types a table is usually keyed on.
-//
 // A table takes its hash as a function rather than through an interface, because Rux has no closures and an
 // interface value would have to be stored and dispatched through per lookup. The signature carries the table's seed
 // alongside the key, which is what makes the hashing randomized: two tables in one program hash the same key
 // differently, and neither is predictable to anyone who has not seen the seed.
-//
 // Every hash here is `SipHash`, which is the one in `Rux/Hash` designed for exactly this. An adversary who chooses
 // keys can find collisions in any of the others by hand, and a table full of colliding keys is a table whose every
 // lookup is a linear scan — a denial of service against anything keyed on input it did not write. `SipHash` makes
 // finding those collisions as hard as guessing the seed.
-//
 // A caller keying on a type not listed here writes the pair itself: a hash that reads the whole key and mixes the
 // seed in, and an equality that agrees with it. The one rule is the usual one — two keys that compare equal must
 // hash the same.
 
-import Hash::{ SipHash24, SipHash24Of, WriteUint64 };
+import Hash::{ SipHash24, SipHash24Of, SipWord, WriteUint64 };
 
 /// The seeded hash of a `uint`.
-///
 /// `value`, `low` and `high` are read by value. The seed is the table's, and two tables with different seeds hash
 /// the same value differently.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
 /// @returns the value's hash under that seed
-/// @see https://rux-lang.dev/docs/api/collections/hash-uint
+/// @see https://rux-lang.dev/docs/api/collections/hashing#hash-uint
 pub func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value as uint64);
@@ -35,12 +29,11 @@ pub func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a `uint64`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
 /// @returns the value's hash under that seed
-/// @see https://rux-lang.dev/docs/api/collections/hash-uint64
+/// @see https://rux-lang.dev/docs/api/collections/hashing#hash-uint64
 pub func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value);
@@ -48,12 +41,11 @@ pub func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a `uint32`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
 /// @returns the value's hash under that seed
-/// @see https://rux-lang.dev/docs/api/collections/hash-uint32
+/// @see https://rux-lang.dev/docs/api/collections/hashing#hash-uint32
 pub func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value as uint64);
@@ -61,12 +53,11 @@ pub func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of an `int64`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
 /// @returns the value's hash under that seed
-/// @see https://rux-lang.dev/docs/api/collections/hash-int64
+/// @see https://rux-lang.dev/docs/api/collections/hashing#hash-int64
 pub func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value as uint64);
@@ -74,12 +65,11 @@ pub func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of an `int32`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
 /// @returns the value's hash under that seed
-/// @see https://rux-lang.dev/docs/api/collections/hash-int32
+/// @see https://rux-lang.dev/docs/api/collections/hashing#hash-int32
 pub func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, (value as int64) as uint64);
@@ -87,12 +77,11 @@ pub func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a `char8`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
 /// @returns the value's hash under that seed
-/// @see https://rux-lang.dev/docs/api/collections/hash-char8
+/// @see https://rux-lang.dev/docs/api/collections/hashing#hash-char8
 pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, (value as uint8) as uint64);
@@ -100,96 +89,112 @@ pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a run of characters, which is what a string key comes to.
-///
 /// `text` is borrowed and read. Two slices holding the same characters hash the same however they were built, which
 /// is what makes a text key usable at all.
-///
 /// Runs in time proportional to the length and allocates nothing.
-///
 /// @param text the bytes to hash
 /// @param low the first seed word
 /// @param high the second
 /// @returns the bytes' hash under that seed
-/// @see https://rux-lang.dev/docs/api/collections/hash-slice
+/// @see https://rux-lang.dev/docs/api/collections/hashing#hash-slice
 pub func HashSlice(text: char8[..], low: uint64, high: uint64) -> uint64 {
     return SipHash24Of(text.data as *byte, text.length, low, high);
 }
 
 /// Whether two `uint` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
-/// @see https://rux-lang.dev/docs/api/collections/equals-uint
+/// @see https://rux-lang.dev/docs/api/collections/hashing#equals-uint
 pub func EqualsUint(left: uint, right: uint) -> bool {
     return left == right;
 }
 
 /// Whether two `uint64` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
-/// @see https://rux-lang.dev/docs/api/collections/equals-uint64
+/// @see https://rux-lang.dev/docs/api/collections/hashing#equals-uint64
 pub func EqualsUint64(left: uint64, right: uint64) -> bool {
     return left == right;
 }
 
 /// Whether two `uint32` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
-/// @see https://rux-lang.dev/docs/api/collections/equals-uint32
+/// @see https://rux-lang.dev/docs/api/collections/hashing#equals-uint32
 pub func EqualsUint32(left: uint32, right: uint32) -> bool {
     return left == right;
 }
 
 /// Whether two `int64` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
-/// @see https://rux-lang.dev/docs/api/collections/equals-int64
+/// @see https://rux-lang.dev/docs/api/collections/hashing#equals-int64
 pub func EqualsInt64(left: int64, right: int64) -> bool {
     return left == right;
 }
 
 /// Whether two `int32` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
-/// @see https://rux-lang.dev/docs/api/collections/equals-int32
+/// @see https://rux-lang.dev/docs/api/collections/hashing#equals-int32
 pub func EqualsInt32(left: int32, right: int32) -> bool {
     return left == right;
 }
 
 /// Whether two `char8` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
-/// @see https://rux-lang.dev/docs/api/collections/equals-char8
+/// @see https://rux-lang.dev/docs/api/collections/hashing#equals-char8
 pub func EqualsChar8(left: char8, right: char8) -> bool {
     return left == right;
 }
 
 /// Whether two runs of characters hold the same characters.
-///
 /// Both are borrowed and read. Different lengths are never equal, and two empty slices are, whatever their data
 /// pointers hold.
-///
+/// Compares eight bytes at a time, finishing with the last eight, which may overlap words already compared; runs of
+/// four to seven bytes compare their first and last four. Only shorter runs go byte by byte.
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether both hold the same bytes
-/// @see https://rux-lang.dev/docs/api/collections/equals-slice
+/// @see https://rux-lang.dev/docs/api/collections/hashing#equals-slice
 pub func EqualsSlice(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }
+    let length = left.length;
+    let first = left.data as *byte;
+    let second = right.data as *byte;
+    if length >= 8 {
+        var offset: uint = 0;
+        while length - offset > 8 {
+            if SipWord(first + offset) != SipWord(second + offset) { return false; }
+            offset += 8;
+        }
+        return SipWord(first + (length - 8)) == SipWord(second + (length - 8));
+    }
+    if length >= 4 {
+        return Quarter(first) == Quarter(second) && Quarter(first + (length - 4)) == Quarter(second + (length - 4));
+    }
     var index: uint = 0;
-    while index < left.length {
-        if left.data[index] != right.data[index] { return false; }
+    while index < length {
+        if *(first + index) != *(second + index) { return false; }
         index++;
     }
     return true;
+}
+
+// The four bytes at `bytes` as a word, least significant byte first; assembled byte by byte, so any address will do.
+func Quarter(bytes: *byte) -> uint32 {
+    var value: uint32 = 0;
+    var index: uint = 0;
+    while index < 4 {
+        value = value | ((*(bytes + index) as uint32) << ((index * 8) as uint32));
+        index++;
+    }
+    return value;
 }

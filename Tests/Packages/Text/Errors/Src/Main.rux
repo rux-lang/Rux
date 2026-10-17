@@ -5,12 +5,10 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
                TextWriter, Utf8Error };
 
 // What a program says when something goes wrong, in the two registers it has to say it in.
-//
 // `Display` is the description a reader sees, short enough to sit inside a sentence the program is already writing.
 // `Debug` names the case and its payload, which is what a log is read for. Every case of every presented error is
 // checked here rather than a representative sample, because the value of a stable description is that all of them
 // are stable: one case nobody exercised is the one that renders as nothing.
-//
 // The two are checked to differ where they should and to agree where they must. `FormatError::TextFailure` and the
 // `TextError` naming the same failure describe it with the same words, since a caller cannot be told "invalid
 // UTF-8" by one and something else by the other. And the position an `InvalidSpecification` carries appears in

@@ -22,6 +22,7 @@ rux add Rux/Algorithms
 | `Stable` | `var T[..]` | `<`             | Merge sort, with scratch the caller supplies               |
 | `Heap`   | `var T[..]` | `<`             | Max-heap arrangement, push, pop and heapsort               |
 | `Fold`   | `T[..]`     | — or `+`/`*`    | Folds in both directions, sum, product and transform       |
+| `Numeric`| `var T[..]` | — or `+`        | Running sums and scans, counting sequences, midpoints      |
 
 Everything takes a view: a `T[..]` where it only reads, and a `var T[..]` where it writes.
 

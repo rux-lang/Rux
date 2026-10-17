@@ -1,0 +1,83 @@
+// Every atomic intrinsic at every width it accepts, with each memory order it allows. One thread cannot observe
+// atomicity, so this checks the values: each read-modify-write returns the old value and leaves the new one, narrow
+// results come back extended as their type reads them, a compare-exchange writes exactly when it matches, and module
+// storage and stack storage behave alike.
+
+import Core::{ Assert, AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchAnd, AtomicFetchOr,
+               AtomicFetchSub, AtomicFetchXor, AtomicLoad, AtomicStore, Fence, MemoryOrder, SpinHint };
+
+var Shared: int64 = 0;
+var Flag: bool = false;
+
+func Counter64() {
+    var value: int64 = 40;
+    Assert(AtomicLoad(@value, MemoryOrder::Relaxed) == 40, "relaxed load");
+    AtomicStore(@value, 41i64, MemoryOrder::Release);
+    Assert(AtomicLoad(@value, MemoryOrder::Acquire) == 41, "release store, acquire load");
+    AtomicStore(@value, 42i64, MemoryOrder::SequentiallyConsistent);
+    Assert(AtomicLoad(@value, MemoryOrder::SequentiallyConsistent) == 42, "sequentially consistent store and load");
+    Assert(AtomicExchange(@value, 7i64, MemoryOrder::AcquireRelease) == 42 && value == 7, "exchange returns the old value");
+    Assert(AtomicFetchAdd(@value, 5i64, MemoryOrder::Relaxed) == 7 && value == 12, "fetch-add");
+    Assert(AtomicFetchSub(@value, 20i64, MemoryOrder::SequentiallyConsistent) == 12 && value == -8, "fetch-sub below zero");
+    Assert(AtomicFetchAnd(@value, 0x0Fi64, MemoryOrder::Acquire) == -8 && value == 8, "fetch-and");
+    Assert(AtomicFetchOr(@value, 0x30i64, MemoryOrder::Release) == 8 && value == 0x38, "fetch-or");
+    Assert(AtomicFetchXor(@value, 0xFFi64, MemoryOrder::Relaxed) == 0x38 && value == 0xC7, "fetch-xor");
+    Assert(AtomicCompareExchange(@value, 0xC7i64, 99i64, MemoryOrder::SequentiallyConsistent, MemoryOrder::Acquire) == 0xC7 && value == 99,
+           "a matching compare-exchange writes");
+    Assert(AtomicCompareExchange(@value, 1i64, 5i64, MemoryOrder::AcquireRelease, MemoryOrder::Relaxed) == 99 && value == 99,
+           "a failing compare-exchange returns the current value and writes nothing");
+}
+
+func Narrow() {
+    var byte: int8 = -1;
+    Assert(AtomicFetchAdd(@byte, 1i8, MemoryOrder::Relaxed) == -1 && byte == 0, "an int8 old value comes back negative");
+    Assert(AtomicFetchSub(@byte, 1i8, MemoryOrder::Relaxed) == 0 && byte == -1, "int8 wraps below zero");
+    Assert(AtomicExchange(@byte, -128i8, MemoryOrder::SequentiallyConsistent) == -1 && byte == -128, "int8 exchange");
+    var small: uint8 = 255;
+    Assert(AtomicFetchAdd(@small, 1u8, MemoryOrder::Relaxed) == 255 && small == 0, "uint8 wraps above its maximum");
+    var half: int16 = -300;
+    Assert(AtomicCompareExchange(@half, -300i16, 300i16, MemoryOrder::SequentiallyConsistent, MemoryOrder::SequentiallyConsistent) == -300,
+           "int16 compare-exchange matches a negative value");
+    Assert(half == 300, "int16 compare-exchange writes");
+    Assert(AtomicFetchXor(@half, -1i16, MemoryOrder::Relaxed) == 300 && half == -301, "int16 fetch-xor");
+    var word: uint32 = 0xFFFFFFF0;
+    Assert(AtomicFetchOr(@word, 0x0Fu32, MemoryOrder::Relaxed) == 0xFFFFFFF0 && word == 0xFFFFFFFF, "uint32 fetch-or");
+    Assert(AtomicLoad(@word, MemoryOrder::Acquire) == 0xFFFFFFFF, "uint32 load keeps the high bit unsigned");
+    var signedWord: int32 = -2;
+    Assert(AtomicFetchAnd(@signedWord, -4i32, MemoryOrder::Relaxed) == -2 && signedWord == -4, "int32 fetch-and");
+    Assert(AtomicLoad(@signedWord, MemoryOrder::Relaxed) == -4, "int32 load comes back negative");
+}
+
+func Others() {
+    Assert(!AtomicExchange(@Flag, true, MemoryOrder::SequentiallyConsistent), "bool exchange from module storage");
+    Assert(AtomicLoad(@Flag, MemoryOrder::Acquire), "bool load");
+    Assert(AtomicFetchAnd(@Flag, false, MemoryOrder::Relaxed) && !Flag, "bool fetch-and");
+    Assert(!AtomicFetchOr(@Flag, true, MemoryOrder::Relaxed) && Flag, "bool fetch-or");
+    Assert(AtomicFetchXor(@Flag, true, MemoryOrder::Relaxed) && !Flag, "bool fetch-xor");
+
+    Assert(AtomicFetchAdd(@Shared, 10i64, MemoryOrder::SequentiallyConsistent) == 0, "module storage fetch-add");
+    Assert(AtomicLoad(@Shared, MemoryOrder::SequentiallyConsistent) == 10, "module storage keeps the sum");
+
+    var target: int64 = 3;
+    var other: int64 = 4;
+    var slot: *int64 = @target;
+    let previous = AtomicExchange(@slot, @other as *int64, MemoryOrder::AcquireRelease);
+    Assert(previous == @target as *int64, "a pointer exchange returns the old pointer");
+    Assert(AtomicLoad(@slot, MemoryOrder::Acquire) == @other as *int64, "a pointer load reads the new pointer");
+    Assert(AtomicCompareExchange(@slot, @other as *int64, @target as *int64, MemoryOrder::SequentiallyConsistent, MemoryOrder::Relaxed) ==
+           @other as *int64, "a pointer compare-exchange");
+    Assert(slot == @target as *int64, "the pointer compare-exchange wrote");
+
+    Fence(MemoryOrder::Acquire);
+    Fence(MemoryOrder::Release);
+    Fence(MemoryOrder::AcquireRelease);
+    Fence(MemoryOrder::SequentiallyConsistent);
+    SpinHint();
+}
+
+func Main() -> int {
+    Counter64();
+    Narrow();
+    Others();
+    return 0;
+}

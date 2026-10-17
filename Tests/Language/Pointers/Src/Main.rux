@@ -10,5 +10,15 @@ func Main() -> int {
     var point = Point {x: 10.0, y: 20.0, z: 30.0};
     var ptr = @point;
     Assert(ptr != null, "Pointer is null");
+    // `null` initializes the pointer inside an optional or a sum: the optional is present, holding a null pointer.
+    let present: (*int)? = null;
+    let isPresentNull = match present {
+        p? => p == null,
+        none => false
+    };
+    Assert(isPresentNull, "null in an optional pointer is a present null pointer");
+    let member: *int32 | bool = null;
+    Assert(member is *int32, "null selects the pointer member of a sum");
+
     return 0;
 }

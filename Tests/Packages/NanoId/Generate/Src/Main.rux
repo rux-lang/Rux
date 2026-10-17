@@ -1,0 +1,146 @@
+// Generation is checked twice over. A counting source makes the mapping from random bytes to characters exact: the
+// default alphabet takes each byte's low six bits, and a custom alphabet throws away a masked value past its end
+// rather than folding it back, which is the property that keeps every character equally likely. A failing source
+// checks that a failure leaves no partial identifier behind. The system generator is then checked for the shape of
+// what it produces and for every character of the alphabet appearing, which a broken mask would prevent.
+
+import Entropy::{ EntropyError, EntropySource };
+import NanoId::{ GenerateNanoId, GenerateNanoIdFrom, NanoIdAlphabet, NanoIdError, NanoIdLength, ValidateAlphabet };
+
+// Supplies 0, 1, 2, ... wrapping at 256, or fails on every request when told to.
+struct CountingSource {
+    next: uint;
+    failing: bool;
+    requests: uint;
+}
+
+extend CountingSource : EntropySource {
+    func Fill(self: &var CountingSource, buffer: *var opaque, length: uint) -> ! EntropyError {
+        self.requests = self.requests + 1;
+        if self.failing { fail EntropyError::Failed; }
+        let bytes = buffer as *var byte;
+        var index: uint = 0;
+        while index < length {
+            bytes[index] = (self.next % 256) as byte;
+            self.next = self.next + 1;
+            index = index + 1;
+        }
+        return;
+    }
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Which alphabet failure was reported, as a small code, with its offset where it has one.
+func AlphabetFailure(alphabet: char8[..]) -> int {
+    let reported = match ValidateAlphabet(alphabet) {
+        .Failure(error) => error,
+        .Success(_) => return 0
+    };
+    return match reported {
+        .AlphabetTooSmall => 1,
+        .AlphabetTooLarge => 2,
+        .DuplicateCharacter(at) => 300 + at as int,
+        .NonAsciiCharacter(at) => 400 + at as int,
+        .Entropy(_) => 5
+    };
+}
+
+func InAlphabet(c: char8) -> bool {
+    for member in NanoIdAlphabet {
+        if member == c { return true; }
+    }
+    return false;
+}
+
+func Main() -> int {
+    // The default alphabet maps byte n to its character n mod 64, in the reference implementation's order, so the
+    // bytes 0 to 20 give the alphabet's first twenty-one characters.
+    var source = CountingSource { next: 0, failing: false, requests: 0 };
+    var id: char8[21];
+    GenerateNanoIdFrom(source, id[..]) catch { else => return 1 };
+    if !Same(id[..], NanoIdAlphabet[..21]) { return 2; }
+    // Bytes 64 to 84 give the same characters again, since only the low six bits are used.
+    source.next = 64;
+    GenerateNanoIdFrom(source, id[..]) catch { else => return 3 };
+    if !Same(id[..], NanoIdAlphabet[..21]) { return 4; }
+
+    // A custom alphabet of three: the mask is three, so a masked value of three is thrown away, not folded to `a`.
+    source.next = 0;
+    var short: char8[7];
+    GenerateNanoIdFrom(source, short[..], "abc") catch { else => return 5 };
+    if !Same(short[..], "abcabca") { return 6; }
+    // Bytes 0..2 and 4..6 are accepted and 3 and 7 are not; the identifier is filled across however many requests
+    // that takes.
+    source.next = 0;
+    var long: char8[300];
+    GenerateNanoIdFrom(source, long[..], "abc") catch { else => return 7 };
+    var index: uint = 0;
+    while index < 300 {
+        let expected: char8 = index % 3 == 0 ? 'a' : (index % 3 == 1 ? 'b' : 'c');
+        if long[index] != expected { return 8; }
+        index = index + 1;
+    }
+
+    // A source that fails: the failure is reported and the destination holds no partial identifier.
+    var failing = CountingSource { next: 0, failing: true, requests: 0 };
+    var refused: char8[21] = ['x'; 21];
+    match GenerateNanoIdFrom(failing, refused[..]) {
+        .Failure(error) => {
+            match error {
+                .Entropy(reason) => {
+                    if reason != EntropyError::Failed { return 9; }
+                },
+                else => return 10
+            }
+        },
+        .Success(_) => return 11
+    }
+    for character in refused {
+        if character != '\0' { return 12; }
+    }
+
+    // Unusable alphabets are refused before any entropy is spent.
+    if AlphabetFailure("") != 1 || AlphabetFailure("a") != 1 { return 13; }
+    if AlphabetFailure("abca") != 303 { return 14; }
+    if AlphabetFailure("abé") != 402 { return 15; }
+    if AlphabetFailure("01") != 0 || AlphabetFailure(NanoIdAlphabet) != 0 { return 16; }
+    var spent = CountingSource { next: 0, failing: false, requests: 0 };
+    match GenerateNanoIdFrom(spent, short[..], "aa") {
+        .Failure(_) => {},
+        .Success(_) => return 17
+    }
+    if spent.requests != 0 { return 18; }
+
+    // The system generator: the right length, only alphabet characters, and every character turning up across a
+    // thousand identifiers, which a mask that dropped a bit would make impossible.
+    var counts: uint[128] = [0; 128];
+    var round: uint = 0;
+    while round < 1000 {
+        var fresh: char8[21];
+        GenerateNanoId(fresh[..]) catch { else => return 19 };
+        for character in fresh {
+            if !InAlphabet(character) { return 20; }
+            counts[character as uint8 as uint] = counts[character as uint8 as uint] + 1;
+        }
+        round = round + 1;
+    }
+    for member in NanoIdAlphabet {
+        if counts[member as uint8 as uint] == 0 { return 21; }
+    }
+    var digits: char8[12];
+    GenerateNanoId(digits[..], "0123456789") catch { else => return 22 };
+    for character in digits {
+        if character < '0' || character > '9' { return 23; }
+    }
+    if NanoIdLength != 21 || NanoIdAlphabet.length != 64 { return 24; }
+    return 0;
+}

@@ -3,6 +3,11 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarCast.h"
+#include "CodeGen/X86_64/ScalarMachine.h"
+#include "CodeGen/X86_64/ScalarMemory.h"
+#include "Object/Rcu/Rcu.h"
 
 #include <algorithm>
 #include <limits>
@@ -31,7 +36,7 @@ int X86_64FunctionEmitter::SizeOfRuntime(const TypeRef &type) const {
 }
 
 bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
-    if (IsWideInteger(type) || (IsSoftwareFloat(type) && SizeOfRuntime(type) > 8)) {
+    if (IsWideValue(type)) {
         return true;
     }
     if (type.IsRange()) {
@@ -41,7 +46,7 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     if (type.IsSlice()) {
         return true;
     }
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -50,8 +55,8 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(type.name);
-        return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+        const std::string base = BaseTypeName(type->name);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!type->inner.empty() && SizeOf(type) > 8);
     }
     default:
         return false;
@@ -61,8 +66,8 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
 bool X86_64FunctionEmitter::IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto type = registerTypes.find(reg);
-    return type != registerTypes.end() && type->second.kind == TypeRef::Kind::Pointer && !type->second.inner.empty() &&
-           type->second.inner[0] == pointee;
+    return type != registerTypes.end() && type->second->kind == TypeRef::Kind::Pointer &&
+           !type->second->inner.empty() && type->second->inner[0] == pointee;
 }
 
 int X86_64FunctionEmitter::FieldOffset(const LirReg base, const std::string &fieldName) const {
@@ -82,14 +87,30 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     if (EmitWideSoftwareFloatNegation(instruction)) {
         return true;
     }
-    if (instruction.dst == LirNoReg || (!IsWideInteger(operandType) && !IsWideInteger(instruction.type))) {
+    // A wide bool shares these word-by-word paths with a wide integer: bitwise operations and equality work on its
+    // words unchanged, and the cases below that would break its canonical form (one in word 0 or nothing, zeros above)
+    // single it out.
+    if (instruction.dst == LirNoReg || (!IsWideScalar(operandType) && !IsWideScalar(instruction.type))) {
         return false;
     }
-    const TypeRef wideType = IsWideInteger(operandType) ? operandType : instruction.type;
+    const TypeRef wideType = IsWideScalar(operandType) ? operandType : instruction.type;
     const int size = SizeOf(wideType);
     const int words = size / 8;
     const std::int32_t destination = Disp(instruction.dst);
     const auto source = [&](const std::size_t index) { return Disp(instruction.srcs.at(index)); };
+    // Stores a truth value already in rax, 0 or 1, as `resultType`. A wide bool gets it in word 0 and zeros in every
+    // word above; anything narrower is an ordinary register-width store.
+    const auto storeTruth = [&](const TypeRef &resultType) {
+        if (!IsWideScalar(resultType)) {
+            hooks.StoreA(instruction.dst, resultType);
+            return;
+        }
+        encoder.MovRaxStore(destination);
+        encoder.MovEaxImm32(0);
+        for (int offset = 8; offset < SizeOf(resultType); offset += 8) {
+            encoder.MovRaxStore(destination + offset);
+        }
+    };
 
     switch (instruction.op) {
     case LirOpcode::Add:
@@ -288,7 +309,14 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     case LirOpcode::BitNot:
         for (int word = 0; word < words; ++word) {
             encoder.MovRaxLoad(source(0) + word * 8);
-            encoder.NotRax();
+            if (!wideType.IsBool()) {
+                encoder.NotRax();
+            }
+            else if (word == 0) {
+                // As for a narrow bool, `~` is logical negation: only the truth bit in word 0 flips, and the zero
+                // words above it are copied, because inverting them would leave a value no other path reads as a bool.
+                encoder.XorRaxImmediate(1);
+            }
             encoder.MovRaxStore(destination + word * 8);
         }
         return true;
@@ -301,7 +329,7 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
         encoder.TestRaxRax();
         encoder.SeteAl();
         encoder.MovzxRaxAl();
-        hooks.StoreA(instruction.dst, TypeRef::MakeBool());
+        storeTruth(instruction.type.IsBool() ? instruction.type : TypeRef::MakeBool());
         return true;
     }
     case LirOpcode::Shl:
@@ -316,42 +344,88 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
         else {
             encoder.MovRcxLoad(source(1));
         }
+        // The count, reduced modulo the width, moves whole words while 64 or more of it remain, then shifts every word
+        // by the rest at once, carrying bits across words with shld/shrd: at most `words` passes instead of one per
+        // bit.
+        const bool arithmetic = instruction.op == LirOpcode::Shr && wideType.IsSigned();
         encoder.Byte(0x48);
         encoder.Byte(0x81);
         encoder.Byte(0xE1); // and rcx, width - 1
         encoder.Dword(static_cast<std::uint32_t>(size * 8 - 1));
+        const std::uint32_t wordLoop = encoder.Size();
+        encoder.Byte(0x48);
+        encoder.Byte(0x83);
+        encoder.Byte(0xF9);
+        encoder.Byte(0x40); // cmp rcx, 64
+        const std::uint32_t bits = JumpIf(0x82);
+        if (instruction.op == LirOpcode::Shl) {
+            for (int word = words - 1; word > 0; --word) {
+                encoder.MovRaxLoad(destination + (word - 1) * 8);
+                encoder.MovRaxStore(destination + word * 8);
+            }
+            encoder.MovEaxImm32(0);
+            encoder.MovRaxStore(destination);
+        }
+        else {
+            for (int word = 0; word < words - 1; ++word) {
+                encoder.MovRaxLoad(destination + (word + 1) * 8);
+                encoder.MovRaxStore(destination + word * 8);
+            }
+            encoder.MovRaxLoad(destination + (words - 1) * 8);
+            if (arithmetic) {
+                encoder.Byte(0x48);
+                encoder.Byte(0xC1);
+                encoder.Byte(0xF8);
+                encoder.Byte(0x3F); // sar rax, 63: the sign fills the vacated word
+            }
+            else {
+                encoder.MovEaxImm32(0);
+            }
+            encoder.MovRaxStore(destination + (words - 1) * 8);
+        }
+        encoder.Byte(0x48);
+        encoder.Byte(0x83);
+        encoder.Byte(0xE9);
+        encoder.Byte(0x40); // sub rcx, 64
+        encoder.Byte(0xE9); // jmp back for the next word
+        const std::uint32_t again = encoder.Size();
+        encoder.Dword(0);
+        encoder.Patch32(again, static_cast<std::int32_t>(wordLoop) - static_cast<std::int32_t>(again + 4));
+        PatchHere(bits);
         encoder.Byte(0x48);
         encoder.Byte(0x85);
         encoder.Byte(0xC9); // test rcx, rcx
         const std::uint32_t done = JumpIf(0x84);
-        const std::uint32_t loop = encoder.Size();
         if (instruction.op == LirOpcode::Shl) {
-            for (int word = 0; word < words; ++word) {
-                encoder.Byte(0x48);
-                encoder.Byte(0xD1);
-                encoder.Byte(word == 0 ? 0xA5 : 0x95); // shl/rcl qword [rbp + disp32], 1
-                encoder.Dword(static_cast<std::uint32_t>(destination + word * 8));
+            for (int word = words - 1; word > 0; --word) {
+                encoder.MovRaxLoad(destination + word * 8);
+                encoder.MovR10Load(destination + (word - 1) * 8);
+                encoder.Byte(0x4C);
+                encoder.Byte(0x0F);
+                encoder.Byte(0xA5);
+                encoder.Byte(0xD0); // shld rax, r10, cl
+                encoder.MovRaxStore(destination + word * 8);
             }
+            encoder.Byte(0x48);
+            encoder.Byte(0xD3);
+            encoder.Byte(0xA5); // shl qword [rbp + disp32], cl
+            encoder.Dword(static_cast<std::uint32_t>(destination));
         }
         else {
-            for (int word = words - 1; word >= 0; --word) {
-                encoder.Byte(0x48);
-                encoder.Byte(0xD1);
-                const bool top = word == words - 1;
-                const std::uint8_t modRm =
-                    top ? (instruction.op == LirOpcode::Shr && wideType.IsSigned() ? 0xBD : 0xAD) : 0x9D;
-                encoder.Byte(modRm); // sar/shr/rcr qword [rbp + disp32], 1
-                encoder.Dword(static_cast<std::uint32_t>(destination + word * 8));
+            for (int word = 0; word < words - 1; ++word) {
+                encoder.MovRaxLoad(destination + word * 8);
+                encoder.MovR10Load(destination + (word + 1) * 8);
+                encoder.Byte(0x4C);
+                encoder.Byte(0x0F);
+                encoder.Byte(0xAD);
+                encoder.Byte(0xD0); // shrd rax, r10, cl
+                encoder.MovRaxStore(destination + word * 8);
             }
+            encoder.Byte(0x48);
+            encoder.Byte(0xD3);
+            encoder.Byte(arithmetic ? 0xBD : 0xAD); // sar/shr qword [rbp + disp32], cl
+            encoder.Dword(static_cast<std::uint32_t>(destination + (words - 1) * 8));
         }
-        encoder.Byte(0x48);
-        encoder.Byte(0xFF);
-        encoder.Byte(0xC9); // dec rcx
-        encoder.Byte(0x0F);
-        encoder.Byte(0x85);
-        const std::uint32_t repeat = encoder.Size();
-        encoder.Dword(0);
-        encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
         PatchHere(done);
         return true;
     }
@@ -414,20 +488,41 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     case LirOpcode::Cast: {
         const TypeRef &destinationType = instruction.type;
         if (destinationType.IsBool()) {
-            encoder.MovEaxImm32(0);
-            for (int word = 0; word < words; ++word) {
-                encoder.MovR10Load(source(0) + word * 8);
-                encoder.OrRaxR10();
+            // The truth of the source is read from the words the source has. `words` follows whichever side is wide,
+            // so when only the destination is — an int64 or a bool8 cast to a bool512 — it would read past the
+            // source's slot into its neighbours.
+            if (IsWideScalar(operandType)) {
+                encoder.MovEaxImm32(0);
+                for (int word = 0; word < SizeOf(operandType) / 8; ++word) {
+                    encoder.MovR10Load(source(0) + word * 8);
+                    encoder.OrRaxR10();
+                }
             }
-            encoder.TestRaxRax();
-            encoder.SetneAl();
-            encoder.MovzxRaxAl();
+            else {
+                hooks.LoadA(instruction.srcs[0], operandType);
+            }
+            // A bool of any width already reads as 0 or 1, so a cast between bool widths is a plain zero extension or
+            // truncation of the truth bit; only another source needs normalizing.
+            if (!operandType.IsBool()) {
+                encoder.TestRaxRax();
+                encoder.SetneAl();
+                encoder.MovzxRaxAl();
+            }
+            storeTruth(destinationType);
+            return true;
+        }
+        if (wideType.IsBool() && IsNativeFloat(destinationType)) {
+            // A wide bool's value is word 0, 0 or 1, which converts as the integer it is; its raw bits would not.
+            encoder.MovRaxLoad(source(0));
+            destinationType->kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
             hooks.StoreA(instruction.dst, destinationType);
             return true;
         }
-        if (IsWideInteger(destinationType)) {
+        // A wide bool converts to an integer like the unsigned value it holds: copied and zero-extended, or truncated,
+        // which `IsSigned` being false for every bool gives below.
+        if (IsWideScalar(destinationType)) {
             const int destinationSize = SizeOf(destinationType);
-            if (!IsWideInteger(operandType)) {
+            if (!IsWideScalar(operandType)) {
                 hooks.LoadA(instruction.srcs[0], operandType);
                 encoder.MovRaxStore(destination);
                 if (operandType.IsSigned()) {
@@ -474,6 +569,22 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
 }
 
 bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
+    if (const auto selected = SelectScalarCastInstruction(instruction, framePlan)) {
+        encoder.EmitScalarCastInstruction(*selected);
+        return true;
+    }
+    if (framePlan.BranchComparisons().contains(instruction.dst)) {
+        return true; // The sole consuming branch selects the comparison directly into flags.
+    }
+    if (const auto selected = SelectScalarMachineInstruction(instruction, framePlan)) {
+        encoder.EmitScalarMachineInstruction(*selected);
+        return true;
+    }
+    // The x87 forms are checked first: a conversion between float80 and float32 or float64 must not reach the SSE
+    // paths below, and neither must a float32 or float64 remainder.
+    if (EmitX87(instruction)) {
+        return true;
+    }
     if (EmitWideArithmetic(instruction)) {
         return true;
     }
@@ -489,7 +600,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], type);
         hooks.LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const bool float32 = type->kind == TypeRef::Kind::Float32;
             if (instruction.op == LirOpcode::Add) {
                 float32 ? encoder.AddssXmm01() : encoder.AddsdXmm01();
             }
@@ -526,7 +637,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], type);
         hooks.LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            type.kind == TypeRef::Kind::Float32 ? encoder.MulssXmm01() : encoder.MulsdXmm01();
+            type->kind == TypeRef::Kind::Float32 ? encoder.MulssXmm01() : encoder.MulsdXmm01();
         }
         else {
             encoder.ImulRaxR10();
@@ -540,12 +651,8 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], type);
         hooks.LoadB(instruction.srcs[1], type);
         if (IsFloat(type)) {
-            if (instruction.op == LirOpcode::Div) {
-                type.kind == TypeRef::Kind::Float32 ? encoder.DivssXmm01() : encoder.DivsdXmm01();
-            }
-            else {
-                type.kind == TypeRef::Kind::Float32 ? encoder.FmodssXmm01() : encoder.FmodsdXmm01();
-            }
+            // A float remainder never gets here: `EmitX87` computes it with `fprem`.
+            type->kind == TypeRef::Kind::Float32 ? encoder.DivssXmm01() : encoder.DivsdXmm01();
         }
         else {
             if (type.IsSigned()) {
@@ -568,6 +675,15 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     case LirOpcode::Lshr: {
         const TypeRef &type = instruction.type;
         hooks.LoadA(instruction.srcs[0], instruction.op == LirOpcode::Lshr ? UnsignedIntegerType(type) : type);
+        if (const auto immediate = framePlan.ImmediateValues().find(instruction.srcs[1]);
+            immediate != framePlan.ImmediateValues().end()) {
+            const unsigned operation = instruction.op == LirOpcode::Shl
+                                         ? 4U
+                                         : (type.IsSigned() && instruction.op != LirOpcode::Lshr ? 7U : 5U);
+            encoder.ShiftRaxImmediate(operation, static_cast<std::uint8_t>(immediate->second & 63U));
+            hooks.StoreA(instruction.dst, type);
+            return true;
+        }
         if (const auto physical = physicalRegisters.find(instruction.srcs[1]); physical != physicalRegisters.end()) {
             encoder.MovR11PhysReg(physical->second);
         }
@@ -588,11 +704,17 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.StoreA(instruction.dst, type);
         return true;
     }
+    case LirOpcode::RotateRight:
+        hooks.LoadA(instruction.srcs[0], instruction.type);
+        encoder.RotateRaxImmediate(instruction.type->kind == TypeRef::Kind::UInt64,
+                                   static_cast<std::uint8_t>(ParseIntegerLiteralBits(instruction.strArg).value()));
+        hooks.StoreA(instruction.dst, instruction.type);
+        return true;
     case LirOpcode::Neg: {
         const TypeRef &type = instruction.type;
         hooks.LoadA(instruction.srcs[0], type);
         if (IsFloat(type)) {
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
+            const bool float32 = type->kind == TypeRef::Kind::Float32;
             const std::uint32_t maskSymbol = hooks.InternFloatSignMask(float32);
             std::uint32_t relocationOffset;
             float32 ? encoder.MovssXmm1Rip(relocationOffset) : encoder.MovsdXmm1Rip(relocationOffset);
@@ -605,6 +727,17 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.StoreA(instruction.dst, type);
         return true;
     }
+    case LirOpcode::Sqrt:
+        if (instruction.srcs.size() != 1 || instruction.dst == LirNoReg ||
+            (instruction.type->kind != TypeRef::Kind::Float32 && instruction.type->kind != TypeRef::Kind::Float64))
+            return false;
+        hooks.LoadA(instruction.srcs[0], instruction.type);
+        encoder.Byte(instruction.type->kind == TypeRef::Kind::Float32 ? 0xF3 : 0xF2);
+        encoder.Byte(0x0F);
+        encoder.Byte(0x51);
+        encoder.Byte(0xC0); // sqrtss/sqrtsd xmm0, xmm0
+        hooks.StoreA(instruction.dst, instruction.type);
+        return true;
     case LirOpcode::Not:
         hooks.LoadA(instruction.srcs[0], instruction.type);
         encoder.TestRaxRax();
@@ -635,7 +768,7 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         hooks.LoadA(instruction.srcs[0], lhsType);
         hooks.LoadB(instruction.srcs[1], lhsType);
         if (IsFloat(lhsType)) {
-            lhsType.kind == TypeRef::Kind::Float32 ? encoder.UcomissXmm01() : encoder.UcomisdXmm01();
+            lhsType->kind == TypeRef::Kind::Float32 ? encoder.UcomissXmm01() : encoder.UcomisdXmm01();
             switch (instruction.op) {
             case LirOpcode::CmpEq:
                 encoder.SeteAl();
@@ -707,16 +840,44 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         const bool sourceFloat = IsFloat(sourceType);
         const bool destinationFloat = IsFloat(destinationType);
         if (sourceFloat && !destinationFloat) {
-            sourceType.kind == TypeRef::Kind::Float32 ? encoder.CvttsssiRaxXmm0() : encoder.CvttsdsiRaxXmm0();
+            const bool single = sourceType->kind == TypeRef::Kind::Float32;
+            const auto truncate = [&] { single ? encoder.CvttsssiRaxXmm0() : encoder.CvttsdsiRaxXmm0(); };
+            if (destinationType.IsInteger() && !destinationType.IsSigned() && SizeOf(destinationType) == 8) {
+                // The truncating conversion produces a signed 64-bit integer, so an unsigned value of 2^63 or more is
+                // brought below 2^63 first and its top bit restored afterwards. Lowering has already settled what
+                // lies outside the unsigned range.
+                std::uint32_t relocationOffset;
+                const std::uint32_t symbol = single ? hooks.InternFloat32Literal("9223372036854775808.0")
+                                                    : hooks.InternFloat64Literal("9223372036854775808.0");
+                single ? encoder.MovssXmm1Rip(relocationOffset) : encoder.MovsdXmm1Rip(relocationOffset);
+                hooks.AddTextRelocation(relocationOffset, symbol);
+                single ? encoder.UcomissXmm01() : encoder.UcomisdXmm01();
+                const std::uint32_t large = JumpIf(0x83); // jae
+                truncate();
+                std::uint32_t done;
+                encoder.Jmp(done);
+                PatchHere(large);
+                single ? encoder.SubssXmm01() : encoder.SubsdXmm01();
+                truncate();
+                encoder.Byte(0x48);
+                encoder.Byte(0x0F);
+                encoder.Byte(0xBA);
+                encoder.Byte(0xF8);
+                encoder.Byte(0x3F); // btc rax, 63
+                PatchHere(done);
+            }
+            else {
+                truncate();
+            }
         }
         else if (!sourceFloat && destinationFloat) {
-            destinationType.kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
+            destinationType->kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
         }
         else if (sourceFloat && destinationFloat) {
-            if (sourceType.kind == TypeRef::Kind::Float32 && destinationType.kind == TypeRef::Kind::Float64) {
+            if (sourceType->kind == TypeRef::Kind::Float32 && destinationType->kind == TypeRef::Kind::Float64) {
                 encoder.CvtsssdXmm0();
             }
-            else if (sourceType.kind == TypeRef::Kind::Float64 && destinationType.kind == TypeRef::Kind::Float32) {
+            else if (sourceType->kind == TypeRef::Kind::Float64 && destinationType->kind == TypeRef::Kind::Float32) {
                 encoder.CvtsdssXmm0();
             }
         }
@@ -813,41 +974,48 @@ void X86_64FunctionEmitter::CopyAggregateFromR10ToR11(const int size) const {
 }
 
 bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
+    if (const auto selected = SelectScalarMemoryInstruction(instruction, framePlan)) {
+        encoder.EmitScalarMemoryInstruction(*selected);
+        return true;
+    }
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
     switch (instruction.op) {
     case LirOpcode::Const: {
+        if (framePlan.ElidedImmediates().contains(instruction.dst))
+            return true;
         if (instruction.dst == LirNoReg) {
             return true;
         }
         const TypeRef &type = instruction.type;
         const int size = SizeOf(type);
-        if (type.kind == TypeRef::Kind::Float32) {
+        if (type->kind == TypeRef::Kind::Float32) {
             const std::uint32_t symbol = hooks.InternFloat32Literal(instruction.strArg);
             std::uint32_t relocationOffset;
             encoder.MovssXmm0Rip(relocationOffset);
             hooks.AddTextRelocation(relocationOffset, symbol);
-            encoder.MovssXmm0Store(Disp(instruction.dst));
+            hooks.StoreA(instruction.dst, type);
         }
-        else if (type.kind == TypeRef::Kind::Float64) {
+        else if (type->kind == TypeRef::Kind::Float64) {
             const std::uint32_t symbol = hooks.InternFloat64Literal(instruction.strArg);
             std::uint32_t relocationOffset;
             encoder.MovsdXmm0Rip(relocationOffset);
             hooks.AddTextRelocation(relocationOffset, symbol);
-            encoder.MovsdXmm0Store(Disp(instruction.dst));
+            hooks.StoreA(instruction.dst, type);
         }
         else if (IsSoftwareFloat(type)) {
             EmitSoftwareFloatConstant(instruction);
         }
-        else if (type.IsBool()) {
-            encoder.MovEaxImm32((instruction.strArg == "true" || instruction.strArg == "1") ? 1 : 0);
-            hooks.StoreA(instruction.dst, type);
-        }
-        else if (IsWideInteger(type)) {
+        // The wide case comes before the bool one: a wide bool constant fills every word of its slot, where the bool
+        // path below would store one byte and leave the words above it holding whatever the slot held before.
+        else if (IsWideScalar(type)) {
             const std::string &literal = instruction.strArg.empty() ? "0" : instruction.strArg;
-            const auto parts = SplitIntegerLiteral(literal);
             WideInteger value = WideInteger::Zero(static_cast<std::uint32_t>(size * 8));
-            if (parts) {
+            if (type.IsBool()) {
+                value = WideInteger::FromUnsigned(literal == "true" || literal == "1" ? 1 : 0,
+                                                  static_cast<std::uint32_t>(size * 8));
+            }
+            else if (const auto parts = SplitIntegerLiteral(literal)) {
                 if (const auto magnitude =
                         WideInteger::Parse(parts->digits, parts->base, static_cast<std::uint32_t>(size * 8))) {
                     value = parts->negative ? magnitude->Negated() : *magnitude;
@@ -863,6 +1031,17 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
                 }
                 encoder.MovRaxStore(Disp(instruction.dst) + offset);
             }
+        }
+        // Lowering's placeholder for an expression with no value of its own, such as a block without a trailing
+        // expression, is the constant 0 of the expression's type, and that type can be a struct, optional, fallible or
+        // other aggregate wider than a register. Every word of its slot is zeroed: a register store would cover one
+        // byte of a slot over sixteen bytes and leave rdx's garbage in the second word of one of nine to sixteen.
+        else if (IsAggregate(type) && SizeOfRuntime(type) > 8) {
+            ZeroWide(Disp(instruction.dst), SizeOfRuntime(type));
+        }
+        else if (type.IsBool()) {
+            encoder.MovEaxImm32((instruction.strArg == "true" || instruction.strArg == "1") ? 1 : 0);
+            hooks.StoreA(instruction.dst, type);
         }
         else {
             const std::string &value = instruction.strArg.empty() ? "0" : instruction.strArg;
@@ -993,9 +1172,12 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         else {
             encoder.MovR11Load(Disp(pointer));
         }
-        if (IsAggregate(type) && (runtimeSize > 8 || (runtimeSize > 0 && runtimeSize != 1 && runtimeSize != 2 &&
-                                                      runtimeSize != 4 && runtimeSize != 8))) {
-            // The same odd widths on the way out: chunked, so nothing beyond the object is touched.
+        if (IsAggregate(type) &&
+            (runtimeSize > 8 || IsRegPointerTo(value, type) ||
+             (runtimeSize > 0 && runtimeSize != 1 && runtimeSize != 2 && runtimeSize != 4 && runtimeSize != 8))) {
+            // The same odd widths on the way out: chunked, so nothing beyond the object is touched. An aggregate the
+            // value register only points at is copied from there at any width, since loading the register would
+            // store the address.
             if (IsRegPointerTo(value, type)) {
                 if (const auto physical = physicalRegisters.find(value); physical != physicalRegisters.end()) {
                     encoder.MovR10PhysReg(physical->second);
@@ -1059,13 +1241,20 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     case LirOpcode::GlobalAddr: {
         const std::uint32_t symbol = hooks.ResolveGlobalSymbol(instruction.strArg);
         std::uint32_t relocationOffset;
-        encoder.LeaRaxRip(relocationOffset);
-        hooks.AddTextRelocation(relocationOffset, symbol);
+        // Imported data lives in another image: its address is read from the slot the loader fills.
+        if (hooks.IsImportedData(instruction.strArg)) {
+            encoder.MovRaxRip(relocationOffset);
+            hooks.AddTypedTextRelocation(relocationOffset, symbol, RcuRelType::ImportSlotRel32);
+        }
+        else {
+            encoder.LeaRaxRip(relocationOffset);
+            hooks.AddTextRelocation(relocationOffset, symbol);
+        }
         hooks.StoreA(instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     }
     case LirOpcode::StringAddr: {
-        const TypeRef elementType = instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
+        const TypeRef elementType = instruction.type->inner.empty() ? TypeRef::MakeChar8() : instruction.type->inner[0];
         const std::uint32_t symbol =
             hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, SizeOfRuntime(elementType)));
         std::uint32_t relocationOffset;
@@ -1076,8 +1265,12 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     }
     case LirOpcode::FieldPtr: {
         const LirReg base = instruction.srcs[0];
-        hooks.LoadA(base, registerTypes.at(base));
         const int offset = FieldOffset(base, instruction.strArg);
+        if (const auto selected = SelectScalarAddressInstruction(instruction, framePlan, 1, offset)) {
+            encoder.EmitScalarAddressInstruction(*selected);
+            return true;
+        }
+        hooks.LoadA(base, registerTypes.at(base));
         if (offset != 0) {
             encoder.LeaRaxRaxDisp(offset);
         }
@@ -1087,16 +1280,26 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     case LirOpcode::IndexPtr: {
         const LirReg base = instruction.srcs[0];
         const LirReg index = instruction.srcs[1];
-        int elementSize = instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty()
-                            ? SizeOfRuntime(instruction.type.inner[0])
+        int elementSize = instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty()
+                            ? SizeOfRuntime(instruction.type->inner[0])
                             : 8;
         if (elementSize < 1) {
             elementSize = 1;
         }
+        if (const auto selected = SelectScalarAddressInstruction(instruction, framePlan, elementSize)) {
+            encoder.EmitScalarAddressInstruction(*selected);
+            return true;
+        }
         hooks.LoadA(base, registerTypes.at(base));
         hooks.LoadB(index, registerTypes.at(index));
-        encoder.ImulR11R10Imm32(elementSize);
-        encoder.AddRaxR11();
+        if (elementSize == 1 || elementSize == 2 || elementSize == 4 || elementSize == 8) {
+            const unsigned shift = elementSize == 8 ? 3 : elementSize == 4 ? 2 : elementSize == 2 ? 1 : 0;
+            encoder.LeaRaxRaxR10(shift);
+        }
+        else {
+            encoder.ImulR11R10Imm32(elementSize);
+            encoder.AddRaxR11();
+        }
         hooks.StoreA(instruction.dst, TypeRef::MakePointer(instruction.type));
         return true;
     }

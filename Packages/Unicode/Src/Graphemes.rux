@@ -1,19 +1,15 @@
 // Where one user-perceived character ends and the next begins.
-//
 // A scalar value is not a character as a reader counts them: an e and its acute are two values and one thing on the
 // screen, a family emoji is seven values and one glyph, a Hangul syllable typed as jamo is three. The extended
 // grapheme cluster is Unicode's answer to "what does one arrow-key press cross", and these are the UAX #29 rules
 // that define it, the emoji and Indic conjunct rules included.
-//
 // The interface is one question: is there a boundary before position N. Everything else — counting clusters,
 // walking them — is a loop over that question, and the committed break vectors hold every rule to the standard's
 // own test file.
 
 
 /// The grapheme break class of a scalar value. `Copy`.
-///
 /// The ordinals match the generated table and must not be reordered.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/grapheme-break
 pub enum GraphemeBreak: int32 {
     /// Everything with no class of its own.
@@ -47,19 +43,17 @@ pub enum GraphemeBreak: int32 {
 }
 
 /// The break class of `scalar`.
-///
 /// @param scalar the scalar value to classify
 /// @returns its grapheme cluster break property
-/// @see https://rux-lang.dev/docs/api/unicode/grapheme-break-of
+/// @see https://rux-lang.dev/docs/api/unicode/grapheme-break#grapheme-break-of
 pub func GraphemeBreakOf(scalar: char32) -> GraphemeBreak {
     return RangeValue(GraphemeBreakRanges[..], scalar as uint32, 0) as GraphemeBreak;
 }
 
 /// Whether `scalar` is an extended pictograph: the emoji and everything reserved to become one.
-///
 /// @param scalar the scalar value to test
 /// @returns whether it has the Extended_Pictographic property
-/// @see https://rux-lang.dev/docs/api/unicode/is-pictographic
+/// @see https://rux-lang.dev/docs/api/unicode/grapheme-break#is-pictographic
 pub func IsPictographic(scalar: char32) -> bool {
     return InRangePairs(PictographicRanges[..], scalar as uint32);
 }
@@ -78,17 +72,14 @@ func IsConjunctExtend(scalar: char32) -> bool {
 }
 
 /// Whether a cluster boundary falls before `index` in `text`.
-///
 /// The ends count: position zero and the length are always boundaries, which is what makes "the clusters of a
 /// text" a partition of it. The rules between are UAX #29's, applied to the pair either side of the position with
 /// lookback where a rule reaches further — the emoji join, the flag pairs, and the Indic conjuncts.
-///
 /// Runs in time proportional to the lookback, which is the run of marks behind the position; allocates nothing.
-///
 /// @param text the scalar values to examine
 /// @param index the position to test, in scalar values
 /// @returns whether a grapheme cluster boundary falls before `index`
-/// @see https://rux-lang.dev/docs/api/unicode/is-grapheme-boundary
+/// @see https://rux-lang.dev/docs/api/unicode/graphemes#is-grapheme-boundary
 pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
     if index == 0 || index >= text.length { return true; }
     let before = GraphemeBreakOf(text.data[index - 1]);
@@ -173,10 +164,9 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
 }
 
 /// How many grapheme clusters `text` holds.
-///
 /// @param text the scalar values to count
 /// @returns how many grapheme clusters `text` holds
-/// @see https://rux-lang.dev/docs/api/unicode/count-graphemes
+/// @see https://rux-lang.dev/docs/api/unicode/graphemes#count-graphemes
 pub func CountGraphemes(text: char32[..]) -> uint {
     var counted: uint = 0;
     var index: uint = 0;

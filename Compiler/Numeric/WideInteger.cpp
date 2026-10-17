@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <limits>
 
 namespace Rux {
 namespace {
@@ -133,7 +134,12 @@ std::optional<WideInteger> WideInteger::Parse(const std::string_view digits, con
     if (base < 2 || base > 16) {
         return std::nullopt;
     }
-    WideInteger value = Zero(width);
+    // Digits accumulate in one word while they fit, which is every literal a program usually writes, and in the whole
+    // value only past it. A value never shrinks as digits are added, so one that outgrows `width` on the way does not
+    // fit at the end either.
+    const std::uint32_t valueWidth = ClampWidth(width);
+    std::uint64_t small = 0;
+    std::optional<WideInteger> wide;
     bool sawDigit = false;
     for (const char character : digits) {
         if (character == '_') {
@@ -144,11 +150,30 @@ std::optional<WideInteger> WideInteger::Parse(const std::string_view digits, con
             return std::nullopt;
         }
         sawDigit = true;
-        if (!value.MultiplyAdd(static_cast<Limb>(base), static_cast<Limb>(*digit))) {
+        if (!wide && small <= (std::numeric_limits<std::uint64_t>::max() - *digit) / base) {
+            small = small * base + *digit;
+            continue;
+        }
+        if (!wide) {
+            if (valueWidth < 64 && (small >> valueWidth) != 0) {
+                return std::nullopt;
+            }
+            wide = FromUnsigned(small, valueWidth);
+        }
+        if (!wide->MultiplyAdd(static_cast<Limb>(base), static_cast<Limb>(*digit))) {
             return std::nullopt;
         }
     }
-    return sawDigit ? std::optional{value} : std::nullopt;
+    if (!sawDigit) {
+        return std::nullopt;
+    }
+    if (wide) {
+        return wide;
+    }
+    if (valueWidth < 64 && (small >> valueWidth) != 0) {
+        return std::nullopt;
+    }
+    return FromUnsigned(small, valueWidth);
 }
 
 bool WideInteger::IsZero() const noexcept {

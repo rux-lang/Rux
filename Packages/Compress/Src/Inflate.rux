@@ -1,0 +1,418 @@
+// Reading a compressed stream back as the data it holds.
+// The decompressor pulls compressed bytes from its source as it needs them and stops only when the caller's buffer is
+// full, so it is a state machine: between reads it remembers which part of the stream it is in, how much of a stored
+// block is left, and how much of a match it has still to copy. The last 32 KiB it produced are kept, since a match
+// may reach back that far. The container's checksum is computed over everything produced and checked against the
+// trailer before the end of the data is reported, so a reader that reached the end got the data that was compressed.
+
+import Allocator::{ Allocator, Layout };
+import Hash::{ Adler32, Crc32, Hasher };
+import Io::{ IoError, IoErrorKind, Reader };
+import Compress::{
+    CodeLengthOrder, Corrupt, DecodeTable, DistanceBase, DistanceExtra, Format, LengthBase, LengthExtra, WindowSize
+};
+
+// Where the reader is in the stream.
+const AtHeader: uint8 = 0;
+const AtBlockHeader: uint8 = 1;
+const InStoredBlock: uint8 = 2;
+const InCodedBlock: uint8 = 3;
+const AtTrailer: uint8 = 4;
+const AtEnd: uint8 = 5;
+
+const InputCapacity: uint = 4096;
+
+/// A reader that decompresses what it reads from another, in any of the three formats.
+/// Reading it to the end fails with `EndOfStream` once the data and its checksum have been read; damaged or truncated
+/// input fails with `InvalidInput`, and so does every read after. A gzip stream of several members reads as their
+/// data one after another. Not copied.
+/// @see https://rux-lang.dev/docs/api/compress/inflate#decompress-reader
+pub struct DecompressReader {
+    source: Reader;
+    format: Format;
+    allocator: Allocator;
+    input: *var char8;
+    inputLength: uint;
+    inputAt: uint;
+    bits: uint64;
+    bitCount: uint;
+    window: *var uint8;
+    windowAt: uint;
+    written: uint64;
+    state: uint8;
+    final: bool;
+    failed: bool;
+    storedLeft: uint;
+    copyLength: uint;
+    copyDistance: uint;
+    literals: DecodeTable;
+    distances: DecodeTable;
+    crc: Crc32;
+    adler: Adler32;
+    memberSize: uint32;
+}
+
+extend DecompressReader {
+    func =(self: &var DecompressReader, other: &DecompressReader);
+
+    /// A reader of the data `source` holds compressed in `format`.
+    /// @param allocator what the reader's input buffer and history are kept in
+    /// @param source the compressed stream, which the reader takes
+    /// @param format the container the stream is in
+    /// @returns the reader, or fails when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/compress/inflate#new
+    pub func New(allocator: Allocator, source: Reader, format: Format) -> DecompressReader ! IoError {
+        var borrowed = allocator;
+        let input = borrowed.Allocate(Layout::New(InputCapacity, 1) ?? fail IoError::Of(IoErrorKind::LimitExceeded))
+            catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        let window = borrowed.Allocate(Layout::New(WindowSize, 1) ?? fail IoError::Of(IoErrorKind::LimitExceeded))
+            catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        return DecompressReader {
+            source: <-source, format: format, allocator: allocator, input: input as *var char8, inputLength: 0,
+            inputAt: 0, bits: 0, bitCount: 0, window: window as *var uint8, windowAt: 0, written: 0,
+            state: format == Format::Raw ? AtBlockHeader : AtHeader, final: false, failed: false, storedLeft: 0,
+            copyLength: 0, copyDistance: 0, literals: DecodeTable(), distances: DecodeTable(), crc: Crc32(),
+            adler: Adler32(), memberSize: 0
+        };
+    }
+
+    // The next byte of the compressed stream; running out of it in the middle of the data is damage.
+    func NextByte(self: &var DecompressReader) -> uint64 ! IoError {
+        if self.inputAt == self.inputLength {
+            if !self.Refill()? { fail Corrupt(); }
+        }
+        let value = self.input[self.inputAt] as uint8 as uint64;
+        self.inputAt = self.inputAt + 1;
+        return value;
+    }
+
+    // Reads more of the source, and says whether there was more.
+    func Refill(self: &var DecompressReader) -> bool ! IoError {
+        match self.source.Read(self.input[..InputCapacity]) {
+            .Success(count) => {
+                self.inputLength = count;
+                self.inputAt = 0;
+                return count > 0;
+            },
+            .Failure(error) => {
+                if error.kind == IoErrorKind::EndOfStream { return false; }
+                fail error;
+            }
+        }
+    }
+
+    // The next `count` bits, least significant first.
+    func Bits(self: &var DecompressReader, count: uint) -> uint ! IoError {
+        while self.bitCount < count {
+            self.bits = self.bits | (self.NextByte()? << self.bitCount as uint64);
+            self.bitCount = self.bitCount + 8;
+        }
+        let value = (self.bits & ((1u64 << count as uint64) - 1u64)) as uint;
+        self.bits = self.bits >> count as uint64;
+        self.bitCount = self.bitCount - count;
+        return value;
+    }
+
+    // The next whole byte, after the bits of a partly read one are dropped.
+    func AlignedByte(self: &var DecompressReader) -> uint ! IoError {
+        let partial = self.bitCount % 8u;
+        self.bits = self.bits >> partial as uint64;
+        self.bitCount = self.bitCount - partial;
+        return self.Bits(8);
+    }
+
+    // Whether any compressed input is left, without treating its absence as damage.
+    func HasInput(self: &var DecompressReader) -> bool ! IoError {
+        if self.bitCount >= 8u || self.inputAt < self.inputLength { return true; }
+        return self.Refill()?;
+    }
+
+    // Decodes one symbol with the literal table, or with the distance table, which also carries the code-length
+    // code while a block's tables are read.
+    func Decode(self: &var DecompressReader, distance: bool) -> uint ! IoError {
+        var code: int32 = 0;
+        var first: int32 = 0;
+        var index: int32 = 0;
+        var length: uint = 1;
+        while length <= 15u {
+            code = code | self.Bits(1)? as int32;
+            let count = (distance ? self.distances.counts[length] : self.literals.counts[length]) as int32;
+            if code - count < first {
+                let at = (index + code - first) as uint;
+                return (distance ? self.distances.symbols[at] : self.literals.symbols[at]) as uint;
+            }
+            index = index + count;
+            first = (first + count) << 1;
+            code = code << 1;
+            length = length + 1;
+        }
+        fail Corrupt();
+    }
+
+    // Puts one byte of data in the history and the caller's buffer.
+    func Emit(self: &var DecompressReader, value: uint8, into: var char8[..], at: uint) {
+        self.window[self.windowAt] = value;
+        self.windowAt = (self.windowAt + 1u) & (WindowSize - 1u);
+        self.written = self.written + 1u64;
+        into[at] = value as char8;
+    }
+
+    // Reads the zlib or gzip header.
+    func ReadHeader(self: &var DecompressReader) -> ! IoError {
+        if self.format == Format::Zlib {
+            let method = self.AlignedByte()?;
+            let flags = self.AlignedByte()?;
+            if (method & 0x0Fu) != 8u || (method >> 4) > 7u || (method * 256u + flags) % 31u != 0u ||
+               (flags & 0x20u) != 0u {
+                fail Corrupt();
+            }
+            return;
+        }
+        if self.AlignedByte()? != 0x1Fu || self.AlignedByte()? != 0x8Bu || self.AlignedByte()? != 8u { fail Corrupt(); }
+        let flags = self.AlignedByte()?;
+        if (flags & 0xE0u) != 0u { fail Corrupt(); }
+        var skip: uint = 0;
+        while skip < 6u {
+            self.AlignedByte()?;
+            skip = skip + 1;
+        }
+        if (flags & 0x04u) != 0u {
+            var extra = self.AlignedByte()?;
+            extra = extra | (self.AlignedByte()? << 8);
+            while extra > 0u {
+                self.AlignedByte()?;
+                extra = extra - 1;
+            }
+        }
+        if (flags & 0x08u) != 0u { while self.AlignedByte()? != 0u {} }
+        if (flags & 0x10u) != 0u { while self.AlignedByte()? != 0u {} }
+        if (flags & 0x02u) != 0u {
+            self.AlignedByte()?;
+            self.AlignedByte()?;
+        }
+    }
+
+    // Reads and checks the zlib or gzip trailer.
+    func ReadTrailer(self: &var DecompressReader) -> ! IoError {
+        if self.format == Format::Raw { return; }
+        if self.format == Format::Zlib {
+            var stored: uint32 = 0;
+            var index: uint = 0;
+            while index < 4u {
+                stored = (stored << 8) | self.AlignedByte()? as uint32;
+                index = index + 1;
+            }
+            if stored != self.adler.Value() { fail Corrupt(); }
+            return;
+        }
+        var crc: uint32 = 0;
+        var size: uint32 = 0;
+        var index: uint = 0;
+        while index < 4u {
+            crc = crc | (self.AlignedByte()? as uint32 << (8u32 * index as uint32));
+            index = index + 1;
+        }
+        index = 0;
+        while index < 4u {
+            size = size | (self.AlignedByte()? as uint32 << (8u32 * index as uint32));
+            index = index + 1;
+        }
+        if crc != self.crc.Value() || size != self.memberSize { fail Corrupt(); }
+    }
+
+    // Reads a block header and gets ready for its contents.
+    func StartBlock(self: &var DecompressReader) -> ! IoError {
+        self.final = self.Bits(1)? == 1u;
+        let kind = self.Bits(2)?;
+        if kind == 0u {
+            let length = self.AlignedByte()? | (self.AlignedByte()? << 8);
+            let complement = self.AlignedByte()? | (self.AlignedByte()? << 8);
+            if (length ^ 0xFFFFu) != complement { fail Corrupt(); }
+            self.storedLeft = length;
+            self.state = InStoredBlock;
+            return;
+        }
+        var lengths: uint8[320] = [0u8; 320];
+        if kind == 1u {
+            var symbol: uint = 0;
+            while symbol < 288u {
+                lengths[symbol] = symbol < 144u ? 8u8 : (symbol < 256u ? 9u8 : (symbol < 280u ? 7u8 : 8u8));
+                symbol = symbol + 1;
+            }
+            var distances: uint8[30] = [5u8; 30];
+            self.literals.Build(@lengths[0], 288);
+            self.distances.Build(@distances[0], 30);
+            self.state = InCodedBlock;
+            return;
+        }
+        if kind != 2u { fail Corrupt(); }
+        let literalCount = self.Bits(5)? + 257u;
+        let distanceCount = self.Bits(5)? + 1u;
+        let codeLengthCount = self.Bits(4)? + 4u;
+        if literalCount > 286u || distanceCount > 30u { fail Corrupt(); }
+        var codeLengths: uint8[19] = [0u8; 19];
+        var index: uint = 0;
+        while index < codeLengthCount {
+            codeLengths[CodeLengthOrder[index] as uint] = self.Bits(3)? as uint8;
+            index = index + 1;
+        }
+        if !self.distances.Build(@codeLengths[0], 19) { fail Corrupt(); }
+        index = 0;
+        let total = literalCount + distanceCount;
+        while index < total {
+            let symbol = self.Decode(true)?;
+            if symbol < 16u {
+                lengths[index] = symbol as uint8;
+                index = index + 1;
+                continue;
+            }
+            var repeat: uint = 0;
+            var value: uint8 = 0;
+            if symbol == 16u {
+                if index == 0u { fail Corrupt(); }
+                value = lengths[index - 1];
+                repeat = 3u + self.Bits(2)?;
+            }
+            else if symbol == 17u {
+                repeat = 3u + self.Bits(3)?;
+            }
+            else {
+                repeat = 11u + self.Bits(7)?;
+            }
+            if index + repeat > total { fail Corrupt(); }
+            while repeat > 0u {
+                lengths[index] = value;
+                index = index + 1;
+                repeat = repeat - 1;
+            }
+        }
+        if lengths[256] == 0u8 { fail Corrupt(); }
+        if !self.literals.Build(@lengths[0], literalCount) { fail Corrupt(); }
+        if !self.distances.Build(@lengths[literalCount], distanceCount) { fail Corrupt(); }
+        self.state = InCodedBlock;
+    }
+
+    // Decodes into `into` until it is full or the stream ends, and returns how much it produced.
+    func Produce(self: &var DecompressReader, into: var char8[..]) -> uint ! IoError {
+        var produced: uint = 0;
+        var summed: uint = 0;
+        while produced < into.length {
+            if self.copyLength > 0u {
+                let value = self.window[(self.windowAt + WindowSize - self.copyDistance) & (WindowSize - 1u)];
+                self.Emit(value, into, produced);
+                produced = produced + 1;
+                self.copyLength = self.copyLength - 1;
+                continue;
+            }
+            if self.state == AtHeader {
+                self.ReadHeader()?;
+                self.state = AtBlockHeader;
+            }
+            else if self.state == AtBlockHeader {
+                if self.final {
+                    self.state = AtTrailer;
+                }
+                else {
+                    self.StartBlock()?;
+                }
+            }
+            else if self.state == InStoredBlock {
+                if self.storedLeft == 0u {
+                    self.state = AtBlockHeader;
+                    continue;
+                }
+                let value = self.AlignedByte()? as uint8;
+                self.Emit(value, into, produced);
+                produced = produced + 1;
+                self.storedLeft = self.storedLeft - 1;
+            }
+            else if self.state == InCodedBlock {
+                let symbol = self.Decode(false)?;
+                if symbol < 256u {
+                    self.Emit(symbol as uint8, into, produced);
+                    produced = produced + 1;
+                }
+                else if symbol == 256u {
+                    self.state = AtBlockHeader;
+                }
+                else {
+                    let lengthCode = symbol - 257u;
+                    if lengthCode >= 29u { fail Corrupt(); }
+                    let length = LengthBase[lengthCode] as uint + self.Bits(LengthExtra[lengthCode] as uint)?;
+                    let distanceCode = self.Decode(true)?;
+                    if distanceCode >= 30u { fail Corrupt(); }
+                    let distance =
+                        DistanceBase[distanceCode] as uint + self.Bits(DistanceExtra[distanceCode] as uint)?;
+                    if distance as uint64 > self.written { fail Corrupt(); }
+                    self.copyLength = length;
+                    self.copyDistance = distance;
+                }
+            }
+            else if self.state == AtTrailer {
+                self.Sum(into[summed..produced]);
+                summed = produced;
+                self.ReadTrailer()?;
+                if self.format == Format::Gzip && self.HasInput()? {
+                    self.final = false;
+                    self.crc.Reset();
+                    self.memberSize = 0;
+                    self.state = AtHeader;
+                }
+                else {
+                    self.state = AtEnd;
+                }
+            }
+            else {
+                break;
+            }
+        }
+        self.Sum(into[summed..produced]);
+        return produced;
+    }
+
+    // Adds produced data to the container's checksum.
+    func Sum(self: &var DecompressReader, data: char8[..]) {
+        if data.length == 0u { return; }
+        if self.format == Format::Zlib {
+            self.adler.Write(data.data as *byte, data.length);
+        }
+        else if self.format == Format::Gzip {
+            self.crc.Write(data.data as *byte, data.length);
+            self.memberSize = self.memberSize + data.length as uint32;
+        }
+    }
+
+    func ~DecompressReader(self: &var DecompressReader) {
+        var allocator = self.allocator;
+        if self.input != null {
+            allocator.Deallocate(self.input as *var opaque, Layout::New(InputCapacity, 1) ?? Layout::ForValue<char8>())
+                catch { else => {} };
+        }
+        if self.window != null {
+            allocator.Deallocate(self.window as *var opaque, Layout::New(WindowSize, 1) ?? Layout::ForValue<char8>())
+                catch { else => {} };
+        }
+    }
+}
+
+extend DecompressReader : Reader {
+    /// Decompresses into `into` until it is full or the data ends.
+    /// @param into where to put the data
+    /// @returns how many bytes were produced, or fails with `EndOfStream` after the last, or with `InvalidInput` for
+    ///   damaged or truncated input
+    /// @see https://rux-lang.dev/docs/api/compress/inflate#read
+    pub func Read(self: &var DecompressReader, into: var char8[..]) -> uint ! IoError {
+        if self.failed { fail Corrupt(); }
+        if into.length == 0u { return 0; }
+        match self.Produce(into) {
+            .Success(produced) => {
+                if produced == 0u { fail IoError::Of(IoErrorKind::EndOfStream); }
+                return produced;
+            },
+            .Failure(error) => {
+                if error.kind == IoErrorKind::InvalidInput { self.failed = true; }
+                fail error;
+            }
+        }
+    }
+}

@@ -1,0 +1,13 @@
+// Two arrays compare element by element as one type, and only for equality; an array literal takes the other
+// operand's type.
+func Main() -> int {
+    let values: int32[2] = [1, 2];
+    let longer: int32[3] = [1, 2, 3];
+    let wide: int64[2] = [1, 2];
+    let same = values == [1, 2];
+    let shorter = values == longer;
+    let mixed = values == wide;
+    let ordered = values < [2, 3];
+    let after = values >= values;
+    return 0;
+}

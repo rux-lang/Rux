@@ -1,0 +1,30 @@
+// Integer operands of one signedness widen to the wider type, as an assignment would, whichever side each is on, so a
+// narrower destination refuses the result. Operands of different signedness have no common type. An unsuffixed
+// literal or a constant takes the other operand's type when its value fits there.
+const Limit = 7;
+
+func Scale<T>(value: T, factor: int64) -> T {
+    return value * factor;
+}
+
+func Main() -> int {
+    let small: int32 = 1;
+    let big: int64 = 5000000000;
+    let widened: int64 = small + big;
+    let mirrored: int64 = big + small;
+    let narrowed: int32 = small + big;
+    var total: int32 = 0;
+    total += big;
+    let u: uint64 = 3;
+    let s: int64 = -5;
+    let mixed = u + s;
+    let compared = u < s;
+    var f: uint128 = 1;
+    f *= s;
+    let masked = u & 0xFFu32;
+    let fitted = small + Limit;
+    let literal = 2 * small;
+    let shifted = small << big;
+    let scaled = Scale(small, 3);
+    return (widened + mirrored) as int;
+}

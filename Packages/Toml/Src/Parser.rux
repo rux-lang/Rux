@@ -1,15 +1,12 @@
 // Building a document from tokens, and refusing the three different ways of defining a table twice.
-//
 // Most of a TOML parser is bookkeeping about tables. `[a.b]` creates `a` implicitly and `b` deliberately, and
 // what may happen to each of them afterwards is different: a later `[a]` is fine because `a` was only implied,
 // while a later `[a.b]` is a redefinition. A table written inline is closed the moment its brace shuts, and one
 // reached through a dotted key is closed as soon as the line ends. Three rules, three reasons, three separate
 // errors — because "duplicate key" tells a writer nothing about which of them they broke.
-//
 // The recursion of inline tables and arrays is bounded by the depth limit rather than by the stack, checked
 // before descending, so a document built to exhaust the stack is refused while there is still stack to refuse
 // it with.
-//
 // What this produces is a tree of values and nothing else. Comments are skipped by the lexer and never arrive
 // here, so no amount of care further down could keep them; the same goes for blank lines, for indentation, and
 // for whether a number was written in hexadecimal. Reading a document and writing it back gives an equivalent
@@ -19,21 +16,18 @@
 import Core::Failed;
 import Allocator::Allocator;
 import Collections::Vector;
-import Text::{ Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView,
-               TextError, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView, TextError,
+               TextWriter, WriteAscii, WriteBytes };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
 /// Why parsing stopped.
-///
 /// Failure-only: a parse that did not stop hands back a document instead. The distinctions between the four
 /// table-definition cases are the ones worth keeping — `DuplicateKey`, `RedefinedTable`, `ExtendedInlineTable`
 /// and `ExtendedDottedTable` are four different mistakes with four different fixes, and a reader told only that
 /// a key was defined twice would have to work out which rule they had met.
-///
 /// The two cases that have something more to say carry it rather than reporting it beside themselves, so a caller
 /// holding the failure cannot be holding half of one.
-///
-/// @see https://rux-lang.dev/docs/api/toml/parse-error
+/// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#toml-parse-error
 pub variant TomlParseError {
     /// The lexer refused the input, for the reason carried.
     Lexical(TomlLexError),
@@ -65,11 +59,9 @@ pub variant TomlParseError {
 }
 
 /// Why a document was refused, and where in it.
-///
 /// Three positions for one place, because the three are wanted by different readers: `offset` is what a program
 /// slices the input with, and `line` and `column` are what a person is shown. They always name the same byte.
-///
-/// @see https://rux-lang.dev/docs/api/toml/parse-failure
+/// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure
 pub struct TomlParseFailure {
     /// Why parsing stopped.
     pub reason: TomlParseError;
@@ -83,11 +75,9 @@ pub struct TomlParseFailure {
 
 extend TomlParseFailure : ParseFailure {
     /// Where in the document parsing stopped.
-    ///
     /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the zero-based byte offset into the document
-    /// @see https://rux-lang.dev/docs/api/toml/parse-failure/offset
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#offset
     pub func Offset(self: &TomlParseFailure) -> uint {
         return self.offset;
     }
@@ -110,17 +100,13 @@ func WriteLexicalDescription(writer: &var TextWriter, reason: &TomlLexError) -> 
 
 extend TomlParseFailure : Display {
     /// Writes the description of why parsing stopped, without the position.
-    ///
     /// The line and column are numbers a caller places where it makes sense for them, so they are not written into
     /// the middle of a sentence here. `Debug` carries them.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/toml/parse-failure/write-display
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-display
     pub func WriteDisplay(self: &TomlParseFailure, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -195,17 +181,13 @@ func WriteLexicalName(writer: &var TextWriter, reason: &TomlLexError) -> ! Forma
 
 extend TomlParseFailure : Debug {
     /// Names the case and where it happened: `TomlParseError::DuplicateKey at 2:1`.
-    ///
     /// A case that carries something names that too, so nothing has to be looked up elsewhere:
     /// `TomlParseError::BadValue(TomlScalarError::Malformed(4)) at 1:8`.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/toml/parse-failure/write-debug
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-debug
     pub func WriteDebug(self: &TomlParseFailure, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -241,8 +223,7 @@ enum TomlStop: int32 {
 }
 
 /// What a parse will accept.
-///
-/// @see https://rux-lang.dev/docs/api/toml/limits
+/// @see https://rux-lang.dev/docs/api/toml/toml-parser#toml-limits
 pub struct TomlLimits {
     /// How deeply arrays and inline tables may nest.
     maximumDepth: uint;
@@ -251,19 +232,17 @@ pub struct TomlLimits {
 extend TomlLimits {
     /// Limits that suit a configuration file: deep enough for anything written by hand, shallow enough that a
     /// document built to exhaust the stack does not.
-    ///
     /// @returns the limits an ordinary parse uses
-    /// @see https://rux-lang.dev/docs/api/toml/limits/default
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#toml-limits-default
     pub func Default() -> TomlLimits {
         return TomlLimits { maximumDepth: 64 };
     }
 
     /// Limits that refuse nothing, for input already known to be trustworthy.
-    ///
     /// @returns limits that refuse nothing, for input that is already trusted
-    /// @see https://rux-lang.dev/docs/api/toml/limits/unlimited
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#toml-limits-unlimited
     pub func Unlimited() -> TomlLimits {
-        return TomlLimits { maximumDepth: 18446744073709551615u };
+        return TomlLimits { maximumDepth: 18446744073709551615 };
     }
 }
 
@@ -303,8 +282,7 @@ func BuiltFailure(stopped: &TomlStopped) -> TomlParseFailure {
 }
 
 /// A parser over a document.
-///
-/// @see https://rux-lang.dev/docs/api/toml/parser
+/// @see https://rux-lang.dev/docs/api/toml/toml-parser
 pub struct TomlParser {
     /// Where tokens come from.
     lexer: TomlLexer;
@@ -324,12 +302,11 @@ pub struct TomlParser {
 
 extend TomlParser {
     /// A parser over `input` under `limits`.
-    ///
     /// @param allocator where the storage comes from
     /// @param input the text to read
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a parser ready to read the input
-    /// @see https://rux-lang.dev/docs/api/toml/parser/new
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#new
     pub func TomlParser(allocator: Allocator, input: char8[..], limits: TomlLimits) -> TomlParser {
         var lexer = TomlLexer(input);
         let first = lexer.Next();
@@ -343,7 +320,7 @@ extend TomlParser {
             outcome: TomlStopped {
                 stop: TomlStop::None,
                 lexical: TomlLexError::None,
-                scalar: TomlScalarError::Malformed(0u),
+                scalar: TomlScalarError::Malformed(0),
                 offset: 0,
                 line: 1,
                 column: 1
@@ -352,20 +329,17 @@ extend TomlParser {
     }
 
     /// Why parsing stopped, positioned, or `none` while nothing has gone wrong.
-    ///
     /// A caller using `Parse` never needs this: the failure comes back in the result.
-    ///
     /// @returns the failure, or `none`
-    /// @see https://rux-lang.dev/docs/api/toml/parser/failure
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#failure
     pub func Failure(self: &TomlParser) -> TomlParseFailure? {
         if self.outcome.stop == TomlStop::None { return none; }
         return BuiltFailure(self.outcome);
     }
 
     /// Whether parsing has failed.
-    ///
     /// @returns whether the parse stopped on a failure
-    /// @see https://rux-lang.dev/docs/api/toml/parser/failed
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#failed
     pub func Failed(self: &TomlParser) -> bool {
         return self.outcome.stop != TomlStop::None;
     }
@@ -386,7 +360,6 @@ extend TomlParser {
     // A scalar failure knows where it is inside the scalar's own text; the token knows where the scalar is in the
     // document. This is the one place the two are added, so a caller reading the line and column is pointed at the
     // character rather than at the value that contains it.
-    //
     // The position is the *token's*, not the lookahead's. `Stop` uses the lookahead because that is where a
     // structural refusal is found, but a scalar has already been consumed by the time its text is read, so
     // reporting through `Stop` alone put every bad number at the position of whatever followed it.
@@ -427,9 +400,7 @@ extend TomlParser {
             self.Advance();
         }
     }
-}
 
-extend TomlParser {
     // One value, whichever kind the token announces. A scalar's text is read here rather than in the lexer,
     // because only here is it known which of the two number kinds or four date kinds was meant.
     func ParseValue(self: &var TomlParser) -> TomlValue {
@@ -450,7 +421,7 @@ extend TomlParser {
             }
             return TomlValue::FromString(self.allocator, decoded);
         }
-        if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4u); }
+        if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4); }
         if token.kind == TomlTokenKind::Integer {
             return match TomlParseInteger(span) {
                 .Success(value) => TomlValue::Integer(self.allocator, value),
@@ -485,7 +456,7 @@ extend TomlParser {
             self.Stop(TomlStop::TooDeep);
             return TomlValue::Table(self.allocator);
         }
-        self.depth = self.depth + 1u;
+        self.depth = self.depth + 1;
         self.Advance();
         var array = TomlValue::Array(self.allocator);
         while true {
@@ -520,12 +491,10 @@ extend TomlParser {
             self.Stop(TomlStop::Unexpected);
             break;
         }
-        self.depth = self.depth - 1u;
+        self.depth = self.depth - 1;
         return <-array;
     }
-}
 
-extend TomlParser {
     // An inline table. TOML 1.1 allows newlines and a trailing comma inside one, which 1.0 did not; a document
     // using either is refused by an older reader, and that is worth knowing before writing one.
     func ParseInlineTable(self: &var TomlParser) -> TomlValue {
@@ -533,7 +502,7 @@ extend TomlParser {
             self.Stop(TomlStop::TooDeep);
             return TomlValue::Table(self.allocator);
         }
-        self.depth = self.depth + 1u;
+        self.depth = self.depth + 1;
         self.Advance();
         var table = TomlValue::Table(self.allocator);
         table.defined = true;
@@ -566,7 +535,7 @@ extend TomlParser {
             self.Stop(TomlStop::Unexpected);
             break;
         }
-        self.depth = self.depth - 1u;
+        self.depth = self.depth - 1;
         return <-table;
     }
 
@@ -619,9 +588,7 @@ extend TomlParser {
         }
         return true;
     }
-}
 
-extend TomlParser {
     // A key and its value, written into `into`. A dotted key creates the tables it passes through, and those
     // tables are closed when the line ends — which is why they are marked as dotted rather than merely made.
     func ParseKeyValue(self: &var TomlParser, into: *var TomlValue) {
@@ -643,16 +610,16 @@ extend TomlParser {
         }
         var target = into;
         var index: uint = 0;
-        while index + 1u < parts.Length() && target != null {
+        while index + 1 < parts.Length() && target != null {
             let name = parts.AsSlice().data[index].View();
             target = self.DescendDotted(target, name, parts.AsSlice().data[index].View());
-            index = index + 1u;
+            index = index + 1;
         }
         if target == null {
             parts.Clear();
             return;
         }
-        let last = parts.Length() - 1u;
+        let last = parts.Length() - 1;
         let finalName = parts.AsSlice().data[last].View();
         if (*target).Find(finalName) != null {
             self.Stop(TomlStop::DuplicateKey);
@@ -696,9 +663,7 @@ extend TomlParser {
         }
         return existing;
     }
-}
 
-extend TomlParser {
     // A `[name]` or `[[name]]` header, returning the table that the lines after it belong to.
     func ParseHeader(self: &var TomlParser, root: *var TomlValue) -> *var TomlValue {
         self.Advance();
@@ -712,7 +677,7 @@ extend TomlParser {
             parts.Clear();
             return null;
         }
-        if parts.Length() == 0u {
+        if parts.Length() == 0 {
             self.Stop(TomlStop::Unexpected);
             parts.Clear();
             return null;
@@ -738,15 +703,15 @@ extend TomlParser {
         }
         var target = root;
         var index: uint = 0;
-        while index + 1u < parts.Length() && target != null {
+        while index + 1 < parts.Length() && target != null {
             target = self.DescendHeader(target, parts.AsSlice().data[index].View());
-            index = index + 1u;
+            index = index + 1;
         }
         if target == null {
             parts.Clear();
             return null;
         }
-        let last = parts.Length() - 1u;
+        let last = parts.Length() - 1;
         var opened = array ? self.OpenTableArray(target, parts.AsSlice().data[last].View())
                            : self.OpenTable(target, parts.AsSlice().data[last].View());
         parts.Clear();
@@ -767,13 +732,13 @@ extend TomlParser {
             return (*target).FindMutable(name);
         }
         if existing.kind == TomlKind::Array {
-            if !existing.tableArray || (*existing).Length() == 0u {
+            if !existing.tableArray || (*existing).Length() == 0 {
                 self.Stop(TomlStop::NotATableArray);
                 return null;
             }
             // A path through an array of tables means its most recent element, which is the one still being
             // written; the earlier ones are finished.
-            return (*existing).AtMutable((*existing).Length() - 1u);
+            return (*existing).AtMutable((*existing).Length() - 1);
         }
         if existing.kind != TomlKind::Table {
             self.Stop(TomlStop::NotATable);
@@ -850,23 +815,18 @@ extend TomlParser {
             self.Stop(TomlStop::OutOfMemory);
             return null;
         }
-        return (*existing).AtMutable((*existing).Length() - 1u);
+        return (*existing).AtMutable((*existing).Length() - 1);
     }
-}
 
-extend TomlParser {
     /// Reads the whole document into a table.
-    ///
     /// On failure the table holds whatever had been read before the refusal, and `Outcome` says what stopped it
     /// and where. A partial document is not a usable one; it is returned rather than discarded so a caller can
     /// show what was understood before the line that was not.
-    ///
     /// What comes back is the values and nothing else. Comments never reach the parser, and neither does the
     /// blank line someone put between two sections or the fact that a number was written in hexadecimal. This
     /// reads configuration; it does not edit files.
-    ///
     /// @returns the document, or the failure and where it was found
-    /// @see https://rux-lang.dev/docs/api/toml/parser/parse
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#parse
     pub func Parse(self: &var TomlParser) -> TomlValue ! TomlParseFailure {
         var root = TomlValue::Table(self.allocator);
         root.defined = true;
@@ -903,18 +863,14 @@ extend TomlParser {
 }
 
 /// Reads `input` into a table, or says why it could not and where.
-///
 /// A refusal gives back no document at all. Whatever had been read when the parser stopped is released here,
 /// which is the only place it can be done once — and handing it back would be worse than useless, because a
 /// program configured from half a file runs with some settings applied and some defaulted.
-///
-/// # Failures
-/// Every case of `TomlParseError`, positioned at the byte, line and column where parsing stopped.
-///
+/// Fails with any case of `TomlParseError`, positioned at the byte, line and column where parsing stopped.
 /// @param allocator where the document is built
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
-/// @see https://rux-lang.dev/docs/api/toml/parse
+/// @see https://rux-lang.dev/docs/api/toml/toml-parse
 pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue ! TomlParseFailure {
     var parser = TomlParser(allocator, input, TomlLimits::Default());
     return parser.Parse();

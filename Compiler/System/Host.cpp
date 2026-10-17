@@ -1,13 +1,16 @@
 #include "System/Host.h"
 
 #include "System/WinApi.h"
+#include "System/X86CpuFeatures.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <thread>
 #include <vector>
 
 #if RUX_OS_LINUX
+    #include <sched.h>
     #include <sys/auxv.h>
     #include <sys/sysinfo.h>
     #include <unistd.h>
@@ -17,6 +20,8 @@
     #include <sys/sysctl.h>
     #include <unistd.h>
 #elif RUX_OS_FREEBSD
+    #include <sys/cpuset.h>
+    #include <sys/param.h>
     #include <sys/sysctl.h>
     #include <unistd.h>
 #endif
@@ -59,18 +64,6 @@ namespace {
 
 #if RUX_ARCH_X86_64
 
-[[nodiscard]] inline bool HasOSXSAVE() noexcept {
-    int r[4]{};
-
-    #if RUX_OS_WINDOWS
-    __cpuid(r, 1);
-    #else
-    __cpuid(1, r[0], r[1], r[2], r[3]);
-    #endif
-
-    return r[2] & (1 << 27);
-}
-
 [[nodiscard]] inline uint64_t XGetBV0() noexcept {
     #if RUX_OS_WINDOWS
     return _xgetbv(0);
@@ -89,54 +82,33 @@ namespace {
 #if RUX_ARCH_X86_64
 
     int r[4]{};
-
+    #if RUX_OS_WINDOWS
+    __cpuid(r, 0);
+    #else
+    __cpuid(0, r[0], r[1], r[2], r[3]);
+    #endif
+    const auto maximumLeaf = static_cast<std::uint32_t>(r[0]);
+    if (maximumLeaf < 1) {
+        return f;
+    }
     #if RUX_OS_WINDOWS
     __cpuid(r, 1);
     #else
     __cpuid(1, r[0], r[1], r[2], r[3]);
     #endif
-
-    if (r[3] & (1 << 26)) {
-        f |= CpuFeature::SSE2;
-    }
-    if (r[2] & (1 << 0)) {
-        f |= CpuFeature::SSE3;
-    }
-    if (r[2] & (1 << 9)) {
-        f |= CpuFeature::SSSE3;
-    }
-    if (r[2] & (1 << 19)) {
-        f |= CpuFeature::SSE41;
-    }
-    if (r[2] & (1 << 20)) {
-        f |= CpuFeature::SSE42;
-    }
-
-    // AVX requires OS support
-    const bool avx_hw = r[2] & (1 << 28);
-
-    if (avx_hw && HasOSXSAVE()) {
-        uint64_t xcr0 = XGetBV0();
-        if ((xcr0 & 0x6) == 0x6) {
-            f |= CpuFeature::AVX;
-        }
-    }
-
+    const auto leaf1Ecx = static_cast<std::uint32_t>(r[2]);
+    const auto leaf1Edx = static_cast<std::uint32_t>(r[3]);
+    const auto xcr0 = CanReadXcr0(leaf1Ecx) ? XGetBV0() : 0;
+    std::uint32_t leaf7Ebx = 0;
+    if (maximumLeaf >= 7) {
     #if RUX_OS_WINDOWS
-    __cpuidex(r, 7, 0);
+        __cpuidex(r, 7, 0);
     #else
-    __cpuid_count(7, 0, r[0], r[1], r[2], r[3]);
+        __cpuid_count(7, 0, r[0], r[1], r[2], r[3]);
     #endif
-
-    if (r[1] & (1 << 5)) {
-        f |= CpuFeature::AVX2;
+        leaf7Ebx = static_cast<std::uint32_t>(r[1]);
     }
-
-    // NOTE: simplified AVX-512 detection (still OS-dependent in real
-    // systems)
-    if (r[1] & (1 << 16)) {
-        f |= CpuFeature::AVX512;
-    }
+    f = DecodeX86CpuFeatures(maximumLeaf, leaf1Ecx, leaf1Edx, leaf7Ebx, xcr0);
 
 #elif RUX_ARCH_AARCH64
 
@@ -330,5 +302,32 @@ MemoryInfo GetRuntimeMemoryInfo() noexcept {
 
 bool HostSupports(CpuFeatures f) noexcept {
     return CachedCpuInfo().features.Has(f);
+}
+
+std::size_t AffinityCoreCount() noexcept {
+#if RUX_OS_WINDOWS
+    // A process mask describes one processor group; on a machine with several, threads may use them all.
+    if (GetActiveProcessorGroupCount() > 1)
+        return 0;
+    DWORD_PTR processMask = 0;
+    DWORD_PTR systemMask = 0;
+    if (GetProcessAffinityMask(GetCurrentProcess(), &processMask, &systemMask) == 0)
+        return 0;
+    return static_cast<std::size_t>(std::popcount(static_cast<std::uint64_t>(processMask)));
+#elif RUX_OS_LINUX
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof(set), &set) != 0)
+        return 0;
+    return static_cast<std::size_t>(CPU_COUNT(&set));
+#elif RUX_OS_FREEBSD
+    cpuset_t set;
+    CPU_ZERO(&set);
+    if (cpuset_getaffinity(CPU_LEVEL_WHICH, CPU_WHICH_PID, -1, sizeof(set), &set) != 0)
+        return 0;
+    return static_cast<std::size_t>(CPU_COUNT(&set));
+#else
+    return 0;
+#endif
 }
 } // namespace Rux::System

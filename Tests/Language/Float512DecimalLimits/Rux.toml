@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Float512DecimalLimits"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Extreme decimal literals round exactly to the finite float512 limits without exponent-sized parser work."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

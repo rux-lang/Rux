@@ -245,6 +245,44 @@ TEST_CASE("variant representation casts are rejected in every direction") {
     CHECK_EQ(diagnostics[3].message, "cannot cast variant 'Value' to variant 'Value'");
 }
 
+TEST_CASE("a pointer to a variant or enum casts by the pointer rules") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Value { Empty, Number(int) }
+        enum Color { Red, Green }
+        union Bits { word: uint64, half: uint32 }
+        struct Point { x: int32; }
+        func Casts(value: *var Value, color: *Color, bits: *Bits, pair: *(int32, int32), address: uint) {
+            let a: uint = value as uint;
+            let b: *opaque = value as *opaque;
+            let c: *uint8 = value as *uint8;
+            let d: *Point = value as *Point;
+            let e: *Value = address as *Value;
+            let f: *var Value = b as *var Value;
+            let g: *opaque = color as *opaque;
+            let h: *Value = color as *Value;
+            let i: *Color = c as *Color;
+            let j: uint = bits as uint;
+            let k: *Bits = address as *Bits;
+            let l: uint = pair as uint;
+            let m: *(int32, int32) = address as *(int32, int32);
+        }
+    )");
+    for (const SemanticDiagnostic &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+        CHECK(diagnostic.severity != Diagnostic::Severity::Error);
+    }
+
+    // The value a reference names is still the variant, and a variant value still has no scalar representation.
+    const auto rejected = AnalyzeSource(R"(
+        variant Value { Empty, Number(int) }
+        func ToScalar(value: &Value) -> uint { return value as uint; }
+        func ToPointer(value: Value) -> *opaque { return value as *opaque; }
+    )");
+    REQUIRE_EQ(rejected.size(), 2);
+    CHECK_EQ(rejected[0].message, "cannot cast variant '&Value' to scalar type 'uint'");
+    CHECK_EQ(rejected[1].message, "cannot cast variant 'Value' to scalar type '*opaque'");
+}
+
 TEST_CASE("variants have structural equality but no built-in ordering") {
     const auto diagnostics = AnalyzeSource(R"(
         variant Value { Empty, Number(int) }
@@ -423,6 +461,30 @@ TEST_CASE("cast and type-test diagnostics name source and target types") {
     CHECK_EQ(diagnostics[3].message, "constant cast from 'uint32' to 'char32' is outside the target type's range");
     CHECK_EQ(diagnostics[4].message, "cast from 'uint32' to 'char32' uses invalid surrogate code point U+D800");
     CHECK_EQ(diagnostics[5].message, "type test 'is Marker' is unavailable: interface checks are not implemented");
+}
+
+TEST_CASE("constant char casts are checked whatever the constant's spelling") {
+    const auto diagnostics = AnalyzeSource(R"(
+        const Negative: int32 = -1;
+        const M: char32 = -1i32 as char32;
+        const Table: char8[2] = [c8'a', -1i8 as char8];
+        const Wide: char128[1] = [-1i32 as char128];
+        func Main() {
+            let b = -(1i32) as char32;
+            let named = Negative as char16;
+            let surrogate = 0xDC00i64 as char32;
+            let views: char8[..] = [-2i16 as char8];
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 7);
+    CHECK_EQ(diagnostics[0].message, "constant cast from 'int32' to 'char32' is outside the target type's range");
+    CHECK_EQ(diagnostics[1].message, "constant cast from 'int8' to 'char8' is outside the target type's range");
+    CHECK_EQ(diagnostics[2].message, "constant cast from 'int32' to 'char128' is outside the target type's range");
+    CHECK_EQ(diagnostics[3].message, "constant cast from 'int32' to 'char32' is outside the target type's range");
+    CHECK_EQ(diagnostics[4].message, "constant cast from 'int32' to 'char16' is outside the target type's range");
+    CHECK_EQ(diagnostics[5].message, "cast from 'int64' to 'char32' uses invalid surrogate code point U+DC00");
+    CHECK_EQ(diagnostics[6].message, "constant cast from 'int16' to 'char8' is outside the target type's range");
 }
 
 TEST_CASE("function values cast to and from pointers but not to scalars") {

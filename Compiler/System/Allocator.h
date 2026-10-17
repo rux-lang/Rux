@@ -1,0 +1,45 @@
+#pragma once
+
+// The compiler's general-purpose allocator, which `operator new` and `operator delete` are replaced with in the
+// compiler executables (`AllocatorNew.cpp`).
+//
+// A compilation makes tens of millions of small allocations — strings, type trees, IR nodes and instructions — and
+// frees most of them again within the same pass. The system heap serializes them on a lock and walks its own
+// bookkeeping on every call, which made it the single largest cost of a build. Small requests are served instead from
+// per-thread free lists of fixed-size blocks, carved from slabs inside one reserved address range: an allocation or a
+// free is a few instructions on the thread's own list, and a block's size is known from the slab it lies in, so blocks
+// carry no header. Large requests, and every request on a host that cannot reserve the range, go to `std::malloc`.
+//
+// Freed blocks go to the freeing thread's list, wherever they were allocated; a list that grows long is handed to a
+// shared depot other threads refill from. The depot keeps blocks by the slab they lie in, so the moment the last block
+// of a slab arrives the slab is free for any size class, and the memory one stage frees serves the next stage's
+// allocations whatever their sizes. Free slabs beyond a limit are returned to the operating system while the program
+// keeps allocating.
+
+#include <cstddef>
+
+namespace Rux::System::Allocator {
+/// At least `size` bytes aligned to 16, or null when the system is out of memory.
+[[nodiscard]] void *Allocate(std::size_t size) noexcept;
+
+/// Release a block from `Allocate`. Null is ignored.
+void Deallocate(void *pointer) noexcept;
+
+/// Whether `pointer` lies in the allocator's slabs rather than in the system heap.
+[[nodiscard]] bool OwnsBlock(const void *pointer) noexcept;
+
+/// The usable size of the block `pointer` addresses, for a block `OwnsBlock` accepts.
+[[nodiscard]] std::size_t BlockSize(const void *pointer) noexcept;
+
+/// How the slabs of the reserved range are used.
+struct SlabUsage {
+    /// Bytes of slabs ever carved from the range, whatever they hold now.
+    std::size_t carvedBytes = 0;
+    /// Bytes of whole free slabs kept ready for any size class.
+    std::size_t idleBytes = 0;
+    /// Bytes of whole free slabs returned to the operating system until they are needed again.
+    std::size_t releasedBytes = 0;
+};
+
+[[nodiscard]] SlabUsage CurrentSlabUsage() noexcept;
+} // namespace Rux::System::Allocator

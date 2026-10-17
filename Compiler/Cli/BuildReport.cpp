@@ -43,8 +43,9 @@ std::string FormatBuildStatusLine(const BuildReportInfo &info, const BuildStats 
     const auto triple = ReportedTriple(info.targetTriple);
     const std::string context = triple ? FormatBuildContext(info.profile, *triple)
                                        : std::format("({}, {})", ToString(info.profile), info.targetTriple);
-    return std::format("{} {} {} in {}", Reporting::RenderStatus(Reporting::StatusVerb::Built, style), info.packageName,
-                       context, Reporting::FormatDuration(stats.total));
+    return std::format("{} {} {} in {}{}", Reporting::RenderStatus(Reporting::StatusVerb::Built, style),
+                       info.packageName, context, Reporting::FormatDuration(stats.total),
+                       stats.upToDate ? " (up to date)" : "");
 }
 
 /// A label column followed by right-aligned value columns, under an optional header row. Column widths come from the
@@ -98,13 +99,17 @@ std::string RenderGrid(const std::span<const std::string> headers,
 
 std::string RenderTimeSection(const BuildStats &stats, const Reporting::Style &style) {
     using Phase = CompilePhase;
-    const std::array<std::pair<Phase, std::chrono::milliseconds>, 7> phases{{{Phase::Lexing, stats.lexing},
-                                                                             {Phase::Parsing, stats.parsing},
-                                                                             {Phase::Analyzing, stats.semantic},
-                                                                             {Phase::LoweringToHir, stats.hir},
-                                                                             {Phase::LoweringToLir, stats.lir},
-                                                                             {Phase::EmittingObjects, stats.codegen},
-                                                                             {Phase::Linking, stats.linking}}};
+    const std::array<std::pair<Phase, std::chrono::milliseconds>, 10> phases{
+        {{Phase::Lexing, stats.lexing},
+         {Phase::Parsing, stats.parsing},
+         {Phase::LoadingDependency, stats.dependencies},
+         {Phase::ReusingModules, stats.reuse},
+         {Phase::Analyzing, stats.semantic},
+         {Phase::LoweringToHir, stats.hir},
+         {Phase::LoweringToLir, stats.lir},
+         {Phase::OptimizingLir, stats.lirOptimization},
+         {Phase::EmittingObjects, stats.codegen},
+         {Phase::Linking, stats.linking}}};
 
     // `total` is wall clock while the phases are individual timers, so the
     // difference is real work — resolving dependencies, reading manifests,
@@ -149,7 +154,9 @@ std::string RenderSourceSection(const BuildStats &stats, const Reporting::Style 
         {"Tokens", FormatNumber(stats.localTokens), FormatNumber(stats.dependencyTokens),
          FormatNumber(stats.localTokens + stats.dependencyTokens)},
         {"Size", FormatSize(stats.localSourceSize), FormatSize(stats.dependencySourceSize),
-         FormatSize(stats.localSourceSize + stats.dependencySourceSize)}};
+         FormatSize(stats.localSourceSize + stats.dependencySourceSize)},
+        {"Reused", FormatNumber(stats.localReusedFiles), FormatNumber(stats.dependencyReusedFiles),
+         FormatNumber(stats.localReusedFiles + stats.dependencyReusedFiles)}};
 
     std::string rendered(style.Bold());
     rendered += "Source";
@@ -279,6 +286,25 @@ std::string FormatBuildStats(const BuildReportInfo &info, const BuildStats &stat
                                   Reporting::TableRow{"Estimated IR nodes", irNodes}};
     output << Reporting::RenderSection("Optimization", optimization, style, Reporting::ValueAlign::Right) << '\n';
 
+    if (!stats.optimizationPasses.empty()) {
+        std::vector<std::pair<std::string, std::string>> cells;
+        cells.reserve(stats.optimizationPasses.size());
+        for (const auto &pass : stats.optimizationPasses) {
+            auto value = pass.disabled
+                           ? std::string("disabled")
+                           : std::format("{} ms; {} runs, {} changed", FormatDecimal(pass.elapsed.count() / 1000.0, 3),
+                                         pass.runs, pass.changes);
+            if (!pass.disabled && pass.ir == "LIR")
+                value += std::format("; +{} / -{} instructions", pass.instructionsAdded, pass.instructionsRemoved);
+            cells.emplace_back(pass.ir + " " + pass.name, std::move(value));
+        }
+        std::vector<Reporting::TableRow> rows;
+        rows.reserve(cells.size());
+        for (const auto &[label, value] : cells)
+            rows.push_back({label, value});
+        output << Reporting::RenderSection("Optimization passes", rows, style) << '\n';
+    }
+
     // Rate prefixes belong to the units, separated from the numbers by a space.
     // These four values carry different units, so right alignment would square up nothing.
     const std::string speed = FormatRate(compileSpeed, "LOC/s");
@@ -310,8 +336,15 @@ std::string FormatBuildSummary(const std::string_view packageName, const std::fi
     std::ostringstream output;
     output << FormatBuildStatusLine(info, stats, style) << '\n'
            << Reporting::indentation << "Output: " << style.Cyan() << DisplayPath(artifactPath, packageRoot)
-           << style.Reset() << '\n'
-           << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
+           << style.Reset() << '\n';
+    if (stats.upToDate) {
+        // Nothing was compiled, so a speed would only measure how fast the inputs were found unchanged.
+        output << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
+               << Reporting::Pluralize(totalFiles, "file") << " unchanged | " << artifactPath.filename().string() << ' '
+               << FormatSize(stats.executableSize) << style.Reset() << '\n';
+        return output.str();
+    }
+    output << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
            << Reporting::Pluralize(totalFiles, "file") << " | " << FormatNumber(totalLines) << " LOC | "
            << FormatCompactNumber(static_cast<double>(totalTokens)) << " tokens | " << FormatCompactNumber(compileSpeed)
            << " LOC/s | " << artifactPath.filename().string() << ' ' << FormatSize(stats.executableSize)
@@ -321,7 +354,7 @@ std::string FormatBuildSummary(const std::string_view packageName, const std::fi
 
 std::string FormatBuildMatrixReport(const std::string_view packageName, const std::span<const BuildCellReport> cells,
                                     const std::filesystem::path &packageRoot, const bool includeStats,
-                                    const bool colorEnabled) {
+                                    const bool colorEnabled, const std::optional<std::chrono::milliseconds> elapsed) {
     const Reporting::Style style{colorEnabled};
     std::size_t succeeded = 0;
     std::chrono::milliseconds totalElapsed{0};
@@ -334,6 +367,9 @@ std::string FormatBuildMatrixReport(const std::string_view packageName, const st
         aggregate.semantic += cell.stats.semantic;
         aggregate.hir += cell.stats.hir;
         aggregate.lir += cell.stats.lir;
+        aggregate.lirOptimization += cell.stats.lirOptimization;
+        aggregate.dependencies += cell.stats.dependencies;
+        aggregate.reuse += cell.stats.reuse;
         aggregate.codegen += cell.stats.codegen;
         aggregate.linking += cell.stats.linking;
         aggregate.localFiles += cell.stats.localFiles;
@@ -383,9 +419,9 @@ std::string FormatBuildMatrixReport(const std::string_view packageName, const st
     const auto overall = failed == 0 ? Reporting::StatusVerb::Built : Reporting::StatusVerb::Failed;
     output << '\n'
            << Reporting::RenderStatus(overall, style) << ' ' << Reporting::FormatCount(cells.size(), "cell") << " in "
-           << style.Bold() << Reporting::FormatDuration(totalElapsed) << style.Reset() << " (" << style.Green()
-           << succeeded << " succeeded" << style.Reset() << ", " << (failed == 0 ? style.Dim() : style.Red()) << failed
-           << " failed" << style.Reset() << ")\n";
+           << style.Bold() << Reporting::FormatDuration(elapsed.value_or(totalElapsed)) << style.Reset() << " ("
+           << style.Green() << succeeded << " succeeded" << style.Reset() << ", "
+           << (failed == 0 ? style.Dim() : style.Red()) << failed << " failed" << style.Reset() << ")\n";
     if (includeStats) {
         output << "Aggregate statistics: " << FormatNumber(aggregate.localFiles + aggregate.dependencyFiles)
                << " files | " << FormatNumber(aggregate.localLines + aggregate.dependencyLines) << " LOC | "

@@ -7,9 +7,11 @@
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Cli/TerminalStyle.h"
+#include "Cli/Testing/TestScheduler.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
+#include "Parallel/WorkerPool.h"
 
 #include <algorithm>
 #include <array>
@@ -17,11 +19,14 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -36,9 +41,13 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     const bool diagnosticColor = !jsonOutput && ColorEnabled(opts.color, OutputStream::Stderr);
     std::string_view target;
     std::map<std::string, std::string> defines;
-    bool denyLegacyProtocols = false;
+    bool useBuildCache = true;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
+        if (arg == "--no-cache") {
+            useBuildCache = false;
+            continue;
+        }
         if (arg == "-q" || arg == "--quiet") {
             continue;
         }
@@ -46,10 +55,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             continue;
         }
         if (arg == "--json") {
-            continue;
-        }
-        if (arg == "--deny-legacy-protocols") {
-            denyLegacyProtocols = true;
             continue;
         }
         if (arg == "--target" && i + 1 < args.size()) {
@@ -116,7 +121,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     if (!targetTriple) {
         EmitDiag(ErrorDiagnostic("target '" + std::string(target) + "' is not supported",
                                  {"supported targets are " + SupportedTargetTriples()},
-                                 "try 'rux check --target linux-x86_64'", "https://rux-lang.dev/docs/cli"));
+                                 "try 'rux check --target linux-x86_64'", "https://rux-lang.dev/docs/cli/check"));
         hadErrors = true;
         return Finish(1);
     }
@@ -147,10 +152,14 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     }
     auto manifest = std::move(rootResult.manifest);
     std::vector<std::filesystem::path> localPackageRoots;
-    bool localDependenciesOnly = false;
-    auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest) {
+    std::set<std::string> localNamespaces;
+    using DiagnosticSink = std::function<void(const Diagnostic &, const SourceLineLookup &)>;
+    auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest,
+                            const DiagnosticSink &sink, const std::size_t compileJobs) {
         if (packageManifest.IsWorkspace() || packageManifest.package.name.Empty()) {
-            EmitFatal("workspace member '" + packageManifestPath.parent_path().string() + "' is not a package");
+            sink(ErrorDiagnostic("workspace member '" + packageManifestPath.parent_path().string() +
+                                 "' is not a package"),
+                 {});
             return false;
         }
         CompileOptions copts;
@@ -159,21 +168,16 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         copts.target = *targetTriple;
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;
-        copts.localDependenciesOnly = localDependenciesOnly;
+        copts.localNamespaces = localNamespaces;
         if (opts.verbose && !jsonOutput) {
             copts.emitProgress = [&](const CompileProgress &event) { ReportCompileProgress(output, event); };
         }
         copts.checkOnly = true;
-        copts.denyLegacyProtocols = denyLegacyProtocols;
-        copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
-            EmitDiag(diagnostic, sourceLineLookup);
-        };
+        copts.jobs = compileJobs;
+        copts.useBuildCache = useBuildCache;
+        copts.emitDiagnostic = sink;
         CompilerDriver driver(std::move(copts));
-        const bool passed = driver.Compile().ok;
-        if (!passed) {
-            hadErrors = true;
-        }
-        return passed;
+        return driver.Compile().ok;
     };
 
     struct CheckJob {
@@ -213,13 +217,14 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
                 continue;
             }
             localPackageRoots.push_back(memberManifestPath.parent_path());
+            if (memberManifest->package.ns)
+                localNamespaces.insert(memberManifest->package.ns->Normalized());
             if (IsPlatformPackageName(memberManifest->package.name.Text()) &&
                 !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), *targetTriple)) {
                 continue;
             }
             jobs.push_back({memberManifestPath, memberManifest->package.name.Text(), std::move(*memberManifest)});
         }
-        localDependenciesOnly = true;
     }
     else {
         if (!jsonOutput) {
@@ -237,25 +242,66 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     std::size_t passed = 0;
     std::size_t failed = 0;
     const auto suiteStart = std::chrono::steady_clock::now();
-    for (auto &job : jobs) {
-        const auto start = std::chrono::steady_clock::now();
-        const bool packagePassed = job.manifest && CheckPackage(job.manifestPath, std::move(*job.manifest));
-        const auto duration = ElapsedMs(start);
+    // Packages are checked side by side, sharing the cores, and reported in order. What a package reports while others
+    // are still being checked is held until its turn, so reports never interleave; progress lines are only shown when
+    // packages are checked one at a time.
+    const std::size_t cores = Parallel::DefaultJobs();
+    const std::size_t concurrent = opts.verbose ? 1 : std::min(cores, std::max<std::size_t>(1, jobs.size()));
+    const std::size_t compileJobs = std::max<std::size_t>(1, cores / concurrent);
 
-        if (packagePassed) {
-            ++passed;
-            if (!jsonOutput) {
-                output.Success("Checked", std::format("{} in {}", job.label, Reporting::FormatDuration(duration)));
+    struct CheckOutcome {
+        bool passed = false;
+        decltype(ElapsedMs(suiteStart)) duration{};
+        std::vector<Diagnostic> held;
+        std::vector<std::string> rendered;
+    };
+
+    std::vector<CheckOutcome> outcomes(jobs.size());
+    const std::vector<TestTask> tasks(jobs.size());
+    RunTestTasks(
+        tasks, concurrent,
+        [&](const std::size_t index) {
+            auto &job = jobs[index];
+            auto &outcome = outcomes[index];
+            const auto start = std::chrono::steady_clock::now();
+            DiagnosticSink sink = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
+                EmitDiag(diagnostic, sourceLineLookup);
+            };
+            if (concurrent > 1) {
+                sink = [&outcome, jsonOutput, diagnosticColor](const Diagnostic &diagnostic,
+                                                               const SourceLineLookup &sourceLineLookup) {
+                    if (jsonOutput)
+                        outcome.held.push_back(diagnostic);
+                    else
+                        outcome.rendered.push_back(RenderDiagnostic(diagnostic, diagnosticColor, sourceLineLookup));
+                };
             }
-        }
-        else {
-            ++failed;
-            hadErrors = true;
-            if (!jsonOutput) {
-                output.Failure("Failed", std::format("{} in {}", job.label, Reporting::FormatDuration(duration)));
+            outcome.passed =
+                job.manifest && CheckPackage(job.manifestPath, std::move(*job.manifest), sink, compileJobs);
+            outcome.duration = ElapsedMs(start);
+        },
+        [&](const std::size_t index) {
+            const auto &job = jobs[index];
+            auto &outcome = outcomes[index];
+            for (auto &diagnostic : outcome.held)
+                jsonDiags.push_back(std::move(diagnostic));
+            for (const auto &text : outcome.rendered)
+                diagnostics.Write(text, MessageVisibility::Always);
+            const auto detail = std::format("{} in {}", job.label, Reporting::FormatDuration(outcome.duration));
+            if (outcome.passed) {
+                ++passed;
+                if (!jsonOutput) {
+                    output.Success("Checked", detail);
+                }
             }
-        }
-    }
+            else {
+                ++failed;
+                hadErrors = true;
+                if (!jsonOutput) {
+                    output.Failure("Failed", detail);
+                }
+            }
+        });
     const auto elapsed = ElapsedMs(suiteStart);
 
     if (!jsonOutput && !opts.quiet) {

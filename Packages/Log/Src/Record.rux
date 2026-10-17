@@ -1,0 +1,190 @@
+// Writing a record as one line of text or of JSON.
+// A record is built whole in memory and handed to its destination in one write, so records from different loggers,
+// or from the process-wide functions on different threads, never interleave within a line. A message or value that
+// holds a line break or another control character has it escaped, so one record is always one line.
+
+import Format::WriteFormat;
+import Log::{ Field, Level, Value };
+import Text::StringBuilder;
+import Time::{ Date, Timestamp };
+
+/// How records are written. `Copy`.
+/// @see https://rux-lang.dev/docs/api/log/record#log-format
+pub enum LogFormat: uint8 {
+    /// One line of text per record: the time, the level, the message, then each field as `key=value`, with values
+    /// that hold spaces, quotes or `=` in quotes.
+    Text = 0,
+    /// One JSON object per line, with `time`, `level` and `message` members followed by the fields.
+    JsonLines = 1
+}
+
+// Appends `bytes`, reporting whether the builder took them.
+func Put(builder: &var StringBuilder, bytes: char8[..]) -> bool {
+    builder.Append(bytes) catch { else => return false };
+    return true;
+}
+
+// Appends `value` in decimal.
+func PutUnsigned(builder: &var StringBuilder, value: uint64) -> bool {
+    var digits: char8[20] = [c8'0'; 20];
+    var at: uint = 20;
+    var rest = value;
+    while true {
+        at = at - 1;
+        digits[at] = (0x30u64 + rest % 10u64) as char8;
+        rest = rest / 10u64;
+        if rest == 0u64 { break; }
+    }
+    return Put(builder, digits[at..20]);
+}
+
+func PutInteger(builder: &var StringBuilder, value: int64) -> bool {
+    if value >= 0i64 { return PutUnsigned(builder, value as uint64); }
+    if !Put(builder, "-") { return false; }
+    return PutUnsigned(builder, (0u64 - value as uint64));
+}
+
+func PutFloat(builder: &var StringBuilder, value: float64) -> bool {
+    WriteFormat(builder, "{}", value) catch { else => return false };
+    return true;
+}
+
+// Appends `value` with at least `width` digits.
+func PutPadded(builder: &var StringBuilder, value: uint64, width: uint) -> bool {
+    var digits: char8[20] = [c8'0'; 20];
+    var at: uint = 20;
+    var rest = value;
+    while rest != 0u64 || 20u - at < width {
+        at = at - 1;
+        digits[at] = (0x30u64 + rest % 10u64) as char8;
+        rest = rest / 10u64;
+    }
+    return Put(builder, digits[at..20]);
+}
+
+// Appends `now` in RFC 3339 form in UTC, to the millisecond: `2026-10-10T08:30:00.125Z`.
+func PutTime(builder: &var StringBuilder, now: Timestamp) -> bool {
+    let seconds = now.UnixSeconds();
+    var days = seconds / 86400i64;
+    var ofDay = seconds - days * 86400i64;
+    if ofDay < 0i64 {
+        days = days - 1i64;
+        ofDay = ofDay + 86400i64;
+    }
+    let date = Date::FromEpochDays(days);
+    if date.year < 0i32 { return false; }
+    let milliseconds = now.SubsecondNanoseconds() / 1000000u32;
+    return PutPadded(builder, date.year as uint64, 4) && Put(builder, "-") &&
+           PutPadded(builder, date.month as uint64, 2) && Put(builder, "-") &&
+           PutPadded(builder, date.day as uint64, 2) && Put(builder, "T") &&
+           PutPadded(builder, (ofDay / 3600i64) as uint64, 2) && Put(builder, ":") &&
+           PutPadded(builder, (ofDay / 60i64 % 60i64) as uint64, 2) && Put(builder, ":") &&
+           PutPadded(builder, (ofDay % 60i64) as uint64, 2) && Put(builder, ".") &&
+           PutPadded(builder, milliseconds as uint64, 3) && Put(builder, "Z");
+}
+
+// Appends `text` with `"` and `\` escaped when `quoted`, and every control character escaped, as JSON escapes them.
+func PutEscaped(builder: &var StringBuilder, text: char8[..], quoted: bool) -> bool {
+    var from: uint = 0;
+    var at: uint = 0;
+    while at < text.length {
+        let byte = text[at] as uint8;
+        var escape = byte < 0x20u8 || byte == 0x7Fu8;
+        if quoted && (byte == 0x22u8 || byte == 0x5Cu8) { escape = true; }
+        if escape {
+            if !Put(builder, text[from..at]) { return false; }
+            var ok = true;
+            if byte == 0x22u8 { ok = Put(builder, "\\\""); }
+            else if byte == 0x5Cu8 { ok = Put(builder, "\\\\"); }
+            else if byte == 0x0Au8 { ok = Put(builder, "\\n"); }
+            else if byte == 0x0Du8 { ok = Put(builder, "\\r"); }
+            else if byte == 0x09u8 { ok = Put(builder, "\\t"); }
+            else {
+                let hex = "0123456789abcdef";
+                var code: char8[6] = [c8'\\', c8'u', c8'0', c8'0', hex[(byte >> 4) as uint], hex[(byte & 15u8) as uint]];
+                ok = Put(builder, code[..]);
+            }
+            if !ok { return false; }
+            from = at + 1;
+        }
+        at = at + 1;
+    }
+    return Put(builder, text[from..text.length]);
+}
+
+// Whether a text value needs quotes in a text record: when it is empty or holds a space, a quote, `=` or a control
+// character, so that the fields of a line can always be told apart.
+func NeedsQuotes(text: char8[..]) -> bool {
+    if text.length == 0u { return true; }
+    for byte in text {
+        let value = byte as uint8;
+        if value <= 0x20u8 || value == 0x22u8 || value == 0x3Du8 || value == 0x5Cu8 || value == 0x7Fu8 { return true; }
+    }
+    return false;
+}
+
+func PutTextField(builder: &var StringBuilder, field: Field) -> bool {
+    if !Put(builder, " ") || !Put(builder, field.key) || !Put(builder, "=") { return false; }
+    match field.value {
+        Value::Text(text) => {
+            if !NeedsQuotes(text) { return PutEscaped(builder, text, false); }
+            return Put(builder, "\"") && PutEscaped(builder, text, true) && Put(builder, "\"");
+        },
+        Value::Integer(number) => return PutInteger(builder, number),
+        Value::Unsigned(number) => return PutUnsigned(builder, number),
+        Value::Float(number) => return PutFloat(builder, number),
+        Value::Boolean(truth) => return Put(builder, truth ? "true" : "false")
+    }
+}
+
+func PutJsonString(builder: &var StringBuilder, text: char8[..]) -> bool {
+    return Put(builder, "\"") && PutEscaped(builder, text, true) && Put(builder, "\"");
+}
+
+func PutJsonField(builder: &var StringBuilder, field: Field) -> bool {
+    if !Put(builder, ",") || !PutJsonString(builder, field.key) || !Put(builder, ":") { return false; }
+    match field.value {
+        Value::Text(text) => return PutJsonString(builder, text),
+        Value::Integer(number) => return PutInteger(builder, number),
+        Value::Unsigned(number) => return PutUnsigned(builder, number),
+        Value::Float(number) => {
+            if !(number - number == 0.0) { return Put(builder, "null"); }
+            return PutFloat(builder, number);
+        },
+        Value::Boolean(truth) => return Put(builder, truth ? "true" : "false")
+    }
+}
+
+// Writes one record into `builder`, ending it with a line break: the time when `timestamps`, the level, the message,
+// the `context` fields and then `fields`. Reports whether there was room for all of it.
+func WriteRecord(builder: &var StringBuilder, format: LogFormat, timestamps: bool, level: Level, message: char8[..],
+                 context: Field[..], fields: Field[..]) -> bool {
+    if format == LogFormat::JsonLines {
+        if !Put(builder, "{") { return false; }
+        if timestamps {
+            if !Put(builder, "\"time\":\"") || !PutTime(builder, Timestamp::Now()) || !Put(builder, "\",") { return false; }
+        }
+        if !Put(builder, "\"level\":\"") || !Put(builder, level.Name()) || !Put(builder, "\",\"message\":") ||
+           !PutJsonString(builder, message) {
+            return false;
+        }
+        for field in context {
+            if !PutJsonField(builder, field) { return false; }
+        }
+        for field in fields {
+            if !PutJsonField(builder, field) { return false; }
+        }
+        return Put(builder, "}\n");
+    }
+    if timestamps {
+        if !PutTime(builder, Timestamp::Now()) || !Put(builder, " ") { return false; }
+    }
+    if !Put(builder, level.Label()) || !Put(builder, " ") || !PutEscaped(builder, message, false) { return false; }
+    for field in context {
+        if !PutTextField(builder, field) { return false; }
+    }
+    for field in fields {
+        if !PutTextField(builder, field) { return false; }
+    }
+    return Put(builder, "\n");
+}

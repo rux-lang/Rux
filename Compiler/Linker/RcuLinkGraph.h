@@ -10,6 +10,10 @@
 #include <string_view>
 #include <vector>
 
+namespace Rux::Parallel {
+class WorkerPool;
+}
+
 namespace Rux {
 struct RcuSymbolLocation {
     std::size_t objectIndex = 0;
@@ -72,8 +76,11 @@ struct RcuLinkDiagnostic {
 /// facade.
 class RcuLinkGraph {
 public:
+    /// Index `objects`. With a pool, the relocations of each object are resolved on its threads; the graph is the same
+    /// either way.
     [[nodiscard]] static RcuLinkGraph Build(std::span<const RcuFile> objects, std::string_view packageName,
-                                            ArtifactKind artifactKind, Target::Arch targetArchitecture);
+                                            ArtifactKind artifactKind, Target::Arch targetArchitecture,
+                                            Parallel::WorkerPool *pool = nullptr);
 
     [[nodiscard]] const std::vector<RcuLinkDefinition> &Definitions() const {
         return definitions;

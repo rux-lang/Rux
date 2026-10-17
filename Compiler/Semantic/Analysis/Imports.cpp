@@ -4,6 +4,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/PrimitiveCatalog.h"
 #include "Types/Type.h"
 
 #include <algorithm>
@@ -22,9 +23,12 @@ using Layout::AlignUp;
 
 void AnalysisContext::ApplyModuleImports(const Module &mod) {
     currentFile = mod.name;
+    Scope *const savedScope = currentScope;
+    currentScope = &programIndex.FileScopeFor(mod.name, *currentScope);
     for (const auto &decl : mod.items) {
         ApplyDeclImports(*decl);
     }
+    currentScope = savedScope;
 }
 
 void AnalysisContext::ApplyModuleImportsInScope(const Module &mod, Scope &scope) {
@@ -35,10 +39,11 @@ void AnalysisContext::ApplyModuleImportsInScope(const Module &mod, Scope &scope)
 }
 
 void AnalysisContext::ApplyDeclImports(const Decl &decl) {
-    if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
+    if (auto *useDecl = AstCast<const UseDecl>(&decl)) {
         CheckUseDecl(*useDecl);
+        appliedImports.insert(useDecl);
     }
-    else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+    else if (auto *modDecl = AstCast<const ModuleDecl>(&decl)) {
         Scope *savedScope = currentScope;
         currentScope = &ModuleScopeFor(modDecl->name, *currentScope);
         for (const auto &item : modDecl->items) {
@@ -48,8 +53,63 @@ void AnalysisContext::ApplyDeclImports(const Decl &decl) {
     }
 }
 
+void AnalysisContext::ReapplyUseDecl(const UseDecl &useDecl) {
+    // A module-level import was bound before signatures were resolved; binding it again picks up the resolved types of
+    // what it names, but must not report the problems of the first binding a second time.
+    const std::size_t before = diags.size();
+    CheckUseDecl(useDecl);
+    if (appliedImports.contains(&useDecl)) {
+        const auto repeated = [&](const SemanticDiagnostic &diagnostic) {
+            return std::ranges::any_of(diags.begin(), diags.begin() + static_cast<std::ptrdiff_t>(before),
+                                       [&](const SemanticDiagnostic &earlier) {
+                                           return earlier.sourceName == diagnostic.sourceName &&
+                                                  earlier.location.line == diagnostic.location.line &&
+                                                  earlier.location.column == diagnostic.location.column &&
+                                                  earlier.message == diagnostic.message;
+                                       });
+        };
+        const auto removed =
+            std::ranges::remove_if(diags.begin() + static_cast<std::ptrdiff_t>(before), diags.end(), repeated);
+        diags.erase(removed.begin(), removed.end());
+    }
+}
+
+void AnalysisContext::RefreshModuleImports(const Module &module) {
+    currentFile = module.name;
+    Scope *const savedScope = currentScope;
+    currentScope = &programIndex.FileScopeFor(module.name, *currentScope);
+    for (const auto &declaration : module.items) {
+        RefreshDeclImports(*declaration);
+    }
+    currentScope = savedScope;
+}
+
+void AnalysisContext::RefreshModuleImportsInScope(const Module &module, Scope &scope) {
+    Scope *savedScope = currentScope;
+    currentScope = &scope;
+    RefreshModuleImports(module);
+    currentScope = savedScope;
+}
+
+void AnalysisContext::RefreshDeclImports(const Decl &declaration) {
+    if (const auto *useDecl = AstCast<const UseDecl>(&declaration)) {
+        ReapplyUseDecl(*useDecl);
+        refreshedImports.insert(useDecl);
+    }
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&declaration)) {
+        Scope *savedScope = currentScope;
+        currentScope = &ModuleScopeFor(moduleDecl->name, *currentScope);
+        for (const auto &item : moduleDecl->items) {
+            RefreshDeclImports(*item);
+        }
+        currentScope = savedScope;
+    }
+}
+
 Scope &AnalysisContext::ModuleScopeFor(const std::string &name, Scope &parent) {
-    return programIndex.ModuleScopeFor(name, parent);
+    // A module block is checked in a scope of its file's own, so what the block imports stays in that file.
+    Scope &module = programIndex.ModuleScopeFor(name, parent);
+    return &module == &parent ? parent : programIndex.FileModuleScopeFor(parent, name, module);
 }
 
 std::string AnalysisContext::ModulePathForImport(const UseDecl &d) {
@@ -82,18 +142,20 @@ std::string AnalysisContext::ImportScopeDisplayName(const std::string &pkgName, 
     return std::format("module '{}'", modulePath);
 }
 
-AnalysisContext::ImportScope AnalysisContext::ResolveImportScope(const UseDecl &d, const std::string &pkgName,
-                                                                 const std::string &modulePath) {
-    const std::string logicalModulePath = LogicalModulePathForImport(d);
+AnalysisContext::ImportModuleLookup AnalysisContext::FindImportModule(const std::string &pkgName,
+                                                                      const std::string &modulePath,
+                                                                      const std::string &logicalModulePath) const {
     const std::string packageId = ResolvePackageImport(imports, currentPackage, pkgName);
     if (auto pkgIt = packageModuleScopes.find(packageId); pkgIt != packageModuleScopes.end()) {
         if (auto modIt = pkgIt->second.find(modulePath); modIt != pkgIt->second.end()) {
-            return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath), packageId, modulePath};
+            return {{&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath), packageId, modulePath}, {}};
         }
     }
 
     std::vector<std::pair<std::string, Scope *>> matches;
     for (const auto &[candidatePackage, moduleScopes] : packageModuleScopes) {
+        if (logicalModulePath.empty())
+            break;
         if (imports.contains(currentPackage) && candidatePackage != currentPackage && candidatePackage != packageId)
             continue;
         auto modIt = moduleScopes.find(logicalModulePath);
@@ -106,9 +168,28 @@ AnalysisContext::ImportScope AnalysisContext::ResolveImportScope(const UseDecl &
     }
 
     std::ranges::sort(matches, {}, &std::pair<std::string, Scope *>::first);
+    ImportModuleLookup lookup;
     if (matches.size() > 1) {
+        for (const auto &[candidatePackage, _] : matches)
+            lookup.ambiguousPackages.push_back(candidatePackage);
+    }
+    else if (!matches.empty()) {
+        lookup.scope = {&matches[0].second->Table(), ImportScopeDisplayName(matches[0].first, logicalModulePath),
+                        matches[0].first, logicalModulePath};
+    }
+    return lookup;
+}
+
+AnalysisContext::ImportScope AnalysisContext::ResolveImportScope(const UseDecl &d, const std::string &pkgName,
+                                                                 const std::string &modulePath) {
+    const std::string logicalModulePath = LogicalModulePathForImport(d);
+    ImportModuleLookup lookup = FindImportModule(pkgName, modulePath, logicalModulePath);
+    if (lookup.scope.table) {
+        return std::move(lookup.scope);
+    }
+    if (!lookup.ambiguousPackages.empty()) {
         std::vector<std::string> notes;
-        for (const auto &[candidatePackage, _] : matches) {
+        for (const auto &candidatePackage : lookup.ambiguousPackages) {
             notes.push_back(
                 std::format("module '{}' is available from package '{}'", logicalModulePath, candidatePackage));
         }
@@ -116,12 +197,7 @@ AnalysisContext::ImportScope AnalysisContext::ResolveImportScope(const UseDecl &
                   std::format("qualify the import with one of the listed package names"));
         return {};
     }
-    if (!matches.empty()) {
-        return {&matches[0].second->Table(), ImportScopeDisplayName(matches[0].first, logicalModulePath),
-                matches[0].first, logicalModulePath};
-    }
-
-    if (!packageModuleScopes.contains(packageId)) {
+    if (!packageModuleScopes.contains(ResolvePackageImport(imports, currentPackage, pkgName))) {
         EmitError(d.location, std::format("package or module '{}' is not defined", pkgName));
     }
     else {
@@ -130,39 +206,43 @@ AnalysisContext::ImportScope AnalysisContext::ResolveImportScope(const UseDecl &
     return {};
 }
 
-[[nodiscard]] const Symbol *AnalysisContext::InaccessibleModule(const std::string &package,
-                                                                const std::string &path) const {
-    if (package == currentPackage || path.empty()) {
-        return nullptr;
-    }
+[[nodiscard]] AnalysisContext::ModuleWalk AnalysisContext::WalkModulePath(const std::string &package,
+                                                                          const std::string &path) const {
+    ModuleWalk walk;
     const auto packageIt = packageModuleScopes.find(package);
-    if (packageIt == packageModuleScopes.end()) {
-        return nullptr;
+    if (path.empty() || packageIt == packageModuleScopes.end()) {
+        return walk;
     }
     const auto rootIt = packageIt->second.find("");
     if (rootIt == packageIt->second.end()) {
-        return nullptr;
+        return walk;
     }
     const Scope *scope = rootIt->second;
     std::size_t begin = 0;
-    while (begin < path.size()) {
+    while (scope) {
         const std::size_t separator = path.find("::", begin);
         const std::string segment =
             path.substr(begin, separator == std::string::npos ? std::string::npos : separator - begin);
         const auto found = scope->Table().find(segment);
         if (found == scope->Table().end() || found->second.kind != Symbol::Kind::Module) {
-            return nullptr;
+            return {};
         }
-        if (!IsAccessible(found->second)) {
-            return &found->second;
+        if (!walk.inaccessible && package != currentPackage && !IsAccessible(found->second)) {
+            walk.inaccessible = &found->second;
+        }
+        if (separator == std::string::npos) {
+            walk.module = &found->second;
+            return walk;
         }
         scope = found->second.moduleScope;
-        if (!scope || separator == std::string::npos) {
-            break;
-        }
         begin = separator + 2;
     }
-    return nullptr;
+    return {};
+}
+
+[[nodiscard]] const Symbol *AnalysisContext::InaccessibleModule(const std::string &package,
+                                                                const std::string &path) const {
+    return WalkModulePath(package, path).inaccessible;
 }
 
 [[nodiscard]] std::optional<Symbol> AnalysisContext::AccessibleImport(const Symbol &symbol) const {
@@ -189,18 +269,31 @@ void AnalysisContext::PromoteFromPackage(const UseDecl &d, const std::string &pk
         EmitPrivacyError(d.location, *module);
         return;
     }
+    // A primitive is built in, so no package declares it: importing one imports that package's extension of it.
+    if (const PrimitiveInfo *primitive = FindPrimitive(name)) {
+        ImportPrimitiveExtension(d, scope, *primitive, name);
+        return;
+    }
     auto sym_it = scope.table->find(name);
     if (sym_it == scope.table->end()) {
         std::string message = std::format("name '{}' was not found in {}", name, scope.displayName);
         std::optional<std::string> help;
-        // The item is not at this path, but if one of the package's modules
-        // holds it, point at the fully-qualified import.
+        // The item is not at this path, but if one of the package's modules holds it, point at an import that
+        // reaches it. A module path that repeats the package name is spelled once, as written in its declaration,
+        // when that spelling resolves to the same module.
         if (auto pkgIt = packageModuleScopes.find(scope.ownerPackage); pkgIt != packageModuleScopes.end()) {
             for (const auto &[candidateModule, candidateScope] : pkgIt->second) {
-                if (!candidateModule.empty() && candidateScope->Table().contains(name)) {
-                    help = std::format("did you mean 'import {}::{}::{}'?", pkgName, candidateModule, name);
-                    break;
+                if (candidateModule.empty() || !candidateScope->Table().contains(name)) {
+                    continue;
                 }
+                std::string spelled = std::format("{}::{}", pkgName, candidateModule);
+                if (candidateModule.starts_with(pkgName + "::")) {
+                    const std::string relative = candidateModule.substr(pkgName.size() + 2);
+                    if (FindImportModule(pkgName, relative, candidateModule).scope.table == &candidateScope->Table())
+                        spelled = candidateModule;
+                }
+                help = std::format("did you mean 'import {}::{}'?", spelled, name);
+                break;
             }
         }
         EmitError(d.location, std::move(message), {}, std::move(help));
@@ -219,15 +312,39 @@ void AnalysisContext::PromoteFromPackage(const UseDecl &d, const std::string &pk
 }
 
 void AnalysisContext::DefineImportedSymbol(const Symbol &sym) {
-    if (Symbol *existing = currentScope->LookupLocal(sym.name)) {
+    // An import belongs to the file, or the module block of a file, that writes it, so it goes into that file's own
+    // scope. A declaration of the package or module under the same name is still there: a function joins its overload
+    // set, as it would in one shared scope, and anything else makes the import a duplicate.
+    Symbol imported = sym;
+    if (Scope *declarations = currentScope->Declarations()) {
+        if (const Symbol *own = declarations->LookupLocal(sym.name)) {
+            if (own->kind == Symbol::Kind::Func && sym.kind == Symbol::Kind::Func) {
+                for (const FuncDecl *overload : own->funcOverloads) {
+                    if (!std::ranges::contains(imported.funcOverloads, overload)) {
+                        imported.funcOverloads.push_back(overload);
+                    }
+                }
+                if (!imported.externDecl) {
+                    imported.externDecl = own->externDecl;
+                }
+            }
+            else if (own->kind != sym.kind || own->declaration != sym.declaration ||
+                     own->location.line != sym.location.line || own->location.column != sym.location.column ||
+                     own->ownerPackage != sym.ownerPackage) {
+                diags.push_back(DuplicateDeclaration(*own, sym, currentFile));
+                return;
+            }
+        }
+    }
+    if (Symbol *existing = currentScope->LookupOwn(sym.name)) {
         if (existing->kind == sym.kind && existing->location.line == sym.location.line &&
             existing->location.column == sym.location.column && existing->ownerPackage == sym.ownerPackage &&
             existing->declaration == sym.declaration) {
-            *existing = sym;
+            *existing = std::move(imported);
             return;
         }
     }
-    currentScope->Define(sym, diags, currentFile);
+    currentScope->Define(std::move(imported), diags, currentFile);
 }
 
 void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,
@@ -279,25 +396,25 @@ void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,
     };
 
     auto visitType = [&](this auto &&self, const TypeExpr &type) -> void {
-        if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
+        if (const auto *named = AstCast<const NamedTypeExpr>(&type)) {
             importNamedType(named->name);
             for (const auto &arg : named->typeArgs) {
                 self(*arg);
             }
         }
-        else if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(&type)) {
+        else if (const auto *ptr = AstCast<const PointerTypeExpr>(&type)) {
             self(*ptr->pointee);
         }
-        else if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+        else if (const auto *reference = AstCast<const ReferenceTypeExpr>(&type)) {
             self(*reference->pointee);
         }
-        else if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+        else if (const auto *array = AstCast<const ArrayTypeExpr>(&type)) {
             self(*array->element);
         }
-        else if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+        else if (const auto *slice = AstCast<const SliceTypeExpr>(&type)) {
             self(*slice->element);
         }
-        else if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+        else if (const auto *range = AstCast<const RangeTypeExpr>(&type)) {
             if (range->start) {
                 self(*range->start);
             }
@@ -305,12 +422,12 @@ void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,
                 self(*range->end);
             }
         }
-        else if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
+        else if (const auto *tuple = AstCast<const TupleTypeExpr>(&type)) {
             for (const auto &elem : tuple->elements) {
                 self(*elem);
             }
         }
-        else if (const auto *fn = dynamic_cast<const FunctionTypeExpr *>(&type)) {
+        else if (const auto *fn = AstCast<const FunctionTypeExpr>(&type)) {
             for (const auto &param : fn->params) {
                 self(*param);
             }
@@ -343,37 +460,29 @@ void AnalysisContext::CheckUseDecl(const UseDecl &d) {
     const std::string &pkgName = d.path[0];
 
     if (d.kind == UseDecl::Kind::Single) {
-        // Bind `packageModuleScopes[pkgName][moduleName]` as a module alias
-        // usable through `::`. Returns true when the module exists.
-        auto bindModuleAlias = [&](const std::string &moduleName) -> bool {
-            auto pkgIt = packageModuleScopes.find(ResolvePackageImport(imports, currentPackage, pkgName));
-            if (pkgIt == packageModuleScopes.end()) {
+        // Bind the module at the package-relative `modulePath`, else at a non-empty `logicalModulePath`, as an alias
+        // usable through `::`. Returns true when the path names a module, whether or not the importer may name it.
+        const auto bindModule = [&](const std::string &modulePath, const std::string &logicalModulePath) -> bool {
+            const ImportModuleLookup lookup = FindImportModule(pkgName, modulePath, logicalModulePath);
+            if (!lookup.scope.table || lookup.scope.modulePath.empty()) {
                 return false;
             }
-            auto modIt = pkgIt->second.find(moduleName);
-            if (modIt == pkgIt->second.end()) {
+            const ModuleWalk walk = WalkModulePath(lookup.scope.ownerPackage, lookup.scope.modulePath);
+            if (!walk.module) {
                 return false;
             }
-            const auto root = pkgIt->second.find("");
-            if (root == pkgIt->second.end()) {
-                return false;
-            }
-            const auto module = root->second->Table().find(moduleName);
-            if (module == root->second->Table().end() || module->second.kind != Symbol::Kind::Module) {
-                return false;
-            }
-            if (!IsAccessible(module->second)) {
-                EmitPrivacyError(d.location, module->second);
+            if (walk.inaccessible) {
+                EmitPrivacyError(d.location, *walk.inaccessible);
                 return true;
             }
-            DefineImportedSymbol(module->second);
+            DefineImportedSymbol(*walk.module);
             return true;
         };
 
         // Bare `import Pkg;` binds the package's eponymous module as a
         // namespace, so its members are reached through `Pkg::Name`.
         if (d.path.size() < 2) {
-            if (bindModuleAlias(pkgName)) {
+            if (bindModule(pkgName, {})) {
                 return;
             }
             EmitError(d.location, std::format("import '{}' does not name a module", pkgName), {},
@@ -381,9 +490,17 @@ void AnalysisContext::CheckUseDecl(const UseDecl &d) {
             return;
         }
         const std::string &name = d.path.back();
-        // If path.size()==2 and name matches a logical module, create a
-        // module alias.
-        if (d.path.size() == 2 && bindModuleAlias(name)) {
+        // Item and module imports find modules alike: the package-relative path first, then the logical path, which
+        // repeats the package name as `module Pkg::Shapes` does. A module at the package-relative path wins, then an
+        // item there, then a module at the logical path.
+        const std::string modulePath = JoinPathSegments(d.path, 1, d.path.size());
+        if (bindModule(modulePath, {})) {
+            return;
+        }
+        const ImportScope itemScope =
+            FindImportModule(pkgName, ModulePathForImport(d), LogicalModulePathForImport(d)).scope;
+        if ((!itemScope.table || !itemScope.table->contains(name)) &&
+            bindModule(modulePath, JoinPathSegments(d.path, 0, d.path.size()))) {
             return;
         }
         PromoteFromPackage(d, pkgName, name);
@@ -411,6 +528,11 @@ void AnalysisContext::CheckUseDecl(const UseDecl &d) {
                 if (accessible->kind == Symbol::Kind::Type && accessible->declaration) {
                     explicitTypeImports[currentFile].insert(accessible->declaration);
                 }
+            }
+        }
+        if (const auto *extended = programIndex.PrimitiveExtensions(scope.ownerPackage, scope.modulePath)) {
+            for (const TypeRef::Kind kind : *extended) {
+                primitiveExtensionImports[currentFile][kind].insert(scope.ownerPackage);
             }
         }
     }

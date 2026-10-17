@@ -15,33 +15,6 @@
 #include <vector>
 
 namespace Rux {
-namespace ConditionalFolding {
-std::string FilePathToModulePath(const std::string &filePath) {
-    std::filesystem::path path(filePath);
-    std::vector<std::string> parts;
-    for (const auto &part : path) {
-        parts.push_back(part.generic_string());
-    }
-    std::size_t start = parts.size() > 1 ? parts.size() - 1 : 0;
-    for (std::size_t i = 0; i < parts.size(); ++i) {
-        if (parts[i] == "Src" || parts[i] == "src") {
-            start = i + 1;
-        }
-    }
-    if (!parts.empty()) {
-        parts.back() = std::filesystem::path(parts.back()).stem().generic_string();
-    }
-    std::string result;
-    for (std::size_t i = start; i < parts.size(); ++i) {
-        if (!result.empty()) {
-            result += "::";
-        }
-        result += parts[i];
-    }
-    return result;
-}
-} // namespace ConditionalFolding
-
 namespace {
 bool EqualsIgnoringCase(const std::string_view left, const std::string_view right) {
     return std::ranges::equal(left, right, [](const char x, const char y) {

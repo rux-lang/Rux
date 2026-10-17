@@ -1,0 +1,71 @@
+import Core::Assert;
+import StaticDataAlignment::Tables;
+import StaticDataAlignmentProvider::{ ProviderReals, ProviderWords };
+
+// Every primitive of 128 bits or more is sixteen-byte aligned, and a module's constant tables are placed at offsets
+// that honour it. Those offsets used to be aligned only within their object: its read-only data recorded an eight-byte
+// alignment, so the linker could start it eight bytes past a boundary and every wide table in it was misaligned in
+// memory. Each table here follows a byte-sized one, in this module, in a second module, and in a dependency package.
+
+const TopWord: uint256 = (1u256 << 255u32) + 1u256;
+const LowWide: int512 = -(1i512 << 400u32);
+const First: uint8[1] = [0x01u8];
+const Words: uint256[2] = [TopWord, 42u256];
+const Second: uint8[3] = [0x02u8, 0x03u8, 0x04u8];
+const Reals: float128[3] = [0.5f128, -3.0f128, 1e300f128];
+const Third: uint8[1] = [0x05u8];
+const Flags: bool128[3] = [true, false, true];
+const Fourth: uint8[7] = [9u8, 8u8, 7u8, 6u8, 5u8, 4u8, 3u8];
+const Wides: int512[2] = [LowWide, 12345i512];
+const Fifth: uint8[1] = [0x06u8];
+const Characters: char128[3] = [c128'a', c128'λ', c128'😀'];
+
+// A scalar constant is inlined, and taking its address copies it to a frame slot, which has to be aligned as well.
+const ScalarWide: int128 = (1i128 << 120u32) - 1i128;
+const ScalarByte: uint8 = 0xA5u8;
+const ScalarReal: float128 = 0.125f128;
+
+func Aligned(address: uint, alignment: uint) -> bool {
+    return address != 0u && address % alignment == 0u;
+}
+
+func Main() -> int {
+    Assert(alignof(uint256) == 16u && alignof(float128) == 16u && alignof(bool128) == 16u, "wide types align at 16");
+    Assert(alignof(int512) == 16u && alignof(char128) == 16u && alignof(float80) == 16u, "and so do the rest");
+
+    // This module's tables, each placed after a byte-sized one.
+    Assert(Aligned(@Words[0] as uint, alignof(uint256)), "a uint256 table is aligned");
+    Assert(Aligned(@Reals[0] as uint, alignof(float128)), "a float128 table is aligned");
+    Assert(Aligned(@Flags[0] as uint, alignof(bool128)), "a bool128 table is aligned");
+    Assert(Aligned(@Wides[0] as uint, alignof(int512)), "an int512 table is aligned");
+    Assert(Aligned(@Characters[0] as uint, alignof(char128)), "a char128 table is aligned");
+    Assert(@Reals[1] as uint - @Reals[0] as uint == sizeof(float128), "elements stride by their size");
+
+    // Their values survive the padding placed around them.
+    Assert(First[0] == 0x01u8 && Second[2] == 0x04u8 && Third[0] == 0x05u8, "byte tables are intact");
+    Assert(Fourth[0] == 9u8 && Fourth[6] == 3u8 && Fifth[0] == 0x06u8, "and so are the later ones");
+    Assert(Words[0] == TopWord && Words[1] == 42u256, "uint256 elements are intact");
+    Assert(Reals[0] == 0.5f128 && Reals[1] == -3.0f128 && Reals[2] == 1e300f128, "float128 elements are intact");
+    Assert(Flags[0] && !Flags[1] && Flags[2], "bool128 elements are intact");
+    Assert(Wides[0] == LowWide && Wides[1] == 12345i512, "int512 elements are intact");
+    Assert(Characters[0] == c128'a' && Characters[1] == c128'λ' && Characters[2] == c128'😀', "char128 elements");
+
+    // A second module of this package.
+    Assert(Aligned(Tables::SignedAddress(), alignof(int128)), "another module's int128 table is aligned");
+    Assert(Aligned(Tables::CharactersAddress(), alignof(char128)), "and its char128 table");
+    Assert(Aligned(Tables::ExtendedAddress(), alignof(float80)), "and its float80 table");
+    Assert(Tables::SignedIntact() && Tables::CharactersIntact() && Tables::ExtendedIntact(), "and their values");
+
+    // A dependency package.
+    Assert(Aligned(ProviderWords(), alignof(uint256)), "a dependency's uint256 table is aligned and intact");
+    Assert(Aligned(ProviderReals(), alignof(float128)), "a dependency's float128 table is aligned and intact");
+
+    // Scalar constants copied to the frame.
+    let wide = @ScalarWide;
+    let real = @ScalarReal;
+    let byte = @ScalarByte;
+    Assert(Aligned(wide as uint, alignof(int128)) && *wide == (1i128 << 120u32) - 1i128, "an int128 constant's copy");
+    Assert(Aligned(real as uint, alignof(float128)) && *real == 0.125f128, "a float128 constant's copy");
+    Assert(*byte == 0xA5u8, "a byte constant's copy");
+    return 0;
+}

@@ -1,0 +1,434 @@
+// A DNS client of this package's own: `Resolver` asks name servers for a host's IPv4 and IPv6 addresses over UDP,
+// with TCP for an answer too long for a datagram. It is how `Resolve` works on Linux, where the system's resolver
+// belongs to the C library and a static binary has none: the hosts file answers first, as `getaddrinfo` would have
+// it, then the servers in `/etc/resolv.conf`. What the C library adds on top — search domains, the name service
+// switch, caching daemons — is left out: a name is looked up as it is written.
+
+import Allocator::Allocator;
+import Collections::Vector;
+import Core::{ #target };
+import Io::{ IoError, IoErrorKind, ReadExact, WriteAll };
+import Net::{
+    IpAddress, Ipv4Address, Ipv6Address, SocketAddress, TcpStream, UdpSocket
+};
+import Time::{ Duration, Instant };
+
+when #target.os == .Linux {
+    import Linux::{ AtFdCwd, Close, OpenAt, OpenCloseOnExec, OpenReadOnly, Read };
+}
+
+// What a DNS record's type is.
+const TypeA: uint16 = 1;
+const TypeAaaa: uint16 = 28;
+// The most name servers `/etc/resolv.conf` is read for, as the C library reads it.
+const MaximumServers: uint = 3;
+// The most bytes a configuration file is read for.
+const MaximumFileBytes: uint = 65536;
+
+/// Asks name servers for a host's addresses. Not copied.
+/// A query goes to each server in turn, for the IPv4 addresses and then the IPv6 ones, until a server answers;
+/// the whole round is tried again as many times as the attempts allow. Each query waits for its answer up to the
+/// timeout, and a name the server says does not exist ends the lookup at once.
+/// @see https://rux-lang.dev/docs/api/net/resolver
+pub struct Resolver {
+    servers: Vector<SocketAddress>;
+    timeout: Duration;
+    attempts: uint;
+}
+
+// What a query found: addresses, or that the name does not exist, or nothing to go on.
+enum Outcome: uint8 {
+    Found = 0,
+    NoSuchName = 1,
+    Failed = 2
+}
+
+// Reads the whole of `path`, which must end in a NUL, into `into`; empty when it cannot be read.
+func ReadSmallFile(path: char8[..], into: &var Vector<char8>) {
+    when #target.os == .Linux {
+        let opened = OpenAt(AtFdCwd, path.data, OpenReadOnly | OpenCloseOnExec, 0);
+        if opened < 0i64 { return; }
+        let fd = opened as int32;
+        var chunk: char8[4096] = [c8'\0'; 4096];
+        while into.Length() < MaximumFileBytes {
+            let count = Read(fd, (@chunk[0]) as *var opaque, 4096);
+            if count == -4i64 { continue; }
+            if count <= 0i64 { break; }
+            into.PushSlice(chunk[..count as uint]) catch { else => break };
+        }
+        Close(fd);
+    }
+}
+
+// Whether two names are the same, ignoring the case of ASCII letters and a trailing dot.
+func SameName(left: char8[..], right: char8[..]) -> bool {
+    var a = left;
+    var b = right;
+    if a.length > 0u && a[a.length - 1] == c8'.' { a = a[..a.length - 1]; }
+    if b.length > 0u && b[b.length - 1] == c8'.' { b = b[..b.length - 1]; }
+    if a.length != b.length { return false; }
+    var index: uint = 0;
+    while index < a.length {
+        var x = a[index] as uint8;
+        var y = b[index] as uint8;
+        if x >= 0x41u8 && x <= 0x5Au8 { x = x + 32u8; }
+        if y >= 0x41u8 && y <= 0x5Au8 { y = y + 32u8; }
+        if x != y { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func IsBlank(c: char8) -> bool {
+    return c == c8' ' || c == c8'\t' || c == c8'\r';
+}
+
+// The next field of `line` from `at`, moving `at` past it; empty at the end of the line.
+func NextField(line: char8[..], at: *var uint) -> char8[..] {
+    var start = *at;
+    while start < line.length && IsBlank(line[start]) { start = start + 1; }
+    var end = start;
+    while end < line.length && !IsBlank(line[end]) { end = end + 1; }
+    *at = end;
+    return line[start..end];
+}
+
+// Collects where each line of `text` is, without its comment.
+func Lines(text: char8[..], lines: &var Vector<Range>) {
+    var start: uint = 0;
+    while start < text.length {
+        var end = start;
+        while end < text.length && text[end] != c8'\n' { end = end + 1; }
+        var cut = start;
+        while cut < end && text[cut] != c8'#' && text[cut] != c8';' { cut = cut + 1; }
+        lines.Push(Range { start: start, end: cut }) catch { else => return };
+        start = end + 1;
+    }
+}
+
+// Part of a text, by offsets.
+struct Range {
+    start: uint;
+    end: uint;
+}
+
+// The addresses `/etc/hosts` gives `host`.
+func FromHostsFile(allocator: Allocator, host: char8[..], port: uint16, found: &var Vector<SocketAddress>) {
+    var text = Vector<char8>(allocator);
+    ReadSmallFile("/etc/hosts\0", text);
+    var lines = Vector<Range>(allocator);
+    Lines(text.AsSlice(), lines);
+    for range in lines.AsSlice() {
+        let line = text.AsSlice()[range.start..range.end];
+        var at: uint = 0;
+        let field = NextField(line, @at);
+        let ip = IpAddress::Parse(field) ?? continue;
+        while true {
+            let name = NextField(line, @at);
+            if name.length == 0u { break; }
+            if SameName(name, host) {
+                AddOnce(found, SocketAddress { ip: ip, port: port });
+                break;
+            }
+        }
+    }
+}
+
+func AddOnce(found: &var Vector<SocketAddress>, address: SocketAddress) {
+    for earlier in found.AsSlice() {
+        if earlier.Equals(address) { return; }
+    }
+    found.Push(address) catch { else => return };
+}
+
+extend Resolver {
+    func =(self: &var Resolver, other: &Resolver);
+
+    /// A resolver that asks `servers`, waiting five seconds for each answer and going round them twice.
+    /// @param allocator what the server list and every lookup's results are kept in
+    /// @param servers the name servers, in the order they are asked; port 53 is DNS's own
+    /// @returns the resolver
+    /// @see https://rux-lang.dev/docs/api/net/resolver#with-servers
+    pub func WithServers(allocator: Allocator, servers: SocketAddress[..]) -> Resolver {
+        var resolver = Resolver { servers: Vector<SocketAddress>(allocator), timeout: Duration::FromSeconds(5),
+                                  attempts: 2 };
+        resolver.servers.PushSlice(servers) catch { else => {} };
+        return <-resolver;
+    }
+
+    /// A resolver configured as the C library's would be: the name servers, and the `timeout` and `attempts`
+    /// options, of `/etc/resolv.conf` on Linux. With no servers to read, the one on this machine is asked.
+    /// @param allocator what the server list and every lookup's results are kept in
+    /// @returns the resolver
+    /// @see https://rux-lang.dev/docs/api/net/resolver#from-system
+    pub func FromSystem(allocator: Allocator) -> Resolver {
+        return ReadConfiguration(allocator);
+    }
+
+    /// How long a query waits for its answer.
+    /// @param timeout the wait for each answer
+    /// @see https://rux-lang.dev/docs/api/net/resolver#set-timeout
+    pub func SetTimeout(self: &var Resolver, timeout: Duration) {
+        self.timeout = timeout;
+    }
+
+    /// How many times the servers are gone round before a lookup gives up.
+    /// @param attempts the number of rounds, at least one
+    /// @see https://rux-lang.dev/docs/api/net/resolver#set-attempts
+    pub func SetAttempts(self: &var Resolver, attempts: uint) {
+        self.attempts = attempts == 0u ? 1u : attempts;
+    }
+
+    /// Asks the servers for `host`'s addresses: its IPv4 addresses first, then its IPv6 ones, each with `port`.
+    /// The hosts file is not read; `Resolve` reads it first.
+    /// @param allocator what the list is kept in
+    /// @param host the name, such as `example.com`
+    /// @param port the port every address gets
+    /// @returns the addresses; `NotFound` when the name has none or does not exist, `TimedOut` when no server answered
+    /// @see https://rux-lang.dev/docs/api/net/resolver#lookup
+    pub func Lookup(self: &Resolver, allocator: Allocator, host: char8[..], port: uint16)
+        -> Vector<SocketAddress> ! IoError {
+        var found = Vector<SocketAddress>(allocator);
+        var attempt: uint = 0;
+        while attempt < self.attempts {
+            for server in self.servers.AsSlice() {
+                let first = Ask(server, host, TypeA, NextQueryId(), port, self.timeout, found);
+                if first == Outcome::NoSuchName { fail IoError::Of(IoErrorKind::NotFound); }
+                let second = Ask(server, host, TypeAaaa, NextQueryId(), port, self.timeout, found);
+                if found.Length() > 0u { return <-found; }
+                if first == Outcome::Found || second == Outcome::Found { fail IoError::Of(IoErrorKind::NotFound); }
+            }
+            attempt = attempt + 1;
+        }
+        fail IoError::Of(IoErrorKind::TimedOut);
+    }
+}
+
+// Reads `/etc/resolv.conf`: its name servers, and its `timeout` and `attempts` options. With no servers, the local
+// one is asked, as the C library does.
+func ReadConfiguration(allocator: Allocator) -> Resolver {
+    var configuration = Resolver { servers: Vector<SocketAddress>(allocator), timeout: Duration::FromSeconds(5),
+                                   attempts: 2 };
+    var text = Vector<char8>(allocator);
+    ReadSmallFile("/etc/resolv.conf\0", text);
+    var lines = Vector<Range>(allocator);
+    Lines(text.AsSlice(), lines);
+    for range in lines.AsSlice() {
+        let line = text.AsSlice()[range.start..range.end];
+        var at: uint = 0;
+        let keyword = NextField(line, @at);
+        if SameName(keyword, "nameserver") && configuration.servers.Length() < MaximumServers {
+            match IpAddress::Parse(NextField(line, @at)) {
+                .Some(ip) => configuration.servers.Push(SocketAddress { ip: ip, port: 53 }) catch { else => {} },
+                none => {}
+            }
+        }
+        else if SameName(keyword, "options") {
+            while true {
+                let option = NextField(line, @at);
+                if option.length == 0u { break; }
+                if option.length > 8u && SameName(option[..8], "timeout:") {
+                    let seconds = Decimal(option[8..]);
+                    if seconds > 0u { configuration.timeout = Duration::FromSeconds((seconds > 30u ? 30u : seconds) as int64); }
+                }
+                else if option.length > 9u && SameName(option[..9], "attempts:") {
+                    let count = Decimal(option[9..]);
+                    if count > 0u { configuration.attempts = count > 5u ? 5u : count; }
+                }
+            }
+        }
+    }
+    if configuration.servers.Length() == 0u {
+        let local = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port: 53 };
+        configuration.servers.Push(local) catch { else => {} };
+    }
+    return <-configuration;
+}
+
+// The number `text` spells in decimal, or zero when it is not one.
+func Decimal(text: char8[..]) -> uint {
+    var value: uint = 0;
+    for c in text {
+        if c < c8'0' || c > c8'9' || value > 1000000u { return 0; }
+        value = value * 10u + (c as uint - 48u);
+    }
+    return value;
+}
+
+// Writes the query for `host`'s records of `kind` with `id` into `into`, returning its length; zero when the name
+// cannot be written as one.
+func WriteQuery(host: char8[..], kind: uint16, id: uint16, into: var uint8[..]) -> uint {
+    into[0] = (id >> 8) as uint8;
+    into[1] = id as uint8;
+    // Recursion desired, one question.
+    into[2] = 0x01;
+    into[3] = 0x00;
+    into[4] = 0;
+    into[5] = 1;
+    var at: uint = 6;
+    while at < 12u {
+        into[at] = 0;
+        at = at + 1;
+    }
+    var start: uint = 0;
+    while start < host.length {
+        var end = start;
+        while end < host.length && host[end] != c8'.' { end = end + 1; }
+        let label = end - start;
+        if label == 0u || label > 63u || at + label + 6 > into.length { return 0; }
+        into[at] = label as uint8;
+        at = at + 1;
+        var index = start;
+        while index < end {
+            into[at] = host[index] as uint8;
+            at = at + 1;
+            index = index + 1;
+        }
+        start = end + 1;
+    }
+    if at - 12u > 254u { return 0; }
+    into[at] = 0;
+    into[at + 1] = (kind >> 8) as uint8;
+    into[at + 2] = kind as uint8;
+    into[at + 3] = 0;
+    into[at + 4] = 1;
+    return at + 5;
+}
+
+// Where the name starting at `at` in `message` ends; `none` when it runs off the end.
+func SkipName(message: uint8[..], at: uint) -> uint? {
+    var cursor = at;
+    while cursor < message.length {
+        let length = message[cursor];
+        if length == 0u8 { return cursor + 1; }
+        if (length & 0xC0u8) == 0xC0u8 { return cursor + 2 <= message.length ? cursor + 2 : none; }
+        cursor = cursor + 1 + length as uint;
+    }
+    return none;
+}
+
+func Word16(message: uint8[..], at: uint) -> uint16 {
+    return (message[at] as uint16 << 8) | message[at + 1] as uint16;
+}
+
+// Reads the answer to query `id` for records of `kind`, adding each address to `found` with `port`.
+func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, found: &var Vector<SocketAddress>)
+    -> Outcome {
+    if message.length < 12u || Word16(message, 0) != id || (message[2] & 0x80u8) == 0u8 { return Outcome::Failed; }
+    let code = message[3] & 0x0Fu8;
+    if code == 3u8 { return Outcome::NoSuchName; }
+    if code != 0u8 { return Outcome::Failed; }
+    let questions = Word16(message, 4);
+    let answers = Word16(message, 6);
+    var at: uint = 12;
+    var index: uint16 = 0;
+    while index < questions {
+        at = (SkipName(message, at) ?? return Outcome::Failed) + 4;
+        index = index + 1;
+    }
+    index = 0;
+    while index < answers {
+        at = SkipName(message, at) ?? return Outcome::Failed;
+        if at + 10 > message.length { return Outcome::Failed; }
+        let recordType = Word16(message, at);
+        let length = Word16(message, at + 8) as uint;
+        let data = at + 10;
+        if data + length > message.length { return Outcome::Failed; }
+        if recordType == kind && kind == TypeA && length == 4u {
+            let ip = IpAddress::FromIpv4(Ipv4Address::New(message[data], message[data + 1], message[data + 2],
+                                                          message[data + 3]));
+            AddOnce(found, SocketAddress { ip: ip, port: port });
+        }
+        else if recordType == kind && kind == TypeAaaa && length == 16u {
+            var octets: uint8[16] = [0u8; 16];
+            var octet: uint = 0;
+            while octet < 16u {
+                octets[octet] = message[data + octet];
+                octet = octet + 1;
+            }
+            AddOnce(found, SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address { octets: octets }), port: port });
+        }
+        at = data + length;
+        index = index + 1;
+    }
+    return Outcome::Found;
+}
+
+// Asks `server` for `host`'s records of `kind` over TCP, as an answer too long for a datagram must be fetched.
+func AskOverTcp(server: SocketAddress, query: uint8[..], timeout: Duration, answer: var uint8[..]) -> uint ! IoError {
+    var stream = TcpStream::Connect(server)?;
+    stream.SetReadTimeout(timeout)?;
+    stream.SetWriteTimeout(timeout)?;
+    var prefix: char8[2] = [(query.length >> 8) as char8, query.length as char8];
+    WriteAll(stream, prefix[..])?;
+    WriteAll(stream, (query.data as *char8)[..query.length])?;
+    var size: char8[2] = [c8'\0'; 2];
+    ReadExact(stream, size[..])?;
+    let length = (size[0] as uint << 8) | size[1] as uint;
+    if length > answer.length { fail IoError::Of(IoErrorKind::LimitExceeded); }
+    ReadExact(stream, (answer.data as *var char8)[..length])?;
+    return length;
+}
+
+// Asks `server` for `host`'s records of `kind`.
+func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port: uint16, timeout: Duration,
+         found: &var Vector<SocketAddress>) -> Outcome {
+    var query: uint8[512] = [0u8; 512];
+    let length = WriteQuery(host, kind, id, query[..]);
+    if length == 0u { return Outcome::NoSuchName; }
+    let local = SocketAddress {
+        ip: server.ip.IsIpv6() ? IpAddress::FromIpv6(Ipv6Address::Unspecified()) : IpAddress::FromIpv4(Ipv4Address::Unspecified()),
+        port: 0
+    };
+    let socket = UdpSocket::Bind(local) catch { else => return Outcome::Failed };
+    socket.Connect(server) catch { else => return Outcome::Failed };
+    socket.SetReadTimeout(timeout) catch { else => return Outcome::Failed };
+    socket.Send(((@query[0]) as *char8)[..length]) catch { else => return Outcome::Failed };
+    var answer: uint8[65535] = [0u8; 65535];
+    // An answer to an earlier query, or from somewhere else, is read past until the timeout.
+    let started = Instant::Now();
+    while true {
+        let received = socket.Receive(((@answer[0]) as *var char8)[..512]) catch { else => return Outcome::Failed };
+        let message = answer[..received];
+        if received < 12u || Word16(message, 0) != id {
+            let spent = Instant::Now().Since(started) ?? Duration::Zero();
+            if (spent.TotalNanoseconds() ?? 0i64) > (timeout.TotalNanoseconds() ?? 0i64) { return Outcome::Failed; }
+            continue;
+        }
+        // Truncated: the whole answer comes over TCP.
+        if (message[2] & 0x02u8) != 0u8 {
+            let whole = AskOverTcp(server, query[..length], timeout, answer[..]) catch { else => return Outcome::Failed };
+            return ReadAnswer(answer[..whole], id, kind, port, found);
+        }
+        return ReadAnswer(message, id, kind, port, found);
+    }
+    return Outcome::Failed;
+}
+
+// Counts queries, so no two in a row share an identifier.
+var QueryCounter: uint32 = 0;
+
+// An identifier for the next query: the count mixed with where this call's frame is, which the system places at a
+// different address in each run. It tells a reply from a stray datagram; it is no defence against a forger.
+func NextQueryId() -> uint16 {
+    QueryCounter = QueryCounter + 1u32;
+    let probe: uint8 = 0;
+    let place = (@probe) as uint64;
+    let mixed = (QueryCounter * 0x9E3779B1u32) ^ (place as uint32) ^ ((place >> 32) as uint32);
+    return (mixed ^ (mixed >> 16)) as uint16;
+}
+
+// The addresses of `host` from the hosts file, or else from the name servers: IPv4 addresses first, then IPv6.
+func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
+    var found = Vector<SocketAddress>(allocator);
+    FromHostsFile(allocator, host, port, found);
+    if found.Length() > 0u { return <-found; }
+    // `localhost` and the names under it are this machine, whatever the hosts file says.
+    if SameName(host, "localhost") || (host.length > 10u && SameName(host[host.length - 10..], ".localhost")) {
+        AddOnce(found, SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port: port });
+        AddOnce(found, SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address::Localhost()), port: port });
+        return <-found;
+    }
+    let resolver = Resolver::FromSystem(allocator);
+    return resolver.Lookup(allocator, host, port)?;
+}

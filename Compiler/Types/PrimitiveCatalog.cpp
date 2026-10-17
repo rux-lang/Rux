@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <utility>
 
 namespace Rux {
 namespace {
@@ -13,58 +14,55 @@ constexpr std::uint32_t PointerSized = 0;
 
 /// The catalog.
 ///
-/// A width is `implemented` once its representation survives every stage from literal to code generation; until then
-/// the entry still fixes the spelling, family and layout that the implementation has to produce.
-///
 /// Alignment is capped at 16, the largest scalar alignment any supported ABI asks for, so the wider integers and
 /// floats share the alignment their 128-bit counterparts already have.
 constexpr std::array<PrimitiveInfo, 38> Catalog{{
-    {K::Bool8, "bool8", C::Bool, 8, 1, 1, true},
-    {K::Bool16, "bool16", C::Bool, 16, 2, 2, true},
-    {K::Bool32, "bool32", C::Bool, 32, 4, 4, true},
-    {K::Bool64, "bool64", C::Bool, 64, 8, 8, true},
-    {K::Bool128, "bool128", C::Bool, 128, 16, 16, false},
-    {K::Bool256, "bool256", C::Bool, 256, 32, 16, false},
-    {K::Bool512, "bool512", C::Bool, 512, 64, 16, false},
+    {K::Bool8, "bool8", C::Bool, 8, 1, 1},
+    {K::Bool16, "bool16", C::Bool, 16, 2, 2},
+    {K::Bool32, "bool32", C::Bool, 32, 4, 4},
+    {K::Bool64, "bool64", C::Bool, 64, 8, 8},
+    {K::Bool128, "bool128", C::Bool, 128, 16, 16},
+    {K::Bool256, "bool256", C::Bool, 256, 32, 16},
+    {K::Bool512, "bool512", C::Bool, 512, 64, 16},
 
-    {K::Char8, "char8", C::Char, 8, 1, 1, true},
-    {K::Char16, "char16", C::Char, 16, 2, 2, true},
-    {K::Char32, "char32", C::Char, 32, 4, 4, true},
-    {K::Char64, "char64", C::Char, 64, 8, 8, true},
-    {K::Char128, "char128", C::Char, 128, 16, 16, false},
-    {K::Char256, "char256", C::Char, 256, 32, 16, false},
-    {K::Char512, "char512", C::Char, 512, 64, 16, false},
+    {K::Char8, "char8", C::Char, 8, 1, 1},
+    {K::Char16, "char16", C::Char, 16, 2, 2},
+    {K::Char32, "char32", C::Char, 32, 4, 4},
+    {K::Char64, "char64", C::Char, 64, 8, 8},
+    {K::Char128, "char128", C::Char, 128, 16, 16},
+    {K::Char256, "char256", C::Char, 256, 32, 16},
+    {K::Char512, "char512", C::Char, 512, 64, 16},
 
-    {K::Int8, "int8", C::SignedInt, 8, 1, 1, true},
-    {K::Int16, "int16", C::SignedInt, 16, 2, 2, true},
-    {K::Int32, "int32", C::SignedInt, 32, 4, 4, true},
-    {K::Int64, "int64", C::SignedInt, 64, 8, 8, true},
-    {K::Int128, "int128", C::SignedInt, 128, 16, 16, true},
-    {K::Int256, "int256", C::SignedInt, 256, 32, 16, true},
-    {K::Int512, "int512", C::SignedInt, 512, 64, 16, true},
-    {K::Int, "int", C::SignedInt, PointerSized, PointerSized, PointerSized, true},
+    {K::Int8, "int8", C::SignedInt, 8, 1, 1},
+    {K::Int16, "int16", C::SignedInt, 16, 2, 2},
+    {K::Int32, "int32", C::SignedInt, 32, 4, 4},
+    {K::Int64, "int64", C::SignedInt, 64, 8, 8},
+    {K::Int128, "int128", C::SignedInt, 128, 16, 16},
+    {K::Int256, "int256", C::SignedInt, 256, 32, 16},
+    {K::Int512, "int512", C::SignedInt, 512, 64, 16},
+    {K::Int, "int", C::SignedInt, PointerSized, PointerSized, PointerSized},
 
-    {K::UInt8, "uint8", C::UnsignedInt, 8, 1, 1, true},
-    {K::UInt16, "uint16", C::UnsignedInt, 16, 2, 2, true},
-    {K::UInt32, "uint32", C::UnsignedInt, 32, 4, 4, true},
-    {K::UInt64, "uint64", C::UnsignedInt, 64, 8, 8, true},
-    {K::UInt128, "uint128", C::UnsignedInt, 128, 16, 16, true},
-    {K::UInt256, "uint256", C::UnsignedInt, 256, 32, 16, true},
-    {K::UInt512, "uint512", C::UnsignedInt, 512, 64, 16, true},
-    {K::UInt, "uint", C::UnsignedInt, PointerSized, PointerSized, PointerSized, true},
+    {K::UInt8, "uint8", C::UnsignedInt, 8, 1, 1},
+    {K::UInt16, "uint16", C::UnsignedInt, 16, 2, 2},
+    {K::UInt32, "uint32", C::UnsignedInt, 32, 4, 4},
+    {K::UInt64, "uint64", C::UnsignedInt, 64, 8, 8},
+    {K::UInt128, "uint128", C::UnsignedInt, 128, 16, 16},
+    {K::UInt256, "uint256", C::UnsignedInt, 256, 32, 16},
+    {K::UInt512, "uint512", C::UnsignedInt, 512, 64, 16},
+    {K::UInt, "uint", C::UnsignedInt, PointerSized, PointerSized, PointerSized},
 
-    {K::Float8, "float8", C::Float, 8, 1, 1, false},
-    {K::Float16, "float16", C::Float, 16, 2, 2, false},
-    {K::Float32, "float32", C::Float, 32, 4, 4, true},
-    {K::Float64, "float64", C::Float, 64, 8, 8, true},
+    {K::Float8, "float8", C::Float, 8, 1, 1},
+    {K::Float16, "float16", C::Float, 16, 2, 2},
+    {K::Float32, "float32", C::Float, 32, 4, 4},
+    {K::Float64, "float64", C::Float, 64, 8, 8},
     // x87 extended precision: 80 value bits held in 16 bytes of storage, which is why size is not bits / 8.
-    {K::Float80, "float80", C::Float, 80, 16, 16, false},
-    {K::Float128, "float128", C::Float, 128, 16, 16, false},
-    {K::Float256, "float256", C::Float, 256, 32, 16, false},
-    {K::Float512, "float512", C::Float, 512, 64, 16, false},
+    {K::Float80, "float80", C::Float, 80, 16, 16},
+    {K::Float128, "float128", C::Float, 128, 16, 16},
+    {K::Float256, "float256", C::Float, 256, 32, 16},
+    {K::Float512, "float512", C::Float, 512, 64, 16},
 }};
 
-// Derive the kind index from the catalog so aliases, widths and implementation status still have one owner.
+// Derive the kind index from the catalog so aliases and widths still have one owner.
 constexpr auto KindIndex = [] {
     constexpr auto maximum = std::ranges::max(Catalog, {}, &PrimitiveInfo::kind).kind;
     std::array<const PrimitiveInfo *, static_cast<std::size_t>(maximum) + 1> index{};
@@ -93,6 +91,41 @@ constexpr std::array<PrimitiveAlias, 4> Aliases{{
     {"float", K::Float64},
 }};
 } // namespace
+
+namespace {
+/// The node of leaf kind `index`, or an empty unused entry for a kind that carries more than itself.
+constexpr TypeNode LeafTypeNode(const std::size_t index) {
+    const auto kind = static_cast<K>(index);
+    TypeNode node;
+    node.kind = kind;
+    node.hash = (index + 1) * 0x9e3779b97f4a7c15ULL;
+    if (index < KindIndex.size() && KindIndex[index]) {
+        node.spelling = KindIndex[index]->name;
+    }
+    else if (kind == K::Unknown) {
+        node.spelling = "?";
+    }
+    else if (kind == K::Opaque) {
+        node.spelling = "opaque";
+    }
+    else if (kind == K::RangeFull) {
+        node.spelling = "..";
+    }
+    else {
+        return node;
+    }
+    node.identity = &Detail::leafTypeNodes[index];
+    return node;
+}
+
+template <std::size_t... Index>
+constexpr std::array<TypeNode, sizeof...(Index)> LeafTypeNodes(std::index_sequence<Index...> /*indices*/) {
+    return {LeafTypeNode(Index)...};
+}
+} // namespace
+
+constinit const std::array<TypeNode, Detail::LeafTypeKindCount> Detail::leafTypeNodes =
+    LeafTypeNodes(std::make_index_sequence<Detail::LeafTypeKindCount>{});
 
 std::span<const PrimitiveInfo> PrimitiveCatalog() noexcept {
     return Catalog;
@@ -190,5 +223,15 @@ bool IsValidCharacterValue(const TypeRef::Kind kind, const std::uint64_t value) 
         return false;
     }
     return *domain == CharacterDomain::CodeUnit || !IsSurrogate(value);
+}
+
+bool IsOneCharacterOf(const TypeRef::Kind kind, const std::uint32_t codePoint) noexcept {
+    if (kind == TypeRef::Kind::Char8) {
+        return codePoint <= 0x7F;
+    }
+    if (kind == TypeRef::Kind::Char16) {
+        return codePoint <= 0xFFFF && !IsSurrogate(codePoint);
+    }
+    return IsValidCharacterValue(kind, codePoint);
 }
 } // namespace Rux

@@ -182,4 +182,9 @@ SelectVersion(const RegistryIndexEntry &entry, std::span<const VersionRange> ran
 
 /// The compiler's own release, used as the `MinRux` ceiling during resolution.
 [[nodiscard]] SemanticVersion CompilerVersion();
+
+/// Why this compiler refuses to build `package`, whose manifest declares `minRux`, or nothing when the declared minimum
+/// is not newer than this compiler's release.
+[[nodiscard]] std::optional<std::string> CompilerTooOldMessage(std::string_view package,
+                                                               const std::optional<SemanticVersion> &minRux);
 } // namespace Rux::Packages

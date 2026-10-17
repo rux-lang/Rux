@@ -1,0 +1,72 @@
+var Destroyed: int32 = 0;
+
+pub struct Tracked {
+    value: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        Destroyed = Destroyed + 1;
+    }
+}
+
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+struct Counted<T> {
+    count: uint;
+    value: T;
+}
+
+// `Pair<T>` is spelled only here, so only the instantiation knows it holds two `Tracked`.
+func MakeAndDrop<T>(first: T, second: T) {
+    let pair = Pair<T> { first: <-first, second: <-second };
+}
+
+// Moving the whole block out of the pointer destroys what it held at the end of the scope.
+func TakeOut<T>(block: *var Counted<T>) {
+    let taken <- block[0];
+}
+
+// A generic type whose destructor reaches another generic function, which is where `Counted<T>` is spelled.
+struct Owner<T> {
+    block: *var Counted<T>;
+}
+
+extend Owner<T> {
+    func ~Owner(self: &var Owner<T>) {
+        if self.block != null {
+            TakeOut<T>(self.block);
+        }
+    }
+}
+
+func DropOwner(address: *var Counted<Tracked>) {
+    let owner = Owner<Tracked> { block: address };
+}
+
+func Main() -> int {
+    MakeAndDrop<Tracked>(Tracked { value: 1 }, Tracked { value: 2 });
+    if Destroyed != 2 {
+        return 1;
+    }
+
+    var storage = Counted<Tracked> { count: 1, value: Tracked { value: 3 } };
+    let address = @storage as *var Counted<Tracked>;
+    TakeOut<Tracked>(address);
+    if Destroyed != 3 {
+        return 2;
+    }
+    // `storage` was moved out through the pointer; give it a value again so its own drop has one to destroy.
+    *address <- Counted<Tracked> { count: 1, value: Tracked { value: 4 } };
+    DropOwner(address);
+    if Destroyed != 4 {
+        return 3;
+    }
+    *address <- Counted<Tracked> { count: 1, value: Tracked { value: 5 } };
+    return 0;
+}

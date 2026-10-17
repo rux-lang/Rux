@@ -52,7 +52,7 @@ TEST_CASE("AArch64 ABI classifies shared and exclusive references as one address
     TypeRef shared = TypeRef::MakeReference(TypeRef::MakeInt64());
     TypeRef exclusiveReferent = TypeRef::MakeInt64();
     exclusiveReferent.isMut = true;
-    TypeRef exclusive = TypeRef::MakeReference(std::move(exclusiveReferent));
+    TypeRef exclusive = TypeRef::MakeReference(exclusiveReferent);
     const AArch64CallLayout arguments = planner.PlanArguments({shared, exclusive, TypeRef::MakeInt64()});
 
     REQUIRE_EQ(arguments.args.size(), 3);

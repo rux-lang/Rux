@@ -1,0 +1,111 @@
+// A view of an array local to a function cannot leave it: the array is freed when the function returns. Views of
+// what the caller owns, of module storage, and of a parameter's own view may leave freely.
+
+struct Spec {
+    name: char8[..];
+    options: int32[..];
+}
+
+var Table: int32[3] = [1, 2, 3];
+
+func Direct() -> int32[..] {
+    let options: int32[2] = [1, 2];
+    return options[..];
+}
+
+func Converted() -> int32[..] {
+    let options: int32[2] = [1, 2];
+    return options;
+}
+
+func ThroughStruct() -> Spec {
+    let options: int32[2] = [1, 2];
+    return Spec { name: "spec", options: options[..] };
+}
+
+func ThroughLocal() -> Spec {
+    let options: int32[2] = [1, 2];
+    let view = options[1..];
+    let spec = Spec { name: "spec", options: view };
+    return spec;
+}
+
+func ThroughAssignment(flag: bool) -> int32[..] {
+    let options: int32[2] = [1, 2];
+    var view: int32[..] = Table[..];
+    if flag {
+        view = options[..];
+    }
+    return view;
+}
+
+func ByValueParameter(options: int32[2]) -> int32[..] {
+    return options[..];
+}
+
+func ThroughPointer(spec: *var Spec) {
+    let options: int32[2] = [1, 2];
+    spec.options = options[..];
+}
+
+func Fallible() -> int32[..] ! bool {
+    let options: int32[2] = [1, 2];
+    return options[..];
+}
+
+extend Spec {
+    func WithOptions(self: &Spec, options: int32[..]) -> Spec {
+        return Spec { name: self.name, options: options };
+    }
+}
+
+func Middle(values: int32[..]) -> int32[..] {
+    return values[1..];
+}
+
+// A call's result may view what its arguments and receiver view.
+func ThroughCall() -> int32[..] {
+    let options: int32[3] = [1, 2, 3];
+    return Middle(options[..]);
+}
+
+func ThroughBuilder() -> Spec {
+    let options: int32[2] = [1, 2];
+    let spec = Spec { name: "spec", options: Table[..] };
+    return spec.WithOptions(options[..]);
+}
+
+func ThroughReceiver() -> Spec {
+    let options: int32[2] = [1, 2];
+    let spec = Spec { name: "spec", options: options[..] };
+    return spec.WithOptions(Table[..]);
+}
+
+// Allowed: the caller's storage, module storage, a length, and a local view kept local.
+func Caller(options: int32[..]) -> int32[..] {
+    return options[1..];
+}
+
+func Module() -> int32[..] {
+    return Table[..];
+}
+
+func Length() -> uint {
+    let options: int32[2] = [1, 2];
+    let view = options[..];
+    return view.length;
+}
+
+func CallOnCallerStorage(values: int32[..]) -> int32[..] {
+    return Middle(values);
+}
+
+func Local() -> int32 {
+    let options: int32[2] = [1, 2];
+    let spec = Spec { name: "spec", options: options[..] };
+    return spec.options[0];
+}
+
+func Main() -> int {
+    return 0;
+}

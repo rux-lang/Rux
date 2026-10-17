@@ -12,6 +12,7 @@ Run.ps1 dispatches one command per invocation:
   tidy      Run clang-tidy over maintained C++ sources
   unit      Run the C++ unit tests through CTest
   clean     Remove the build directory and Bin
+  sync      Copy the repository packages into the local package cache
   help      Show the command and option summary
 
 Running the script without a command prints the same summary. Every command is
@@ -64,6 +65,10 @@ PowerShell 7 because it analyzes files in parallel.
 Configures without precompiled headers, for build and test. CI uses this because
 a compilation cache and precompiled headers defeat each other.
 
+.PARAMETER NoTests
+Builds the compiler without the C++ unit tests, for build. A cross-build uses
+this because it cannot run the tests it would compile.
+
 .PARAMETER OsxArchitecture
 Builds for this macOS architecture, for build and test. The macOS SDK is
 universal, so one host builds either architecture.
@@ -74,6 +79,14 @@ shard index covers each translation unit exactly once.
 
 .PARAMETER ShardIndex
 Selects which shard to analyze, counting from zero, for tidy.
+
+.PARAMETER CacheRoot
+The package cache to synchronize, relative to the repository root unless
+absolute, for sync. Defaults to the cache the compiler reads:
+%LOCALAPPDATA%\Rux\Packages on Windows and $HOME/.rux/packages elsewhere.
+
+.PARAMETER DryRun
+Reports what sync would remove and copy without changing the cache, for sync.
 
 .EXAMPLE
 ./Run.ps1 build
@@ -89,12 +102,15 @@ Selects which shard to analyze, counting from zero, for tidy.
 
 .EXAMPLE
 ./Run.ps1 test -SkipBuild -Target windows-aarch64
+
+.EXAMPLE
+./Run.ps1 sync -DryRun
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("build", "test", "format", "policy", "tidy", "unit", "clean", "help")]
+    [ValidateSet("build", "test", "format", "policy", "tidy", "unit", "clean", "sync", "help")]
     [string]$Command = "help",
 
     [ValidateSet("Debug", "Release")]
@@ -121,13 +137,19 @@ param(
 
     [switch]$NoPch,
 
+    [switch]$NoTests,
+
     [string]$OsxArchitecture,
 
     [ValidateRange(0, 2147483646)]
     [int]$ShardIndex = 0,
 
     [ValidateRange(1, 2147483647)]
-    [int]$ShardCount = 1
+    [int]$ShardCount = 1,
+
+    [string]$CacheRoot,
+
+    [switch]$DryRun
 )
 
 Set-StrictMode -Version Latest
@@ -146,7 +168,7 @@ $policyChecks = @(
 
 # Options each command accepts, used to reject an option the command ignores.
 $commandOptions = @{
-    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs", "NoPch", "OsxArchitecture")
+    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs", "NoPch", "NoTests", "OsxArchitecture")
     test   = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
         "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "OsxArchitecture")
     format = @("RuxExecutable", "Check", "Jobs")
@@ -154,6 +176,7 @@ $commandOptions = @{
     tidy   = @("BuildDirectory", "Jobs", "ShardIndex", "ShardCount")
     unit   = @("Configuration", "BuildDirectory", "Jobs")
     clean  = @("BuildDirectory")
+    sync   = @("CacheRoot", "DryRun")
     help   = @()
 }
 
@@ -168,6 +191,7 @@ function Show-Usage {
     Write-Host "  tidy      Run clang-tidy over maintained C++ sources"
     Write-Host "  unit      Run the C++ unit tests through CTest"
     Write-Host "  clean     Remove the build directory and Bin"
+    Write-Host "  sync      Copy the repository packages into the local package cache"
     Write-Host "  help      Show this help"
     Write-Host ""
     Write-Host "Options:"
@@ -182,15 +206,19 @@ function Show-Usage {
     Write-Host "  -SkipBuild                    Reuse the existing build and executables (test)"
     Write-Host "  -ClangTidy                    Add the clang-tidy pass (test)"
     Write-Host "  -NoPch                        Configure without precompiled headers (build, test)"
+    Write-Host "  -NoTests                      Build the compiler without the C++ unit tests (build)"
     Write-Host "  -OsxArchitecture ARCH         Build for this macOS architecture (build, test; default: the host)"
     Write-Host "  -ShardCount N                 Split the analysis into N disjoint shards (tidy; default: 1)"
     Write-Host "  -ShardIndex N                 Analyze shard N of -ShardCount, counting from zero (tidy)"
+    Write-Host "  -CacheRoot PATH               Package cache to synchronize (sync; default: the compiler's cache)"
+    Write-Host "  -DryRun                       Report the sync without changing the cache (sync)"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  ./Run.ps1 build -Configuration Debug"
     Write-Host "  ./Run.ps1 format -Check"
     Write-Host "  ./Run.ps1 test -SkipBuild -ClangTidy"
     Write-Host "  ./Run.ps1 tidy -ShardCount 3 -ShardIndex 0"
+    Write-Host "  ./Run.ps1 sync -DryRun"
 }
 
 function Get-PosixShell {
@@ -253,7 +281,7 @@ function Get-RuxPath {
 function Resolve-RuxPath {
     $rux = Get-RuxPath
     if (-not (Test-Path -LiteralPath $rux -PathType Leaf)) {
-        Stop-Script "rux executable '$rux' was not found; build it first or pass -RuxExecutable"
+        Stop-Script "rux executable '$(Format-DisplayPath $rux)' was not found; build it first or pass -RuxExecutable"
     }
     return $rux
 }
@@ -460,9 +488,17 @@ function Invoke-Build {
     }
     $configureArguments.AddRange([string[]]@(
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-            "-DRUX_WERROR=ON",
-            "-DRUX_BUILD_TESTS=ON"
+            "-DRUX_WERROR=ON"
         ))
+    # A cross-build cannot run the unit tests it would compile, so -NoTests
+    # leaves them out; the option is always passed so that a reused build
+    # directory follows the request rather than its cache.
+    if ($NoTests) {
+        $configureArguments.Add("-DRUX_BUILD_TESTS=OFF")
+    }
+    else {
+        $configureArguments.Add("-DRUX_BUILD_TESTS=ON")
+    }
     # Leaving RUX_USE_PCH unset keeps the platform default; -NoPch is how CI
     # turns it off, because a compilation cache and precompiled headers defeat
     # each other.
@@ -483,7 +519,7 @@ function Invoke-Build {
             return "$($Matches[1]) done in $elapsed"
         }
         if ($Line -match '^-- Build files have been written to: (.+)$') {
-            return "  Build files: '$($Matches[1])'"
+            return "  Build files: '$(Format-DisplayPath $Matches[1])'"
         }
         if ($Line -match '^-- (.*)$') {
             return $Matches[1]
@@ -499,11 +535,12 @@ function Invoke-Build {
             $progress = "($($Matches[1]))"
             $action = $Matches[2]
             if ($action -match '^Building CXX object (.*)$') {
-                $source = $Matches[1] -replace 'CMakeFiles/[^/]+\.dir/', '' -replace '\.(obj|o)$', '' -replace '__/', '../'
+                $source = (Format-DisplayPath $Matches[1]) -replace 'CMakeFiles/[^/]+\.dir/', '' `
+                    -replace '\.(obj|o)$', '' -replace '__/', '../'
                 return "Compiling $source $progress"
             }
             if ($action -match '^Linking CXX (?:executable|static library|shared library) (.*)$') {
-                return "Linking '$($Matches[1])' $progress"
+                return "Linking '$(Format-DisplayPath $Matches[1])' $progress"
             }
             return "$action $progress"
         }
@@ -517,7 +554,12 @@ function Invoke-Build {
     Write-Step "Configuring $Configuration build"
     Invoke-Filtered -FilePath $cmake -Name "cmake" -Filter $configureFilter -ArgumentList $configureArguments
 
-    Write-Step "Building compiler and unit tests"
+    if ($NoTests) {
+        Write-Step "Building compiler"
+    }
+    else {
+        Write-Step "Building compiler and unit tests"
+    }
     $buildArguments = @("--build", $buildPath, "--config", $Configuration)
     if ($script:PSBoundParameters.ContainsKey("Jobs")) { $buildArguments += @("--parallel", "$Jobs") }
     Invoke-Filtered -FilePath $cmake -Name "cmake" -Filter $buildFilter -ArgumentList $buildArguments
@@ -525,11 +567,11 @@ function Invoke-Build {
     $ruxFileName = if ($runningOnWindows) { "rux.exe" } else { "rux" }
     $rux = Join-Path $repositoryRoot "Bin/$ruxFileName"
     if (-not (Test-Path -LiteralPath $rux -PathType Leaf)) {
-        Stop-Script "build completed without producing the expected compiler at '$rux'"
+        Stop-Script "build completed without producing the expected compiler at '$(Format-DisplayPath $rux)'"
     }
 
     Write-Finished "Finished build in $(Format-Duration -Duration ((Get-Date) - $startedAt))"
-    Write-Host "  Output: '$rux'"
+    Write-Host "  Output: '$(Format-DisplayPath $rux)'"
 }
 
 function Invoke-Format {
@@ -590,7 +632,7 @@ function Invoke-Tidy {
     }
     $compileCommands = Join-Path $buildPath "compile_commands.json"
     if (-not (Test-Path -LiteralPath $compileCommands -PathType Leaf)) {
-        Stop-Script "compilation database '$compileCommands' was not found; build the compiler first"
+        Stop-Script "compilation database '$(Format-DisplayPath $compileCommands)' was not found; build the compiler first"
     }
 
     $compilerRoot = (Join-Path $repositoryRoot "Compiler") + [System.IO.Path]::DirectorySeparatorChar
@@ -608,7 +650,7 @@ function Invoke-Tidy {
     )
 
     if ($sources.Count -eq 0) {
-        Stop-Script "no maintained C++ translation units were found in '$compileCommands'"
+        Stop-Script "no maintained C++ translation units were found in '$(Format-DisplayPath $compileCommands)'"
     }
 
     if ($ShardCount -gt 1) {
@@ -647,7 +689,7 @@ function Invoke-Tidy {
         # Files complete out of submission order, so the count is progress
         # through the run rather than the position of this file in the list.
         $label = "{0} ({1}/{2})" -f `
-            $result.Path.Substring($repositoryRoot.Length + 1), $completed, $sources.Count
+            (Format-DisplayPath $result.Path.Substring($repositoryRoot.Length + 1)), $completed, $sources.Count
         if ($result.ExitCode -ne 0) {
             [void]$failures.Add($result)
             Write-Failed $label
@@ -740,7 +782,7 @@ function Invoke-RuxSuite {
     $rux = Resolve-RuxPath
     $rootManifest = Join-Path $repositoryRoot "Rux.toml"
     if (-not (Test-Path -LiteralPath $rootManifest -PathType Leaf)) {
-        Stop-Script "workspace manifest '$rootManifest' was not found"
+        Stop-Script "workspace manifest '$(Format-DisplayPath $rootManifest)' was not found"
     }
 
     # `--target` follows the subcommand, while the global `--manifest` precedes
@@ -769,12 +811,158 @@ function Invoke-Clean {
     foreach ($path in @($buildPath, (Join-Path $repositoryRoot "Bin"))) {
         if (Test-Path -LiteralPath $path) {
             Remove-Item -LiteralPath $path -Recurse -Force
-            Write-Host "  Removed '$path'"
+            Write-Host "  Removed '$(Format-DisplayPath $path)'"
         }
         else {
-            Write-Host "  Skipped '$path' (not present)"
+            Write-Host "  Skipped '$(Format-DisplayPath $path)' (not present)"
         }
     }
+}
+
+function Get-PackageCachePath {
+    if ($CacheRoot) {
+        if ([System.IO.Path]::IsPathRooted($CacheRoot)) {
+            return $CacheRoot
+        }
+        return (Join-Path $repositoryRoot $CacheRoot)
+    }
+
+    # The cache the compiler reads (Compiler/Package/Cache.cpp); the leaf follows each platform's casing.
+    if ($runningOnWindows) {
+        if (-not $env:LOCALAPPDATA) {
+            Stop-Script "LOCALAPPDATA is not set; pass -CacheRoot explicitly"
+        }
+        return (Join-Path $env:LOCALAPPDATA "Rux/Packages")
+    }
+    $userHome = if ($env:HOME) { $env:HOME } else { "/tmp" }
+    return (Join-Path $userHome ".rux/packages")
+}
+
+function Get-ManifestString {
+    param(
+        [Parameter(Mandatory)][string]$ManifestPath,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $pattern = '^\s*' + [Regex]::Escape($Name) + '\s*=\s*"([^"]+)"\s*(?:#.*)?$'
+    $found = @(Select-String -LiteralPath $ManifestPath -Pattern $pattern -CaseSensitive)
+    if ($found.Count -ne 1) {
+        Stop-Script "manifest '$(Format-DisplayPath $ManifestPath)' must contain exactly one quoted '$Name' field"
+    }
+    return $found[0].Matches[0].Groups[1].Value
+}
+
+function Get-NormalizedIdentity {
+    # The compiler's NormalizeIdentity: ASCII lowercase, with `_` spelled `-`.
+    param([Parameter(Mandatory)][string]$Value)
+    return $Value.ToLowerInvariant().Replace('_', '-')
+}
+
+function Invoke-Sync {
+    <#
+    .SYNOPSIS
+    Copies every repository package into the local package cache.
+
+    .DESCRIPTION
+    A dependency resolved through the cache is otherwise a stale copy of the
+    package in the working tree. Each namespace the repository publishes is
+    replaced whole, so a package or version removed from Packages/ leaves the
+    cache too, while other namespaces, such as downloaded third-party packages,
+    are kept. Every manifest is validated before the cache changes.
+    #>
+
+    $separators = [char[]]@('\', '/')
+    $sourceRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot "Packages")).TrimEnd($separators)
+    $cachePath = [System.IO.Path]::GetFullPath((Get-PackageCachePath)).TrimEnd($separators)
+
+    if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+        Stop-Script "repository package directory '$(Format-DisplayPath $sourceRoot)' does not exist"
+    }
+    if (-not $cachePath -or $cachePath -eq [System.IO.Path]::GetPathRoot($cachePath).TrimEnd($separators)) {
+        Stop-Script "refusing to use filesystem root '$(Format-DisplayPath $cachePath)' as the package cache"
+    }
+    foreach ($pair in @(, @($cachePath, $sourceRoot)) + @(, @($sourceRoot, $cachePath))) {
+        $inner = Format-DisplayPath $pair[0]
+        $outer = Format-DisplayPath $pair[1]
+        if ($inner -eq $outer -or $inner.StartsWith("$outer/", [StringComparison]::OrdinalIgnoreCase)) {
+            Stop-Script "package cache '$(Format-DisplayPath $cachePath)' cannot overlap the repository package directory"
+        }
+    }
+
+    # The manifest schema restricts these values to safe, single path segments.
+    $identityPattern = '^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$'
+    $versionPattern = '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
+    $packages = @(
+        Get-ChildItem -LiteralPath $sourceRoot -Directory | Sort-Object Name | ForEach-Object {
+            $manifestPath = Join-Path $_.FullName "Rux.toml"
+            if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+                Stop-Script "package directory '$(Format-DisplayPath $_.FullName)' does not contain Rux.toml"
+            }
+            $package = [pscustomobject]@{
+                Source    = $_.FullName
+                Namespace = Get-ManifestString -ManifestPath $manifestPath -Name "Namespace"
+                Name      = Get-ManifestString -ManifestPath $manifestPath -Name "Name"
+                Version   = Get-ManifestString -ManifestPath $manifestPath -Name "Version"
+            }
+            $displayManifest = Format-DisplayPath $manifestPath
+            if ($package.Namespace -cnotmatch $identityPattern) {
+                Stop-Script "manifest '$displayManifest' has an invalid package namespace '$($package.Namespace)'"
+            }
+            if ($package.Name -cnotmatch $identityPattern) {
+                Stop-Script "manifest '$displayManifest' has an invalid package name '$($package.Name)'"
+            }
+            if ($package.Version -cnotmatch $versionPattern) {
+                Stop-Script "manifest '$displayManifest' has an invalid package version '$($package.Version)'"
+            }
+            $package
+        }
+    )
+    if ($packages.Count -eq 0) {
+        Stop-Script "no packages were found below '$(Format-DisplayPath $sourceRoot)'"
+    }
+
+    $duplicate = $packages |
+        Group-Object { Get-NormalizedIdentity "$($_.Namespace)/$($_.Name)" } |
+        Where-Object Count -gt 1 |
+        Select-Object -First 1
+    if ($duplicate) {
+        Stop-Script "repository contains duplicate package identity '$($duplicate.Name)'"
+    }
+
+    # The compiler finds cache directories by normalized identity, so every
+    # spelling of a published namespace is stale.
+    $namespaces = @($packages | ForEach-Object { Get-NormalizedIdentity $_.Namespace } | Sort-Object -Unique)
+    $staleDirectories = @(
+        if (Test-Path -LiteralPath $cachePath -PathType Container) {
+            Get-ChildItem -LiteralPath $cachePath -Directory |
+                Where-Object { $namespaces -contains (Get-NormalizedIdentity $_.Name) } |
+                Sort-Object Name
+        }
+    )
+
+    if ($DryRun) {
+        Write-Step "Planning sync of $($packages.Count) repository packages (dry run)"
+        foreach ($directory in $staleDirectories) {
+            Write-Host "  Would remove '$(Format-DisplayPath $directory.FullName)'"
+        }
+        foreach ($package in $packages) {
+            Write-Host "  Would copy $($package.Namespace)/$($package.Name)@$($package.Version)"
+        }
+        Write-Host "  Cache: '$(Format-DisplayPath $cachePath)'"
+        return
+    }
+
+    Write-Step "Synchronizing $($packages.Count) repository packages"
+    foreach ($directory in $staleDirectories) {
+        Remove-Item -LiteralPath $directory.FullName -Recurse -Force
+        Write-Host "  Removed '$(Format-DisplayPath $directory.FullName)'"
+    }
+    foreach ($package in $packages) {
+        $parent = Join-Path (Join-Path $cachePath $package.Namespace) $package.Name
+        $null = New-Item -ItemType Directory -Path $parent -Force
+        Copy-Item -LiteralPath $package.Source -Destination (Join-Path $parent $package.Version) -Recurse
+    }
+    Write-Host "  Copied $($packages.Count) packages to '$(Format-DisplayPath $cachePath)'"
 }
 
 function Invoke-TestWorkflow {
@@ -785,7 +973,7 @@ function Invoke-TestWorkflow {
     }
     else {
         Write-Step "Skipping compiler build"
-        Write-Host "  note: using the existing build in '$(Get-BuildPath)'"
+        Write-Host "  note: using the existing build in '$(Format-DisplayPath (Get-BuildPath))'"
     }
 
     if ($FixFormatting) {
@@ -800,6 +988,7 @@ function Invoke-TestWorkflow {
     }
 
     Invoke-Unit
+    Invoke-Sync
     Invoke-RuxSuite
 }
 
@@ -809,8 +998,8 @@ if ($Command -eq "help") {
 }
 
 $allOptions = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "OsxArchitecture",
-    "ShardIndex", "ShardCount")
+    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "NoTests", "OsxArchitecture",
+    "ShardIndex", "ShardCount", "CacheRoot", "DryRun")
 foreach ($name in $PSBoundParameters.Keys) {
     if ($allOptions -notcontains $name) {
         continue
@@ -853,6 +1042,10 @@ try {
         "clean" {
             Invoke-Clean
             Write-Finished "Finished clean in $(Format-Duration -Duration ((Get-Date) - $startedAt))"
+        }
+        "sync" {
+            Invoke-Sync
+            Write-Finished "Finished package sync in $(Format-Duration -Duration ((Get-Date) - $startedAt))"
         }
         "test" {
             Invoke-TestWorkflow

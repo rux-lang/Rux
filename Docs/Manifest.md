@@ -95,14 +95,14 @@ An ordinary artifact always writes to `<Output>/<Profile>/<OS>/<Arch>/`, includi
 
 Outputs that are not ordinary machine artifacts use the configured root explicitly. Native `rux test` artifacts go directly below the test manifest's `Output`; selecting another executable architecture adds the same OS and architecture components but no profile. `rux doc` defaults to `<Output>/Docs` and documents only effectively public declarations and public members; `--document-private-items` includes the complete package implementation. `rux pack` writes its target-independent `.ruxpkg` directly to `<Output>`. `rux clean` removes exactly the configured output root and the package's `Temp` tree.
 
-| Output kind                        | Layout                                  |
-| ---------------------------------- | --------------------------------------- |
-| Normal Debug artifact              | `<Output>/Debug/<OS>/<Arch>/`           |
-| Normal Release artifact            | `<Output>/Release/<OS>/<Arch>/`         |
-| Native test artifact               | `<Output>/`                             |
-| Explicit non-host test artifact    | `<Output>/<OS>/<Arch>/`                 |
-| Generated documentation            | `<Output>/Docs/`                        |
-| Published or locally packed source | `<Output>/<Name>-<Version>.ruxpkg`      |
+| Output kind                        | Layout                             |
+| ---------------------------------- | ---------------------------------- |
+| Normal Debug artifact              | `<Output>/Debug/<OS>/<Arch>/`      |
+| Normal Release artifact            | `<Output>/Release/<OS>/<Arch>/`    |
+| Native test artifact               | `<Output>/`                        |
+| Explicit non-host test artifact    | `<Output>/<OS>/<Arch>/`            |
+| Generated documentation            | `<Output>/Docs/`                   |
+| Published or locally packed source | `<Output>/<Name>-<Version>.ruxpkg` |
 
 ## Workspace manifests
 
@@ -118,6 +118,8 @@ Packages = [
 ```
 
 A workspace manifest contains a non-empty, duplicate-free array of explicit relative paths named `Packages`. Glob patterns and parent traversal are not supported. `[Workspace]` and `[Package]` are mutually exclusive; a manifest contains exactly one of them. A workspace cannot declare dependencies or build settings and cannot be published.
+
+At a workspace root, `rux check`, `rux lint`, `rux doc` and `rux test` visit every member. `rux build` builds every member except source libraries, which are compiled into the members that depend on them, and `rux fmt` formats the workspace manifest and each member's manifest and sources. A workspace has no entry point, so `rux run` names its executable members instead; select one with `--manifest <member>/Rux.toml`. A workspace owns the namespaces its members declare: a registry dependency in one of them resolves only from a member, while any other registry dependency without a local source comes from the package cache.
 
 ## Package identity
 

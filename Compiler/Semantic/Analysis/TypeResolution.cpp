@@ -49,7 +49,7 @@ const std::vector<TypeParameter> *AnalysisContext::AggregateTypeParams(const std
 
 std::vector<std::string> AnalysisContext::ImplTypeParams(const ImplDecl &decl) const {
     std::vector<std::string> params;
-    const auto *target = dynamic_cast<const NamedTypeExpr *>(decl.extendedType.get());
+    const auto *target = AstCast<const NamedTypeExpr>(decl.extendedType.get());
     if (!target) {
         return params;
     }
@@ -65,7 +65,7 @@ std::vector<std::string> AnalysisContext::ImplTypeParams(const ImplDecl &decl) c
 
     const std::size_t count = std::min(typeParams->size(), target->typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
-        const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
+        const auto *arg = AstCast<const NamedTypeExpr>(target->typeArgs[i].get());
         if (arg && arg->typeArgs.empty() && arg->name == (*typeParams)[i].name) {
             params.push_back(arg->name);
         }
@@ -101,7 +101,7 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
             parts.push_back(part.empty() ? TypeRef::MakeUnit() : ParseTypeRefFromString(part));
         }
         if (native->form == TypeRef::NativeSpelling::Form::Fallible) {
-            return TypeRef::MakeFallible(std::move(parts[0]), std::move(parts[1]));
+            return TypeRef::MakeFallible(parts[0], parts[1]);
         }
         return TypeRef::MakeSum(std::move(parts));
     }
@@ -119,7 +119,7 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         if (!element) {
             return TypeRef::MakeRangeFull();
         }
-        return TypeRef::MakeRange(std::move(*element), !range->start.empty(), !range->end.empty(), range->inclusive);
+        return TypeRef::MakeRange(*element, !range->start.empty(), !range->end.empty(), range->inclusive);
     }
 
     if (str[0] == '*' || str[0] == '&') {
@@ -135,14 +135,14 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         }
         TypeRef inner = ParseTypeRefFromString(std::move(pointee));
         inner.isMut = writable;
-        return isReference ? TypeRef::MakeReference(std::move(inner)) : TypeRef::MakePointer(std::move(inner));
+        return isReference ? TypeRef::MakeReference(inner) : TypeRef::MakePointer(inner);
     }
 
     // A slice renders its writability as `var` in front of the element, the way a pointer does.
     if (str.starts_with("var ")) {
         TypeRef slice = ParseTypeRefFromString(str.substr(4));
         if (slice.IsSlice()) {
-            slice.inner[0].isMut = true;
+            slice = TypeRef::MakeSlice(slice->inner[0], true);
         }
         return slice;
     }
@@ -156,6 +156,19 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
 
     if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
         return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, str.size() - 2)));
+    }
+    // A fixed array spells its length in the brackets, so `Holder<int32[2]>` hands back a two-element array; read as a
+    // plain name, it would print the same and still be no array -- not indexable, and no instance would be emitted.
+    if (str.back() == ']') {
+        const std::size_t open = str.rfind('[');
+        if (open != std::string::npos && open + 1 < str.size() - 1) {
+            const char *first = str.data() + open + 1;
+            const char *last = str.data() + str.size() - 1;
+            std::uint64_t length = 0;
+            if (const auto [end, error] = std::from_chars(first, last, length); error == std::errc{} && end == last) {
+                return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, open)), length);
+            }
+        }
     }
 
     if (str[0] == '(' && str.back() == ')') {
@@ -263,14 +276,7 @@ TypeRef AnalysisContext::ResolveRangeType(const RangeTypeExpr &range,
 }
 
 TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
-    if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-        if (IsUnimplementedPrimitiveType(t->name)) {
-            EmitError(expr.location, std::format("primitive type '{}' is reserved but is not implemented in this "
-                                                 "compiler version",
-                                                 t->name));
-            return TypeRef::MakeUnknown();
-        }
-
+    if (const auto *t = AstCast<const NamedTypeExpr>(&expr)) {
         for (const auto &tp : currentTypeParams) {
             if (tp == t->name) {
                 if (!t->typeArgs.empty()) {
@@ -298,12 +304,12 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         }
 
         if (Symbol *symbol = currentScope->Lookup(t->name); symbol && symbol->declaration) {
-            if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(symbol->declaration);
-                alias && alias->intrinsicName.empty()) {
+            if (const auto *alias = AstCast<const TypeAliasDecl>(symbol->declaration)) {
                 if (!resolvedArgs.empty()) {
                     EmitGenericArityError(expr, std::format("type alias '{}'", t->name), 0, resolvedArgs.size());
                     return TypeRef::MakeUnknown();
                 }
+                NoteDeclarationUse(*alias, expr.location);
                 if (!checkingTypeAliases.insert(alias).second) {
                     EmitError(expr.location, std::format("type alias '{}' has a cyclic definition", alias->name));
                     return TypeRef::MakeUnknown();
@@ -317,6 +323,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
 
         if (const EnumDecl *enumeration = EnumNamed(NominalTypeName(t->name))) {
             const auto &decl = *enumeration;
+            NoteDeclarationUse(decl, expr.location);
             if (resolvedArgs.size() != decl.typeParams.size()) {
                 EmitGenericArityError(expr, std::format("variant type '{}'", t->name), decl.typeParams.size(),
                                       resolvedArgs.size());
@@ -327,11 +334,28 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         }
 
         if (auto structType = ResolveStructTypeReference(expr, NominalTypeName(t->name), resolvedArgs)) {
+            if (const auto structure = structDecls.find(NominalTypeName(t->name)); structure != structDecls.end()) {
+                NoteDeclarationUse(*structure->second, expr.location);
+            }
             return *structType;
         }
 
         Symbol *sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
+        // A generic interface only constrains a type parameter: it has no value form, since an interface value would
+        // need one table of operations per type argument.
+        if (const Symbol *named = sym ? sym : FindUniquePackageType(t->name);
+            named && named->kind == Symbol::Kind::Interface) {
+            if (const auto *interface = AstCast<const InterfaceDecl>(named->declaration);
+                interface && !interface->typeParams.empty()) {
+                EmitError(expr.location,
+                          std::format("generic interface '{}' can only be used as a type-parameter bound", t->name),
+                          {DeclarationNote(*named)},
+                          std::format("constrain a type parameter instead, as in 'T: {}<...>'", t->name));
+                return TypeRef::MakeUnknown();
+            }
+        }
         if (sym && (sym->kind == Symbol::Kind::Type || sym->kind == Symbol::Kind::Interface)) {
+            NoteSymbolUse(*sym, expr.location);
             // Return base type if no generic arguments are provided
             if (t->typeArgs.empty() && !sym->type.IsUnknown()) {
                 return sym->type;
@@ -366,7 +390,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         return TypeRef::MakeUnknown();
     }
 
-    if (const auto *t = dynamic_cast<const PathTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const PathTypeExpr>(&expr)) {
         if (t->segments.empty()) {
             EmitError(expr.location, "empty type path");
             return TypeRef::MakeUnknown();
@@ -378,11 +402,13 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         }
         const std::string name = NominalTypeName(fullPath);
         if (const auto enumeration = enumDecls.find(name); enumeration != enumDecls.end()) {
+            NoteDeclarationUse(*enumeration->second, expr.location);
             if (!IsAccessible(*enumeration->second))
                 EmitPrivacyError(expr.location, *enumeration->second, "type", fullPath);
             return EnumType(*enumeration->second);
         }
         if (const auto structure = structDecls.find(name); structure != structDecls.end()) {
+            NoteDeclarationUse(*structure->second, expr.location);
             if (!IsAccessible(*structure->second))
                 EmitPrivacyError(expr.location, *structure->second, "type", fullPath);
             return *ResolveStructTypeReference(expr, name, {});
@@ -390,45 +416,51 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         return TypeRef::MakeNamed(name);
     }
 
-    if (const auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const PointerTypeExpr>(&expr)) {
         TypeRef pointeeType = ResolveType(*t->pointee);
         if (pointeeType.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakePointer(std::move(pointeeType));
+        return TypeRef::MakePointer(pointeeType);
     }
 
-    if (const auto *t = dynamic_cast<const ReferenceTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const ReferenceTypeExpr>(&expr)) {
         TypeRef pointeeType = ResolveType(*t->pointee);
         if (pointeeType.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakeReference(std::move(pointeeType));
+        return TypeRef::MakeReference(pointeeType);
     }
 
-    if (const auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const ArrayTypeExpr>(&expr)) {
         TypeRef elemType = ResolveType(*t->element);
         if (elemType.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
-        return TypeRef::MakeArray(std::move(elemType), t->size ? EvalArrayLength(*t->size) : std::nullopt);
+        // A length that does not fold is reported where the type is validated; it is not a flexible tail, which has
+        // no length written at all.
+        const std::optional<std::uint64_t> length = t->size ? EvalArrayLength(*t->size) : std::nullopt;
+        if (t->size && !length) {
+            return TypeRef::MakeUnknown();
+        }
+        return TypeRef::MakeArray(elemType, length);
     }
 
-    if (const auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const SliceTypeExpr>(&expr)) {
         TypeRef elemType = ResolveType(*t->element);
         if (elemType.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
-        return TypeRef::MakeSlice(std::move(elemType), t->elementMut);
+        return TypeRef::MakeSlice(elemType, t->elementMut);
     }
 
-    if (const auto *t = dynamic_cast<const RangeTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const RangeTypeExpr>(&expr)) {
         return ResolveRangeType(*t, [this](const TypeExpr &bound) { return ResolveType(bound); });
     }
 
-    if (const auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const TupleTypeExpr>(&expr)) {
         std::vector<TypeRef> elems;
         elems.reserve(t->elements.size());
 
@@ -443,11 +475,11 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         return TypeRef::MakeTuple(std::move(elems));
     }
 
-    if (dynamic_cast<const SelfTypeExpr *>(&expr)) {
+    if (AstCast<const SelfTypeExpr>(&expr)) {
         return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
     }
 
-    if (const auto *t = dynamic_cast<const FunctionTypeExpr *>(&expr)) {
+    if (const auto *t = AstCast<const FunctionTypeExpr>(&expr)) {
         std::vector<TypeRef> paramTypes;
         paramTypes.reserve(t->params.size());
         for (const auto &p : t->params) {
@@ -455,13 +487,13 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             if (pt.IsUnknown()) {
                 return TypeRef::MakeUnknown();
             }
-            paramTypes.push_back(std::move(pt));
+            paramTypes.push_back(pt);
         }
         TypeRef ret = t->returnType ? ResolveType(*t->returnType->get()) : TypeRef::MakeOpaque();
         if (ret.IsUnknown()) {
             return TypeRef::MakeUnknown();
         }
-        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
+        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), ret);
         funcType.isVariadic = t->isVariadic;
         return funcType;
     }
@@ -479,18 +511,18 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             return TypeRef::MakeUnknown();
         }
         TypeRef type;
-        if (dynamic_cast<const SumTypeExpr *>(&expr)) {
+        if (AstCast<const SumTypeExpr>(&expr)) {
             type = TypeRef::MakeSum(std::move(resolved));
         }
-        else if (dynamic_cast<const OptionalTypeExpr *>(&expr)) {
-            type = TypeRef::MakeOptional(std::move(resolved.front()));
+        else if (AstCast<const OptionalTypeExpr>(&expr)) {
+            type = TypeRef::MakeOptional(resolved.front());
         }
         else {
             // `! E` writes no success type; its success is the built-in unit.
             const bool hasSuccess = static_cast<const FallibleTypeExpr &>(expr).success != nullptr;
-            TypeRef error = std::move(resolved.back());
-            TypeRef success = hasSuccess ? std::move(resolved.front()) : TypeRef::MakeUnit();
-            type = TypeRef::MakeFallible(std::move(success), std::move(error));
+            TypeRef error = resolved.back();
+            TypeRef success = hasSuccess ? resolved.front() : TypeRef::MakeUnit();
+            type = TypeRef::MakeFallible(success, error);
         }
         NoteDeferredNativeType(type);
         return type;
@@ -509,7 +541,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         // Substitution renormalizes a sum, so `T | U` under equal arguments becomes their shared member.
         return SubstituteTypeParameters(accepted->second, substitutions);
     }
-    if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const NamedTypeExpr>(&expr)) {
         if (t->typeArgs.empty()) {
             if (auto it = substitutions.find(t->name); it != substitutions.end()) {
                 return it->second;
@@ -528,28 +560,31 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         return enumeration ? EnumType(*enumeration, resolvedArgs)
                            : TypeRef::MakeNamed(TypeRef::InstantiationName(NominalTypeName(t->name), resolvedArgs));
     }
-    if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const PointerTypeExpr>(&expr)) {
         TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakePointer(std::move(pointeeType));
+        return TypeRef::MakePointer(pointeeType);
     }
-    if (auto *t = dynamic_cast<const ReferenceTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const ReferenceTypeExpr>(&expr)) {
         TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
         pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
-        return TypeRef::MakeReference(std::move(pointeeType));
+        return TypeRef::MakeReference(pointeeType);
     }
-    if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
-        return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
-                                  t->size ? EvalArrayLength(*t->size) : std::nullopt);
+    if (auto *t = AstCast<const ArrayTypeExpr>(&expr)) {
+        const std::optional<std::uint64_t> length = t->size ? EvalArrayLength(*t->size) : std::nullopt;
+        if (t->size && !length) {
+            return TypeRef::MakeUnknown();
+        }
+        return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions), length);
     }
-    if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const SliceTypeExpr>(&expr)) {
         return TypeRef::MakeSlice(ResolveTypeWithSubstitution(*t->element, substitutions), t->elementMut);
     }
-    if (auto *t = dynamic_cast<const RangeTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const RangeTypeExpr>(&expr)) {
         return ResolveRangeType(
             *t, [&](const TypeExpr &bound) { return ResolveTypeWithSubstitution(bound, substitutions); });
     }
-    if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const TupleTypeExpr>(&expr)) {
         std::vector<TypeRef> elems;
         for (auto &elem : t->elements) {
             elems.push_back(ResolveTypeWithSubstitution(*elem, substitutions));
@@ -559,7 +594,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     // A callback parameter names its type parameters like any other type does, so `func(T, T) -> bool` has to be
     // substituted through as well. Without this the parameter kept an unsubstituted `T` and no argument could ever
     // match it. Lowering has resolved function types this way all along; only the analyzer was missing the case.
-    if (auto *t = dynamic_cast<const FunctionTypeExpr *>(&expr)) {
+    if (auto *t = AstCast<const FunctionTypeExpr>(&expr)) {
         std::vector<TypeRef> paramTypes;
         paramTypes.reserve(t->params.size());
         for (const auto &param : t->params) {
@@ -567,7 +602,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         }
         TypeRef returnType =
             t->returnType ? ResolveTypeWithSubstitution(*t->returnType->get(), substitutions) : TypeRef::MakeOpaque();
-        TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), std::move(returnType));
+        TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), returnType);
         functionType.isVariadic = t->isVariadic;
         return functionType;
     }
@@ -582,7 +617,9 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
 
 [[nodiscard]] const FuncDecl *AnalysisContext::LookupMethod(const TypeRef &receiverType, const std::string &methodName,
                                                             const std::vector<TypeRef> &argTypes,
-                                                            const bool requireAccessible) {
+                                                            const bool requireAccessible, const CallExpr *call,
+                                                            const bool receiverIsArgument) {
+    ambiguousOverloads.clear();
     const std::string typeName = NamedBaseTypeName(receiverType);
     if (typeName.empty()) {
         return nullptr;
@@ -595,55 +632,67 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     if (methodIt == typeIt->second.end()) {
         return nullptr;
     }
-    const std::vector<const FuncDecl *> accessible =
-        requireAccessible ? AccessibleMethodCandidates(receiverType, methodName) : methodIt->second;
+    const std::vector<const FuncDecl *> accessible = requireAccessible
+                                                       ? AccessibleMethodCandidates(receiverType, methodName)
+                                                       : ApplicableMethods(receiverType, methodName);
     const auto &overloads = accessible;
     if (overloads.empty()) {
         return nullptr;
     }
-    // Best-effort scrape for property access (missing args).
-    if (argTypes.empty()) {
+    // Best-effort scrape for property access (missing args). A call is matched like any other, so that one of several
+    // overloads is not chosen for an empty argument list it cannot take.
+    if (argTypes.empty() && !call) {
         return overloads[0];
     }
-    if (overloads.size() == 1) {
-        // Single overload: validate arity and assignability before
-        // returning.
-        const auto *decl = overloads[0];
-        std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
-        if (paramTypes.size() != argTypes.size()) {
-            return nullptr;
+    // The arguments bind the fixed parameters, then each fills the variadic parameter, so a method takes them exactly
+    // as a function does: a parameter with a default value may be left out, and a variadic one takes any number. An
+    // overload the arguments fill exactly is preferred, so neither a default value nor a variadic parameter takes a
+    // call from the overload written for it.
+    const auto accepts = [&](const FuncDecl &decl, const bool exactArity) {
+        const std::vector<TypeRef> fixedTypes = ResolveMethodParamTypes(receiverType, decl, {}, receiverIsArgument);
+        const std::optional<TypeRef> variadicElement = ResolveMethodVariadicType(receiverType, decl);
+        if (exactArity && (variadicElement || fixedTypes.size() != argTypes.size())) {
+            return false;
+        }
+        const auto paramTypes =
+            BoundParameterTypes(decl, !receiverIsArgument, fixedTypes, variadicElement, argTypes.size(), call);
+        if (!paramTypes) {
+            return false;
         }
         for (std::size_t i = 0; i < argTypes.size(); ++i) {
-            if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) {
+            const TypeRef &parameter = (*paramTypes)[i];
+            if (argTypes[i].IsUnknown() || parameter.IsUnknown()) {
                 continue;
             }
-            if (!argTypes[i].IsAssignableTo(paramTypes[i]) && !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) &&
-                !argTypes[i].CanReadScalarTo(paramTypes[i]) && !CanConvertToInterface(argTypes[i], paramTypes[i]) &&
-                !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
-                return nullptr;
+            // A literal array or tuple is typed element by element, so `[3, 4]` reaches an `int32[2]` parameter.
+            const bool literalAggregate =
+                call != nullptr && call->args.size() == argTypes.size() &&
+                (AstCast<const ArrayExpr>(call->args[i].get()) || AstCast<const TupleExpr>(call->args[i].get())) &&
+                CanAssignExprTo(*call->args[i], argTypes[i], parameter);
+            if (!argTypes[i].IsAssignableTo(parameter) && !argTypes[i].CanImplicitlyBorrowTo(parameter) &&
+                !argTypes[i].CanReadScalarTo(parameter) && !CanConvertToInterface(argTypes[i], parameter) &&
+                !(argTypes[i].IsInteger() && parameter.IsInteger()) && !literalAggregate) {
+                return false;
             }
         }
-        return decl;
+        return true;
+    };
+    if (overloads.size() == 1) {
+        return accepts(*overloads.front(), false) ? overloads.front() : nullptr;
     }
-    for (const auto *decl : overloads) {
-        std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *decl);
-        if (paramTypes.size() != argTypes.size()) {
-            continue;
-        }
-        bool match = true;
-        for (std::size_t i = 0; i < argTypes.size(); ++i) {
-            if (!argTypes[i].IsUnknown() && !paramTypes[i].IsUnknown() && !argTypes[i].IsAssignableTo(paramTypes[i]) &&
-                !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) && !argTypes[i].CanReadScalarTo(paramTypes[i]) &&
-                !CanConvertToInterface(argTypes[i], paramTypes[i]) &&
-                !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
-                match = false;
-                break;
-            }
-        }
-        if (match) {
-            return decl;
+    // Several overloads are ranked as a function's are: by how well each argument converts, then by whether the
+    // arguments fill the overload exactly, so declaration order never decides the call.
+    ambiguousOverloads.clear();
+    std::vector<OverloadMatch> matches;
+    for (const FuncDecl *decl : overloads) {
+        const std::vector<TypeRef> fixedTypes = ResolveMethodParamTypes(receiverType, *decl, {}, receiverIsArgument);
+        const std::optional<TypeRef> variadicElement = ResolveMethodVariadicType(receiverType, *decl);
+        const auto paramTypes =
+            BoundParameterTypes(*decl, !receiverIsArgument, fixedTypes, variadicElement, argTypes.size(), call);
+        if (paramTypes && ArgumentsReachOverload(argTypes, *paramTypes, call)) {
+            matches.push_back({decl, *paramTypes});
         }
     }
-    return nullptr;
+    return SelectOverload(matches, argTypes);
 }
 } // namespace Rux::SemanticDetail

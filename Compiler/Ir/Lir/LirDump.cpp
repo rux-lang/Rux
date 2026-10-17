@@ -47,6 +47,37 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
     case LirOpcode::Alloca:
         out << std::format("{} = alloca {}\n", RegStr(i.dst), i.type.ToString());
         return;
+    case LirOpcode::AtomicLoad:
+    case LirOpcode::AtomicStore:
+    case LirOpcode::AtomicExchange:
+    case LirOpcode::AtomicCmpXchg:
+    case LirOpcode::AtomicFetchAdd:
+    case LirOpcode::AtomicFetchSub:
+    case LirOpcode::AtomicFetchAnd:
+    case LirOpcode::AtomicFetchOr:
+    case LirOpcode::AtomicFetchXor:
+    case LirOpcode::FramePointer:
+        out << std::format("{} = frame_pointer {}\n", RegStr(i.dst), i.type.ToString());
+        return;
+    case LirOpcode::WriteStandardError:
+        out << std::format("write_stderr {}, {}\n", RegStr(i.srcs.at(0)), RegStr(i.srcs.at(1)));
+        return;
+    case LirOpcode::Fence:
+    case LirOpcode::SpinHint: {
+        // Every operand, then the order: an atomic instruction is read for what it orders as much as for what it does.
+        std::string operands;
+        for (const LirReg source : i.srcs) {
+            operands += (operands.empty() ? " " : ", ") + RegStr(source);
+        }
+        const std::string result = i.dst == LirNoReg ? std::string() : RegStr(i.dst) + " = ";
+        out << std::format("{}{} {}{} order {}", result, LirOpcodeName(i.op), i.type.ToString(), operands,
+                           i.memoryOrder);
+        if (i.op == LirOpcode::AtomicCmpXchg) {
+            out << std::format(" failure {}", i.failureOrder);
+        }
+        out << '\n';
+        return;
+    }
     case LirOpcode::Load:
         if (!i.srcs.empty()) {
             out << std::format("{} = load {} {}\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]));
@@ -79,7 +110,8 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
                 out << std::format("call {} @{}({}){}\n", i.type.ToString(), i.strArg, args, CallMetadata(i));
             }
             else {
-                out << std::format("call_ind {} {}({})\n", i.type.ToString(), RegStr(i.srcs[0]), args);
+                out << std::format("call_ind {} {}({}){}\n", i.type.ToString(), RegStr(i.srcs[0]), args,
+                                   CallMetadata(i));
             }
         }
         else {
@@ -88,8 +120,8 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
                                    CallMetadata(i));
             }
             else {
-                out << std::format("{} = call_ind {} {}({})\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]),
-                                   args);
+                out << std::format("{} = call_ind {} {}({}){}\n", RegStr(i.dst), i.type.ToString(), RegStr(i.srcs[0]),
+                                   args, CallMetadata(i));
             }
         }
         return;
@@ -97,17 +129,18 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
 
     case LirOpcode::Assert:
         out << std::format("assert {}, {}, \"{}\" at {} ({}:{}:{})\n", i.srcs.empty() ? "?" : RegStr(i.srcs[0]),
-                           i.srcs.size() > 1 ? RegStr(i.srcs[1]) : "?", i.strArg, i.sourceFunction, i.sourceFile,
-                           i.sourceLine, i.sourceColumn);
+                           i.srcs.size() > 1 ? RegStr(i.srcs[1]) : "?", i.strArg, i.source.Get().function,
+                           i.source.Get().file, i.source.Get().line, i.source.Get().column);
         return;
 
     case LirOpcode::Panic:
         out << std::format("panic {}, \"{}\" at {} ({}:{}:{})\n", i.srcs.empty() ? "?" : RegStr(i.srcs[0]), i.strArg,
-                           i.sourceFunction, i.sourceFile, i.sourceLine, i.sourceColumn);
+                           i.source.Get().function, i.source.Get().file, i.source.Get().line, i.source.Get().column);
         return;
 
     case LirOpcode::FieldPtr:
-        out << std::format("{} = fieldptr {} {}, {}\n", RegStr(i.dst), i.type.ToString(),
+    case LirOpcode::RotateRight:
+        out << std::format("{} = {} {} {}, {}\n", RegStr(i.dst), LirOpcodeName(i.op), i.type.ToString(),
                            i.srcs.empty() ? "?" : RegStr(i.srcs[0]), i.strArg);
         return;
 
@@ -290,6 +323,11 @@ bool LirPrinter::Dump(const LirPackage &package, const std::filesystem::path &pa
         for (const auto &c : mod.consts) {
             std::string pub = c.isPublic ? "pub " : "";
             out << std::format("\n{}const {}: {} = {}\n", pub, c.name, c.type.ToString(), c.value);
+        }
+        for (const auto &global : mod.globals) {
+            std::string pub = global.isPublic ? "pub " : "";
+            out << std::format("\n{}var {}: {} ({} scalars)\n", pub, global.name, global.type.ToString(),
+                               global.scalars.size());
         }
         for (const auto &ev : mod.externVars) {
             std::string pub = ev.isPublic ? "pub " : "";

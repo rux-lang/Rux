@@ -110,5 +110,5 @@ TEST_CASE("an untyped operand is built as the other operand's type") {
     REQUIRE(present != nullptr);
     CHECK_EQ(present->type, wrapped.left->type);
     REQUIRE_EQ(present->payloads.size(), 1);
-    CHECK_EQ(present->payloads.front()->type, wrapped.left->type.inner.front());
+    CHECK_EQ(present->payloads.front()->type, wrapped.left->type->inner.front());
 }

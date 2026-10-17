@@ -1,7 +1,12 @@
+#include "CliProcessTestSupport.h"
 #include "CompilerDriverTestSupport.h"
+#include "Package/Registry.h"
+
+#include <format>
 
 using namespace Rux;
 using namespace Rux::Testing::CompilerDriverTestSupport;
+using Rux::Testing::CliProcessTestSupport::ScopedCliPackageCache;
 
 TEST_CASE("compiler driver runs inferred literals and arithmetic without Core") {
     DependencyFixture fixture;
@@ -21,10 +26,9 @@ func Main() -> int {
     CHECK_EQ(executed->exitCode, 0);
 }
 
-TEST_CASE("compiler driver obtains intrinsic declarations from an ordinary dependency") {
+TEST_CASE("compiler driver obtains primitive extensions and intrinsic values from an ordinary dependency") {
     DependencyFixture fixture;
     fixture.SetDependencySource(R"(
-pub intrinsic type int8;
 extend int8 { pub const Min: int8 = -128i8; }
 pub enum OperatingSystem { Unknown, FreeBSD, Linux, macOS, Windows }
 pub struct Target { pub os: OperatingSystem; }
@@ -114,6 +118,46 @@ TEST_CASE("compiler driver loads path dependencies when checking") {
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
+}
+
+TEST_CASE("compiler driver refuses a package whose MinRux is newer than the compiler") {
+    DependencyFixture fixture;
+    fixture.SetApplicationMinRux("9.0.0");
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK_FALSE(result.ok);
+    REQUIRE(diagnostics.size() == 1);
+    CHECK(diagnostics.front().message ==
+          std::format("package 'App' requires Rux '9.0.0' or newer, but this is Rux '{}'",
+                      Packages::CompilerVersion().Text()));
+    CHECK(diagnostics.front().sourceName.ends_with("Rux.toml"));
+}
+
+TEST_CASE("compiler driver accepts a MinRux no newer than the compiler") {
+    DependencyFixture fixture;
+    fixture.SetApplicationMinRux(Packages::CompilerVersion().Text());
+    fixture.SetDependencyMinRux("0.4.0");
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("compiler driver refuses a dependency whose MinRux is newer than the compiler") {
+    DependencyFixture fixture;
+    fixture.SetDependencyMinRux("9.0.0");
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK_FALSE(result.ok);
+    CHECK(std::ranges::any_of(diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message.starts_with("package 'Dependency' requires Rux '9.0.0' or newer");
+    }));
 }
 
 TEST_CASE("compiler driver exposes already-loaded source text while emitting semantic diagnostics") {
@@ -301,6 +345,45 @@ TEST_CASE("compiler driver resolves transitive workspace dependencies by normali
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(true, diagnostics);
     fixture.ConfigureLocalWorkspace(options);
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 2);
+}
+
+TEST_CASE("compiler driver refuses a package of a workspace-owned namespace that no member supplies") {
+    // The workspace's members declare namespace `Rux`, so `Rux/Transitive` must be one of them. It is not, and the
+    // package cache is never consulted for it.
+    ScopedCliPackageCache cache;
+    DependencyFixture fixture;
+    fixture.UseRegistryDeclaredTransitiveDependency();
+    fixture.InstallTransitiveIntoCache();
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
+    options.localNamespaces.insert("rux");
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK_FALSE(result.ok);
+    REQUIRE(diagnostics.size() == 1);
+    CHECK(diagnostics[0].message ==
+          "package 'Rux/Transitive' is not a workspace member, but the workspace owns namespace 'Rux'");
+    REQUIRE(diagnostics[0].help);
+    CHECK(diagnostics[0].help->contains("[Workspace].Packages"));
+}
+
+TEST_CASE("compiler driver resolves a registry package outside the workspace's namespaces from the package cache") {
+    // A user workspace whose members declare namespace `App` takes `Rux/Transitive` from the cache, as a lone package
+    // does, while a `Rux` workspace would refuse it.
+    ScopedCliPackageCache cache;
+    DependencyFixture fixture;
+    fixture.UseRegistryDeclaredTransitiveDependency();
+    fixture.InstallTransitiveIntoCache();
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
+    options.localNamespaces.insert("app");
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 

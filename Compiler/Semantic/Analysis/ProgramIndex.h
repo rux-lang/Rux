@@ -3,6 +3,7 @@
 #include "Semantic/Model/SemanticModel.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -29,6 +30,9 @@ struct Symbol {
     SourceLocation location;
     TypeRef type;
     bool isMut = false;
+    /// A function parameter or method receiver. It is always immutable, and unlike a `let` it has no spelling that
+    /// would make it otherwise, so a diagnostic about writing it cannot suggest declaring it with `var`.
+    bool isParameter = false;
     /// A binding that views several members of a borrowed sum: it can be inspected and copied, but its tags belong
     /// to the subject, so it is never borrowed, addressed, or moved.
     bool isSubsetView = false;
@@ -46,22 +50,36 @@ struct Symbol {
 
 class Scope {
 public:
-    explicit Scope(Scope *parentScope = nullptr);
+    /// A scope looking through to `declarations` holds only what one file adds to them -- its imports -- and finds the
+    /// names `declarations` holds as if they were its own, before any enclosing scope's.
+    explicit Scope(Scope *parentScope = nullptr, Scope *declarations = nullptr);
 
     bool Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, const std::string &sourceName);
     [[nodiscard]] Symbol *Lookup(const std::string &name);
     [[nodiscard]] Symbol *LookupLocal(const std::string &name);
+    /// A name this scope itself holds, not one it looks through to.
+    [[nodiscard]] Symbol *LookupOwn(const std::string &name);
+    /// The scope this one looks through to, or nullptr.
+    [[nodiscard]] Scope *Declarations() const;
     [[nodiscard]] const Symbol *Suggest(const std::string &name) const;
     [[nodiscard]] Scope *Parent() const;
     [[nodiscard]] const std::unordered_map<std::string, Symbol> &Table() const;
 
+    /// Point this scope's parent, and the module scopes its symbols name, at the copies `copies` gives for them: an
+    /// index copied together with its scopes calls this on every copy.
+    void Remap(const std::unordered_map<const Scope *, Scope *> &copies);
+
 private:
     Scope *parent;
+    Scope *declarations;
     std::unordered_map<std::string, Symbol> table;
 };
 
 [[nodiscard]] std::string_view SymbolKindName(Symbol::Kind kind);
 [[nodiscard]] std::string DeclarationNote(const Symbol &symbol);
+/// The error for declaring `symbol` where `previous` already holds its name.
+[[nodiscard]] SemanticDiagnostic DuplicateDeclaration(const Symbol &previous, const Symbol &symbol,
+                                                      const std::string &sourceName);
 
 /// Owns the package/module declaration topology built before semantic checking. The analyzer supplies type resolution
 /// because aliases and typed constants still use its in-progress type context.
@@ -79,22 +97,42 @@ public:
     using ResolveType = std::function<TypeRef(const TypeExpr &)>;
 
     SemanticProgramIndex(std::vector<SemanticDiagnostic> &diagnostics, std::vector<SemanticSymbol> &publicSymbols);
+    /// A copy of `base` with scopes of its own, reporting into `diagnostics` and `publicSymbols`.
+    SemanticProgramIndex(const SemanticProgramIndex &base, std::vector<SemanticDiagnostic> &diagnostics,
+                         std::vector<SemanticSymbol> &publicSymbols);
 
     [[nodiscard]] Scope &GlobalScope();
     [[nodiscard]] Scope &CreateScope(Scope &parent);
     [[nodiscard]] Scope &CreatePackageRoot(const std::string &packageName);
     void RegisterPackageRoot(const std::string &packageName, Scope &scope);
     [[nodiscard]] Scope &ModuleScopeFor(const std::string &name, Scope &parent) const;
+    /// The scope the declarations of one source file are checked in: the imports written at the top of that file,
+    /// looking through to the package `root` the file's declarations belong to. Other files do not see them.
+    [[nodiscard]] Scope &FileScopeFor(const std::string &sourceName, Scope &root);
+    /// The scope a `module` block of one file is checked in, inside `enclosing`, the scope of what contains the block
+    /// in that file: the imports written in that block, looking through to the module's declarations, which every
+    /// file's blocks of the module share.
+    [[nodiscard]] Scope &FileModuleScopeFor(Scope &enclosing, const std::string &name, Scope &module);
+    /// Another file of the package whose root is `root` that imports `name` at its top, or nullptr.
+    [[nodiscard]] const std::string *FileImporting(const Scope &root, const std::string &name) const;
 
     void BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName,
                                    const std::string &interfaceName = {});
+    /// Makes an extension's methods also callable on `receiverName`, keeping them where they are: a writable view
+    /// can do whatever a read-only view of the same elements can.
+    void ShareImplementationMethods(const ImplDecl &declaration, const std::string &receiverName);
     void CollectModule(const Module &module, const std::string *packageName, const ResolveType &resolveType);
+    /// Define `declaration` in `scope`; `lookupScope`, the file's own scope by default, is where its signature and body
+    /// are later resolved.
     void CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
                             const ResolveType &resolveType, const std::string *packageName = nullptr,
-                            const std::string &modulePath = {}, bool containingModulesPublic = true);
+                            const std::string &modulePath = {}, bool containingModulesPublic = true,
+                            Scope *lookupScope = nullptr);
     void FinalizeVisibility();
     void FinalizeNominalIdentities();
     [[nodiscard]] const DeclarationInfo *TypeOwner(const TypeExpr &type) const;
+    /// The declaration a signature or field type is written in, or nullptr for a type written in a body.
+    [[nodiscard]] const Decl *TypeOwnerDeclaration(const TypeExpr &type) const;
     [[nodiscard]] const std::string &NominalName(const Decl &declaration) const;
 
     [[nodiscard]] const auto &NominalNames() const {
@@ -102,6 +140,11 @@ public:
     }
 
     [[nodiscard]] const DeclarationInfo *InfoFor(const Decl &declaration) const;
+    /// The built-in primitives (by canonical kind) a package extends with `extend` blocks directly in one module.
+    ///
+    /// @return nullptr when that module extends none
+    [[nodiscard]] const std::unordered_set<TypeRef::Kind> *PrimitiveExtensions(const std::string &package,
+                                                                               const std::string &modulePath) const;
 
     [[nodiscard]] const auto &Packages() const {
         return packageScopes;
@@ -163,12 +206,24 @@ public:
         return declarationInfos;
     }
 
+    /// Record what another index learned about a declaration, such as a constant a function body declares.
+    void AdoptDeclarationInfo(const Decl &declaration, DeclarationInfo info) {
+        declarationInfos.insert_or_assign(&declaration, std::move(info));
+    }
+
 private:
+    /// Define a package item, rejecting a name a built-in type already holds in any enclosing scope.
+    bool DefineItem(Scope &scope, const Symbol &symbol, const std::string &sourceName);
+
     std::vector<SemanticDiagnostic> &diagnostics;
     std::vector<SemanticSymbol> &publicSymbols;
     Scope globalScope;
     PackageScopes packageScopes;
     std::vector<std::unique_ptr<Scope>> scopes;
+    /// File scopes by the package root they look through to and the file: two packages may each have a file of one
+    /// name.
+    std::map<std::pair<const Scope *, std::string>, Scope *> fileScopes;
+    std::map<std::pair<const Scope *, std::string>, Scope *> fileModuleScopes;
     std::unordered_map<std::string, const StructDecl *> structs;
     std::unordered_map<std::string, const EnumDecl *> enums;
     std::unordered_map<std::string, const UnionDecl *> unions;
@@ -186,5 +241,8 @@ private:
     std::vector<std::pair<std::string, const Decl *>> nominalDeclarations;
     std::unordered_map<const Decl *, std::string> nominalNames;
     std::unordered_map<const TypeExpr *, const Decl *> typeOwners;
+    /// Owner package -> module path -> canonical primitive kinds extended directly in that module.
+    std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_set<TypeRef::Kind>>>
+        primitiveExtensions;
 };
 } // namespace Rux::SemanticDetail

@@ -6,6 +6,7 @@
 #include "Semantic/Analysis/ProgramIndex.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
+#include "TemporaryDirectory.h"
 
 #include <doctest.h>
 #include <filesystem>
@@ -59,7 +60,7 @@ const CallExpr &RequireReturnedCall(const FuncDecl &function) {
 }
 
 std::string DumpHir(const HirPackage &package, const std::string &stem) {
-    const auto path = std::filesystem::temp_directory_path() / (stem + ".hir");
+    const auto path = Rux::Testing::TestTemporaryDirectory() / (stem + ".hir");
     REQUIRE(HirPrinter::Dump(package, path));
     std::ifstream input(path);
     REQUIRE(input.good());
@@ -71,7 +72,7 @@ std::string DumpHir(const HirPackage &package, const std::string &stem) {
 }
 
 std::string DumpLir(const LirPackage &package, const std::string &stem) {
-    const auto path = std::filesystem::temp_directory_path() / (stem + ".lir");
+    const auto path = Rux::Testing::TestTemporaryDirectory() / (stem + ".lir");
     REQUIRE(LirPrinter::Dump(package, path));
     std::ifstream input(path);
     REQUIRE(input.good());
@@ -184,8 +185,8 @@ TEST_CASE("semantic program index preserves enum and variant forms by source") {
     REQUIRE_EQ(taggedStatus->typeParams.size(), 1);
     CHECK_EQ(taggedStatus->typeParams.front().name, "Value");
     CHECK_FALSE(index.Enums().contains("Status"));
-    CHECK_EQ(scalarRoot.LookupLocal("Status")->type.name, "scalar-package::Status");
-    CHECK_EQ(taggedRoot.LookupLocal("Status")->type.name, "tagged-package::Status");
+    CHECK_EQ(scalarRoot.LookupLocal("Status")->type->name, "scalar-package::Status");
+    CHECK_EQ(taggedRoot.LookupLocal("Status")->type->name, "tagged-package::Status");
 }
 
 TEST_CASE("same-scope enum and variant names collide as one nominal type namespace") {

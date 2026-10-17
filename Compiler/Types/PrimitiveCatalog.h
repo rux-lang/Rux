@@ -33,11 +33,8 @@ struct PrimitiveInfo {
     /// deliberately not `bits / 8`.
     std::uint32_t size = 0;
     /// Storage alignment in bytes, or 0 for a pointer-sized type. Capped at 16, the largest scalar alignment any
-    /// supported ABI asks for. Record layout caps field alignment further; see `Target/Layout.h`.
+    /// supported ABI asks for. Record layout places a field at exactly this alignment; see `Target/Layout.h`.
     std::uint32_t align = 0;
-    /// Whether the representation is lowered end to end. A reserved primitive resolves here so its spelling, width
-    /// and family are known, and semantic analysis rejects a use of it until the representation lands.
-    bool implemented = false;
 };
 
 /// One alternative spelling of a primitive. An alias is a spelling only: it names the same kind.
@@ -72,8 +69,6 @@ enum class CharacterDomain : std::uint8_t {
 [[nodiscard]] std::string_view CanonicalPrimitiveName(std::string_view name) noexcept;
 
 /// The type `name` spells, resolving aliases.
-///
-/// A reserved primitive resolves like any other, so a caller that must reject one asks `PrimitiveInfo::implemented`.
 ///
 /// @return nullopt when `name` names no primitive
 [[nodiscard]] std::optional<TypeRef> PrimitiveTypeFromName(std::string_view name) noexcept;
@@ -112,4 +107,11 @@ enum class CharacterDomain : std::uint8_t {
 ///
 /// @return false when `kind` is not a character
 [[nodiscard]] bool IsValidCharacterValue(TypeRef::Kind kind, std::uint64_t value) noexcept;
+
+/// Whether the character `codePoint` is written as exactly one character of this width: one UTF-8 code unit (U+0000
+/// through U+007F) for `char8`, one UTF-16 code unit that is not a surrogate for `char16`, and any scalar value for the
+/// scalar-valued widths. A character literal of a width holds one such character and nothing truncated from more.
+///
+/// @return false when `kind` is not a character
+[[nodiscard]] bool IsOneCharacterOf(TypeRef::Kind kind, std::uint32_t codePoint) noexcept;
 } // namespace Rux

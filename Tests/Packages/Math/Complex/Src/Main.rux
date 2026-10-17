@@ -1,0 +1,61 @@
+import Core::Assert;
+import Math::{ Complex, Complex32, Pi };
+
+// Arithmetic against values worked by hand, division that keeps its precision for divisors far from one, the polar
+// form, and the principal branches of the logarithm, square root and power, at both widths.
+
+func Near(left: float64, right: float64) -> bool {
+    let difference = left > right ? left - right : right - left;
+    let scale = (left < 0.0 ? -left : left) + 1.0;
+    return difference <= 1.0e-12 * scale;
+}
+
+func Close(value: Complex, real: float64, imaginary: float64) -> bool {
+    return Near(value.real, real) && Near(value.imaginary, imaginary);
+}
+
+func Main() -> int {
+    let a = Complex::New(3.0, 4.0);
+    let b = Complex::New(1.0, -2.0);
+    Assert(Close(a + b, 4.0, 2.0) && Close(a - b, 2.0, 6.0), "addition and subtraction");
+    Assert(Close(a * b, 11.0, -2.0), "(3+4i)(1-2i) = 11-2i");
+    Assert(Close(a / b, -1.0, 2.0), "(3+4i)/(1-2i) = -1+2i");
+    Assert(Close((a / b) * b, 3.0, 4.0), "division undoes multiplication");
+    Assert(a.Abs() == 5.0 && a.Norm() == 25.0 && Close(a.Conjugate(), 3.0, -4.0) && Close(a.Negate(), -3.0, -4.0),
+           "magnitude, norm, conjugate and negation");
+    Assert(Close(a.Scale(2.0), 6.0, 8.0), "scaling");
+
+    // Smith's method: the naive formula overflows on the divisor's squared magnitude.
+    let huge = Complex::New(1.0e300, 1.0e300);
+    Assert(Close(huge / huge, 1.0, 0.0), "dividing very large numbers");
+    let tiny = Complex::New(1.0e-300, 1.0e-300);
+    Assert(Close(Complex::New(1.0, 0.0) / tiny, 5.0e299, -5.0e299), "dividing by a very small number");
+    Assert(Complex::New(3.0e300, 4.0e300).Abs() == 5.0e300, "the magnitude does not overflow");
+
+    let polar = Complex::FromPolar(2.0, Pi / 2.0);
+    Assert(Near(polar.real + 1.0, 1.0) && Near(polar.imaginary, 2.0), "polar form");
+    Assert(Near(Complex::New(-1.0, 0.0).Arg(), Pi) && Near(Complex::New(0.0, -1.0).Arg(), -Pi / 2.0), "arguments");
+
+    let unit = Complex::New(0.0, Pi);
+    Assert(Close(unit.Exp(), -1.0, 0.0) || Near(unit.Exp().real, -1.0), "e^(iπ) = -1");
+    Assert(Close(Complex::New(-1.0, 0.0).Log(), 0.0, Pi), "log(-1) = iπ");
+    Assert(Close(a.Log().Exp(), 3.0, 4.0), "exp undoes log");
+
+    Assert(Close(Complex::New(-4.0, 0.0).Sqrt(), 0.0, 2.0) && Close(Complex::New(3.0, 4.0).Sqrt(), 2.0, 1.0),
+           "square roots");
+    Assert(Close(Complex::New(-3.0, -4.0).Sqrt(), 1.0, -2.0), "the principal root below the real axis");
+    Assert(Close(Complex::New(0.0, 0.0).Sqrt(), 0.0, 0.0), "the root of zero");
+    let squared = Complex::New(1.0, 1.0).Pow(Complex::New(2.0, 0.0));
+    Assert(Near(squared.real + 1.0, 1.0) && Near(squared.imaginary, 2.0), "(1+i)^2 = 2i");
+    let iToTheI = Complex::New(0.0, 1.0).Pow(Complex::New(0.0, 1.0));
+    Assert(Near(iToTheI.real, 0.20787957635076193) && Near(iToTheI.imaginary + 1.0, 1.0), "i^i = e^(-π/2)");
+    Assert(Close(Complex::New(0.0, 0.0).Pow(a), 0.0, 0.0), "zero to any power");
+
+    let narrow = Complex32::New(3.0f32, 4.0f32) * Complex32::New(1.0f32, -2.0f32);
+    Assert(narrow.real == 11.0f32 && narrow.imaginary == -2.0f32 && Complex32::New(3.0f32, 4.0f32).Abs() == 5.0f32,
+           "the float32 form");
+    let narrowRoot = Complex32::New(-4.0f32, 0.0f32).Sqrt();
+    Assert(narrowRoot.real == 0.0f32 && narrowRoot.imaginary == 2.0f32, "a float32 square root");
+    Assert(a == Complex::New(3.0, 4.0) && a != b, "equality compares both parts");
+    return 0;
+}

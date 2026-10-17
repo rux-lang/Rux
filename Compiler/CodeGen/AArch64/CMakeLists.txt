@@ -14,10 +14,17 @@ rux_add_component(RuxCodeGenAArch64
     EncoderMemory.cpp
     FramePlan.cpp
     FunctionEmitter.cpp
+    MachineEmission.cpp
+    MachineEncoder.cpp
+    MachineSelection.cpp
+    MachineSelectionArithmetic.cpp
+    MachineSelectionCalls.cpp
+    AtomicEmitter.cpp
+    ThreadLocalEmitter.cpp
     SoftwareFloatEmitter.cpp
     WideIntegerEmitter.cpp
     ModuleData.cpp
     ModuleValues.cpp
     ModuleRuntimeFailure.cpp
     RcuEmitter.cpp)
-target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics RuxParallel)

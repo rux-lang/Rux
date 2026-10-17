@@ -5,8 +5,9 @@ name: FreeBSD x86-64
 # an x86-64 Linux host. The guest installs its toolchain from pkg's latest
 # branch once; the prepared disk is cached, keyed on the prepare script, and
 # every later run boots straight into it. FreeBSD-AArch64.yml uses the very
-# same prepare script so both share one cached disk; Tests/Scripts/CI/Check.sh
-# keeps the two identical. CI.yml calls this workflow with the scope of the
+# same prepare script so both share one cached disk, which FreeBSD-Image.yml
+# prepares before either runs; Tests/Scripts/CI/Check.sh keeps the three
+# identical. CI.yml calls this workflow with the scope of the
 # run, and Release.yml calls it with `extended`, so a release is built by
 # exactly the steps CI verified.
 
@@ -27,7 +28,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -54,7 +55,7 @@ jobs:
       # FreeBSD AArch64 workflow cross-compiles against, so the two workflows
       # share one cached disk.
       - name: Boot the FreeBSD guest
-        uses: vmactions/freebsd-vm@f0552d3b69211736abd97f02ff3d4674c56b73b1 # v1.5.5
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
         with:
           release: ${{ env.FREEBSD_VERSION }}
           arch: x86_64
@@ -154,13 +155,13 @@ jobs:
     name: Transfer
     needs: build
     if: inputs.scope == 'extended'
-    # The runner image vmactions exercises its emulated guests on; the newer
-    # image ships a QEMU and firmware under which the AArch64 guest never
-    # brings its network up.
-    runs-on: ubuntu-24.04
+    # vmactions 1.5.8 works around the firmware this image ships, under which
+    # an AArch64 guest used to hang, so the emulated guest runs on the same
+    # image as everything else.
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -168,13 +169,13 @@ jobs:
         run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
 
       - name: Download the transfer payload
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: freebsd-aarch64-payload
           path: FreeBSDAArch64Payload
 
       - name: Consume it in a guest with no toolchain
-        uses: vmactions/freebsd-vm@f0552d3b69211736abd97f02ff3d4674c56b73b1 # v1.5.5
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
         with:
           release: ${{ env.FREEBSD_VERSION }}
           arch: aarch64

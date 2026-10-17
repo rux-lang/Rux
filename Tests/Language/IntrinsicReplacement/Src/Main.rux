@@ -1,6 +1,7 @@
-import Foundation::{ #target, Tiny, Utf8, float64, uint };
+import Foundation::{ #target, Tiny, Utf8, byte, float64, uint };
 
-when Tiny::Max == 127i8 && Tiny::Bits == 8u && uint::Bits == #target.pointerBits {
+when Tiny::Max == 127i8 && Tiny::Bits == 8u && uint::Bits == #target.pointerBits && byte::Max == 255u8 &&
+     uint8::Max == 255u8 {
     func Selected() -> int { return 1; }
 } else {
     func Selected() -> int { return Missing; }
@@ -23,5 +24,6 @@ func Main() -> int {
     if Tiny::Min != -128i8 || Tiny::Max != 127i8 { return 5; }
     if !(float64::Infinity > 1.0) { return 6; }
     if float64::NaN == float64::NaN { return 7; }
+    if byte::Max != 255u8 || uint8::Max != byte::Max { return 8; }
     return 0;
 }

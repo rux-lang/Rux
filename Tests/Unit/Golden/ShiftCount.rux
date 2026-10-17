@@ -1,0 +1,9 @@
+// A shift count known while compiling must be at least zero and less than the width of the shifted type.
+const Width: int32 = 32;
+
+func Shifts(a: int32, b: uint8, n: int32) -> int32 {
+    var c: int64 = 1;
+    c <<= 64;
+    let fine = a << 31 | (b >> 7) as int32 | a << n;
+    return a << 32 | (b << 8) as int32 | a >> -1 | a << Width | fine;
+}

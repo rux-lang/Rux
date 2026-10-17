@@ -1,0 +1,148 @@
+import Core::Failed;
+
+
+import Text::{ Debug, Display, FormatSpec, TextWriter };
+import Format::{ BitsOfFloat16, ByteCursor, IsFinite, IsInfinite, IsNan, WriteFormat };
+
+// Every float16 is rendered and held to the table Tools/FloatVectors wrote for it: the shortest decimal that reads
+// back as the same float16, at this width's own neighbours. A failed check returns its numbered exit code for
+// `rux test`. Rendering goes into a buffer on the stack, so the test needs no allocator.
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+// The float16 a bit pattern encodes, read through a pointer as Format reads the other way.
+func FromBits(bits: uint16) -> float16 {
+    let address = (@bits) as *float16;
+    return *address;
+}
+
+// Whether the value's `Display` text is `expected`, with `prefix` in front of it.
+func Shows(value: float16, prefix: char8[..], expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var cursor = ByteCursor((@storage[0])[..64]);
+    let writer: &var TextWriter = cursor;
+    let shown: Display = value;
+    if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
+        return false;
+    }
+    let actual = cursor.Written();
+    return actual.length >= prefix.length && Same(actual[..prefix.length], prefix) &&
+           Same(actual[prefix.length..], expected);
+}
+
+// Whether `format` applied to the value writes `expected`.
+func Formats(format: char8[..], value: float16, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var cursor = ByteCursor((@storage[0])[..64]);
+    let writer: &var TextWriter = cursor;
+    if Failed(WriteFormat(writer, format, value)) {
+        return false;
+    }
+    return Same(cursor.Written(), expected);
+}
+
+// Walks the whole table: each non-negative pattern up to the infinity against its text, the same pattern with the
+// sign bit set against the text with a minus sign, and every pattern past the infinity, of either sign, as a NaN.
+func CheckTable() -> int {
+    var bits: uint = 0;
+    var chunk: uint = 0;
+    while bits < TextCount16() {
+        let texts = TextChunk16(chunk);
+        if texts.length == 0 { return 10; }
+        var start: uint = 0;
+        while start < texts.length {
+            var end = start;
+            while end < texts.length && texts.data[end] != c8' ' {
+                end = end + 1;
+            }
+            let expected = texts[start..end];
+            let pattern = bits as uint16;
+            if !Shows(FromBits(pattern), "", expected) { return 11; }
+            if !Shows(FromBits(pattern | 0x8000), "-", expected) { return 12; }
+            bits = bits + 1;
+            start = end + 1;
+        }
+        chunk = chunk + 1;
+    }
+    if bits != 0x7C01 { return 13; }
+    while bits < 0x8000 {
+        let pattern = bits as uint16;
+        if !Shows(FromBits(pattern), "", "NaN") { return 14; }
+        if !Shows(FromBits(pattern | 0x8000), "", "NaN") { return 15; }
+        if !IsNan(FromBits(pattern)) || IsFinite(FromBits(pattern)) || IsInfinite(FromBits(pattern)) { return 16; }
+        bits = bits + 1;
+    }
+    return 0;
+}
+
+// A run-time value, so the arithmetic below is done by the software helpers rather than folded.
+func Pass(value: float16) -> float16 {
+    return value;
+}
+
+func Main() -> int {
+    // Equally close shortest decimals choose the even last digit, for either sign.
+    if !Shows(0.046875f16, "", "0.04688") { return 70; }
+    if !Shows(-0.046875f16, "", "-0.04688") { return 71; }
+    let code = CheckTable();
+    if code != 0 { return code; }
+
+    // The digits are this width's shortest, not the float32 or float64 the value widens to: 0.1 is stored as
+    // 0.0999755859375, and nothing shorter than "0.1" is closer to it than to a neighbour.
+    if !Shows(0.1f16, "", "0.1") { return 20; }
+    if !Shows(Pass(1.0f16) / Pass(3.0f16), "", "0.3333") { return 21; }
+    // 0.1 + 0.2 is exactly halfway between two float16 values and rounds to the even one, 0.2998046875.
+    if !Shows(Pass(0.1f16) + Pass(0.2f16), "", "0.2998") { return 22; }
+    if !Shows(-2.25f16, "", "-2.25") { return 23; }
+    if !Shows(-0.0f16, "", "-0.0") { return 24; }
+    if BitsOfFloat16(0.1f16) != 0x2E66 { return 25; }
+
+    // Fixed notation through the five digits every float16 needs, and scientific past them and below -4. The
+    // largest value, 65504, is a gap of 32 from its lower neighbour, so its shortest digits are 655.
+    if !Shows(65504.0f16, "", "65500.0") { return 30; }
+    if !Shows(0.0001f16, "", "0.0001") { return 31; }
+    if !Shows(0.00001f16, "", "1.0e-05") { return 32; }
+    if !Shows(6.103515625e-05f16, "", "6.104e-05") { return 33; }
+    if !Shows(5.960464477539063e-08f16, "", "6.0e-08") { return 34; }
+
+    // The placeholder's precision, style, sign and width reach the same writers as the wider widths.
+    if !Formats("{:.3}", 0.1f16, "0.100") { return 40; }
+    if !Formats("{:.12}", 0.1f16, "0.099975585938") { return 41; }
+    if !Formats("{:e}", 65504.0f16, "6.55e+04") { return 42; }
+    if !Formats("{:.1E}", 1.5f16, "1.5E+00") { return 43; }
+    if !Formats("{:+}", 1.5f16, "+1.5") { return 44; }
+    if !Formats("{:>6}", 1.5f16, "   1.5") { return 45; }
+    if !Formats("{:.2}", Pass(1.0f16) / Pass(0.0f16), "Inf") { return 46; }
+    if !Formats("{:e}", Pass(-1.0f16) / Pass(0.0f16), "-Inf") { return 47; }
+    if !Formats("{}", Pass(0.0f16) / Pass(0.0f16), "NaN") { return 48; }
+
+    // Debug is the same text.
+    var storage: char8[64];
+    var cursor = ByteCursor((@storage[0])[..64]);
+    let writer: &var TextWriter = cursor;
+    let debugged: Debug = 0.33325f16;
+    if Failed(debugged.WriteDebug(writer, FormatSpec::Plain())) { return 50; }
+    if !Same(cursor.Written(), "0.3333") { return 51; }
+
+    // Classification by the bits, so an infinity of this width is recognised as one.
+    let inf = Pass(1.0f16) / Pass(0.0f16);
+    let nan = Pass(0.0f16) / Pass(0.0f16);
+    if !IsInfinite(inf) || !IsInfinite(-inf) || IsFinite(inf) || IsNan(inf) { return 60; }
+    if !IsNan(nan) || IsFinite(nan) || IsInfinite(nan) { return 61; }
+    if !IsFinite(65504.0f16) || IsInfinite(65504.0f16) || IsNan(65504.0f16) { return 62; }
+    if !IsFinite(-0.0f16) { return 63; }
+
+    return 0;
+}

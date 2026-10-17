@@ -1,0 +1,18 @@
+// Why a time zone could not be had.
+
+/// Why a time zone could not be loaded or built. `Copy`.
+/// @see https://rux-lang.dev/docs/api/timezone/error#time-zone-error
+pub enum TimeZoneError: uint8 {
+    /// No zone of that name was found in any time-zone directory.
+    NotFound = 1,
+    /// The name is not one a zone can have: empty, absolute, or reaching outside the directory with `..`.
+    InvalidName = 2,
+    /// The zone's data is not a well-formed TZif file.
+    InvalidData = 3,
+    /// A POSIX `TZ` rule is malformed.
+    InvalidRule = 4,
+    /// The zone's file could not be read for a reason other than its absence.
+    Unreadable = 5,
+    /// The allocator could not supply the storage.
+    OutOfMemory = 6
+}

@@ -1,9 +1,31 @@
 #include "Cli/Testing/TestPackages.h"
 
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 #include <utility>
 
 namespace Rux::CliSupport {
+bool SourcesDeclareTests(const std::filesystem::path &packageDir) {
+    std::error_code ec;
+    const auto sources = packageDir / "Src";
+    if (!std::filesystem::is_directory(sources, ec)) {
+        return false;
+    }
+    for (auto it = std::filesystem::recursive_directory_iterator(sources, ec);
+         !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+        if (!it->is_regular_file(ec) || it->path().extension() != ".rux") {
+            continue;
+        }
+        std::ifstream file(it->path(), std::ios::binary);
+        const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        if (text.find("#Test(") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 TestDiscovery DiscoverTestPackages(const std::span<const TestRoot> roots) {
     TestDiscovery result;
     {
@@ -37,8 +59,10 @@ TestDiscovery DiscoverTestPackages(const std::span<const TestRoot> roots) {
                         }
                         continue;
                     }
-                    // Only an Executable package has an entry point to run.
-                    if (pkgManifest.manifest->package.type != ManifestPackageType::Executable) {
+                    // An Executable package has an entry point to run; any other package runs only when a test build
+                    // can generate one for its '#Test()' functions.
+                    if (pkgManifest.manifest->package.type != ManifestPackageType::Executable &&
+                        !SourcesDeclareTests(entry.path())) {
                         continue;
                     }
                     auto label = entry.path().lexically_relative(root.dir).generic_string();

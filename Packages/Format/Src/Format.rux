@@ -1,30 +1,25 @@
 // Filling placeholders in a run of text.
-//
 // `{}` takes the next argument, in the order they are written; `{:spec}` carries a specification, parsed once by
 // Text and applied by the value; `{{` and `}}` are how a literal brace is spelled. That is the whole grammar, and
 // anything else containing a brace is a mistake in the pattern rather than text to copy through.
-//
 // Strictness is the decision this file rests on, and it replaces two lenient behaviours that used to live here. A
 // placeholder with no argument left used to render as nothing, and a specification that did not parse used to be
 // copied through as literal text. Both reported the mistake by printing it, which is the worst of the options: the
 // program carries on, the output is wrong in a way that looks deliberate, and the caller finds out from a reader.
 // Both are now failures — `ArgumentCountMismatch` and `InvalidSpecification` — and both are found before anything
 // is written, so a pattern that is wrong produces no output at all rather than a prefix of one.
-//
 // Finding them first is why the pattern is walked twice. The first pass validates: it counts the placeholders,
 // parses every specification, and rejects a brace that is not part of the grammar, without touching the
 // destination. The second pass writes. A pattern is small and the parse is a few comparisons per placeholder, so
 // the cost is the price of never emitting half a rendering of a pattern that was never going to work.
-//
 // Arguments arrive as `Display`, so each one writes itself into the destination directly. Nothing is rendered into
 // a string on the way, which is what keeps the allocation count at what the result itself needs.
 
 import Allocator::Allocator;
-import Text::{ DecodeAt, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringBuilder,
-               TextFailureKind, FromTextError, TextWriter, Utf8Error, WriteAscii, WriteBytes };
+import Text::{ DecodeAt, Display, FormatError, FormatSpec, FromTextError, ParseFormatSpec, String, StringBuilder,
+               TextFailureKind, TextWriter, Utf8Error, WriteAscii, WriteBytes };
 
 // Where a placeholder's specification begins and ends inside the pattern, and where the placeholder itself does.
-//
 // `body` is the half-open range of the specification's bytes, empty for a bare `{}`. `after` is the byte just past
 // the closing brace, which is where scanning resumes.
 struct Placeholder {
@@ -57,7 +52,6 @@ func ReadPlaceholder(format: char8[..], at: uint) -> Placeholder ! FormatError {
 }
 
 // Parses the specification a placeholder carries, translating the parser's offset into an offset into the pattern.
-//
 // The parser reports where it stopped inside the body it was given; a caller reading the failure is looking at the
 // whole pattern, so the body's own start is added. That is the composition rule `ParseFailure` states, applied at
 // the one place in this package that embeds another parser.
@@ -109,26 +103,23 @@ func ValidatePattern(format: char8[..]) -> uint ! FormatError {
 }
 
 /// Writes `format` into `writer`, with each `{}` replaced by the next argument.
-///
 /// A placeholder is `{}`, or `{:spec}` carrying fill, alignment, sign, width, precision and style — see
 /// `ParseFormatSpec` for the grammar. `{{` and `}}` stand for a literal brace, and are the only way to write one.
-///
 /// The pattern is checked before any of it is written, so a pattern that is wrong produces no output rather than a
 /// prefix of one. What is checked is the pattern and the argument count, both of which are known at the call site;
-/// a value's own rendering can still fail partway, and what it managed to write stays written.
-///
-/// # Failures
+/// a value's own rendering can still fail partway, and what it managed to write stays written. `format` is marked
+/// `#Format()`, so when it is a string literal the compiler counts its placeholders against the arguments and a
+/// mismatch is reported while compiling rather than as `ArgumentCountMismatch`.
 /// Reports `InvalidSpecification` with the byte offset into `format` for a specification that does not parse, a
 /// brace the grammar does not allow, or a placeholder with no closing brace; `ArgumentCountMismatch` with the
 /// placeholders counted and the arguments supplied when the two differ; and otherwise whatever the destination or
 /// a value's own renderer reported, stopping at the first refusal. The first two are found before anything is
 /// written.
-///
 /// @param writer the destination
 /// @param format the pattern to write
 /// @returns success when the whole pattern and every argument were accepted
 /// @see https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> ! FormatError {
+pub func WriteFormat(writer: &var TextWriter, #Format() format: char8[..], args: Display...) -> ! FormatError {
     let expected = ValidatePattern(format)?;
     if expected != args.length {
         fail FormatError::ArgumentCountMismatch(expected, args.length);
@@ -162,12 +153,12 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
             index = found.after;
             continue;
         }
-        if (ch as uint32) < 0x80u32 {
+        if (ch as uint32) < 0x80 {
             WriteAscii(writer, ch)?;
-            index += 1u;
+            index += 1;
         } else {
             // Writers accept complete UTF-8 characters. Passing each byte through WriteAscii rejects valid text.
-            var width = 0u;
+            var width: uint = 0;
             let decoded = DecodeAt(format, index) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
             width = decoded.width;
             WriteBytes(writer, (@format.data[index])[..width])?;
@@ -178,24 +169,19 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
 }
 
 /// The text `format` becomes with its placeholders filled, as a string of its own.
-///
 /// This is the allocating entry point, and the only one: every other way of rendering writes into a destination the
 /// caller already has. Reserving up front is a guess at the result's size — the literal text plus a little for each
 /// argument — so a short call fills in without a reallocation and a long one grows through the builder as usual.
-///
 /// It is named for what it does rather than for the package, because `Format(allocator, ...)` read as a noun and a
 /// namespace at once and said nothing about producing a value.
-///
-/// # Failures
 /// Reports `TextFailure(OutOfMemory)` when the initial reservation fails, and otherwise whatever `WriteFormat`
 /// reported. On failure the partially built string is released rather than returned, so a caller never receives
 /// half a rendering that looks whole and the allocator gets its block back either way.
-///
 /// @param allocator what the returned string is built with and will give its block back to
 /// @param format the pattern to render
 /// @returns the rendered string, or why it could not be produced
 /// @see https://rux-lang.dev/docs/api/format/render
-pub func Render(allocator: Allocator, format: char8[..], args: Display...) -> String ! FormatError {
+pub func Render(allocator: Allocator, #Format() format: char8[..], args: Display...) -> String ! FormatError {
     var builder = StringBuilder(allocator);
     builder.Reserve(format.length + args.length * 8)? else (e => FromTextError(e));
     let sink: &var TextWriter = builder;

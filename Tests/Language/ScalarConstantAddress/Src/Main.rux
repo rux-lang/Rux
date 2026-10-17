@@ -1,0 +1,68 @@
+import Core::Assert;
+import ScalarConstantProvider::{ Shared, SharedAddress };
+
+const Byte: int8 = -7i8;
+const Word: int64 = -123456789i64;
+const Wide: int128 = (1i128 << 120u32) + 17i128;
+const Huge: uint512 = (1u512 << 500u32) + 37u512;
+const Single: float32 = 1.5f32;
+const Quad: float128 = -2.5f128;
+const Extended: float80 = 1.0f80;
+const Flag: bool256 = true;
+const Character: char128 = c128'😀';
+
+func Main() -> int {
+    let firstByte: *int8 = @Byte;
+    let secondByte: *int8 = @Byte;
+    Assert(firstByte == secondByte, "Byte has a stable address");
+    Assert(*firstByte == Byte, "Byte stores its value");
+    Assert(firstByte as uint % alignof(int8) == 0u, "Byte is aligned");
+    let firstWord: *int64 = @Word;
+    let secondWord: *int64 = @Word;
+    Assert(firstWord == secondWord, "Word has a stable address");
+    Assert(*firstWord == Word, "Word stores its value");
+    Assert(firstWord as uint % alignof(int64) == 0u, "Word is aligned");
+    let firstWide: *int128 = @Wide;
+    let secondWide: *int128 = @Wide;
+    Assert(firstWide == secondWide, "Wide has a stable address");
+    Assert(*firstWide == Wide, "Wide stores its value");
+    Assert(firstWide as uint % alignof(int128) == 0u, "Wide is aligned");
+    let firstHuge: *uint512 = @Huge;
+    let secondHuge: *uint512 = @Huge;
+    Assert(firstHuge == secondHuge, "Huge has a stable address");
+    Assert(*firstHuge == Huge, "Huge stores its value");
+    Assert(firstHuge as uint % alignof(uint512) == 0u, "Huge is aligned");
+    let firstSingle: *float32 = @Single;
+    let secondSingle: *float32 = @Single;
+    Assert(firstSingle == secondSingle, "Single has a stable address");
+    Assert(*firstSingle == Single, "Single stores its value");
+    Assert(firstSingle as uint % alignof(float32) == 0u, "Single is aligned");
+    let firstQuad: *float128 = @Quad;
+    let secondQuad: *float128 = @Quad;
+    Assert(firstQuad == secondQuad, "Quad has a stable address");
+    Assert(*firstQuad == Quad, "Quad stores its value");
+    Assert(firstQuad as uint % alignof(float128) == 0u, "Quad is aligned");
+    let firstExtended: *float80 = @Extended;
+    let secondExtended: *float80 = @Extended;
+    Assert(firstExtended == secondExtended, "Extended has a stable address");
+    Assert(*firstExtended == Extended, "Extended stores its value");
+    Assert(firstExtended as uint % alignof(float80) == 0u, "Extended is aligned");
+    let firstFlag: *bool256 = @Flag;
+    let secondFlag: *bool256 = @Flag;
+    Assert(firstFlag == secondFlag, "Flag has a stable address");
+    Assert(*firstFlag == Flag, "Flag stores its value");
+    Assert(firstFlag as uint % alignof(bool256) == 0u, "Flag is aligned");
+    let firstCharacter: *char128 = @Character;
+    let secondCharacter: *char128 = @Character;
+    Assert(firstCharacter == secondCharacter, "Character has a stable address");
+    Assert(*firstCharacter == Character, "Character stores its value");
+    Assert(firstCharacter as uint % alignof(char128) == 0u, "Character is aligned");
+    Assert(*(@Flag as *uint256) == 1u256, "bool256 has zero high bytes");
+    Assert(*(@Character as *uint128) == 0x1F600u128, "char128 has zero high bytes");
+    Assert(*(@Quad as *uint128) == 0xC0004000000000000000000000000000u128, "float128 stores every bit");
+    Assert((*(@Extended as *uint128) & ((1u128 << 80u32) - 1u128)) == 0x3FFF8000000000000000u128, "float80 low eighty bits");
+    Assert(@Shared == SharedAddress(), "cross-package addresses identify the same constant");
+    Assert(*SharedAddress() == Huge, "cross-package storage contains every byte");
+    return 0;
+}
+

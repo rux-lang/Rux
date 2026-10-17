@@ -7,10 +7,6 @@
 #include <vector>
 
 namespace Rux::ConditionalFolding {
-/// The module path a source file corresponds to, which is what a `#if` condition tests when it asks about the file
-/// being compiled.
-[[nodiscard]] std::string FilePathToModulePath(const std::string &filePath);
-
 /// Resolve `#if` chains between declarations, rewriting each module in place to keep only the taken branch.
 ///
 /// Folding happens before name resolution so the analyzer only ever sees one version of the program, rather than every

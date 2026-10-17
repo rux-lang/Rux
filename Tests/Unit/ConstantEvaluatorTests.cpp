@@ -252,8 +252,12 @@ TEST_CASE("floating constant casts share checked software conversions") {
     REQUIRE(CastConstant(Constant("127", TypeRef::MakeInt16()), float8).has_value());
     CHECK_EQ(CastConstant(Constant("127", TypeRef::MakeInt16()), float8)->RawBits(), 0x70);
     CHECK_EQ(CastConstant(Constant("-5.5", float8), TypeRef::MakeInt8())->ToLiteral(), "-5");
-    CHECK_FALSE(CastConstant(Constant("240.0", float8), TypeRef::MakeInt8()).has_value());
-    CHECK_FALSE(CastConstant(Constant("infinity", float8), TypeRef::MakeInt32()).has_value());
+    // Outside the target's range a conversion saturates, and a NaN becomes zero, exactly as it does at run time.
+    CHECK_EQ(CastConstant(Constant("240.0", float8), TypeRef::MakeInt8())->ToLiteral(), "127");
+    CHECK_EQ(CastConstant(Constant("-240.0", float8), TypeRef::MakeInt8())->ToLiteral(), "-128");
+    CHECK_EQ(CastConstant(Constant("-240.0", float8), TypeRef::MakeUInt8())->ToLiteral(), "0");
+    CHECK_EQ(CastConstant(Constant("infinity", float8), TypeRef::MakeInt32())->ToLiteral(), "2147483647");
+    CHECK_EQ(CastConstant(Constant("nan", float8), TypeRef::MakeInt32())->ToLiteral(), "0");
     CHECK_EQ(CastConstant(Constant("1.5", float8), float16)->RawBits(), 0x3E00);
     CHECK(CastConstant(Constant("nan", float8), TypeRef::MakeBool())->BooleanValue() == true);
     CHECK(CastConstant(Constant("-0.0", float8), TypeRef::MakeBool())->BooleanValue() == false);

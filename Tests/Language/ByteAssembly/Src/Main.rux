@@ -1,0 +1,62 @@
+// A value assembled from consecutive bytes of memory, most or least significant first, reads as one wide load,
+// byte-reversed for big-endian order. Each read here starts at every offset of a buffer whose bytes all differ, so a
+// wrong width, order or starting byte shows, and one read stores into the buffer between its byte loads, which the
+// wide load must not move past.
+
+import Core::Assert;
+
+var Buffer: uint8[24] = [0u8; 24];
+
+func BigEndian64(at: *uint8) -> uint64 {
+    var value: uint64 = 0;
+    for b in 0u..8u {
+        value = (value << 8) | (at[b] as uint64);
+    }
+    return value;
+}
+
+func LittleEndian64(at: *uint8) -> uint64 {
+    return (at[0] as uint64) | ((at[1] as uint64) << 8) | ((at[2] as uint64) << 16) | ((at[3] as uint64) << 24) |
+        ((at[4] as uint64) << 32) | ((at[5] as uint64) << 40) | ((at[6] as uint64) << 48) | ((at[7] as uint64) << 56);
+}
+
+func BigEndian32(at: *uint8) -> uint32 {
+    return ((at[0] as uint32) << 24) | ((at[1] as uint32) << 16) | ((at[2] as uint32) << 8) | (at[3] as uint32);
+}
+
+func LittleEndian16(at: *uint8) -> uint16 {
+    return (at[0] as uint16) | ((at[1] as uint16) << 8);
+}
+
+// The store lands on the byte read next, so that byte must be read after it, not before.
+func ReadAcrossStore(at: *var uint8) -> uint32 {
+    let low = at[0] as uint32;
+    at[1] = 0x5Au8;
+    return low | ((at[1] as uint32) << 8) | ((at[2] as uint32) << 16) | ((at[3] as uint32) << 24);
+}
+
+func Expected(offset: uint, count: uint, bigEndian: bool) -> uint64 {
+    var value: uint64 = 0;
+    for b in 0u..count {
+        let byte = Buffer[offset + b] as uint64;
+        value = bigEndian ? (value << 8) | byte : value | (byte << ((8 * b) as uint64));
+    }
+    return value;
+}
+
+func Main() -> int {
+    for i in 0u..24u {
+        Buffer[i] = (0x11u * (i + 1) + 3u) as uint8;
+    }
+    for offset in 0u..16u {
+        let at = @Buffer[offset];
+        Assert(BigEndian64(at) == Expected(offset, 8u, true), "eight bytes read most significant first");
+        Assert(LittleEndian64(at) == Expected(offset, 8u, false), "eight bytes read least significant first");
+        Assert(BigEndian32(at) as uint64 == Expected(offset, 4u, true), "four bytes read most significant first");
+        Assert(LittleEndian16(at) as uint64 == Expected(offset, 2u, false), "two bytes read least significant first");
+    }
+    let before = Expected(4u, 4u, false);
+    let read = ReadAcrossStore(@Buffer[4]);
+    Assert(read as uint64 == ((before & 0xFFFF00FFu64) | 0x5A00u64), "a byte stored between the reads is the one read");
+    return 0;
+}

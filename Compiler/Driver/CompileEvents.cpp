@@ -7,7 +7,7 @@ std::string_view CompilePhaseName(const CompilePhase phase) noexcept {
     static constexpr std::string_view names[]{
         "Configuring",       "Loading sources",      "Lexing",         "Parsing",         "Loading dependency",
         "Analyzing",         "Lowering to HIR",      "Optimizing HIR", "Lowering to LIR", "Optimizing LIR",
-        "Emitting assembly", "Emitting RCU objects", "Linking"};
+        "Emitting assembly", "Emitting RCU objects", "Linking",        "Reusing modules"};
     return names[std::to_underlying(phase)];
 }
 

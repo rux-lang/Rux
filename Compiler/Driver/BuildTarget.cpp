@@ -53,7 +53,7 @@ TargetContext TargetContextForTriple(const Target::TargetTriple target) {
                          .endianness = native ? Target::HostEndianness : Target::Endian::Little,
                          .object_format = Target::GetObjectFormat(os),
                          .pointer_size = Target::GetPointerSize(arch),
-                         .cpu_features = native ? Target::HostCpuFeatures : Target::CpuFeature::None};
+                         .cpu_features = Target::BaselineCpuFeatures(arch)};
 }
 
 bool HostCanExecuteTarget(const Target::TargetTriple target) {

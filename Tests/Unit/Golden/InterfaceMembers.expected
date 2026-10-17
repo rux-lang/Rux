@@ -1,0 +1,3 @@
+20:21: error: interface type 'Shape' has no member 'side'
+21:22: error: interface type 'Shape' has no member 'vtable'
+22:21: error: interface type 'Shape' has no member 'data'

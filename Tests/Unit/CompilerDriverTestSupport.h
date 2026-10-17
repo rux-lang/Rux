@@ -5,6 +5,7 @@
 #include "Driver/CompilerDriver.h"
 #include "ElfReader.h"
 #include "MachOReader.h"
+#include "Package/Cache.h"
 #include "System/Os.h"
 #include "System/Process.h"
 #include "Target/Target.h"
@@ -80,6 +81,11 @@ func Main() -> int {
         REQUIRE(WriteFile(appRoot / "Src" / "Main.rux", source));
     }
 
+    /// Write another source file of the application, beside Main.rux.
+    void SetApplicationFile(const std::string_view name, const std::string_view source) const {
+        REQUIRE(WriteFile(appRoot / "Src" / name, source));
+    }
+
     void SetDependencySource(const std::string_view source) const {
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", source));
     }
@@ -90,6 +96,15 @@ func Main() -> int {
 
     void SetManifestDefine(std::string name, std::string value) {
         application.build.defines[std::move(name)] = DefineValue{DefineValue::Kind::String, std::move(value)};
+    }
+
+    void SetApplicationMinRux(const std::string_view version) {
+        application.header.minRux = *SemanticVersion::Parse(version);
+    }
+
+    void SetDependencyMinRux(const std::string_view version) {
+        dependency.header.minRux = *SemanticVersion::Parse(version);
+        REQUIRE(dependency.Save(depRoot / "Rux.toml"));
     }
 
     void SetDependencyTargets(std::vector<Target::OS> targetOS) {
@@ -229,9 +244,23 @@ pub module Api {
         REQUIRE(application.Save(appRoot / "Rux.toml"));
     }
 
+    /// A workspace whose members declare namespace `Rux` and include `Transitive`.
     void ConfigureLocalWorkspace(CompileOptions &options) const {
         options.localPackageRoots.push_back(transitiveRoot);
-        options.localDependenciesOnly = true;
+        options.localNamespaces.insert("rux");
+    }
+
+    /// The `Transitive` package installed into the package cache under its registry identity, as `rux install` would.
+    void InstallTransitiveIntoCache() const {
+        const auto loaded = Manifest::Load(transitiveRoot / "Rux.toml");
+        REQUIRE(loaded.Ok());
+        const auto &manifest = *loaded.manifest;
+        const auto cached =
+            Packages::RegistryPackageDir(*manifest.package.ns, manifest.package.name, manifest.package.version);
+        std::filesystem::create_directories(cached / "Src");
+        REQUIRE(manifest.Save(cached / "Rux.toml"));
+        std::filesystem::copy_file(transitiveRoot / "Src" / "Api.rux", cached / "Src" / "Api.rux",
+                                   std::filesystem::copy_options::overwrite_existing);
     }
 
     [[nodiscard]] CompileOptions Options(const bool checkOnly, std::vector<Diagnostic> &diagnostics) const {
@@ -349,11 +378,21 @@ inline MachOArchiveContents InspectMacOSAArch64Archive(const std::filesystem::pa
         if (size.empty()) {
             break;
         }
-        const auto memberSize = static_cast<std::size_t>(std::stoul(size));
-        const std::size_t body = at + 60;
-        if (body + memberSize > archive.size()) {
+        const auto storedSize = static_cast<std::size_t>(std::stoul(size));
+        // A BSD `#1/<length>` name leads the member's data and counts in its size.
+        std::size_t nameLength = 0;
+        if (archive[at] == '#' && archive[at + 1] == '1' && archive[at + 2] == '/') {
+            std::string digits;
+            for (std::size_t i = 3; i < 16 && archive[at + i] != ' '; ++i) {
+                digits.push_back(static_cast<char>(archive[at + i]));
+            }
+            nameLength = digits.empty() ? 0 : static_cast<std::size_t>(std::stoul(digits));
+        }
+        if (nameLength > storedSize || at + 60 + storedSize > archive.size()) {
             break;
         }
+        const std::size_t body = at + 60 + nameLength;
+        const std::size_t memberSize = storedSize - nameLength;
         if (memberSize >= 32 && Read32(archive, body) == 0xFEED'FACF && Read32(archive, body + 4) == 0x0100'000C &&
             Read32(archive, body + 12) == 1) {
             ++contents.objects;
@@ -377,7 +416,7 @@ inline MachOArchiveContents InspectMacOSAArch64Archive(const std::filesystem::pa
                 command += commandSize;
             }
         }
-        at = body + memberSize + (memberSize & 1U);
+        at += 60 + storedSize + (storedSize & 1U);
     }
     return contents;
 }

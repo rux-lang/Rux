@@ -17,7 +17,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Next(self: &var Counter) -> Option<int32> {
+    func Advance(self: &var Counter) -> Option<int32> {
         if self.value >= self.limit {
             return Option::None<int32>();
         }
@@ -33,7 +33,7 @@ struct Pairs {
 
 extend Pairs {
     // Two payloads put the second one past the first, which only an aggregate has room for.
-    func Next(self: &var Pairs) -> Option<int64> {
+    func Advance(self: &var Pairs) -> Option<int64> {
         if self.index >= 2i32 {
             return Option::None<int64>();
         }
@@ -47,7 +47,7 @@ func Sum(counter: &var Counter) -> int {
     var total = 0;
     var seen = 0;
     while seen < 4 {
-        total = total + match counter.Next() {
+        total = total + match counter.Advance() {
             .Some(value) => value as int,
             .None => 0
         };
@@ -60,10 +60,10 @@ func Main() -> int {
     var counter = Counter { value: 0i32, limit: 3i32 };
 
     // Matching the same method's result four times running: each match reads what that call returned.
-    let first = match counter.Next() { .Some(value) => value as int, .None => 90 };
-    let second = match counter.Next() { .Some(value) => value as int, .None => 90 };
-    let third = match counter.Next() { .Some(value) => value as int, .None => 90 };
-    let exhausted = match counter.Next() { .Some(value) => value as int, .None => 5 };
+    let first = match counter.Advance() { .Some(value) => value as int, .None => 90 };
+    let second = match counter.Advance() { .Some(value) => value as int, .None => 90 };
+    let third = match counter.Advance() { .Some(value) => value as int, .None => 90 };
+    let exhausted = match counter.Advance() { .Some(value) => value as int, .None => 5 };
     Assert(first == 0, "Expected the first call to yield 0");
     Assert(second == 1, "Expected the second call to yield 1");
     Assert(third == 2, "Expected the third call to yield 2");
@@ -75,15 +75,15 @@ func Main() -> int {
 
     // A returned value bound to a local first is the same shape as one matched straight away.
     var bound = Counter { value: 7i32, limit: 9i32 };
-    let held = bound.Next();
+    let held = bound.Advance();
     Assert((match held { .Some(value) => value as int, .None => 0 }) == 7,
            "Expected a bound result to match the shape it was returned in");
 
     // A wider payload, matched repeatedly through its own method.
     var pairs = Pairs { index: 0i32 };
-    let zero = match pairs.Next() { .Some(value) => value, .None => -1i64 };
-    let hundred = match pairs.Next() { .Some(value) => value, .None => -1i64 };
-    let drained = match pairs.Next() { .Some(value) => value, .None => -1i64 };
+    let zero = match pairs.Advance() { .Some(value) => value, .None => -1i64 };
+    let hundred = match pairs.Advance() { .Some(value) => value, .None => -1i64 };
+    let drained = match pairs.Advance() { .Some(value) => value, .None => -1i64 };
     Assert(zero == 0i64 && hundred == 100i64 && drained == -1i64,
            "Expected an int64 payload to survive being returned and matched");
 

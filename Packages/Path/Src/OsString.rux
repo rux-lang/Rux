@@ -1,10 +1,8 @@
 // Text as the operating system stores it, kept lossless.
-//
 // A filename is not text. On the Unix systems it is bytes with two exclusions — no slash, no NUL — and nothing
 // obliges those bytes to be UTF-8. On Windows it is UTF-16 code units, and nothing obliges them to pair: names
 // with unpaired surrogates exist on real disks. A path type built on `String` would refuse those names, and a
 // program that cannot open a file because of its name is wrong in the way that loses data.
-//
 // So the native string stores exactly what the system does — bytes there, code units here — behind one alias,
 // and the conversions are asymmetric on purpose: UTF-8 in always succeeds, since valid text encodes into either
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
@@ -15,22 +13,18 @@ import Memory::Copy;
 import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
 
 when #target.os == .Windows {
-    /// The unit a native string is made of: a UTF-16 code unit on Windows.
-    ///
-    /// @see https://rux-lang.dev/docs/api/path/os-unit
+    /// The unit a native string is made of: a UTF-16 code unit on Windows, and a byte on the Unix systems.
+    /// @see https://rux-lang.dev/docs/api/path/os-string#os-unit
     pub type OsUnit = uint16;
 }
 else {
-    /// The unit a native string is made of: a byte on the Unix systems.
-    ///
-    /// @see https://rux-lang.dev/docs/api/path/os-unit
+    /// The unit a native string is made of: a UTF-16 code unit on Windows, and a byte on the Unix systems.
+    /// @see https://rux-lang.dev/docs/api/path/os-string#os-unit
     pub type OsUnit = char8;
 }
 
 /// A borrowed run of native units.
-///
 /// `Copy`, owning nothing. The units it names must outlive it.
-///
 /// @see https://rux-lang.dev/docs/api/path/os-string-view
 pub struct OsStringView {
     /// The units, exactly as the system holds them.
@@ -39,54 +33,47 @@ pub struct OsStringView {
 
 extend OsStringView {
     /// A view over nothing.
-    ///
     /// @returns an empty view
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/new
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#new
     pub func OsStringView() -> OsStringView {
         return OsStringView { units: [] };
     }
 
     /// A view over `units` as they stand: no validation, because there is nothing to validate against.
-    ///
     /// @param units the borrowed units to view
     /// @returns a view over those units, which it does not copy
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/from-units
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#from-units
     pub func FromUnits(units: OsUnit[..]) -> OsStringView {
         return OsStringView { units: units };
     }
 
     /// How many native units the view spans — bytes or code units, not characters.
-    ///
     /// @returns how many units the value holds
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/length
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#length
     pub func Length(self: &OsStringView) -> uint {
         return self.units.length;
     }
 
     /// Whether the view spans nothing.
-    ///
     /// @returns whether it holds no units at all
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/is-empty
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#is-empty
     pub func IsEmpty(self: &OsStringView) -> bool {
         return self.units.length == 0;
     }
 
     /// The units themselves.
-    ///
     /// @returns the units, borrowed
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/units
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#units
     pub func Units(self: &OsStringView) -> OsUnit[..] {
         return self.units;
     }
 
     /// Whether two views hold the same units.
-    ///
     /// Unit equality and nothing smarter: no case folding, no normalization. Two names the filesystem treats as
     /// one are still two names here, because which names those are is the filesystem's opinion, not the string's.
-    ///
     /// @param other the value to compare against
     /// @returns whether both hold the same units in the same order
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/equals
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#equals
     pub func Equals(self: &OsStringView, other: &OsStringView) -> bool {
         if self.units.length != other.units.length { return false; }
         var index: uint = 0;
@@ -96,12 +83,54 @@ extend OsStringView {
         }
         return true;
     }
+
+    /// This native text as UTF-8, or nothing where it is not text.
+    /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
+    /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. It fails with
+    /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
+    /// program that must show it anyway shows it lossily by its own policy, knowingly.
+    /// @param allocator where the storage comes from
+    /// @returns the units converted to text, or a failure when they are not valid in it
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#to-text
+    pub func ToText(self: &OsStringView, allocator: Allocator) -> String ! TextError {
+        when #target.os == .Windows {
+            // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
+            // checked builder so the promise chain stays intact.
+            let units = self.units;
+            var needed: uint = 0;
+            var index: uint = 0;
+            while index < units.length {
+                var scalar: uint32 = 0;
+                var width: uint = 0;
+                if !DecodeUnit(units, index, @scalar, @width) {
+                    fail TextError::InvalidUtf8;
+                }
+                needed = needed + Utf8Width(scalar);
+                index = index + width;
+            }
+
+            var builder = StringBuilder::WithCapacity(allocator, needed)?;
+            index = 0;
+            while index < units.length {
+                var scalar: uint32 = 0;
+                var width: uint = 0;
+                if !DecodeUnit(units, index, @scalar, @width) {
+                    fail TextError::InvalidUtf8;
+                }
+                builder.AppendScalar(scalar as char32)?;
+                index = index + width;
+            }
+            return builder.IntoString();
+        }
+        else {
+            // Bytes: the check is the conversion.
+            return String::FromBytes(allocator, self.units);
+        }
+    }
 }
 
 /// Native text that owns its units.
-///
 /// Copyable with value semantics: each copy owns an independent native-unit block.
-///
 /// @see https://rux-lang.dev/docs/api/path/os-string
 pub struct OsString {
     /// The units, or null for no length.
@@ -114,9 +143,8 @@ pub struct OsString {
 
 extend OsString {
     /// Deep-copies native units into independent storage from the same allocator.
-    ///
     /// @param other the value to compare against
-    /// @see https://rux-lang.dev/docs/api/path/os-string/copy
+    /// @see https://rux-lang.dev/docs/api/path/os-string#copy
     pub func =(self: &var OsString, other: &OsString) {
         self.data = null;
         self.length = other.length;
@@ -131,23 +159,20 @@ extend OsString {
     }
 
     /// Native text of no length, which has allocated nothing.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty owned string that has taken no storage yet
-    /// @see https://rux-lang.dev/docs/api/path/os-string/new
+    /// @see https://rux-lang.dev/docs/api/path/os-string#new
     pub func OsString(allocator: Allocator) -> OsString {
         return OsString { data: null, length: 0, allocator: allocator };
     }
 
     /// An owning copy of what `view` spans, exactly as it stands.
-    ///
     /// This is the lossless direction: whatever the system handed over survives, valid text or not. It fails with
     /// `OutOfMemory` when the copy cannot be made.
-    ///
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to copy
     /// @returns a copy of `view` this string owns, or an empty one when the allocator refused
-    /// @see https://rux-lang.dev/docs/api/path/os-string/from-view
+    /// @see https://rux-lang.dev/docs/api/path/os-string#from-view
     pub func FromView(allocator: Allocator, view: OsStringView) -> OsString ! TextError {
         let units = view.Units();
         if units.length == 0 { return OsString(allocator); }
@@ -169,32 +194,28 @@ extend OsString {
     }
 
     /// How many native units the text holds.
-    ///
     /// @returns how many units the value holds
-    /// @see https://rux-lang.dev/docs/api/path/os-string/length
+    /// @see https://rux-lang.dev/docs/api/path/os-string#length
     pub func Length(self: &OsString) -> uint {
         return self.length;
     }
 
     /// Whether the text holds nothing.
-    ///
     /// @returns whether it holds no units at all
-    /// @see https://rux-lang.dev/docs/api/path/os-string/is-empty
+    /// @see https://rux-lang.dev/docs/api/path/os-string#is-empty
     pub func IsEmpty(self: &OsString) -> bool {
         return self.length == 0;
     }
 
     /// A view over this text, which is what everything read-only takes.
-    ///
     /// @returns a borrowed view of the owned units
-    /// @see https://rux-lang.dev/docs/api/path/os-string/view
+    /// @see https://rux-lang.dev/docs/api/path/os-string#view
     pub func View(self: &OsString) -> OsStringView {
         return OsStringView { units: (self.data)[..self.length] };
     }
 
     /// Gives the block back and leaves text of no length.
-    ///
-    /// @see https://rux-lang.dev/docs/api/path/os-string/clear
+    /// @see https://rux-lang.dev/docs/api/path/os-string#clear
     pub func Clear(self: &var OsString) {
         if self.data != null {
             let bytes = self.length * (sizeof(OsUnit) as uint);
@@ -205,31 +226,21 @@ extend OsString {
         self.data = null;
         self.length = 0;
     }
-}
 
-extend OsString {
     /// Gives the block back.
-    ///
-    /// @see https://rux-lang.dev/docs/api/path/os-string/destructor
+    /// @see https://rux-lang.dev/docs/api/path/os-string#destructor
     func ~OsString(self: &var OsString) {
         self.Clear();
     }
-}
 
-extend OsString {
     /// An owning native copy of UTF-8 text.
-    ///
     /// The direction that always succeeds: valid text encodes into either representation, byte for byte on the
     /// Unix systems and through UTF-16 on Windows. It fails only when the allocation does.
-    ///
-    /// # Safety
-    ///
     /// The bytes must be well-formed UTF-8, which everything in `Rux/Text` produces and vouches for.
-    ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
     /// @returns the text converted to the platform's own units, or why it could not be
-    /// @see https://rux-lang.dev/docs/api/path/os-string/from-text
+    /// @see https://rux-lang.dev/docs/api/path/os-string#from-text
     pub func FromText(allocator: Allocator, text: char8[..]) -> OsString ! TextError {
         when #target.os == .Windows {
             // Two passes: count the units, then fill them. A scalar below U+10000 is one unit and anything above
@@ -254,7 +265,7 @@ extend OsString {
             }
 
             if needed == 0 { return OsString(allocator); }
-            let bytes = needed * 2u;
+            let bytes = needed * 2;
             let layout = Layout::New(bytes, 2);
             var borrowed = allocator;
             let block = borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {
@@ -296,54 +307,6 @@ extend OsString {
         else {
             // Bytes are bytes: the copy is the conversion.
             return OsString::FromView(allocator, OsStringView { units: text });
-        }
-    }
-}
-
-extend OsStringView {
-    /// This native text as UTF-8, or nothing where it is not text.
-    ///
-    /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
-    /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. It fails with
-    /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
-    /// program that must show it anyway shows it lossily by its own policy, knowingly.
-    ///
-    /// @param allocator where the storage comes from
-    /// @returns the units converted to text, or a failure when they are not valid in it
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/to-text
-    pub func ToText(self: &OsStringView, allocator: Allocator) -> String ! TextError {
-        when #target.os == .Windows {
-            // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
-            // checked builder so the promise chain stays intact.
-            let units = self.units;
-            var needed: uint = 0;
-            var index: uint = 0;
-            while index < units.length {
-                var scalar: uint32 = 0;
-                var width: uint = 0;
-                if !DecodeUnit(units, index, @scalar, @width) {
-                    fail TextError::InvalidUtf8;
-                }
-                needed = needed + Utf8Width(scalar);
-                index = index + width;
-            }
-
-            var builder = StringBuilder::WithCapacity(allocator, needed)?;
-            index = 0;
-            while index < units.length {
-                var scalar: uint32 = 0;
-                var width: uint = 0;
-                if !DecodeUnit(units, index, @scalar, @width) {
-                    fail TextError::InvalidUtf8;
-                }
-                builder.AppendScalar(scalar as char32)?;
-                index = index + width;
-            }
-            return builder.IntoString();
-        }
-        else {
-            // Bytes: the check is the conversion.
-            return String::FromBytes(allocator, self.units);
         }
     }
 }

@@ -23,7 +23,7 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
         // Resolving the receiver is what records its type for lowering, so it happens either way; `self` written as a
         // type, which is how an interface names a receiver it has no concrete type for, keeps the enclosing meaning.
         const TypeRef declared = ResolveType(*receiver->type);
-        if (!dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+        if (!AstCast<const SelfTypeExpr>(receiver->type.get())) {
             currentSelfType = declared;
             CheckReceiverType(declaration, *receiver, declared);
         }
@@ -32,6 +32,7 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
     ValidateIteratorConvention(declaration, isMethod);
     ValidateCheckedArithmeticIntrinsic(declaration);
     ValidateZeroizeIntrinsic(declaration);
+    ValidateIntrinsicFunction(declaration);
 
     if (isMethod) {
         Symbol self;
@@ -40,6 +41,7 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
         self.location = receiver ? receiver->location : declaration.location;
         self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         self.isMut = false;
+        self.isParameter = true;
         DefineTrackedLocal(std::move(self), true);
     }
     return savedSelfType;
@@ -54,11 +56,11 @@ void AnalysisContext::CheckReceiverType(const FuncDecl &declaration, const Param
     if (!currentImpl || declared.IsUnknown() || currentExtendedType.IsUnknown()) {
         return;
     }
-    const bool isIndirect = (declared.kind == TypeRef::Kind::Pointer || declared.kind == TypeRef::Kind::Reference) &&
-                            !declared.inner.empty();
+    const bool isIndirect = (declared->kind == TypeRef::Kind::Pointer || declared->kind == TypeRef::Kind::Reference) &&
+                            !declared->inner.empty();
     // A slice is a fat pointer whose ABI passes it by address, so it reaches a method the way a pointer receiver does.
     const bool isReference = isIndirect || declared.IsSlice();
-    if (const TypeRef &base = isIndirect ? declared.inner.front() : declared;
+    if (const TypeRef &base = isIndirect ? declared->inner.front() : declared;
         !base.IsUnknown() && base != currentExtendedType) {
         EmitError(receiver.location,
                   std::format("receiver type '{}' does not name the extended type '{}'", declared.ToString(),
@@ -105,7 +107,7 @@ std::optional<TypeRef> AnalysisContext::ResolveMethodReceiverType(const TypeRef 
         return std::nullopt;
     }
     const TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+    currentSelfType = receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
     TypeRef declared = ResolveTypeWithSubstitution(*receiver->type, MethodTypeSubstitutions(receiverType));
@@ -123,22 +125,27 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
     if (!declared) {
         return true;
     }
-    if (declared->kind == TypeRef::Kind::Reference && receiverType.kind == TypeRef::Kind::Pointer) {
+    if ((*declared)->kind == TypeRef::Kind::Reference && receiverType->kind == TypeRef::Kind::Pointer) {
+        // Dereferencing the pointer is the explicit step that vouches for it, after which the pointee is borrowed
+        // like any place; the help writes that step out with the receiver as it was spelled, when it is a name.
+        const auto *named = AstCast<const IdentExpr>(&receiver);
+        const std::string pointer = named ? named->name : "pointer";
         EmitError(call.location,
-                  std::format("cannot create safe receiver '{}' from raw pointer '{}'", declared->ToString(),
-                              receiverType.ToString()),
-                  {"raw pointers do not prove a valid non-null borrow"}, "call the method on an owning value");
+                  std::format("cannot call method '{}', whose receiver is '{}', through raw pointer '{}'", method.name,
+                              declared->DisplayString(), receiverType.DisplayString()),
+                  {"a raw pointer does not prove a valid, non-null borrow, so it is not borrowed implicitly"},
+                  std::format("dereference it where it is known to be valid: '(*{}).{}(...)'", pointer, method.name));
         return false;
     }
-    if (declared->kind == TypeRef::Kind::Pointer && receiverType.kind == TypeRef::Kind::Reference) {
+    if ((*declared)->kind == TypeRef::Kind::Pointer && receiverType->kind == TypeRef::Kind::Reference) {
         EmitError(call.location,
                   std::format("cannot pass reference '{}' to raw-pointer receiver '{}' implicitly",
                               receiverType.ToString(), declared->ToString()),
                   {"crossing into a raw-pointer API must be explicit"});
         return false;
     }
-    if (receiverType.kind == TypeRef::Kind::Reference && declared->kind != TypeRef::Kind::Reference &&
-        declared->kind != TypeRef::Kind::Pointer && !declared->IsSlice()) {
+    if (receiverType->kind == TypeRef::Kind::Reference && (*declared)->kind != TypeRef::Kind::Reference &&
+        (*declared)->kind != TypeRef::Kind::Pointer && !declared->IsSlice()) {
         EmitError(call.location,
                   std::format("cannot pass value behind reference '{}' to by-value receiver of '{}'",
                               receiverType.ToString(), method.name),
@@ -147,22 +154,29 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
         return false;
     }
     const bool requiresWrite =
-        (declared->kind == TypeRef::Kind::Pointer || declared->kind == TypeRef::Kind::Reference) &&
-        !declared->inner.empty() && declared->inner.front().isMut;
+        ((*declared)->kind == TypeRef::Kind::Pointer || (*declared)->kind == TypeRef::Kind::Reference) &&
+        !(*declared)->inner.empty() && (*declared)->inner.front().isMut;
     if (!requiresWrite) {
         return true;
     }
-    if (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) {
-        if (!receiverType.inner.empty() && !receiverType.inner.front().isMut) {
-            const bool isReferenceType = receiverType.kind == TypeRef::Kind::Reference;
+    return CheckWritableReceiver(call, receiver, receiverType, method.name, declared->ToString());
+}
+
+bool AnalysisContext::CheckWritableReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
+                                            const std::string &methodName, const std::string &declared) {
+    if (receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference) {
+        if (!receiverType->inner.empty() && !receiverType->inner.front().isMut) {
+            const bool isReferenceType = receiverType->kind == TypeRef::Kind::Reference;
+            TypeRef writable = receiverType;
+            writable = writable.WithWritableInner(true);
             EmitError(
                 call.location,
-                isReferenceType ? std::format("cannot call '{}' through immutable reference '{}'", method.name,
+                isReferenceType ? std::format("cannot call '{}' through immutable reference '{}'", methodName,
                                               receiverType.ToString())
-                                : std::format("cannot call '{}' through read-only pointer '{}'", method.name,
+                                : std::format("cannot call '{}' through read-only pointer '{}'", methodName,
                                               receiverType.ToString()),
-                {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
-                std::format("declare the {} as '{}'", isReferenceType ? "reference" : "pointer", declared->ToString()));
+                {std::format("'{}' declares a writable receiver '{}'", methodName, declared)},
+                std::format("declare the {} as '{}'", isReferenceType ? "reference" : "pointer", writable.ToString()));
             return false;
         }
         return true;
@@ -170,13 +184,70 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
     if (!PlaceIsImmutable(receiver)) {
         return true;
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(&receiver);
+    const auto *identifier = AstCast<const IdentExpr>(&receiver);
+    const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
     EmitError(call.location,
-              identifier ? std::format("cannot call '{}' on immutable '{}'", method.name, identifier->name)
-                         : std::format("cannot call '{}' on an immutable receiver", method.name),
-              {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
-              identifier ? std::format("declare '{}' with 'var' to make it mutable", identifier->name)
-                         : std::optional<std::string>{});
+              identifier ? std::format("cannot call '{}' on immutable '{}'", methodName, identifier->name)
+                         : std::format("cannot call '{}' on an immutable receiver", methodName),
+              {std::format("'{}' declares a writable receiver '{}'", methodName, declared)},
+              binding ? ImmutableBindingHelp(*binding) : std::optional<std::string>{});
     return false;
+}
+
+/// An interface value is borrowed or held whole, and its requirement decides what the call may do with it: one that
+/// declares `self: &var Self` writes the implementing value, so the view or storage it is called through has to be
+/// writable, exactly as for a concrete receiver.
+bool AnalysisContext::CheckRequirementReceiverMutability(const CallExpr &call, const Expr &receiver,
+                                                         const TypeRef &receiverType, const FuncDecl &requirement) {
+    if (!RequirementWritesReceiver(requirement)) {
+        return true;
+    }
+    return CheckWritableReceiver(call, receiver, receiverType, requirement.name, "&var Self");
+}
+
+/// A requirement is called through an interface view whose data half points at the implementing value, so its
+/// receiver can only be a borrow of that value: `&Self` to read it or `&var Self` to write it.
+void AnalysisContext::ValidateRequirementReceiver(const FuncDecl &requirement, const std::string &interfaceName) {
+    const Param *receiver = requirement.Receiver();
+    if (!receiver || !receiver->type || AstCast<const SelfTypeExpr>(receiver->type.get())) {
+        return;
+    }
+    // A legacy pointer receiver, and `self` written as the type, still name the implementing value during migration.
+    const TypeExpr *pointee = nullptr;
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(receiver->type.get())) {
+        pointee = reference->pointee.get();
+    }
+    else if (const auto *pointer = AstCast<const PointerTypeExpr>(receiver->type.get())) {
+        pointee = pointer->pointee.get();
+    }
+    const auto *named = AstCast<const NamedTypeExpr>(pointee);
+    if (AstCast<const SelfTypeExpr>(pointee) || (named && named->name == SelfTypeName && named->typeArgs.empty())) {
+        return;
+    }
+    EmitError(receiver->location,
+              std::format("receiver of requirement '{}' in interface '{}' must be '&Self' or '&var Self'",
+                          requirement.name, interfaceName),
+              {"a requirement reaches the implementing value through the data half of an interface view"},
+              std::format("write 'self: &var Self' if '{}' writes through its receiver, or 'self: &Self' if it only "
+                          "reads it",
+                          requirement.name));
+}
+
+/// An implementation may read through a receiver its requirement lets it write, but not the reverse: a requirement
+/// without a receiver, or with `self: &Self`, is callable through a read-only view, so a writable implementation would
+/// modify storage the caller only lent for reading.
+void AnalysisContext::CheckImplementationReceiver(const FuncDecl &implementation, const FuncDecl &requirement,
+                                                  const std::string &interfaceName, const std::string &typeName) {
+    if (!DeclaresWritableReceiver(implementation) || RequirementWritesReceiver(requirement)) {
+        return;
+    }
+    const Param *receiver = implementation.Receiver();
+    EmitError(receiver->location,
+              std::format("method '{}' of '{}' writes through its receiver, but requirement '{}' of interface '{}' "
+                          "only reads it",
+                          implementation.name, typeName, requirement.name, interfaceName),
+              {"a requirement without a receiver, or with 'self: &Self', is callable through a read-only view"},
+              std::format("declare 'self: &var Self' on requirement '{}' in interface '{}', or take 'self: &{}'",
+                          requirement.name, interfaceName, typeName));
 }
 } // namespace Rux::SemanticDetail

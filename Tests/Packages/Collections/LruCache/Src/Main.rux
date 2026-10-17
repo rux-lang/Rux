@@ -1,0 +1,48 @@
+import Allocator::SystemAllocator;
+import Collections::{ EqualsInt32, HashInt32, LruCache };
+import Core::Assert;
+
+// A full cache evicts the entry used least recently, where a lookup and a put both count as a use and a peek does
+// not; removing an entry keeps the rest in order; and a cache of one keeps only the latest.
+
+func Order(cache: &LruCache<int32, int32>, expected: int32[..]) -> bool {
+    var keys: int32[8] = [0; 8];
+    let count = cache.KeysByRecency(keys[..]);
+    if count != expected.length { return false; }
+    var index: uint = 0;
+    while index < count {
+        if keys[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Main() -> int {
+    var cache = LruCache<int32, int32>(SystemAllocator(), 3, HashInt32, EqualsInt32);
+    Assert(cache.Capacity() == 3u && cache.Length() == 0u && cache.Get(1) == none, "an empty cache");
+    Assert((cache.Put(1, 10) catch { else => 99 }) == none, "room for the first");
+    cache.Put(2, 20) catch { else => return 1 };
+    cache.Put(3, 30) catch { else => return 2 };
+    Assert(Order(cache, [3i32, 2, 1]) && cache.Length() == 3u, "newest first");
+
+    Assert((cache.Get(1) ?? 0) == 10 && Order(cache, [1i32, 3, 2]), "a lookup makes an entry the newest");
+    Assert((cache.Peek(2) ?? 0) == 20 && Order(cache, [1i32, 3, 2]), "a peek does not");
+    let evicted = cache.Put(4, 40) catch { else => return 3 };
+    Assert((evicted ?? 0) == 2 && !cache.Contains(2) && Order(cache, [4i32, 1, 3]), "the least recently used goes");
+    Assert((cache.Put(3, 33) catch { else => 99 }) == none && (cache.Peek(3) ?? 0) == 33 && Order(cache, [3i32, 4, 1]),
+           "putting an existing key replaces its value and uses it");
+
+    Assert((cache.Remove(4) ?? 0) == 40 && cache.Length() == 2u && Order(cache, [3i32, 1]), "removing keeps the order");
+    Assert(cache.Remove(4) == none, "a missing key removes nothing");
+    cache.Put(5, 50) catch { else => return 4 };
+    cache.Put(6, 60) catch { else => return 5 };
+    Assert(Order(cache, [6i32, 5, 3]) && !cache.Contains(1) && (cache.Get(3) ?? 0) == 33, "evicts after a removal");
+    cache.Clear();
+    Assert(cache.Length() == 0u && cache.Get(6) == none, "clearing forgets everything");
+
+    var one = LruCache<int32, int32>(SystemAllocator(), 0, HashInt32, EqualsInt32);
+    one.Put(1, 1) catch { else => return 6 };
+    Assert(one.Capacity() == 1u && (one.Put(2, 2) catch { else => none } ?? 0) == 1 && Order(one, [2i32]),
+           "a cache of one keeps only the latest");
+    return 0;
+}

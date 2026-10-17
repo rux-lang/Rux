@@ -14,6 +14,7 @@ set(RUX_TEST_SOURCES
     AArch64CallLayoutTests.cpp
     AArch64EncoderTests.cpp
     AArch64FramePlanTests.cpp
+    AArch64MachineSelectionTests.cpp
     AArch64NativeCallTests.cpp
     AArch64ObjectTests.cpp
     AArch64RelocationTests.cpp
@@ -30,7 +31,10 @@ set(RUX_TEST_SOURCES
     AArch64RcuVariadicAbiTests.cpp
     AArch64SoftwareFloatTests.cpp
     AArch64WideIntegerTests.cpp
+    AArch64WideScalarTests.cpp
     AllocationMathTests.cpp
+    AllocatorTests.cpp
+    AtomicIntrinsicTests.cpp
     ArtifactTests.cpp
     BackendDiagnosticTests.cpp
     AsmParserTests.cpp
@@ -40,16 +44,26 @@ set(RUX_TEST_SOURCES
     BuildPlanTests.cpp
     BuildReportTests.cpp
     CheckedLirBuilderTests.cpp
+    CodegenFrameSlotSharingTests.cpp
     CodegenTests.cpp
+    CodegenConstantDataTests.cpp
+    CodegenMachineAllocatorTests.cpp
+    CodegenModuleVariableTests.cpp
+    X86_64MachineSelectionTests.cpp
+    ThreadLocalTests.cpp
+    TestAttributeTests.cpp
+    TestEntryTests.cpp
     ChecksumTests.cpp
     CliContractTests.cpp
     CliProcessTests.cpp
     CliPackageProcessTests.cpp
     CliBuildProcessTests.cpp
     CliScaffoldProcessTests.cpp
+    CliWorkspaceProcessTests.cpp
     CommentSystemAcceptanceTests.cpp
     CmdInspectProcessTests.cpp
     CoalescingLoweringTests.cpp
+    CompilerDriverCacheTests.cpp
     CompilerDriverTests.cpp
     CompilerDriverTargetTests.cpp
     CompilerPipelineDiagnosticTests.cpp
@@ -58,9 +72,11 @@ set(RUX_TEST_SOURCES
     ConditionalEvaluationTests.cpp
     ConditionalFoldingTests.cpp
     CredentialsTests.cpp
+    DestructuringLoweringTests.cpp
     DiagnosticsTests.cpp
     DocumentationAttachmentTests.cpp
     DocumentationCommentTests.cpp
+    DocumentationJsonTests.cpp
     DocumentationLintTests.cpp
     DocumentationRenderingTests.cpp
     DocumentationTagTests.cpp
@@ -74,7 +90,6 @@ set(RUX_TEST_SOURCES
     IterationLoweringTests.cpp
     JsonTests.cpp
     LanguageTestMatrixTests.cpp
-    LegacyProtocolAuditTests.cpp
     LayoutTests.cpp
     LexerTests.cpp
     LinearScanTests.cpp
@@ -101,12 +116,14 @@ set(RUX_TEST_SOURCES
     NativeReturnFailTests.cpp
     NativeStorageLoweringTests.cpp
     NativeTypeIdentityTests.cpp
+    TypeInterningTests.cpp
     NativeTypeResolutionTests.cpp
     NativeTypeSpellingTests.cpp
     NativeTypeSyntaxTests.cpp
     PrimitiveCatalogTests.cpp
     ReferenceTypeTests.cpp
     WideIntegerTests.cpp
+    LinkerGarbageCollectionTests.cpp
     LinkerTests.cpp
     RcuLinkGraphTests.cpp
     RcuObjectLayoutTests.cpp
@@ -119,11 +136,25 @@ set(RUX_TEST_SOURCES
     MoveConsumptionTests.cpp
     MoveLifecycleTests.cpp
     MoveCleanupTests.cpp
+    OptimizerParallelTests.cpp
     OptimizerRegressionTests.cpp
     OperandWideningLoweringTests.cpp
+    SoftFloatLoweringTests.cpp
+    SoftFloatArithmeticLoweringTests.cpp
+    SoftFloatConversionLoweringTests.cpp
+    SoftFloatDivisionLoweringTests.cpp
+    SoftFloatMultiplyLoweringTests.cpp
+    SoftFloatLoweringTestSupport.cpp
+    WideBoolLoweringTests.cpp
+    VariadicWideningLoweringTests.cpp
     OptimizerTests.cpp
     LirOptimizationTests.cpp
+    LirOptimizationMemoryTests.cpp
+    LirOptimizationInliningTests.cpp
+    LirOptimizationScalarTests.cpp
+    LirOptimizationAnalysisTests.cpp
     LirReachabilityTests.cpp
+    LirRegsTests.cpp
     OsTests.cpp
     PackageCacheTests.cpp
     PackageDependencyGraphTests.cpp
@@ -145,7 +176,9 @@ set(RUX_TEST_SOURCES
     ReporterTests.cpp
     ReportingTests.cpp
     RcuModuleBuilderTests.cpp
+    ModuleCacheTests.cpp
     RcuTests.cpp
+    RuntimeCheckLoweringTests.cpp
     RuntimeFailureTests.cpp
     SemanticCoalescingDiagnosticsTests.cpp
     RegistryTests.cpp
@@ -156,6 +189,7 @@ set(RUX_TEST_SOURCES
     SemanticGenericInstantiationTests.cpp
     SemanticIterationDiagnosticsTests.cpp
     SemanticNameDiagnosticsTests.cpp
+    SemanticModuleVariableTests.cpp
     SemanticOperatorAssignmentDiagnosticsTests.cpp
     SemanticTypeCallDiagnosticsTests.cpp
     SemanticSliceTypeTests.cpp
@@ -172,12 +206,15 @@ set(RUX_TEST_SOURCES
     SourceTextLexerTests.cpp
     StringCodeGenTests.cpp
     StringLoweringTests.cpp
+    TypeLayoutAgreementTests.cpp
     UserMessageProcessTests.cpp
     UtfTests.cpp
     VariantEqualityTests.cpp
     VariantDropGlueTests.cpp
     VariantRepresentationTests.cpp
     ZeroizationTests.cpp
+    X86_64AssemblyConsistencyTests.cpp
+    X86_64ScalarMachineTests.cpp
     X86_64AssemblyControlFlowPrinterTests.cpp
     X86_64AssemblyInstructionPrinterTests.cpp
     X86_64AssemblyModulePrinterTests.cpp
@@ -185,6 +222,8 @@ set(RUX_TEST_SOURCES
     X86_64NativeCallTests.cpp
     X86_64WideIntegerTests.cpp
     X86_64SoftwareFloatTests.cpp
+    X86_64WideScalarTests.cpp
+    X86_64X87Tests.cpp
 )
 
 if (TARGET RuxFormatter)
@@ -193,7 +232,7 @@ endif ()
 if (TARGET RuxLinter)
     list(APPEND RUX_TEST_SOURCES LinterTests.cpp)
 endif ()
-add_executable(rux-tests ${RUX_TEST_SOURCES})
+add_executable(rux-tests ${RUX_TEST_SOURCES} ${RUX_ALLOCATOR_NEW_SOURCE})
 add_dependencies(rux-tests rux)
 
 # Keep the unit-test executable with the other repository binaries. Explicit

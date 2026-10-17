@@ -1,0 +1,87 @@
+// Sleeping until a word in memory changes, and waking the threads that sleep on one: the one primitive every type in
+// this package is built from.
+// Each system checks the word in the kernel as it puts the thread to sleep, so a change that lands between a caller's
+// last look and its sleep ends the sleep at once rather than being missed. A sleep may also end for no reason the
+// caller can see, so every caller looks at the word again and decides whether to sleep once more.
+
+import Core::{ #Error, #target };
+
+when #target.os {
+    .Linux => import Linux::{ ETIMEDOUT, FutexWait, FutexWake, Timespec },
+    .FreeBSD => import FreeBSD::{ ETIMEDOUT, Timespec, UmtxWait, UmtxWake },
+    .macOS => import macOS::{ ETIMEDOUT, UL_COMPARE_AND_WAIT, ULF_NO_ERRNO, ULF_WAKE_ALL, __ulock_wait, __ulock_wake },
+    .Windows => import Windows::{ INFINITE, WaitOnAddress, WakeByAddressAll, WakeByAddressSingle },
+    else => #Error("Unsupported operating system")
+}
+
+// Sleeps while `*word` holds `expected`, for at most `nanoseconds`, or without a limit when that is negative. Returns
+// false only when the time ran out; a wake, a change or a spurious return all give true.
+func WaitWhile(word: *var uint32, expected: uint32, nanoseconds: int64) -> bool {
+    when #target.os == .Windows {
+        var milliseconds: uint32 = INFINITE;
+        if nanoseconds >= 0 {
+            let rounded = (nanoseconds + 999999) / 1000000;
+            milliseconds = rounded >= 0xFFFFFFFE as int64 ? 0xFFFFFFFEu32 : rounded as uint32;
+        }
+        var seen = expected;
+        let woken = WaitOnAddress(word as *opaque, (@seen) as *opaque, 4u64, milliseconds);
+        return woken != 0 || nanoseconds < 0;
+    }
+    else when #target.os == .macOS {
+        var microseconds: uint32 = 0;
+        if nanoseconds >= 0 {
+            let rounded = (nanoseconds + 999) / 1000;
+            microseconds = rounded < 1 ? 1u32 : (rounded >= 0xFFFFFFFF as int64 ? 0xFFFFFFFFu32 : rounded as uint32);
+        }
+        let result = __ulock_wait(UL_COMPARE_AND_WAIT | ULF_NO_ERRNO, word as *opaque, expected as uint64,
+                                  microseconds);
+        return result as int64 != -ETIMEDOUT;
+    }
+    else {
+        var limit = Timespec { seconds: 0, nanoseconds: 0 };
+        var timeout: *Timespec = null;
+        if nanoseconds >= 0 {
+            limit.seconds = nanoseconds / 1000000000;
+            limit.nanoseconds = nanoseconds % 1000000000;
+            timeout = @limit;
+        }
+        when #target.os == .Linux {
+            return FutexWait(word, expected, timeout) != -ETIMEDOUT;
+        }
+        else {
+            return UmtxWait(word, expected, timeout) != -ETIMEDOUT;
+        }
+    }
+}
+
+// Wakes one thread sleeping on `word`, if any.
+func WakeOne(word: *var uint32) {
+    when #target.os == .Windows {
+        WakeByAddressSingle(word as *opaque);
+    }
+    else when #target.os == .macOS {
+        __ulock_wake(UL_COMPARE_AND_WAIT | ULF_NO_ERRNO, word as *opaque, 0);
+    }
+    else when #target.os == .Linux {
+        FutexWake(word, 1);
+    }
+    else {
+        UmtxWake(word, 1);
+    }
+}
+
+// Wakes every thread sleeping on `word`.
+func WakeAll(word: *var uint32) {
+    when #target.os == .Windows {
+        WakeByAddressAll(word as *opaque);
+    }
+    else when #target.os == .macOS {
+        __ulock_wake(UL_COMPARE_AND_WAIT | ULF_WAKE_ALL | ULF_NO_ERRNO, word as *opaque, 0);
+    }
+    else when #target.os == .Linux {
+        FutexWake(word, 0x7FFFFFFF);
+    }
+    else {
+        UmtxWake(word, 0x7FFFFFFF);
+    }
+}

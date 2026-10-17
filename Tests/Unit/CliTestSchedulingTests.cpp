@@ -4,7 +4,7 @@
 
 using namespace Rux::Testing::CliProcessTestSupport;
 
-TEST_CASE("test rejects invalid worker counts and documents the serial default") {
+TEST_CASE("test rejects invalid worker counts and documents the one-per-core default") {
     for (const std::string_view value : {"0", "-1", "1x", "", "99999999999999999999999999"}) {
         const auto result = Run(std::array<std::string_view, 3>{"test", "--jobs", value});
         CHECK(result.exitCode != 0);
@@ -13,7 +13,7 @@ TEST_CASE("test rejects invalid worker counts and documents the serial default")
     CHECK(Run(std::array<std::string_view, 2>{"test", "--jobs"}).exitCode == 2);
     const auto help = Run(std::array<std::string_view, 2>{"test", "--help"});
     CHECK(help.output.contains("--jobs <N>"));
-    CHECK(help.output.contains("default: 1"));
+    CHECK(help.output.contains("one per logical core"));
 }
 
 TEST_CASE("parallel package tests match serial reports when artifacts collide and tests fail") {

@@ -123,6 +123,20 @@ inline constexpr CpuFeatures NEON{1ull << 16};
 inline constexpr CpuFeatures SVE{1ull << 17};
 } // namespace CpuFeature
 
+/// Minimum ISA promised by each supported output architecture. Compiler build flags and host detection describe
+/// the compiler process, not the machines on which an emitted portable executable may run.
+[[nodiscard]] constexpr CpuFeatures BaselineCpuFeatures(const Arch arch) noexcept {
+    switch (arch) {
+    case Arch::X86_64:
+        return CpuFeature::SSE2;
+    case Arch::AArch64:
+        return CpuFeature::NEON;
+    case Arch::Unknown:
+        return CpuFeature::None;
+    }
+    return CpuFeature::None;
+}
+
 struct RuntimeCpuInfo {
     CpuFeatures features;
     std::size_t cache_line_size{64};
@@ -294,8 +308,7 @@ inline constexpr CallingConv HostCC = HostABIDetails.cc;
 } // namespace Rux::Target
 
 namespace Rux {
-/// Fully resolved description of the machine code is being generated for. Created from the host today; a
-/// cross-compilation front end can populate it explicitly.
+/// Fully resolved output machine. Native and cross-target defaults both use the architecture's portable baseline.
 struct TargetContext {
     Target::OS os;
     Target::Arch arch;
@@ -317,7 +330,7 @@ struct TargetContext {
                              .endianness = Target::HostEndianness,
                              .object_format = Target::GetObjectFormat(Target::HostOS),
                              .pointer_size = Target::HostPointerSize,
-                             .cpu_features = Target::HostCpuFeatures};
+                             .cpu_features = Target::BaselineCpuFeatures(Target::HostArch)};
     }
 };
 } // namespace Rux

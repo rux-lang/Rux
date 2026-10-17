@@ -1,0 +1,18 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Spawn"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Process: starting children, pipes, captured output, environment changes and killing."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Path = { Path = "../../../../Packages/Path" }
+Process = { Path = "../../../../Packages/Process" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Process"

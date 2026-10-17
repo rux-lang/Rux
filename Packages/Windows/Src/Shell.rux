@@ -1,0 +1,18 @@
+// The Shell32 entry point this package binds: splitting a command line into arguments.
+// Windows hands a program its command line as one string and leaves splitting it to the program. Shell32's splitter
+// applies the rules the C runtime uses for `argv`, so a program that splits with it sees the arguments every other
+// Windows program would.
+
+#Link("Shell32.dll")
+pub extern {
+    /// Splits a command line into arguments the way the C runtime does.
+    /// Backslashes, quotes and spaces follow the C runtime's rules, and the first argument, the program, is read up to
+    /// the first space outside quotes. The result is one allocation holding the pointer array and every argument; it
+    /// stays valid until passed to `LocalFree`.
+    /// @param commandLine the NUL-terminated UTF-16 command line, usually from `GetCommandLineW`
+    /// @param count receives how many arguments the array holds
+    /// @returns the array of NUL-terminated UTF-16 arguments, or null on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process#command-line-to-argv-w
+    /// @see https://learn.microsoft.com/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw
+    func CommandLineToArgvW(commandLine: *uint16, count: *var int32) -> **uint16;
+}

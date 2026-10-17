@@ -15,6 +15,8 @@ namespace {
         return RcuMergedSection::Data;
     case RcuSecType::Bss:
         return RcuMergedSection::Bss;
+    case RcuSecType::Tls:
+        return RcuMergedSection::Tls;
     default:
         return std::nullopt;
     }
@@ -30,6 +32,8 @@ namespace {
         return RcuMergedSection::Data;
     case RCU_BSS_IDX:
         return RcuMergedSection::Bss;
+    case RCU_TLS_IDX:
+        return RcuMergedSection::Tls;
     default:
         return std::nullopt;
     }
@@ -62,24 +66,34 @@ RcuObjectLayout RcuObjectLayout::Build(const std::span<const RcuFile> inputObjec
     layout.data[Index(RcuMergedSection::Data)].assign(prefixes.data.begin(), prefixes.data.end());
     layout.objects.resize(inputObjects.size());
 
-    const std::array padding = {prefixes.textPadding, prefixes.rodataPadding, prefixes.dataPadding};
+    const auto mergedFor = [&](const RcuSection &section) {
+        // Relocated zero-fill storage needs initial file-backed bytes.
+        if (section.type == RcuSecType::Bss && (prefixes.materializeBss || !section.relocs.empty())) {
+            return std::optional{RcuMergedSection::Data};
+        }
+        return MergedSectionFor(section.type);
+    };
+    const std::array<std::uint8_t, 5> padding = {prefixes.textPadding, prefixes.rodataPadding, prefixes.dataPadding, 0,
+                                                 0};
     for (std::size_t objectIndex = 0; objectIndex < inputObjects.size(); ++objectIndex) {
         const RcuFile &object = inputObjects[objectIndex];
         auto &objectPlacement = layout.objects[objectIndex];
         objectPlacement.sections.resize(object.sections.size());
         objectPlacement.relocations.resize(object.sections.size());
 
-        std::array<std::uint16_t, 4> objectAlignments = {1, 1, 1, 1};
+        std::array<std::uint16_t, 5> objectAlignments = {1, 1, 1, 1, 1};
         for (const RcuSection &section : object.sections) {
-            if (const auto merged = MergedSectionFor(section.type)) {
+            if (const auto merged = mergedFor(section)) {
                 const auto index = Index(*merged);
                 objectAlignments[index] = std::max(objectAlignments[index], section.alignment);
                 layout.alignments[index] = std::max(layout.alignments[index], section.alignment);
             }
         }
 
-        std::array<std::uint64_t, 4> offsets = {};
-        for (std::size_t sectionIndex = 0; sectionIndex < 3; ++sectionIndex) {
+        std::array<std::uint64_t, 5> offsets = {};
+        for (const RcuMergedSection merged :
+             {RcuMergedSection::Text, RcuMergedSection::RoData, RcuMergedSection::Data, RcuMergedSection::Tls}) {
+            const auto sectionIndex = Index(merged);
             Pad(layout.data[sectionIndex], objectAlignments[sectionIndex], padding[sectionIndex]);
             offsets[sectionIndex] = layout.data[sectionIndex].size();
         }
@@ -88,9 +102,18 @@ RcuObjectLayout RcuObjectLayout::Build(const std::span<const RcuFile> inputObjec
 
         for (std::size_t sectionIndex = 0; sectionIndex < object.sections.size(); ++sectionIndex) {
             const RcuSection &section = object.sections[sectionIndex];
-            const auto merged = MergedSectionFor(section.type);
+            const auto merged = mergedFor(section);
             if (!merged) {
                 continue;
+            }
+            if (*merged != RcuMergedSection::Bss) {
+                Pad(layout.data[Index(*merged)], section.alignment, padding[Index(*merged)]);
+                offsets[Index(*merged)] = layout.data[Index(*merged)].size();
+            }
+            else {
+                // Every zero-fill section starts on its own alignment, not only the object's first one.
+                layout.bssSize = Align(layout.bssSize, section.alignment);
+                offsets[Index(*merged)] = layout.bssSize;
             }
             objectPlacement.sections[sectionIndex] = RcuSectionPlacement{*merged, offsets[Index(*merged)]};
             if (*merged == RcuMergedSection::Bss) {
@@ -194,6 +217,9 @@ std::optional<std::uint64_t> RcuObjectLayout::Address(const RcuSectionPlacement 
         break;
     case RcuMergedSection::Bss:
         base = bases.bss;
+        break;
+    case RcuMergedSection::Tls:
+        base = bases.tls;
         break;
     }
     if (placement.offset > std::numeric_limits<std::uint64_t>::max() - base) {

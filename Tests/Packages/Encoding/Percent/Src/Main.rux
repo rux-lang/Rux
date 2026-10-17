@@ -1,0 +1,95 @@
+// Percent-encoding is checked in each set for the characters that set keeps and the ones it escapes, for UTF-8 text
+// becoming one escape per byte, and for the form set's space. Decoding is checked for what it accepts — either case
+// of escape digits, and characters an encoder would have escaped — and for the malformed escapes it refuses.
+
+import Encoding::{ DecodeError, PercentDecode, PercentDecodedLength, PercentEncode, PercentEncodedLength, PercentSet };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Encoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
+    var room: char8[128];
+    let written = PercentEncode(text, room[..], set) catch { else => return false };
+    return written == PercentEncodedLength(text, set) && Same(room[..written], expected);
+}
+
+func Decoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
+    var room: byte[128];
+    let written = PercentDecode(text, room[..], set) catch { else => return false };
+    if written != expected.length { return false; }
+    var index: uint = 0;
+    while index < written {
+        if room[index] != (expected[index] as uint8) { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func BadEscapeAt(text: char8[..], at: uint) -> bool {
+    var room: byte[16] = [0x3F; 16];
+    let reported = match PercentDecode(text, room[..]) {
+        .Failure(error) => error,
+        .Success(_) => return false
+    };
+    for value in room {
+        if value != 0x3F { return false; }
+    }
+    return match reported {
+        .InvalidEscape(offset) => offset == at,
+        else => false
+    };
+}
+
+func Main() -> int {
+    // Unreserved characters stay in every set except that the form set escapes the tilde.
+    if !Encoded("AZaz09-._~", PercentSet::Component, "AZaz09-._~") { return 1; }
+    if !Encoded("AZaz09-._~", PercentSet::Form, "AZaz09-._%7E") { return 2; }
+    // Delimiters are escaped in a component and kept in a path.
+    if !Encoded("a/b?c=d&e#f", PercentSet::Component, "a%2Fb%3Fc%3Dd%26e%23f") { return 3; }
+    if !Encoded("/a b/c:d@e;f=g", PercentSet::Path, "/a%20b/c:d@e;f=g") { return 4; }
+    if !Encoded("a/b?c#d", PercentSet::Path, "a/b%3Fc%23d") { return 5; }
+    // A space is `%20` outside a form and `+` inside one; a literal plus is escaped in a form.
+    if !Encoded("Hello World!", PercentSet::Component, "Hello%20World%21") { return 6; }
+    if !Encoded("Hello World! 1+1", PercentSet::Form, "Hello+World%21+1%2B1") { return 7; }
+    if !Encoded("*", PercentSet::Form, "*") || !Encoded("*", PercentSet::Component, "%2A") { return 8; }
+    // Text outside ASCII becomes one upper-case escape per UTF-8 byte.
+    if !Encoded("café", PercentSet::Component, "caf%C3%A9") { return 9; }
+    if !Encoded("", PercentSet::Component, "") { return 10; }
+
+    if !Decoded("caf%C3%A9", PercentSet::Component, "café") { return 11; }
+    if !Decoded("caf%c3%a9", PercentSet::Component, "café") { return 12; }
+    if !Decoded("a+b", PercentSet::Component, "a+b") { return 13; }
+    if !Decoded("a+b%2B", PercentSet::Form, "a b+") { return 14; }
+    if !Decoded("a b/?", PercentSet::Component, "a b/?") { return 15; }
+
+    if !BadEscapeAt("%4", 0) || !BadEscapeAt("ab%", 2) || !BadEscapeAt("%G1", 0) || !BadEscapeAt("x%1g", 1) {
+        return 16;
+    }
+    match PercentDecodedLength("%41%42c") {
+        .Success(length) => {
+            if length != 3 { return 17; }
+        },
+        .Failure(_) => return 18
+    }
+    var short: byte[2] = [0x3F; 2];
+    match PercentDecode("%41%42c", short[..]) {
+        .Failure(error) => {
+            match error {
+                .InsufficientCapacity(needed) => {
+                    if needed != 3 { return 19; }
+                },
+                else => return 20
+            }
+        },
+        .Success(_) => return 21
+    }
+    if short[0] != 0x3F || short[1] != 0x3F { return 22; }
+    return 0;
+}

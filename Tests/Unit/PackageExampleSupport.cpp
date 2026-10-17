@@ -120,6 +120,10 @@ bool OpensDeclaration(const std::string_view line) {
     static constexpr std::array keywords{"when",      "func",   "struct", "enum", "variant", "union",
                                          "interface", "extend", "const",  "type", "module"};
     const auto text = WithoutVisibility(line);
+    // An attribute such as `#Test()` belongs to the declaration that follows it.
+    if (text.size() > 1 && text.front() == '#' && text[1] >= 'A' && text[1] <= 'Z') {
+        return true;
+    }
     return std::ranges::any_of(keywords, [text](const std::string_view word) { return OpensWith(text, word); });
 }
 

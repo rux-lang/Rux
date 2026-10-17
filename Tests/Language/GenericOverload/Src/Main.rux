@@ -5,7 +5,6 @@ import Core::Assert;
 // used to collide: only the first was emitted, and every call bound to it. A
 // four-argument call reached a three-parameter function and quietly dropped an
 // argument, so this returned the wrong answer rather than failing to build.
-//
 // Each overload below returns something only it can return, so a call landing
 // on the wrong one is visible in the result rather than merely suspected.
 

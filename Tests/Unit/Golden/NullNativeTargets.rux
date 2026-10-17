@@ -1,0 +1,8 @@
+// 'null' reaches the one pointer a native destination holds, and nothing else.
+func Main() -> int {
+    let present: (*int)? = null;
+    let member: *int32 | bool = null;
+    let absent: int32? = null;
+    let plain: int32 = null;
+    return 0;
+}

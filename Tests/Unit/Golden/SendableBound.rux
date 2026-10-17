@@ -1,0 +1,37 @@
+// The compiler knows an empty interface named `Sendable`: a type satisfies it unless it is or holds a type declared
+// `#Unsendable()`. A type parameter satisfies it only when bound by it, and a raw pointer always does.
+
+interface Sendable {}
+
+#Unsendable()
+struct Local {
+    count: *var int32;
+}
+
+struct Holder {
+    local: Local;
+}
+
+struct Plain {
+    value: int32;
+}
+
+func Run<T: Sendable>(value: T) {}
+
+func Forward<T>(value: T) {
+    Run(value);
+}
+
+func ForwardBound<T: Sendable>(value: T) {
+    Run(value);
+}
+
+func Main() -> int {
+    Run(Plain { value: 1 });
+    Run(Local { count: null });
+    Run(Holder { local: Local { count: null } });
+    var count: int32 = 0;
+    Run(@count);
+    ForwardBound(Plain { value: 2 });
+    return 0;
+}

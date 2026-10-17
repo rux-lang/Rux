@@ -1,5 +1,4 @@
 // `? else (e => mapper)`: propagating a failure after converting it with local context.
-//
 // On success the value continues and the mapper never runs. On failure the binder owns the complete error, the
 // mapper runs exactly once, and its value leaves as the enclosing function's outer failure through an ordinary return:
 // defers run and remaining values are destroyed, and the binder is destroyed too unless the mapper moved it. A local

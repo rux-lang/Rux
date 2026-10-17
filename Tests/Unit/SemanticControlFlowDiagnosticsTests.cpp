@@ -185,7 +185,8 @@ TEST_CASE("case pattern diagnostics distinguish enum enumerators from variant ca
     )");
 
     CHECK(HasMessage(diagnostics, "enum enumerator 'Mode::Fast' cannot bind payload fields"));
-    CHECK(HasMessage(diagnostics, "match on 'Mode' is not exhaustive; missing Mode::Fast"));
+    // The payload error is the one mistake; the case it names still counts as covered.
+    CHECK_FALSE(HasMessage(diagnostics, "match on 'Mode' is not exhaustive; missing Mode::Fast"));
     CHECK(HasMessage(diagnostics, "enum 'Mode' has no enumerator 'Missing'"));
     CHECK(HasMessage(diagnostics, "variant 'Signal' has no case 'Missing'"));
     CHECK(HasMessage(diagnostics, "pattern for 'Signal::Ready' expects 0 fields, but found 1"));

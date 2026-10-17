@@ -520,6 +520,7 @@ ExprPtr Parser::ParsePostfix() {
         const auto loc = CurrentLocation();
         // Method/field/tuple-index: expr.field  expr.method(args)  expr.0
         if (Match(TokenKind::Dot)) {
+            const SourceLocation memberLocation = CurrentLocation();
             std::string name;
             if (Check(TokenKind::IntLiteral)) {
                 name = Advance().text;
@@ -537,6 +538,7 @@ ExprPtr Parser::ParsePostfix() {
                 // Desugar to CallExpr with FieldExpr callee
                 auto field = std::make_unique<FieldExpr>();
                 field->location = loc;
+                field->memberLocation = memberLocation;
                 field->object = std::move(left);
                 field->field = name;
                 auto call = std::make_unique<CallExpr>();
@@ -548,6 +550,7 @@ ExprPtr Parser::ParsePostfix() {
             else {
                 auto e = std::make_unique<FieldExpr>();
                 e->location = loc;
+                e->memberLocation = memberLocation;
                 e->object = std::move(left);
                 e->field = name;
                 left = std::move(e);
@@ -558,15 +561,17 @@ ExprPtr Parser::ParsePostfix() {
         if (Match(TokenKind::ColonColon)) {
             const std::string seg = ExpectBefore(TokenKind::Ident, "a path segment after '::'").text;
             // Build or extend a PathExpr
-            if (auto *path = dynamic_cast<PathExpr *>(left.get())) {
+            if (auto *path = AstCast<PathExpr>(left.get())) {
                 path->segments.push_back(seg);
             }
             else {
                 // Wrap existing expression in a path — treat the left side
                 // as a segment This handles IDENT::IDENT::... chains
                 auto p = std::make_unique<PathExpr>();
+                // A path starts where its first segment does, so a diagnostic about the whole name points there.
                 p->location = loc;
-                if (auto *ident = dynamic_cast<IdentExpr *>(left.get())) {
+                if (auto *ident = AstCast<IdentExpr>(left.get())) {
+                    p->location = ident->location;
                     p->segments.push_back(ident->name);
                 }
                 p->segments.push_back(seg);
@@ -576,7 +581,7 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Qualified initializer: Enum::Variant { field: value, ... }
         if (structInitAllowed && Check(TokenKind::LeftBrace)) {
-            if (const auto *path = dynamic_cast<const PathExpr *>(left.get())) {
+            if (const auto *path = AstCast<const PathExpr>(left.get())) {
                 auto e = std::make_unique<StructInitExpr>();
                 e->location = loc;
                 for (std::size_t i = 0; i < path->segments.size(); ++i) {
@@ -1088,7 +1093,7 @@ PatternPtr Parser::ParseMatchArmPattern() {
     }
 
     auto pattern = ParseRequiredPattern("at the start of the match arm");
-    if (dynamic_cast<const WildcardPattern *>(pattern.get())) {
+    if (AstCast<const WildcardPattern>(pattern.get())) {
         EmitError(loc, "use 'else' for the default match arm");
     }
     return pattern;
@@ -1118,7 +1123,7 @@ PatternPtr Parser::ParsePresenceSuffix(PatternPtr inner) {
         if (Peek().precededBySpace) {
             EmitError(CurrentLocation(), "a presence suffix must touch its pattern", "remove the space before '?'");
         }
-        if (dynamic_cast<const TypedPattern *>(inner.get())) {
+        if (AstCast<const TypedPattern>(inner.get())) {
             EmitError(CurrentLocation(), "a presence suffix cannot follow a typed pattern",
                       "write '.Some(v: A)' to match a present member by type");
         }
@@ -1141,23 +1146,12 @@ PatternPtr Parser::ParsePatternImpl() {
     // Presence suffix: `value?` is `.Some(value)`, and `value??` peels two levels.
     inner = ParsePresenceSuffix(std::move(inner));
 
-    // Guard: pattern if condition
-    if (Match(TokenKind::IfKeyword)) {
-        const auto loc = Previous().location;
-        auto guard = ParseRequiredExpr("after 'if' in the pattern guard");
-        auto p = std::make_unique<GuardedPattern>();
-        p->location = loc;
-        p->inner = std::move(inner);
-        p->guard = std::move(guard);
-        return p;
-    }
-
     // Range pattern: lo..hi or lo...hi or lo..=hi
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
         constexpr std::string_view rangeSuffixHelp = "write '.Some(lo..hi)' to match a present value in a range";
-        if (dynamic_cast<const PresencePattern *>(inner.get())) {
+        if (AstCast<const PresencePattern>(inner.get())) {
             EmitError(inner->location, "a range bound cannot take a presence suffix", std::string(rangeSuffixHelp));
         }
         const std::string operatorText = Advance().text;
@@ -1174,6 +1168,17 @@ PatternPtr Parser::ParsePatternImpl() {
         p->inclusive = incl;
         p->lo = std::move(inner);
         p->hi = std::move(hi);
+        inner = std::move(p);
+    }
+
+    // Guard: pattern if condition, after any range so that `1..=9 if flag` guards the whole range.
+    if (Match(TokenKind::IfKeyword)) {
+        const auto loc = Previous().location;
+        auto guard = ParseRequiredExpr("after 'if' in the pattern guard");
+        auto p = std::make_unique<GuardedPattern>();
+        p->location = loc;
+        p->inner = std::move(inner);
+        p->guard = std::move(guard);
         return p;
     }
 
@@ -1210,6 +1215,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
             ExpectBefore(TokenKind::RightParen, "')' to close the variant pattern");
         }
         else if (Match(TokenKind::LeftBrace)) {
+            pattern->braced = true;
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumPattern::NamedArg arg;
                 arg.location = CurrentLocation();
@@ -1360,8 +1366,16 @@ PatternPtr Parser::ParsePrimaryPattern() {
                 StructPattern::Field f;
                 f.location = CurrentLocation();
                 f.name = ExpectBefore(TokenKind::Ident, "a field name in the structure pattern").text;
-                ExpectBefore(TokenKind::Colon, "':' after the structure pattern field name");
-                f.pattern = ParseRequiredPattern("after ':' in the structure field pattern");
+                if (Match(TokenKind::Colon)) {
+                    f.pattern = ParseRequiredPattern("after ':' in the structure field pattern");
+                }
+                else if (!f.name.empty()) {
+                    // The shorthand `Point { x }` binds the field to a variable of the same name.
+                    auto binding = std::make_unique<IdentPattern>();
+                    binding->location = f.location;
+                    binding->name = f.name;
+                    f.pattern = std::move(binding);
+                }
                 const bool validField = !f.name.empty() && f.pattern != nullptr;
                 p->fields.push_back(std::move(f));
                 if (!validField) {

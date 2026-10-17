@@ -234,6 +234,30 @@ TEST_CASE("documentation reports package and workspace output without replacing 
     CHECK(std::filesystem::is_regular_file(output / "Alpha" / "index.html"));
     CHECK(ReadTextFile(output / "Alpha" / "index.html").contains("Hidden"));
 
+    // A JSON run replaces the managed site with one snapshot per member and no landing page. A module contributes its
+    // items under qualified names rather than an item of its own.
+    const auto json = Run(std::array<std::string_view, 9>{"--manifest", manifest, "--color=never", "doc", "--format",
+                                                          "json", "--document-private-items", "--output", outputText});
+    CHECK(json.exitCode == 0);
+    CHECK(json.output.contains("Generated documentation for 2 packages in "));
+    CHECK(json.output.contains("Output: " + outputText));
+    CHECK(std::filesystem::is_regular_file(output / "Alpha.json"));
+    CHECK(std::filesystem::is_regular_file(output / "Beta.json"));
+    CHECK(std::filesystem::is_regular_file(output / ".rux-docs"));
+    CHECK_FALSE(std::filesystem::exists(output / "index.html"));
+    CHECK(ReadTextFile(output / "Alpha.json").contains("\"name\": \"Alpha::Visible\""));
+    CHECK(ReadTextFile(output / "Alpha.json").contains("\"name\": \"Alpha::Hidden\""));
+
+    const auto unknownFormat =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "--color=never", "doc", "--format", "pdf"});
+    CHECK(unknownFormat.exitCode == 2);
+    CHECK(unknownFormat.output.contains("value 'pdf' is not supported by option '--format'"));
+    CHECK(unknownFormat.output.contains("supported documentation formats are 'html' and 'json'"));
+    const auto openJson = Run(
+        std::array<std::string_view, 7>{"--manifest", manifest, "--color=never", "doc", "--format", "json", "--open"});
+    CHECK(openJson.exitCode == 2);
+    CHECK(openJson.output.contains("options '--format' and '--open' cannot be used together"));
+
     const auto unmanaged = root / "Unmanaged";
     WriteTextFile(unmanaged / "sentinel.txt", "keep\n");
     const auto unmanagedText = unmanaged.string();
@@ -324,7 +348,7 @@ Type = "Executable"
     CHECK(result.exitCode == 0);
     CHECK(result.output.contains("Testing EmptyTests v0.1.0 (Debug, " +
                                  Driver::TargetDisplayName(Rux::Target::TargetTriple::Host()) + ")"));
-    CHECK(result.output.contains("Passed 0 tests in "));
+    CHECK(result.output.contains("Passed 0 test packages in "));
     CHECK(result.output.contains("No test directory found at 'Tests/'"));
 
     const auto quiet = Run(std::array<std::string_view, 4>{"--manifest", manifest, "test", "--quiet"});
@@ -430,10 +454,10 @@ Type = "Executable"
                                               (end == std::string::npos ? normalized.size() : end + 1) - row);
                 CHECK(report.contains("note: test '" + std::string(names[index]) + "' exited with code"));
                 const std::string failure =
-                    "Panic: " + std::string(messages[index]) + "\n  at Main (Src/Main.rux:2:27)\n";
+                    "Panic: " + std::string(messages[index]) + "\n  at Main (Src/Main.rux:2:22)\n";
                 CHECK(report.contains("  Output:\n" + Reporting::Indent(failure, 2)));
             }
-            CHECK(normalized.contains("Failed 5 tests in "));
+            CHECK(normalized.contains("Failed 5 test packages in "));
             CHECK(normalized.contains("(1 passed, 4 failed)"));
             CHECK_FALSE(normalized.contains("[FAILED]"));
             for (std::size_t index = 0; index < probeResults.size(); ++index) {
@@ -457,9 +481,9 @@ Type = "Executable"
     CHECK(normalizedQuiet.contains("note: the test package did not compile"));
     CHECK(normalizedQuiet.contains("  Output:\n"));
     CHECK_FALSE(normalizedQuiet.contains("Testing TestReport"));
-    CHECK_FALSE(normalizedQuiet.contains("Running 5 tests"));
+    CHECK_FALSE(normalizedQuiet.contains("Running 5 test packages"));
     CHECK_FALSE(normalizedQuiet.contains("Passed Pass"));
-    CHECK_FALSE(normalizedQuiet.contains("Failed 5 tests"));
+    CHECK_FALSE(normalizedQuiet.contains("Failed 5 test packages"));
 
     std::error_code error;
     std::filesystem::remove_all(root, error);

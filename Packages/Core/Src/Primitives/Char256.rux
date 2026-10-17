@@ -1,2 +1,21 @@
-// char256 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `char256`: one Unicode scalar value, in thirty-two bytes.
+// The same repertoire `char32` holds, in eight times the storage: the range stops at U+10FFFF and the surrogates are
+// rejected, because a scalar value is what this carries. Its literals take the `c256` prefix; there is no `c256`
+// string encoding.
+
+/// One Unicode scalar value, in thirty-two bytes.
+/// @see https://rux-lang.dev/docs/api/core/characters#char256
+extend char256 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char256-bits
+    pub const Bits: uint = 256;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char256-bytes
+    pub const Bytes: uint = 32;
+    /// The first code unit or Unicode scalar value.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char256-min
+    pub const Min: char256 = 0u32 as char256;
+    /// The last code unit or Unicode scalar value.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char256-max
+    pub const Max: char256 = 1114111u32 as char256;
+}

@@ -1,0 +1,2 @@
+18:19: error: 'for' cannot copy elements of move-only type 'Handle' out of 'Handle[2]'
+21:26: error: 'for' cannot copy elements of move-only type 'Handle' out of 'Handle[..]'

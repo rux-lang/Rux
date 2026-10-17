@@ -29,7 +29,7 @@ std::string BaseTypeName(const std::string &name) {
 ///
 /// @return nullopt when `type` is not such a name
 std::optional<TypeRef> ProvisionalRepresentation(const TypeExpr &type) {
-    const auto *named = dynamic_cast<const NamedTypeExpr *>(&type);
+    const auto *named = AstCast<const NamedTypeExpr>(&type);
     if (!named || !named->typeArgs.empty()) {
         return std::nullopt;
     }
@@ -77,6 +77,9 @@ std::string_view SymbolKindName(const Symbol::Kind kind) {
 }
 
 std::string DeclarationNote(const Symbol &symbol) {
+    if (symbol.ownerPackage == "<builtin>") {
+        return std::format("'{}' is a built-in type", symbol.name);
+    }
     if (symbol.sourceName.empty() || symbol.location.line == 0) {
         return std::format("'{}' is declared as a {}", symbol.name, SymbolKindName(symbol.kind));
     }
@@ -84,8 +87,20 @@ std::string DeclarationNote(const Symbol &symbol) {
                        symbol.sourceName, symbol.location.line, symbol.location.column);
 }
 
-Scope::Scope(Scope *parentScope)
-    : parent(parentScope) {
+SemanticDiagnostic DuplicateDeclaration(const Symbol &previous, const Symbol &symbol, const std::string &sourceName) {
+    const std::string message =
+        previous.kind == symbol.kind
+            ? std::format("{} '{}' is already declared in this scope", SymbolKindName(symbol.kind), symbol.name)
+            : std::format("name '{}' cannot be declared as a {} because it is already a {} "
+                          "in this scope",
+                          symbol.name, SymbolKindName(symbol.kind), SymbolKindName(previous.kind));
+    return {
+        SemanticDiagnostic::Severity::Error, sourceName, symbol.location, message, {DeclarationNote(previous)}, {}, {}};
+}
+
+Scope::Scope(Scope *parentScope, Scope *declarationScope)
+    : parent(parentScope)
+    , declarations(declarationScope) {
 }
 
 bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, const std::string &sourceName) {
@@ -93,19 +108,14 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
         symbol.sourceName = sourceName;
     }
     if (auto iterator = table.find(symbol.name); iterator != table.end()) {
-        if (iterator->second.ownerPackage == "<builtin>" && symbol.kind == Symbol::Kind::Type && symbol.declaration &&
-            (!symbol.intrinsicName.empty() ||
-             (dynamic_cast<const TypeAliasDecl *>(symbol.declaration) &&
-              std::ranges::any_of(PrimitiveAliases(),
-                                  [&](const PrimitiveAlias &alias) { return alias.name == symbol.name; })))) {
-            iterator->second = std::move(symbol);
-            return true;
-        }
         if (iterator->second.kind == Symbol::Kind::Func && symbol.kind == Symbol::Kind::Func) {
-            iterator->second.funcOverloads.insert(iterator->second.funcOverloads.end(), symbol.funcOverloads.begin(),
-                                                  symbol.funcOverloads.end());
+            for (const FuncDecl *overload : symbol.funcOverloads) {
+                if (!std::ranges::contains(iterator->second.funcOverloads, overload)) {
+                    iterator->second.funcOverloads.push_back(overload);
+                }
+            }
             if (iterator->second.type.IsUnknown() && !symbol.type.IsUnknown()) {
-                iterator->second.type = std::move(symbol.type);
+                iterator->second.type = symbol.type;
             }
             if (!iterator->second.externDecl && symbol.externDecl) {
                 iterator->second.externDecl = symbol.externDecl;
@@ -114,20 +124,7 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
             iterator->second.isEffectivelyPublic = iterator->second.isEffectivelyPublic || symbol.isEffectivelyPublic;
             return true;
         }
-        const Symbol &previous = iterator->second;
-        const std::string message =
-            previous.kind == symbol.kind
-                ? std::format("{} '{}' is already declared in this scope", SymbolKindName(symbol.kind), symbol.name)
-                : std::format("name '{}' cannot be declared as a {} because it is already a {} "
-                              "in this scope",
-                              symbol.name, SymbolKindName(symbol.kind), SymbolKindName(previous.kind));
-        diagnostics.push_back({SemanticDiagnostic::Severity::Error,
-                               sourceName,
-                               symbol.location,
-                               message,
-                               {DeclarationNote(previous)},
-                               {},
-                               {}});
+        diagnostics.push_back(DuplicateDeclaration(iterator->second, symbol, sourceName));
         return false;
     }
     table.emplace(symbol.name, std::move(symbol));
@@ -135,28 +132,44 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
 }
 
 Symbol *Scope::Lookup(const std::string &name) {
-    auto iterator = table.find(name);
-    if (iterator != table.end()) {
-        return &iterator->second;
+    if (Symbol *local = LookupLocal(name)) {
+        return local;
     }
     return parent ? parent->Lookup(name) : nullptr;
 }
 
 Symbol *Scope::LookupLocal(const std::string &name) {
+    if (Symbol *own = LookupOwn(name)) {
+        return own;
+    }
+    return declarations ? declarations->LookupLocal(name) : nullptr;
+}
+
+Symbol *Scope::LookupOwn(const std::string &name) {
     auto iterator = table.find(name);
     return iterator == table.end() ? nullptr : &iterator->second;
+}
+
+Scope *Scope::Declarations() const {
+    return declarations;
 }
 
 const Symbol *Scope::Suggest(const std::string &name) const {
     const Symbol *best = nullptr;
     std::size_t bestDistance = std::numeric_limits<std::size_t>::max();
-    for (const Scope *scope = this; scope != nullptr; scope = scope->parent) {
-        for (const auto &[candidate, symbol] : scope->table) {
+    const auto consider = [&](const Scope &scope) {
+        for (const auto &[candidate, symbol] : scope.table) {
             const std::size_t distance = EditDistance(name, candidate);
             if (distance < bestDistance || (distance == bestDistance && best != nullptr && candidate < best->name)) {
                 best = &symbol;
                 bestDistance = distance;
             }
+        }
+    };
+    for (const Scope *scope = this; scope != nullptr; scope = scope->parent) {
+        consider(*scope);
+        for (const Scope *through = scope->declarations; through != nullptr; through = through->declarations) {
+            consider(*through);
         }
     }
     const std::size_t threshold = name.size() < 4 ? 1 : std::min<std::size_t>(3, (name.size() + 2) / 3);
@@ -167,6 +180,21 @@ Scope *Scope::Parent() const {
     return parent;
 }
 
+void Scope::Remap(const std::unordered_map<const Scope *, Scope *> &copies) {
+    const auto copyOf = [&](Scope *scope) {
+        if (scope == nullptr)
+            return scope;
+        const auto copy = copies.find(scope);
+        return copy == copies.end() ? scope : copy->second;
+    };
+    parent = copyOf(parent);
+    declarations = copyOf(declarations);
+    for (auto &[name, symbol] : table) {
+        static_cast<void>(name);
+        symbol.moduleScope = copyOf(symbol.moduleScope);
+    }
+}
+
 const std::unordered_map<std::string, Symbol> &Scope::Table() const {
     return table;
 }
@@ -175,6 +203,71 @@ SemanticProgramIndex::SemanticProgramIndex(std::vector<SemanticDiagnostic> &inpu
                                            std::vector<SemanticSymbol> &inputPublicSymbols)
     : diagnostics(inputDiagnostics)
     , publicSymbols(inputPublicSymbols) {
+}
+
+// Every member is copied here: a member missing from this list would start empty in the copy.
+SemanticProgramIndex::SemanticProgramIndex(const SemanticProgramIndex &base,
+                                           std::vector<SemanticDiagnostic> &inputDiagnostics,
+                                           std::vector<SemanticSymbol> &inputPublicSymbols)
+    : diagnostics(inputDiagnostics)
+    , publicSymbols(inputPublicSymbols)
+    , globalScope(base.globalScope)
+    , packageScopes(base.packageScopes)
+    , structs(base.structs)
+    , enums(base.enums)
+    , unions(base.unions)
+    , interfaces(base.interfaces)
+    , methods(base.methods)
+    , functions(base.functions)
+    , functionModulePaths(base.functionModulePaths)
+    , methodImplementations(base.methodImplementations)
+    , implementations(base.implementations)
+    , externFunctions(base.externFunctions)
+    , implementedInterfaces(base.implementedInterfaces)
+    , functionScopes(base.functionScopes)
+    , functionSources(base.functionSources)
+    , declarationInfos(base.declarationInfos)
+    , nominalDeclarations(base.nominalDeclarations)
+    , nominalNames(base.nominalNames)
+    , typeOwners(base.typeOwners)
+    , primitiveExtensions(base.primitiveExtensions) {
+    // The scopes are copied in order, and every pointer to one of the base's scopes is pointed at its copy.
+    std::unordered_map<const Scope *, Scope *> copies;
+    copies.reserve(base.scopes.size() + 1);
+    copies.emplace(&base.globalScope, &globalScope);
+    scopes.reserve(base.scopes.size());
+    for (const auto &scope : base.scopes) {
+        scopes.push_back(std::make_unique<Scope>(*scope));
+        copies.emplace(scope.get(), scopes.back().get());
+    }
+    const auto copyOf = [&](Scope *scope) {
+        const auto copy = copies.find(scope);
+        return copy == copies.end() ? scope : copy->second;
+    };
+    globalScope.Remap(copies);
+    for (const auto &scope : scopes)
+        scope->Remap(copies);
+    for (auto &[package, modules] : packageScopes) {
+        static_cast<void>(package);
+        for (auto &[path, scope] : modules) {
+            static_cast<void>(path);
+            scope = copyOf(scope);
+        }
+    }
+    for (auto &[function, scope] : functionScopes) {
+        static_cast<void>(function);
+        scope = copyOf(scope);
+    }
+    for (const auto &[key, scope] : base.fileScopes) {
+        fileScopes.emplace(std::pair{copyOf(const_cast<Scope *>(key.first)), key.second}, copyOf(scope));
+    }
+    for (const auto &[key, scope] : base.fileModuleScopes) {
+        fileModuleScopes.emplace(std::pair{copyOf(const_cast<Scope *>(key.first)), key.second}, copyOf(scope));
+    }
+    for (auto &[declaration, info] : declarationInfos) {
+        static_cast<void>(declaration);
+        info.scope = copyOf(info.scope);
+    }
 }
 
 Scope &SemanticProgramIndex::GlobalScope() {
@@ -203,6 +296,43 @@ Scope &SemanticProgramIndex::ModuleScopeFor(const std::string &name, Scope &pare
     return parent;
 }
 
+Scope &SemanticProgramIndex::FileScopeFor(const std::string &sourceName, Scope &root) {
+    const std::pair<const Scope *, std::string> key{&root, sourceName};
+    if (const auto known = fileScopes.find(key); known != fileScopes.end()) {
+        return *known->second;
+    }
+    scopes.push_back(std::make_unique<Scope>(root.Parent(), &root));
+    fileScopes.emplace(key, scopes.back().get());
+    return *scopes.back();
+}
+
+Scope &SemanticProgramIndex::FileModuleScopeFor(Scope &enclosing, const std::string &name, Scope &module) {
+    const std::pair<const Scope *, std::string> key{&enclosing, name};
+    if (const auto known = fileModuleScopes.find(key); known != fileModuleScopes.end()) {
+        return *known->second;
+    }
+    scopes.push_back(std::make_unique<Scope>(&enclosing, &module));
+    fileModuleScopes.emplace(key, scopes.back().get());
+    return *scopes.back();
+}
+
+const std::string *SemanticProgramIndex::FileImporting(const Scope &root, const std::string &name) const {
+    for (const auto &[key, scope] : fileScopes) {
+        if (key.first == &root && scope->LookupOwn(name) != nullptr) {
+            return &key.second;
+        }
+    }
+    return nullptr;
+}
+
+void SemanticProgramIndex::ShareImplementationMethods(const ImplDecl &declaration, const std::string &receiverName) {
+    for (const auto &method : declaration.methods) {
+        auto &candidates = methods[receiverName][method->name];
+        if (!std::ranges::contains(candidates, method.get()))
+            candidates.push_back(method.get());
+    }
+}
+
 void SemanticProgramIndex::BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName,
                                                      const std::string &interfaceName) {
     const std::string base = BaseTypeName(declaration.typeName);
@@ -229,12 +359,14 @@ void SemanticProgramIndex::CollectModule(const Module &module, const std::string
 
 void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
                                               const ResolveType &resolveType, const std::string *packageName,
-                                              const std::string &modulePath, const bool containingModulesPublic) {
+                                              const std::string &modulePath, const bool containingModulesPublic,
+                                              Scope *lookupScope) {
     const bool isGlobal = &scope == &globalScope;
+    Scope &lookup = lookupScope ? *lookupScope : FileScopeFor(sourceName, scope);
     const std::string ownerPackage = packageName ? *packageName : std::string{};
     const bool isEffectivelyPublic = containingModulesPublic && declaration.isPublic;
     declarationInfos.insert_or_assign(
-        &declaration, DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic, &scope});
+        &declaration, DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic, &lookup});
     const auto ownType = [&](const TypeExpr *type) {
         if (type)
             typeOwners.emplace(type, &declaration);
@@ -253,7 +385,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         if (function.returnType)
             typeOwners.emplace(function.returnType->get(), owner);
     };
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
+    if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
         for (const auto &field : structure->fields)
             ownType(field.type.get());
         for (const auto &parameter : structure->typeParams) {
@@ -261,7 +393,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                 ownType(bound.get());
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         ownType(enumeration->baseType.get());
         for (const auto &parameter : enumeration->typeParams) {
             for (const auto &bound : parameter.bounds)
@@ -274,25 +406,31 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                 ownType(field.type.get());
         }
     }
-    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
+    else if (const auto *unionType = AstCast<const UnionDecl>(&declaration)) {
         for (const auto &field : unionType->fields)
             ownType(field.type.get());
     }
-    else if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
+    else if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
         ownFunctionTypes(*function);
     }
-    else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&declaration)) {
+    else if (const auto *implementation = AstCast<const ImplDecl>(&declaration)) {
         ownType(implementation->extendedType.get());
         for (const auto &method : implementation->methods)
             ownFunctionTypes(*method);
     }
-    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
+    else if (const auto *interface = AstCast<const InterfaceDecl>(&declaration)) {
         for (const auto &method : interface->methods) {
             ownFunctionTypes(*method, interface);
         }
     }
-    else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
+    else if (const auto *alias = AstCast<const TypeAliasDecl>(&declaration)) {
         ownType(alias->type.get());
+    }
+    else if (const auto *global = AstCast<const GlobalDecl>(&declaration)) {
+        ownType(global->type.get());
+    }
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&declaration)) {
+        ownType(externVariable->type.get());
     }
     auto defineSimple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind publicKind,
                             std::string resolvedType = {}, bool isMut = false) {
@@ -306,18 +444,14 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
         symbol.declaration = &declaration;
-        symbol.intrinsicName = declaration.intrinsicName;
-        if (!declaration.intrinsicName.empty()) {
-            symbol.type = PrimitiveTypeFromName(declaration.intrinsicName).value_or(TypeRef::MakeUnknown());
-        }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back(
                 {publicKind, name, sourceName, declaration.location, std::move(resolvedType), isMut});
         }
     };
 
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
-        functionScopes[function] = &scope;
+    if (const auto *function = AstCast<const FuncDecl>(&declaration)) {
+        functionScopes[function] = &lookup;
         functionSources[function] = sourceName;
         functions[function->name].push_back(function);
         // The package is part of where a function lives, not only the `module` blocks around it. Two packages both
@@ -337,28 +471,28 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.modulePath = modulePath;
         symbol.intrinsicName = function->intrinsicName;
         symbol.funcOverloads.push_back(function);
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back(
                 {SemanticSymbol::Kind::Func, function->name, sourceName, function->location, {}, false});
         }
     }
-    else if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
+    else if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
         structs[structure->name] = structure;
         nominalDeclarations.emplace_back(structure->name, structure);
         defineSimple(Symbol::Kind::Type, structure->name, SemanticSymbol::Kind::Type, "struct");
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
         enums[enumeration->name] = enumeration;
         nominalDeclarations.emplace_back(enumeration->name, enumeration);
         defineSimple(Symbol::Kind::Type, enumeration->name, SemanticSymbol::Kind::Type,
                      enumeration->IsVariant() ? "variant" : "enum");
     }
-    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
+    else if (const auto *unionType = AstCast<const UnionDecl>(&declaration)) {
         unions[unionType->name] = unionType;
         nominalDeclarations.emplace_back(unionType->name, unionType);
         defineSimple(Symbol::Kind::Type, unionType->name, SemanticSymbol::Kind::Type, "union");
     }
-    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
+    else if (const auto *interface = AstCast<const InterfaceDecl>(&declaration)) {
         interfaces[interface->name] = interface;
         nominalDeclarations.emplace_back(interface->name, interface);
         Symbol symbol;
@@ -373,12 +507,12 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         for (const auto &method : interface->methods) {
             symbol.interfaceMethods.push_back(method->name);
         }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Interface, interface->name, sourceName, interface->location,
                                      "interface", false});
         }
     }
-    else if (const auto *constant = dynamic_cast<const ConstDecl *>(&declaration)) {
+    else if (const auto *constant = AstCast<const ConstDecl>(&declaration)) {
         Symbol symbol;
         symbol.kind = Symbol::Kind::Const;
         symbol.name = constant->name;
@@ -394,12 +528,31 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
             const auto provisional = ProvisionalRepresentation(**constant->type);
             symbol.type = provisional ? *provisional : resolveType(**constant->type);
         }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Const, constant->name, sourceName, constant->location,
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
     }
-    else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
+    else if (const auto *global = AstCast<const GlobalDecl>(&declaration)) {
+        Symbol symbol;
+        symbol.kind = Symbol::Kind::Var;
+        symbol.name = global->name;
+        symbol.location = global->location;
+        symbol.isMut = true;
+        symbol.isPublic = global->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
+        symbol.declaration = global;
+        // Typed up front, as a constant is, so an importing file sees the type before the owner is checked.
+        const auto provisional = ProvisionalRepresentation(*global->type);
+        symbol.type = provisional ? *provisional : resolveType(*global->type);
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
+            publicSymbols.push_back({SemanticSymbol::Kind::Var, global->name, sourceName, global->location,
+                                     symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
+        }
+    }
+    else if (const auto *alias = AstCast<const TypeAliasDecl>(&declaration)) {
         Symbol symbol;
         symbol.kind = Symbol::Kind::Type;
         symbol.name = alias->name;
@@ -409,21 +562,15 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
         symbol.declaration = alias;
-        symbol.intrinsicName = alias->intrinsicName;
-        if (!alias->intrinsicName.empty()) {
-            symbol.type = PrimitiveTypeFromName(alias->intrinsicName).value_or(TypeRef::MakeUnknown());
-        }
-        else {
-            // Provisional representation only. Checking the alias still resolves and validates its source type.
-            const auto provisional = ProvisionalRepresentation(*alias->type);
-            symbol.type = provisional ? *provisional : resolveType(*alias->type);
-        }
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        // Provisional representation only. Checking the alias still resolves and validates its source type.
+        const auto provisional = ProvisionalRepresentation(*alias->type);
+        symbol.type = provisional ? *provisional : resolveType(*alias->type);
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Type, alias->name, sourceName, alias->location,
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
         }
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&declaration)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&declaration)) {
         externFunctions.push_back(externFunction);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Func;
@@ -434,20 +581,39 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
         symbol.externDecl = externFunction;
-        if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Func, externFunction->name, sourceName,
                                      externFunction->location, "extern", false});
         }
     }
-    else if (const auto *externVariable = dynamic_cast<const ExternVarDecl *>(&declaration)) {
-        defineSimple(Symbol::Kind::Var, externVariable->name, SemanticSymbol::Kind::Var, "extern", true);
-    }
-    else if (const auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&declaration)) {
-        for (const auto &item : externBlock->items) {
-            CollectDeclaration(*item, scope, sourceName, resolveType, packageName, modulePath, containingModulesPublic);
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&declaration)) {
+        Symbol symbol;
+        symbol.kind = Symbol::Kind::Var;
+        symbol.name = externVariable->name;
+        symbol.location = externVariable->location;
+        symbol.isMut = true;
+        symbol.isPublic = externVariable->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
+        symbol.declaration = externVariable;
+        // Typed up front, as a module variable is, so a use reads the type the foreign data has.
+        if (externVariable->type) {
+            const auto provisional = ProvisionalRepresentation(*externVariable->type);
+            symbol.type = provisional ? *provisional : resolveType(*externVariable->type);
+        }
+        if (DefineItem(scope, symbol, sourceName) && isGlobal) {
+            publicSymbols.push_back({SemanticSymbol::Kind::Var, externVariable->name, sourceName,
+                                     externVariable->location, "extern", true});
         }
     }
-    else if (const auto *module = dynamic_cast<const ModuleDecl *>(&declaration)) {
+    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&declaration)) {
+        for (const auto &item : externBlock->items) {
+            CollectDeclaration(*item, scope, sourceName, resolveType, packageName, modulePath, containingModulesPublic,
+                               &lookup);
+        }
+    }
+    else if (const auto *module = AstCast<const ModuleDecl>(&declaration)) {
         const std::string childPath = JoinModulePath(modulePath, module->name);
         Scope *moduleScope = nullptr;
         if (Symbol *existing = scope.Lookup(module->name);
@@ -467,7 +633,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
             symbol.ownerPackage = ownerPackage;
             symbol.modulePath = childPath;
             symbol.moduleScope = moduleScope;
-            if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
+            if (DefineItem(scope, symbol, sourceName) && isGlobal) {
                 publicSymbols.push_back(
                     {SemanticSymbol::Kind::Module, module->name, sourceName, declaration.location, {}, false});
             }
@@ -475,12 +641,13 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         if (packageName) {
             packageScopes[*packageName][childPath] = moduleScope;
         }
+        Scope &moduleLookup = FileModuleScopeFor(lookup, module->name, *moduleScope);
         for (const auto &item : module->items) {
             CollectDeclaration(*item, *moduleScope, sourceName, resolveType, packageName, childPath,
-                               isEffectivelyPublic);
+                               isEffectivelyPublic, &moduleLookup);
         }
     }
-    else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&declaration)) {
+    else if (const auto *implementation = AstCast<const ImplDecl>(&declaration)) {
         implementations.push_back(implementation);
         for (const auto &member : implementation->constants) {
             declarationInfos.insert_or_assign(
@@ -493,19 +660,44 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         for (const auto &method : implementation->methods) {
             methods[typeName][method->name].push_back(method.get());
             methodImplementations[method.get()] = implementation;
-            functionScopes[method.get()] = &scope;
+            functionScopes[method.get()] = &lookup;
             functionSources[method.get()] = sourceName;
             functionModulePaths[method.get()] =
                 packageName && !packageName->empty() ? JoinModulePath(*packageName, modulePath) : modulePath;
             declarationInfos.insert_or_assign(
                 method.get(),
                 DeclarationInfo{ownerPackage, modulePath, sourceName,
-                                containingModulesPublic && extendedTypePublic && method->isPublic, &scope});
+                                containingModulesPublic && extendedTypePublic && method->isPublic, &lookup});
         }
         if (implementation->interfaceName) {
             implementedInterfaces[typeName].insert(*implementation->interfaceName);
         }
+        if (const PrimitiveInfo *primitive = FindPrimitive(implementation->typeName)) {
+            primitiveExtensions[ownerPackage][modulePath].insert(primitive->kind);
+        }
     }
+}
+
+bool SemanticProgramIndex::DefineItem(Scope &scope, const Symbol &symbol, const std::string &sourceName) {
+    // A built-in type name is reserved in every package and module, not only in the one compiled against the global
+    // scope: a dependency's or a module's own scope would otherwise shadow it silently.
+    if (!scope.LookupLocal(symbol.name)) {
+        if (const Symbol *builtin = scope.Lookup(symbol.name); builtin && builtin->ownerPackage == "<builtin>") {
+            diagnostics.push_back(DuplicateDeclaration(*builtin, symbol, sourceName));
+            return false;
+        }
+    }
+    return scope.Define(symbol, diagnostics, sourceName);
+}
+
+const std::unordered_set<TypeRef::Kind> *
+SemanticProgramIndex::PrimitiveExtensions(const std::string &package, const std::string &modulePath) const {
+    const auto owner = primitiveExtensions.find(package);
+    if (owner == primitiveExtensions.end()) {
+        return nullptr;
+    }
+    const auto module = owner->second.find(modulePath);
+    return module == owner->second.end() ? nullptr : &module->second;
 }
 
 const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::InfoFor(const Decl &declaration) const {
@@ -518,14 +710,19 @@ const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::TypeOwner(con
     return owner == typeOwners.end() ? nullptr : InfoFor(*owner->second);
 }
 
+const Decl *SemanticProgramIndex::TypeOwnerDeclaration(const TypeExpr &type) const {
+    const auto owner = typeOwners.find(&type);
+    return owner == typeOwners.end() ? nullptr : owner->second;
+}
+
 const std::string &SemanticProgramIndex::NominalName(const Decl &declaration) const {
     if (const auto identity = nominalNames.find(&declaration); identity != nominalNames.end())
         return identity->second;
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration))
+    if (const auto *structure = AstCast<const StructDecl>(&declaration))
         return structure->name;
-    if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration))
+    if (const auto *enumeration = AstCast<const EnumDecl>(&declaration))
         return enumeration->name;
-    if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration))
+    if (const auto *unionType = AstCast<const UnionDecl>(&declaration))
         return unionType->name;
     return static_cast<const InterfaceDecl &>(declaration).name;
 }
@@ -546,15 +743,15 @@ void SemanticProgramIndex::FinalizeNominalIdentities() {
         const std::string identity =
             owners[name].size() > 1 ? JoinModulePath(JoinModulePath(info.ownerPackage, info.modulePath), name) : name;
         nominalNames.emplace(declaration, identity);
-        if (const auto *structure = dynamic_cast<const StructDecl *>(declaration))
+        if (const auto *structure = AstCast<const StructDecl>(declaration))
             structs[identity] = structure;
-        else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(declaration))
+        else if (const auto *enumeration = AstCast<const EnumDecl>(declaration))
             enums[identity] = enumeration;
-        else if (const auto *unionType = dynamic_cast<const UnionDecl *>(declaration))
+        else if (const auto *unionType = AstCast<const UnionDecl>(declaration))
             unions[identity] = unionType;
-        else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(declaration))
+        else if (const auto *interface = AstCast<const InterfaceDecl>(declaration))
             interfaces[identity] = interface;
-        if (Symbol *symbol = info.scope->LookupLocal(name); symbol && declaration->intrinsicName.empty()) {
+        if (Symbol *symbol = info.scope->LookupLocal(name)) {
             symbol->type = TypeRef::MakeNamed(identity);
         }
     }

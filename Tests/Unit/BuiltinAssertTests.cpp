@@ -94,10 +94,10 @@ TEST_CASE("Assert and DebugAssert lower to traps when enabled") {
     CHECK_EQ(assertions[0]->strArg, "always");
     CHECK_EQ(assertions[1]->strArg, "debug");
     CHECK_EQ(assertions[0]->srcs.size(), 2);
-    CHECK_EQ(assertions[0]->sourceFile, "test.rux");
-    CHECK_EQ(assertions[0]->sourceFunction, "Main");
-    CHECK_NE(assertions[0]->sourceLine, 0);
-    CHECK_NE(assertions[0]->sourceColumn, 0);
+    CHECK_EQ(assertions[0]->source.Get().file, "test.rux");
+    CHECK_EQ(assertions[0]->source.Get().function, "Main");
+    CHECK_NE(assertions[0]->source.Get().line, 0);
+    CHECK_NE(assertions[0]->source.Get().column, 0);
 
     const std::string assembly = AssemblyPrinter(package).Generate();
     CHECK_EQ(assembly.find("ud2") != std::string::npos, true);

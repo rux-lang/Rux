@@ -1,7 +1,8 @@
 #pragma once
 
-// Target-neutral construction of the three sections emitted by both native
-// back ends. Instruction encoding remains owned by each back end; this class
+// Target-neutral construction of the sections emitted by both native back
+// ends: text, read-only data and data always, and zero-fill storage when a
+// module variable needs some. Instruction encoding remains owned by each back end; this class
 // owns the RCU bookkeeping around those bytes.
 
 #include "Diagnostics/Diagnostics.h"
@@ -9,10 +10,12 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace Rux {
@@ -20,6 +23,11 @@ enum class RcuModuleSection : std::uint16_t {
     Text = RCU_TEXT_IDX,
     RoData = RCU_RODATA_IDX,
     Data = RCU_DATA_IDX,
+    /// Zero-fill storage. Its bytes are carried as zeros and written only when the section is non-empty, so a module
+    /// with no zero-initialized variables keeps exactly three sections.
+    Bss = RCU_BSS_IDX,
+    /// The thread-local template, written only when a module has thread-local variables.
+    Tls = RCU_TLS_IDX,
 };
 
 struct RcuModuleDescription {
@@ -55,7 +63,8 @@ public:
     [[nodiscard]] const std::vector<std::uint8_t> &SectionData(RcuModuleSection section) const;
     [[nodiscard]] const std::vector<RcuReloc> &Relocations(RcuModuleSection section) const;
 
-    /// Zero-pad a section and return the offset at which the next value begins.
+    /// Zero-pad a section and return the offset at which the next value begins. The section's recorded alignment
+    /// grows to the strictest value requested, so the offset keeps its alignment once the linker places the section.
     [[nodiscard]] std::uint32_t AlignSection(RcuModuleSection section, std::uint16_t alignment);
     [[nodiscard]] std::uint32_t Append(RcuModuleSection section, std::span<const std::uint8_t> bytes);
     /// Discard a speculative suffix of a section and its relocations. AArch64 uses this when a branch-layout pass must
@@ -100,13 +109,26 @@ private:
     };
 
     RcuModuleDescription description;
-    std::array<std::vector<std::uint8_t>, 3> sectionData;
-    std::array<std::vector<RcuReloc>, 3> sectionRelocations;
+    std::array<std::vector<std::uint8_t>, 5> sectionData;
+    std::array<std::vector<RcuReloc>, 5> sectionRelocations;
+    std::array<std::uint16_t, 5> sectionAlignments = {1, 1, 1, 1, 1};
     std::vector<RcuSymbol> symbols;
     std::vector<SymbolState> symbolStates;
     std::vector<Diagnostic> diagnostics;
-    std::vector<std::pair<std::string, std::uint32_t>> symbolNames;
-    std::vector<std::pair<std::string, std::uint32_t>> literals;
+
+    /// Hashes a name however it is spelled, so a lookup by `std::string_view` builds no string.
+    struct NameHash {
+        using is_transparent = void;
+
+        [[nodiscard]] std::size_t operator()(const std::string_view name) const noexcept {
+            return std::hash<std::string_view>{}(name);
+        }
+    };
+
+    // Symbol and literal indices by name. A module declares thousands of each, so a linear search made emitting the
+    // module holding a package's generic instances quadratic.
+    std::unordered_map<std::string, std::uint32_t, NameHash, std::equal_to<>> symbolNames;
+    std::unordered_map<std::string, std::uint32_t, NameHash, std::equal_to<>> literals;
     bool finalized = false;
 
     [[nodiscard]] static std::size_t SectionIndex(RcuModuleSection section);

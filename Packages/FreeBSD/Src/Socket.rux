@@ -1,0 +1,215 @@
+// Sockets: endpoints of network connections and datagrams, reached through the system calls that make and use them.
+// Addresses are passed as the `sockaddr` bytes the kernel reads, built by the caller, so these wrappers stay as thin
+// as the rest of the package. Name resolution is not a system call and lives in `Rux/Net`.
+
+import FreeBSD::{ FileDescriptor, SignExtendFd, Syscall6 };
+
+const SysReceiveFrom: uint64 = 29;
+const SysGetPeerName: uint64 = 31;
+const SysGetSockName: uint64 = 32;
+const SysSocket: uint64 = 97;
+const SysConnect: uint64 = 98;
+const SysBind: uint64 = 104;
+const SysSetSockOpt: uint64 = 105;
+const SysListen: uint64 = 106;
+const SysSendTo: uint64 = 133;
+const SysShutdown: uint64 = 134;
+const SysAccept4: uint64 = 541;
+
+/// `AF_INET`: the IPv4 address family.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#af-inet
+#Allow("naming.const")
+pub const AF_INET: int32 = 2;
+
+/// `AF_INET6`: the IPv6 address family.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#af-inet6
+#Allow("naming.const")
+pub const AF_INET6: int32 = 28;
+
+/// `SOCK_STREAM`: a connected byte stream.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#sock-stream
+#Allow("naming.const")
+pub const SOCK_STREAM: int32 = 1;
+
+/// `SOCK_DGRAM`: individual datagrams.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#sock-dgram
+#Allow("naming.const")
+pub const SOCK_DGRAM: int32 = 2;
+
+/// `SOCK_CLOEXEC`: close the socket when the process starts another program.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#sock-cloexec
+#Allow("naming.const")
+pub const SOCK_CLOEXEC: int32 = 0x10000000;
+
+/// `SOL_SOCKET`: the level of the options every socket has.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#sol-socket
+#Allow("naming.const")
+pub const SOL_SOCKET: int32 = 0xffff;
+
+/// `SO_REUSEADDR`: let a listening address be bound again while old connections to it wind down.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#so-reuseaddr
+#Allow("naming.const")
+pub const SO_REUSEADDR: int32 = 4;
+
+/// `SO_RCVTIMEO`: how long a receive waits.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#so-rcvtimeo
+#Allow("naming.const")
+pub const SO_RCVTIMEO: int32 = 0x1006;
+
+/// `SO_SNDTIMEO`: how long a send waits.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#so-sndtimeo
+#Allow("naming.const")
+pub const SO_SNDTIMEO: int32 = 0x1005;
+
+/// `IPPROTO_TCP`: the level of TCP's options.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#ipproto-tcp
+#Allow("naming.const")
+pub const IPPROTO_TCP: int32 = 6;
+
+/// `TCP_NODELAY`: send small writes at once rather than gathering them.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#tcp-nodelay
+#Allow("naming.const")
+pub const TCP_NODELAY: int32 = 1;
+
+/// `IPPROTO_IPV6`: the level of IPv6's options.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#ipproto-ipv6
+#Allow("naming.const")
+pub const IPPROTO_IPV6: int32 = 41;
+
+/// `IPV6_V6ONLY`: accept only IPv6 on an IPv6 socket.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#ipv6-v6only
+#Allow("naming.const")
+pub const IPV6_V6ONLY: int32 = 27;
+
+/// `MSG_NOSIGNAL`: report a closed peer as an error rather than with `SIGPIPE`.
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#msg-nosignal
+#Allow("naming.const")
+pub const MSG_NOSIGNAL: int32 = 0x20000;
+
+/// Opens a socket.
+/// @param domain the address family, such as `AF_INET`
+/// @param kind the socket type, such as `SOCK_STREAM`, combined with `SOCK_CLOEXEC`
+/// @param protocol the protocol, or zero for the family's default
+/// @returns the new descriptor, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#socket
+/// @see https://man.freebsd.org/cgi/man.cgi?query=socket&sektion=2
+pub func Socket(domain: int32, kind: int32, protocol: int32) -> int64 {
+    return Syscall6(SysSocket, domain as int64 as uint64, kind as int64 as uint64, protocol as int64 as uint64, 0, 0, 0);
+}
+
+/// Connects a socket to `address`, waiting for a stream connection to be made.
+/// @param fd the socket
+/// @param address the address, a `sockaddr`
+/// @param length the address's size in bytes
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#connect
+/// @see https://man.freebsd.org/cgi/man.cgi?query=connect&sektion=2
+pub func Connect(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
+    return Syscall6(SysConnect, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
+}
+
+/// Gives a socket its local address.
+/// @param fd the socket
+/// @param address the address, a `sockaddr`
+/// @param length the address's size in bytes
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#bind
+/// @see https://man.freebsd.org/cgi/man.cgi?query=bind&sektion=2
+pub func Bind(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
+    return Syscall6(SysBind, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
+}
+
+/// Makes a bound stream socket accept connections.
+/// @param fd the socket
+/// @param backlog how many connections may wait to be accepted
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#listen
+/// @see https://man.freebsd.org/cgi/man.cgi?query=listen&sektion=2
+pub func Listen(fd: FileDescriptor, backlog: int32) -> int64 {
+    return Syscall6(SysListen, SignExtendFd(fd), backlog as int64 as uint64, 0, 0, 0, 0);
+}
+
+/// Accepts a waiting connection as a new socket.
+/// @param fd the listening socket
+/// @param address receives the peer's address, or null
+/// @param length the address buffer's size, then the address's, or null
+/// @param flags flags for the new socket, such as `SOCK_CLOEXEC`
+/// @returns the new descriptor, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#accept4
+/// @see https://man.freebsd.org/cgi/man.cgi?query=accept4&sektion=2
+pub func Accept4(fd: FileDescriptor, address: *var opaque, length: *var uint32, flags: int32) -> int64 {
+    return Syscall6(SysAccept4, SignExtendFd(fd), address as uint64, length as uint64, flags as int64 as uint64, 0, 0);
+}
+
+/// Sends bytes on a socket, to `address` when it is not connected.
+/// @param fd the socket
+/// @param buffer the bytes
+/// @param count how many
+/// @param flags flags such as `MSG_NOSIGNAL`
+/// @param address the destination, or null for a connected socket
+/// @param length the destination's size
+/// @returns the bytes sent, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#sendto
+/// @see https://man.freebsd.org/cgi/man.cgi?query=sendto&sektion=2
+pub func SendTo(fd: FileDescriptor, buffer: *opaque, count: uint, flags: int32, address: *opaque, length: uint32) -> int64 {
+    return Syscall6(SysSendTo, SignExtendFd(fd), buffer as uint64, count as uint64, flags as int64 as uint64, address as uint64, length as uint64);
+}
+
+/// Receives bytes from a socket, and where they came from.
+/// @param fd the socket
+/// @param buffer receives the bytes
+/// @param count how many fit
+/// @param flags flags, or zero
+/// @param address receives the sender's address, or null
+/// @param length the address buffer's size, then the address's, or null
+/// @returns the bytes received, zero once a stream's peer closed it, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#receivefrom
+/// @see https://man.freebsd.org/cgi/man.cgi?query=recvfrom&sektion=2
+pub func ReceiveFrom(fd: FileDescriptor, buffer: *var opaque, count: uint, flags: int32, address: *var opaque, length: *var uint32) -> int64 {
+    return Syscall6(SysReceiveFrom, SignExtendFd(fd), buffer as uint64, count as uint64, flags as int64 as uint64, address as uint64, length as uint64);
+}
+
+/// Ends one or both directions of a connection.
+/// @param fd the socket
+/// @param how `SHUT_RD`, `SHUT_WR` or `SHUT_RDWR`
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#shutdown
+/// @see https://man.freebsd.org/cgi/man.cgi?query=shutdown&sektion=2
+pub func Shutdown(fd: FileDescriptor, how: int32) -> int64 {
+    return Syscall6(SysShutdown, SignExtendFd(fd), how as int64 as uint64, 0, 0, 0, 0);
+}
+
+/// Sets a socket option.
+/// @param fd the socket
+/// @param level the option's level, such as `SOL_SOCKET`
+/// @param name the option
+/// @param value the option's value
+/// @param length the value's size in bytes
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#setsocketoption
+/// @see https://man.freebsd.org/cgi/man.cgi?query=setsockopt&sektion=2
+pub func SetSocketOption(fd: FileDescriptor, level: int32, name: int32, value: *opaque, length: uint32) -> int64 {
+    return Syscall6(SysSetSockOpt, SignExtendFd(fd), level as int64 as uint64, name as int64 as uint64, value as uint64, length as uint64, 0);
+}
+
+/// Reads a socket's local address.
+/// @param fd the socket
+/// @param address receives the address
+/// @param length the buffer's size, then the address's
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#getsocketname
+/// @see https://man.freebsd.org/cgi/man.cgi?query=getsockname&sektion=2
+pub func GetSocketName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
+    return Syscall6(SysGetSockName, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
+}
+
+/// Reads the address of a connected socket's peer.
+/// @param fd the socket
+/// @param address receives the address
+/// @param length the buffer's size, then the address's
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/socket#getpeername
+/// @see https://man.freebsd.org/cgi/man.cgi?query=getpeername&sektion=2
+pub func GetPeerName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
+    return Syscall6(SysGetPeerName, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
+}

@@ -1,0 +1,26 @@
+// A loop over an iterator variable advances the variable, so the variable has to be writable.
+struct Counter {
+    value: int32;
+}
+
+extend Counter {
+    func Next(self: &var Counter) -> int32? {
+        if self.value >= 3 {
+            return none;
+        }
+        self.value += 1;
+        return self.value;
+    }
+}
+
+func Main() -> int {
+    let counter = Counter { value: 0 };
+    var total = 0;
+    for item in counter {
+        total += item as int;
+    }
+    for item in (Counter { value: 0 }) {
+        total += item as int;
+    }
+    return total;
+}

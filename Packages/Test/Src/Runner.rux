@@ -1,0 +1,199 @@
+// Running a table of tests: choosing them by name, timing each, and reporting.
+// The tests run one after another in this process, so a test that panics or fails an `Assert` ends the run there; a
+// failed check, through `TestFailure`, ends only its own test.
+
+import Allocator::SystemAllocator;
+import Collections::Vector;
+import Io::PrintLine;
+import Process::{ Argument, ArgumentCount };
+import Test::TestFailure;
+import Text::String;
+import Time::{ Duration, Instant };
+
+/// A test: its name, which the runner reports and filters on, and the function that runs it. `Copy`.
+/// @see https://rux-lang.dev/docs/api/test/runner#test-case
+pub struct TestCase {
+    /// The test's name, such as `Parser::ReadsNumbers`.
+    pub name: char8[..];
+    /// What runs it.
+    pub run: func() -> ! TestFailure;
+}
+
+/// Which tests a run chooses and how it reports them. `Copy`.
+/// @see https://rux-lang.dev/docs/api/test/runner#test-options
+pub struct TestOptions {
+    /// Run only tests whose names hold this text, or every test when it is empty and `filters` is too.
+    pub filter: char8[..];
+    /// More texts like `filter`: a test runs when its name holds any of them, or `filter`.
+    pub filters: char8[..][..];
+    /// Whether a filter must be the whole name rather than part of it.
+    pub exact: bool;
+    /// Leave out tests whose names hold this text, unless it is empty.
+    pub skip: char8[..];
+    /// List the chosen tests rather than running them.
+    pub list: bool;
+    /// Report only failures and the summary.
+    pub quiet: bool;
+}
+
+extend TestOptions {
+    /// Options that run every test and report each one.
+    /// @returns the options
+    /// @see https://rux-lang.dev/docs/api/test/runner#test-options-new
+    pub func TestOptions() -> TestOptions {
+        return TestOptions { filter: "", filters: [], exact: false, skip: "", list: false, quiet: false };
+    }
+}
+
+// Whether `text` holds `part`.
+func Holds(text: char8[..], part: char8[..]) -> bool {
+    if part.length > text.length { return false; }
+    var at: uint = 0;
+    while at + part.length <= text.length {
+        var index: uint = 0;
+        while index < part.length && text[at + index] == part[index] { index = index + 1; }
+        if index == part.length { return true; }
+        at = at + 1;
+    }
+    return false;
+}
+
+func SameText(left: char8[..], right: char8[..]) -> bool {
+    return left.length == right.length && Holds(left, right);
+}
+
+// Whether `filter` chooses the test called `name` under `options`.
+func Matches(options: TestOptions, filter: char8[..], name: char8[..]) -> bool {
+    return options.exact ? SameText(name, filter) : Holds(name, filter);
+}
+
+// Whether `options` name any filter at all.
+func Filters(options: TestOptions) -> bool {
+    return options.filter.length > 0u || options.filters.length > 0u;
+}
+
+// Whether `options` choose the test called `name`: any filter matches, or there is none.
+func Chooses(options: TestOptions, name: char8[..]) -> bool {
+    if options.skip.length > 0u && Holds(name, options.skip) { return false; }
+    if !Filters(options) { return true; }
+    if options.filter.length > 0u && Matches(options, options.filter, name) { return true; }
+    for filter in options.filters {
+        if Matches(options, filter, name) { return true; }
+    }
+    return false;
+}
+
+// Milliseconds with three decimals, as text in `into`.
+func Milliseconds(span: Duration) -> float64 {
+    let nanoseconds = span.TotalNanoseconds() ?? 0i64;
+    return (nanoseconds / 1000i64) as float64 / 1000.0;
+}
+
+/// Runs the tests that `options` choose, in order, and reports each as `ok`, `FAILED` with its message, or
+/// `skipped` with its reason, then a summary of the counts and the time taken. A filter that chooses no test at all is
+/// reported as `no test matches` and given a code of its own, so that `rux test`, which hands one filter to every
+/// package, can fail the run when no package had a test it matched instead of passing with nothing run.
+/// @param tests the tests
+/// @param options which to run and how to report them
+/// @returns 0 when none failed, 1 when some did, 3 when filters chose no test
+/// @see https://rux-lang.dev/docs/api/test/runner#run-tests-with
+pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
+    var chosen: uint = 0;
+    for test in tests {
+        if Chooses(options, test.name) { chosen = chosen + 1; }
+    }
+    if chosen == 0u && Filters(options) {
+        PrintLine("no test matches the filter{}; {} tests are filtered out", options.exact ? " exactly" : "",
+                  tests.length);
+        return 3;
+    }
+    if options.list {
+        for test in tests {
+            if Chooses(options, test.name) { PrintLine(test.name); }
+        }
+        return 0;
+    }
+    if !options.quiet { PrintLine("running {} of {} tests", chosen, tests.length); }
+    var failures = Vector<uint>(SystemAllocator());
+    var passed: uint = 0;
+    var skipped: uint = 0;
+    let started = Instant::Now();
+    var index: uint = 0;
+    while index < tests.length {
+        let test = tests[index];
+        if Chooses(options, test.name) {
+            let run = test.run;
+            let before = Instant::Now();
+            let outcome = run();
+            let spent = Instant::Now().Since(before) ?? Duration::Zero();
+            match outcome {
+                .Success(_) => {
+                    passed = passed + 1;
+                    if !options.quiet { PrintLine("test {} ... ok ({} ms)", test.name, Milliseconds(spent)); }
+                },
+                .Failure(failure) => {
+                    if failure.IsSkip() {
+                        skipped = skipped + 1;
+                        if !options.quiet { PrintLine("test {} ... skipped: {}", test.name, failure.Message()); }
+                    }
+                    else {
+                        failures.Push(index) catch { else => {} };
+                        PrintLine("test {} ... FAILED\n  {}", test.name, failure.Message());
+                    }
+                }
+            }
+        }
+        index = index + 1;
+    }
+    let total = Instant::Now().Since(started) ?? Duration::Zero();
+    if failures.Length() > 0u {
+        PrintLine("\nfailed:");
+        for failed in failures.AsSlice() { PrintLine("  {}", tests[failed].name); }
+    }
+    let verdict = failures.Length() == 0u ? "ok" : "FAILED";
+    PrintLine("\nresult: {}. {} passed, {} failed, {} skipped, {} filtered out; finished in {} ms", verdict, passed,
+              failures.Length(), skipped, tests.length - chosen, Milliseconds(total));
+    return failures.Length() == 0u ? 0 : 1;
+}
+
+/// Runs the tests the process's arguments choose. A plain argument is a filter that a test's name must hold, and a
+/// test runs when its name holds any of them; `--exact` makes each the whole name, `--skip <text>` leaves out names
+/// holding the text, `--list` lists the chosen tests without running them, and `--quiet` reports only failures and
+/// the summary.
+/// @param tests the tests
+/// @returns 0 when none failed, 1 when some did, 2 for arguments it does not understand, 3 when filters chose no
+///   test
+/// @see https://rux-lang.dev/docs/api/test/runner#run-tests
+pub func RunTests(tests: TestCase[..]) -> int {
+    var options = TestOptions();
+    var texts = Vector<String>(SystemAllocator());
+    var index: uint = 1;
+    let count = ArgumentCount();
+    while index < count {
+        let view = Argument(index) ?? break;
+        let text = view.ToText(SystemAllocator()) catch { else => return 2 };
+        texts.Push(<-text) catch { else => return 2 };
+        index = index + 1;
+    }
+    let arguments = texts.AsSlice();
+    var filters = Vector<char8[..]>(SystemAllocator());
+    index = 0;
+    while index < arguments.length {
+        let argument = arguments[index].Bytes();
+        if SameText(argument, "--exact") { options.exact = true; }
+        else if SameText(argument, "--list") { options.list = true; }
+        else if SameText(argument, "--quiet") { options.quiet = true; }
+        else if SameText(argument, "--skip") && index + 1 < arguments.length {
+            index = index + 1;
+            options.skip = arguments[index].Bytes();
+        }
+        else if argument.length > 0u && argument[0] == c8'-' {
+            PrintLine("unknown option '{}'; the options are --exact, --skip <text>, --list and --quiet", argument);
+            return 2;
+        }
+        else { filters.Push(argument) catch { else => return 2 }; }
+        index = index + 1;
+    }
+    options.filters = filters.AsSlice();
+    return RunTestsWith(tests, options);
+}

@@ -1,0 +1,67 @@
+// The lock every type here takes, kept in one 32-bit word, and the counted storage the shareable types live in.
+// The word is 0 when the lock is free, 1 when it is held and nobody waits, and 2 when it is held and someone may be
+// sleeping on it. Taking a free lock and releasing one nobody waits for are each one atomic instruction; only a lock
+// that is actually contended costs a system call. A thread that has slept marks the word 2 when it takes the lock,
+// because it cannot know whether others still sleep, so the release after it wakes one.
+// The shareable types keep their state in a block allocated once and counted: every handle holds one count, and
+// whichever lets go of the last one destroys the block's contents and frees it.
+
+import Core::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchSub, MemoryOrder, Panic };
+import Memory::{ Alloc, Free };
+import Sync::{ WaitWhile, WakeOne };
+
+// Takes the lock in `word`, sleeping while another thread holds it.
+func LockWord(word: *var uint32) {
+    if AtomicCompareExchange(word, 0u32, 1u32, MemoryOrder::Acquire, MemoryOrder::Relaxed) == 0u32 { return; }
+    LockWordContended(word);
+}
+
+// Takes the lock in `word` assuming others may be waiting for it, so its release wakes one of them.
+func LockWordContended(word: *var uint32) {
+    while AtomicExchange(word, 2u32, MemoryOrder::Acquire) != 0u32 {
+        WaitWhile(word, 2u32, -1);
+    }
+}
+
+// Takes the lock in `word` if it is free, and says whether it did.
+func TryLockWord(word: *var uint32) -> bool {
+    return AtomicCompareExchange(word, 0u32, 1u32, MemoryOrder::Acquire, MemoryOrder::Relaxed) == 0u32;
+}
+
+// Releases the lock in `word`, waking one waiter if any may be sleeping.
+func UnlockWord(word: *var uint32) {
+    if AtomicExchange(word, 0u32, MemoryOrder::Release) == 2u32 {
+        WakeOne(word);
+    }
+}
+
+// Places `value` in a newly allocated block whose first field is its count, set to one. Running out of memory here
+// is a program error, as it is for any other value the program could not build.
+func AllocateBlock<B>(value: B) -> *var B {
+    let block = Alloc(sizeof(B)) as *var B;
+    if block == null { Panic("out of memory for a synchronization object"); }
+    block[0] <- value;
+    return block;
+}
+
+// Adds a holder to a block's count, which is its first word.
+func RetainBlock(references: *var uint32) {
+    AtomicFetchAdd(references, 1u32, MemoryOrder::Relaxed);
+}
+
+// Removes a holder from a block's count, and says whether it was the last one, in which case the caller destroys the
+// block. The acquire half orders every other holder's last writes before the destruction.
+func ReleaseBlock(references: *var uint32) -> bool {
+    return AtomicFetchSub(references, 1u32, MemoryOrder::AcquireRelease) == 1u32;
+}
+
+// Destroys a block's contents by moving them out, then frees it.
+func DestroyBlock<B>(block: *var B) {
+    DiscardValue<B>(block);
+    Free(block as *opaque);
+}
+
+// Destroys the value at `slot` by moving it out.
+func DiscardValue<T>(slot: *var T) {
+    let taken <- slot[0];
+}

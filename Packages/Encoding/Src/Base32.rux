@@ -1,0 +1,284 @@
+// Base32 in the RFC 4648 alphabet and in Douglas Crockford's.
+// Every five bytes become eight characters of five bits each. The RFC 4648 alphabet, `A` through `Z` then `2`
+// through `7`, is what one-time-password secrets and many file systems that ignore case use, padded with `=` to a
+// multiple of eight characters. Crockford's alphabet drops `I`, `L`, `O` and `U` so that a human reading an
+// identifier aloud or typing it back cannot confuse two characters, and it never pads.
+// Both read either case. Crockford decoding also does what its specification asks of a reader: `I` and `L` are read
+// as `1`, `O` as `0`, and hyphens, which a human may insert to group the characters, are skipped. That leniency is
+// part of that alphabet's contract and does not extend to the RFC form, which is read strictly, unused trailing
+// bits included.
+// The RFC form runs in time that depends only on the length, through the arithmetic in `Digits.rux`. Crockford's is
+// meant for identifiers rather than secrets and maps characters with an ordinary table. The whole text is checked
+// before a byte is written, so a refusal leaves the destination exactly as it was.
+
+import Text::FormatError;
+
+/// Which Base32 alphabet a text uses, and whether it is padded.
+/// Copy, carrying no payload.
+/// @see https://rux-lang.dev/docs/api/encoding/base32#base32-variant
+pub enum Base32Variant {
+    /// The RFC 4648 alphabet, `A` through `Z` then `2` through `7`, padded with `=` to a multiple of eight characters.
+    Standard,
+    /// The RFC 4648 alphabet without padding, which is how one-time-password secrets are usually written.
+    StandardUnpadded,
+    /// Crockford's alphabet, `0` through `9` then the letters except `I`, `L`, `O` and `U`, without padding. Read
+    /// leniently, as its specification asks: either case, `I` and `L` as `1`, `O` as `0`, and hyphens skipped.
+    Crockford
+}
+
+// How many characters a final partial group of one to four bytes takes before any padding.
+func TailCharacters(rest: uint) -> uint {
+    return match rest {
+        1 => 2,
+        2 => 4,
+        3 => 5,
+        4 => 7,
+        else => 0
+    };
+}
+
+/// How many characters the Base32 form of `length` bytes occupies in `form`.
+/// Eight characters for every five bytes, with a final partial group taking two, four, five or seven characters,
+/// or eight with padding. Cannot fail for any length a slice in memory can have; runs in constant time and
+/// allocates nothing.
+/// @param length the number of bytes to encode
+/// @param form the alphabet and padding to encode with
+/// @returns the number of characters `Base32Encode` writes
+/// @see https://rux-lang.dev/docs/api/encoding/base32#base32-encoded-length
+pub func Base32EncodedLength(length: uint, form: Base32Variant = Base32Variant::Standard) -> uint {
+    let groups = length / 5;
+    let rest = length % 5;
+    if rest == 0 { return groups * 8; }
+    if form == Base32Variant::Standard { return groups * 8 + 8; }
+    return groups * 8 + TailCharacters(rest);
+}
+
+// The Crockford character for a five-bit value.
+func CrockfordDigit(value: uint) -> char8 {
+    let alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    return alphabet[value];
+}
+
+// The five-bit value of a Crockford character, or -1 for a character outside the alphabet. A hyphen is not handled
+// here; the caller skips it.
+func CrockfordValue(c: char8) -> int32 {
+    var code = CharCode(c);
+    if code >= 97 && code <= 122 {
+        code = code - 32;
+    }
+    if code >= 48 && code <= 57 { return code - 48; }
+    return match code {
+        73 => 1,
+        76 => 1,
+        79 => 0,
+        65 => 10,
+        66 => 11,
+        67 => 12,
+        68 => 13,
+        69 => 14,
+        70 => 15,
+        71 => 16,
+        72 => 17,
+        74 => 18,
+        75 => 19,
+        77 => 20,
+        78 => 21,
+        80 => 22,
+        81 => 23,
+        82 => 24,
+        83 => 25,
+        84 => 26,
+        86 => 27,
+        87 => 28,
+        88 => 29,
+        89 => 30,
+        90 => 31,
+        else => -1
+    };
+}
+
+// The character for a five-bit value in one form.
+func Base32DigitOf(value: int32, form: Base32Variant) -> char8 {
+    if form == Base32Variant::Crockford { return CrockfordDigit(value as uint); }
+    return Base32Digit(value);
+}
+
+// The five-bit value of a character in one form, or -1.
+func Base32ValueOf(c: char8, form: Base32Variant) -> int32 {
+    if form == Base32Variant::Crockford { return CrockfordValue(c); }
+    return Base32Value(CharCode(c));
+}
+
+/// Writes `bytes` as Base32 into `into`.
+/// Letters are written in upper case in both alphabets. The RFC 4648 variants run in time that depends only on the
+/// length of `bytes`. Reports `InsufficientCapacity` when `into` is shorter than
+/// `Base32EncodedLength(bytes.length, form)`, leaving it exactly as it was; room past the encoded form is not
+/// touched.
+/// @param bytes the bytes to encode
+/// @param into the destination, at least `Base32EncodedLength(bytes.length, form)` characters
+/// @param form the alphabet and padding to encode with
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/base32#base32-encode
+pub func Base32Encode(bytes: byte[..], into: var char8[..],
+                      form: Base32Variant = Base32Variant::Standard) -> uint ! FormatError {
+    let needed = Base32EncodedLength(bytes.length, form);
+    if into.length < needed { fail FormatError::InsufficientCapacity; }
+    // Bits are gathered into an accumulator eight at a time and taken out five at a time, from the top.
+    var buffer: uint64 = 0;
+    var bits: uint = 0;
+    var to: uint = 0;
+    var index: uint = 0;
+    while index < bytes.length {
+        buffer = (buffer << 8) | (bytes[index] as uint64);
+        bits = bits + 8;
+        while bits >= 5 {
+            bits = bits - 5;
+            into[to] = Base32DigitOf(((buffer >> bits) & 31) as int32, form);
+            to = to + 1;
+        }
+        index = index + 1;
+    }
+    if bits > 0 {
+        into[to] = Base32DigitOf(((buffer << (5 - bits)) & 31) as int32, form);
+        to = to + 1;
+    }
+    while to < needed {
+        into[to] = '=';
+        to = to + 1;
+    }
+    return needed;
+}
+
+/// Writes the bytes of `text` as Base32 into `into`.
+/// The byte form, reached without the caller reinterpreting the text first: each UTF-8 code unit is one byte.
+/// The failure the byte form reports, with the same guarantee.
+/// @param text the text whose bytes to encode
+/// @param into the destination, at least `Base32EncodedLength(text.length, form)` characters
+/// @param form the alphabet and padding to encode with
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/base32#base32-encode
+pub func Base32Encode(text: char8[..], into: var char8[..],
+                      form: Base32Variant = Base32Variant::Standard) -> uint ! FormatError {
+    return Base32Encode(BytesOf(text), into, form);
+}
+
+// Whether a count of data characters is one a final partial group can leave: zero, two, four, five or seven.
+func IsWholeTail(count: uint) -> bool {
+    return count == 0 || count == 2 || count == 4 || count == 5 || count == 7;
+}
+
+// The number of characters that carry data, after checking the text's shape for the form: the length, where
+// padding sits, and for Crockford the hyphens, which are excluded from the count.
+func DataCharacters(text: char8[..], form: Base32Variant) -> uint ! DecodeError {
+    if form == Base32Variant::Crockford {
+        var count: uint = 0;
+        var index: uint = 0;
+        while index < text.length {
+            if text[index] != '-' {
+                count = count + 1;
+            }
+            index = index + 1;
+        }
+        if !IsWholeTail(count % 8) { fail DecodeError::InvalidLength(text.length); }
+        return count;
+    }
+    var first = text.length;
+    var index: uint = 0;
+    while index < text.length {
+        if text[index] == '=' {
+            if form != Base32Variant::Standard { fail DecodeError::InvalidPadding(index); }
+            if first == text.length {
+                first = index;
+            }
+        }
+        else if first != text.length {
+            fail DecodeError::InvalidPadding(first);
+        }
+        index = index + 1;
+    }
+    if form == Base32Variant::Standard && text.length % 8 != 0 {
+        fail DecodeError::InvalidLength(text.length);
+    }
+    if !IsWholeTail(first % 8) {
+        // Too much padding leaves too few data characters; without padding the length itself is impossible.
+        if first != text.length { fail DecodeError::InvalidPadding(first); }
+        fail DecodeError::InvalidLength(text.length);
+    }
+    return first;
+}
+
+/// How many bytes the Base32 text decodes to, after checking its length and the placement of its padding.
+/// Only the shape is checked; the characters are checked by `Base32Decode`. The padded variant needs a multiple of
+/// eight characters; every variant needs the data characters to leave a final group of zero, two, four, five or
+/// seven. Hyphens in Crockford text are not counted. Reports `InvalidLength` at the end of the text, or
+/// `InvalidPadding` at the first `=` that is out of place. Runs in time linear in the length and allocates nothing.
+/// @param text the Base32 text
+/// @param form the alphabet and padding the text is expected to use
+/// @returns the number of bytes `Base32Decode` writes for it
+/// @see https://rux-lang.dev/docs/api/encoding/base32#base32-decoded-length
+pub func Base32DecodedLength(text: char8[..], form: Base32Variant = Base32Variant::Standard) -> uint ! DecodeError {
+    let count = DataCharacters(text, form)?;
+    return count * 5 / 8;
+}
+
+/// Reads Base32 text in `form` into `into`.
+/// The RFC 4648 variants run in time that depends only on the length of `text` when the text is valid. Reports, in
+/// this order of precedence, `InvalidLength` or `InvalidPadding` for a text of the wrong shape, `InvalidCharacter` at
+/// the first character outside the alphabet, `NonCanonical` at a last character whose unused bits are not zero, and
+/// `InsufficientCapacity` with the length needed when `into` is too short. Every refusal leaves `into` untouched,
+/// because the whole text is checked before anything is written.
+/// @param text the Base32 text to decode
+/// @param into the destination, at least `Base32DecodedLength(text, form)` bytes
+/// @param form the alphabet and padding the text is expected to use
+/// @returns the number of bytes written
+/// @see https://rux-lang.dev/docs/api/encoding/base32#base32-decode
+pub func Base32Decode(text: char8[..], into: var byte[..],
+                      form: Base32Variant = Base32Variant::Standard) -> uint ! DecodeError {
+    let count = DataCharacters(text, form)?;
+    let needed = count * 5 / 8;
+    // Data characters sit at the front of RFC text; Crockford text interleaves them with hyphens to skip.
+    let crockford = form == Base32Variant::Crockford;
+    let end = crockford ? text.length : count;
+    var invalid: int32 = 0;
+    var last: uint = 0;
+    var index: uint = 0;
+    while index < end {
+        if !crockford || text[index] != '-' {
+            invalid = invalid | Base32ValueOf(text[index], form);
+            last = index;
+        }
+        index = index + 1;
+    }
+    if invalid < 0 {
+        index = 0;
+        while (crockford && text[index] == '-') || Base32ValueOf(text[index], form) >= 0 {
+            index = index + 1;
+        }
+        fail DecodeError::InvalidCharacter(index);
+    }
+    // The bits left over after the last whole byte must be zero, or two texts would decode alike.
+    let spare = (count * 5) % 8;
+    if spare != 0 {
+        let mask = (1 << spare) - 1;
+        if (Base32ValueOf(text[last], form) & mask) != 0 { fail DecodeError::NonCanonical(last); }
+    }
+    if into.length < needed { fail DecodeError::InsufficientCapacity(needed); }
+
+    var buffer: uint64 = 0;
+    var bits: uint = 0;
+    var to: uint = 0;
+    index = 0;
+    while index < end && to < needed {
+        if !crockford || text[index] != '-' {
+            buffer = (buffer << 5) | (Base32ValueOf(text[index], form) as uint64);
+            bits = bits + 5;
+            if bits >= 8 {
+                bits = bits - 8;
+                into[to] = ((buffer >> bits) & 255) as byte;
+                to = to + 1;
+            }
+        }
+        index = index + 1;
+    }
+    return needed;
+}

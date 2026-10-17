@@ -1,0 +1,11 @@
+13:5: error: returned value views local array 'options', which is freed when 'Direct' returns
+18:5: error: returned value views local array 'options', which is freed when 'Converted' returns
+23:5: error: returned value views local array 'options', which is freed when 'ThroughStruct' returns
+30:5: error: returned value views local array 'options', which is freed when 'ThroughLocal' returns
+39:5: error: returned value views local array 'options', which is freed when 'ThroughAssignment' returns
+43:5: error: returned value views local array 'options', which is freed when 'ByValueParameter' returns
+48:18: error: stored value views local array 'options', which is freed when 'ThroughPointer' returns
+53:5: error: returned value views local array 'options', which is freed when 'Fallible' returns
+69:5: error: returned value views local array 'options', which is freed when 'ThroughCall' returns
+75:5: error: returned value views local array 'options', which is freed when 'ThroughBuilder' returns
+81:5: error: returned value views local array 'options', which is freed when 'ThroughReceiver' returns

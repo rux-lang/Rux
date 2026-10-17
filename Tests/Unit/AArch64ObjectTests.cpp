@@ -8,6 +8,7 @@
 #include "Linker/ArchiveWriter.h"
 #include "Linker/Linker.h"
 #include "Linker/NativeObjectWriter.h"
+#include "TemporaryDirectory.h"
 
 #include <array>
 #include <charconv>
@@ -331,12 +332,16 @@ public:
         return member;
     }
 
+    /// Where a member's contents start: after its header and, for a `#1/<length>` name, after the name it leads with.
     [[nodiscard]] std::size_t MemberData(const std::size_t index) const {
-        return Member(index) + 60;
+        return Member(index) + 60 + LongNameLength(Member(index));
     }
 
     [[nodiscard]] std::string MemberName(const std::size_t index) const {
         const auto member = Member(index);
+        if (const std::size_t length = LongNameLength(member); length != 0) {
+            return String(member + 60);
+        }
         return std::string(bytes.begin() + static_cast<std::ptrdiff_t>(member),
                            bytes.begin() + static_cast<std::ptrdiff_t>(member + 16));
     }
@@ -354,6 +359,17 @@ public:
     }
 
 private:
+    [[nodiscard]] std::size_t LongNameLength(const std::size_t member) const {
+        if (bytes.at(member) != '#' || bytes.at(member + 1) != '1' || bytes.at(member + 2) != '/') {
+            return 0;
+        }
+        const char *first = reinterpret_cast<const char *>(bytes.data() + member + 3);
+        std::size_t value = 0;
+        const auto result = std::from_chars(first, first + 13, value);
+        REQUIRE(result.ec == std::errc{});
+        return value;
+    }
+
     [[nodiscard]] std::size_t MemberSize(const std::size_t member) const {
         const char *first = reinterpret_cast<const char *>(bytes.data() + member + 48);
         std::size_t value = 0;
@@ -648,7 +664,7 @@ TEST_CASE("FreeBSD AArch64 static archives index deterministic ELF members") {
     };
     const auto objects = [&] { return std::vector{makeObject("Zulu.rux", "Zulu"), makeObject("Alpha.rux", "Alpha")}; };
 
-    const auto directory = std::filesystem::temp_directory_path();
+    const auto &directory = Rux::Testing::TestTemporaryDirectory();
     const auto firstPath = directory / "rux-freebsd-aarch64-static-first.a";
     const auto secondPath = directory / "rux-freebsd-aarch64-static-second.a";
     std::error_code filesystemError;
@@ -792,7 +808,41 @@ TEST_CASE("an AArch64 relative relocation carries no x86-64 displacement bias") 
     CHECK(arm.Relocation(arm.SectionHeader(*armRela), 0) == std::array<std::int64_t, 3>{261, 1, 16});
 }
 
-TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with explicit addends") {
+TEST_CASE("ELF objects read imported data through its GOT slot") {
+    // An extern variable's address is read from the slot the loader fills, so its relocation names the GOT entry:
+    // GOTPCREL with the same -4 bias as PC32 on x86-64, and the GOT page and 64-bit load offset on AArch64.
+    RcuFile intelFile;
+    intelFile.sourcePath = "Library.rux";
+    intelFile.sections.push_back(TextSection({0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00})); // mov rax, [rip + 0]
+    intelFile.sections.back().relocs.push_back({3, 0, RcuRelType::ImportSlotRel32, 0});
+    intelFile.symbols.push_back({"environ", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+    NativeObject object;
+    std::string error;
+    REQUIRE_MESSAGE(WriteNativeObject(intelFile, Target::OS::Linux, Target::Arch::X86_64, object, error), error);
+    const ElfObject intel(std::move(object.bytes));
+    const auto intelRela = intel.FindSection(".rela.text");
+    REQUIRE(intelRela.has_value());
+    CHECK(intel.Relocation(intel.SectionHeader(*intelRela), 0) == std::array<std::int64_t, 3>{9, 1, -4});
+
+    auto armFile = ObjectOf({
+        {0x90000000, RcuRelType::AArch64ImportSlotPage21}, // adrp x0, slot
+        {0xF9400000, RcuRelType::AArch64ImportSlotLo12Nc}, // ldr x0, [x0, slot]
+    });
+    const auto arm = WriteAArch64(armFile);
+    const auto armRela = arm.FindSection(".rela.text");
+    REQUIRE(armRela.has_value());
+    const auto header = arm.SectionHeader(*armRela);
+    CHECK(arm.Relocation(header, 0)[0] == 311); // R_AARCH64_ADR_GOT_PAGE
+    CHECK(arm.Relocation(header, 1)[0] == 312); // R_AARCH64_LD64_GOT_LO12_NC
+
+    // The slot holds a 64-bit address, so only a 64-bit load reads it.
+    armFile.sections[0].data = {0x00, 0x00, 0x40, 0xB9, 0x00, 0x00, 0x40, 0xB9}; // ldr w0, [x0]
+    armFile.sections[0].relocs = {{0, 0, RcuRelType::AArch64ImportSlotLo12Nc, 0}};
+    CHECK_FALSE(WriteNativeObject(armFile, Target::OS::Linux, Target::Arch::AArch64, object, error));
+    CHECK(error.find("64-bit unsigned-offset LDR") != std::string::npos);
+}
+
+TEST_CASE("AArch64 Mach-O objects relocate against symbols with explicit addends") {
     RcuFile file;
     file.arch = RcuArch::AArch64;
     file.sourcePath = "Library.rux";
@@ -859,7 +909,7 @@ TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with exp
         CHECK_FALSE(record.external);
     };
     addend(0, 0, 4);
-    addend(2, 4, 0x00FFFFFC); // signed -4: local offset four plus addend -8
+    addend(2, 4, 0x00FFFFF8); // signed -8, relative to the local symbol rather than its section
     addend(4, 8, 0x1234);
     addend(6, 12, 0x234);
     addend(8, 16, 0x238);
@@ -872,11 +922,13 @@ TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with exp
     CHECK(externalBranch.pcRelative);
     CHECK(externalBranch.external);
 
+    // ld64 and lld refuse a BRANCH26, PAGE21 or PAGEOFF12 that names a section, so a local target is named by its
+    // symbol too.
     const auto localBranch = object.Relocation(0, 3);
-    CHECK(localBranch.symbol == 1); // one-based __text section ordinal
+    CHECK(localBranch.symbol == 0); // _Hidden
     CHECK(localBranch.type == 2);
     CHECK(localBranch.pcRelative);
-    CHECK_FALSE(localBranch.external);
+    CHECK(localBranch.external);
 
     for (const auto &[index, type, pcRelative] :
          std::array{std::tuple{5U, 3U, true}, std::tuple{7U, 4U, false}, std::tuple{9U, 4U, false}}) {
@@ -903,16 +955,16 @@ TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with exp
     CHECK_FALSE(externalPointer.pcRelative);
     CHECK(externalPointer.external);
     const auto localPointer = object.Relocation(1, 1);
-    CHECK(localPointer.symbol == 1); // one-based __text section ordinal
+    CHECK(localPointer.symbol == 0); // _Hidden
     CHECK(localPointer.length == 3);
-    CHECK_FALSE(localPointer.external);
+    CHECK(localPointer.external);
     const auto pointer32 = object.Relocation(1, 2);
     CHECK(pointer32.length == 2);
     CHECK(pointer32.external);
 
     const auto dataAt = object.SectionData(1);
     CHECK(object.Giant(dataAt) == 24);
-    CHECK(object.Giant(dataAt + 8) == 12); // local offset four plus addend eight
+    CHECK(object.Giant(dataAt + 8) == 8); // the addend alone, since the symbol supplies the offset
     CHECK(object.Word(dataAt + 16) == 0xFFFFFFFC);
 }
 
@@ -959,7 +1011,7 @@ TEST_CASE("macOS ARM64 static archives carry deterministic BSD symbol indexes") 
     };
     const std::array objects = {makeObject("Zulu.rux", "Zulu"), makeObject("Alpha.rux", "Alpha")};
 
-    const auto directory = std::filesystem::temp_directory_path();
+    const auto &directory = Rux::Testing::TestTemporaryDirectory();
     const auto firstPath = directory / "rux-arm64-macho-static-first.a";
     const auto secondPath = directory / "rux-arm64-macho-static-second.a";
     std::error_code filesystemError;
@@ -971,9 +1023,13 @@ TEST_CASE("macOS ARM64 static archives carry deterministic BSD symbol indexes") 
     REQUIRE(WriteNativeArchive(objects, Target::OS::MacOS, Target::Arch::AArch64, secondPath, error));
     const BsdArchive archive(ReadBytes(firstPath));
     CHECK(archive.Bytes() == ReadBytes(secondPath));
-    CHECK(archive.MemberName(0).starts_with("__.SYMDEF SORTED"));
-    CHECK(archive.MemberName(1).starts_with("Zulu.o/"));
-    CHECK(archive.MemberName(2).starts_with("Alpha.o/"));
+    CHECK(archive.MemberName(0) == "__.SYMDEF SORTED");
+    CHECK(archive.MemberName(1) == "Zulu.o");
+    CHECK(archive.MemberName(2) == "Alpha.o");
+    for (std::size_t member = 0; member < 3; ++member) {
+        CHECK(archive.Member(member) % 8 == 0);
+        CHECK(archive.MemberData(member) % 8 == 0);
+    }
 
     const auto index = archive.MemberData(0);
     CHECK(archive.Word(index) == 16); // two eight-byte ranlib entries
@@ -981,7 +1037,7 @@ TEST_CASE("macOS ARM64 static archives carry deterministic BSD symbol indexes") 
     CHECK(archive.Word(index + 8) == archive.Member(2)); // _Alpha sorts first
     CHECK(archive.Word(index + 12) == 7);
     CHECK(archive.Word(index + 16) == archive.Member(1));
-    CHECK(archive.Word(index + 20) == 13);
+    CHECK(archive.Word(index + 20) == 16); // thirteen bytes of names, padded to keep the table eight-byte sized
     CHECK(archive.String(index + 24) == "_Alpha");
     CHECK(archive.String(index + 31) == "_Zulu");
     CHECK(archive.Word(archive.MemberData(1) + 4) == 0x0100000C);
@@ -1137,7 +1193,7 @@ TEST_CASE("Windows ARM64 static and import libraries carry deterministic COFF in
     file.symbols.push_back({"Answer", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     const NativeObject object = WriteAArch64Coff(file);
 
-    const auto directory = std::filesystem::temp_directory_path();
+    const auto &directory = Rux::Testing::TestTemporaryDirectory();
     const auto firstPath = directory / "rux-arm64-static-first.lib";
     const auto secondPath = directory / "rux-arm64-static-second.lib";
     const auto importPath = directory / "rux-arm64-import.lib";

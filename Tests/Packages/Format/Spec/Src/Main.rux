@@ -166,9 +166,9 @@ func Main() -> int {
     // a third alignment mark where a sign, a width or a style could go, and `{:.}` opens a precision it never gives
     // digits to. The offsets are into the pattern: the specification starts two bytes in, so each is the parser's
     // own offset plus two, and a check that only asked for the reason would pass with all three set to zero.
-    if !RefusedAt(allocator, "{:>>>}", 4u) { return 61; }
-    if !RefusedAt(allocator, "{:.}", 3u) { return 62; }
-    if !RefusedAt(allocator, "{:8q!}", 4u) { return 63; }
+    if !RefusedAt(allocator, "{:>>>}", 4) { return 61; }
+    if !RefusedAt(allocator, "{:.}", 3) { return 62; }
+    if !RefusedAt(allocator, "{:8q!}", 4) { return 63; }
 
     // `{:q}` is no longer among them. A style is an identifier in the grammar, so `q` parses; whether it means
     // anything is the value's question, and every value here answers no. The failure moved from the parser to the
@@ -186,17 +186,17 @@ func Main() -> int {
     // was actually given.
     if Failed(ParseFormatSpec("")) { return 80; }
     if Failed(ParseFormatSpec(">8.2iso8601")) { return 81; }
-    if MalformedAt("{>8", 0u) != 0 { return 82; }
-    if MalformedAt(".", 1u) != 0 { return 83; }
-    if MalformedAt(".x", 1u) != 0 { return 84; }
-    if MalformedAt(">>>", 2u) != 0 { return 85; }
-    if MalformedAt("8!", 1u) != 0 { return 86; }
-    if MalformedAt("8q!", 2u) != 0 { return 87; }
+    if MalformedAt("{>8", 0) != 0 { return 82; }
+    if MalformedAt(".", 1) != 0 { return 83; }
+    if MalformedAt(".x", 1) != 0 { return 84; }
+    if MalformedAt(">>>", 2) != 0 { return 85; }
+    if MalformedAt("8!", 1) != 0 { return 86; }
+    if MalformedAt("8q!", 2) != 0 { return 87; }
 
     // Width and precision arithmetic is checked rather than wrapped, and the offset names the digit that would not
     // fit, which is the twentieth digit: nineteen nines fit a 64-bit uint and twenty do not.
-    if MalformedAt("999999999999999999999", 19u) != 0 { return 88; }
-    if MalformedAt(".999999999999999999999", 20u) != 0 { return 89; }
+    if MalformedAt("999999999999999999999", 19) != 0 { return 88; }
+    if MalformedAt(".999999999999999999999", 20) != 0 { return 89; }
     if Failed(ParseFormatSpec("18446744073709551615")) { return 90; }
 
     // Float precision: digits after the point, rounded to nearest with ties to even. A tie goes to the even

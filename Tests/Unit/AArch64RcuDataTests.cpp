@@ -210,6 +210,38 @@ TEST_CASE("AArch64 RCU emitter writes a constant array into read-only data") {
     CHECK_EQ(address[1].type, RcuRelType::AArch64AddAbsLo12Nc);
 }
 
+TEST_CASE("AArch64 RCU emitter folds a computed character element of a constant array") {
+    // A named character constant computed by a cast is folded as the unsigned integer of its width, so it is laid
+    // out as its code point rather than refused as having no compile-time value.
+    const auto package = CompileToAArch64Lir(R"(
+        const Smile: char64 = 0x1F600u32 as char64;
+        const NARROW: char64[2] = [c64'a', Smile];
+        const Wide: char128 = 0x10FFFFu32 as char128;
+        const WIDE: char128[2] = [Wide, c128'A'];
+
+        func Main() -> int {
+            let first = NARROW[0];
+            let second = WIDE[0];
+            return 0;
+        }
+    )");
+
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    const auto &object = objects.front();
+
+    std::vector<std::uint8_t> narrow(16, 0);
+    narrow[0] = 'a';
+    narrow[9] = 0xF6;
+    narrow[10] = 0x01;
+    CHECK_EQ(RodataOf(object, "test::NARROW"), narrow);
+    std::vector<std::uint8_t> wide(32, 0);
+    wide[0] = 0xFF;
+    wide[1] = 0xFF;
+    wide[2] = 0x10;
+    wide[16] = 'A';
+    CHECK_EQ(RodataOf(object, "test::WIDE"), wide);
+}
+
 TEST_CASE("AArch64 RCU emitter publishes a constant slice as a header pointing at its elements") {
     // Slice is the standard library's, and this suite compiles no packages, so
     // the declaration the constant needs is written out here.
@@ -243,7 +275,7 @@ const TEXT: char8[..] = "abc";
     CHECK_EQ(elements[0].sectionOffset, FindSymbol(object, "test::TEXT")->value);
 }
 
-TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data section") {
+TEST_CASE("AArch64 RCU emitter publishes scalar constant bytes in read-only data") {
     const auto package = CompileToAArch64Lir(R"(
         pub const LIMIT: int32 = 7;
 
@@ -257,12 +289,10 @@ TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data sect
 
     const RcuSymbol *limit = FindSymbol(object, "test::LIMIT");
     REQUIRE(limit != nullptr);
-    CHECK_EQ(limit->sectionIdx, RCU_DATA_IDX);
-    CHECK_EQ(limit->size, 8);
-    CHECK_EQ(limit->visibility, RcuSymVis::Global);
-    // The value is inlined at every use, so what stands behind the symbol is
-    // storage to take the address of rather than the number itself.
-    CHECK_EQ(object.sections[RCU_DATA_IDX].data.size(), 8);
+    CHECK_EQ(limit->sectionIdx, RCU_RODATA_IDX);
+    CHECK_EQ(limit->size, 4);
+    CHECK_EQ(limit->visibility, RcuSymVis::Exported);
+    CHECK_EQ(RodataOf(object, "test::LIMIT"), std::vector<std::uint8_t>{7, 0, 0, 0});
 }
 
 // Loads, stores and aggregate addressing
@@ -444,25 +474,21 @@ TEST_CASE("AArch64 RCU emitter copies a byte-aligned aggregate a chunk at a time
 }
 
 TEST_CASE("AArch64 RCU emitter reaches a slot past the addressing range through a scratch register") {
-    // Enough locals to put the last one past the 32 KiB a scaled doubleword
-    // offset reaches, so neither immediate form of LDR can name it.
-    // The last of them is an aggregate, which no register holds: every scalar
-    // above it lives in the frame only because the allocation ran out of
-    // registers, and the copy is what reaches its slot at a displacement.
-    std::string body;
-    for (int i = 0; i < 4200; ++i) {
-        body += std::format("    var v{}: int = {};\n", i, i);
-    }
-    const auto package = CompileToAArch64Lir(std::format(R"(
-        struct Pair {{ first: int; second: int; }}
+    // A local large enough to put the ones after it past the 32 KiB a scaled
+    // doubleword offset reaches, so neither immediate form of LDR can name them.
+    // It has to be one local: many small ones that are never live together
+    // share their frame storage. The last local is an aggregate, which no
+    // register holds, and the copy is what reaches its slot at a displacement.
+    const auto package = CompileToAArch64Lir(R"(
+        struct Pair { first: int; second: int; }
 
-        func Main() -> int {{
-{}            var pair = Pair {{first: 1, second: 2}};
+        func Main() -> int {
+            var filler: int[4200] = [0; 4200];
+            var pair = Pair {first: 1, second: 2};
             var copy = pair;
-            return copy.second;
-        }}
-    )",
-                                                         body));
+            return copy.second + filler[0];
+        }
+    )");
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();
@@ -475,4 +501,30 @@ TEST_CASE("AArch64 RCU emitter reaches a slot past the addressing range through 
     // frame layout's business, so the access itself is read as either.
     CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFF8003FFU) == 0x910003B0U; }));
     CHECK(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFBFFFE0U) == 0xF9000200U; }));
+}
+
+TEST_CASE("AArch64 scalar constant addresses relocate to full aligned values") {
+    const auto package = CompileToAArch64Lir(R"(
+        const PAD: int8 = -7i8;
+        pub const WIDE: int128 = 0x0102030405060708090A0B0C0D0E0F10i128;
+        pub func Address() -> *int128 { return @WIDE; }
+    )");
+    const auto objects = AArch64RcuEmitter(package, "test").Generate();
+    REQUIRE_FALSE(objects.empty());
+    const auto &object = objects.front();
+    const auto *symbol = FindSymbol(object, "test::WIDE");
+    REQUIRE(symbol != nullptr);
+    CHECK(symbol->sectionIdx == RCU_RODATA_IDX);
+    CHECK(symbol->size == 16);
+    CHECK(symbol->value % 16 == 0);
+    CHECK(symbol->visibility == RcuSymVis::Exported);
+    const auto bytes = RodataOf(object, "test::WIDE");
+    REQUIRE(bytes.size() == 16);
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        CHECK(bytes[i] == 16 - i);
+    }
+    const auto relocations = RelocsFor(object, RCU_TEXT_IDX, "test::WIDE");
+    REQUIRE(relocations.size() == 2);
+    CHECK(relocations[0].type == RcuRelType::AArch64AdrPrelPgHi21);
+    CHECK(relocations[1].type == RcuRelType::AArch64AddAbsLo12Nc);
 }

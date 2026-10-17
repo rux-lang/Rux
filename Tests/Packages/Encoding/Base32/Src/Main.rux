@@ -1,0 +1,161 @@
+// Base32 is checked against RFC 4648's vectors, then exhaustively against a table of the RFC alphabet, which is
+// what checks the branchless arithmetic. Crockford's alphabet is checked for the leniency its specification asks of
+// a reader, and for the characters it leaves out. Round trips over every length up to a few groups cover each of the
+// four partial final groups.
+
+import Encoding::{ Base32Decode, Base32DecodedLength, Base32Encode, Base32EncodedLength, Base32Variant, DecodeError };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Encoded(text: char8[..], form: Base32Variant, expected: char8[..]) -> bool {
+    var room: char8[64];
+    let written = Base32Encode(text, room[..], form) catch { else => return false };
+    return written == expected.length && written == Base32EncodedLength(text.length, form) &&
+           Same(room[..written], expected);
+}
+
+func Decoded(text: char8[..], form: Base32Variant, expected: char8[..]) -> bool {
+    var room: byte[64];
+    let written = Base32Decode(text, room[..], form) catch { else => return false };
+    if written != expected.length { return false; }
+    var index: uint = 0;
+    while index < written {
+        if room[index] != (expected[index] as uint8) { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Vector(plain: char8[..], form: Base32Variant, encoded: char8[..]) -> bool {
+    return Encoded(plain, form, encoded) && Decoded(encoded, form, plain);
+}
+
+// The reason a decode was refused, as a small code: 1 character, 2 length, 3 padding, 4 non-canonical,
+// 6 capacity, and a negative code when the offset is wrong or the destination was touched.
+func Refusal(text: char8[..], form: Base32Variant, room: uint, at: uint) -> int {
+    var storage: byte[64] = [0x3F; 64];
+    let reported = match Base32Decode(text, storage[..room], form) {
+        .Failure(error) => error,
+        .Success(_) => return -1
+    };
+    for value in storage {
+        if value != 0x3F { return -2; }
+    }
+    return match reported {
+        .InvalidCharacter(offset) => offset == at ? 1 : -3,
+        .InvalidLength(offset) => offset == at ? 2 : -3,
+        .InvalidPadding(offset) => offset == at ? 3 : -3,
+        .NonCanonical(offset) => offset == at ? 4 : -3,
+        .InsufficientCapacity(needed) => needed == at ? 6 : -3,
+        else => 0
+    };
+}
+
+// What a plain table says a character is worth in the RFC alphabet, in either case, or -1.
+func Reference(c: uint) -> int {
+    if c >= 65 && c <= 90 { return (c - 65) as int; }
+    if c >= 97 && c <= 122 { return (c - 97) as int; }
+    if c >= 50 && c <= 55 { return (c - 24) as int; }
+    return -1;
+}
+
+func RoundTrips(form: Base32Variant) -> bool {
+    var source: byte[20];
+    var index: uint = 0;
+    while index < 20 {
+        source[index] = (index * 53 + 7) as byte;
+        index = index + 1;
+    }
+    var length: uint = 0;
+    while length <= 20 {
+        var text: char8[40];
+        let written = Base32Encode(source[..length], text[..], form) catch { else => return false };
+        if written != Base32EncodedLength(length, form) { return false; }
+        var back: byte[20];
+        let read = Base32Decode(text[..written], back[..], form) catch { else => return false };
+        if read != length { return false; }
+        var at: uint = 0;
+        while at < length {
+            if back[at] != source[at] { return false; }
+            at = at + 1;
+        }
+        length = length + 1;
+    }
+    return true;
+}
+
+func Main() -> int {
+    // RFC 4648 section 10.
+    if !Vector("", Base32Variant::Standard, "") { return 1; }
+    if !Vector("f", Base32Variant::Standard, "MY======") { return 2; }
+    if !Vector("fo", Base32Variant::Standard, "MZXQ====") { return 3; }
+    if !Vector("foo", Base32Variant::Standard, "MZXW6===") { return 4; }
+    if !Vector("foob", Base32Variant::Standard, "MZXW6YQ=") { return 5; }
+    if !Vector("fooba", Base32Variant::Standard, "MZXW6YTB") { return 6; }
+    if !Vector("foobar", Base32Variant::Standard, "MZXW6YTBOI======") { return 7; }
+    if !Vector("foobar", Base32Variant::StandardUnpadded, "MZXW6YTBOI") { return 8; }
+    // Lower case reads the same.
+    if !Decoded("mzxw6ytboi======", Base32Variant::Standard, "foobar") { return 9; }
+
+    // Every character, against the table.
+    var c: uint = 0;
+    while c < 256 {
+        var group: char8[2] = ['A', 'A'];
+        group[0] = c as uint8 as char8;
+        var out: byte[1];
+        let expected = Reference(c);
+        let valid = match Base32Decode(group[..], out[..], Base32Variant::StandardUnpadded) {
+            .Success(_) => true,
+            .Failure(_) => false
+        };
+        if valid != (expected >= 0) { return 10; }
+        if valid && out[0] != ((expected as uint) << 3) as byte { return 11; }
+        c = c + 1;
+    }
+
+    if !RoundTrips(Base32Variant::Standard) || !RoundTrips(Base32Variant::StandardUnpadded) { return 12; }
+    if !RoundTrips(Base32Variant::Crockford) { return 13; }
+
+    // Crockford: its own alphabet, either case, the look-alike letters read as digits, and hyphens skipped.
+    if !Vector("foobar", Base32Variant::Crockford, "CSQPYRK1E8") { return 14; }
+    if !Decoded("csqpyrkie8", Base32Variant::Crockford, "foobar") { return 15; }
+    if !Decoded("CSQP-YRKL-E8", Base32Variant::Crockford, "foobar") { return 16; }
+    if !Decoded("o0", Base32Variant::Crockford, "\0") { return 17; }
+    if Refusal("CSQPYRKUE8", Base32Variant::Crockford, 64, 7) != 1 { return 18; }
+
+    // Strictness.
+    if Refusal("MY=====", Base32Variant::Standard, 64, 7) != 2 { return 19; }
+    if Refusal("MY", Base32Variant::Standard, 64, 2) != 2 { return 20; }
+    if Refusal("M=======", Base32Variant::Standard, 64, 1) != 3 { return 21; }
+    if Refusal("MY===A==", Base32Variant::Standard, 64, 2) != 3 { return 22; }
+    if Refusal("MZ======", Base32Variant::Standard, 64, 1) != 4 { return 23; }
+    if Refusal("MY======", Base32Variant::StandardUnpadded, 64, 2) != 3 { return 24; }
+    if Refusal("MZX", Base32Variant::StandardUnpadded, 64, 3) != 2 { return 25; }
+    if Refusal("M1", Base32Variant::StandardUnpadded, 64, 1) != 1 { return 26; }
+    if Refusal("MZXW6YTB", Base32Variant::Standard, 4, 5) != 6 { return 27; }
+    match Base32DecodedLength("MZXW6YQ=") {
+        .Success(length) => {
+            if length != 4 { return 28; }
+        },
+        .Failure(_) => return 29
+    }
+
+    // A short destination is refused before anything is written.
+    var short: char8[7] = ['?'; 7];
+    match Base32Encode("f", short[..]) {
+        .Failure(_) => {},
+        .Success(_) => return 30
+    }
+    for character in short {
+        if character != '?' { return 31; }
+    }
+    return 0;
+}

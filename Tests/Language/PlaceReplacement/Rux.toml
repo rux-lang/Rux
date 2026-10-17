@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "PlaceReplacement"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Assigning to a field, tuple element, or array or slice element destroys the value it replaces, and a raw-pointer write destroys nothing."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+Memory = { Path = "../../../Packages/Memory" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

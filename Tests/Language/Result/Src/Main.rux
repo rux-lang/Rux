@@ -1,27 +1,28 @@
-import Core::Assert;
-import Core::Result;
+// A native fallible: a success or a failure, asked about, recovered from, and matched.
+
+import Core::{ Assert, Failed, Succeeded };
 
 func Main() -> int {
-    let resSuccess = Result::Success<int, int>(42);
-    let resError = Result::Error<int, int>(500);
+    let resSuccess: int ! int = .Success(42);
+    let resError: int ! int = .Failure(500);
 
-    Assert(resSuccess.IsSuccess(), "resSuccess should be Success");
-    Assert(!resSuccess.IsError(), "resSuccess should not be Error");
-    Assert(resError.IsError(), "resError should be Error");
-    Assert(!resError.IsSuccess(), "resError should not be Success");
+    Assert(Succeeded(resSuccess), "resSuccess should be a success");
+    Assert(!Failed(resSuccess), "resSuccess should not be a failure");
+    Assert(Failed(resError), "resError should be a failure");
+    Assert(!Succeeded(resError), "resError should not be a success");
 
-    Assert(resSuccess.ValueOr(0) == 42, "ValueOr on Success should return 42");
-    Assert(resError.ValueOr(100) == 100, "ValueOr on Error should return fallback 100");
+    Assert((resSuccess catch { else => 0 }) == 42, "catch on a success should pass 42 through");
+    Assert((resError catch { else => 100 }) == 100, "catch on a failure should recover with 100");
 
     let val = match resSuccess {
         .Success(v) => v,
-        .Error(_) => 0
+        .Failure(_) => 0
     };
     Assert(val == 42, "match on resSuccess should be 42");
 
     let errVal = match resError {
         .Success(_) => 0,
-        .Error(e) => e
+        .Failure(e) => e
     };
     Assert(errVal == 500, "match on resError should be 500");
 

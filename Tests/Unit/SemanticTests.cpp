@@ -39,8 +39,10 @@ TEST_CASE("function parameters are immutable") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "cannot modify immutable variable 'x'");
-    CHECK_EQ(diagnostics[1].message, "cannot modify immutable variable 'ptr'");
+    // A parameter has no `var` form, so the fix offered is a reference parameter or a local, never `var`.
+    CHECK_EQ(diagnostics[0].message, "cannot modify parameter 'x'");
+    CHECK_EQ(diagnostics[0].help, "take 'x' as '&var int' to change the caller's value, or move it into a 'var' local");
+    CHECK_EQ(diagnostics[1].message, "cannot modify parameter 'ptr'");
 }
 
 TEST_CASE("pointer binding mutability is independent of pointee mutability") {
@@ -113,6 +115,40 @@ TEST_CASE("extern function call attributes emit direct and qualified diagnostics
     CHECK_EQ(diagnostics[1].message, "qualified extern call is discouraged");
 }
 
+TEST_CASE("Error and Warn attributes report the use where the callee is named") {
+    const auto diagnostics = AnalyzeSource(R"(
+#Warn("use Mean")
+func Average(a: int32, b: int32) -> int32 { return (a + b) / 2i32; }
+struct Meter { value: int32; }
+extend Meter {
+    #Error("read the value directly")
+    func Read(self: &Meter) -> int32 { return self.value; }
+}
+module Stats {
+    #Warn("use Stats::Mean")
+    pub func Median(a: int32) -> int32 { return a; }
+}
+func Main() -> int {
+    let meter = Meter { value: 1i32 };
+    let mean = Average(1i32, 3i32) + meter.Read();
+    return (mean + Stats::Median(2i32)) as int;
+}
+)");
+
+    // The caret sits on the callee's name, not on the '(' after it or the '.' before a method name, and a qualified
+    // name starts at its first segment.
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[2].message, "use Stats::Mean");
+    CHECK_EQ(diagnostics[2].location.line, 16);
+    CHECK_EQ(diagnostics[2].location.column, 20);
+    CHECK_EQ(diagnostics[0].message, "use Mean");
+    CHECK_EQ(diagnostics[0].location.line, 15);
+    CHECK_EQ(diagnostics[0].location.column, 16);
+    CHECK_EQ(diagnostics[1].message, "read the value directly");
+    CHECK_EQ(diagnostics[1].location.line, 15);
+    CHECK_EQ(diagnostics[1].location.column, 44);
+}
+
 TEST_CASE("one-argument Link applies a library to every function in an extern block") {
     const auto diagnostics = AnalyzeSource(R"(
         #Link("Kernel32.dll")
@@ -170,36 +206,25 @@ TEST_CASE("same function signature in distinct modules remains valid") {
     CHECK(diagnostics.empty());
 }
 
-TEST_CASE("documented primitive names report when their implementation is unavailable") {
-    // Taken from the catalog rather than repeated, so implementing a width moves it out of this test by itself.
-    std::vector<std::string_view> types;
-    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        if (!primitive.implemented) {
-            types.push_back(primitive.name);
-        }
-    }
-    REQUIRE_FALSE(types.empty());
-
+TEST_CASE("every primitive name in the catalog resolves as a type") {
+    // Taken from the catalog rather than repeated, so a width added to it is covered here by itself.
     std::string source;
-    for (std::size_t i = 0; i < types.size(); ++i) {
-        source += "struct Holder" + std::to_string(i) + " { value: " + std::string(types[i]) + "; }\n";
+    std::size_t index = 0;
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        source += "struct Holder" + std::to_string(index++) + " { value: " + std::string(primitive.name) + "; }\n";
     }
 
-    const auto diagnostics = AnalyzeSource(source);
-    REQUIRE_EQ(diagnostics.size(), types.size());
-    for (std::size_t i = 0; i < types.size(); ++i) {
-        CAPTURE(types[i]);
-        CHECK_EQ(diagnostics[i].severity, Diagnostic::Severity::Error);
-        CHECK_EQ(diagnostics[i].message, "primitive type '" + std::string(types[i]) +
-                                             "' is reserved but is not implemented in this compiler version");
-    }
+    CHECK(AnalyzeSource(source).empty());
 }
 
-TEST_CASE("unimplemented primitive names cannot be declared as user types") {
-    const auto diagnostics = AnalyzeSource("struct int128 {}");
+TEST_CASE("primitive names cannot be declared as user types") {
+    for (const std::string_view name : {"int128", "char512"}) {
+        CAPTURE(name);
+        const auto diagnostics = AnalyzeSource("struct " + std::string(name) + " {}");
 
-    REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "type 'int128' is already declared in this scope");
+        REQUIRE_EQ(diagnostics.size(), 1);
+        CHECK_EQ(diagnostics.front().message, "type '" + std::string(name) + "' is already declared in this scope");
+    }
 }
 
 TEST_CASE("ordinary unknown types keep the unknown-type diagnostic") {
@@ -278,6 +303,91 @@ const Zeros: uint8[4] = [0; 4];
     const auto nonConstant = AnalyzeSource("func Main() { let count = 3; let values = [0; count]; }");
     REQUIRE_EQ(nonConstant.size(), 1);
     CHECK_EQ(nonConstant.front().message, "array repeat count must be a non-negative compile-time integer");
+}
+
+TEST_CASE("constant initializers are compile-time values") {
+    CHECK(AnalyzeSource(R"(
+        struct Point { x: int; y: int; }
+        enum Color: uint8 { Red = 0, Green = 1 }
+        const Base: uint = 4;
+        const Derived = (Base * 2u + 1u) as int;
+        const Size = sizeof(int);
+        const Origin = Point { x: 0, y: Derived };
+        const Favorite = Color::Green;
+        const Flag = Base > 2u && !(Size == 0u);
+
+        func Main() {
+            const Local = Derived - 1;
+            const Again = Local * 2;
+            let sum = Local + Again + Origin.y;
+        }
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource(R"(
+        func Seven() -> int { return 7; }
+        const FromCall = Seven();
+
+        func Main(parameter: int) {
+            var counter = 1;
+            counter = 5;
+            const FromVariable = counter;
+            const FromParameter = parameter + 1;
+            const Address = @counter;
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "call to 'Seven' is not a compile-time value");
+    CHECK_EQ(diagnostics[1].message, "'counter' is not a compile-time constant");
+    CHECK_EQ(diagnostics[2].message, "'parameter' is not a compile-time constant");
+    CHECK_EQ(diagnostics[3].message, "a reference or an address is not a compile-time value");
+}
+
+TEST_CASE("a named constant sizes an array, counts a repeat, and bounds a range") {
+    CHECK(AnalyzeSource(R"(
+        const Limit: uint = 100;
+        const Half = Limit / 2u;
+        module Sizes {
+            pub const Small = 3;
+        }
+        struct Table { cells: int[Sizes::Small]; }
+
+        func Main() {
+            var flags: bool[Limit] = [false; Limit];
+            const Local = 2;
+            let mixed: int[Local + Half] = [0; Half + Local];
+            let table = Table { cells: [1; Sizes::Small] };
+            let viaCast: uint8[Local as uint] = [0u8; 2];
+        }
+    )")
+              .empty());
+
+    const auto mismatched = AnalyzeSource(R"(
+        const Limit = 4;
+        func Main() { let values: int[Limit] = [0; Limit + 1]; }
+    )");
+    REQUIRE_EQ(mismatched.size(), 1);
+    CHECK(mismatched.front().message.contains("cannot assign 'int[5]' to 'int[4]'"));
+
+    const auto reversed = AnalyzeSource(R"(
+        const High = 9;
+        func Main() { for i in High..1 {} }
+    )");
+    REQUIRE_EQ(reversed.size(), 1);
+    CHECK_EQ(reversed.front().message, "range start cannot be greater than its end");
+
+    // A cycle stops folding rather than recursing forever, and is reported once by the declaration check.
+    const auto cyclic = AnalyzeSource(R"(
+        const First = Second;
+        const Second = First;
+        func Main() { let values: int[First] = [0; 1]; }
+    )");
+    CHECK(std::ranges::any_of(cyclic, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message.contains("cyclic initializer");
+    }));
+    CHECK(std::ranges::any_of(cyclic, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message == "array length must be a non-negative compile-time integer";
+    }));
 }
 
 TEST_CASE("array repeat expressions require copyable elements") {

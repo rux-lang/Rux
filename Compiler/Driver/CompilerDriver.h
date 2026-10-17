@@ -18,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -34,15 +35,14 @@ struct CompileOptions {
     /// Workspace source roots. Manifests supply normalized namespace/name identities; matching registry requirements
     /// use these sources while publishable manifests retain version-based dependencies.
     std::vector<std::filesystem::path> localPackageRoots;
-    bool localDependenciesOnly = false;
+    /// Normalized namespaces owned by the workspace: a registry dependency in one of them must resolve from
+    /// `localPackageRoots`, while any other registry dependency without a local source falls back to the package cache.
+    std::set<std::string> localNamespaces;
 
     bool isTest = false;
     bool checkOnly = false; // stop after semantic analysis; keep going past
     // frontend errors so all diagnostics are reported
     bool captureFrontend = false; // retain folded user ASTs in CompileResult
-    /// Report every use of the legacy Result and Option protocols in this package as an error
-    /// (`--deny-legacy-protocols`).
-    bool denyLegacyProtocols = false;
 
     /// Debug dumps written under <package root>/Temp (build --dump-*).
     bool dumpTokens = false;
@@ -50,8 +50,23 @@ struct CompileOptions {
     bool dumpSema = false;
     bool dumpHir = false;
     bool dumpLir = false;
+    bool dumpOptimizationPasses = false;
     bool dumpAsm = false;
     bool dumpRcu = false;
+    /// Write a function symbol table into the linked image for profilers (build --emit symbols).
+    bool emitSymbols = false;
+    bool collectOptimizationStatistics = false;
+    std::vector<std::string> disabledOptimizationPasses;
+    /// Threads one compilation may use; 0 means one per logical core. The artifact never depends on it.
+    std::size_t jobs = 0;
+    /// Reuse the artifact of an earlier identical build when nothing it read has changed (see Driver/BuildCache.h).
+    /// Inspection output, statistics and check-only runs always compile.
+    bool useBuildCache = true;
+    /// The build's time, in seconds since the Unix epoch, instead of `SOURCE_DATE_EPOCH` or the clock.
+    std::optional<std::int64_t> buildTimestamp;
+    /// Where precompiled dependency packages are kept (Driver/PackageCache.h) instead of `RUX_PACKAGE_CACHE` or the
+    /// user's data directory. Used only when `useBuildCache` is.
+    std::optional<std::filesystem::path> packageCacheDirectory;
 
     /// Optional presentation hook. The driver always retains diagnostics in CompileResult and supplies already-loaded
     /// source text to a callback so a CLI can render context without rereading files.

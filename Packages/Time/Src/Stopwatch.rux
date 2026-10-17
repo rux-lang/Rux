@@ -1,0 +1,118 @@
+// Elapsed time that can be paused, resumed and split into laps, measured on the monotonic clock.
+// One reading and `Instant.Elapsed` time a single stretch. A stopwatch is for the stretches a program cannot time
+// that way: work done in pieces with pauses between them, a running total read while it is still running, or a
+// sequence of laps. It holds the total of the stretches that have finished and, while it runs, the reading the
+// current stretch began at, so reading it never stops it.
+// This is a measurement of elapsed time and nothing more. Repetition, warm-up, statistics and keeping the optimizer
+// from deleting the work being timed are what benchmarking is about, and they belong to a benchmarking tool rather
+// than to a clock.
+
+/// A pausable timer over the monotonic clock.
+/// `Copy`, owning nothing; a copy is an independent stopwatch with the same history. Starts stopped at zero. The
+/// elapsed time is the sum of every stretch between a start and a stop, plus the current stretch while running.
+/// @see https://rux-lang.dev/docs/api/time/stopwatch
+pub struct Stopwatch {
+    /// The total of the stretches that have ended.
+    finished: Duration;
+    /// The reading the current stretch began at, present only while running.
+    startedAt: Instant?;
+    /// The elapsed time when the last lap ended, which is where the next one begins.
+    lapMark: Duration;
+}
+
+// The sum of two non-negative spans. The monotonic clock cannot produce a total near the 292-billion-year edge of a
+// duration, so the checked sum's absence is unreachable; keeping the left side is a defined answer regardless.
+func Accumulate(total: Duration, more: Duration) -> Duration {
+    return total.Plus(more) ?? total;
+}
+
+extend Stopwatch {
+    /// A stopwatch that is stopped and reads zero.
+    /// Cannot fail and does not read the clock.
+    /// @returns a stopped stopwatch at zero
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#new
+    pub func Stopwatch() -> Stopwatch {
+        return Stopwatch { finished: Duration::Zero(), startedAt: none, lapMark: Duration::Zero() };
+    }
+
+    /// A stopwatch that reads zero and is already running.
+    /// Reads the clock once. Cannot fail.
+    /// @returns a running stopwatch, started now
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#start-new
+    pub func StartNew() -> Stopwatch {
+        var watch = Stopwatch();
+        watch.Start();
+        return watch;
+    }
+
+    /// Starts the stopwatch, or resumes it from the total it already holds.
+    /// Does nothing when it is already running, so a second start does not restart the current stretch. Cannot fail.
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#start
+    pub func Start(self: &var Stopwatch) {
+        if self.IsRunning() { return; }
+        self.startedAt = .Some(Instant::Now());
+    }
+
+    /// Stops the stopwatch, adding the current stretch to its total.
+    /// Does nothing when it is already stopped. The total then stays fixed until the stopwatch is started again.
+    /// Cannot fail.
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#stop
+    pub func Stop(self: &var Stopwatch) {
+        let started = self.startedAt ?? return;
+        self.finished = Accumulate(self.finished, started.Elapsed());
+        self.startedAt = none;
+    }
+
+    /// Stops the stopwatch and sets it back to zero, clearing the laps.
+    /// Cannot fail and does not read the clock.
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#reset
+    pub func Reset(self: &var Stopwatch) {
+        self.finished = Duration::Zero();
+        self.startedAt = none;
+        self.lapMark = Duration::Zero();
+    }
+
+    /// Sets the stopwatch back to zero, clearing the laps, and starts it.
+    /// The same as `Reset` followed by `Start`, with one clock reading. Cannot fail.
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#restart
+    pub func Restart(self: &var Stopwatch) {
+        self.Reset();
+        self.Start();
+    }
+
+    /// Whether the stopwatch is running.
+    /// Cannot fail and does not read the clock.
+    /// @returns true between a start and the next stop or reset
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#is-running
+    pub func IsRunning(self: &Stopwatch) -> bool {
+        return match self.startedAt {
+            .Some(_) => true,
+            none => false
+        };
+    }
+
+    /// The total elapsed time: every finished stretch, plus the current one while running.
+    /// Reading it does not stop or otherwise change the stopwatch. Reads the clock only while running, and two
+    /// readings of a stopped stopwatch are equal. Cannot fail.
+    /// @returns the elapsed time, never negative
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#elapsed
+    pub func Elapsed(self: &Stopwatch) -> Duration {
+        return match self.startedAt {
+            .Some(started) => Accumulate(self.finished, started.Elapsed()),
+            none => self.finished
+        };
+    }
+
+    /// Ends the current lap and returns its length: the elapsed time since the previous lap ended, or since zero.
+    /// The stopwatch keeps running or stays stopped as it was; only time the stopwatch counted is part of a lap, so a
+    /// lap spanning a pause excludes the pause. The laps since the last reset add up to the elapsed time at the end of
+    /// the last one. Cannot fail.
+    /// @returns the length of the lap just ended, never negative
+    /// @see https://rux-lang.dev/docs/api/time/stopwatch#lap
+    pub func Lap(self: &var Stopwatch) -> Duration {
+        let now = self.Elapsed();
+        let lap = now.Minus(self.lapMark) ?? Duration::Zero();
+        self.lapMark = now;
+        return lap;
+    }
+}

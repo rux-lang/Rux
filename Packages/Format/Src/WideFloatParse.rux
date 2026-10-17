@@ -1,5 +1,4 @@
 // Reading decimal text into a wide float, exactly.
-//
 // The grammar is the one `ParseFloat64` accepts, so what one width reads the others read. The conversion is not
 // the narrow one: every digit of the input is kept as an integer, the value is formed as a ratio of two integers
 // — the digits against a power of ten — and the quotient is taken to three bits past the precision with a
@@ -9,28 +8,26 @@
 import Allocator::Allocator;
 
 /// Reads `str` as a value under `layout`, rounding to nearest with ties to even, and reports the bits.
-///
 /// Overflow is refused rather than rounded to infinity, as `ParseFloat64` refuses it; a value too small for the
 /// format becomes the signed zero. `NaN`, `Inf` and `-Inf` are read exactly as formatting writes them.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @param layout which wide floating-point format the bits are in
 /// @returns the bit pattern, or the failure and where it was found
-/// @see https://rux-lang.dev/docs/api/format/parse-wide-float
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-wide-float
 pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayout) -> uint512 ! ParseError {
-    if str.length == 0u { fail ParseError::Empty; }
+    if str.length == 0 { fail ParseError::Empty; }
     var index: uint = 0;
     var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
         negative = str[index] == c8'-';
-        index = index + 1u;
-        if index == str.length { fail ParseError::InvalidCharacter(index - 1u); }
+        index = index + 1;
+        if index == str.length { fail ParseError::InvalidCharacter(index - 1); }
     }
-    if index + 3u == str.length && str[index] == c8'N' && str[index + 1u] == c8'a' && str[index + 2u] == c8'N' {
+    if index + 3 == str.length && str[index] == c8'N' && str[index + 1] == c8'a' && str[index + 2] == c8'N' {
         return NanBits(layout);
     }
-    if index + 3u == str.length && str[index] == c8'I' && str[index + 1u] == c8'n' && str[index + 2u] == c8'f' {
+    if index + 3 == str.length && str[index] == c8'I' && str[index + 1] == c8'n' && str[index + 2] == c8'f' {
         return InfinityBits(negative, layout);
     }
 
@@ -43,34 +40,34 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
         let ch = str[index];
         if ch >= c8'0' && ch <= c8'9' {
             let digit = ((ch as uint) - (c8'0' as uint)) as uint64;
-            digitCount = digitCount + 1u;
+            digitCount = digitCount + 1;
             if afterPoint {
                 decimalExponent = decimalExponent - 1;
             }
-            if digit != 0u64 || significant > 0u {
-                if !digits.MultiplySmall(10u64) || !digits.AddSmall(digit) {
+            if digit != 0 || significant > 0 {
+                if !digits.MultiplySmall(10) || !digits.AddSmall(digit) {
                     fail ParseError::OutOfMemory(index);
                 }
-                significant = significant + 1u;
+                significant = significant + 1;
             }
-            index = index + 1u;
+            index = index + 1;
             continue;
         }
         if ch == c8'.' && !afterPoint {
             afterPoint = true;
-            index = index + 1u;
+            index = index + 1;
             continue;
         }
         break;
     }
-    if digitCount == 0u { fail ParseError::InvalidCharacter(index); }
+    if digitCount == 0 { fail ParseError::InvalidCharacter(index); }
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         let marker = index;
-        index = index + 1u;
+        index = index + 1;
         var exponentNegative = false;
         if index < str.length && (str[index] == c8'+' || str[index] == c8'-') {
             exponentNegative = str[index] == c8'-';
-            index = index + 1u;
+            index = index + 1;
         }
         if index == str.length || str[index] < c8'0' || str[index] > c8'9' {
             fail ParseError::InvalidCharacter(marker);
@@ -83,20 +80,20 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
             if exponent < 100000000 {
                 exponent = exponent * 10 + digit;
             }
-            index = index + 1u;
+            index = index + 1;
         }
         decimalExponent = exponentNegative ? decimalExponent - exponent : decimalExponent + exponent;
     }
     if index != str.length { fail ParseError::InvalidCharacter(index); }
-    if digits.IsZero() { return PackWide(negative, 0u512, 0, layout); }
+    if digits.IsZero() { return PackWide(negative, 0, 0, layout); }
 
     // The value is at least ten to the magnitude less one and below ten to the magnitude; anything clearly past
     // the format is answered without building the numbers that would say so exactly.
     let magnitude = (significant as int) + decimalExponent;
-    let largest = ((layout.bias as int64 * 30103i64) / 100000i64) as int + 2;
-    let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103i64) / 100000i64) as int + 3);
+    let largest = ((layout.bias as int64 * 30103) / 100000) as int + 2;
+    let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103) / 100000) as int + 3);
     if magnitude > largest { fail ParseError::Overflow(str.length); }
-    if magnitude < smallest { return PackWide(negative, 0u512, 0, layout); }
+    if magnitude < smallest { return PackWide(negative, 0, 0, layout); }
     return RoundRatio(allocator, digits, decimalExponent, negative, layout, str.length);
 }
 
@@ -127,7 +124,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
         if !scratch.Assign(denominator) || !scratch.ShiftLeft(exponent as uint) {
             fail ParseError::OutOfMemory(where);
         }
-        if numerator.Compare(scratch) < 0i32 {
+        if numerator.Compare(scratch) < 0 {
             exponent = exponent - 1;
         }
     }
@@ -135,7 +132,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
         if !scratch.Assign(numerator) || !scratch.ShiftLeft((0 - exponent) as uint) {
             fail ParseError::OutOfMemory(where);
         }
-        if scratch.Compare(denominator) < 0i32 {
+        if scratch.Compare(denominator) < 0 {
             exponent = exponent - 1;
         }
     }
@@ -163,15 +160,15 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
              !divisor.Assign(denominator) {
         fail ParseError::OutOfMemory(where);
     }
-    var quotient = 0u512;
+    var quotient: uint512 = 0;
     var position = wanted;
-    while position > 0u {
+    while position > 0 {
         position = position - 1u;
-        if remainder.Compare(divisor) >= 0i32 {
+        if remainder.Compare(divisor) >= 0 {
             quotient = quotient | (1u512 << position);
             remainder.Subtract(divisor);
         }
-        if position > 0u && !remainder.ShiftLeft(1u) {
+        if position > 0 && !remainder.ShiftLeft(1u) {
             fail ParseError::OutOfMemory(where);
         }
     }
@@ -180,9 +177,9 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     }
 
     // Round to nearest, ties to even, on the three low bits.
-    var significand = quotient >> 3u;
+    var significand = quotient >> 3;
     let low = quotient & 7u512;
-    if low > 4u512 || (low == 4u512 && (significand & 1u512) == 1u512) {
+    if low > 4 || (low == 4 && (significand & 1u512) == 1) {
         significand = significand + 1u512;
     }
     if exponent < lowest {
@@ -195,7 +192,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
                                                               layout);
     }
     if significand == (1u512 << precision) {
-        significand = significand >> 1u;
+        significand = significand >> 1;
         exponent = exponent + 1;
         if exponent > layout.bias { fail ParseError::Overflow(where); }
     }
@@ -204,11 +201,10 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
 }
 
 /// Reads `str` as an x87 extended value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
-/// @see https://rux-lang.dev/docs/api/format/parse-float80
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float80
 pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 ! ParseError {
     let layout = FloatLayout::Extended80();
     let parsed = ParseWideFloat(allocator, str, layout)?;
@@ -216,11 +212,10 @@ pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 ! ParseEr
 }
 
 /// Reads `str` as a binary128 value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
-/// @see https://rux-lang.dev/docs/api/format/parse-float128
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float128
 pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 ! ParseError {
     let layout = FloatLayout::Binary128();
     let parsed = ParseWideFloat(allocator, str, layout)?;
@@ -228,11 +223,10 @@ pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 ! Parse
 }
 
 /// Reads `str` as a binary256 value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
-/// @see https://rux-lang.dev/docs/api/format/parse-float256
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float256
 pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 ! ParseError {
     let layout = FloatLayout::Binary256();
     let parsed = ParseWideFloat(allocator, str, layout)?;
@@ -240,11 +234,10 @@ pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 ! Parse
 }
 
 /// Reads `str` as a binary512 value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
-/// @see https://rux-lang.dev/docs/api/format/parse-float512
+/// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float512
 pub func ParseFloat512(allocator: Allocator, str: char8[..]) -> Float512 ! ParseError {
     let layout = FloatLayout::Binary512();
     let parsed = ParseWideFloat(allocator, str, layout)?;

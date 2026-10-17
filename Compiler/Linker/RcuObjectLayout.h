@@ -23,6 +23,9 @@ enum class RcuMergedSection : std::uint8_t {
     RoData,
     Data,
     Bss,
+    /// The thread-local template, one block every thread's copy is made from. An offset in it is a variable's offset
+    /// in each thread's block, which every format turns into its own thread-relative form.
+    Tls,
 };
 
 /// Bytes a format writer places ahead of the merged input sections, such as jump stubs or a header it generates itself.
@@ -34,6 +37,7 @@ struct RcuLayoutPrefixes {
     std::uint8_t textPadding = 0;
     std::uint8_t rodataPadding = 0;
     std::uint8_t dataPadding = 0;
+    bool materializeBss = false;
 };
 
 struct RcuSectionPlacement {
@@ -48,6 +52,7 @@ struct RcuSectionBases {
     std::uint64_t rodata = 0;
     std::uint64_t data = 0;
     std::uint64_t bss = 0;
+    std::uint64_t tls = 0;
 };
 
 class RcuObjectLayout {
@@ -82,8 +87,8 @@ private:
         std::vector<std::vector<std::optional<RcuSectionPlacement>>> relocations;
     };
 
-    std::array<std::vector<std::uint8_t>, 3> data;
-    std::array<std::uint16_t, 4> alignments = {1, 1, 1, 1};
+    std::array<std::vector<std::uint8_t>, 5> data;
+    std::array<std::uint16_t, 5> alignments = {1, 1, 1, 1, 1};
     std::vector<ObjectPlacement> objects;
     std::uint64_t bssSize = 0;
 };

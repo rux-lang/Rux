@@ -1,0 +1,105 @@
+// Threads of execution, which the C library manages: their stacks, their thread-local blocks and joining them.
+// The kernel only starts and stops a thread; everything a program needs around that belongs to the C library, and a
+// thread started behind its back would have no thread-local block. That is why this module links a library, and why
+// a program that starts threads is linked dynamically.
+// The names are the platform's own, lowercase, because they are the symbols the library exports and what a reader
+// porting code will look for.
+
+// glibc moved the thread entry points into the main C library in 2.34; `libpthread.so.0` survives as a stub
+// for older links. Naming libc is what works on both.
+const ThreadLib = "libc.so.6";
+
+/// A thread as the C library names it, `pthread_t`. Every system this package family binds keeps it in one word.
+/// @see https://rux-lang.dev/docs/api/linux/thread#p-thread
+pub type PThread = uint64;
+
+/// Room for a `pthread_attr_t`, which each C library sizes its own way and none larger than this.
+/// Only ever passed by address to the `pthread_attr_*` calls, which initialize and read it.
+/// @see https://rux-lang.dev/docs/api/linux/thread#p-thread-attributes
+pub struct PThreadAttributes {
+    storage: uint64[8];
+}
+
+extend PThreadAttributes {
+    /// Zeroed storage for `pthread_attr_init` to initialize.
+    /// @returns the storage
+    /// @see https://rux-lang.dev/docs/api/linux/thread#p-thread-attributes-new
+    pub func PThreadAttributes() -> PThreadAttributes {
+        return PThreadAttributes { storage: [0u64; 8] };
+    }
+}
+
+/// `_SC_NPROCESSORS_ONLN`: the `sysconf` name for the number of processors currently online.
+/// @see https://rux-lang.dev/docs/api/linux/thread#sc-nprocessors-onln
+#Allow("naming.const")
+pub const SC_NPROCESSORS_ONLN: int32 = 84;
+
+#Link(ThreadLib)
+extern {
+    /// Starts a thread running `start(argument)`.
+    /// @param thread receives the new thread
+    /// @param attributes initialized attributes, or null for the defaults
+    /// @param start the thread's entry point, a function taking and returning one pointer
+    /// @param argument the value handed to the entry point
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/linux/thread#pthread-create
+    /// @see https://man7.org/linux/man-pages/man3/pthread_create.3.html
+    pub func pthread_create(thread: *var PThread, attributes: *PThreadAttributes, start: *opaque, argument: *var opaque)
+        -> int32;
+
+    /// Waits for a thread to finish and releases it.
+    /// @param thread a thread nothing has joined or detached
+    /// @param result receives the value its entry point returned, or null to ignore it
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/linux/thread#pthread-join
+    /// @see https://man7.org/linux/man-pages/man3/pthread_join.3.html
+    pub func pthread_join(thread: PThread, result: *var *var opaque) -> int32;
+
+    /// Lets a thread release itself when it finishes, so nothing has to join it.
+    /// @param thread a thread nothing has joined or detached
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/linux/thread#pthread-detach
+    /// @see https://man7.org/linux/man-pages/man3/pthread_detach.3.html
+    pub func pthread_detach(thread: PThread) -> int32;
+
+    /// Initializes thread attributes to the defaults.
+    /// @param attributes the storage to initialize
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/linux/thread#pthread-attr-init
+    /// @see https://man7.org/linux/man-pages/man3/pthread_attr_init.3.html
+    pub func pthread_attr_init(attributes: *var PThreadAttributes) -> int32;
+
+    /// Sets the stack size a thread started with these attributes gets.
+    /// @param attributes initialized attributes
+    /// @param size the stack size in bytes, at least the system's minimum
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/linux/thread#pthread-attr-setstacksize
+    /// @see https://man7.org/linux/man-pages/man3/pthread_attr_setstacksize.3.html
+    pub func pthread_attr_setstacksize(attributes: *var PThreadAttributes, size: uint) -> int32;
+
+    /// Releases what `pthread_attr_init` set up.
+    /// @param attributes initialized attributes
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/linux/thread#pthread-attr-destroy
+    /// @see https://man7.org/linux/man-pages/man3/pthread_attr_destroy.3.html
+    pub func pthread_attr_destroy(attributes: *var PThreadAttributes) -> int32;
+
+    /// Returns the kernel's identifier for the calling thread, which is the process identifier on its first thread.
+    /// @returns the calling thread's identifier
+    /// @see https://rux-lang.dev/docs/api/linux/thread#gettid
+    /// @see https://man7.org/linux/man-pages/man2/gettid.2.html
+    pub func gettid() -> int32;
+
+    /// Gives up the processor so another ready thread can run.
+    /// @returns zero, or -1 with the reason in errno
+    /// @see https://rux-lang.dev/docs/api/linux/thread#sched-yield
+    /// @see https://man7.org/linux/man-pages/man2/sched_yield.2.html
+    pub func sched_yield() -> int32;
+
+    /// Reads a system configuration value.
+    /// @param name the value to read, such as `SC_NPROCESSORS_ONLN`
+    /// @returns the value, or -1 when the system has no limit or does not know the name
+    /// @see https://rux-lang.dev/docs/api/linux/thread#sysconf
+    /// @see https://man7.org/linux/man-pages/man3/sysconf.3.html
+    pub func sysconf(name: int32) -> int64;
+}

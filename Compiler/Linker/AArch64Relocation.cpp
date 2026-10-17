@@ -116,6 +116,17 @@ bool ApplyAArch64Relocation(Buf &buf, const size_t patchAt, const uint16_t type,
         }
         return patch(WithField(word, 10, 12, static_cast<uint32_t>((value & 0xFFFU) >> scale)));
     }
+    case RcuRelType::AArch64TlsHi12:
+        // The target is the variable's offset from the thread pointer, or from the start of the thread's block on
+        // Windows, added in two halves: this one takes bits 12 to 23, and nothing above them may be set.
+        if (value >= (uint64_t{1} << 24U)) {
+            error =
+                std::format("thread-local variable '{}' is too far from the start of its thread's block", symbolName);
+            return false;
+        }
+        return patch(WithField(word, 10, 12, static_cast<uint32_t>(value >> 12U & 0xFFFU)));
+    case RcuRelType::AArch64TlsLo12Nc:
+        return patch(WithField(word, 10, 12, static_cast<uint32_t>(value & 0xFFFU)));
     case RcuRelType::AArch64MovwUabsG0:
     case RcuRelType::AArch64MovwUabsG1:
     case RcuRelType::AArch64MovwUabsG2:

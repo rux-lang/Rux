@@ -1,0 +1,91 @@
+// A stopwatch's claims are of two kinds. Some are exact and are checked exactly: a stopped stopwatch reads the same
+// however long it waits, a reset one reads zero, and laps add up to the elapsed time at the end of the last one. The
+// rest are about the clock and are checked as lower bounds only — a stretch that included a sleep is at least that
+// sleep — because a loaded machine is allowed to be slow and an upper bound would make the test fail under load.
+
+import Core::Ordering;
+import Time::{ Duration, SleepFor, Stopwatch };
+
+func Pause(milliseconds: int64) -> bool {
+    return match SleepFor(Duration::FromMilliseconds(milliseconds)) {
+        .Success(_) => true,
+        .Failure(_) => false
+    };
+}
+
+func AtLeast(span: Duration, milliseconds: int64) -> bool {
+    let total = span.TotalMilliseconds() ?? 0;
+    return total >= milliseconds;
+}
+
+func Main() -> int {
+    // A new stopwatch is stopped at zero, and stays at zero while stopped.
+    var watch = Stopwatch();
+    if watch.IsRunning() || !watch.Elapsed().IsZero() { return 1; }
+    if !Pause(5) || !watch.Elapsed().IsZero() { return 2; }
+
+    // A running stretch counts at least the sleep inside it.
+    watch.Start();
+    if !watch.IsRunning() { return 3; }
+    if !Pause(20) { return 4; }
+    watch.Stop();
+    if watch.IsRunning() { return 5; }
+    let first = watch.Elapsed();
+    if !AtLeast(first, 20) { return 6; }
+
+    // Stopped, the total is fixed exactly; a pause is not counted.
+    if !Pause(20) || !watch.Elapsed().Equals(first) { return 7; }
+    // A second stop does nothing.
+    watch.Stop();
+    if !watch.Elapsed().Equals(first) { return 8; }
+
+    // Resuming adds to the total rather than starting over, and a second start does not restart the stretch.
+    watch.Start();
+    if !Pause(20) { return 9; }
+    watch.Start();
+    let running = watch.Elapsed();
+    if !AtLeast(running, 40) { return 10; }
+    // Reading while running does not stop it, and a later reading is never smaller.
+    if !watch.IsRunning() || watch.Elapsed().Compare(running) == Ordering::Less { return 11; }
+    watch.Stop();
+
+    // Reset stops and zeroes; Restart zeroes and runs.
+    watch.Reset();
+    if watch.IsRunning() || !watch.Elapsed().IsZero() { return 12; }
+    watch.Restart();
+    if !watch.IsRunning() { return 13; }
+    watch.Stop();
+    let fresh = Stopwatch::StartNew();
+    if !fresh.IsRunning() { return 14; }
+
+    // Laps: each covers the counted time since the previous one, and they add up to the total.
+    var laps = Stopwatch::StartNew();
+    if !Pause(15) { return 15; }
+    let lapOne = laps.Lap();
+    if !Pause(15) { return 16; }
+    laps.Stop();
+    let lapTwo = laps.Lap();
+    if !AtLeast(lapOne, 15) || !AtLeast(lapTwo, 15) { return 17; }
+    let sum = lapOne.Plus(lapTwo) ?? Duration::Zero();
+    if !sum.Equals(laps.Elapsed()) { return 18; }
+    // A lap taken while stopped, with nothing counted since the last one, is zero.
+    if !laps.Lap().IsZero() { return 19; }
+    // A pause between laps is not part of the next lap.
+    if !Pause(20) { return 20; }
+    laps.Start();
+    laps.Stop();
+    let afterPause = laps.Lap();
+    if AtLeast(afterPause, 20) { return 21; }
+    // Reset clears the lap mark along with the total.
+    laps.Reset();
+    if !laps.Lap().IsZero() { return 22; }
+
+    // A copy is independent.
+    var original = Stopwatch::StartNew();
+    var copy = original;
+    copy.Stop();
+    copy.Reset();
+    if !original.IsRunning() || copy.IsRunning() { return 23; }
+    original.Stop();
+    return 0;
+}

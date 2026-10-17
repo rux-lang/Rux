@@ -1,3 +1,4 @@
+#include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
 
 #include <cstdint>
@@ -25,6 +26,109 @@ namespace {
     return terminator;
 }
 } // namespace
+
+TEST_CASE("x86-64 float allocation respects nonvolatile widths and call clobbers") {
+    LirFunc function;
+    function.name = "FloatCalls";
+    function.params = {{0, TypeRef::MakeFloat64(), "input"}};
+    function.returnType = TypeRef::MakeFloat64();
+    LirInstr call;
+    call.op = LirOpcode::Call;
+    call.type = TypeRef::MakeOpaque();
+    call.strArg = "Observe";
+    LirInstr add;
+    add.op = LirOpcode::Add;
+    add.type = TypeRef::MakeFloat64();
+    add.dst = 1;
+    add.srcs = {0, 0};
+    LirBlock block;
+    block.instrs = {call, add};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 1;
+    block.term->retType = function.returnType;
+    function.blocks = {block};
+
+    const auto windows = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+    REQUIRE(windows.FloatRegisters().contains(0));
+    REQUIRE(windows.FloatRegisters().contains(1));
+    CHECK_EQ(windows.FloatRegisters().at(0), windows.FloatRegisters().at(1)); // Last-use tied input coalesces.
+    CHECK_EQ(windows.FloatSaves().size(), 1);
+    for (const auto &[reg, offset] : windows.FloatSaves()) {
+        CHECK_GE(reg, 8);
+        CHECK_LE(reg, 15);
+        CHECK_EQ(offset % 16, 0);
+        CHECK_LE(offset, windows.FrameSize());
+        CHECK_GE(windows.SlotOffsets().at(0), offset + 8);
+    }
+    const auto linuxPlan = PlanX86_64Frame(function, {}, {}, Target::OS::Linux);
+    CHECK_FALSE(linuxPlan.FloatRegisters().contains(0)); // Parameter starts at the call's instruction index zero.
+    CHECK(linuxPlan.FloatRegisters().contains(1));
+    CHECK(linuxPlan.FloatSaves().empty());
+    function.blocks[0].instrs[0].callConv = CallingConvention::SysV;
+    const auto mixed = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+    CHECK_FALSE(mixed.FloatRegisters().contains(0));
+    CHECK(mixed.FloatRegisters().contains(1));
+}
+
+TEST_CASE("x86-64 uses RSI and RDI only with proven Win64 preservation") {
+    LirFunc function;
+    function.name = "Pressure";
+    function.returnType = TypeRef::MakeInt64();
+    LirInstr call;
+    call.op = LirOpcode::Call;
+    call.type = TypeRef::MakeOpaque();
+    call.strArg = "Observe";
+    for (LirReg reg = 0; reg < 8; ++reg) {
+        function.params.push_back({reg, TypeRef::MakeInt64(), "input"});
+        call.srcs.push_back(reg);
+    }
+    LirBlock block;
+    block.instrs = {call};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 0;
+    block.term->retType = function.returnType;
+    function.blocks = {block};
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Windows).UsedPhysicalRegisters().size(), 7);
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Linux).UsedPhysicalRegisters().size(), 5);
+    function.blocks[0].instrs[0].callConv = CallingConvention::SysV;
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Windows).UsedPhysicalRegisters().size(), 5);
+    function.blocks[0].instrs[0].callConv = CallingConvention::Win64;
+    function.callConv = CallingConvention::SysV;
+    CHECK_EQ(PlanX86_64Frame(function, {}, {}, Target::OS::Windows).UsedPhysicalRegisters().size(), 5);
+}
+
+TEST_CASE("x86-64 extra nonvolatile registers encode moves and balanced preservation") {
+    std::vector<std::uint8_t> bytes;
+    X64Enc encoder(bytes);
+    for (const int index : {5, 6}) {
+        encoder.PushReg(index);
+        encoder.MovRaxPhysReg(index);
+        encoder.MovR10PhysReg(index);
+        encoder.MovR11PhysReg(index);
+        encoder.MovPhysRegRax(index);
+        encoder.PopReg(index);
+    }
+    const std::vector<std::uint8_t> expected = {0x56, 0x48, 0x89, 0xF0, 0x49, 0x89, 0xF2, 0x49, 0x89, 0xF3,
+                                                0x48, 0x89, 0xC6, 0x5E, 0x57, 0x48, 0x89, 0xF8, 0x49, 0x89,
+                                                0xFA, 0x49, 0x89, 0xFB, 0x48, 0x89, 0xC7, 0x5F};
+    CHECK_EQ(bytes, expected);
+}
+
+TEST_CASE("x86-64 XMM copies and saves encode high register numbers without losing upper bits") {
+    std::vector<std::uint8_t> bytes;
+    X64Enc encoder(bytes);
+    encoder.MovXmm(15, 8);
+    encoder.MovXmmSave(15, -32);
+    encoder.MovXmmRestore(15, -32);
+    encoder.MovFloatBits(10, 15, true);
+    encoder.MovFloatBits(0, 8, false);
+    const std::vector<std::uint8_t> expected{0x45, 0x0F, 0x28, 0xF8, 0xF3, 0x44, 0x0F, 0x7F, 0xBD, 0xE0, 0xFF,
+                                             0xFF, 0xFF, 0xF3, 0x44, 0x0F, 0x6F, 0xBD, 0xE0, 0xFF, 0xFF, 0xFF,
+                                             0x66, 0x4D, 0x0F, 0x7E, 0xFA, 0x66, 0x44, 0x0F, 0x7E, 0xC0};
+    CHECK_EQ(bytes, expected);
+}
 
 TEST_CASE("x86-64 frame plan owns hidden returns aggregate regions phi scratch and alignment") {
     const TypeRef triple = TypeRef::MakeNamed("Triple");
@@ -63,15 +167,17 @@ TEST_CASE("x86-64 frame plan owns hidden returns aggregate regions phi scratch a
 
     const X86_64FramePlan plan = PlanX86_64Frame(function, layouts, {}, Target::OS::Linux);
 
-    CHECK_EQ(plan.HiddenReturnOffset(), 8);
-    CHECK_EQ(plan.SlotOffsets().at(0), 32);
-    CHECK_EQ(plan.SlotOffsets().at(1), 40);
-    CHECK_EQ(plan.AllocaDataOffsets().at(1), 64);
-    CHECK_EQ(plan.RegisterTypes().at(1).kind, TypeRef::Kind::Pointer);
+    const auto savedBytes = static_cast<int>(plan.UsedPhysicalRegisters().size() * 8);
+    CHECK_GT(savedBytes, 0);
+    CHECK_EQ(plan.HiddenReturnOffset(), savedBytes + 8);
+    CHECK_EQ(plan.SlotOffsets().at(0), savedBytes + 32);
+    CHECK_EQ(plan.SlotOffsets().at(1), savedBytes + 40);
+    CHECK_EQ(plan.AllocaDataOffsets().at(1), savedBytes + 64);
+    CHECK_EQ(plan.RegisterTypes().at(1)->kind, TypeRef::Kind::Pointer);
     CHECK_EQ(plan.PhiMoves().at(1).at(1).size(), 2);
     CHECK_EQ(plan.PhiTemporarySize(), 8);
-    CHECK_EQ(plan.PhiTemporaryOffset(), 104);
-    CHECK_EQ(plan.FrameSize(), 112);
+    CHECK_EQ(plan.PhiTemporaryOffset(), savedBytes + 104);
+    CHECK_EQ(plan.FrameSize(), (savedBytes + 104 + 15) / 16 * 16);
     CHECK_EQ(plan.FrameSize() % 16, 0);
     CHECK_LE(plan.PhiTemporaryOffset(), plan.FrameSize());
 }
@@ -101,8 +207,15 @@ TEST_CASE("x86-64 frame plan reserves an array of structs by its element layout"
     counted.type = pair;
     counted.strArg = "3";
 
+    // Both addresses leave the function, so each array keeps a region of its own rather than sharing one.
+    LirInstr keep;
+    keep.op = LirOpcode::Call;
+    keep.type = TypeRef::MakeOpaque();
+    keep.strArg = "Keep";
+    keep.srcs = {0, 1};
+
     LirBlock block;
-    block.instrs = {uncounted, counted};
+    block.instrs = {uncounted, counted, keep};
     block.term.emplace();
     block.term->kind = LirTermKind::Return;
     function.blocks.push_back(std::move(block));
@@ -175,7 +288,7 @@ TEST_CASE("x86-64 frame plan records Win64 address homes and hidden return after
     CHECK_EQ(plan.UsedPhysicalRegisters().front(), 0);
     CHECK_EQ(plan.PhysicalRegisters().at(0), 0);
     CHECK_EQ(plan.HiddenReturnOffset(), 16);
-    CHECK_EQ(plan.RegisterTypes().at(0).kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(plan.RegisterTypes().at(0)->kind, TypeRef::Kind::Pointer);
     CHECK_EQ(plan.SlotOffsets().at(0), 24);
     CHECK_EQ(plan.FrameSize(), 32);
     CHECK_EQ(plan.PhiTemporaryOffset(), 0);
@@ -267,4 +380,32 @@ TEST_CASE("x86-64 partial-word aggregate phi scratch and homes contain complete 
         CHECK_EQ(plan.PhiTemporarySize(), 16);
         CHECK_LE(plan.PhiTemporaryOffset(), plan.FrameSize());
     }
+}
+
+TEST_CASE("x86-64 frame plan gives values that are never live together one slot") {
+    // %0 = c; %1 = %0 + %0; %2 = c; %3 = %2 + %2; return %3. The first pair is dead before the second is written.
+    const auto add = [](const LirReg dst, const LirReg source) {
+        LirInstr instruction = Define(dst);
+        instruction.op = LirOpcode::Add;
+        instruction.strArg.clear();
+        instruction.srcs = {source, source};
+        return instruction;
+    };
+    LirFunc function;
+    function.name = "Chain";
+    function.returnType = TypeRef::MakeInt64();
+    LirBlock block;
+    block.instrs = {Define(0), add(1, 0), Define(2), add(3, 2)};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 3;
+    block.term->retType = TypeRef::MakeInt64();
+    function.blocks.push_back(std::move(block));
+
+    const X86_64FramePlan plan = PlanX86_64Frame(function, {}, {}, Target::OS::Linux);
+
+    CHECK_EQ(plan.SlotOffsets().at(0), plan.SlotOffsets().at(2));
+    CHECK_EQ(plan.SlotOffsets().at(1), plan.SlotOffsets().at(3));
+    // A result is written while its operand is still being read, so the two never share.
+    CHECK_NE(plan.SlotOffsets().at(0), plan.SlotOffsets().at(1));
 }

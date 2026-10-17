@@ -4,6 +4,10 @@
 // with exact big-integer arithmetic -- but written separately, in another language, and checked against the
 // compiler's own exact parser: every rendering must read back as the bits it came from, and a rendering with one
 // digit fewer must not. The Rux side is then held to these strings byte for byte.
+//
+// Run from the repository root. With no arguments it writes the wide-format vectors of
+// Tests/Packages/Format/WideFloat; with `--narrow` it writes the exhaustive float8 and float16 tables of
+// Tests/Packages/Format/Float8 and Float16.
 
 #include "Numeric/FloatEncoding.h"
 #include "Numeric/FloatFormat.h"
@@ -98,12 +102,49 @@ struct Big {
 
     /// Schoolbook product, one shifted partial per limb of the factor.
     void Mul(const Big &factor) {
+        const std::size_t larger = std::max(limbs.size(), factor.limbs.size());
+        const std::size_t smaller = std::min(limbs.size(), factor.limbs.size());
+        if (smaller >= 32 && larger <= smaller * 2) {
+            const std::size_t split = larger / 2;
+            const auto part = [split](const Big &value, const bool high) {
+                Big result;
+                const std::size_t first = high ? std::min(split, value.limbs.size()) : 0;
+                const std::size_t last = high ? value.limbs.size() : std::min(split, value.limbs.size());
+                result.limbs.assign(value.limbs.begin() + first, value.limbs.begin() + last);
+                result.Trim();
+                return result;
+            };
+            Big a0 = part(*this, false);
+            const Big a1 = part(*this, true);
+            Big b0 = part(factor, false);
+            const Big b1 = part(factor, true);
+            Big low = a0;
+            low.Mul(b0);
+            Big high = a1;
+            high.Mul(b1);
+            a0.Add(a1);
+            b0.Add(b1);
+            a0.Mul(b0);
+            a0.Sub(low);
+            a0.Sub(high);
+            a0.ShiftLeft(split * 64);
+            high.ShiftLeft(split * 128);
+            low.Add(a0);
+            low.Add(high);
+            limbs = std::move(low.limbs);
+            return;
+        }
         Big product;
-        for (std::size_t index = 0; index < factor.limbs.size(); ++index) {
-            Big partial = *this;
-            partial.MulSmall(factor.limbs[index]);
-            partial.ShiftLeft(64 * index);
-            product.Add(partial);
+        product.limbs.assign(limbs.size() + factor.limbs.size(), 0);
+        for (std::size_t left = 0; left < limbs.size(); ++left) {
+            unsigned __int128 carry = 0;
+            for (std::size_t right = 0; right < factor.limbs.size(); ++right) {
+                const unsigned __int128 value = static_cast<unsigned __int128>(limbs[left]) * factor.limbs[right] +
+                                                product.limbs[left + right] + carry;
+                product.limbs[left + right] = static_cast<std::uint64_t>(value);
+                carry = value >> 64;
+            }
+            product.limbs[left + factor.limbs.size()] = static_cast<std::uint64_t>(carry);
         }
         limbs = std::move(product.limbs);
         Trim();
@@ -154,9 +195,18 @@ struct Big {
 
     static Big PowerOfTen(std::uint64_t power) {
         Big result = Small(1);
-        while (power-- > 0) {
-            result.MulSmall(10);
+        Big base = Small(5);
+        std::uint64_t remaining = power;
+        while (remaining != 0) {
+            if ((remaining & 1U) != 0) {
+                result.Mul(base);
+            }
+            remaining >>= 1;
+            if (remaining != 0) {
+                base.Mul(base);
+            }
         }
+        result.ShiftLeft(power);
         return result;
     }
 };
@@ -192,6 +242,7 @@ Unpacked Unpack(const FloatEncoding &encoding) {
 }
 
 /// Burger and Dybvig free-format digit generation: the shortest digits that read back as the same value.
+/// When the last digit and the one above it are equally near the value, every format takes the even digit.
 std::string ShortestDigits(const Unpacked &value, const FloatFormat &format, std::int64_t &exponent10) {
     const WideInteger leading = WideInteger::FromUnsigned(1, 512).ShiftedLeft(format.precisionBits - 1);
     const std::int64_t minimumExponent =
@@ -582,10 +633,95 @@ void Verify(const FloatFormat &format, const WideInteger &bits, const std::strin
         }
     }
 }
+
+/// The text of one bit pattern of a narrow format, verified against the parser when it is finite.
+std::string NarrowText(const FloatFormat &format, const std::uint64_t pattern, const std::int64_t capacity) {
+    const WideInteger bits = WideInteger::FromUnsigned(pattern, 512);
+    const Unpacked value = Unpack(FloatEncoding::FromBits(format, bits.Truncated(format.valueBits)));
+    if (value.classification == FloatClass::QuietNaN || value.classification == FloatClass::SignalingNaN) {
+        return "NaN";
+    }
+    if (value.classification == FloatClass::Infinity) {
+        return value.negative ? "-Inf" : "Inf";
+    }
+    if (value.classification == FloatClass::Zero) {
+        return value.negative ? "-0.0" : "0.0";
+    }
+    std::int64_t exponent10 = 0;
+    const std::string digits = ShortestDigits(value, format, exponent10);
+    const std::string text = Render(digits, exponent10, value.negative, capacity);
+    Verify(format, bits, digits, exponent10, text);
+    return text;
+}
+
+/// Every bit pattern of float8 or float16, as the table its package test walks.
+/// The table holds the non-negative patterns from zero up to the positive infinity, in order, sixteen to a chunk and
+/// separated by single spaces; past them every pattern is a NaN. The negative half is not stored: each of its texts
+/// is the positive text with a minus sign in front, which is checked here for every pattern rather than assumed.
+bool WriteNarrow(const std::uint32_t valueBits, const char *path) {
+    const FloatFormat &format = *FindFloatFormat(valueBits);
+    const std::int64_t capacity = (static_cast<std::int64_t>(format.precisionBits) * 30103) / 100000 + 2;
+    const std::uint64_t signBit = std::uint64_t{1} << (valueBits - 1);
+    const std::uint64_t infinity = FloatEncoding::Infinity(format).Bits().Extended(512, false).Word64(0);
+    std::vector<std::string> texts;
+    for (std::uint64_t pattern = 0; pattern < signBit; ++pattern) {
+        const std::string positive = NarrowText(format, pattern, capacity);
+        const std::string negative = NarrowText(format, pattern | signBit, capacity);
+        const bool nan = positive == "NaN";
+        if (nan != (pattern > infinity) || (nan ? negative != "NaN" : negative != "-" + positive)) {
+            std::fprintf(stderr, "pattern 0x%llx of %s breaks the table's sign or NaN rule\n",
+                         static_cast<unsigned long long>(pattern), format.name.data());
+            return false;
+        }
+        if (!nan) {
+            texts.push_back(positive);
+        }
+    }
+    constexpr std::size_t chunkSize = 16;
+    const std::size_t chunks = (texts.size() + chunkSize - 1) / chunkSize;
+    const std::string name = std::to_string(valueBits);
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << "// Generated by Tools/FloatVectors --narrow from the compiler's exact float arithmetic. Do not edit by hand.\n"
+        << "// Every text here is the shortest decimal that reads back as its bits, checked against the compiler's\n"
+        << "// exact parser when it was written, and so is the same pattern with the sign bit set.\n\n"
+        << "// The number of non-negative patterns that are not NaNs: zero through the positive infinity.\n"
+        << "func TextCount" << name << "() -> uint {\n    return " << texts.size() << ";\n}\n\n"
+        << "// The texts of up to " << chunkSize << " consecutive patterns from " << chunkSize
+        << " * chunk, separated by single spaces.\n"
+        << "func TextChunk" << name << "(chunk: uint) -> char8[..] {\n    return match chunk {\n";
+    for (std::size_t chunk = 0; chunk < chunks; ++chunk) {
+        out << "        " << chunk << " => \"";
+        for (std::size_t index = chunk * chunkSize; index < std::min(texts.size(), (chunk + 1) * chunkSize); ++index) {
+            out << (index == chunk * chunkSize ? "" : " ") << texts[index];
+        }
+        out << "\",\n";
+    }
+    out << "        else => \"\"\n    };\n}\n";
+    std::printf("%s: %zu texts in %zu chunks, both signs verified\n", format.name.data(), texts.size(), chunks);
+    return true;
+}
 } // namespace
 
-int main() {
+int main(const int argc, char **argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    if (argc > 1 && std::string(argv[1]) == "--limits") {
+        const auto &format = *FindFloatFormat(512);
+        for (const auto &encoding : {FloatEncoding::MaxFinite(format), FloatEncoding::MinPositiveNormal(format)}) {
+            std::int64_t exponent = 0;
+            const auto digits = ShortestDigits(Unpack(encoding), format, exponent);
+            const auto text = Render(digits, exponent, false, 149);
+            Verify(format, encoding.Bits(), digits, exponent, text);
+            std::printf("%s\n", text.c_str());
+        }
+        return 0;
+    }
+    // `--narrow` writes the exhaustive float8 and float16 tables instead of the wide-format vectors.
+    if (argc > 1 && std::string(argv[1]) == "--narrow") {
+        return WriteNarrow(8, "Tests/Packages/Format/Float8/Src/Vectors.rux") &&
+                       WriteNarrow(16, "Tests/Packages/Format/Float16/Src/Vectors.rux")
+                   ? 0
+                   : 1;
+    }
     const auto started = std::chrono::steady_clock::now();
     auto Elapsed = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count(); };
     std::ofstream out("Tests/Packages/Format/WideFloat/Src/Vectors.rux", std::ios::binary | std::ios::trunc);

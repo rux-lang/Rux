@@ -1,0 +1,509 @@
+// Describing a program to start — its arguments, directory, environment and standard streams — and starting it.
+// A command collects its parts as native text as they are given. A part the system could not take, such as text with
+// a NUL in it, is remembered as the command's first failure and reported when it is started, so the parts can be
+// given one after another without checking each.
+// On Linux, FreeBSD and macOS the child is started with the C library's `posix_spawnp`, which finds the program
+// through `PATH`, sets up its streams and directory, and reports a program that could not be started as an error
+// rather than as a child that exits. On Windows it is started with `CreateProcessW`, from a command line quoted the way
+// the C runtime splits one, so each argument arrives as it was given.
+
+import Allocator::Allocator;
+import Core::{ #Error, #target };
+import Io::{ IoError, IoErrorKind };
+import Path::{ OsStringView, OsUnit };
+import Process::{
+    AppendText, AppendUnits, Buffer, Child, Environment, ExitStatus, FailureOf, LastError, NativeNamesEqual, NoPipe,
+    ClosePipe
+};
+
+when #target.os {
+    .Linux => import Linux::{
+        F_SETFD, FD_CLOEXEC, OpenCloseOnExec, OpenReadOnly, OpenWriteOnly, Pipe2, SpawnFileActions, fcntl,
+        posix_spawn_file_actions_addchdir_np, posix_spawn_file_actions_adddup2, posix_spawn_file_actions_addopen,
+        posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawnp
+    },
+    .FreeBSD => import FreeBSD::{
+        F_SETFD, FD_CLOEXEC, OpenCloseOnExec, OpenReadOnly, OpenWriteOnly, Pipe2, SpawnFileActions, fcntl,
+        posix_spawn_file_actions_addchdir_np, posix_spawn_file_actions_adddup2, posix_spawn_file_actions_addopen,
+        posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawnp
+    },
+    .macOS => import macOS::{
+        F_SETFD, FD_CLOEXEC, OpenReadOnly, OpenWriteOnly, Pipe, SpawnFileActions, fcntl,
+        posix_spawn_file_actions_addchdir_np, posix_spawn_file_actions_adddup2, posix_spawn_file_actions_addopen,
+        posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawnp
+    },
+    .Windows => import Windows::{
+        CREATE_UNICODE_ENVIRONMENT, CloseHandle, CreateFileW, CreatePipe, CreateProcessW, DUPLICATE_SAME_ACCESS,
+        DuplicateHandle, FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, GetCurrentProcess,
+        GetLastError, GetStdHandle, HANDLE_FLAG_INHERIT, InvalidHandleValue, ProcessInformation, STARTF_USESTDHANDLES,
+        SecurityAttributes, SetHandleInformation, StartupInfo, StdErrorHandle, StdInputHandle, StdOutputHandle
+    },
+    else => #Error("Unsupported operating system")
+}
+
+/// What a child's standard stream is connected to. `Copy`.
+/// @see https://rux-lang.dev/docs/api/process/command#stdio
+pub enum Stdio: uint8 {
+    /// The stream this process has, which the child shares.
+    Inherit = 0,
+    /// Nothing: reads find the end at once and writes are discarded.
+    Null = 1,
+    /// A new pipe, whose other end the parent takes from the `Child`.
+    Pipe = 2
+}
+
+/// A program to start, with its arguments, working directory, environment changes and standard streams.
+/// Build it up and then `Spawn` it, or `Run` it to completion, or `Capture` what it writes. A command can be started
+/// more than once. A command is not copied.
+/// @see https://rux-lang.dev/docs/api/process/command#command
+pub struct Command {
+    allocator: Allocator;
+    // The program, then each argument, each followed by a NUL.
+    words: Buffer<OsUnit>;
+    wordCount: uint;
+    // The working directory, followed by a NUL, when one was given.
+    directory: Buffer<OsUnit>;
+    // `S name=value` and `R name` records, each followed by a NUL; the last record for a name decides it.
+    changes: Buffer<OsUnit>;
+    clearEnvironment: bool;
+    input: Stdio;
+    output: Stdio;
+    error: Stdio;
+    failure: IoError?;
+}
+
+extend Command {
+    func =(self: &var Command, other: &Command);
+
+    /// A command to start `program`, found through `PATH` when it names no directory. The program is also the child's
+    /// first argument, as every system expects. Its streams start as `Stdio::Inherit`.
+    /// @param allocator what the command's parts are kept in
+    /// @param program the program's name or path, as UTF-8 text
+    /// @returns the command
+    /// @see https://rux-lang.dev/docs/api/process/command#command-new
+    pub func Command(allocator: Allocator, program: char8[..]) -> Command {
+        var command = Command {
+            allocator: allocator, words: Buffer<OsUnit>(allocator), wordCount: 0,
+            directory: Buffer<OsUnit>(allocator), changes: Buffer<OsUnit>(allocator), clearEnvironment: false,
+            input: Stdio::Inherit, output: Stdio::Inherit, error: Stdio::Inherit, failure: none
+        };
+        if program.length == 0 { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
+        command.Argument(program);
+        return <-command;
+    }
+
+    /// A command to start `program` given in native form, such as this process's own first argument.
+    /// @param allocator what the command's parts are kept in
+    /// @param program the program's name or path
+    /// @returns the command
+    /// @see https://rux-lang.dev/docs/api/process/command#from-native
+    pub func FromNative(allocator: Allocator, program: OsStringView) -> Command {
+        var command = Command(allocator, "-");
+        command.words.Clear();
+        command.wordCount = 0;
+        if program.IsEmpty() { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
+        command.NativeArgument(program);
+        return <-command;
+    }
+
+    /// Adds an argument, as UTF-8 text.
+    /// @param value the argument
+    /// @see https://rux-lang.dev/docs/api/process/command#argument
+    pub func Argument(self: &var Command, value: char8[..]) {
+        self.Note(AppendText(self.words, value));
+        self.Note(self.words.Push(0 as OsUnit));
+        self.wordCount = self.wordCount + 1;
+    }
+
+    /// Adds an argument already in native form, such as one of this process's own arguments.
+    /// @param value the argument
+    /// @see https://rux-lang.dev/docs/api/process/command#native-argument
+    pub func NativeArgument(self: &var Command, value: OsStringView) {
+        self.Note(AppendUnits(self.words, value.Units()));
+        self.Note(self.words.Push(0 as OsUnit));
+        self.wordCount = self.wordCount + 1;
+    }
+
+    /// Starts the child in `path` rather than in this process's working directory.
+    /// @param path the directory, as UTF-8 text
+    /// @see https://rux-lang.dev/docs/api/process/command#directory
+    pub func Directory(self: &var Command, path: char8[..]) {
+        self.directory.Clear();
+        self.Note(AppendText(self.directory, path));
+        self.Note(self.directory.Push(0 as OsUnit));
+    }
+
+    /// Gives the child the variable `name` set to `value`, whatever this process's environment holds.
+    /// @param name the variable's name, which may not be empty or contain `=`
+    /// @param value its value
+    /// @see https://rux-lang.dev/docs/api/process/command#set-variable
+    pub func SetVariable(self: &var Command, name: char8[..], value: char8[..]) {
+        self.CheckName(name);
+        self.Note(self.changes.Push(0x53 as OsUnit));
+        self.Note(AppendText(self.changes, name));
+        self.Note(self.changes.Push(0x3D as OsUnit));
+        self.Note(AppendText(self.changes, value));
+        self.Note(self.changes.Push(0 as OsUnit));
+    }
+
+    /// Leaves the variable `name` out of the child's environment.
+    /// @param name the variable's name
+    /// @see https://rux-lang.dev/docs/api/process/command#remove-variable
+    pub func RemoveVariable(self: &var Command, name: char8[..]) {
+        self.CheckName(name);
+        self.Note(self.changes.Push(0x52 as OsUnit));
+        self.Note(AppendText(self.changes, name));
+        self.Note(self.changes.Push(0 as OsUnit));
+    }
+
+    /// Starts the child with no variables but those set on the command.
+    /// @see https://rux-lang.dev/docs/api/process/command#clear-environment
+    pub func ClearEnvironment(self: &var Command) {
+        self.clearEnvironment = true;
+        self.changes.Clear();
+    }
+
+    /// Connects the child's standard input.
+    /// @param stdio what it reads from
+    /// @see https://rux-lang.dev/docs/api/process/command#standard-input
+    pub func StandardInput(self: &var Command, stdio: Stdio) {
+        self.input = stdio;
+    }
+
+    /// Connects the child's standard output.
+    /// @param stdio what it writes to
+    /// @see https://rux-lang.dev/docs/api/process/command#standard-output
+    pub func StandardOutput(self: &var Command, stdio: Stdio) {
+        self.output = stdio;
+    }
+
+    /// Connects the child's standard error.
+    /// @param stdio what it writes to
+    /// @see https://rux-lang.dev/docs/api/process/command#standard-error
+    pub func StandardError(self: &var Command, stdio: Stdio) {
+        self.error = stdio;
+    }
+
+    /// Starts the program as a child process.
+    /// @returns the child, or fails: with a part of the command the system could not take, with `NotFound` for a
+    ///   program that is not there, or with the system's reason
+    /// @see https://rux-lang.dev/docs/api/process/command#spawn
+    pub func Spawn(self: &Command) -> Child ! IoError {
+        if self.failure != none { fail self.failure ?? IoError::Of(IoErrorKind::Other); }
+        return self.Launch(self.input, self.output, self.error);
+    }
+
+    /// Starts the program and waits for it to finish.
+    /// @returns how it finished
+    /// @see https://rux-lang.dev/docs/api/process/command#run
+    pub func Run(self: &Command) -> ExitStatus ! IoError {
+        var child = self.Spawn()?;
+        return child.Wait()?;
+    }
+
+    // Remembers the first failure among the command's parts.
+    func Note(self: &var Command, outcome: () ! IoError) {
+        match outcome {
+            .Success(_) => {},
+            .Failure(error) => {
+                if self.failure == none { self.failure = error; }
+            }
+        }
+    }
+
+    func CheckName(self: &var Command, name: char8[..]) {
+        var index: uint = 0;
+        while index < name.length {
+            if name[index] as uint8 == 0x3Du8 { self.failure = self.failure ?? IoError::Of(IoErrorKind::InvalidInput); }
+            index = index + 1;
+        }
+        if name.length == 0 { self.failure = self.failure ?? IoError::Of(IoErrorKind::InvalidInput); }
+    }
+
+    // The record that decides `name`: its last `S` or `R` record, as the offset of its kind unit, or none.
+    func LastChange(self: &Command, name: OsStringView) -> uint? {
+        let units = self.changes.View();
+        var found: uint? = none;
+        var at: uint = 0;
+        while at < units.length {
+            let start = at;
+            var end = at + 1;
+            while end < units.length && units[end] != (0 as OsUnit) { end = end + 1; }
+            var nameEnd = at + 1;
+            while nameEnd < end && units[nameEnd] != (0x3D as OsUnit) { nameEnd = nameEnd + 1; }
+            if NativeNamesEqual(OsStringView::FromUnits(units[at + 1..nameEnd]), name) { found = start; }
+            at = end + 1;
+        }
+        return found;
+    }
+
+    // The child's environment as `name=value` entries, each followed by a NUL.
+    func EnvironmentEntries(self: &Command) -> Buffer<OsUnit> ! IoError {
+        var entries = Buffer<OsUnit>(self.allocator);
+        if !self.clearEnvironment {
+            for variable in Environment() {
+                if self.LastChange(variable.name) != none { continue; }
+                entries.PushAll(variable.name.Units())?;
+                entries.Push(0x3D as OsUnit)?;
+                entries.PushAll(variable.value.Units())?;
+                entries.Push(0 as OsUnit)?;
+            }
+        }
+        let units = self.changes.View();
+        var at: uint = 0;
+        while at < units.length {
+            var end = at + 1;
+            while end < units.length && units[end] != (0 as OsUnit) { end = end + 1; }
+            var nameEnd = at + 1;
+            while nameEnd < end && units[nameEnd] != (0x3D as OsUnit) { nameEnd = nameEnd + 1; }
+            let decides = self.LastChange(OsStringView::FromUnits(units[at + 1..nameEnd])) ?? 0u;
+            if units[at] == (0x53 as OsUnit) && decides == at {
+                entries.PushAll(units[at + 1..end])?;
+                entries.Push(0 as OsUnit)?;
+            }
+            at = end + 1;
+        }
+        return <-entries;
+    }
+
+    // Starts the child with the given streams.
+    func Launch(self: &Command, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+        when #target.os == .Windows {
+            return self.LaunchWindows(input, output, error);
+        }
+        else {
+            return self.LaunchPosix(input, output, error);
+        }
+    }
+
+    // `posix_spawnp` with an argument vector, an environment vector and the file actions for the streams.
+    func LaunchPosix(self: &Command, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+        when #target.os != .Windows {
+            let words = self.words.View();
+            var arguments = Buffer<*char8>(self.allocator);
+            var at: uint = 0;
+            while at < words.length {
+                arguments.Push(@words[at])?;
+                while words[at] != (0 as OsUnit) { at = at + 1; }
+                at = at + 1;
+            }
+            arguments.Push(null)?;
+
+            let entries = self.EnvironmentEntries()?;
+            let entryUnits = entries.View();
+            var environment = Buffer<*char8>(self.allocator);
+            at = 0;
+            while at < entryUnits.length {
+                environment.Push(@entryUnits[at])?;
+                while entryUnits[at] != (0 as OsUnit) { at = at + 1; }
+                at = at + 1;
+            }
+            environment.Push(null)?;
+
+            var actions = SpawnFileActions();
+            if posix_spawn_file_actions_init(@actions) != 0 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+            // The parent's ends of the pipes, and the child's, which close once the child has its copies.
+            var parentEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
+            var childEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
+            let streams: Stdio[3] = [input, output, error];
+            var failure: IoError? = none;
+            var stream: uint = 0;
+            while stream < 3u && failure == none {
+                let target = stream as int32;
+                if streams[stream] == Stdio::Null {
+                    let flags = stream == 0u ? OpenReadOnly : OpenWriteOnly;
+                    let devnull: char8[..] = "/dev/null\0";
+                    posix_spawn_file_actions_addopen(@actions, target, devnull.data, flags, 0);
+                }
+                else if streams[stream] == Stdio::Pipe {
+                    var ends: int32[2] = [0, 0];
+                    when #target.os == .macOS {
+                        if Pipe(@ends[0]) < 0 { failure = FailureOf(LastError()); break; }
+                        fcntl(ends[0], F_SETFD, FD_CLOEXEC);
+                        fcntl(ends[1], F_SETFD, FD_CLOEXEC);
+                    }
+                    else {
+                        let result = Pipe2(@ends[0], OpenCloseOnExec);
+                        if result < 0 { failure = FailureOf(-result); break; }
+                    }
+                    // The read end goes to a reader: the child for input, the parent for output and error.
+                    let childEnd = stream == 0u ? ends[0] : ends[1];
+                    let parentEnd = stream == 0u ? ends[1] : ends[0];
+                    childEnds[stream] = childEnd as uint64;
+                    parentEnds[stream] = parentEnd as uint64;
+                    posix_spawn_file_actions_adddup2(@actions, childEnd, target);
+                }
+                stream = stream + 1u;
+            }
+            let directory = self.directory.View();
+            if failure == none && directory.length != 0 {
+                if posix_spawn_file_actions_addchdir_np(@actions, directory.data) != 0 {
+                    failure = IoError::Of(IoErrorKind::Other);
+                }
+            }
+            var pid: int32 = 0;
+            if failure == none {
+                let result = posix_spawnp(@pid, words.data, @actions, null, arguments.View().data,
+                                          environment.View().data);
+                if result != 0 { failure = FailureOf(result as int64); }
+            }
+            posix_spawn_file_actions_destroy(@actions);
+            stream = 0;
+            while stream < 3u {
+                ClosePipe(childEnds[stream]);
+                if failure != none { ClosePipe(parentEnds[stream]); }
+                stream = stream + 1u;
+            }
+            if failure != none { fail failure ?? IoError::Of(IoErrorKind::Other); }
+            return Child {
+                id: pid as uint32, process: pid as uint64, input: parentEnds[0], output: parentEnds[1],
+                error: parentEnds[2], finished: false, status: ExitStatus { code: 0, signal: 0 }
+            };
+        }
+        else {
+            fail IoError::Of(IoErrorKind::Other);
+        }
+    }
+
+    // `CreateProcessW` with a quoted command line, an environment block and inheritable standard handles.
+    func LaunchWindows(self: &Command, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+        when #target.os == .Windows {
+            var line = Buffer<OsUnit>(self.allocator);
+            let words = self.words.View();
+            var at: uint = 0;
+            while at < words.length {
+                var end = at;
+                while words[end] != (0 as OsUnit) { end = end + 1; }
+                if at != 0 { line.Push(0x20 as OsUnit)?; }
+                QuoteArgument(line, words[at..end])?;
+                at = end + 1;
+            }
+            line.Push(0 as OsUnit)?;
+
+            var block = self.EnvironmentEntries()?;
+            if block.length == 0 { block.Push(0 as OsUnit)?; }
+            block.Push(0 as OsUnit)?;
+
+            var inheritable = SecurityAttributes {
+                length: sizeof(SecurityAttributes) as uint32, securityDescriptor: null, inheritHandle: true
+            };
+            let currentProcess = GetCurrentProcess();
+            var parentEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
+            var childHandles: (*opaque)[3] = [null, null, null];
+            let streams: Stdio[3] = [input, output, error];
+            let standard: uint32[3] = [StdInputHandle, StdOutputHandle, StdErrorHandle];
+            var failure: IoError? = none;
+            var stream: uint = 0;
+            while stream < 3u && failure == none {
+                if streams[stream] == Stdio::Inherit {
+                    let own = GetStdHandle(standard[stream]);
+                    if own != null && own as uint64 != InvalidHandleValue {
+                        var copy: *opaque = null;
+                        if DuplicateHandle(currentProcess, own, currentProcess, @copy, 0, true, DUPLICATE_SAME_ACCESS) != 0 {
+                            childHandles[stream] = copy;
+                        }
+                    }
+                }
+                else if streams[stream] == Stdio::Null {
+                    let nul: uint16[4] = [0x4E, 0x55, 0x4C, 0];
+                    let handle = CreateFileW((@nul[0]) as *char16, GENERIC_READ | GENERIC_WRITE,
+                                             FILE_SHARE_READ | FILE_SHARE_WRITE, (@inheritable) as *var opaque, 3, 0,
+                                             null);
+                    if handle as uint64 == InvalidHandleValue { failure = FailureOf(GetLastError() as int64); break; }
+                    childHandles[stream] = handle;
+                }
+                else {
+                    var readEnd: *opaque = null;
+                    var writeEnd: *opaque = null;
+                    if CreatePipe(@readEnd, @writeEnd, @inheritable, 0) == 0 {
+                        failure = FailureOf(GetLastError() as int64);
+                        break;
+                    }
+                    let childEnd = stream == 0u ? readEnd : writeEnd;
+                    let parentEnd = stream == 0u ? writeEnd : readEnd;
+                    SetHandleInformation(parentEnd, HANDLE_FLAG_INHERIT, 0);
+                    childHandles[stream] = childEnd;
+                    parentEnds[stream] = parentEnd as uint64;
+                }
+                stream = stream + 1u;
+            }
+            var startup = StartupInfo {
+                size: sizeof(StartupInfo) as uint32, reserved: null, desktop: null, title: null, x: 0, y: 0,
+                xSize: 0, ySize: 0, xCountChars: 0, yCountChars: 0, fillAttribute: 0, flags: STARTF_USESTDHANDLES,
+                showWindow: 0, reserved2Size: 0, reserved2: null, standardInput: childHandles[0],
+                standardOutput: childHandles[1], standardError: childHandles[2]
+            };
+            var created = ProcessInformation { process: null, thread: null, processId: 0, threadId: 0 };
+            if failure == none {
+                let directory = self.directory.View();
+                let directoryUnits: *uint16 = directory.length == 0 ? null : directory.data;
+                if CreateProcessW(null, line.data, null, null, true, CREATE_UNICODE_ENVIRONMENT,
+                                  block.View().data as *opaque, directoryUnits, @startup, @created) == 0 {
+                    failure = FailureOf(GetLastError() as int64);
+                }
+            }
+            stream = 0;
+            while stream < 3u {
+                if childHandles[stream] != null { CloseHandle(childHandles[stream]); }
+                if failure != none { ClosePipe(parentEnds[stream]); }
+                stream = stream + 1u;
+            }
+            if failure != none { fail failure ?? IoError::Of(IoErrorKind::Other); }
+            CloseHandle(created.thread);
+            return Child {
+                id: created.processId, process: created.process as uint64, input: parentEnds[0],
+                output: parentEnds[1], error: parentEnds[2], finished: false,
+                status: ExitStatus { code: 0, signal: 0 }
+            };
+        }
+        else {
+            fail IoError::Of(IoErrorKind::Other);
+        }
+    }
+}
+
+// Appends one argument to a Windows command line so the C runtime's splitting gives it back unchanged: quoted when it
+// is empty or holds a space, tab or quote, with each quote escaped and each run of backslashes before a quote, or
+// before the closing quote, doubled.
+func QuoteArgument(line: &var Buffer<OsUnit>, argument: OsUnit[..]) -> ! IoError {
+    var plain = argument.length != 0;
+    var index: uint = 0;
+    while index < argument.length {
+        let unit = argument[index];
+        if unit == (0x20 as OsUnit) || unit == (0x09 as OsUnit) || unit == (0x22 as OsUnit) { plain = false; }
+        index = index + 1;
+    }
+    if plain {
+        line.PushAll(argument)?;
+        return;
+    }
+    line.Push(0x22 as OsUnit)?;
+    var backslashes: uint = 0;
+    index = 0;
+    while index < argument.length {
+        let unit = argument[index];
+        if unit == (0x5C as OsUnit) {
+            backslashes = backslashes + 1;
+        }
+        else {
+            if unit == (0x22 as OsUnit) {
+                // The backslashes before a quote are doubled, and the quote itself escaped.
+                var extra: uint = 0;
+                while extra < backslashes + 1u {
+                    line.Push(0x5C as OsUnit)?;
+                    extra = extra + 1;
+                }
+            }
+            backslashes = 0;
+        }
+        line.Push(unit)?;
+        index = index + 1;
+    }
+    // Backslashes before the closing quote are doubled so that it stays a quote.
+    var extra: uint = 0;
+    while extra < backslashes {
+        line.Push(0x5C as OsUnit)?;
+        extra = extra + 1;
+    }
+    line.Push(0x22 as OsUnit)?;
+}

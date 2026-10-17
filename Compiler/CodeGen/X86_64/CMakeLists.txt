@@ -14,12 +14,22 @@ rux_add_component(RuxCodeGenX86_64
     Encoder.cpp
     EncoderFloating.cpp
     EncoderMemory.cpp
+    EncoderX87.cpp
     FramePlan.cpp
     FunctionEmitter.cpp
+    MachineEmission.cpp
+    MachineEncoder.cpp
+    MachinePrinter.cpp
+    MachineSelection.cpp
+    MachineSelectionArithmetic.cpp
+    MachineSelectionCalls.cpp
+    AtomicEmitter.cpp
+    ThreadLocalEmitter.cpp
     WideIntegerEmitter.cpp
     ModuleData.cpp
     ModuleValues.cpp
     ModuleRuntimeFailure.cpp
     RcuEmitter.cpp
-    SoftwareFloatEmitter.cpp)
-target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
+    SoftwareFloatEmitter.cpp
+    X87Emitter.cpp)
+target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics RuxParallel)

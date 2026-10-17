@@ -8,6 +8,7 @@
 // source program says nothing about that directly.
 
 #include "CodeGen/LinearScan.h"
+#include "CodeGen/SpillWeights.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -113,8 +114,8 @@ TEST_CASE("Linear scan reads a parameter at the type its caller supplies") {
     // otherwise — which is the one thing about a function's registers this pass
     // cannot work out for itself.
     const ParamTypeMap overridden = {{0, TypeRef::MakePointer(TypeRef::MakeInt32())}};
-    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type.kind, TypeRef::Kind::Int32);
-    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, overridden), 0)->type.kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type->kind, TypeRef::Kind::Int32);
+    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, overridden), 0)->type->kind, TypeRef::Kind::Pointer);
 }
 
 TEST_CASE("Linear scan reports an alloca as the pointer its register holds") {
@@ -127,7 +128,7 @@ TEST_CASE("Linear scan reports an alloca as the pointer its register holds") {
     // An alloca's register holds the address of what it reserved rather than a
     // value of the type it names, which is what decides the register file it
     // could live in.
-    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type.kind, TypeRef::Kind::Pointer);
+    CHECK_EQ(IntervalOf(ComputeLiveIntervals(func, {}), 0)->type->kind, TypeRef::Kind::Pointer);
 }
 
 TEST_CASE("Linear scan orders intervals by where they open and by register after that") {
@@ -207,4 +208,182 @@ TEST_CASE("Linear scan hands out nothing when the pool is empty") {
 
     CHECK(assignment.physRegs.empty());
     CHECK(assignment.usedPhysRegs.empty());
+}
+
+TEST_CASE("Explicit tied inputs reuse only the current owner's last-use endpoint") {
+    const auto type = TypeRef::MakeInt64();
+    const std::vector<LiveInterval> chain = {{0, 0, 1, 2, type}, {1, 1, 2, 2, type}, {2, 2, 3, 2, type}};
+    const auto ordinary = AllocateRegisters(chain, 1);
+    CHECK_FALSE(ordinary.physRegs.contains(1));
+    const auto tied = AllocateRegisters(chain, 1, {{1, 0}, {2, 1}});
+    REQUIRE_EQ(tied.physRegs.size(), 3);
+    CHECK_EQ(tied.usedPhysRegs.size(), 1);
+    CHECK_EQ(tied.physRegs.at(0), tied.physRegs.at(2));
+
+    const std::vector<LiveInterval> liveInput = {{0, 0, 3, 2, type}, {1, 1, 2, 2, type}};
+    CHECK_FALSE(AllocateRegisters(liveInput, 1, {{1, 0}}).physRegs.contains(1));
+    const std::vector<LiveInterval> reusedHome = {{0, 0, 0, 2, type}, {1, 1, 2, 2, type}, {2, 2, 3, 2, type}};
+    CHECK_FALSE(AllocateRegisters(reusedHome, 1, {{2, 0}}).physRegs.contains(2));
+    CHECK(AllocateRegisters(chain, 0, {{1, 0}}).physRegs.empty());
+}
+
+namespace {
+LirTerminator Term(const LirTermKind kind, const std::uint32_t target = 0, const std::uint32_t other = 0,
+                   const LirReg condition = LirNoReg, const LirReg result = LirNoReg) {
+    LirTerminator term;
+    term.kind = kind;
+    term.trueTarget = target;
+    term.falseTarget = other;
+    term.cond = condition;
+    if (result != LirNoReg) {
+        term.retVal = result;
+    }
+    return term;
+}
+
+LirInstr Join(const LirReg destination, const LirReg source) {
+    LirInstr instruction;
+    instruction.dst = destination;
+    instruction.type = TypeRef::MakeInt64();
+    instruction.op = LirOpcode::Phi;
+    instruction.phiPreds = {{source, 0}};
+    return instruction;
+}
+} // namespace
+
+TEST_CASE("CFG allocation keeps a header-only value alive through a back edge") {
+    LirFunc function = FuncOf({Define(0, {})}, 0);
+    function.blocks.resize(4);
+    function.blocks[0].term = Term(LirTermKind::Jump, 1);
+    function.blocks[1].instrs = {Define(1, {0})};
+    function.blocks[1].term = Term(LirTermKind::Branch, 2, 3, 1);
+    function.blocks[2].instrs = {Define(2, {})};
+    function.blocks[2].term = Term(LirTermKind::Jump, 1);
+    function.blocks[3].term = Term(LirTermKind::Return);
+    const auto intervals = ComputeLiveIntervals(function, {});
+    CHECK_GE(IntervalOf(intervals, 0)->end, IntervalOf(intervals, 2)->end);
+    const auto homes = AllocateRegisters(intervals, 8);
+    CHECK_NE(AssignedTo(homes, 0), AssignedTo(homes, 2));
+}
+
+TEST_CASE("CFG allocation protects edge sources and destinations from physical phi cycles") {
+    LirFunc function = FuncOf({Define(0, {}), Define(1, {})}, 0);
+    function.blocks.resize(2);
+    function.blocks[0].term = Term(LirTermKind::Jump, 1);
+    function.blocks[1].instrs = {Join(2, 1), Join(3, 0), Define(4, {2, 3})};
+    function.blocks[1].term = Term(LirTermKind::Return, 0, 0, LirNoReg, 4);
+    const auto intervals = ComputeLiveIntervals(function, {});
+    const auto homes = AllocateRegisters(intervals, 8);
+    for (LirReg first = 0; first < 4; ++first) {
+        for (LirReg second = first + 1; second < 4; ++second) {
+            CHECK_NE(AssignedTo(homes, first), AssignedTo(homes, second));
+        }
+    }
+}
+
+TEST_CASE("CFG allocation discovers types before uses in reversed block layout") {
+    LirFunc function;
+    function.blocks.resize(3);
+    function.blocks[0].term = Term(LirTermKind::Jump, 2);
+    function.blocks[1].term = Term(LirTermKind::Return, 0, 0, LirNoReg, 7);
+    auto constant = Define(7, {});
+    constant.op = LirOpcode::Const;
+    constant.type = TypeRef::MakeFloat64();
+    constant.strArg = "1.0";
+    function.blocks[2].instrs = {constant};
+    function.blocks[2].term = Term(LirTermKind::Jump, 1);
+    const auto intervals = ComputeLiveIntervals(function, {});
+    REQUIRE(IntervalOf(intervals, 7));
+    CHECK(IntervalOf(intervals, 7)->type == TypeRef::MakeFloat64());
+    CHECK_EQ(IntervalOf(intervals, 7)->start, 1);
+    CHECK_EQ(IntervalOf(intervals, 7)->end, 3);
+}
+
+TEST_CASE("Weighted allocation spills whole colder intervals before emission") {
+    const auto type = TypeRef::MakeInt64();
+    const std::vector<LiveInterval> intervals = {{0, 0, 100, 2, type}, {1, 1, 5, 8, type}, {2, 6, 9, 4, type}};
+    const auto homes = AllocateRegisters(intervals, 1, {}, {{0, 1.0}, {1, 10.0}, {2, 4.0}});
+    CHECK_FALSE(homes.physRegs.contains(0));
+    CHECK_EQ(homes.physRegs.at(1), 0);
+    CHECK_EQ(homes.physRegs.at(2), 0);
+    CHECK_EQ(homes.usedPhysRegs.size(), 1);
+    CHECK_EQ(AllocateRegisters(intervals, 1).physRegs.size(), 1); // Default behavior remains conservative.
+    CHECK(AllocateRegisters(intervals, 0, {}, {{1, 10.0}}).physRegs.empty());
+}
+
+TEST_CASE("Weighted eviction retains interference with an earlier tied input") {
+    const auto type = TypeRef::MakeInt64();
+    const std::vector<LiveInterval> intervals = {
+        {0, 0, 2, 2, type}, {1, 2, 6, 2, type}, {2, 2, 5, 5, type}, {3, 3, 4, 8, type}};
+    const auto homes = AllocateRegisters(intervals, 1, {{1, 0}}, {{0, 1.0}, {1, 2.0}, {2, 100.0}, {3, 200.0}});
+    CHECK(homes.physRegs.contains(0));
+    CHECK_FALSE(homes.physRegs.contains(1));
+    CHECK_FALSE(homes.physRegs.contains(2));
+    CHECK(homes.physRegs.contains(3));
+}
+
+TEST_CASE("Weighted assignments never overlap unrelated live intervals") {
+    const auto type = TypeRef::MakeInt64();
+    std::uint32_t state = 127;
+    for (unsigned sample = 0; sample < 64; ++sample) {
+        std::vector<LiveInterval> intervals;
+        std::unordered_map<LirReg, double> priorities;
+        for (LirReg reg = 0; reg < 24; ++reg) {
+            state = state * 1664525U + 1013904223U;
+            const int start = static_cast<int>(reg / 3);
+            intervals.push_back({reg, start, start + static_cast<int>(state % 9), 1, type});
+            priorities.emplace(reg, static_cast<double>((state >> 8) % 101));
+        }
+        const auto homes = AllocateRegisters(intervals, 3, {}, priorities);
+        for (std::size_t first = 0; first < intervals.size(); ++first) {
+            for (std::size_t second = first + 1; second < intervals.size(); ++second) {
+                const auto left = homes.physRegs.find(intervals[first].reg);
+                const auto right = homes.physRegs.find(intervals[second].reg);
+                if (left != homes.physRegs.end() && right != homes.physRegs.end() && left->second == right->second)
+                    CHECK((intervals[first].end < intervals[second].start ||
+                           intervals[second].end < intervals[first].start));
+            }
+        }
+    }
+}
+
+TEST_CASE("Natural loops and spill priorities distinguish nesting and respect work limits") {
+    auto function = FuncOf({Define(10, {}), Define(11, {})}, 10);
+    function.blocks.resize(6);
+    function.blocks[0].term = Term(LirTermKind::Jump, 1);
+    function.blocks[1].term = Term(LirTermKind::Branch, 2, 5, 0);
+    function.blocks[2].term = Term(LirTermKind::Branch, 3, 4, 1);
+    function.blocks[3].instrs = {Define(12, {10})};
+    function.blocks[3].term = Term(LirTermKind::Jump, 2);
+    function.blocks[4].instrs = {Define(13, {11})};
+    function.blocks[4].term = Term(LirTermKind::Jump, 1);
+    function.blocks[5].term = Term(LirTermKind::Return);
+    const LirControlFlow cfg(function);
+    const LirDominance dominance(cfg);
+    const LirNaturalLoops loops(cfg, dominance);
+    REQUIRE(loops.complete);
+    REQUIRE_EQ(loops.members.size(), 2);
+    CHECK(loops.members.at(1) == std::unordered_set<std::uint32_t>{1, 2, 3, 4});
+    CHECK(loops.members.at(2) == std::unordered_set<std::uint32_t>{2, 3});
+    const LirNaturalLoops limited(cfg, dominance, 0);
+    CHECK_FALSE(limited.complete);
+    CHECK(limited.members.empty());
+    const auto type = TypeRef::MakeInt64();
+    const auto priorities = ComputeSpillPriorities(function, {{10, 0, 100, 2, type}, {11, 0, 100, 2, type}});
+    CHECK_GT(priorities.at(10), priorities.at(11) * 7);
+}
+
+TEST_CASE("A function whose edges all lead forward has no loop to look for") {
+    auto function = FuncOf({Define(10, {})}, 10);
+    function.blocks.resize(4);
+    function.blocks[0].term = Term(LirTermKind::Branch, 1, 2, 10);
+    function.blocks[1].term = Term(LirTermKind::Jump, 3);
+    function.blocks[2].term = Term(LirTermKind::Jump, 3);
+    function.blocks[3].term = Term(LirTermKind::Return);
+    CHECK_FALSE(MayHaveLoops(function));
+    // An edge back to its own block or an earlier one may close a cycle, whether or not it forms a natural loop.
+    function.blocks[2].term = Term(LirTermKind::Jump, 2);
+    CHECK(MayHaveLoops(function));
+    function.blocks[2].term = Term(LirTermKind::Jump, 1);
+    CHECK(MayHaveLoops(function));
 }

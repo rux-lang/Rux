@@ -1,0 +1,27 @@
+// A deferred statement runs while its scope is already being left, so it cannot leave it another way: no 'return',
+// 'fail', '?', or 'break' or 'continue' out of it. A loop written inside the deferred statement is its own to leave.
+func Parse(text: char8[..]) -> int ! int {
+    defer fail 1;
+    defer Parse(text)?;
+    return 0;
+}
+
+func Walk() -> int {
+    outer: loop {
+        defer return 2;
+        defer break;
+        defer continue outer;
+        defer for i in 0..3 {
+            if i == 1 {
+                break;
+            }
+            continue;
+        }
+        break;
+    }
+    return 0;
+}
+
+func Main() -> int {
+    return Walk();
+}

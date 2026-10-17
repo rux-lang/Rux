@@ -1,6 +1,6 @@
 #include "Driver/DependencyGraph.h"
 
-#include "Package/Cache.h"
+#include "Package/Registry.h"
 
 #include <algorithm>
 #include <format>
@@ -8,12 +8,6 @@
 
 namespace Rux::Driver {
 namespace {
-std::filesystem::path CanonicalManifest(const std::filesystem::path &path) {
-    std::error_code error;
-    const auto canonical = std::filesystem::weakly_canonical(path, error);
-    return error ? std::filesystem::absolute(path).lexically_normal() : canonical;
-}
-
 std::string Identity(const Manifest &manifest, const std::filesystem::path &path) {
     if (manifest.package.ns)
         return manifest.package.ns->Normalized() + "/" + manifest.package.name.Normalized();
@@ -28,9 +22,10 @@ std::string Describe(const SourcePackage &package) {
 
 DependencyGraph::DependencyGraph(Manifest rootManifest, std::filesystem::path manifestPath,
                                  const Target::TargetTriple inputTarget,
-                                 const std::span<const std::filesystem::path> localRoots, const bool inputLocalOnly)
+                                 const std::span<const std::filesystem::path> localRoots,
+                                 std::set<std::string> inputLocalNamespaces)
     : target(inputTarget)
-    , localOnly(inputLocalOnly) {
+    , localNamespaces(std::move(inputLocalNamespaces)) {
     manifestPath = CanonicalManifest(manifestPath);
     rootId = Identity(rootManifest, manifestPath);
     manifests.emplace(manifestPath, rootManifest);
@@ -48,11 +43,26 @@ const SourcePackage &DependencyGraph::Root() const {
     return packages.at(rootId);
 }
 
+const SourcePackage *DependencyGraph::Find(const std::string &id) const {
+    const auto found = packages.find(id);
+    return found == packages.end() ? nullptr : &found->second;
+}
+
 void DependencyGraph::Fail(const SourcePackage &owner, std::string message, std::vector<std::string> notes,
                            std::optional<std::string> help) {
     auto diagnostic = ErrorDiagnostic(std::move(message), std::move(notes), std::move(help));
     diagnostic.sourceName = owner.manifestPath.string();
     diagnostics.push_back(std::move(diagnostic));
+}
+
+const std::filesystem::path &DependencyGraph::CanonicalManifest(const std::filesystem::path &path) {
+    const auto [found, inserted] = canonicalManifests.try_emplace(path);
+    if (inserted) {
+        std::error_code error;
+        const auto canonical = std::filesystem::weakly_canonical(path, error);
+        found->second = error ? std::filesystem::absolute(path).lexically_normal() : canonical;
+    }
+    return found->second;
 }
 
 const Manifest *DependencyGraph::ReadManifest(const std::filesystem::path &path, const bool reportErrors) {
@@ -129,19 +139,25 @@ const SourcePackage *DependencyGraph::Resolve(const SourcePackage &owner, const 
             }
             path = local->second.front();
         }
-        else if (localOnly) {
+        else if (localNamespaces.contains(registry->ns.Normalized())) {
             Fail(owner,
-                 std::format("package '{}' is not a local workspace member; registry dependencies are disabled",
-                             registry->ns.Text() + "/" + dependency->package.Text()),
-                 {"workspace checks resolve registry declarations only from matching local members"},
+                 std::format("package '{}' is not a workspace member, but the workspace owns namespace '{}'",
+                             registry->ns.Text() + "/" + dependency->package.Text(), registry->ns.Text()),
+                 {"packages in a namespace declared by workspace members resolve only from those members, never "
+                  "from the package cache"},
                  "add the package to [Workspace].Packages or use a local Path dependency");
             return nullptr;
         }
         else {
-            const auto installed = Packages::FindInstalledPackage(registry->ns, dependency->package, registry->version);
+            // Keyed by spelling, as the cache lookup prefers the directory spelled exactly as asked.
+            const std::string spelling = registry->ns.Text() + "/" + dependency->package.Text();
+            const auto [listed, unlisted] = installedVersions.try_emplace(spelling);
+            if (unlisted)
+                listed->second = Packages::InstalledVersions(registry->ns, dependency->package);
+            const auto installed = Packages::FindInstalledPackage(listed->second, registry->version);
             if (!installed) {
                 std::string present;
-                for (const auto &candidate : Packages::InstalledVersions(registry->ns, dependency->package))
+                for (const auto &candidate : listed->second)
                     present += (present.empty() ? "" : ", ") + candidate.version.Text();
                 Fail(owner,
                      std::format("no installed version of '{}/{}' satisfies '{}'", registry->ns.Text(),
@@ -158,6 +174,12 @@ const SourcePackage *DependencyGraph::Resolve(const SourcePackage &owner, const 
         Fail(owner,
              std::format("cannot load dependency package '{}' from '{}'", importName, path.parent_path().string()),
              {"the dependency manifest is missing or invalid"}, "check the dependency path and its Rux.toml manifest");
+        return nullptr;
+    }
+    if (auto tooOld = Packages::CompilerTooOldMessage(manifest->package.name.Text(), manifest->header.minRux)) {
+        Fail(owner, std::move(*tooOld),
+             {std::format("'{}' is the dependency '{}' of this package", manifest->package.name.Text(), importName)},
+             "install a newer Rux release, or depend on a version of the package this compiler can build");
         return nullptr;
     }
     const std::string id = Identity(*manifest, path);

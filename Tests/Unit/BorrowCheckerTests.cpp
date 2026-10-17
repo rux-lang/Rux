@@ -150,6 +150,38 @@ TEST_CASE("reference provenance merges through control flow and expires after us
     CheckNoErrors(diagnostics);
 }
 
+TEST_CASE("a reference is no type argument, deduced or written") {
+    // A generic body is checked once for every type its parameter may stand for, so it cannot prove a reference
+    // stays within the call. A thread's context is the case that slipped through: `T` deduced as `&Counter` let the
+    // thread share a caller's local.
+    const auto diagnostics = AnalyzeBorrows(R"(
+        struct Counter { value: int32; }
+        struct Handle<R> { result: *var R; }
+        func Spawn<T, R>(entry: func(T) -> R, context: T) -> Handle<R> {
+            return Handle<R> { result: null };
+        }
+        func Hold<T>(value: T) -> T { return value; }
+        func ByRef(counter: &Counter) -> int32 { return counter.value; }
+        func ByValue(counter: Counter) -> int32 { return counter.value; }
+        func ByPointer(counter: *var Counter) -> int32 { return counter.value; }
+        func Use(counter: &Counter) -> int32 {
+            var local = Counter { value: 1 };
+            let escaped = Spawn(ByRef, counter);
+            let written = Hold<&Counter>(counter);
+            let owned = Spawn(ByValue, Counter { value: 2 });
+            let shared = Spawn(ByPointer, @local);
+            return 0;
+        }
+    )");
+    CHECK(
+        HasErrorContaining(diagnostics, "type argument '&Counter' of function 'Spawn' cannot be or hold a reference"));
+    CHECK(HasErrorContaining(diagnostics, "type argument '&Counter' of function 'Hold' cannot be or hold a reference"));
+    const auto rejected = std::ranges::count_if(diagnostics, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message.contains("cannot be or hold a reference");
+    });
+    CHECK_EQ(rejected, 2);
+}
+
 TEST_CASE("references cannot escape into storage or returns") {
     const auto diagnostics = AnalyzeBorrows(R"(
         struct Item { value: int32; }

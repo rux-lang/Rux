@@ -1,12 +1,10 @@
 // Win32's enumerated constants, under the spellings Microsoft's documentation uses.
-//
 // These are values a caller passes to the entry points in the other modules. Each keeps its published name and
 // value; nothing here is reinterpreted or renamed.
 
 // Code page identifiers
 // https://learn.microsoft.com/en-us/windows/win32/Intl/code-page-identifiers
 /// The `CodePage` values exposed by this package.
-///
 /// @see https://rux-lang.dev/docs/api/windows/code-page
 pub enum CodePage: uint32 {
     /// `37`: EBCDIC US and Canada.
@@ -294,7 +292,6 @@ pub enum CodePage: uint32 {
 // An action to take on a file or device that exists or does not exist.
 // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
 /// The `CreationDisposition` values exposed by this package.
-///
 /// @see https://rux-lang.dev/docs/api/windows/creation-disposition
 pub enum CreationDisposition: uint32 {
     /// Create the file, and fail with `ERROR_FILE_EXISTS` if the name is taken.
@@ -310,3 +307,19 @@ pub enum CreationDisposition: uint32 {
     /// Open the file and truncate it, failing if it is not there. Needs write access.
     TruncateExisting = 5
 }
+
+/// `ALL_PROCESSOR_GROUPS`: asks `GetActiveProcessorCount` about every processor group at once.
+/// @see https://rux-lang.dev/docs/api/windows/process#all-processor-groups
+#Allow("naming.const")
+pub const ALL_PROCESSOR_GROUPS: uint16 = 0xFFFF;
+
+/// `STACK_SIZE_PARAM_IS_A_RESERVATION`: `CreateThread` takes its stack size as the space to reserve rather than to
+/// commit, which is what a stack size usually means.
+/// @see https://rux-lang.dev/docs/api/windows/process#stack-size-param-is-a-reservation
+#Allow("naming.const")
+pub const STACK_SIZE_PARAM_IS_A_RESERVATION: uint32 = 0x00010000;
+
+/// `INFINITE`: a wait with no time-out.
+/// @see https://rux-lang.dev/docs/api/windows/process#infinite
+#Allow("naming.const")
+pub const INFINITE: uint32 = 0xFFFFFFFF;

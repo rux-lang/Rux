@@ -1,0 +1,68 @@
+import Core::Assert;
+
+// A binding in a nested block hides one of the same name outside it until the block ends, and only until then: the
+// outer binding keeps its own storage, its own value, and its own destruction.
+struct Tracked {
+    drops: *var int;
+    id: int;
+}
+
+extend Tracked {
+    func ~Tracked(self: &var Tracked) {
+        *self.drops = *self.drops + self.id;
+    }
+}
+
+// The inner `guard` hides the outer one when the function returns from inside the block, and each is destroyed once:
+// the inner with id 10, the outer with id 1.
+func ReturnFromInside(drops: *var int, early: bool) -> int {
+    let guard = Tracked { drops: drops, id: 1 };
+    if early {
+        let guard = Tracked { drops: drops, id: 10 };
+        return guard.id;
+    }
+    return guard.id;
+}
+
+func Main() -> int {
+    let total = 1;
+    if true {
+        let total = 2;
+        Assert(total == 2, "the inner binding is read inside its block");
+    }
+    Assert(total == 1, "the outer binding keeps its value after the block");
+
+    var count = 0;
+    for i in 0..3 {
+        let count = 100 + i;
+        Assert(count >= 100, "a loop body's binding hides the outer one");
+    }
+    Assert(count == 0, "the outer binding is untouched by the loop body");
+
+    let x = 5;
+    var y = 0;
+    match x {
+        5 => {
+            let x = 7;
+            y = x;
+        },
+        else => {}
+    }
+    Assert(y == 7 && x == 5, "a match arm's binding is the arm's alone");
+
+    var value = 3;
+    while value > 0 {
+        let value = 50;
+        Assert(value == 50, "a while body's binding hides the outer one");
+        break;
+    }
+    Assert(value == 3, "the outer binding is untouched by the while body");
+
+    var drops = 0;
+    Assert(ReturnFromInside(@drops, true) == 10, "the inner binding is returned");
+    Assert(drops == 11, "both bindings are destroyed once each when returning from the inner block");
+    drops = 0;
+    Assert(ReturnFromInside(@drops, false) == 1, "the outer binding is returned");
+    Assert(drops == 1, "only the outer binding is destroyed when the inner block does not run");
+    return 0;
+}

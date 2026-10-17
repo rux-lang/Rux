@@ -1,0 +1,77 @@
+// A growable run of plain values, owned through an allocator: the units of a command line, the bytes a child wrote.
+// Only plain values — units, bytes, addresses — go in one, so growing it copies bytes and destroying it only gives
+// the storage back.
+
+import Allocator::{ Allocator, Layout };
+import Io::{ IoError, IoErrorKind };
+import Memory::Copy;
+
+struct Buffer<T> {
+    data: *var T;
+    length: uint;
+    capacity: uint;
+    allocator: Allocator;
+}
+
+extend Buffer<T> {
+    func =(self: &var Buffer<T>, other: &Buffer<T>);
+
+    func Buffer(allocator: Allocator) -> Buffer<T> {
+        return Buffer<T> { data: null, length: 0, capacity: 0, allocator: allocator };
+    }
+
+    // Makes room for `extra` more values, reporting an allocation the allocator refused.
+    func Reserve(self: &var Buffer<T>, extra: uint) -> ! IoError {
+        if self.length + extra <= self.capacity { return; }
+        var capacity = self.capacity == 0 ? 16u : self.capacity * 2u;
+        while capacity < self.length + extra {
+            capacity = capacity * 2u;
+        }
+        let wanted = Layout::ForArray<T>(capacity);
+        if wanted == none { fail IoError::Of(IoErrorKind::LimitExceeded); }
+        var allocator = self.allocator;
+        let block = allocator.Allocate(wanted ?? Layout::ForValue<T>()) catch {
+            else => fail IoError::Of(IoErrorKind::LimitExceeded)
+        };
+        if self.data != null {
+            Copy(block, self.data as *opaque, self.length * sizeof(T));
+            allocator.Deallocate(self.data as *var opaque, Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>())
+                catch { else => {} };
+        }
+        self.data = block as *var T;
+        self.capacity = capacity;
+    }
+
+    func Push(self: &var Buffer<T>, value: T) -> ! IoError {
+        self.Reserve(1)?;
+        self.data[self.length] = value;
+        self.length = self.length + 1;
+    }
+
+    func PushAll(self: &var Buffer<T>, values: T[..]) -> ! IoError {
+        self.Reserve(values.length)?;
+        var index: uint = 0;
+        while index < values.length {
+            self.data[self.length + index] = values[index];
+            index = index + 1;
+        }
+        self.length = self.length + values.length;
+    }
+
+    func View(self: &Buffer<T>) -> T[..] {
+        if self.length == 0 { return self.data[..0]; }
+        return self.data[..self.length];
+    }
+
+    func Clear(self: &var Buffer<T>) {
+        self.length = 0;
+    }
+
+    func ~Buffer(self: &var Buffer<T>) {
+        if self.data == null { return; }
+        var allocator = self.allocator;
+        allocator.Deallocate(self.data as *var opaque, Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>())
+            catch { else => {} };
+        self.data = null;
+    }
+}

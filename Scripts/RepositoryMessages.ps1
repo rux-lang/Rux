@@ -85,6 +85,12 @@ function Format-Duration {
     return "$minutes min $($seconds.ToString("0.0 's'", [System.Globalization.CultureInfo]::InvariantCulture))"
 }
 
+function Format-DisplayPath {
+    # Human output names paths with `/` on every host, as the compiler does; tools still receive native paths.
+    param([Parameter(Mandatory)][string]$Path)
+    return $Path.Replace('\', '/')
+}
+
 function Test-ColorSupport {
     if ($env:NO_COLOR) {
         return $false

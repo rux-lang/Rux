@@ -1,0 +1,54 @@
+// The three containers a Deflate stream travels in, how hard to compress, and the tables RFC 1951 fixes.
+
+import Io::{ IoError, IoErrorKind };
+
+/// The container around a Deflate stream. `Copy`.
+/// @see https://rux-lang.dev/docs/api/compress/format#format
+pub enum Format: uint8 {
+    /// A bare Deflate stream, RFC 1951, with no header and no checksum.
+    Raw = 0,
+    /// The zlib format, RFC 1950: a two-byte header, the stream, and an Adler-32 of the data.
+    Zlib = 1,
+    /// The gzip format, RFC 1952: a header that may name the file, the stream, a CRC-32 of the data and its length.
+    Gzip = 2
+}
+
+/// How hard the compressor looks for repeated data. `Copy`.
+/// Higher levels find longer and more matches and so write less, and take longer to.
+/// @see https://rux-lang.dev/docs/api/compress/format#level
+pub enum Level: uint8 {
+    /// No compression: the data is stored as it is, in blocks a decompressor copies straight out.
+    Store = 0,
+    /// The quickest search: the first match found is taken.
+    Fastest = 1,
+    /// A balance of speed and size, close to zlib's default.
+    Default = 2,
+    /// The most thorough search this package does.
+    Best = 3
+}
+
+// What a damaged or truncated stream fails with.
+func Corrupt() -> IoError {
+    return IoError::Of(IoErrorKind::InvalidInput);
+}
+
+// The base length and extra bits of each length code from 257 to 285.
+const LengthBase: uint16[29] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258
+];
+const LengthExtra: uint8[29] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+
+// The base distance and extra bits of each distance code from 0 to 29.
+const DistanceBase: uint16[30] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+    8193, 12289, 16385, 24577
+];
+const DistanceExtra: uint8[30] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13
+];
+
+// The order the lengths of the code-length code are written in.
+const CodeLengthOrder: uint8[19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+// The longest distance a match may reach back, and so the size of the history both directions keep.
+const WindowSize: uint = 32768;

@@ -84,6 +84,14 @@ TEST_CASE("compiler driver builds a Windows AArch64 executable") {
 TEST_CASE("compiler driver builds a Windows AArch64 shared library and import library through the arm64 alias") {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
+    // A library exports its own public functions, so the import library has one to describe.
+    fixture.SetApplicationSource(R"(
+import Dependency::Api::Answer;
+
+pub func Exported() -> int {
+    return Answer();
+}
+)");
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("windows-arm64");
@@ -206,6 +214,15 @@ TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a sign
 TEST_CASE("compiler driver builds macOS AArch64 static libraries with relocatable object members") {
     DependencyFixture fixture;
     fixture.ConfigureMacOSTargetDependencies();
+    // Recursive dependencies retain a real inter-function relocation even with bounded branch/loop inlining.
+    fixture.SetDependencySource(R"(
+pub module Api {
+    pub func Answer() -> int {
+        return Count(10);
+    }
+    func Count(value: int) -> int { return value == 0 ? 0 : value + Count(value - 1); }
+}
+)");
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
@@ -293,6 +310,53 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 executable with target-condi
     CHECK(std::ranges::all_of(relocations, [](const Testing::ElfImage::Rela &relocation) {
         return relocation.type == 1026; // R_AARCH64_JUMP_SLOT
     }));
+}
+
+TEST_CASE("a shared library exports its own public functions but not its dependencies'") {
+    // The dependency is compiled into the library, so its public `Answer` is linkable inside the image. Only the
+    // library's own `pub` functions form its interface, in both profiles.
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
+    fixture.SetApplicationSource(R"(
+import Dependency::Api::Answer;
+
+pub func Exported() -> int {
+    return Answer();
+}
+
+func Hidden() -> int {
+    return Answer() + 1;
+}
+
+pub module Nested {
+    pub func Also() -> int {
+        return 2;
+    }
+}
+)");
+    for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+        std::vector<Diagnostic> diagnostics;
+        auto options = fixture.Options(false, diagnostics);
+        options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
+        options.profile = profile;
+
+        const auto result = CompilerDriver(std::move(options)).Compile();
+
+        CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+        REQUIRE(result.ok);
+        const auto image = ReadFreeBSDAArch64Image(result.primaryArtifactPath);
+        std::vector<std::string> exported;
+        for (const auto &symbol : image.DynamicSymbols()) {
+            if (symbol.sectionIndex != 0)
+                exported.push_back(symbol.name);
+        }
+        std::ranges::sort(exported);
+        CAPTURE(exported.size());
+        REQUIRE(exported.size() == 2);
+        CHECK(exported[0].ends_with("Also"));
+        CHECK(exported[1] == "Exported");
+        CHECK_FALSE(std::ranges::any_of(exported, [](const std::string &name) { return name.contains("Answer"); }));
+    }
 }
 
 TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a shared library") {
@@ -431,6 +495,22 @@ TEST_CASE("every supported triple is one a back end can produce") {
                                           "openbsd-aarch64", "linux-riscv64", "linux-arm32", "windows-x86"}) {
         CHECK_FALSE(IsSupportedTargetTriple(target));
     }
+}
+
+TEST_CASE("portable target features depend on output architecture rather than compiler host") {
+    for (const std::string_view os : {"freebsd", "linux", "macos", "windows"}) {
+        for (const std::string_view arch : {"x86_64", "aarch64"}) {
+            const auto triple = Target::TargetTriple::Parse(std::string(os) + "-" + std::string(arch));
+            REQUIRE(triple.has_value());
+            const auto target = TargetContextForTriple(*triple);
+            const auto expected = arch == "x86_64" ? Target::CpuFeature::SSE2 : Target::CpuFeature::NEON;
+            CHECK_EQ(target.cpu_features.mask, expected.mask);
+            CHECK_FALSE(target.cpu_features.Has(Target::CpuFeature::AVX2));
+            CHECK_FALSE(target.cpu_features.Has(Target::CpuFeature::SVE));
+        }
+    }
+    CHECK_EQ(TargetContext::CreateNative().cpu_features.mask, Target::BaselineCpuFeatures(Target::HostArch).mask);
+    CHECK_EQ(Target::BaselineCpuFeatures(Target::Arch::Unknown).mask, 0);
 }
 
 TEST_CASE("compiler driver builds an executable for linux-aarch64") {

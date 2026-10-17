@@ -1,0 +1,5 @@
+3:1: error: struct 'Node' contains itself by value through 'next'
+8:1: error: struct 'Outer' contains itself by value through 'inner.back'
+12:1: error: struct 'Inner' contains itself by value through 'back.inner'
+16:1: error: struct 'Maybe' contains itself by value through 'next'
+20:1: error: variant 'Expr' contains itself by value through 'Negate'

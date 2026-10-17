@@ -4,12 +4,17 @@
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
+#include "Cli/JobsOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
+#include "Cli/Testing/TestScheduler.h"
 #include "Driver/BuildPlan.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
+#include "Parallel/WorkerPool.h"
+#include "Reporting/Reporting.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -18,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -38,14 +44,26 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     bool dumpSema = false;
     bool dumpHir = false;
     bool dumpLir = false;
+    bool dumpOptimizationPasses = false;
     bool dumpAsm = false;
     bool dumpRcu = false;
+    bool emitSymbols = false;
     bool showStats = false;
+    std::size_t jobs = 0;
+    bool useBuildCache = true;
+    std::vector<std::string> disabledPasses;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
         if (arg == "--all") {
             buildAll = true;
+            continue;
+        }
+        if (arg == "--jobs") {
+            if (i + 1 == args.size() || !ParseJobCount(args[++i], jobs)) {
+                diagnostics.Error("option '--jobs' requires a positive integer");
+                return 2;
+            }
             continue;
         }
         if (arg == "--release") {
@@ -66,6 +84,14 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             showStats = true;
             continue;
         }
+        if (arg == "--no-cache") {
+            useBuildCache = false;
+            continue;
+        }
+        if (arg == "--disable-pass" && i + 1 < args.size()) {
+            disabledPasses.emplace_back(args[++i]);
+            continue;
+        }
         if (arg == "--emit" && i + 1 < args.size()) {
             std::string_view values = args[++i];
             while (!values.empty()) {
@@ -81,14 +107,19 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                     dumpHir = true;
                 else if (value == "lir")
                     dumpLir = true;
+                else if (value == "passes")
+                    dumpOptimizationPasses = true;
                 else if (value == "asm")
                     dumpAsm = true;
                 else if (value == "rcu")
                     dumpRcu = true;
+                else if (value == "symbols")
+                    emitSymbols = true;
                 else {
                     diagnostics.Error(std::format("value '{}' is not supported by option '--emit'", value));
-                    diagnostics.Note("supported emission kinds are 'tokens', 'ast', 'sema', 'hir', 'lir', 'asm', and "
-                                     "'rcu'");
+                    diagnostics.Note(
+                        "supported emission kinds are 'tokens', 'ast', 'sema', 'hir', 'lir', 'passes', 'asm', 'rcu', "
+                        "and 'symbols'");
                     return 2;
                 }
                 if (comma == std::string_view::npos)
@@ -140,96 +171,240 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     if (!manifest) {
         return 1;
     }
-    const std::string packageName(manifest->package.name.Text());
-    // Captured before the manifest is moved into the compile options below.
-    const std::string packageVersion(manifest->package.version.Text());
-    const auto packageRoot = manifestPath->parent_path();
-    if (buildAll) {
-        const auto matrix = GenerateBuildMatrix(packageRoot, *manifest);
-        if (!opts.quiet) {
-            diagnostics.Progress("Compiling",
-                                 std::format("{} v{} ({} build cells)", packageName, packageVersion, matrix.size()));
-        }
+    const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
+    WorkspaceSources workspaceSources;
+    // Reported paths are relative to the directory the command was pointed at: a member's own root, or the workspace.
+    std::filesystem::path displayRoot;
 
-        std::vector<BuildCellReport> reports;
-        reports.reserve(matrix.size());
-        bool allSucceeded = true;
-        for (const auto &cell : matrix) {
-            output.Verbose(
-                std::format("Compiling '{}' {}", packageName, FormatBuildContext(cell.profile, cell.target)));
-            CompileOptions copts;
-            copts.manifestPath = *manifestPath;
-            copts.manifest = *manifest;
-            copts.target = cell.target;
-            copts.profile = cell.profile;
+    // Builds the root package, or one workspace member against the sources the workspace offers, reporting through
+    // `out` and `diag`, which may be collecting what a member reports while others are built beside it.
+    const auto BuildPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest,
+                                  const Reporter &out, const Reporter &diag, const std::size_t compileJobs) {
+        const std::string packageName(packageManifest.package.name.Text());
+        const std::string packageVersion(packageManifest.package.version.Text());
+        const auto packageRoot = packageManifestPath.parent_path();
+        const auto shownRoot = displayRoot.empty() ? packageRoot : displayRoot;
+        const auto Configure = [&](CompileOptions &copts) {
+            copts.manifestPath = packageManifestPath;
             copts.defines = defines;
-            ConfigureCompileDiagnostics(copts, diagnostics);
+            copts.disabledOptimizationPasses = disabledPasses;
+            copts.collectOptimizationStatistics = showStats;
+            copts.jobs = compileJobs;
+            copts.useBuildCache = useBuildCache;
+            copts.localPackageRoots = workspaceSources.packageRoots;
+            copts.localNamespaces = workspaceSources.namespaces;
+            ConfigureCompileDiagnostics(copts, diag);
             if (opts.verbose) {
-                copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(output, progress); };
+                copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(out, progress); };
+            }
+        };
+        if (buildAll) {
+            const auto matrix = GenerateBuildMatrix(packageRoot, packageManifest);
+            if (!opts.quiet) {
+                diag.Progress("Compiling",
+                              std::format("{} v{} ({} build cells)", packageName, packageVersion, matrix.size()));
             }
 
-            const auto started = std::chrono::steady_clock::now();
-            CompilerDriver driver(std::move(copts));
-            const CompileResult result = driver.Compile();
-            const auto elapsed = ElapsedMs(started);
-            reports.push_back(BuildCellReport{.profile = cell.profile,
-                                              .target = cell.target,
-                                              .outputDirectory = cell.outputDirectory,
-                                              .succeeded = result.ok,
-                                              .artifactPath = result.primaryArtifactPath,
-                                              .stats = result.stats,
-                                              .elapsed = elapsed});
-            allSucceeded &= result.ok;
-        }
+            // Each cell writes its own profile and target's artifact, so cells are built side by side, sharing the
+            // threads the build may use, and reported in order. What a cell reports is held until its turn, so reports
+            // never interleave; progress lines are only shown when cells are built one at a time.
+            const std::size_t threads = jobs != 0 ? jobs : Parallel::DefaultJobs();
+            const std::size_t concurrent = opts.verbose ? 1 : std::clamp<std::size_t>(matrix.size(), 1, threads);
+            std::vector<std::optional<BuildCellReport>> cellReports(matrix.size());
+            std::vector<std::vector<std::string>> held(matrix.size());
+            const std::vector<TestTask> tasks(matrix.size());
+            bool allSucceeded = true;
+            const auto matrixStarted = std::chrono::steady_clock::now();
+            RunTestTasks(
+                tasks, concurrent,
+                [&](const std::size_t index) {
+                    const auto &cell = matrix[index];
+                    CompileOptions copts;
+                    Configure(copts);
+                    copts.manifest = packageManifest;
+                    copts.target = cell.target;
+                    copts.profile = cell.profile;
+                    copts.jobs = std::max<std::size_t>(1, threads / concurrent);
+                    if (concurrent > 1) {
+                        copts.emitDiagnostic = [&lines = held[index], color = diag.Style().enabled](
+                                                   const Diagnostic &diagnostic,
+                                                   const SourceLineLookup &sourceLineLookup) {
+                            lines.push_back(RenderDiagnostic(diagnostic, color, sourceLineLookup));
+                        };
+                    }
+                    else {
+                        out.Verbose(std::format("Compiling '{}' {}", packageName,
+                                                FormatBuildContext(cell.profile, cell.target)));
+                    }
 
-        output.Write(FormatBuildMatrixReport(packageName, reports, packageRoot, showStats, output.Style().enabled));
-        return allSucceeded ? 0 : 1;
+                    const auto started = std::chrono::steady_clock::now();
+                    CompilerDriver driver(std::move(copts));
+                    const CompileResult result = driver.Compile();
+                    cellReports[index] = BuildCellReport{.profile = cell.profile,
+                                                         .target = cell.target,
+                                                         .outputDirectory = cell.outputDirectory,
+                                                         .succeeded = result.ok,
+                                                         .artifactPath = result.primaryArtifactPath,
+                                                         .stats = result.stats,
+                                                         .elapsed = ElapsedMs(started)};
+                },
+                [&](const std::size_t index) {
+                    for (const auto &text : held[index])
+                        diag.Write(text, MessageVisibility::Always);
+                    allSucceeded &= cellReports[index]->succeeded;
+                });
+            std::vector<BuildCellReport> reports;
+            for (auto &report : cellReports)
+                reports.push_back(std::move(*report));
+
+            out.Write(FormatBuildMatrixReport(packageName, reports, shownRoot, showStats, out.Style().enabled,
+                                              ElapsedMs(matrixStarted)));
+            return allSucceeded;
+        }
+        if (!opts.quiet) {
+            diag.Progress("Compiling", std::format("{} v{} {}", packageName, packageVersion,
+                                                   FormatBuildContext(profile, *targetTriple)));
+        }
+        CompileOptions copts;
+        Configure(copts);
+        copts.manifest = std::move(packageManifest);
+        copts.target = *targetTriple;
+        copts.profile = profile;
+        copts.dumpTokens = dumpTokens;
+        copts.dumpAst = dumpAst;
+        copts.dumpSema = dumpSema;
+        copts.dumpHir = dumpHir;
+        copts.dumpLir = dumpLir;
+        copts.dumpOptimizationPasses = dumpOptimizationPasses;
+        copts.dumpAsm = dumpAsm;
+        copts.dumpRcu = dumpRcu;
+        copts.emitSymbols = emitSymbols;
+        CompilerDriver driver(std::move(copts));
+        const CompileResult result = driver.Compile();
+        for (const auto &inspection : result.inspectionOutputs) {
+            out.Success("Emitted", InspectionHeading(inspection.kind));
+            out.Detail(std::format("Description: {}", InspectionDescription(inspection.kind)));
+            out.Detail(std::format("Output: {}", DisplayPath(inspection.path, shownRoot)));
+        }
+        if (!result.ok) {
+            return false;
+        }
+        if (!opts.quiet && showStats) {
+            const BuildReportInfo info{.packageName = packageName,
+                                       .packageVersion = packageVersion,
+                                       .artifactPath = result.primaryArtifactPath,
+                                       .packageRoot = shownRoot,
+                                       .profile = profile,
+                                       .targetTriple = targetName};
+            out.Write(FormatBuildStats(info, result.stats, out.Style().enabled));
+            return true;
+        }
+        out.Write(FormatBuildSummary(packageName, result.primaryArtifactPath, shownRoot, profile, targetName,
+                                     result.stats, out.Style().enabled));
+        return true;
+    };
+
+    if (!manifest->IsWorkspace()) {
+        return BuildPackage(*manifestPath, std::move(*manifest), output, diagnostics, jobs) ? 0 : 1;
     }
-    const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
+
+    // A workspace has no sources of its own, so it builds each member that produces an artifact. A source library is
+    // compiled into the members that depend on it and has nothing to produce alone.
     if (!opts.quiet) {
-        diagnostics.Progress("Compiling", std::format("{} v{} {}", packageName, packageVersion,
-                                                      FormatBuildContext(profile, *targetTriple)));
+        diagnostics.Progress("Compiling", buildAll ? std::string("workspace")
+                                                   : "workspace " + FormatBuildContext(profile, *targetTriple));
     }
-    CompileOptions copts;
-    copts.manifestPath = *manifestPath;
-    copts.manifest = std::move(*manifest);
-    copts.target = *targetTriple;
-    copts.profile = profile;
-    copts.defines = std::move(defines);
-    ConfigureCompileDiagnostics(copts, diagnostics);
-    if (opts.verbose) {
-        copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(output, progress); };
-    }
-    copts.dumpTokens = dumpTokens;
-    copts.dumpAst = dumpAst;
-    copts.dumpSema = dumpSema;
-    copts.dumpHir = dumpHir;
-    copts.dumpLir = dumpLir;
-    copts.dumpAsm = dumpAsm;
-    copts.dumpRcu = dumpRcu;
-    CompilerDriver driver(std::move(copts));
-    const CompileResult result = driver.Compile();
-    for (const auto &inspection : result.inspectionOutputs) {
-        output.Success("Emitted", InspectionHeading(inspection.kind));
-        output.Detail(std::format("Description: {}", InspectionDescription(inspection.kind)));
-        output.Detail(std::format("Output: {}", DisplayPath(inspection.path, packageRoot)));
-    }
-    if (!result.ok) {
+    auto members = LoadWorkspaceMembers(*manifestPath, *manifest);
+    workspaceSources = CollectWorkspaceSources(members);
+    displayRoot = manifestPath->parent_path();
+    std::size_t built = 0;
+    std::size_t failed = 0;
+    std::size_t sourceLibraries = 0;
+    const auto started = std::chrono::steady_clock::now();
+    // Whether a member produces an artifact of its own for this build.
+    const auto builds = [&](const WorkspaceMember &member) {
+        if (!member.manifest || member.manifest->package.type == ManifestPackageType::SourceLibrary)
+            return false;
+        const std::string name(member.manifest->package.name.Text());
+        return buildAll || !IsPlatformPackageName(name) || PlatformPackageMatchesTarget(name, *targetTriple);
+    };
+    // Members are independent artifacts, so they are built side by side, sharing the threads the build may use, and
+    // reported in member order; what a member reports while others are built is held until its turn. Progress lines
+    // and build matrices, which run their own cells side by side, keep members one at a time.
+    const std::size_t threads = jobs != 0 ? jobs : std::max<std::size_t>(1, std::thread::hardware_concurrency());
+    const std::size_t buildable = static_cast<std::size_t>(std::ranges::count_if(members, builds));
+    const std::size_t concurrent =
+        opts.verbose || buildAll ? std::size_t{1} : std::clamp<std::size_t>(buildable, 1, threads);
+
+    struct MemberBuild {
+        bool succeeded = false;
+        std::string output;
+        std::string diagnostics;
+    };
+
+    std::vector<MemberBuild> memberBuilds(members.size());
+    const std::vector<TestTask> memberTasks(members.size());
+    RunTestTasks(
+        memberTasks, concurrent,
+        [&](const std::size_t index) {
+            auto &member = members[index];
+            if (!builds(member))
+                return;
+            auto &build = memberBuilds[index];
+            if (concurrent == 1) {
+                build.succeeded =
+                    BuildPackage(member.manifestPath, std::move(*member.manifest), output, diagnostics, jobs);
+                return;
+            }
+            const Reporter memberOutput(build.output, stdout, reporterOptions);
+            const Reporter memberDiagnostics(build.diagnostics, stderr, reporterOptions);
+            build.succeeded = BuildPackage(member.manifestPath, std::move(*member.manifest), memberOutput,
+                                           memberDiagnostics, std::max<std::size_t>(1, threads / concurrent));
+        },
+        [&](const std::size_t index) {
+            const auto &member = members[index];
+            if (!member.manifest) {
+                if (!member.problem.empty())
+                    diagnostics.Error(member.problem);
+                ++failed;
+                return;
+            }
+            const std::string name(member.manifest->package.name.Text());
+            if (member.manifest->package.type == ManifestPackageType::SourceLibrary) {
+                ++sourceLibraries;
+                output.Verbose(std::format("Skipping source library '{}'", name));
+                return;
+            }
+            if (!builds(member)) {
+                output.Verbose(std::format("Skipping '{}', which does not support {}", name,
+                                           Driver::TargetDisplayName(*targetTriple)));
+                return;
+            }
+            const auto &build = memberBuilds[index];
+            diagnostics.Write(build.diagnostics, MessageVisibility::Always);
+            output.Write(build.output, MessageVisibility::Always);
+            output.Flush();
+            ++(build.succeeded ? built : failed);
+        });
+    if (built + failed == 0) {
+        diagnostics.Error(std::format("workspace '{}' has no member to build", manifestPath->parent_path().string()));
+        diagnostics.Note(
+            sourceLibraries > 0
+                ? "a source library is compiled into the packages that depend on it and builds nothing alone"
+                : "no member produces an artifact for this target");
+        diagnostics.Help("check the members with 'rux check'");
         return 1;
     }
-    if (!opts.quiet && showStats) {
-        const BuildReportInfo info{.packageName = packageName,
-                                   .packageVersion = packageVersion,
-                                   .artifactPath = result.primaryArtifactPath,
-                                   .packageRoot = packageRoot,
-                                   .profile = profile,
-                                   .targetTriple = targetName};
-        output.Write(FormatBuildStats(info, result.stats, output.Style().enabled));
-        return 0;
+    if (!opts.quiet) {
+        const auto totals =
+            std::format("{} in {} ({} succeeded, {} failed)", Reporting::FormatCount(built + failed, "package"),
+                        Reporting::FormatDuration(ElapsedMs(started)), built, failed);
+        if (failed == 0)
+            output.Success("Built", totals);
+        else
+            output.Failure("Failed", totals);
     }
-    output.Write(FormatBuildSummary(packageName, result.primaryArtifactPath, packageRoot, profile, targetName,
-                                    result.stats, output.Style().enabled));
-    return 0;
+    return failed == 0 ? 0 : 1;
 }
 
 int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &opts) {

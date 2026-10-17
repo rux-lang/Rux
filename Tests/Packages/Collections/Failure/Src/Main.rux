@@ -9,22 +9,18 @@ import Collections::{ EqualsInt32, HashInt32 };
 
 // The cross-cutting axis: what every container does when an operation cannot
 // be completed. Two things are checked here that the per-type tests do not.
-//
 // First, that the failure modes stay distinguishable. An exhausted allocator,
 // an unaddressable capacity and a rejected index are three different answers,
 // and a caller has to be able to tell them apart.
-//
 // Second, that a failed operation changes nothing. Every check below reads the
 // whole container back afterwards, because the defect this package was
 // rewritten to fix was exactly a failure that left a container claiming
 // storage it did not own.
-//
 // What is checked here is the capacity arithmetic: a size that cannot be
 // named, and an index that is not there. An allocator that actually refuses is
 // forced in Tests/Packages/Collections/ContainerStorage, where the same question is
 // asked of the other failure — that a refusal leaves the container as it was —
 // against a real allocation rather than a rejected layout.
-//
 // See Tests/Packages/Collections/Array for the numbered exit-code convention.
 
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
@@ -56,7 +52,7 @@ func Main() -> int {
     // block, the same length, the same capacity, the same elements.
     var populated = Vector<int64>(allocator);
     var element: int64 = 0;
-    while element < 8i64 {
+    while element < 8 {
         populated.Push(element) catch { else => return 30 };
         element++;
     }
@@ -77,7 +73,7 @@ func Main() -> int {
     if populated.Capacity() != capacity { return 36; }
 
     element = 0;
-    while element < 8i64 {
+    while element < 8 {
         if populated.Get(element as uint) != .Some(element) { return 37; }
         element++;
     }
@@ -91,9 +87,9 @@ func Main() -> int {
     if populated.Capacity() != capacity { return 42; }
 
     // A rejected index is reported as itself, not as an exhausted allocator, and the container is left alone.
-    if Refusal(populated.Set(populated.Length(), 99i64)) != CollectionError::IndexOutOfRange { return 50; }
+    if Refusal(populated.Set(populated.Length(), 99)) != CollectionError::IndexOutOfRange { return 50; }
     if populated.Length() != length || populated.AsSlice().data != block { return 51; }
-    if populated.Get(0) != .Some(0i64) { return 52; }
+    if populated.Get(0) != .Some(0) { return 52; }
 
     // Reading past the end is an ordinary absence rather than a failure, and reads nothing.
     if populated.Get(populated.Length()) is int64 { return 53; }
@@ -103,15 +99,15 @@ func Main() -> int {
 
     // A Deque rejects the same requests and stays usable afterwards.
     var ring = Deque<int64>(allocator);
-    ring.PushBack(1i64) catch { else => return 60 };
+    ring.PushBack(1) catch { else => return 60 };
     let ringCapacity = ring.Capacity();
     if Refusal(ring.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 61; }
     if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 62; }
-    if ring.Get(0) != .Some(1i64) { return 67; }
+    if ring.Get(0) != .Some(1) { return 67; }
     if Refusal(ring.Reserve(uint::Max / 4)) != CollectionError::CapacityOverflow { return 63; }
     if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 64; }
-    ring.PushFront(0i64) catch { else => return 65 };
-    if ring.Get(0) != .Some(0i64) || ring.Get(1) != .Some(1i64) { return 66; }
+    ring.PushFront(0) catch { else => return 65 };
+    if ring.Get(0) != .Some(0) || ring.Get(1) != .Some(1) { return 66; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
     var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);

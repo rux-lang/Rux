@@ -1,0 +1,217 @@
+// Variadic methods: a method's variadic parameter collects its arguments into a slice of its element type exactly as a
+// free function's does. A call passes none, one or many, or spreads an existing slice or array. Each element is checked
+// and converted against the element type like an ordinary argument, so a narrower integer reaches an int128 slice
+// sign-extended. The receiver is never one of the collected arguments, whether the method borrows it, writes through
+// it, takes it by value in an `extend` block on a primitive, belongs to a generic type or declares its own type
+// parameter.
+
+import Core::Assert;
+
+func Select(values: int32...) -> int32 { return 1i32; }
+func Select(values: float64...) -> int32 { return 2i32; }
+func Exact(value: int32) -> int32 { return 1i32; }
+func Exact(value: int32, extra: int32 = 0i32) -> int32 { return 2i32; }
+
+interface Merger {
+    func Merge(self: &Self, others: Self...) -> uint;
+}
+
+struct Item<T> { value: T; }
+extend Item<T> : Merger {
+    func Merge(self: &Item<T>, others: Item<T>...) -> uint { return others.length; }
+}
+
+func MergeItems<T: Merger>(item: &T, other: T) -> uint { return item.Merge(other); }
+
+struct Total {
+    base: int128;
+    count: int32;
+}
+
+/// A requirement that spells out its receiver: the receiver is still not one of the collected arguments.
+interface Summer {
+    func Tally(self: &Self, seed: int32, values: int128...) -> int128;
+}
+
+/// A requirement that leaves its receiver implicit.
+interface Counter {
+    func Count(values: int128...) -> uint;
+}
+
+extend Total : Summer {
+    func Tally(self: &Total, seed: int32, values: int128...) -> int128 {
+        var total = self.base + seed as int128;
+        for value in values {
+            total += value;
+        }
+        return total;
+    }
+}
+
+extend Total : Counter {
+    /// Only a variadic parameter after the receiver.
+    func Sum(self: &Total, values: int128...) -> int128 {
+        var total = self.base;
+        for value in values {
+            total += value;
+        }
+        return total;
+    }
+
+    /// A fixed parameter before the variadic one, through a writable receiver.
+    func Add(self: &var Total, label: int32, values: int64...) {
+        self.count += label;
+        for value in values {
+            self.base += value as int128;
+        }
+    }
+
+    /// How many values arrived, so an empty call is told apart from a missing one.
+    func Count(self: &Total, values: int128...) -> uint {
+        return values.length;
+    }
+
+    /// The high words of each element, which only a sign extension writes.
+    func HighWords(self: &Total, values: int128...) -> int128 {
+        var total = 0i128;
+        for value in values {
+            total += value >> 64;
+        }
+        return total;
+    }
+
+    /// A method with its own type parameter, deduced from the variadic elements.
+    func Pick<T>(self: &Total, index: uint, values: T...) -> T {
+        return values[index];
+    }
+
+    /// A parameter with a default value may be left out of a method call as out of a function call.
+    func Scaled(self: &Total, amount: int128, factor: int128 = 2i128) -> int128 {
+        return self.base + amount * factor;
+    }
+
+    /// A receiverless associated function, reached through the type's path.
+    func Of(values: int128...) -> Total {
+        var total = Total { base: 0i128, count: 0i32 };
+        for value in values {
+            total.base += value;
+            total.count += 1i32;
+        }
+        return total;
+    }
+}
+
+struct Bag<T> {
+    first: T;
+}
+
+extend Bag<T> {
+    /// A method of a generic type: the element type is the receiver's type argument.
+    func PickOr(self: &Bag<T>, index: uint, values: T...) -> T {
+        if index < values.length {
+            return values[index];
+        }
+        return self.first;
+    }
+}
+
+extend int64 {
+    /// A method on a primitive, taking its receiver by value.
+    func Plus(self: int64, values: int64...) -> int64 {
+        var total = self;
+        for value in values {
+            total += value;
+        }
+        return total;
+    }
+}
+
+/// Through an interface value the implementing type is not known; the call is dispatched, and collects alike.
+func ThroughInterface(summer: &Summer, word: int64) -> int128 {
+    return summer.Tally(1i8, word, 2i8);
+}
+
+/// Through a generic parameter bounded by the interfaces, the call is direct to the implementation.
+func ThroughBound<T: Summer + Counter>(value: &T, half: int32) -> int128 {
+    return value.Tally(0i32, half, half) + value.Count(half) as int128;
+}
+
+func Main() -> int {
+    let total = Total { base: 100i128, count: 0i32 };
+    let word: int64 = -1i64;
+    let half: int32 = -2i32;
+    let byte: int8 = 3i8;
+
+    // None, one and many.
+    Assert(total.Sum() == 100i128, "a variadic method accepts no arguments");
+    Assert(total.Count() == 0u, "an empty list reaches the method empty");
+    Assert(total.Sum(word) == 99i128, "a variadic method accepts one narrower argument");
+    Assert(total.Count(word) == 1u, "one argument reaches the method as one element");
+    Assert(total.Sum(word, half, byte, 7i128) == 107i128, "a variadic method accepts many mixed-width arguments");
+    Assert(total.Count(word, half, byte, 7i128) == 4u, "every argument reaches the method");
+
+    // Widening: each element is sign-extended to int128, so a negative one carries all-ones high words.
+    Assert(total.HighWords(word, half, byte) == -2i128, "a negative element reaches an int128 slice sign-extended");
+
+    // Spreading an existing slice or array.
+    let values: int128[3] = [1i128, 2i128, 4i128];
+    Assert(total.Sum(values...) == 107i128, "an array spreads into a method's variadic parameter");
+    Assert(total.Count(values[..]...) == 3u, "a slice spreads into a method's variadic parameter");
+
+    // A fixed parameter before the variadic one, through a writable receiver.
+    var running = Total { base: 0i128, count: 0i32 };
+    running.Add(1i32);
+    running.Add(2i32, word);
+    running.Add(4i32, word, half, 10i64);
+    Assert(running.count == 7i32, "the fixed argument binds the fixed parameter");
+    Assert(running.base == 6i128, "the remaining arguments fill the variadic slice");
+    let more: int64[2] = [20i64, 30i64];
+    running.Add(8i32, more...);
+    Assert(running.count == 15i32 && running.base == 56i128, "a spread follows the fixed argument");
+
+    // A method's own type parameter is deduced from the elements.
+    Assert(total.Pick(1u, 5i32, 6i32, 7i32) == 6i32, "a generic method's element type is deduced");
+    Assert(total.Pick(0u, 2.5) == 2.5, "a single element deduces the element type");
+
+    // A method of a generic type.
+    let bag = Bag<int128> { first: 9i128 };
+    Assert(bag.PickOr(5u) == 9i128, "a generic type's method accepts no variadic arguments");
+    Assert(bag.PickOr(1u, 1i128, half) == -2i128, "a generic type's method widens its elements");
+
+    // A primitive's method.
+    let start: int64 = 40i64;
+    Assert(start.Plus() == 40i64, "a primitive's variadic method accepts no arguments");
+    Assert(start.Plus(1i64, 2i32, byte) == 46i64, "a primitive's variadic method widens its elements");
+
+    // A parameter with a default value.
+    Assert(total.Scaled(3i128) == 106i128 && total.Scaled(3i128, 3i128) == 109i128, "a default fills an omitted argument");
+
+    // Through an interface and through a bound.
+    Assert(ThroughInterface(total, word) == 102i128, "an interface method collects the arguments after its fixed ones");
+    Assert(ThroughBound(total, half) == 97i128, "a bound method collects its arguments too");
+
+    // A receiverless associated function.
+    let built = Total::Of(1i128, half, byte);
+    Assert(built.base == 2i128 && built.count == 3i32, "an associated function collects its variadic arguments");
+    Assert(Total::Of().count == 0i32, "an associated function accepts no variadic arguments");
+
+    // A method called through its type takes the receiver as its first argument, and collects the ones after it.
+    Assert(Total::Sum(total) == 100i128, "a method through its type accepts no variadic arguments");
+    Assert(Total::Sum(total, word, half, byte) == 100i128, "a method through its type collects the rest");
+    Assert(Total::Count(total, values...) == 3u, "a method through its type takes a spread after the receiver");
+    Assert(Total::HighWords(total, word, half) == -2i128, "a method through its type widens its elements");
+    Total::Add(running, 16i32, word, half);
+    Assert(running.count == 31i32 && running.base == 53i128, "a writable receiver is borrowed through its type");
+    Assert(Total::Scaled(total, 3i128) == 106i128, "a default fills an omitted argument after the receiver");
+    Assert(Total::Pick(total, 2u, 5i32, 6i32, 7i32) == 7i32, "a generic method through its type deduces its element");
+    Assert(Bag::PickOr<int128>(bag, 0u, half) == -2i128, "a generic type's method through its type collects");
+    Assert(int64::Plus(start, 1i64, byte) == 44i64, "a by-value receiver through its type is the first argument");
+    Assert(Select(1i32, 2i32) == 1i32, "integer elements select the integer variadic overload");
+    Assert(Select(1.0f64, 2.0f64) == 2i32, "float elements select the float variadic overload");
+    let choices: int32[2] = [1i32, 2i32];
+    Assert(Select(choices...) == 1i32, "a spread selects its element overload");
+    Assert(Exact(1i32) == 1i32, "an exact fixed overload wins over omitted defaults");
+    let item = Item<int32> { value: 1i32 };
+    Assert(MergeItems(item, item) == 1u, "Self variadic requirements retain concrete generic element types");
+    return 0;
+}

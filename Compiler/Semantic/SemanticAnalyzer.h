@@ -1,10 +1,13 @@
 #pragma once
 
+#include "Parallel/WorkerPool.h"
 #include "Semantic/Model/SemanticModel.h"
 
 #include <map>
 #include <string>
 #include <string_view>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Rux {
@@ -24,19 +27,13 @@ struct DepPackage {
     };
 
     std::vector<ModuleEntry> modules;
+    /// How diagnostics name the package, as its manifest spells it (`Rux/Core`, `Tally`); the identity when empty.
+    std::string displayName{};
 };
 
 /// Locate a declaration source's owner, including when a conditional evaluator follows an imported alias or constant.
 [[nodiscard]] const std::string &PackageOwningSource(const std::vector<DepPackage> &deps, const std::string &rootId,
                                                      std::string_view source);
-
-/// Switches that change what analysis accepts without changing the language a program is written in.
-struct SemanticOptions {
-    /// Report every use of the legacy Result and Option protocols in the analyzed package as an error: `?` and `??` on
-    /// a variant recognized by its case names, and an iterator whose `Next` returns one. Dependencies are not reported,
-    /// so each package's audit lists only its own sites.
-    bool denyLegacyProtocols = false;
-};
 
 /**
  * @brief Runs semantic analysis over a set of parsed modules.
@@ -62,18 +59,39 @@ public:
     /// outlive it.
     [[nodiscard]] SemanticModel Analyze();
 
-    /// Replace the analysis switches; the defaults accept every program the language does.
-    void SetOptions(const SemanticOptions &inputOptions) {
-        options = inputOptions;
+    /// Skip folding `#if` chains because the caller already folded every module against the same context, as the
+    /// driver does while it loads dependencies. Folding a folded module finds nothing but still walks every
+    /// declaration.
+    void SetConditionalsResolved() noexcept {
+        conditionalsResolved = true;
+    }
+
+    /// Threads the bodies of modules may be checked on; null checks them on the calling thread. The model never
+    /// depends on it: a package whose analysis reports anything is analyzed again on one thread, so diagnostics come
+    /// out exactly as a single analysis orders them.
+    void SetWorkerPool(Parallel::WorkerPool *inputPool) noexcept {
+        pool = inputPool;
+    }
+
+    /// Check only the declarations and generic bodies of these modules, not the bodies of their non-generic functions:
+    /// the build reuses what those compiled to. The modules must belong to this analysis and outlive it.
+    void SetDeclarationOnlyModules(std::unordered_set<const Module *> inputModules) {
+        declarationOnlyModules = std::move(inputModules);
     }
 
 private:
+    /// Check module bodies on several analysis contexts at once and merge them; false when the package cannot be
+    /// analyzed that way or analysis reported anything, leaving `facts`, `diags` and `symbols` to be rebuilt.
+    [[nodiscard]] bool AnalyzeInParallel(std::vector<const Module *> &constModules, SemanticFacts &facts);
+
+    Parallel::WorkerPool *pool = nullptr;
+    bool conditionalsResolved = false;
     std::vector<Module *> modules;
     std::vector<DepPackage> deps;
     std::string packageName;
     CompileTimeContext compileTimeContext;
     PackageImportBindings imports;
-    SemanticOptions options;
+    std::unordered_set<const Module *> declarationOnlyModules;
     std::vector<SemanticDiagnostic> diags;
     std::vector<SemanticSymbol> symbols;
 };

@@ -3,144 +3,32 @@
 
 #include "Semantic/Analysis/AnalysisContext.h"
 
+#include <algorithm>
 #include <format>
-#include <unordered_map>
 
 namespace Rux::SemanticDetail {
 namespace {
-/// The cases a propagatable type is recognized by. Neither `Result` nor `Option` is built in: both are ordinary
-/// variants, so the compiler identifies them by the shape it has to generate an early return for -- a success case
-/// carrying the value and a failure case carrying whatever the caller receives.
-constexpr std::string_view kResultSuccess = "Success";
-constexpr std::string_view kResultError = "Error";
-constexpr std::string_view kOptionSome = "Some";
-constexpr std::string_view kOptionNone = "None";
-
-[[nodiscard]] const EnumDecl::Variant *FindVariant(const EnumDecl &declaration, const std::string_view name) {
-    for (const EnumDecl::Variant &variant : declaration.variants) {
-        if (variant.name == name) {
-            return &variant;
-        }
-    }
-    return nullptr;
-}
-
-[[nodiscard]] bool IsUnitCase(const EnumDecl::Variant &variant) {
-    return variant.fields.empty() && variant.namedFields.empty();
-}
-
-[[nodiscard]] bool IsSinglePayloadCase(const EnumDecl::Variant &variant) {
-    return variant.fields.size() == 1 && variant.namedFields.empty();
-}
-
-enum class ProtocolKind {
-    Result,
-    Option
-};
-
-[[nodiscard]] std::optional<ProtocolKind> ProtocolKindOf(const EnumDecl &declaration) {
-    if (FindVariant(declaration, kResultSuccess) || FindVariant(declaration, kResultError)) {
-        return ProtocolKind::Result;
-    }
-    if (FindVariant(declaration, kOptionSome) || FindVariant(declaration, kOptionNone)) {
-        return ProtocolKind::Option;
-    }
-    return std::nullopt;
+[[nodiscard]] bool HasCase(const EnumDecl &declaration, const std::string_view name) {
+    return std::ranges::any_of(declaration.variants,
+                               [&](const EnumDecl::Variant &variant) { return variant.name == name; });
 }
 } // namespace
 
-std::optional<AnalysisContext::PropagationShape> AnalysisContext::PropagationShapeOf(const TypeRef &type) {
-    if (type.kind != TypeRef::Kind::Named) {
-        return std::nullopt;
+AnalysisContext::LegacyOutcomeShape AnalysisContext::LegacyOutcomeShapeOf(const TypeRef &type) const {
+    if (type->kind != TypeRef::Kind::Named) {
+        return LegacyOutcomeShape::None;
     }
-    const std::string baseName = BaseTypeName(type.name);
-    const EnumDecl *declaration = EnumNamed(baseName);
-    if (!declaration) {
-        return std::nullopt;
+    const EnumDecl *declaration = EnumNamed(BaseTypeName(type->name));
+    if (!declaration || !declaration->IsVariant()) {
+        return LegacyOutcomeShape::None;
     }
-
-    const EnumDecl &enumeration = *declaration;
-    if (!enumeration.IsVariant() || enumeration.variants.size() != 2) {
-        return std::nullopt;
+    if (HasCase(*declaration, "Success") && HasCase(*declaration, "Error")) {
+        return LegacyOutcomeShape::Result;
     }
-    const EnumDecl::Variant *success = FindVariant(enumeration, kResultSuccess);
-    const EnumDecl::Variant *error = FindVariant(enumeration, kResultError);
-    const EnumDecl::Variant *some = FindVariant(enumeration, kOptionSome);
-    const EnumDecl::Variant *none = FindVariant(enumeration, kOptionNone);
-    const bool isResult = success && error && IsSinglePayloadCase(*success) && IsSinglePayloadCase(*error);
-    const bool isOption = some && none && IsSinglePayloadCase(*some) && IsUnitCase(*none);
-    if (!isResult && !isOption) {
-        return std::nullopt;
+    if (HasCase(*declaration, "Some") && HasCase(*declaration, "None")) {
+        return LegacyOutcomeShape::Option;
     }
-
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
-    if (arguments.size() != enumeration.typeParams.size()) {
-        return std::nullopt;
-    }
-
-    PropagationShape shape;
-    shape.declaration = &enumeration;
-    shape.kind = isResult ? PropagationShape::Kind::Result : PropagationShape::Kind::Option;
-
-    // A generic declaration carries the payload and the failure as its type arguments; one written for a single type
-    // carries them as the fields of the variants themselves. Reading the fields covers both, because a generic
-    // variant's field is the parameter the argument substitutes.
-    std::unordered_map<std::string, TypeRef> substitutions;
-    for (std::size_t index = 0; index < arguments.size() && index < enumeration.typeParams.size(); ++index) {
-        substitutions.emplace(enumeration.typeParams[index].name, arguments[index]);
-    }
-    const auto payloadOf = [&](const std::string_view variantName) -> std::optional<TypeRef> {
-        const EnumDecl::Variant *variant = FindVariant(enumeration, variantName);
-        if (!variant || variant->fields.empty()) {
-            return std::nullopt;
-        }
-        return ResolveTypeWithSubstitution(*variant->fields.front(), substitutions);
-    };
-    if (const auto payload = payloadOf(shape.kind == PropagationShape::Kind::Result ? kResultSuccess : kOptionSome)) {
-        shape.payload = *payload;
-    }
-    if (shape.kind == PropagationShape::Kind::Result) {
-        shape.failure = payloadOf(kResultError);
-    }
-    return shape;
-}
-
-std::optional<std::string>
-AnalysisContext::PropagationShapeIssue(const TypeRef &type,
-                                       const std::optional<PropagationShape::Kind> expectedKind) const {
-    if (type.kind != TypeRef::Kind::Named) {
-        return std::nullopt;
-    }
-    const EnumDecl *declaration = EnumNamed(BaseTypeName(type.name));
-    if (!declaration) {
-        return std::nullopt;
-    }
-    const auto kind = ProtocolKindOf(*declaration);
-    if (!kind) {
-        return std::nullopt;
-    }
-    const PropagationShape::Kind shapeKind =
-        *kind == ProtocolKind::Result ? PropagationShape::Kind::Result : PropagationShape::Kind::Option;
-    if (expectedKind && *expectedKind != shapeKind) {
-        return std::nullopt;
-    }
-    const std::string_view protocol = shapeKind == PropagationShape::Kind::Result ? "Result" : "Option";
-    if (!declaration->IsVariant()) {
-        return std::format("type '{}' uses a scalar enum for the {} protocol; declare it with 'variant'",
-                           type.ToString(), protocol);
-    }
-    const std::string_view cases = shapeKind == PropagationShape::Kind::Result
-                                     ? "exactly 'Success(T)' and 'Error(E)'"
-                                     : "exactly 'Some(T)' and payload-less 'None'";
-    return std::format("type '{}' is not a valid {} variant; expected {} cases", type.ToString(), protocol, cases);
-}
-
-std::string_view AnalysisContext::PropagationKindName(const PropagationShape::Kind kind) {
-    return kind == PropagationShape::Kind::Result ? "Result" : "Option";
-}
-
-std::string_view AnalysisContext::PropagationKindPhrase(const PropagationShape::Kind kind) {
-    return kind == PropagationShape::Kind::Result ? "a Result" : "an Option";
+    return LegacyOutcomeShape::None;
 }
 
 bool AnalysisContext::ErrorFitsChannel(const TypeRef &error, const TypeRef &channel) {
@@ -150,27 +38,21 @@ bool AnalysisContext::ErrorFitsChannel(const TypeRef &error, const TypeRef &chan
     if (!channel.IsSum()) {
         return false;
     }
-    const auto member = [&](const TypeRef &candidate) { return std::ranges::contains(channel.inner, candidate); };
-    return member(error) || (error.IsSum() && std::ranges::all_of(error.inner, member));
+    const auto member = [&](const TypeRef &candidate) { return std::ranges::contains(channel->inner, candidate); };
+    return member(error) || (error.IsSum() && std::ranges::all_of(error->inner, member));
 }
 
 TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef &operandType) {
     const TypeRef &success = operandType.FallibleSuccess();
     const TypeRef &error = operandType.FallibleError();
     if (!currentReturnType.IsFallible()) {
-        const bool legacy = PropagationShapeOf(currentReturnType).has_value();
         const std::string returned =
             currentReturnType.IsOpaque() ? "nothing" : std::format("'{}'", currentReturnType.ToString());
-        EmitError(
-            expression.location,
-            std::format("'?' propagates native fallible '{}', but the enclosing function returns {}",
-                        operandType.ToString(), returned),
-            {"'?' leaves through the outer failure channel of a fallible function"},
-            legacy ? std::optional<std::string>("native and legacy outcomes do not convert; match the value and return "
-                                                "'Result::Success(...)' or 'Result::Error(...)' explicitly")
-                   : std::optional<std::string>(
-                         "declare the function's error channel, as in '-> T ! E', or handle the failure with "
-                         "'match'"));
+        EmitError(expression.location,
+                  std::format("'?' propagates native fallible '{}', but the enclosing function returns {}",
+                              operandType.ToString(), returned),
+                  {"'?' leaves through the outer failure channel of a fallible function"},
+                  "declare the function's error channel, as in '-> T ! E', or handle the failure with 'match'");
         return success;
     }
     const TypeRef &channel = currentReturnType.FallibleError();
@@ -201,23 +83,20 @@ TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef
                  expression.operand->location);
 
     ResolvedPropagation propagation;
-    propagation.native = true;
-    propagation.isResult = true;
     propagation.payloadType = success;
     propagation.failureType = error;
     propagation.returnType = currentReturnType;
-    propagations.insert_or_assign(&expression, std::move(propagation));
+    propagations.insert_or_assign(&expression, propagation);
     return success;
 }
 
 TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType) {
-    const TypeRef &payload = operandType.inner.front();
+    const TypeRef &payload = operandType->inner.front();
     // Absence leaves as the enclosing optional's absence, or as the successful absence of `U? ! F`; nothing deeper is
     // a target, and no error is ever invented for it.
     const bool optionalTarget = currentReturnType.IsOptional();
     const bool successfulAbsence = currentReturnType.IsFallible() && currentReturnType.FallibleSuccess().IsOptional();
     if (!optionalTarget && !successfulAbsence) {
-        const bool legacy = PropagationShapeOf(currentReturnType).has_value();
         const std::string returned =
             currentReturnType.IsOpaque() ? "nothing" : std::format("'{}'", currentReturnType.ToString());
         EmitError(expression.location,
@@ -225,11 +104,8 @@ TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const
                               operandType.ToString(), returned),
                   {"absence leaves as an optional's 'none', or as the successful 'none' of 'U? ! F'; '?' never "
                    "invents an error for it"},
-                  legacy ? std::optional<std::string>("native and legacy outcomes do not convert; match the value and "
-                                                      "return 'Option::Some(...)' or 'Option::None' explicitly")
-                         : std::optional<std::string>("declare an optional result, as in '-> T?', or supply a "
-                                                      "fallback with '?"
-                                                      "?'"));
+                  "declare an optional result, as in '-> T?', or supply a fallback with '?"
+                  "?'");
         return payload;
     }
     if (MentionsTypeParameter(payload) && currentFunctionDecl) {
@@ -242,22 +118,24 @@ TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const
                  expression.operand->location);
 
     ResolvedPropagation propagation;
-    propagation.native = true;
-    propagation.isResult = false;
     propagation.payloadType = payload;
     propagation.returnType = currentReturnType;
-    propagations.insert_or_assign(&expression, std::move(propagation));
+    propagations.insert_or_assign(&expression, propagation);
     return payload;
 }
 
 std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expression) {
+    if (checkingDeferred) {
+        EmitExitFromDeferred(expression.location, "?",
+                             "handle the failure inside the 'defer', with 'catch' or a 'match' on both channels");
+    }
     const TypeRef operandType = CheckExpr(*expression.operand);
     if (operandType.IsUnknown()) {
         return TypeRef::MakeUnknown();
     }
     // A borrowed outcome cannot hand its payload to the continuing expression or its error to the caller.
-    if (operandType.kind == TypeRef::Kind::Reference && !operandType.inner.empty() &&
-        (operandType.inner.front().IsFallible() || operandType.inner.front().IsOptional())) {
+    if (operandType->kind == TypeRef::Kind::Reference && !operandType->inner.empty() &&
+        (operandType->inner.front().IsFallible() || operandType->inner.front().IsOptional())) {
         EmitError(expression.location,
                   std::format("'?' cannot consume the borrowed value '{}'", operandType.ToString()),
                   {"'?' moves the success onward or the error out of the function, and a reference owns neither"},
@@ -271,97 +149,27 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         return CheckNativeOptionalTry(expression, operandType);
     }
 
-    const auto operand = PropagationShapeOf(operandType);
-    if (!operand) {
-        std::vector<std::string> notes;
-        if (auto issue = PropagationShapeIssue(operandType)) {
-            notes.push_back(std::move(*issue));
-        }
-        EmitError(expression.location,
-                  std::format("'{}' cannot be propagated with '?' because it is neither a Result nor an Option",
-                              operandType.ToString()),
-                  std::move(notes), "'?' propagates a variant shaped as 'Result<T, E>' or 'Option<T>'");
-        return TypeRef::MakeUnknown();
+    std::vector<std::string> notes;
+    std::string help = "'?' propagates a native fallible 'T ! E' or an optional 'T?'";
+    switch (LegacyOutcomeShapeOf(operandType)) {
+    case LegacyOutcomeShape::Result:
+        notes.push_back("a variant with 'Success' and 'Error' cases is an ordinary variant; only a native fallible "
+                        "propagates a failure");
+        help = "return 'T ! E' and propagate a native fallible, or match the variant";
+        break;
+    case LegacyOutcomeShape::Option:
+        notes.push_back("a variant with 'Some' and 'None' cases is an ordinary variant; only a native optional "
+                        "propagates absence");
+        help = "return 'T?' and propagate a native optional, or match the variant";
+        break;
+    case LegacyOutcomeShape::None:
+        break;
     }
-
-    const bool resultProtocol = operand->kind == PropagationShape::Kind::Result;
-    ReportLegacyProtocol(expression.location,
-                         std::format("'?' uses the legacy {} protocol on '{}'; migrate to a native {}",
-                                     resultProtocol ? "Result" : "Option", operandType.ToString(),
-                                     resultProtocol ? "fallible" : "optional"),
-                         resultProtocol ? "return 'T ! E' and propagate a native fallible"
-                                        : "return 'T?' and propagate a native optional");
-
-    const std::string_view operandKind = PropagationKindPhrase(operand->kind);
-    const auto enclosing = PropagationShapeOf(currentReturnType);
-    if (!enclosing) {
-        std::vector<std::string> notes;
-        if (auto issue = PropagationShapeIssue(currentReturnType)) {
-            notes.push_back(std::move(*issue));
-        }
-        const std::string returned = currentReturnType.kind == TypeRef::Kind::Opaque
-                                       ? "nothing"
-                                       : std::format("'{}'", currentReturnType.ToString());
-        const bool native = currentReturnType.IsFallible() || currentReturnType.IsOptional();
-        EmitError(expression.location,
-                  std::format("'?' propagates {}, but the enclosing function returns {}", operandKind, returned),
-                  std::move(notes),
-                  native ? std::format("native and legacy outcomes do not convert; match the {} and return "
-                                       "'.Success(...)', '.Failure(...)', '.Some(...)', or 'none' explicitly",
-                                       PropagationKindName(operand->kind))
-                         : std::format("give the function a '{}' return type, or handle the failure with 'match'",
-                                       PropagationKindName(operand->kind)));
-        return operand->payload;
-    }
-
-    if (enclosing->kind != operand->kind) {
-        EmitError(expression.location,
-                  std::format("'?' propagates {}, but the enclosing function returns '{}'", operandKind,
-                              currentReturnType.ToString()),
-                  {},
-                  std::format("convert the {} to a {} before propagating it", PropagationKindName(operand->kind),
-                              PropagationKindName(enclosing->kind)));
-        return operand->payload;
-    }
-
-    // The first release propagates one error type unchanged. Converting between them silently is what makes an error
-    // path hard to follow, and every conversion a caller does want is a named call it can write itself.
-    if (operand->kind == PropagationShape::Kind::Result && operand->failure && enclosing->failure &&
-        !operand->failure->IsUnknown() && !enclosing->failure->IsUnknown() &&
-        *operand->failure != *enclosing->failure) {
-        EmitError(expression.location,
-                  std::format("'?' propagates error type '{}', but the enclosing function returns error type '{}'",
-                              operand->failure->ToString(), enclosing->failure->ToString()),
-                  {"'?' does not convert between error types"},
-                  std::format("map the error to '{}' before propagating it", enclosing->failure->ToString()));
-        return operand->payload;
-    }
-
-    const auto validatePayload = [&](const TypeRef &payload) {
-        if (MentionsTypeParameter(payload) && currentFunctionDecl) {
-            deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location, true});
-        }
-        else {
-            static_cast<void>(ValidateOutcomePayload(payload, expression.location, true));
-        }
-    };
-    validatePayload(operand->payload);
-    if (operand->failure)
-        validatePayload(*operand->failure);
-    ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::PropagationOperand,
-                 expression.operand->location);
-
-    ResolvedPropagation propagation;
-    propagation.isResult = operand->kind == PropagationShape::Kind::Result;
-    propagation.variantName = programIndex.NominalName(*operand->declaration);
-    propagation.successVariant = propagation.isResult ? std::string(kResultSuccess) : std::string(kOptionSome);
-    propagation.failureVariant = propagation.isResult ? std::string(kResultError) : std::string(kOptionNone);
-    propagation.returnVariantName = programIndex.NominalName(*enclosing->declaration);
-    propagation.payloadType = operand->payload;
-    propagation.failureType = operand->failure;
-    propagation.returnType = currentReturnType;
-    propagations.insert_or_assign(&expression, std::move(propagation));
-    return operand->payload;
+    EmitError(expression.location,
+              std::format("'{}' cannot be propagated with '?' because it is neither a native fallible nor an optional",
+                          operandType.ToString()),
+              std::move(notes), std::move(help));
+    return TypeRef::MakeUnknown();
 }
 
 bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const SourceLocation location,
@@ -372,10 +180,10 @@ bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const Sourc
     if (payload.IsUnknown() || (!ClassifyTypeProperties(payload).IsResolved() && MentionsTypeParameter(payload))) {
         return true;
     }
-    if (payload.kind == TypeRef::Kind::Reference) {
+    if (payload->kind == TypeRef::Kind::Reference) {
         EmitError(location,
                   std::format("'{}' cannot extract reference payload type '{}' from {}", operation, payload.ToString(),
-                              propagation ? "an outcome" : "an Option"),
+                              propagation ? "an outcome" : "an optional"),
                   {"the hidden payload has no source place whose borrow provenance can be preserved"},
                   "handle the outcome with an explicit match, or store a raw pointer when an address must escape");
         return false;
@@ -393,7 +201,7 @@ bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const Sourc
 }
 
 TypeRef AnalysisContext::CheckNativeCoalesce(const BinaryExpr &expression, const TypeRef &leftType) {
-    const TypeRef &payload = leftType.inner.front();
+    const TypeRef &payload = leftType->inner.front();
     bool payloadValid = true;
     if (MentionsTypeParameter(payload) && currentFunctionDecl) {
         deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location});
@@ -424,9 +232,8 @@ TypeRef AnalysisContext::CheckNativeCoalesce(const BinaryExpr &expression, const
     MergeTrackedFlows({presentExit, absentExit});
     if (payloadValid && fallbackValid && !payload.IsUnknown()) {
         ResolvedCoalescing coalescing;
-        coalescing.native = true;
         coalescing.payloadType = payload;
-        coalescings.insert_or_assign(&expression, std::move(coalescing));
+        coalescings.insert_or_assign(&expression, coalescing);
     }
     return payload;
 }
@@ -440,10 +247,10 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
     if (leftType.IsOptional() && !leftType.IsIncompleteNative()) {
         return CheckNativeCoalesce(expression, leftType);
     }
-    if (leftType.IsFallible() || (leftType.kind == TypeRef::Kind::Reference && !leftType.inner.empty() &&
-                                  (leftType.inner.front().IsOptional() || leftType.inner.front().IsFallible()))) {
+    if (leftType.IsFallible() || (leftType->kind == TypeRef::Kind::Reference && !leftType->inner.empty() &&
+                                  (leftType->inner.front().IsOptional() || leftType->inner.front().IsFallible()))) {
         static_cast<void>(CheckExpr(*expression.right));
-        const bool reference = leftType.kind == TypeRef::Kind::Reference;
+        const bool reference = leftType->kind == TypeRef::Kind::Reference;
         EmitError(expression.location,
                   std::format("operator '{}' cannot take '{}'",
                               "?"
@@ -457,73 +264,18 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
         return TypeRef::MakeUnknown();
     }
 
-    const auto shape = PropagationShapeOf(leftType);
-    if (!shape) {
-        static_cast<void>(CheckExpr(*expression.right));
-        std::vector<std::string> notes;
-        if (auto issue = PropagationShapeIssue(leftType, PropagationShape::Kind::Option)) {
-            notes.push_back(std::move(*issue));
-        }
-        EmitError(expression.location,
-                  std::format("operator '{}' requires an Option-shaped left operand, but found '{}'",
-                              "?"
-                              "?",
-                              leftType.ToString()),
-                  std::move(notes), "use a variant with exactly 'Some(T)' and payload-less 'None' cases");
-        return TypeRef::MakeUnknown();
+    static_cast<void>(CheckExpr(*expression.right));
+    std::vector<std::string> notes;
+    if (LegacyOutcomeShapeOf(leftType) == LegacyOutcomeShape::Option) {
+        notes.push_back("a variant with 'Some' and 'None' cases is an ordinary variant; only a native optional is "
+                        "coalesced");
     }
-    if (shape->kind != PropagationShape::Kind::Option) {
-        static_cast<void>(CheckExpr(*expression.right));
-        EmitError(expression.location,
-                  std::format("Result value '{}' cannot be coalesced with '{}'", leftType.ToString(),
-                              "?"
-                              "?"),
-                  {"a Result carries an error that coalescing would silently discard"},
-                  "handle Error explicitly with 'match', or convert the Result to an Option first");
-        return TypeRef::MakeUnknown();
-    }
-
-    ReportLegacyProtocol(expression.location,
-                         std::format("'{}' uses the legacy Option protocol on '{}'; migrate to a native optional",
-                                     "?"
-                                     "?",
-                                     leftType.ToString()),
-                         "coalesce a native optional 'T?'");
-
-    bool payloadValid = true;
-    if (MentionsTypeParameter(shape->payload) && currentFunctionDecl) {
-        deferredOutcomeChecks[currentFunctionDecl].push_back({shape->payload, expression.location});
-    }
-    else {
-        payloadValid = ValidateOutcomePayload(shape->payload, expression.location);
-    }
-
-    ConsumeValue(*expression.left, leftType, ValueConsumptionKind::CoalescingOperand, expression.left->location);
-    const TrackedFlow someExit = SaveTrackedFlow();
-
-    const TypeRef checkedFallback = CheckExpr(*expression.right);
-    const TypeRef rightType = IsDivergingExpression(*expression.right) ? TypeRef::MakeUnknown() : checkedFallback;
-    bool fallbackValid = rightType.IsUnknown() || shape->payload.IsUnknown() ||
-                         CanAssignExprTo(*expression.right, rightType, shape->payload);
-    if (!fallbackValid) {
-        EmitError(
-            expression.right->location,
-            AssignmentErrorMessage(*expression.right, shape->payload,
-                                   std::format("coalescing fallback has type '{}', but the Option payload is '{}'",
-                                               rightType.ToString(), shape->payload.ToString())));
-    }
-    else if (!rightType.IsUnknown()) {
-        ConsumeValue(*expression.right, rightType, ValueConsumptionKind::CoalescingFallback,
-                     expression.right->location);
-    }
-    const TrackedFlow noneExit = SaveTrackedFlow();
-    MergeTrackedFlows({someExit, noneExit});
-
-    if (payloadValid && fallbackValid && !shape->payload.IsUnknown()) {
-        coalescings.insert_or_assign(&expression, ResolvedCoalescing{programIndex.NominalName(*shape->declaration),
-                                                                     std::string(kOptionSome), std::string(kOptionNone),
-                                                                     shape->payload});
-    }
-    return shape->payload;
+    EmitError(expression.location,
+              std::format("operator '{}' requires an optional left operand, but found '{}'",
+                          "?"
+                          "?",
+                          leftType.ToString()),
+              std::move(notes), "coalesce a native optional 'T?'");
+    return TypeRef::MakeUnknown();
 }
 } // namespace Rux::SemanticDetail

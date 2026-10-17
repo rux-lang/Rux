@@ -1,77 +1,63 @@
 // Checked, wrapping and saturating integer arithmetic, at every integer width the language spells.
-//
 // Each operation is generic over the integer type rather than repeated per width. Nothing here needs to be told which
 // type it has: an integer's zero, its all-ones pattern, its signedness and its two limits all follow from one operand
 // and the wrapping arithmetic the machine already does, so `int8` and `uint512` run the same code. Every helper below
 // derives what it needs the same way:
-//
 //   zero     = value - value           the type's zero
 //   allOnes  = zero - 1                every bit set: the maximum when unsigned, -1 when signed
 //   signed   = allOnes < zero          only a signed type reads all-ones as negative
 //   signBit  = 1 << (sizeof(T) * 8 - 1)  the top bit, which is the most negative value when signed
-//
 // Ordinary `+`, `-` and `*` wrap on overflow, which is what makes the checks below possible: they compute the wrapped
 // answer and then ask whether it is the true one.
-//
 // The operation comes first in each name because `CheckedAdd`, `CheckedSub` and `CheckedMul` already name the
 // compiler's own intrinsics, which are emitted inline for `uint64` and are the ones allocation-size arithmetic is
 // written with. These are the general family: any integer width, signed or unsigned, at the cost of being ordinary
 // code rather than an inline sequence.
 
 /// The largest value the integer type of `sample` can hold.
-///
 /// `sample` is read by value and only its type matters; its value is never used. Returns the maximum by copy.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
 /// @returns the largest value the type can hold
-/// @see https://rux-lang.dev/docs/api/core/maximum-of
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#maximum-of
 pub func MaximumOf<T>(sample: T) -> T {
     let zero = sample - sample;
     let allOnes = zero - 1;
     // A signed type gives up its top bit to the sign, so its maximum is every bit below that one. An unsigned type
     // keeps the bit and tops out at all-ones.
-    let signBit = (zero + 1) << (sizeof(T) * 8u64 - 1u64);
+    let signBit = (zero + 1) << (sizeof(T) * 8 - 1);
     return allOnes < zero ? signBit - 1 : allOnes;
 }
 
 /// The smallest value the integer type of `sample` can hold.
-///
 /// `sample` is read by value and only its type matters. Returns the minimum by copy: zero for an unsigned type, and
 /// the most negative value for a signed one.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
 /// @returns the smallest value the type can hold
-/// @see https://rux-lang.dev/docs/api/core/minimum-of
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#minimum-of
 pub func MinimumOf<T>(sample: T) -> T {
     let zero = sample - sample;
     let allOnes = zero - 1;
     // The sign bit alone is the most negative value; an unsigned type has nothing below zero.
-    let signBit = (zero + 1) << (sizeof(T) * 8u64 - 1u64);
+    let signBit = (zero + 1) << (sizeof(T) * 8 - 1);
     return allOnes < zero ? signBit : zero;
 }
 
 /// Adds two integers and reports whether the true sum is representable.
-///
 /// `left` and `right` are read by value. `result` receives the sum the machine produced, which is the true sum when
 /// this returns `false` and the wrapped one when it returns `true`; it is written in both cases, so a caller that
 /// wants the wrapped answer does not have to compute it again. `result` must not be null.
-///
 /// Returns `true` when the sum overflowed. Never traps, so the caller decides what a sum too large to express means.
-///
 /// Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the sum does not fit, leaving `result` unwritten
-/// @see https://rux-lang.dev/docs/api/core/add-checked
+/// @param result receives the answer the machine produced, true or wrapped; never null
+/// @returns true when the sum does not fit; `result` then holds the wrapped sum
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#add-checked
 pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
     let sum = left + right;
     *result = sum;
@@ -85,20 +71,16 @@ pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// Subtracts one integer from another and reports whether the true difference is representable.
-///
 /// `left` and `right` are read by value. `result` receives the difference the machine produced, true or wrapped, and
 /// is written in both cases. `result` must not be null.
-///
 /// Returns `true` when the difference overflowed, which for an unsigned type means it was negative. Never traps.
-///
 /// Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the difference does not fit, leaving `result` unwritten
-/// @see https://rux-lang.dev/docs/api/core/sub-checked
+/// @param result receives the answer the machine produced, true or wrapped; never null
+/// @returns true when the difference does not fit; `result` then holds the wrapped difference
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-checked
 pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
     let difference = left - right;
     *result = difference;
@@ -113,22 +95,18 @@ pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// Multiplies two integers and reports whether the true product is representable.
-///
 /// `left` and `right` are read by value. `result` receives the product the machine produced, true or wrapped, and is
 /// written in both cases. `result` must not be null.
-///
 /// Returns `true` when the product overflowed. This is the operation an allocation size is computed with: a wrapped
 /// product is an allocation far smaller than the caller asked for, so the report has to be read before the size is
 /// used. Never traps, including for the one signed pair whose quotient cannot be taken.
-///
 /// Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the product does not fit, leaving `result` unwritten
-/// @see https://rux-lang.dev/docs/api/core/mul-checked
+/// @param result receives the answer the machine produced, true or wrapped; never null
+/// @returns true when the product does not fit; `result` then holds the wrapped product
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-checked
 pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
     let product = left * right;
     *result = product;
@@ -150,64 +128,52 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// Adds two integers, wrapping around the type's range.
-///
 /// `left` and `right` are read by value; the sum is returned by copy. This is what `+` already does, named so that
 /// wrapping on purpose reads differently from wrapping by accident.
-///
 /// Cannot fail: every pair of operands has a wrapped sum. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
 /// @returns the sum, wrapped into the type's range
-/// @see https://rux-lang.dev/docs/api/core/add-wrapping
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#add-wrapping
 pub func AddWrapping<T>(left: T, right: T) -> T {
     return left + right;
 }
 
 /// Subtracts one integer from another, wrapping around the type's range.
-///
 /// `left` and `right` are read by value; the difference is returned by copy.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
 /// @returns the difference, wrapped into the type's range
-/// @see https://rux-lang.dev/docs/api/core/sub-wrapping
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-wrapping
 pub func SubWrapping<T>(left: T, right: T) -> T {
     return left - right;
 }
 
 /// Multiplies two integers, wrapping around the type's range.
-///
 /// `left` and `right` are read by value; the product is returned by copy.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
 /// @returns the product, wrapped into the type's range
-/// @see https://rux-lang.dev/docs/api/core/mul-wrapping
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-wrapping
 pub func MulWrapping<T>(left: T, right: T) -> T {
     return left * right;
 }
 
 /// Adds two integers, clamping to the type's range instead of wrapping.
-///
 /// `left` and `right` are read by value; the sum is returned by copy. A sum too large becomes the maximum, and for a
 /// signed type a sum too small becomes the minimum.
-///
 /// Cannot fail: the answer is always the nearest representable value to the true sum. Runs in constant time and
 /// allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
 /// @returns the sum, clamped to the type's range rather than wrapped
-/// @see https://rux-lang.dev/docs/api/core/add-saturating
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#add-saturating
 pub func AddSaturating<T>(left: T, right: T) -> T {
     var sum = left - left;
     if !AddChecked<T>(left, right, @sum) { return sum; }
@@ -220,17 +186,14 @@ pub func AddSaturating<T>(left: T, right: T) -> T {
 }
 
 /// Subtracts one integer from another, clamping to the type's range instead of wrapping.
-///
 /// `left` and `right` are read by value; the difference is returned by copy. For an unsigned type a negative
 /// difference becomes zero; for a signed one the difference clamps to whichever limit it ran past.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
 /// @returns the difference, clamped to the type's range rather than wrapped
-/// @see https://rux-lang.dev/docs/api/core/sub-saturating
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-saturating
 pub func SubSaturating<T>(left: T, right: T) -> T {
     var difference = left - left;
     if !SubChecked<T>(left, right, @difference) { return difference; }
@@ -243,17 +206,14 @@ pub func SubSaturating<T>(left: T, right: T) -> T {
 }
 
 /// Multiplies two integers, clamping to the type's range instead of wrapping.
-///
 /// `left` and `right` are read by value; the product is returned by copy. A product too large becomes the maximum,
 /// and for a signed type a product too small becomes the minimum.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
 /// @returns the product, clamped to the type's range rather than wrapped
-/// @see https://rux-lang.dev/docs/api/core/mul-saturating
+/// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-saturating
 pub func MulSaturating<T>(left: T, right: T) -> T {
     var product = left - left;
     if !MulChecked<T>(left, right, @product) { return product; }

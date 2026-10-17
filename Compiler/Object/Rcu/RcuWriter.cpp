@@ -5,6 +5,7 @@
 #include "Object/Rcu/RcuSerialization.h"
 #include "Object/Rcu/RcuStringTable.h"
 
+#include <array>
 #include <cstring>
 #include <fstream>
 
@@ -20,35 +21,32 @@ bool RcuWriter::Write(const RcuFile &file, const std::filesystem::path &path) {
 }
 
 namespace {
-// CRC-32C (Castagnoli)
-uint32_t Crc32cTable[256];
-bool Crc32cReady = false;
-
-/// Build the CRC-32C lookup table once, on first use.
-void InitCrc32c() {
-    if (Crc32cReady) {
-        return;
-    }
+// CRC-32C (Castagnoli). The lookup table is built at compile time, so objects may be written from several threads.
+constexpr std::array<uint32_t, 256> Crc32cTable = [] {
+    std::array<uint32_t, 256> table{};
     for (uint32_t i = 0; i < 256; ++i) {
         uint32_t c = i;
         for (int k = 0; k < 8; ++k) {
             c = (c & 1) ? (0x82F6'3B78u ^ (c >> 1)) : (c >> 1);
         }
-        Crc32cTable[i] = c;
+        table[i] = c;
     }
-    Crc32cReady = true;
-}
+    return table;
+}();
+
+} // namespace
 
 /// The Castagnoli CRC-32 guarding an RCU container. Deliberately not the IEEE polynomial the ZIP format uses, so the
 /// two checksums are not interchangeable.
-uint32_t Crc32c(const std::vector<uint8_t> &data) {
-    InitCrc32c();
+std::uint32_t RcuChecksum(const std::span<const std::uint8_t> bytes) {
     uint32_t crc = 0xFFFF'FFFFu;
-    for (uint8_t b : data) {
+    for (uint8_t b : bytes) {
         crc = Crc32cTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
     }
     return crc ^ 0xFFFF'FFFFu;
 }
+
+namespace {
 
 // Binary writer
 class BinaryWriter {
@@ -244,7 +242,7 @@ private:
         }
 
         // CRC-32C
-        uint32_t crc = Crc32c(out);
+        uint32_t crc = RcuChecksum(out);
         Patch32At(out, checksumPatch, crc);
 
         return out;

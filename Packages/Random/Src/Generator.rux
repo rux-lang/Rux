@@ -1,10 +1,8 @@
 // What a random generator is, and how one is seeded.
-//
 // A generator is borrowed mutably for every draw, either as its concrete type through a generic bound or as a
 // borrowed interface view. Both forms refer to the caller's original generator, so advancing it here advances
 // the state the caller observes. Generic bounds retain static dispatch for the distribution helpers without
 // forcing callers to expose a raw pointer.
-//
 // Everything is built on one primitive, `NextUint64`, because every other shape — bytes, narrower words,
 // bounded integers, floats — is a deterministic function of a stream of 64-bit words. Deriving them here rather
 // than letting each generator supply its own is what makes two generators seeded alike produce the same
@@ -13,28 +11,23 @@
 import Core::MinimumOf;
 
 /// A source of uniformly distributed 64-bit words.
-///
 /// The single operation every generator supplies. Implementations must advance their own state, so the receiver
 /// is a mutable reference. Borrowed interface views and generic bounds both keep it the caller's state that
 /// advances.
-///
 /// @see https://rux-lang.dev/docs/api/random/random-generator
 pub interface RandomGenerator {
     /// The next 64-bit word, and the state advanced past it.
-    ///
     /// @returns the next 64 bits
-    /// @see https://rux-lang.dev/docs/api/random/random-generator/next-uint64
-    func NextUint64(self: &var RandomGenerator) -> uint64;
+    /// @see https://rux-lang.dev/docs/api/random/random-generator#next-uint64
+    func NextUint64(self: &var Self) -> uint64;
 }
 
 /// The seeding generator: a fast mixer with a 64-bit state, used to spread one seed over a larger one.
-///
 /// Not for general use — its period is only 2^64 and it fails statistical tests a real generator passes. Its
 /// job is the one thing it is very good at: turning a seed a human chose, which is very likely to be zero or
 /// one or a timestamp, into a full-entropy state for a generator that deserves better input than that. Seeding
 /// a 256-bit generator by copying a small integer into one word and leaving the rest zero is a classic way to
 /// get correlated streams out of an excellent algorithm.
-///
 /// @see https://rux-lang.dev/docs/api/random/split-mix64
 pub struct SplitMix64 {
     /// The whole of the state.
@@ -43,10 +36,9 @@ pub struct SplitMix64 {
 
 extend SplitMix64 {
     /// A mixer starting from `seed`. Every seed is acceptable, including zero.
-    ///
     /// @param seed the value the generator starts from
     /// @returns a generator seeded with that value
-    /// @see https://rux-lang.dev/docs/api/random/split-mix64/new
+    /// @see https://rux-lang.dev/docs/api/random/split-mix64#new
     pub func SplitMix64(seed: uint64) -> SplitMix64 {
         return SplitMix64 { state: seed };
     }
@@ -55,17 +47,15 @@ extend SplitMix64 {
 
 extend SplitMix64 : RandomGenerator {
     /// The next word: the state advanced by an odd constant, then avalanched.
-    ///
     /// The additive step guarantees the full period of 2^64 whatever the seed, and the mixing afterwards is
     /// what turns a counter into something that looks random. Both constants are Steele, Lea and Flood's.
-    ///
     /// @returns the next 64 bits
-    /// @see https://rux-lang.dev/docs/api/random/split-mix64/next-uint64
+    /// @see https://rux-lang.dev/docs/api/random/split-mix64#next-uint64
     pub func NextUint64(self: &var SplitMix64) -> uint64 {
-        self.state = self.state + 0x9E3779B97F4A7C15u64;
+        self.state = self.state + 0x9E3779B97F4A7C15;
         var z = self.state;
-        z = (z ^ (z >> 30u64)) * 0xBF58476D1CE4E5B9u64;
-        z = (z ^ (z >> 27u64)) * 0x94D049BB133111EBu64;
-        return z ^ (z >> 31u64);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EB;
+        return z ^ (z >> 31);
     }
 }

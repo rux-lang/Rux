@@ -5,9 +5,11 @@
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Cli/TerminalStyle.h"
+#include "Cli/Testing/TestScheduler.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Linter/Linter.h"
+#include "Parallel/WorkerPool.h"
 #include "Reporting/Reporting.h"
 #include "Source/SourceLoader.h"
 
@@ -20,6 +22,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -92,19 +95,27 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
                 ++outcome.warnings;
             }
         }
-        for (const auto &file : sources.files) {
-            output.Verbose(std::format("File: {}", file.path.string()));
-            auto result = Linting::Lint(file.source, file.path.string());
-            for (const auto &diagnostic : result.diagnostics) {
-                std::print(stderr, "{}", RenderDiagnostic(diagnostic, diagnosticColor, sourceLineLookup));
-                if (diagnostic.IsError()) {
-                    ++outcome.errors;
+        // Files are linted side by side and reported in order.
+        std::vector<Linting::LintResult> results(sources.files.size());
+        const std::vector<TestTask> tasks(sources.files.size());
+        RunTestTasks(
+            tasks, Parallel::DefaultJobs(),
+            [&](const std::size_t index) {
+                const auto &file = sources.files[index];
+                results[index] = Linting::Lint(file.source, file.path.string());
+            },
+            [&](const std::size_t index) {
+                output.Verbose(std::format("File: {}", sources.files[index].path.string()));
+                for (const auto &diagnostic : results[index].diagnostics) {
+                    std::print(stderr, "{}", RenderDiagnostic(diagnostic, diagnosticColor, sourceLineLookup));
+                    if (diagnostic.IsError()) {
+                        ++outcome.errors;
+                    }
+                    else {
+                        ++outcome.warnings;
+                    }
                 }
-                else {
-                    ++outcome.warnings;
-                }
-            }
-        }
+            });
         return outcome;
     };
 

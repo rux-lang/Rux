@@ -1,4 +1,5 @@
-import Allocator::{ AllocError, Allocator, ClassIndexFor, FixedBuffer, IsEmptyBlock, Layout, Pool, PoolAlignment, PoolClassCount, PoolLargestClass, PoolSmallestClass, SystemAllocator };
+import Allocator::{ AllocError, Allocator, ClassIndexFor, FixedBuffer, IsEmptyBlock, Layout, Pool, PoolAlignment,
+                    PoolClassCount, PoolLargestClass, PoolSmallestClass, SystemAllocator };
 import Core::{ Assert, Panic };
 import Memory::IsPointerAligned;
 
@@ -62,12 +63,12 @@ func Main() -> ! AllocError {
     Assert((fourth as uint) == (third as uint) + PoolSmallestClass, "and the fourth the third");
 
     // Writing through every block must not disturb the others.
-    *(first as *var uint64) = 0x1111111111111111u64;
-    *(second as *var uint64) = 0x2222222222222222u64;
-    *(third as *var uint64) = 0x3333333333333333u64;
-    *(fourth as *var uint64) = 0x4444444444444444u64;
-    Assert(*(first as *uint64) == 0x1111111111111111u64, "the first block keeps its bytes");
-    Assert(*(fourth as *uint64) == 0x4444444444444444u64, "and so does the fourth");
+    *(first as *var uint64) = 0x1111111111111111;
+    *(second as *var uint64) = 0x2222222222222222;
+    *(third as *var uint64) = 0x3333333333333333;
+    *(fourth as *var uint64) = 0x4444444444444444;
+    Assert(*(first as *uint64) == 0x1111111111111111, "the first block keeps its bytes");
+    Assert(*(fourth as *uint64) == 0x4444444444444444, "and so does the fourth");
 
     // The fifth request finds the class empty and takes another chunk.
     let fifth = allocator.Allocate(small)?;
@@ -108,7 +109,7 @@ func Main() -> ! AllocError {
 
     // Growing past the class moves it, and carries the bytes across.
     let moved = allocator.Reallocate(grown, sameClass, medium)?;
-    Assert(*(moved as *uint64) == 0x1111111111111111u64, "carrying the contents to the new block");
+    Assert(*(moved as *uint64) == 0x1111111111111111, "carrying the contents to the new block");
 
     // A request no class can serve goes to the backing allocator, and comes back from it.
     let huge = Layout::New(4096, 8) ?? zero;
@@ -120,8 +121,8 @@ func Main() -> ! AllocError {
     Assert(direct != null, "which reports an address");
     Assert(pool.ChunkCount() == chunksBefore, "without the pool taking a chunk");
     Assert(pool.LiveBlocks() == liveBefore, "and without the pool counting it as its own");
-    *(direct as *var uint64) = 0x5555555555555555u64;
-    Assert(*(direct as *uint64) == 0x5555555555555555u64, "the direct block is usable storage");
+    *(direct as *var uint64) = 0x5555555555555555;
+    Assert(*(direct as *uint64) == 0x5555555555555555, "the direct block is usable storage");
     allocator.Deallocate(direct, huge)?;
 
     // A reset takes every pooled block back at once, keeping the chunks.

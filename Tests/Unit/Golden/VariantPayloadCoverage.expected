@@ -1,0 +1,2 @@
+22:9: error: match on 'Signal' is not exhaustive; missing Signal::Light
+31:9: error: match on 'Signal' is not exhaustive; missing Signal::Level

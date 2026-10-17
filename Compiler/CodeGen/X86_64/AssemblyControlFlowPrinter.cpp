@@ -1,13 +1,23 @@
 // Assembly text for branches, labels and calls — the parts of a function whose
-// printed form depends on the block structure around them.
+// printed form depends on the block structure around them. Like the instruction
+// text, it mirrors the object emitter (`X86_64CallEmitter`,
+// `X86_64TerminatorEmitter` and the module emitter's runtime-failure path).
 
 #include "CodeGen/X86_64/AssemblyControlFlowPrinter.h"
 
+#include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/RuntimeFailure.h"
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
+#include "CodeGen/X86_64/CodeAlignment.h"
+#include "CodeGen/X86_64/MachineEmission.h"
+#include "CodeGen/X86_64/MachineSelection.h"
+#include "Ir/Lir/LirVectors.h"
+#include "Target/AsmInstr.h"
 
 #include <format>
+#include <span>
+#include <string>
 #include <vector>
 
 namespace Rux {
@@ -24,13 +34,24 @@ public:
         , targetOs(targetOs) {
     }
 
+    bool tracesPanics = false;
+
     void EmitFunction(const LirFunc &function) {
         currentFunction = function.name;
+        TI(std::format("align {}, db 0x90", X86CodeAlignment));
+        if (function.isAsm) {
+            EmitAsmFunction(function);
+            return;
+        }
         const X86_64FramePlan framePlan = PlanX86_64Frame(function, layouts, interfaceNames, targetOs);
         AssemblyInstructionPrinter instructionPrinter(modulePrinter, framePlan, layouts, interfaceNames, targetOs);
         instructionPrinter.EmitFunctionSetup(function);
 
+        const auto alignedBlocks = X86AlignedBlocks(function);
         for (std::uint32_t index = 0; index < function.blocks.size(); ++index) {
+            if (alignedBlocks[index]) {
+                TI(std::format("align {}, db 0x90", X86CodeAlignment));
+            }
             GenBlock(index, function.blocks[index], function, instructionPrinter);
         }
         TB();
@@ -67,6 +88,64 @@ private:
         modulePrinter.DeclareExtern(name);
     }
 
+    /// One operand of an `asm func` instruction, in the syntax it was written in.
+    [[nodiscard]] static std::string AsmOperandText(const AsmOperand &operand) {
+        switch (operand.kind) {
+        case AsmOperand::Kind::Reg:
+        case AsmOperand::Kind::Sym:
+            return operand.name;
+        case AsmOperand::Kind::Imm:
+            return std::to_string(operand.imm);
+        case AsmOperand::Kind::Mem: {
+            std::string address;
+            const auto add = [&](const std::string &term) { address += (address.empty() ? "" : " + ") + term; };
+            if (!operand.memSym.empty()) {
+                add("rel " + operand.memSym);
+            }
+            if (!operand.memBase.empty()) {
+                add(operand.memBase);
+            }
+            if (!operand.memIndex.empty()) {
+                add(operand.memScale == 1 ? operand.memIndex
+                                          : std::format("{}*{}", operand.memIndex, operand.memScale));
+            }
+            if (operand.imm < 0) {
+                address += std::format("{}{}", address.empty() ? "-" : " - ", -operand.imm);
+            }
+            else if (operand.imm > 0 || address.empty()) {
+                add(std::to_string(operand.imm));
+            }
+            const std::string_view size = operand.memSize == 1 ? "byte "
+                                        : operand.memSize == 2 ? "word "
+                                        : operand.memSize == 4 ? "dword "
+                                        : operand.memSize == 8 ? "qword "
+                                                               : "";
+            return std::format("{}[{}]", size, address);
+        }
+        default:
+            return {};
+        }
+    }
+
+    /// An `asm func` is its body as written: the object emitter encodes it as a raw blob, with no prologue, epilogue
+    /// or frame.
+    void EmitAsmFunction(const LirFunc &function) {
+        TB();
+        TC(std::format("── {} ─", function.name));
+        TL(function.name);
+        for (const AsmInstr &instruction : function.asmBody) {
+            if (!instruction.labelDef.empty()) {
+                TL(instruction.labelDef);
+                continue;
+            }
+            std::string operands;
+            for (const AsmOperand &operand : instruction.operands) {
+                operands += (operands.empty() ? "" : ", ") + AsmOperandText(operand);
+            }
+            TI(operands.empty() ? instruction.mnemonic : std::format("{:<7} {}", instruction.mnemonic, operands));
+        }
+    }
+
     [[nodiscard]] std::string BlockLabel(const std::uint32_t index, const std::string &label) const {
         if (index == 0) {
             return currentFunction;
@@ -74,6 +153,8 @@ private:
         return "." + currentFunction + "_" + label;
     }
 
+    /// The moves a phi edge makes, as `X86_64TerminatorEmitter::EmitPhiMoves` makes them: a value wider than two words
+    /// word by word between slots, anything narrower through rax (rax:rdx, xmm0) and the operand moves.
     void EmitPhiMoves(std::uint32_t fromBlock, std::uint32_t toBlock, AssemblyInstructionPrinter &instructionPrinter) {
         const auto &phiMoves = instructionPrinter.FramePlan().PhiMoves();
         const auto from = phiMoves.find(fromBlock);
@@ -85,43 +166,81 @@ private:
             return;
         }
 
-        const std::vector<PhiMoveStep> steps = ResolvePhiMoves(to->second);
-        const std::int32_t temporaryOffset = instructionPrinter.FramePlan().PhiTemporaryOffset();
-        for (const auto &step : steps) {
+        const auto I = [&](const std::string_view opcode, const std::string &operands) {
+            instructionPrinter.Instruction(opcode, operands);
+        };
+        const auto rbp = [](const std::string_view size, const std::int32_t displacement) {
+            return AssemblyInstructionPrinter::Rbp(size, displacement);
+        };
+        const std::int32_t temporary = -instructionPrinter.FramePlan().PhiTemporaryOffset();
+        for (const auto &step : ResolvePhiMoves(to->second)) {
+            const int size = instructionPrinter.SizeOfRuntime(step.type);
+            if (size > 16) {
+                const std::int32_t source = step.kind == PhiMoveStep::Kind::SaveDestination
+                                              ? instructionPrinter.Disp(step.dst)
+                                          : step.sourceIsTemporary ? temporary
+                                                                   : instructionPrinter.Disp(step.src);
+                const std::int32_t destination =
+                    step.kind == PhiMoveStep::Kind::SaveDestination ? temporary : instructionPrinter.Disp(step.dst);
+                for (int offset = 0; offset < size; offset += 8) {
+                    I("mov", "rax, " + rbp("qword", source + offset));
+                    I("mov", rbp("qword", destination + offset) + ", rax");
+                }
+                continue;
+            }
+            const int scalarSize = size > 0 ? size : 8;
+            const bool float32 = step.type->kind == TypeRef::Kind::Float32;
             if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-                const int size = instructionPrinter.SizeOfRuntime(step.type);
                 instructionPrinter.LoadA(step.dst, step.type);
-                if (size > 8 && size <= 16) {
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", temporaryOffset));
-                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", temporaryOffset - 8));
+                if (size > 8) {
+                    I("mov", rbp("qword", temporary) + ", rax");
+                    I("mov", rbp("qword", temporary + 8) + ", rdx");
                 }
                 else if (IsFloat(step.type)) {
-                    TI(std::format("{:<8}{} [rbp - {}], xmm0", size == 4 ? "movss" : "movsd",
-                                   size == 4 ? "dword" : "qword", temporaryOffset));
+                    I(float32 ? "movss" : "movsd", rbp(float32 ? "dword" : "qword", temporary) + ", xmm0");
                 }
                 else {
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", temporaryOffset));
+                    const std::string_view width = scalarSize == 8 ? "qword"
+                                                 : scalarSize == 4 ? "dword"
+                                                 : scalarSize == 2 ? "word"
+                                                                   : "byte";
+                    const std::string_view accumulator = scalarSize == 8 ? "rax"
+                                                       : scalarSize == 4 ? "eax"
+                                                       : scalarSize == 2 ? "ax"
+                                                                         : "al";
+                    I("mov", std::format("{}, {}", rbp(width, temporary), accumulator));
                 }
+                continue;
             }
-            else if (step.sourceIsTemporary) {
-                const int size = instructionPrinter.SizeOfRuntime(step.type);
-                if (size > 8 && size <= 16) {
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", temporaryOffset));
-                    TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", temporaryOffset - 8));
-                }
-                else if (IsFloat(step.type)) {
-                    TI(std::format("{:<8}xmm0, {} [rbp - {}]", size == 4 ? "movss" : "movsd",
-                                   size == 4 ? "dword" : "qword", temporaryOffset));
-                }
-                else {
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", temporaryOffset));
-                }
-                instructionPrinter.StoreA(step.dst, step.type);
-            }
-            else {
+            if (!step.sourceIsTemporary) {
                 instructionPrinter.LoadA(step.src, step.type);
                 instructionPrinter.StoreA(step.dst, step.type);
+                continue;
             }
+            if (size > 8) {
+                I("mov", "rax, " + rbp("qword", temporary));
+                I("mov", "r10, " + rbp("qword", temporary + 8));
+                I("mov", "rdx, r10");
+            }
+            else if (IsFloat(step.type)) {
+                I(float32 ? "movss" : "movsd", "xmm0, " + rbp(float32 ? "dword" : "qword", temporary));
+            }
+            else if (scalarSize == 8) {
+                I("mov", "rax, " + rbp("qword", temporary));
+            }
+            else if (step.type.IsSigned()) {
+                I(scalarSize == 4 ? "movsxd" : "movsx", "rax, " + rbp(scalarSize == 4   ? "dword"
+                                                                      : scalarSize == 2 ? "word"
+                                                                                        : "byte",
+                                                                      temporary));
+            }
+            else if (scalarSize == 4) {
+                I("mov", "eax, " + rbp("dword", temporary));
+            }
+            else {
+                I("movzx", "rax, " + rbp(scalarSize == 2 ? "word" : "byte", temporary));
+            }
+            instructionPrinter.StoreA(step.dst, step.type);
         }
     }
 
@@ -144,7 +263,8 @@ private:
     }
 
     void GenInstruction(const LirInstr &instruction, AssemblyInstructionPrinter &instructionPrinter) {
-        if (instructionPrinter.EmitArithmetic(instruction) || instructionPrinter.EmitMemory(instruction)) {
+        if (instructionPrinter.EmitArithmetic(instruction) || instructionPrinter.EmitMemory(instruction) ||
+            instructionPrinter.EmitAtomic(instruction) || instructionPrinter.EmitThreadLocal(instruction)) {
             return;
         }
 
@@ -164,17 +284,21 @@ private:
             }
 
             const LirReg messageRegister = instruction.srcs[isAssertion ? 1 : 0];
-            const RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
-                isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic, instruction.sourceFunction,
-                instruction.sourceFile, instruction.sourceLine, instruction.sourceColumn);
+            const RuntimeFailureLayout layout =
+                BuildRuntimeFailureLayout(isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
+                                          instruction.source.Get().function, instruction.source.Get().file,
+                                          instruction.source.Get().line, instruction.source.Get().column);
 
-            if (instructionPrinter.IsWin64Convention(CallingConvention::Default)) {
+            // As the module emitter writes them: WriteFile to the standard error handle on Windows, the write
+            // system call to descriptor 2 elsewhere.
+            if (targetOs == Target::OS::Windows) {
                 NeedExtern("GetStdHandle");
                 NeedExtern("WriteFile");
                 TI("sub     rsp, 48");
 
                 const auto prepareWrite = [&]() {
-                    TI("mov     ecx, -12");
+                    TI("mov     eax, -12");
+                    TI("mov     rcx, rax");
                     TI("call    GetStdHandle");
                     TI("mov     rcx, rax");
                     TI("lea     r9, [rsp + 40]");
@@ -183,8 +307,10 @@ private:
                 const auto writeStatic = [&](const std::string &value) {
                     prepareWrite();
                     const std::string label = InternString(value);
-                    TI(std::format("{:<8}rdx, [rel {}]", "lea", label));
-                    TI(std::format("{:<8}r8d, {}", "mov", value.size()));
+                    TI(std::format("{:<8}rax, [rel {}]", "lea", label));
+                    TI("mov     rdx, rax");
+                    TI(std::format("{:<8}eax, {}", "mov", value.size()));
+                    TI("mov     r8, rax");
                     TI("call    WriteFile");
                 };
 
@@ -193,18 +319,22 @@ private:
                 instructionPrinter.LoadA(messageRegister,
                                          TypeRef::MakePointer(TypeRef::MakeText(TypeRef::Kind::Char8)));
                 TI("mov     r10, rax");
-                TI("mov     rdx, [r10]");
-                TI("mov     r8, [r10 + 8]");
+                TI("mov     rdx, qword [r10]");
+                TI("mov     r8, qword [r10 + 8]");
                 TI("call    WriteFile");
                 writeStatic(layout.location);
+                if (tracesPanics) {
+                    TI("call    __rux_backtrace");
+                }
             }
             else {
-                const int syscallNumber = targetOs == Target::OS::MacOS ? 0x0200'0004
-                                        : targetOs == Target::OS::Linux ? 1
+                const int syscallNumber = targetOs == Target::OS::Linux ? 1
+                                        : targetOs == Target::OS::MacOS ? 0x0200'0004
                                                                         : 4;
                 const auto writeStatic = [&](const std::string &value) {
                     const std::string label = InternString(value);
-                    TI(std::format("{:<8}rsi, [rel {}]", "lea", label));
+                    TI(std::format("{:<8}rax, [rel {}]", "lea", label));
+                    TI("mov     rsi, rax");
                     TI(std::format("{:<8}edx, {}", "mov", value.size()));
                     TI("mov     edi, 2");
                     TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
@@ -215,12 +345,15 @@ private:
                 instructionPrinter.LoadA(messageRegister,
                                          TypeRef::MakePointer(TypeRef::MakeText(TypeRef::Kind::Char8)));
                 TI("mov     r10, rax");
-                TI("mov     rsi, [r10]");
-                TI("mov     rdx, [r10 + 8]");
+                TI("mov     rsi, qword [r10]");
+                TI("mov     rdx, qword [r10 + 8]");
                 TI("mov     edi, 2");
                 TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
                 TI("syscall");
                 writeStatic(layout.location);
+                if (tracesPanics) {
+                    TI("call    __rux_backtrace");
+                }
             }
 
             TI("ud2");
@@ -229,13 +362,51 @@ private:
             }
             break;
         }
+        case LirOpcode::FramePointer:
+            TI("mov     rax, rbp");
+            instructionPrinter.StoreA(instruction.dst, instruction.type);
+            break;
+        case LirOpcode::WriteStandardError:
+            if (targetOs == Target::OS::Windows) {
+                NeedExtern("GetStdHandle");
+                NeedExtern("WriteFile");
+                TI("sub     rsp, 48");
+                TI("mov     eax, -12");
+                TI("mov     rcx, rax");
+                TI("call    GetStdHandle");
+                TI("mov     rcx, rax");
+                TI("lea     r9, [rsp + 40]");
+                TI("mov     qword [rsp + 32], 0");
+                instructionPrinter.LoadA(instruction.srcs[0], TypeRef::MakePointer(TypeRef::MakeChar8()));
+                TI("mov     rdx, rax");
+                instructionPrinter.LoadA(instruction.srcs[1], TypeRef::MakeUInt64());
+                TI("mov     r8, rax");
+                TI("call    WriteFile");
+                TI("add     rsp, 48");
+            }
+            else {
+                const int syscallNumber = targetOs == Target::OS::Linux ? 1
+                                        : targetOs == Target::OS::MacOS ? 0x0200'0004
+                                                                        : 4;
+                instructionPrinter.LoadA(instruction.srcs[0], TypeRef::MakePointer(TypeRef::MakeChar8()));
+                TI("mov     rsi, rax");
+                instructionPrinter.LoadA(instruction.srcs[1], TypeRef::MakeUInt64());
+                TI("mov     rdx, rax");
+                TI("mov     edi, 2");
+                TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
+                TI("syscall");
+            }
+            break;
         case LirOpcode::Call:
-            EmitCall(instruction.strArg, instruction.srcs, instruction.dst, instruction.type, instruction.callConv,
-                     instructionPrinter);
+            if (!EmitBitCast(instruction, instructionPrinter)) {
+                EmitPreparedCall(instruction, instruction.srcs, false, instructionPrinter);
+            }
             break;
         case LirOpcode::CallIndirect:
-            EmitCallIndirect(instruction.srcs, instruction.dst, instruction.type, instruction.callConv,
-                             instructionPrinter);
+            if (!instruction.srcs.empty()) {
+                const std::vector<LirReg> arguments(instruction.srcs.begin() + 1, instruction.srcs.end());
+                EmitPreparedCall(instruction, arguments, true, instructionPrinter);
+            }
             break;
         default:
             TC(std::format("unsupported LIR opcode {} ({})", LirOpcodeName(instruction.op),
@@ -244,153 +415,296 @@ private:
         }
     }
 
-    struct StackArgument {
-        LirReg reg;
-        int byteOffset = -1;
-    };
+    // ---- calls, as `X86_64CallEmitter` makes them ------------------------------------------------------------------
 
-    void EmitCall(const std::string &callee, const std::vector<LirReg> &arguments, const LirReg destination,
-                  const TypeRef &returnType, const CallingConvention convention,
-                  AssemblyInstructionPrinter &instructionPrinter) {
-        const std::vector<StackArgument> stackArguments = EmitCallArguments(arguments, convention, instructionPrinter);
-        const bool win64 = instructionPrinter.IsWin64Convention(convention);
-        const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArguments.size()) * 8, 16)
-                                     : AlignUp(static_cast<int>(stackArguments.size()) * 8, 16);
-        if (stackBytes > 0) {
-            TI(std::format("sub     rsp, {}", stackBytes));
-            StoreStackArguments(stackArguments, win64, instructionPrinter);
-        }
-        TI(std::format("{:<8}{}", "call", callee));
-        if (stackBytes > 0) {
-            TI(std::format("add     rsp, {}", stackBytes));
-        }
-        if (destination != LirNoReg && !returnType.IsOpaque()) {
-            instructionPrinter.StoreA(destination, returnType);
-        }
+    [[nodiscard]] static TypeRef ArgumentType(const LirReg argument, const AssemblyInstructionPrinter &printer) {
+        const auto &types = printer.FramePlan().RegisterTypes();
+        return types.contains(argument) ? types.at(argument) : TypeRef::MakeInt64();
     }
 
-    void EmitCallIndirect(const std::vector<LirReg> &sources, const LirReg destination, const TypeRef &returnType,
-                          const CallingConvention convention, AssemblyInstructionPrinter &instructionPrinter) {
-        if (sources.empty()) {
-            return;
-        }
-        const LirReg callee = sources[0];
-        const std::vector<LirReg> arguments(sources.begin() + 1, sources.end());
-        const std::vector<StackArgument> stackArguments = EmitCallArguments(arguments, convention, instructionPrinter);
-        const bool win64 = instructionPrinter.IsWin64Convention(convention);
-        const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArguments.size()) * 8, 16)
-                                     : AlignUp(static_cast<int>(stackArguments.size()) * 8, 16);
-        if (stackBytes > 0) {
-            TI(std::format("sub     rsp, {}", stackBytes));
-            StoreStackArguments(stackArguments, win64, instructionPrinter);
-        }
-        TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", instructionPrinter.FramePlan().SlotOffsets().at(callee)));
-        TI("call    r10");
-        if (stackBytes > 0) {
-            TI(std::format("add     rsp, {}", stackBytes));
-        }
-        if (destination != LirNoReg && !returnType.IsOpaque()) {
-            instructionPrinter.StoreA(destination, returnType);
-        }
+    [[nodiscard]] static bool IsTwoWordAggregate(const TypeRef &type, const AssemblyInstructionPrinter &printer) {
+        return printer.IsAggregate(type) && printer.SizeOfRuntime(type) > 8 && printer.SizeOfRuntime(type) <= 16;
     }
 
-    void StoreStackArguments(const std::vector<StackArgument> &arguments, const bool win64,
-                             AssemblyInstructionPrinter &instructionPrinter) {
-        for (std::size_t index = 0; index < arguments.size(); ++index) {
-            const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
-            const TypeRef type = registerTypes.contains(arguments[index].reg) ? registerTypes.at(arguments[index].reg)
-                                                                              : TypeRef::MakeInt64();
-            if (arguments[index].byteOffset >= 0) {
-                // Copy one padded home word without disturbing an argument already placed in rdx or xmm0.
-                TI(std::format("mov     rax, qword [rbp - {}]",
-                               instructionPrinter.FramePlan().SlotOffsets().at(arguments[index].reg) -
-                                   arguments[index].byteOffset));
+    [[nodiscard]] static std::string Rsp(const std::int32_t offset, const std::string_view size = "qword") {
+        return offset == 0 ? std::format("{} [rsp]", size) : std::format("{} [rsp + {}]", size, offset);
+    }
+
+    /// The outgoing area a call reserves: the Win64 home area and stack arguments, or the System V stack arguments.
+    [[nodiscard]] static int CallFrameSize(const std::span<const LirReg> arguments, const bool win64,
+                                           const int startIndex, const AssemblyInstructionPrinter &printer) {
+        if (win64) {
+            const std::size_t count = arguments.size() + static_cast<std::size_t>(startIndex);
+            return AlignUp(static_cast<int>(32 + (count > 4 ? count - 4 : 0) * 8), 16);
+        }
+        int integerIndex = startIndex;
+        int floatIndex = 0;
+        std::size_t stackArguments = 0;
+        for (const LirReg argument : arguments) {
+            const TypeRef type = ArgumentType(argument, printer);
+            if (IsFloat(type)) {
+                floatIndex < 8 ? ++floatIndex : ++stackArguments;
+            }
+            else if (printer.IsSysVMemoryAggregate(type)) {
+                stackArguments += static_cast<std::size_t>(AlignUp(printer.SizeOfRuntime(type), 8) / 8);
+            }
+            else if (IsTwoWordAggregate(type, printer)) {
+                if (integerIndex <= 4) {
+                    integerIndex += 2;
+                }
+                else {
+                    stackArguments += 2;
+                }
             }
             else {
-                const bool rawFloat = IsFloat(type) && (SizeOf(type) == 4 || SizeOf(type) == 8);
-                instructionPrinter.LoadA(arguments[index].reg,
-                                         rawFloat ? (SizeOf(type) == 4 ? TypeRef::MakeUInt32() : TypeRef::MakeUInt64())
-                                                  : type);
+                integerIndex < 6 ? ++integerIndex : ++stackArguments;
             }
-            const std::size_t offset = win64 ? 32 + index * 8 : index * 8;
-            TI(std::format("{:<8}qword [rsp + {}], rax", "mov", offset));
+        }
+        return AlignUp(static_cast<int>(stackArguments * 8), 16);
+    }
+
+    /// System V stack arguments, written before any register is loaded.
+    static void StoreSysVStackArguments(const std::span<const LirReg> arguments, const int startIndex,
+                                        AssemblyInstructionPrinter &printer) {
+        int integerIndex = startIndex;
+        int floatIndex = 0;
+        int stackIndex = 0;
+        for (const LirReg argument : arguments) {
+            const TypeRef type = ArgumentType(argument, printer);
+            const std::int32_t displacement = printer.Disp(argument);
+            if (printer.IsSysVMemoryAggregate(type)) {
+                for (int offset = 0; offset < AlignUp(printer.SizeOfRuntime(type), 8); offset += 8) {
+                    printer.Instruction("mov",
+                                        "rax, " + AssemblyInstructionPrinter::Rbp("qword", displacement + offset));
+                    printer.Instruction("mov", Rsp(stackIndex++ * 8) + ", rax");
+                }
+                continue;
+            }
+            if (IsTwoWordAggregate(type, printer)) {
+                if (integerIndex <= 4) {
+                    integerIndex += 2;
+                }
+                else {
+                    for (int offset = 0; offset < 16; offset += 8) {
+                        printer.Instruction("mov",
+                                            "rax, " + AssemblyInstructionPrinter::Rbp("qword", displacement + offset));
+                        printer.Instruction("mov", Rsp(stackIndex++ * 8) + ", rax");
+                    }
+                }
+                continue;
+            }
+            bool onStack = false;
+            if (IsFloat(type)) {
+                onStack = floatIndex >= 8;
+                ++floatIndex;
+            }
+            else {
+                onStack = integerIndex >= 6;
+                ++integerIndex;
+            }
+            if (!onStack) {
+                continue;
+            }
+            printer.LoadA(argument, type);
+            const std::int32_t offset = stackIndex++ * 8;
+            if (IsFloat(type)) {
+                const bool float32 = SizeOf(type) == 4;
+                printer.Instruction(float32 ? "movss" : "movsd", Rsp(offset, float32 ? "dword" : "qword") + ", xmm0");
+            }
+            else {
+                printer.Instruction("mov", Rsp(offset) + ", rax");
+            }
         }
     }
 
-    [[nodiscard]] std::vector<StackArgument> EmitCallArguments(const std::vector<LirReg> &arguments,
-                                                               const CallingConvention convention,
-                                                               AssemblyInstructionPrinter &instructionPrinter) {
-        const bool win64 = instructionPrinter.IsWin64Convention(convention);
-        const auto *integerRegisters = win64 ? kWin64IntArgRegs : kIntArgRegs;
-        const int maximumIntegerRegisters = win64 ? 4 : 6;
-        std::vector<StackArgument> stackArguments;
+    static void EmitArguments(const std::span<const LirReg> arguments, const bool win64, const int startIndex,
+                              AssemblyInstructionPrinter &printer) {
+        const auto &physicalRegisters = printer.FramePlan().PhysicalRegisters();
         if (win64) {
-            for (int index = 0; index < static_cast<int>(arguments.size()); ++index) {
-                const LirReg argument = arguments[index];
-                const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
-                const TypeRef type =
-                    registerTypes.contains(argument) ? registerTypes.at(argument) : TypeRef::MakeInt64();
-                if (index < 4) {
+            int index = startIndex;
+            for (const LirReg argument : arguments) {
+                const TypeRef type = ArgumentType(argument, printer);
+                const std::int32_t displacement = printer.Disp(argument);
+                const bool float32 = SizeOf(type) == 4;
+                if (index >= 4) {
+                    const std::int32_t stackOffset = 32 + (index - 4) * 8;
                     if (IsFloat(type)) {
-                        const int size = SizeOf(type);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", size == 4 ? "movss" : "movsd", kFltArgRegs[index],
-                                       size == 4 ? "dword" : "qword",
-                                       instructionPrinter.FramePlan().SlotOffsets().at(argument)));
+                        // Moved as raw bits through rax rather than through xmm0, which by now holds the first
+                        // argument.
+                        printer.LoadA(argument, float32 ? TypeRef::MakeUInt32() : TypeRef::MakeUInt64());
+                    }
+                    else if (printer.IsWin64ByRefAggregate(type)) {
+                        printer.Instruction("lea", "rax, " + AssemblyInstructionPrinter::Rbp(displacement));
                     }
                     else {
-                        instructionPrinter.LoadA(argument, type);
-                        TI(std::format("{:<8}{}, rax", "mov", integerRegisters[index]));
+                        printer.LoadA(argument, type);
+                    }
+                    printer.Instruction("mov", Rsp(stackOffset) + ", rax");
+                    ++index;
+                    continue;
+                }
+                const std::string_view reg = kWin64IntArgRegs[index];
+                if (IsFloat(type)) {
+                    if (const auto found = printer.FramePlan().FloatRegisters().find(argument);
+                        found != printer.FramePlan().FloatRegisters().end()) {
+                        printer.Instruction("movaps", std::format("{}, xmm{}", kFltArgRegs[index], found->second));
+                    }
+                    else {
+                        printer.Instruction(
+                            float32 ? "movss" : "movsd",
+                            std::format("{}, {}", kFltArgRegs[index],
+                                        AssemblyInstructionPrinter::Rbp(float32 ? "dword" : "qword", displacement)));
                     }
                 }
+                else if (printer.IsWin64ByRefAggregate(type)) {
+                    // A value wider than a register, or of an odd width, is passed by the address of its home.
+                    printer.Instruction("lea",
+                                        std::format("{}, {}", reg, AssemblyInstructionPrinter::Rbp(displacement)));
+                }
+                else if (type->kind == TypeRef::Kind::Pointer && !type->inner.empty() &&
+                         printer.IsWin64ByRefAggregate(type->inner[0]) && !physicalRegisters.contains(argument)) {
+                    printer.Instruction(
+                        "mov", std::format("{}, {}", reg, AssemblyInstructionPrinter::Rbp("qword", displacement)));
+                }
                 else {
-                    stackArguments.push_back({argument});
+                    printer.LoadA(argument, type);
+                    printer.Instruction("mov", std::format("{}, rax", reg));
+                }
+                ++index;
+            }
+            return;
+        }
+
+        int integerIndex = startIndex;
+        int floatIndex = 0;
+        for (const LirReg argument : arguments) {
+            const TypeRef type = ArgumentType(argument, printer);
+            const std::int32_t displacement = printer.Disp(argument);
+            if (IsFloat(type)) {
+                if (floatIndex < 8) {
+                    const bool float32 = SizeOf(type) == 4;
+                    if (const auto found = printer.FramePlan().FloatRegisters().find(argument);
+                        found != printer.FramePlan().FloatRegisters().end()) {
+                        printer.Instruction("movaps", std::format("{}, xmm{}", kFltArgRegs[floatIndex], found->second));
+                    }
+                    else {
+                        printer.Instruction(
+                            float32 ? "movss" : "movsd",
+                            std::format("{}, {}", kFltArgRegs[floatIndex],
+                                        AssemblyInstructionPrinter::Rbp(float32 ? "dword" : "qword", displacement)));
+                    }
+                    ++floatIndex;
                 }
             }
+            else if (printer.IsSysVMemoryAggregate(type)) {
+                // Already written to its stack slots, and it takes no register.
+            }
+            else if (IsTwoWordAggregate(type, printer)) {
+                if (integerIndex <= 4) {
+                    for (int offset = 0; offset < 16; offset += 8) {
+                        printer.Instruction("mov",
+                                            "rax, " + AssemblyInstructionPrinter::Rbp("qword", displacement + offset));
+                        printer.Instruction("mov", std::format("{}, rax", kIntArgRegs[integerIndex++]));
+                    }
+                }
+            }
+            else if (integerIndex < 6) {
+                printer.LoadA(argument, type);
+                printer.Instruction("mov", std::format("{}, rax", kIntArgRegs[integerIndex++]));
+            }
+        }
+        // System V wants AL to count the vector registers a variadic call uses; it is harmless for a fixed call.
+        printer.Instruction("mov", std::format("eax, {}", floatIndex));
+    }
+
+    static void StoreReturnValue(const LirReg destination, const TypeRef &type, AssemblyInstructionPrinter &printer) {
+        if (const int size = printer.SizeOfRuntime(type); size > 8 && size <= 16) {
+            printer.Instruction("mov", AssemblyInstructionPrinter::Rbp("qword", printer.Disp(destination)) + ", rax");
+            printer.Instruction("mov",
+                                AssemblyInstructionPrinter::Rbp("qword", printer.Disp(destination) + 8) + ", rdx");
         }
         else {
-            int integerIndex = 0;
-            int floatIndex = 0;
-            for (const LirReg argument : arguments) {
-                const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
-                const TypeRef type =
-                    registerTypes.contains(argument) ? registerTypes.at(argument) : TypeRef::MakeInt64();
-                if (IsFloat(type)) {
-                    if (floatIndex < 8) {
-                        const int size = SizeOf(type);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", size == 4 ? "movss" : "movsd", kFltArgRegs[floatIndex],
-                                       size == 4 ? "dword" : "qword",
-                                       instructionPrinter.FramePlan().SlotOffsets().at(argument)));
-                        ++floatIndex;
-                    }
-                    else {
-                        stackArguments.push_back({argument});
-                    }
-                }
-                else if (instructionPrinter.IsAggregate(type) && instructionPrinter.SizeOfRuntime(type) > 8) {
-                    const int words = AlignUp(instructionPrinter.SizeOfRuntime(type), 8) / 8;
-                    if (words == 2 && integerIndex <= 4) {
-                        for (int word = 0; word < words; ++word) {
-                            TI(std::format("mov     {}, qword [rbp - {}]", integerRegisters[integerIndex++],
-                                           instructionPrinter.FramePlan().SlotOffsets().at(argument) - word * 8));
-                        }
-                    }
-                    else {
-                        for (int word = 0; word < words; ++word) {
-                            stackArguments.push_back({argument, word * 8});
-                        }
-                    }
-                }
-                else if (integerIndex < maximumIntegerRegisters) {
-                    instructionPrinter.LoadA(argument, type);
-                    TI(std::format("{:<8}{}, rax", "mov", integerRegisters[integerIndex]));
-                    ++integerIndex;
-                }
-                else {
-                    stackArguments.push_back({argument});
-                }
+            printer.StoreA(destination, type);
+        }
+    }
+
+    /// The bit-cast intrinsics the emitter inlines instead of calling.
+    static bool EmitBitCast(const LirInstr &instruction, AssemblyInstructionPrinter &printer) {
+        if (instruction.srcs.size() != 1) {
+            return false;
+        }
+        const LirReg source = instruction.srcs[0];
+        if (instruction.strArg == "FloatBits64") {
+            printer.LoadA(source, TypeRef::MakeFloat64());
+            printer.Instruction("movq", "rax, xmm0");
+        }
+        else if (instruction.strArg == "FloatFromBits64") {
+            printer.LoadA(source, TypeRef::MakeInt64());
+            printer.Instruction("movq", "xmm0, rax");
+        }
+        else if (instruction.strArg == "FloatBits32") {
+            printer.LoadA(source, TypeRef::MakeFloat32());
+            printer.Instruction("movd", "eax, xmm0");
+        }
+        else if (instruction.strArg == "FloatFromBits32") {
+            printer.LoadA(source, TypeRef::MakeInt32());
+            printer.Instruction("movd", "xmm0, eax");
+        }
+        else {
+            return false;
+        }
+        if (instruction.dst != LirNoReg && !instruction.type.IsOpaque()) {
+            StoreReturnValue(instruction.dst, instruction.type, printer);
+        }
+        return true;
+    }
+
+    void EmitPreparedCall(const LirInstr &instruction, const std::span<const LirReg> arguments, const bool indirect,
+                          AssemblyInstructionPrinter &printer) {
+        const bool win64 = printer.IsWin64Convention(instruction.callConv);
+        // A result no register pair returns is written through a pointer the caller passes first.
+        const bool hiddenReturn =
+            instruction.dst != LirNoReg &&
+            (win64 ? printer.IsWin64ByRefAggregate(instruction.type) : printer.IsSysVMemoryAggregate(instruction.type));
+        const int startIndex = hiddenReturn ? 1 : 0;
+        const int frameSize = CallFrameSize(arguments, win64, startIndex, printer);
+        if (frameSize > 0) {
+            TI(std::format("sub     rsp, {}", frameSize));
+        }
+        if (hiddenReturn) {
+            const std::string destination = AssemblyInstructionPrinter::Rbp(printer.Disp(instruction.dst));
+            if (win64) {
+                printer.Instruction("lea", "rcx, " + destination);
+            }
+            else {
+                printer.Instruction("lea", "rax, " + destination);
+                printer.Instruction("mov", "rdi, rax");
             }
         }
-        return stackArguments;
+        if (!win64) {
+            StoreSysVStackArguments(arguments, startIndex, printer);
+        }
+        EmitArguments(arguments, win64, startIndex, printer);
+        if (indirect) {
+            const LirReg callee = instruction.srcs.front();
+            if (const auto physical = printer.FramePlan().PhysicalRegisters().find(callee);
+                physical != printer.FramePlan().PhysicalRegisters().end()) {
+                printer.Instruction("mov", std::format("r10, {}", printer.PhysicalRegisterName(physical->second)));
+            }
+            else {
+                printer.Instruction("mov", "r10, " + AssemblyInstructionPrinter::Rbp("qword", printer.Disp(callee)));
+            }
+            TI("call    r10");
+        }
+        else {
+            TI(std::format("{:<8}{}", "call", instruction.strArg));
+        }
+        if (frameSize > 0) {
+            TI(std::format("add     rsp, {}", frameSize));
+        }
+        if (instruction.dst != LirNoReg && !instruction.type.IsOpaque() && !hiddenReturn) {
+            StoreReturnValue(instruction.dst, instruction.type, printer);
+        }
     }
 
     [[nodiscard]] bool HasPhiMoves(const std::uint32_t from, const std::uint32_t to,
@@ -405,15 +719,29 @@ private:
         switch (terminator.kind) {
         case LirTermKind::Jump:
             EmitPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
-            TI(std::format("{:<8}{}", "jmp",
-                           BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label)));
+            if (terminator.trueTarget != blockIndex + 1) {
+                TI(std::format("{:<8}{}", "jmp",
+                               BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label)));
+            }
             break;
         case LirTermKind::Branch: {
             const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
-            const TypeRef conditionType =
-                registerTypes.contains(terminator.cond) ? registerTypes.at(terminator.cond) : TypeRef::MakeBool();
-            instructionPrinter.LoadA(terminator.cond, conditionType);
-            TI("test    rax, rax");
+            auto condition = X86Condition::NotEqual;
+            const auto &comparisons = instructionPrinter.FramePlan().BranchComparisons();
+            if (const auto found = comparisons.find(terminator.cond); found != comparisons.end()) {
+                const auto &comparison = found->second;
+                instructionPrinter.LoadA(comparison.right, comparison.type);
+                TI("mov     r10, rax");
+                instructionPrinter.LoadA(comparison.left, comparison.type);
+                TI("cmp     rax, r10");
+                condition = comparison.condition;
+            }
+            else {
+                const TypeRef conditionType =
+                    registerTypes.contains(terminator.cond) ? registerTypes.at(terminator.cond) : TypeRef::MakeBool();
+                instructionPrinter.LoadA(terminator.cond, conditionType);
+                TI("test    rax, rax");
+            }
             const std::string trueLabel =
                 BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label);
             const std::string falseLabel =
@@ -421,25 +749,41 @@ private:
             const bool truePhi = HasPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
             const bool falsePhi = HasPhiMoves(blockIndex, terminator.falseTarget, instructionPrinter);
             if (!truePhi && !falsePhi) {
-                TI(std::format("{:<8}{}", "jz", falseLabel));
-                TI(std::format("{:<8}{}", "jmp", trueLabel));
+                if (terminator.falseTarget == blockIndex + 1) {
+                    TI(std::format("{:<8}{}", ConditionMnemonic(condition), trueLabel));
+                }
+                else {
+                    TI(std::format("{:<8}{}", ConditionMnemonic(Inverse(condition)), falseLabel));
+                    if (terminator.trueTarget != blockIndex + 1) {
+                        TI(std::format("{:<8}{}", "jmp", trueLabel));
+                    }
+                }
             }
             else {
                 const std::string trampolineTrue = std::format(".{}_br{}_t", currentFunction, blockIndex);
                 const std::string trampolineFalse = std::format(".{}_br{}_f", currentFunction, blockIndex);
-                TI(std::format("{:<8}{}", "jz", trampolineFalse));
+                TI(std::format("{:<8}{}", ConditionMnemonic(Inverse(condition)), trampolineFalse));
                 TL(trampolineTrue);
                 EmitPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
                 TI(std::format("{:<8}{}", "jmp", trueLabel));
                 TL(trampolineFalse);
                 EmitPhiMoves(blockIndex, terminator.falseTarget, instructionPrinter);
-                TI(std::format("{:<8}{}", "jmp", falseLabel));
+                if (terminator.falseTarget != blockIndex + 1) {
+                    TI(std::format("{:<8}{}", "jmp", falseLabel));
+                }
             }
             break;
         }
         case LirTermKind::Return:
             if (terminator.retVal && *terminator.retVal != LirNoReg) {
-                instructionPrinter.LoadReturnValue(*terminator.retVal, terminator.retType);
+                // A result returned through the caller's pointer is copied there; anything else is loaded into rax
+                // (rax:rdx, xmm0).
+                if (instructionPrinter.FramePlan().HiddenReturnOffset() != 0) {
+                    instructionPrinter.StoreHiddenReturnValue(*terminator.retVal, terminator.retType);
+                }
+                else {
+                    instructionPrinter.LoadReturnValue(*terminator.retVal, terminator.retType);
+                }
             }
             EmitEpilogue(instructionPrinter);
             break;
@@ -449,7 +793,9 @@ private:
                 registerTypes.contains(terminator.cond) ? registerTypes.at(terminator.cond) : TypeRef::MakeInt64();
             instructionPrinter.LoadA(terminator.cond, conditionType);
             for (const auto &switchCase : terminator.cases) {
-                TI(std::format("{:<8}rax, {}", "cmp", switchCase.value));
+                // The case value as the emitter encodes it: the literal's bits, as a sign-extended imm32.
+                TI(std::format("{:<8}rax, {}", "cmp",
+                               static_cast<std::int32_t>(ParseIntegerLiteralBits(switchCase.value).value_or(0))));
                 TI(std::format("{:<8}{}", "je",
                                BlockLabel(switchCase.target, function.blocks[switchCase.target].label)));
             }
@@ -465,6 +811,9 @@ private:
     }
 
     void EmitEpilogue(const AssemblyInstructionPrinter &instructionPrinter) {
+        for (const auto &[reg, offset] : instructionPrinter.FramePlan().FloatSaves()) {
+            TI(std::format("movdqu  xmm{}, {}", reg, AssemblyInstructionPrinter::Rbp("oword", -offset)));
+        }
         const auto &usedPhysicalRegisters = instructionPrinter.FramePlan().UsedPhysicalRegisters();
         if (!usedPhysicalRegisters.empty()) {
             const std::int32_t remainingFrame = instructionPrinter.FramePlan().FrameSize() -
@@ -497,7 +846,31 @@ AssemblyControlFlowPrinter::AssemblyControlFlowPrinter(AssemblyModulePrinter &mo
 }
 
 void AssemblyControlFlowPrinter::EmitFunction(const LirFunc &function) {
+    if (machineSelection && !function.isAsm) {
+        const X86_64Machine::SelectionContext context{layouts, interfaceNames, targetOs, tracesPanics};
+        if (auto selected = X86_64Machine::SelectFunction(function, context)) {
+            if (const auto emitted = X86_64Machine::EmitFunction(*selected, targetOs, true)) {
+                modulePrinter.TextInstruction(std::format("align {}, db 0x90", X86CodeAlignment));
+                modulePrinter.TextBlank();
+                modulePrinter.TextComment(std::format("── {} (machine selection) ─", function.name));
+                modulePrinter.TextLabel(function.name);
+                for (const auto &line : emitted->assembly) {
+                    modulePrinter.TextLine(line);
+                }
+                modulePrinter.TextBlank();
+                return;
+            }
+        }
+    }
+    // The direct printer, like the direct emitter, prints the scalar instructions vectors stand for.
+    if (HasVectorInstructions(function)) {
+        LirFunc scalar = function;
+        Devectorize(scalar);
+        EmitFunction(scalar);
+        return;
+    }
     FunctionAssemblyPrinter printer(modulePrinter, layouts, interfaceNames, targetOs);
+    printer.tracesPanics = tracesPanics;
     printer.EmitFunction(function);
 }
 } // namespace Rux

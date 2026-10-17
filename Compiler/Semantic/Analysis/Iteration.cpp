@@ -13,9 +13,6 @@ namespace Rux::SemanticDetail {
 namespace {
 constexpr std::string_view kNextMethod = "Next";
 constexpr std::string_view kIterateMethod = "Iterate";
-/// The cases a `Next` reports with. They are `Option`'s, named here because the loop matches them by name.
-constexpr std::string_view kOptionSomeVariant = "Some";
-constexpr std::string_view kOptionNoneVariant = "None";
 
 /// The parameters a method declares besides its receiver.
 [[nodiscard]] std::size_t WrittenParameterCount(const FuncDecl &declaration) {
@@ -33,10 +30,10 @@ constexpr std::string_view kOptionNoneVariant = "None";
     if (!receiver) {
         return false;
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(receiver->type.get())) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(receiver->type.get())) {
         return reference->pointeeMut;
     }
-    const auto *pointer = dynamic_cast<const PointerTypeExpr *>(receiver->type.get());
+    const auto *pointer = AstCast<const PointerTypeExpr>(receiver->type.get());
     return pointer != nullptr && pointer->pointeeMut;
 }
 } // namespace
@@ -72,13 +69,9 @@ std::optional<AnalysisContext::ReportedItem> AnalysisContext::ReportedItemOf(con
     // A native optional reports an item by its presence and the end by its outer absence; an item may itself be
     // absent or failed without ending anything.
     if (returned.IsOptional() && !returned.IsIncompleteNative()) {
-        return ReportedItem{returned.inner.front(), returned, nullptr};
+        return ReportedItem{returned->inner.front(), returned};
     }
-    const auto reported = PropagationShapeOf(returned);
-    if (!reported || reported->kind != PropagationShape::Kind::Option) {
-        return std::nullopt;
-    }
-    return ReportedItem{reported->payload, returned, reported->declaration};
+    return std::nullopt;
 }
 
 const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type) const {
@@ -104,10 +97,15 @@ const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type) const 
 
 std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf(const TypeRef &subject) {
     IterationShape shape;
-    if (subject.IsIterableRange() && !subject.inner.empty()) {
+    if (subject.IsIterableRange() && !subject->inner.empty()) {
         shape.kind = IterationShape::Kind::Range;
-        shape.itemType = subject.inner[0];
+        shape.itemType = subject->inner[0];
         return shape;
+    }
+    // A pointer and a flexible array tail can be indexed but have no length, so a loop over one would have nothing to
+    // stop at.
+    if (subject->kind == TypeRef::Kind::Pointer || (subject->kind == TypeRef::Kind::Array && !subject->arrayLength)) {
+        return std::nullopt;
     }
     if (auto element = IndexElementType(subject)) {
         shape.kind = IterationShape::Kind::Indexed;
@@ -118,11 +116,10 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
     if (const FuncDecl *advance = LookupIteratorAdvance(subject)) {
         if (auto reported = ReportedItemOf(subject, *advance)) {
             shape.kind = IterationShape::Kind::Iterator;
-            shape.itemType = std::move(reported->itemType);
+            shape.itemType = reported->itemType;
             shape.iteratorType = subject;
             shape.advance = advance;
-            shape.reportedType = std::move(reported->reportedType);
-            shape.reportedDeclaration = reported->declaration;
+            shape.reportedType = reported->reportedType;
             return shape;
         }
         return std::nullopt;
@@ -135,12 +132,11 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
         if (const FuncDecl *advance = LookupIteratorAdvance(iteratorType)) {
             if (auto reported = ReportedItemOf(iteratorType, *advance)) {
                 shape.kind = IterationShape::Kind::Iterable;
-                shape.itemType = std::move(reported->itemType);
+                shape.itemType = reported->itemType;
                 shape.iteratorType = iteratorType;
                 shape.advance = advance;
                 shape.entry = entry;
-                shape.reportedType = std::move(reported->reportedType);
-                shape.reportedDeclaration = reported->declaration;
+                shape.reportedType = reported->reportedType;
                 return shape;
             }
         }
@@ -169,19 +165,27 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.advance = shape.advance;
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
-    iteration.native = shape.reportedType.IsOptional();
-    if (shape.reportedDeclaration) {
-        ReportLegacyProtocol(
-            statement.location,
-            std::format("'for' uses the legacy Option protocol of '{}'; migrate its 'Next' to return a "
-                        "native optional",
-                        shape.reportedType.ToString()),
-            "declare 'func Next(self: &var Iterator) -> Item?'");
-        iteration.optionVariantName = programIndex.NominalName(*shape.reportedDeclaration);
-        iteration.someVariant = std::string(kOptionSomeVariant);
-        iteration.noneVariant = std::string(kOptionNoneVariant);
+    // A loop over an iterator variable walks the variable itself, so `Next` writes it, and it has to be writable.
+    const Expr &subject = *statement.iterable;
+    const auto *index = AstCast<const IndexExpr>(&subject);
+    const auto *unary = AstCast<const UnaryExpr>(&subject);
+    const bool place = AstCast<const IdentExpr>(&subject) || AstCast<const SelfExpr>(&subject) ||
+                       AstCast<const FieldExpr>(&subject) || (index && !IsIndexOperatorCall(*index)) ||
+                       (unary && unary->op == TokenKind::Star);
+    if (shape.kind == IterationShape::Kind::Iterator && place) {
+        iteration.advancesInPlace = true;
+        if (PlaceIsImmutable(subject)) {
+            const auto *identifier = AstCast<const IdentExpr>(&subject);
+            const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+            EmitError(subject.location,
+                      identifier ? std::format("cannot advance immutable iterator '{}'", identifier->name)
+                                 : std::string("cannot advance an immutable iterator"),
+                      {"a loop over an iterator advances it where it is, and 'Next' writes it"},
+                      binding && binding->kind == Symbol::Kind::Var ? ImmutableBindingHelp(*binding)
+                                                                    : std::optional<std::string>{});
+        }
     }
-    iterations.insert_or_assign(&statement, std::move(iteration));
+    iterations.insert_or_assign(&statement, iteration);
 }
 
 void AnalysisContext::EmitNotIterable(const SourceLocation location, const TypeRef &subject) const {
@@ -192,14 +196,26 @@ void AnalysisContext::EmitNotIterable(const SourceLocation location, const TypeR
     if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
         if (methods->second.contains(std::string(kNextMethod))) {
             notes.push_back(
-                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> T?' returning an "
-                            "optional or an Option-shaped variant",
+                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> T?' returning a "
+                            "native optional",
                             subject.ToString(), typeName));
         }
         else if (methods->second.contains(std::string(kIterateMethod))) {
             notes.push_back(
                 std::format("type '{}' declares 'Iterate', but it does not return an iterator", subject.ToString()));
         }
+    }
+    if (subject->kind == TypeRef::Kind::Array && !subject->arrayLength) {
+        EmitError(location, std::format("cannot iterate over flexible array '{}'", subject.ToString()),
+                  {"a flexible array tail has no length; the struct records how many elements it holds"},
+                  "iterate a slice of it with the recorded count, as in 'for value in tail[..count]'");
+        return;
+    }
+    if (subject->kind == TypeRef::Kind::Pointer) {
+        EmitError(location, std::format("cannot iterate over pointer '{}'", subject.ToString()),
+                  {"a pointer has no length, so nothing says where the loop would end"},
+                  "iterate a slice of the memory it points at, as in 'for value in p[..count]'");
+        return;
     }
     EmitError(location, std::format("cannot iterate over '{}'", subject.ToString()), std::move(notes),
               "iterate an array, a slice, a range, or a type declaring 'Next' or 'Iterate'");
@@ -211,26 +227,22 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
     }
 
     if (declaration.name == kNextMethod) {
-        // Only a `Next` that reports an end is the convention's; one returning anything else is an ordinary method that
-        // happens to share the name.
+        // Only a `Next` that reports an end with a native optional is the convention's; one returning anything else is
+        // an ordinary method that happens to share the name. A variant with `Some` and `None` cases is the one return
+        // type that looks like it was meant to be, and no loop reads it, so it is refused where it is declared.
         const TypeRef returned =
             declaration.returnType ? ResolveType(*declaration.returnType->get()) : TypeRef::MakeOpaque();
-        const auto reported = PropagationShapeOf(returned);
-        if (!returned.IsOptional() && (!reported || reported->kind != PropagationShape::Kind::Option)) {
-            if (auto issue = PropagationShapeIssue(returned, PropagationShape::Kind::Option)) {
+        if (!returned.IsOptional()) {
+            if (LegacyOutcomeShapeOf(returned) == LegacyOutcomeShape::Option) {
                 EmitError(declaration.location,
-                          std::format("iterator method 'Next' on '{}' must return an Option-shaped variant",
+                          std::format("iterator method 'Next' on '{}' must return a native optional",
                                       currentExtendedType.ToString()),
-                          {std::move(*issue)}, "return a variant with exactly 'Some(T)' and payload-less 'None' cases");
+                          {std::format("'{}' is an ordinary variant; 'for' ends only at the absence of a native "
+                                       "optional",
+                                       returned.ToString())},
+                          "return 'Item?' and report the end with 'none'");
             }
             return;
-        }
-        if (!returned.IsOptional()) {
-            ReportLegacyProtocol(declaration.location,
-                                 std::format("iterator method 'Next' on '{}' uses the legacy Option protocol; migrate "
-                                             "it to return a native optional",
-                                             currentExtendedType.ToString()),
-                                 std::format("return '{}?'", reported->payload.ToString()));
         }
         if (WrittenParameterCount(declaration) != 0) {
             EmitError(declaration.location,

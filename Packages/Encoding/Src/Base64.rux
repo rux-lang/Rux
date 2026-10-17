@@ -1,0 +1,277 @@
+// Base64 in the two alphabets RFC 4648 defines, each with and without padding.
+// Every three bytes become four characters of six bits each. The standard alphabet ends in `+` and `/`; the URL-safe
+// one in `-` and `_`, so its output can sit in a URL or a file name unescaped. Padding with `=` rounds the text up
+// to a multiple of four, which the standard form requires and the URL-safe form usually leaves out.
+// Decoding is strict, as section 3.5 of the RFC permits: no whitespace, no line breaks, no characters from the other
+// alphabet, padding exactly where the variant puts it and nowhere else, and the unused low bits of the last
+// character zero. Each of those rules is one way two different texts could otherwise decode to the same bytes, and
+// a decoder that is one-to-one is one whose output can be compared as text.
+// Both directions run in time that depends only on the length, through the arithmetic in `Digits.rux`. The whole
+// text is checked before a byte is written, so a refusal leaves the destination exactly as it was.
+
+import Text::{ Display, FormatError, FormatSpec, PaddingAround, RejectStyle, TextWriter, WriteBytes, WriteFill };
+
+/// Which Base64 alphabet a text uses, and whether it is padded.
+/// Copy, carrying no payload.
+/// @see https://rux-lang.dev/docs/api/encoding/base64#base64-variant
+pub enum Base64Variant {
+    /// The standard alphabet ending in `+` and `/`, padded with `=` to a multiple of four characters. RFC 4648
+    /// section 4, and what MIME, PEM and most protocols mean by Base64.
+    Standard,
+    /// The standard alphabet without padding.
+    StandardUnpadded,
+    /// The URL- and file-name-safe alphabet ending in `-` and `_`, padded. RFC 4648 section 5.
+    Url,
+    /// The URL-safe alphabet without padding, which is what JSON Web Tokens and most URL parameters use.
+    UrlUnpadded
+}
+
+// Whether a variant uses the URL-safe alphabet.
+func IsUrlSafe(form: Base64Variant) -> bool {
+    return form == Base64Variant::Url || form == Base64Variant::UrlUnpadded;
+}
+
+// Whether a variant pads its text to a multiple of four characters.
+func IsPadded(form: Base64Variant) -> bool {
+    return form == Base64Variant::Standard || form == Base64Variant::Url;
+}
+
+/// How many characters the Base64 form of `length` bytes occupies in `form`.
+/// Four characters for every three bytes, with a final partial group taking two or three characters, or four with
+/// padding. Cannot fail for any length a slice in memory can have; runs in constant time and allocates nothing.
+/// @param length the number of bytes to encode
+/// @param form the alphabet and padding to encode with
+/// @returns the number of characters `Base64Encode` writes
+/// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encoded-length
+pub func Base64EncodedLength(length: uint, form: Base64Variant = Base64Variant::Standard) -> uint {
+    let groups = length / 3;
+    let rest = length % 3;
+    if rest == 0 { return groups * 4; }
+    if IsPadded(form) { return groups * 4 + 4; }
+    return groups * 4 + rest + 1;
+}
+
+/// Writes `bytes` as Base64 into `into`.
+/// Runs in time that depends only on the length of `bytes`. Reports `InsufficientCapacity` when `into` is shorter
+/// than `Base64EncodedLength(bytes.length, form)`, leaving it exactly as it was; room past the encoded form is
+/// not touched.
+/// @param bytes the bytes to encode
+/// @param into the destination, at least `Base64EncodedLength(bytes.length, form)` characters
+/// @param form the alphabet and padding to encode with
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encode
+pub func Base64Encode(bytes: byte[..], into: var char8[..],
+                      form: Base64Variant = Base64Variant::Standard) -> uint ! FormatError {
+    let needed = Base64EncodedLength(bytes.length, form);
+    if into.length < needed { fail FormatError::InsufficientCapacity; }
+    let urlSafe = IsUrlSafe(form);
+    var from: uint = 0;
+    var to: uint = 0;
+    while from + 3 <= bytes.length {
+        let group = ((bytes[from] as int32) << 16) | ((bytes[from + 1] as int32) << 8) | (bytes[from + 2] as int32);
+        into[to] = Base64Digit((group >> 18) & 63, urlSafe);
+        into[to + 1] = Base64Digit((group >> 12) & 63, urlSafe);
+        into[to + 2] = Base64Digit((group >> 6) & 63, urlSafe);
+        into[to + 3] = Base64Digit(group & 63, urlSafe);
+        from = from + 3;
+        to = to + 4;
+    }
+    let rest = bytes.length - from;
+    if rest > 0 {
+        var group = (bytes[from] as int32) << 16;
+        if rest == 2 {
+            group = group | ((bytes[from + 1] as int32) << 8);
+        }
+        into[to] = Base64Digit((group >> 18) & 63, urlSafe);
+        into[to + 1] = Base64Digit((group >> 12) & 63, urlSafe);
+        to = to + 2;
+        if rest == 2 {
+            into[to] = Base64Digit((group >> 6) & 63, urlSafe);
+            to = to + 1;
+        }
+        if IsPadded(form) {
+            while to < needed {
+                into[to] = '=';
+                to = to + 1;
+            }
+        }
+    }
+    return needed;
+}
+
+/// Writes the bytes of `text` as Base64 into `into`.
+/// The byte form, reached without the caller reinterpreting the text first: each UTF-8 code unit is one byte.
+/// The failure the byte form reports, with the same guarantee.
+/// @param text the text whose bytes to encode
+/// @param into the destination, at least `Base64EncodedLength(text.length, form)` characters
+/// @param form the alphabet and padding to encode with
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encode
+pub func Base64Encode(text: char8[..], into: var char8[..],
+                      form: Base64Variant = Base64Variant::Standard) -> uint ! FormatError {
+    return Base64Encode(BytesOf(text), into, form);
+}
+
+// How many characters at the end of a padded text are padding, after checking that only the last two may be and
+// that nothing but padding follows the first. Fails at the first padding character that is out of place.
+func CountPadding(text: char8[..]) -> uint ! DecodeError {
+    var first = text.length;
+    var index: uint = 0;
+    while index < text.length {
+        if text[index] == '=' && first == text.length {
+            first = index;
+        }
+        else if text[index] != '=' && first != text.length {
+            // Data after padding: the padding that came before it is what is misplaced.
+            fail DecodeError::InvalidPadding(first);
+        }
+        index = index + 1;
+    }
+    let count = text.length - first;
+    if count > 2 { fail DecodeError::InvalidPadding(first); }
+    return count;
+}
+
+/// How many bytes the Base64 text decodes to, after checking its length and the placement of its padding.
+/// Only the shape is checked; the characters are checked by `Base64Decode`. A padded variant needs a multiple of four
+/// characters with at most two `=` at the end; an unpadded one any length except one more than a multiple of four,
+/// and no `=` at all. Reports `InvalidLength` at the end of the text, or `InvalidPadding` at the first `=` that is
+/// out of place. Runs in time linear in the length and allocates nothing.
+/// @param text the Base64 text
+/// @param form the alphabet and padding the text is expected to use
+/// @returns the number of bytes `Base64Decode` writes for it
+/// @see https://rux-lang.dev/docs/api/encoding/base64#base64-decoded-length
+pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Variant::Standard) -> uint ! DecodeError {
+    if IsPadded(form) {
+        if text.length % 4 != 0 { fail DecodeError::InvalidLength(text.length); }
+        let padding = CountPadding(text)?;
+        return text.length / 4 * 3 - padding;
+    }
+    var index: uint = 0;
+    while index < text.length {
+        if text[index] == '=' { fail DecodeError::InvalidPadding(index); }
+        index = index + 1;
+    }
+    let rest = text.length % 4;
+    if rest == 1 { fail DecodeError::InvalidLength(text.length); }
+    return text.length / 4 * 3 + (rest == 0 ? 0 : rest - 1);
+}
+
+/// Reads Base64 text in `form` into `into`.
+/// Runs in time that depends only on the length of `text` when the text is valid. Reports, in this order of
+/// precedence, `InvalidLength` or `InvalidPadding` for a text of the wrong shape, `InvalidCharacter` at the first
+/// character outside the variant's alphabet, `NonCanonical` at a last character whose unused bits are not zero, and
+/// `InsufficientCapacity` with the length needed when `into` is too short. Every refusal leaves `into` untouched,
+/// because the whole text is checked before anything is written.
+/// @param text the Base64 text to decode
+/// @param into the destination, at least `Base64DecodedLength(text, form)` bytes
+/// @param form the alphabet and padding the text is expected to use
+/// @returns the number of bytes written
+/// @see https://rux-lang.dev/docs/api/encoding/base64#base64-decode
+pub func Base64Decode(text: char8[..], into: var byte[..],
+                      form: Base64Variant = Base64Variant::Standard) -> uint ! DecodeError {
+    let needed = Base64DecodedLength(text, form)?;
+    let urlSafe = IsUrlSafe(form);
+    // The characters that carry data: everything before the padding, whose shape is already checked.
+    var digits = text.length;
+    while digits > 0 && text[digits - 1] == '=' {
+        digits = digits - 1;
+    }
+    var invalid: int32 = 0;
+    var index: uint = 0;
+    while index < digits {
+        invalid = invalid | Base64Value(CharCode(text[index]), urlSafe);
+        index = index + 1;
+    }
+    if invalid < 0 {
+        index = 0;
+        while Base64Value(CharCode(text[index]), urlSafe) >= 0 {
+            index = index + 1;
+        }
+        fail DecodeError::InvalidCharacter(index);
+    }
+    // A partial group of two characters carries one byte and four unused bits; of three, two bytes and two.
+    let rest = digits % 4;
+    if rest != 0 {
+        let last = Base64Value(CharCode(text[digits - 1]), urlSafe);
+        let unused = rest == 2 ? 15 : 3;
+        if (last & unused) != 0 { fail DecodeError::NonCanonical(digits - 1); }
+    }
+    if into.length < needed { fail DecodeError::InsufficientCapacity(needed); }
+
+    var from: uint = 0;
+    var to: uint = 0;
+    while from + 4 <= digits {
+        let group = (Base64Value(CharCode(text[from]), urlSafe) << 18) |
+                    (Base64Value(CharCode(text[from + 1]), urlSafe) << 12) |
+                    (Base64Value(CharCode(text[from + 2]), urlSafe) << 6) | Base64Value(CharCode(text[from + 3]), urlSafe);
+        into[to] = ((group >> 16) & 255) as byte;
+        into[to + 1] = ((group >> 8) & 255) as byte;
+        into[to + 2] = (group & 255) as byte;
+        from = from + 4;
+        to = to + 3;
+    }
+    if rest >= 2 {
+        var group = (Base64Value(CharCode(text[from]), urlSafe) << 18) |
+                    (Base64Value(CharCode(text[from + 1]), urlSafe) << 12);
+        if rest == 3 {
+            group = group | (Base64Value(CharCode(text[from + 2]), urlSafe) << 6);
+        }
+        into[to] = ((group >> 16) & 255) as byte;
+        to = to + 1;
+        if rest == 3 {
+            into[to] = ((group >> 8) & 255) as byte;
+            to = to + 1;
+        }
+    }
+    return needed;
+}
+
+/// A borrowed byte sequence that renders as Base64 under a format placeholder.
+/// Lets a caller write `Render("{}", ViewBase64(key))` instead of sizing a buffer first. The view borrows the bytes
+/// and must not outlive them. Copy, owning nothing.
+/// @see https://rux-lang.dev/docs/api/encoding/base64#base64-view
+pub struct Base64View {
+    bytes: byte[..];
+    form: Base64Variant;
+}
+
+/// Borrows `bytes` for rendering as Base64.
+/// Cannot fail and allocates nothing; the view reads `bytes` each time it is rendered, so it must not outlive them.
+/// @param bytes the bytes to render
+/// @param form the alphabet and padding to render with
+/// @returns a view that renders `bytes` as Base64
+/// @see https://rux-lang.dev/docs/api/encoding/base64#view-base64
+pub func ViewBase64(bytes: byte[..], form: Base64Variant = Base64Variant::Standard) -> Base64View {
+    return Base64View { bytes: bytes, form: form };
+}
+
+extend Base64View : Display {
+    /// Writes the bytes as Base64, padded to the placeholder's width.
+    /// The text is produced in blocks, so rendering allocates nothing however long the bytes are. Reports whatever the
+    /// writer reported, and `UnsupportedRequest` for a precision or a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-view-write-display
+    pub func WriteDisplay(self: &Base64View, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.HasPrecision() { fail FormatError::UnsupportedRequest; }
+        RejectStyle(spec)?;
+        var before: uint = 0;
+        var after: uint = 0;
+        PaddingAround(spec, Base64EncodedLength(self.bytes.length, self.form), false, @before, @after);
+        WriteFill(writer, spec, before)?;
+        // Ninety-six bytes is a whole number of groups, so only the last block can end in a partial one.
+        var block: char8[128];
+        var index: uint = 0;
+        while index < self.bytes.length {
+            let end = self.bytes.length - index > 96 ? index + 96 : self.bytes.length;
+            let written = Base64Encode(self.bytes[index..end], block[..], self.form) catch {
+                else => fail FormatError::InsufficientCapacity
+            };
+            WriteBytes(writer, block[..written])?;
+            index = end;
+        }
+        return WriteFill(writer, spec, after);
+    }
+}

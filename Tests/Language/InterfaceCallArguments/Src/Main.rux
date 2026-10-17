@@ -1,7 +1,7 @@
 import Core::Assert;
 
 interface Writer {
-    func Put(value: uint) -> uint;
+    func Put(self: &var Self, value: uint) -> uint;
 }
 
 struct Buffer {

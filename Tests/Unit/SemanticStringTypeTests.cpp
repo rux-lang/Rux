@@ -150,9 +150,9 @@ TEST_CASE("text has no member other than data and length") {
             let size = text.size;
         }
     )"));
-    REQUIRE_EQ(messages.size(), 2);
+    // The variable's missing type follows from the reported member, so it adds no warning of its own.
+    REQUIRE_EQ(messages.size(), 1);
     CHECK_EQ(messages[0], "slice type 'char8[..]' has no member 'size'");
-    CHECK_EQ(messages[1], "cannot infer type of 'size'");
 }
 
 TEST_CASE("a literal's code units cannot be written through the view") {

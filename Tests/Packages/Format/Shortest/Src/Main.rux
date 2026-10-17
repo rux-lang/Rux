@@ -5,24 +5,20 @@ import Text::{ FormatError, String, StringView };
 
 // The claim this file exists to check is one sentence: what is written reads back as the same bits, and nothing
 // shorter would.
-//
 // The first half is closure, and it is the only check that catches a renderer and a parser wrong in the same
 // direction — an exact expectation written by hand cannot, because the hand writes what it believes. Every value
 // below is rendered, read back, and compared as bits rather than as numbers, so a NaN or a signed zero is held to
 // the same standard as an ordinary value.
-//
 // The second half is the exact expectations, which come from somewhere other than this code: the structural values
 // whose decimal expansion is a matter of arithmetic rather than of trusting a tool, and the two that are famous
 // for showing whether a renderer is exact at all. `0.1` is not a tenth and never was, and a renderer that prints
 // its true expansion is right and useless; one that prints `0.1` has found the shortest decimal no other float is
 // closer to. `1/3` is the case where fifteen digits and sixteen differ, which is where the old fixed-digit engine
 // stopped being a round trip.
-//
 // The adjacent values are the hard ones. Two floats one bit apart must not render alike, or reading either back
 // gives the same value and one of them is lost. They are built by walking the bits rather than by arithmetic,
 // which is the only way to be sure they really are adjacent. That property is entirely the renderer's, so the
 // sweep across the exponent range checks it alongside closure rather than instead of it.
-//
 // Closure now holds across the whole range. It did not when the renderer landed: the reader was still the
 // approximate one, and it read back 1e300 as a different value than it was given, so the extremes had to be
 // asserted as *not* closing with the gap named. Those assertions are inverted here, which is what an exact reader
@@ -155,7 +151,7 @@ func Main() -> int {
     while decade <= 300 {
         Assert(RoundTrips64(allocator, probe), "every exponent decade closes");
         Assert(RoundTrips64(allocator, -probe), "in both signs");
-        let neighbour = FromBits64(BitsOfFloat64(probe) + 1u64);
+        let neighbour = FromBits64(BitsOfFloat64(probe) + 1);
         Assert(RenderDiffers64(allocator, probe, neighbour),
                "and a value and its neighbour render differently at every decade");
         probe = probe * 10.0;
@@ -165,25 +161,25 @@ func Main() -> int {
     // Adjacent values: two floats one bit apart must not render alike, or reading either back loses one of them.
     // They are built by walking the bits, which is the only way to be certain they are adjacent.
     let base = 1.0;
-    let next = FromBits64(BitsOfFloat64(base) + 1u64);
+    let next = FromBits64(BitsOfFloat64(base) + 1);
     Assert(RenderDiffers64(allocator, base, next), "one and the float after it do not render alike");
     Assert(RoundTrips64(allocator, next), "and the one after it round-trips");
-    let after = FromBits64(BitsOfFloat64(base) + 2u64);
+    let after = FromBits64(BitsOfFloat64(base) + 2);
     Assert(RenderDiffers64(allocator, next, after), "nor do the next two");
 
     // The same at the bottom of the range, where the gaps are smallest in absolute terms.
-    let tiny = FromBits64(1u64);
-    let tinyNext = FromBits64(2u64);
+    let tiny = FromBits64(1);
+    let tinyNext = FromBits64(2);
     Assert(RenderDiffers64(allocator, tiny, tinyNext), "the two smallest subnormals do not render alike");
     Assert(RoundTrips64(allocator, tiny) && RoundTrips64(allocator, tinyNext), "and both round-trip");
 
     // And at a binade boundary, which is the case where the lower gap is half the upper one. The value just below
     // a power of two and the power itself are on opposite sides of that asymmetry.
     let power = 4.0;
-    let belowPower = FromBits64(BitsOfFloat64(power) - 1u64);
+    let belowPower = FromBits64(BitsOfFloat64(power) - 1);
     Assert(RenderDiffers64(allocator, belowPower, power), "a power of two and the value below it differ");
     Assert(RoundTrips64(allocator, power), "the power round-trips");
-    let abovePower = FromBits64(BitsOfFloat64(power) + 1u64);
+    let abovePower = FromBits64(BitsOfFloat64(power) + 1);
     Assert(RenderDiffers64(allocator, power, abovePower), "and the value above it differs too");
     // The two neighbours need seventeen digits to say what they are, which is where the approximate reader used to
     // lose the last one.

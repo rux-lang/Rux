@@ -1,7 +1,11 @@
-import Core::{ OperatingSystem, #target };
+import Core::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::macOS {
-    import macOS::{ AtFdCwd, ClockGetResolution, ClockMonotonic, Close, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS, Errno, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, FstatAt, GetPid, GetRandom, GetTimeOfDay, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, Normalize, OpenAt, OpenReadOnly, ProtectionRead, ProtectionWrite, Read, Timespec, Timeval, Write };
+    import macOS::{ AtFdCwd, ClockGetResolution, ClockMonotonic, Close, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT,
+                    EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR,
+                    ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, Errno, FstatAt, GetPid,
+                    GetRandom, GetTimeOfDay, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, Normalize,
+                    OpenAt, OpenReadOnly, ProtectionRead, ProtectionWrite, Read, Timespec, Timeval, Write };
 
     // Every call here goes through libSystem, which is the only interface Apple supports. The previous version of
     // this test drove the trap instruction directly with a call number, which is exactly what a Darwin binary must
@@ -59,7 +63,7 @@ when #target.os == OperatingSystem::macOS {
         }
 
         // The entropy source cannot fail and has no count to check, so what is checked is that it wrote something.
-        var seed: uint64[4] = [0, 0, 0, 0];
+        var seed: uint64[4] = [0; 4];
         GetRandom(@seed[0] as *var opaque, 32);
         if seed[0] == 0 && seed[1] == 0 && seed[2] == 0 && seed[3] == 0 {
             return 10;
@@ -75,7 +79,6 @@ when #target.os == OperatingSystem::macOS {
         }
 
         // --- The shared POSIX contract ------------------------------------------------------------------------
-        //
         // Everything below is spelled identically in the Linux, macOS and FreeBSD copies of this test. That is
         // the contract task 38 aligned: one wrapper name, one parameter shape, one call site. The numbers differ
         // per system and are asserted per system, which is the part that must not be shared.

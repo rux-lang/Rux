@@ -1,0 +1,17 @@
+// A compiler-parameter lookup is answered while compiling, so its argument is written in the source.
+struct Config {}
+
+extend Config {
+    intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
+    intrinsic func Has(self: &Config, name: char8[..]) -> bool;
+}
+
+intrinsic #config: Config;
+
+func Main() -> int {
+    let literal = #config.Has("allocator");
+    let name = "allocator";
+    let computed = #config.Has(name);
+    let value = #config.Get(name);
+    return 0;
+}

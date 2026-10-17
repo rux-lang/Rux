@@ -1,4 +1,5 @@
-import Core::{ Assert, ConvertChecked, ConvertSaturating, ConvertWrapping, IsFinite, IsInfinite, IsNaN, IsSignNegative, IsNegativeZero, IsSignPositive, IsSignedType, IsZero, SignOf };
+import Core::{ Assert, ConvertChecked, ConvertSaturating, ConvertWrapping, IsFinite, IsInfinite, IsNaN, IsNegativeZero,
+               IsSignNegative, IsSignPositive, IsSignedType, IsZero, SignOf };
 
 // The conversions are checked in both directions across every boundary that can lose a value: narrower, wider, and
 // same-width-different-signedness, which is the pair a round trip alone cannot see. The classification predicates are
@@ -104,20 +105,20 @@ func CheckFloat<T>(zero: T, negativeZero: T, one: T, infinity: T, nan: T) -> int
 
 func Main() -> int {
     // A type reports its own signedness, at every width.
-    Assert(IsSignedType<int8>(0i8), "int8 is signed");
-    Assert(IsSignedType<int64>(0i64), "int64 is signed");
-    Assert(IsSignedType<int128>(0i128), "int128 is signed");
-    Assert(IsSignedType<int512>(0i512), "int512 is signed");
-    Assert(!IsSignedType<uint8>(0u8), "uint8 is unsigned");
-    Assert(!IsSignedType<uint64>(0u64), "uint64 is unsigned");
-    Assert(!IsSignedType<uint512>(0u512), "uint512 is unsigned");
+    Assert(IsSignedType<int8>(0), "int8 is signed");
+    Assert(IsSignedType<int64>(0), "int64 is signed");
+    Assert(IsSignedType<int128>(0), "int128 is signed");
+    Assert(IsSignedType<int512>(0), "int512 is signed");
+    Assert(!IsSignedType<uint8>(0), "uint8 is unsigned");
+    Assert(!IsSignedType<uint64>(0), "uint64 is unsigned");
+    Assert(!IsSignedType<uint512>(0), "uint512 is unsigned");
 
     // Narrowing: what fits, and what does not.
-    Assert(CheckExact<int32, uint8>(200i32, 200u8, 0u8) == 0, "a value inside the narrower range");
-    Assert(CheckLost<int32, uint8>(300i32, 44u8, 255u8, 0u8) == 0, "a magnitude past the narrower maximum");
-    Assert(CheckLost<int32, uint8>(-1i32, 255u8, 0u8, 0u8) == 0, "a negative value converted to an unsigned type");
-    Assert(CheckExact<int32, int8>(-128i32, -128i8, 0i8) == 0, "the narrower minimum itself");
-    Assert(CheckLost<int32, int8>(-129i32, 127i8, -128i8, 0i8) == 0, "one past the narrower minimum");
+    Assert(CheckExact<int32, uint8>(200, 200, 0) == 0, "a value inside the narrower range");
+    Assert(CheckLost<int32, uint8>(300, 44, 255, 0) == 0, "a magnitude past the narrower maximum");
+    Assert(CheckLost<int32, uint8>(-1, 255, 0, 0) == 0, "a negative value converted to an unsigned type");
+    Assert(CheckExact<int32, int8>(-128, -128, 0) == 0, "the narrower minimum itself");
+    Assert(CheckLost<int32, int8>(-129, 127, -128, 0) == 0, "one past the narrower minimum");
 
     // Widening never loses anything, sign included.
     Assert(CheckExact<int32, int64>(-5i32, -5i64, 0i64) == 0, "a negative value widened");
@@ -136,9 +137,9 @@ func Main() -> int {
     // Floats to integers: a fraction is a loss, and so is a magnitude the integer cannot hold.
     Assert(CheckExact<float64, int32>(2.0f64, 2i32, 0i32) == 0, "a float that is a whole number");
     Assert(CheckExact<float64, int32>(-2.0f64, -2i32, 0i32) == 0, "a negative whole number");
-    var truncated = 0i32;
+    var truncated: int32 = 0;
     Assert(ConvertChecked<float64, int32>(1.5f64, @truncated), "a fraction cannot be an integer");
-    Assert(truncated == 1i32, "the truncated answer is written even so");
+    Assert(truncated == 1, "the truncated answer is written even so");
 
     // Narrowing a float: exact when the value has room, lossy when it does not.
     var narrowed = 0.0f32;
@@ -151,13 +152,13 @@ func Main() -> int {
     let one64 = 1.0f64;
     let infinity64 = one64 / zero64;
     let nan64 = zero64 / zero64;
-    var target = 0i32;
+    var target: int32 = 0;
     Assert(ConvertChecked<float64, int32>(nan64, @target), "a NaN is no integer");
     ConvertSaturating<float64, int32>(nan64, @target);
-    Assert(target == 0i32, "a NaN has no nearest value and saturates to zero");
+    Assert(target == 0, "a NaN has no nearest value and saturates to zero");
     Assert(ConvertChecked<float64, int32>(infinity64, @target), "an infinity is no integer");
     ConvertSaturating<float64, int32>(infinity64, @target);
-    Assert(target == 2147483647i32, "an infinity saturates to the maximum");
+    Assert(target == 2147483647, "an infinity saturates to the maximum");
     ConvertSaturating<float64, int32>(zero64 - infinity64, @target);
     Assert(target == -2147483648i32, "a negative infinity saturates to the minimum");
 

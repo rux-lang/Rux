@@ -1,0 +1,93 @@
+// A conditional update inside a loop that computes only integers runs without a branch: the condition becomes 0 or 1
+// and selects the new value arithmetically. Each loop here takes its update on an irregular set of iterations, with
+// counts that wrap, sums that go negative, a choice between two unrelated values and an update on the else side, so
+// a wrong mask or a condition read the wrong way round changes the result.
+
+import Core::Assert;
+
+var Marks: uint8[1000] = [0u8; 1000];
+var Values: int32[1000] = [0i32; 1000];
+// Written by the reference loops in `Main` so their branches keep a store and stay branches.
+var Updates: uint = 0;
+
+func CountZeros(length: uint) -> uint64 {
+    var count: uint64 = 0;
+    var sum: uint64 = 0;
+    var index: uint = 0;
+    while index < length {
+        if Marks[index] == 0u8 {
+            count += 1;
+            sum += index as uint64;
+        }
+        index++;
+    }
+    return count * 1000000 + sum;
+}
+
+func CountMarked(length: uint) -> uint8 {
+    var count: uint8 = 0;
+    var index: uint = 0;
+    while index < length {
+        if Marks[index] == 0u8 {
+        } else {
+            count += 1u8;
+        }
+        index++;
+    }
+    return count;
+}
+
+func Choose(length: uint) -> int32 {
+    var best: int32 = -5;
+    var index: uint = 0;
+    while index < length {
+        let value = Values[index];
+        if value > best {
+            best = value - 1;
+        }
+        index++;
+    }
+    return best;
+}
+
+func SignedSum(length: uint) -> int16 {
+    var sum: int16 = 0;
+    var index: uint = 0;
+    while index < length {
+        if Values[index] < 0 {
+            sum -= 3i16;
+        }
+        index++;
+    }
+    return sum;
+}
+
+func Main() -> int {
+    var expectedZeros: uint64 = 0;
+    var expectedSum: uint64 = 0;
+    var marked: uint = 0;
+    for i in 0u..1000u {
+        let isMarked = (i * 7 + i / 13) % 5 == 1;
+        Marks[i] = isMarked ? 1u8 : 0u8;
+        if isMarked {
+            marked += 1;
+        } else {
+            expectedZeros += 1;
+            expectedSum += i as uint64;
+            Updates++;
+        }
+        Values[i] = ((i * 37) % 101) as int32 - 50;
+    }
+    Assert(CountZeros(1000) == expectedZeros * 1000000 + expectedSum, "a count and a sum taken on zeros");
+    Assert(CountZeros(0) == 0, "an empty loop takes no update");
+    Assert(CountMarked(1000) as uint == marked % 256, "an else-side count wraps at 256");
+    var best: int32 = -5;
+    var negatives: int16 = 0;
+    for i in 0u..1000u {
+        if Values[i] > best { best = Values[i] - 1; Updates++; }
+        if Values[i] < 0 { negatives -= 3i16; Updates++; }
+    }
+    Assert(Choose(1000) == best, "a choice between two values follows the condition");
+    Assert(SignedSum(1000) == negatives, "a signed narrow sum goes negative");
+    return 0;
+}

@@ -1,0 +1,5 @@
+6:11: error: shift count 64 is out of range for 'int64', which takes counts from 0 to 63
+8:17: error: shift count 32 is out of range for 'int32', which takes counts from 0 to 31
+8:28: error: shift count 8 is out of range for 'uint8', which takes counts from 0 to 7
+8:47: error: shift count -1 is out of range for 'int32', which takes counts from 0 to 31
+8:57: error: shift count 32 is out of range for 'int32', which takes counts from 0 to 31

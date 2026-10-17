@@ -1,39 +1,37 @@
 // The three integer widths past the machine word.
-//
 // A `uint512` in decimal is one hundred fifty-five digits, and its digit loop is the same division loop every
 // narrower width uses — the arithmetic itself is the compiler's, which lowers wide division natively. What differs
 // per width is only the type the loop runs in, so each width carries its loop and everything after the digits is
 // shared with the narrow widths through `WriteIntegerDigits`.
-//
 // The magnitude of a negative value is taken in the unsigned counterpart, for the reason the narrow widths do it:
 // the most negative value of any signed width has no positive counterpart to negate into, and two's complement in
 // the unsigned type is right for it and for every other value.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
+import Text::{ Debug, Display, FormatBase, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
 
 // The digits of a `uint128`, least significant first, in the spec's base.
 func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint128, negative: bool) -> ! FormatError {
     var digits: char8[128];
     var count: uint = 0;
-    var radix: uint128 = 10u128;
+    var radix: uint128 = 10;
     if spec.Base() == FormatBase::Binary {
-        radix = 2u128;
+        radix = 2;
     }
     else if spec.Base() == FormatBase::Octal {
-        radix = 8u128;
+        radix = 8;
     }
     else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
-        radix = 16u128;
+        radix = 16;
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
-    if rest == 0u128 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u128 {
+    while rest > 0 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -42,17 +40,13 @@ func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint12
 
 extend uint128 : Display {
     /// Writes this value's digits in the spec's base.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack — 128 bytes covers the binary rendering,
     /// which is the longest — and reach the writer one piece at a time.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint128/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint128-write-display
     pub func WriteDisplay(self: &uint128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteDigits128(writer, spec, self, false);
     }
@@ -60,14 +54,11 @@ extend uint128 : Display {
 
 extend uint128 : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint128/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint128-write-debug
     pub func WriteDebug(self: &uint128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -75,31 +66,25 @@ extend uint128 : Debug {
 
 extend int128 : Display {
     /// Writes this value's sign and digits in the spec's base.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int128/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int128-write-display
     pub func WriteDisplay(self: &int128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        let negative = self < 0i128;
-        let magnitude = negative ? ~(self as uint128) + 1u128 : self as uint128;
+        let negative = self < 0;
+        let magnitude = negative ? ~(self as uint128) + 1 : self as uint128;
         return WriteDigits128(writer, spec, magnitude, negative);
     }
 }
 
 extend int128 : Debug {
     /// The same sign and digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int128/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int128-write-debug
     pub func WriteDebug(self: &int128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -109,25 +94,25 @@ extend int128 : Debug {
 func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint256, negative: bool) -> ! FormatError {
     var digits: char8[256];
     var count: uint = 0;
-    var radix: uint256 = 10u256;
+    var radix: uint256 = 10;
     if spec.Base() == FormatBase::Binary {
-        radix = 2u256;
+        radix = 2;
     }
     else if spec.Base() == FormatBase::Octal {
-        radix = 8u256;
+        radix = 8;
     }
     else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
-        radix = 16u256;
+        radix = 16;
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
-    if rest == 0u256 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u256 {
+    while rest > 0 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -136,17 +121,13 @@ func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint25
 
 extend uint256 : Display {
     /// Writes this value's digits in the spec's base.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack — 256 bytes covers the binary rendering,
     /// which is the longest — and reach the writer one piece at a time.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint256/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint256-write-display
     pub func WriteDisplay(self: &uint256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteDigits256(writer, spec, self, false);
     }
@@ -154,14 +135,11 @@ extend uint256 : Display {
 
 extend uint256 : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint256/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint256-write-debug
     pub func WriteDebug(self: &uint256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -169,31 +147,25 @@ extend uint256 : Debug {
 
 extend int256 : Display {
     /// Writes this value's sign and digits in the spec's base.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int256/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int256-write-display
     pub func WriteDisplay(self: &int256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        let negative = self < 0i256;
-        let magnitude = negative ? ~(self as uint256) + 1u256 : self as uint256;
+        let negative = self < 0;
+        let magnitude = negative ? ~(self as uint256) + 1 : self as uint256;
         return WriteDigits256(writer, spec, magnitude, negative);
     }
 }
 
 extend int256 : Debug {
     /// The same sign and digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int256/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int256-write-debug
     pub func WriteDebug(self: &int256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -203,25 +175,25 @@ extend int256 : Debug {
 func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint512, negative: bool) -> ! FormatError {
     var digits: char8[512];
     var count: uint = 0;
-    var radix: uint512 = 10u512;
+    var radix: uint512 = 10;
     if spec.Base() == FormatBase::Binary {
-        radix = 2u512;
+        radix = 2;
     }
     else if spec.Base() == FormatBase::Octal {
-        radix = 8u512;
+        radix = 8;
     }
     else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
-        radix = 16u512;
+        radix = 16;
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
-    if rest == 0u512 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u512 {
+    while rest > 0 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -230,17 +202,13 @@ func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint51
 
 extend uint512 : Display {
     /// Writes this value's digits in the spec's base.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack — 512 bytes covers the binary rendering,
     /// which is the longest — and reach the writer one piece at a time.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint512/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint512-write-display
     pub func WriteDisplay(self: &uint512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteDigits512(writer, spec, self, false);
     }
@@ -248,14 +216,11 @@ extend uint512 : Display {
 
 extend uint512 : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint512/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint512-write-debug
     pub func WriteDebug(self: &uint512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -263,31 +228,25 @@ extend uint512 : Debug {
 
 extend int512 : Display {
     /// Writes this value's sign and digits in the spec's base.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int512/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int512-write-display
     pub func WriteDisplay(self: &int512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        let negative = self < 0i512;
-        let magnitude = negative ? ~(self as uint512) + 1u512 : self as uint512;
+        let negative = self < 0;
+        let magnitude = negative ? ~(self as uint512) + 1 : self as uint512;
         return WriteDigits512(writer, spec, magnitude, negative);
     }
 }
 
 extend int512 : Debug {
     /// The same sign and digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int512/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int512-write-debug
     pub func WriteDebug(self: &int512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }

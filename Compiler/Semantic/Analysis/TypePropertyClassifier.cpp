@@ -26,7 +26,7 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
     if (type.IsPrimitive()) {
         return TypeProperties::Copy();
     }
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Unknown:
     case TypeRef::Kind::TypeParam:
         return TypeProperties::Unresolved();
@@ -44,7 +44,7 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
     case TypeRef::Kind::RangeFrom:
     case TypeRef::Kind::RangeTo:
     case TypeRef::Kind::RangeToInclusive:
-        return type.inner.empty() ? TypeProperties::Unresolved() : Classify(type.inner.front());
+        return type->inner.empty() ? TypeProperties::Unresolved() : Classify(type->inner.front());
     // A native sum, optional, or fallible stores one of its payloads, so it supports an operation only when every
     // payload it can hold does, exactly as a tuple does over its elements.
     case TypeRef::Kind::Sum:
@@ -52,7 +52,7 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
     case TypeRef::Kind::Fallible:
     case TypeRef::Kind::Tuple: {
         TypeProperties result = TypeProperties::Copy();
-        for (const TypeRef &element : type.inner) {
+        for (const TypeRef &element : type->inner) {
             result = Combine(result, Classify(element));
         }
         return result;
@@ -66,12 +66,12 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
 }
 
 TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
-    const std::string key = type.ToString();
+    const std::string &key = type.ToString();
     if (const auto known = cache.find(key); known != cache.end()) {
         return known->second;
     }
 
-    const std::string baseName = BaseTypeName(type.name);
+    const std::string baseName = BaseTypeName(type->name);
     // An interface object is a borrowed, pointer-shaped view. Its pointee may be move-only without making the view
     // itself move-only.
     if (interfaces.contains(baseName)) {
@@ -80,7 +80,7 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
         return result;
     }
 
-    const std::vector<TypeRef> arguments = parseTypeArguments(type.name);
+    const std::vector<TypeRef> arguments = parseTypeArguments(type->name);
     if (!activeTypes.insert(key).second) {
         // Imported generic owners may expose only their instantiated element type to this package. Following that
         // element can return to the type currently being classified (for example Value -> Vector<Member> -> Value).
@@ -104,8 +104,8 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
     else if (const auto unionType = unions.find(baseName); unionType != unions.end()) {
         result = ClassifyUnion(*unionType->second);
     }
-    else if (!type.inner.empty()) {
-        result = Classify(type.inner.front());
+    else if (!type->inner.empty()) {
+        result = Classify(type->inner.front());
     }
 
     const bool directlyDroppable = DeclaresDestructor(type, arguments);
@@ -178,7 +178,7 @@ TypeProperties TypePropertyClassifier::ClassifyUnion(const UnionDecl &declaratio
 }
 
 bool TypePropertyClassifier::DeclaresDestructor(const TypeRef &type, const std::vector<TypeRef> &arguments) const {
-    const std::string baseName = BaseTypeName(type.name);
+    const std::string baseName = BaseTypeName(type->name);
     const auto typeMethods = methodsByType.find(baseName);
     if (typeMethods == methodsByType.end()) {
         return false;
@@ -208,15 +208,15 @@ bool TypePropertyClassifier::DeclaresDestructor(const TypeRef &type, const std::
             // ownership classification stable until the receiver type is available.
             return true;
         }
-        return receiver.kind == TypeRef::Kind::Reference && !receiver.inner.empty() && receiver.inner.front().isMut &&
-               SameValueType(receiver.inner.front(), type);
+        return receiver->kind == TypeRef::Kind::Reference && !receiver->inner.empty() &&
+               receiver->inner.front().isMut && SameValueType(receiver->inner.front(), type);
     });
 }
 
 std::optional<TypeProperties::SpecialOperationState>
 TypePropertyClassifier::DeclaredSpecialOperation(const TypeRef &type, const std::vector<TypeRef> &arguments,
                                                  const std::string_view name) const {
-    const std::string baseName = BaseTypeName(type.name);
+    const std::string baseName = BaseTypeName(type->name);
     const auto typeMethods = methodsByType.find(baseName);
     if (typeMethods == methodsByType.end()) {
         return std::nullopt;
@@ -259,15 +259,15 @@ bool TypePropertyClassifier::IsCanonicalSpecialOperation(const FuncDecl &method,
         // shape, which is enough to preserve the declared generated/custom/prohibited state.
         return true;
     }
-    if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut ||
-        !SameValueType(receiver.inner.front(), type)) {
+    if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() || !receiver->inner.front().isMut ||
+        !SameValueType(receiver->inner.front(), type)) {
         return false;
     }
     if (!copy) {
-        return other.kind != TypeRef::Kind::Reference && SameValueType(other, type);
+        return other->kind != TypeRef::Kind::Reference && SameValueType(other, type);
     }
-    return other.kind == TypeRef::Kind::Reference && !other.inner.empty() && !other.inner.front().isMut &&
-           SameValueType(other.inner.front(), type);
+    return other->kind == TypeRef::Kind::Reference && !other->inner.empty() && !other->inner.front().isMut &&
+           SameValueType(other->inner.front(), type);
 }
 
 std::string TypePropertyClassifier::BaseTypeName(const std::string &name) {

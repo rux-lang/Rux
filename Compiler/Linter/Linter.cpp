@@ -124,34 +124,37 @@ std::string_view ConventionName(const NamingConvention convention) {
 ///
 /// @return nullopt for a declaration that introduces no name of its own
 std::optional<std::string> DeclName(const Decl &decl) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         return function->name;
     }
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+    if (const auto *structure = AstCast<const StructDecl>(&decl)) {
         return structure->name;
     }
-    if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+    if (const auto *enumeration = AstCast<const EnumDecl>(&decl)) {
         return enumeration->name;
     }
-    if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+    if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
         return unionDecl->name;
     }
-    if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
         return interfaceDecl->name;
     }
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         return module->name;
     }
-    if (const auto *constant = dynamic_cast<const ConstDecl *>(&decl)) {
+    if (const auto *constant = AstCast<const ConstDecl>(&decl)) {
         return constant->name;
     }
-    if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    if (const auto *global = AstCast<const GlobalDecl>(&decl)) {
+        return global->name;
+    }
+    if (const auto *alias = AstCast<const TypeAliasDecl>(&decl)) {
         return alias->name;
     }
-    if (const auto *function = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const ExternFuncDecl>(&decl)) {
         return function->name;
     }
-    if (const auto *variable = dynamic_cast<const ExternVarDecl *>(&decl)) {
+    if (const auto *variable = AstCast<const ExternVarDecl>(&decl)) {
         return variable->name;
     }
     return std::nullopt;
@@ -182,22 +185,22 @@ std::vector<std::string> Names(const std::vector<T> &items) {
 /// Collect the bindings a pattern introduces, recursing through nested patterns, since each is a name the convention
 /// applies to.
 void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names) {
-    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         if (!identifier->name.empty()) {
             names.push_back(identifier->name);
         }
     }
-    else if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+    else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         if (!typed->name.empty()) {
             names.push_back(typed->name);
         }
     }
-    else if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         if (presence->inner) {
             AppendPatternNames(*presence->inner, names);
         }
     }
-    else if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+    else if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         if (range->lo) {
             AppendPatternNames(*range->lo, names);
         }
@@ -205,7 +208,7 @@ void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names)
             AppendPatternNames(*range->hi, names);
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         for (const auto &argument : enumeration->args) {
             if (argument) {
                 AppendPatternNames(*argument, names);
@@ -217,21 +220,21 @@ void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names)
             }
         }
     }
-    else if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         for (const auto &field : structure->fields) {
             if (field.pattern) {
                 AppendPatternNames(*field.pattern, names);
             }
         }
     }
-    else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         for (const auto &element : tuple->elements) {
             if (element) {
                 AppendPatternNames(*element, names);
             }
         }
     }
-    else if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         if (guarded->inner) {
             AppendPatternNames(*guarded->inner, names);
         }
@@ -243,7 +246,7 @@ void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names)
 std::vector<std::string> BlockBindingNames(const Block &block, const std::span<const std::string> inheritedNames) {
     std::vector<std::string> names(inheritedNames.begin(), inheritedNames.end());
     for (const auto &statement : block.stmts) {
-        if (const auto *binding = dynamic_cast<const LetStmt *>(statement.get())) {
+        if (const auto *binding = AstCast<const LetStmt>(statement.get())) {
             if (!binding->name.empty()) {
                 names.push_back(binding->name);
             }
@@ -397,23 +400,26 @@ private:
         bool callable = false;
         bool returnsValue = false;
         std::string name = DeclName(decl).value_or("item");
-        if (const auto *functionDecl = dynamic_cast<const FuncDecl *>(&decl)) {
+        if (const auto *functionDecl = AstCast<const FuncDecl>(&decl)) {
             parameters = &functionDecl->params;
             typeParameters = &functionDecl->typeParams;
             callable = true;
             returnsValue = functionDecl->returnType.has_value() && !functionDecl->isNoReturn &&
                            !IsDestructorName(functionDecl->name);
         }
-        else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+        else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&decl)) {
             parameters = &externFunction->params;
             callable = true;
             returnsValue = externFunction->returnType.has_value() && !externFunction->isNoReturn;
         }
-        else if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+        else if (const auto *structure = AstCast<const StructDecl>(&decl)) {
             typeParameters = &structure->typeParams;
         }
-        else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+        else if (const auto *enumeration = AstCast<const EnumDecl>(&decl)) {
             typeParameters = &enumeration->typeParams;
+        }
+        else if (const auto *interface = AstCast<const InterfaceDecl>(&decl)) {
+            typeParameters = &interface->typeParams;
         }
 
         for (const auto &tag : decl.documentation.tags) {
@@ -463,7 +469,7 @@ private:
 
     void VisitDecl(const Decl &decl, const std::span<const std::string> siblingNames) {
         CheckStructuredDocumentation(decl);
-        if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+        if (const auto *fn = AstCast<const FuncDecl>(&decl)) {
             CheckDocumentation(decl, "function", fn->name);
             if (!IsIntrinsicName(fn->name) && !IsSymbolicOperatorName(fn->name) && !IsDestructorName(fn->name) &&
                 !IsPascalCase(fn->name)) {
@@ -479,7 +485,7 @@ private:
                 VisitBlock(*fn->body, parameterNames);
             }
         }
-        else if (const auto *st = dynamic_cast<const StructDecl *>(&decl)) {
+        else if (const auto *st = AstCast<const StructDecl>(&decl)) {
             CheckDocumentation(decl, "struct", st->name);
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(st->name)) {
@@ -493,7 +499,7 @@ private:
                 }
             }
         }
-        else if (const auto *en = dynamic_cast<const EnumDecl *>(&decl)) {
+        else if (const auto *en = AstCast<const EnumDecl>(&decl)) {
             const std::string_view kind = en->IsVariant() ? "variant" : "enum";
             const std::string_view memberKind = en->IsVariant() ? "variant case" : "enum member";
             CheckDocumentation(decl, kind, en->name);
@@ -519,7 +525,7 @@ private:
                 }
             }
         }
-        else if (const auto *un = dynamic_cast<const UnionDecl *>(&decl)) {
+        else if (const auto *un = AstCast<const UnionDecl>(&decl)) {
             CheckDocumentation(decl, "union", un->name);
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(un->name)) {
@@ -533,7 +539,7 @@ private:
                 }
             }
         }
-        else if (const auto *iface = dynamic_cast<const InterfaceDecl *>(&decl)) {
+        else if (const auto *iface = AstCast<const InterfaceDecl>(&decl)) {
             CheckDocumentation(decl, "interface", iface->name);
             if (!IsPascalCase(iface->name)) {
                 WarnNaming(iface->location, "interface name", iface->name, NamingConvention::PascalCase, siblingNames);
@@ -551,7 +557,7 @@ private:
                 }
             }
         }
-        else if (const auto *impl = dynamic_cast<const ImplDecl *>(&decl)) {
+        else if (const auto *impl = AstCast<const ImplDecl>(&decl)) {
             for (const auto &constant : impl->constants) {
                 VisitDecl(*constant, {});
             }
@@ -568,7 +574,7 @@ private:
                 }
             }
         }
-        else if (const auto *mod = dynamic_cast<const ModuleDecl *>(&decl)) {
+        else if (const auto *mod = AstCast<const ModuleDecl>(&decl)) {
             if (!IsPascalCase(mod->name)) {
                 WarnNaming(mod->location, "module name", mod->name, NamingConvention::PascalCase, siblingNames);
             }
@@ -582,7 +588,7 @@ private:
             }
             containingModulesPublic = savedContainingModulesPublic;
         }
-        else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
+        else if (const auto *cnst = AstCast<const ConstDecl>(&decl)) {
             CheckDocumentation(decl, "constant", cnst->name);
             if (!IsIntrinsicName(cnst->name) && !IsPascalCase(cnst->name) && !Allows(decl, "naming.const")) {
                 WarnNaming(cnst->location, "constant name", cnst->name, NamingConvention::PascalCase, siblingNames);
@@ -591,13 +597,24 @@ private:
                 VisitExpr(*cnst->value);
             }
         }
-        else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+        else if (const auto *global = AstCast<const GlobalDecl>(&decl)) {
+            // A module variable is a module-level name like a constant or a function, so it is spelled the same way.
+            CheckDocumentation(decl, "module variable", global->name);
+            if (!IsPascalCase(global->name)) {
+                WarnNaming(global->location, "module variable name", global->name, NamingConvention::PascalCase,
+                           siblingNames);
+            }
+            if (global->value) {
+                VisitExpr(*global->value);
+            }
+        }
+        else if (const auto *alias = AstCast<const TypeAliasDecl>(&decl)) {
             CheckDocumentation(decl, "type alias", alias->name);
-            if (alias->intrinsicName.empty() && !Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
+            if (!Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
                 WarnNaming(alias->location, "type alias name", alias->name, NamingConvention::PascalCase, siblingNames);
             }
         }
-        else if (const auto *extBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+        else if (const auto *extBlock = AstCast<const ExternBlockDecl>(&decl)) {
             const auto itemNames = DeclNames(extBlock->items);
             for (const auto &item : extBlock->items) {
                 if (item) {
@@ -617,12 +634,12 @@ private:
     }
 
     void VisitStmt(const Stmt &stmt, const std::span<const std::string> scopeNames) {
-        if (const auto *exprStmt = dynamic_cast<const ExprStmt *>(&stmt)) {
+        if (const auto *exprStmt = AstCast<const ExprStmt>(&stmt)) {
             if (exprStmt->expr) {
                 VisitExpr(*exprStmt->expr);
             }
         }
-        else if (const auto *letStmt = dynamic_cast<const LetStmt *>(&stmt)) {
+        else if (const auto *letStmt = AstCast<const LetStmt>(&stmt)) {
             if (!letStmt->name.empty() && !IsCamelCase(letStmt->name)) {
                 WarnNaming(letStmt->location, "local variable name", letStmt->name, NamingConvention::CamelCase,
                            scopeNames);
@@ -634,7 +651,7 @@ private:
                 VisitExpr(*letStmt->init);
             }
         }
-        else if (const auto *ifStmt = dynamic_cast<const IfStmt *>(&stmt)) {
+        else if (const auto *ifStmt = AstCast<const IfStmt>(&stmt)) {
             if (ifStmt->condition) {
                 VisitExpr(*ifStmt->condition);
             }
@@ -653,7 +670,7 @@ private:
                 VisitBlock(*ifStmt->elseBlock, scopeNames);
             }
         }
-        else if (const auto *whileStmt = dynamic_cast<const WhileStmt *>(&stmt)) {
+        else if (const auto *whileStmt = AstCast<const WhileStmt>(&stmt)) {
             if (whileStmt->condition) {
                 VisitExpr(*whileStmt->condition);
             }
@@ -661,7 +678,7 @@ private:
                 VisitBlock(*whileStmt->body, scopeNames);
             }
         }
-        else if (const auto *doWhileStmt = dynamic_cast<const DoWhileStmt *>(&stmt)) {
+        else if (const auto *doWhileStmt = AstCast<const DoWhileStmt>(&stmt)) {
             if (doWhileStmt->body) {
                 VisitBlock(*doWhileStmt->body, scopeNames);
             }
@@ -669,12 +686,12 @@ private:
                 VisitExpr(*doWhileStmt->condition);
             }
         }
-        else if (const auto *loopStmt = dynamic_cast<const LoopStmt *>(&stmt)) {
+        else if (const auto *loopStmt = AstCast<const LoopStmt>(&stmt)) {
             if (loopStmt->body) {
                 VisitBlock(*loopStmt->body, scopeNames);
             }
         }
-        else if (const auto *forStmt = dynamic_cast<const ForStmt *>(&stmt)) {
+        else if (const auto *forStmt = AstCast<const ForStmt>(&stmt)) {
             std::vector loopNames(scopeNames.begin(), scopeNames.end());
             loopNames.push_back(forStmt->variable);
             if (!forStmt->variable.empty() && !IsCamelCase(forStmt->variable)) {
@@ -688,7 +705,7 @@ private:
                 VisitBlock(*forStmt->body, loopNames);
             }
         }
-        else if (const auto *matchStmt = dynamic_cast<const MatchStmt *>(&stmt)) {
+        else if (const auto *matchStmt = AstCast<const MatchStmt>(&stmt)) {
             if (matchStmt->subject) {
                 VisitExpr(*matchStmt->subject);
             }
@@ -703,22 +720,22 @@ private:
                 }
             }
         }
-        else if (const auto *failStmt = dynamic_cast<const FailStmt *>(&stmt)) {
+        else if (const auto *failStmt = AstCast<const FailStmt>(&stmt)) {
             if (failStmt->value) {
                 VisitExpr(*failStmt->value);
             }
         }
-        else if (const auto *retStmt = dynamic_cast<const ReturnStmt *>(&stmt)) {
+        else if (const auto *retStmt = AstCast<const ReturnStmt>(&stmt)) {
             if (retStmt->value && *retStmt->value) {
                 VisitExpr(**retStmt->value);
             }
         }
-        else if (const auto *defStmt = dynamic_cast<const DeferStmt *>(&stmt)) {
+        else if (const auto *defStmt = AstCast<const DeferStmt>(&stmt)) {
             if (defStmt->deferredStmt) {
                 VisitStmt(*defStmt->deferredStmt, scopeNames);
             }
         }
-        else if (const auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
+        else if (const auto *declStmt = AstCast<const DeclStmt>(&stmt)) {
             if (declStmt->decl) {
                 std::vector<std::string> name;
                 if (auto declarationName = DeclName(*declStmt->decl)) {
@@ -730,24 +747,24 @@ private:
     }
 
     void VisitPattern(const Pattern &pattern, const std::span<const std::string> scopeNames) {
-        if (const auto *idPat = dynamic_cast<const IdentPattern *>(&pattern)) {
+        if (const auto *idPat = AstCast<const IdentPattern>(&pattern)) {
             if (!idPat->name.empty() && !IsCamelCase(idPat->name)) {
                 WarnNaming(idPat->location, "pattern binding name", idPat->name, NamingConvention::CamelCase,
                            scopeNames);
             }
         }
-        else if (const auto *typedPat = dynamic_cast<const TypedPattern *>(&pattern)) {
+        else if (const auto *typedPat = AstCast<const TypedPattern>(&pattern)) {
             if (!typedPat->name.empty() && !IsCamelCase(typedPat->name)) {
                 WarnNaming(typedPat->location, "pattern binding name", typedPat->name, NamingConvention::CamelCase,
                            scopeNames);
             }
         }
-        else if (const auto *presencePat = dynamic_cast<const PresencePattern *>(&pattern)) {
+        else if (const auto *presencePat = AstCast<const PresencePattern>(&pattern)) {
             if (presencePat->inner) {
                 VisitPattern(*presencePat->inner, scopeNames);
             }
         }
-        else if (const auto *rangePat = dynamic_cast<const RangePattern *>(&pattern)) {
+        else if (const auto *rangePat = AstCast<const RangePattern>(&pattern)) {
             if (rangePat->lo) {
                 VisitPattern(*rangePat->lo, scopeNames);
             }
@@ -755,7 +772,7 @@ private:
                 VisitPattern(*rangePat->hi, scopeNames);
             }
         }
-        else if (const auto *enumPat = dynamic_cast<const EnumPattern *>(&pattern)) {
+        else if (const auto *enumPat = AstCast<const EnumPattern>(&pattern)) {
             for (const auto &arg : enumPat->args) {
                 if (arg) {
                     VisitPattern(*arg, scopeNames);
@@ -767,21 +784,21 @@ private:
                 }
             }
         }
-        else if (const auto *structPat = dynamic_cast<const StructPattern *>(&pattern)) {
+        else if (const auto *structPat = AstCast<const StructPattern>(&pattern)) {
             for (const auto &f : structPat->fields) {
                 if (f.pattern) {
                     VisitPattern(*f.pattern, scopeNames);
                 }
             }
         }
-        else if (const auto *tuplePat = dynamic_cast<const TuplePattern *>(&pattern)) {
+        else if (const auto *tuplePat = AstCast<const TuplePattern>(&pattern)) {
             for (const auto &el : tuplePat->elements) {
                 if (el) {
                     VisitPattern(*el, scopeNames);
                 }
             }
         }
-        else if (const auto *guardedPat = dynamic_cast<const GuardedPattern *>(&pattern)) {
+        else if (const auto *guardedPat = AstCast<const GuardedPattern>(&pattern)) {
             if (guardedPat->inner) {
                 VisitPattern(*guardedPat->inner, scopeNames);
             }
@@ -792,17 +809,17 @@ private:
     }
 
     void VisitExpr(const Expr &expr) {
-        if (const auto *unExpr = dynamic_cast<const UnaryExpr *>(&expr)) {
+        if (const auto *unExpr = AstCast<const UnaryExpr>(&expr)) {
             if (unExpr->operand) {
                 VisitExpr(*unExpr->operand);
             }
         }
-        else if (const auto *postExpr = dynamic_cast<const PostfixExpr *>(&expr)) {
+        else if (const auto *postExpr = AstCast<const PostfixExpr>(&expr)) {
             if (postExpr->operand) {
                 VisitExpr(*postExpr->operand);
             }
         }
-        else if (const auto *binExpr = dynamic_cast<const BinaryExpr *>(&expr)) {
+        else if (const auto *binExpr = AstCast<const BinaryExpr>(&expr)) {
             if (binExpr->left) {
                 VisitExpr(*binExpr->left);
             }
@@ -810,7 +827,7 @@ private:
                 VisitExpr(*binExpr->right);
             }
         }
-        else if (const auto *assignExpr = dynamic_cast<const AssignExpr *>(&expr)) {
+        else if (const auto *assignExpr = AstCast<const AssignExpr>(&expr)) {
             if (assignExpr->target) {
                 VisitExpr(*assignExpr->target);
             }
@@ -818,7 +835,7 @@ private:
                 VisitExpr(*assignExpr->value);
             }
         }
-        else if (const auto *ternExpr = dynamic_cast<const TernaryExpr *>(&expr)) {
+        else if (const auto *ternExpr = AstCast<const TernaryExpr>(&expr)) {
             if (ternExpr->condition) {
                 VisitExpr(*ternExpr->condition);
             }
@@ -829,7 +846,7 @@ private:
                 VisitExpr(*ternExpr->elseExpr);
             }
         }
-        else if (const auto *rangeExpr = dynamic_cast<const RangeExpr *>(&expr)) {
+        else if (const auto *rangeExpr = AstCast<const RangeExpr>(&expr)) {
             if (rangeExpr->lo) {
                 VisitExpr(*rangeExpr->lo);
             }
@@ -837,7 +854,7 @@ private:
                 VisitExpr(*rangeExpr->hi);
             }
         }
-        else if (const auto *callExpr = dynamic_cast<const CallExpr *>(&expr)) {
+        else if (const auto *callExpr = AstCast<const CallExpr>(&expr)) {
             if (callExpr->callee) {
                 VisitExpr(*callExpr->callee);
             }
@@ -847,7 +864,7 @@ private:
                 }
             }
         }
-        else if (const auto *idxExpr = dynamic_cast<const IndexExpr *>(&expr)) {
+        else if (const auto *idxExpr = AstCast<const IndexExpr>(&expr)) {
             if (idxExpr->object) {
                 VisitExpr(*idxExpr->object);
             }
@@ -855,26 +872,26 @@ private:
                 VisitExpr(*idxExpr->index);
             }
         }
-        else if (const auto *fieldExpr = dynamic_cast<const FieldExpr *>(&expr)) {
+        else if (const auto *fieldExpr = AstCast<const FieldExpr>(&expr)) {
             if (fieldExpr->object) {
                 VisitExpr(*fieldExpr->object);
             }
         }
-        else if (const auto *structInit = dynamic_cast<const StructInitExpr *>(&expr)) {
+        else if (const auto *structInit = AstCast<const StructInitExpr>(&expr)) {
             for (const auto &f : structInit->fields) {
                 if (f.value) {
                     VisitExpr(*f.value);
                 }
             }
         }
-        else if (const auto *sliceExpr = dynamic_cast<const ArrayExpr *>(&expr)) {
+        else if (const auto *sliceExpr = AstCast<const ArrayExpr>(&expr)) {
             for (const auto &el : sliceExpr->elements) {
                 if (el) {
                     VisitExpr(*el);
                 }
             }
         }
-        else if (const auto *repeatExpr = dynamic_cast<const ArrayRepeatExpr *>(&expr)) {
+        else if (const auto *repeatExpr = AstCast<const ArrayRepeatExpr>(&expr)) {
             if (repeatExpr->value) {
                 VisitExpr(*repeatExpr->value);
             }
@@ -882,34 +899,34 @@ private:
                 VisitExpr(*repeatExpr->count);
             }
         }
-        else if (const auto *spreadExpr = dynamic_cast<const SpreadExpr *>(&expr)) {
+        else if (const auto *spreadExpr = AstCast<const SpreadExpr>(&expr)) {
             if (spreadExpr->operand) {
                 VisitExpr(*spreadExpr->operand);
             }
         }
-        else if (const auto *tupleExpr = dynamic_cast<const TupleExpr *>(&expr)) {
+        else if (const auto *tupleExpr = AstCast<const TupleExpr>(&expr)) {
             for (const auto &el : tupleExpr->elements) {
                 if (el) {
                     VisitExpr(*el);
                 }
             }
         }
-        else if (const auto *castExpr = dynamic_cast<const CastExpr *>(&expr)) {
+        else if (const auto *castExpr = AstCast<const CastExpr>(&expr)) {
             if (castExpr->operand) {
                 VisitExpr(*castExpr->operand);
             }
         }
-        else if (const auto *isExpr = dynamic_cast<const IsExpr *>(&expr)) {
+        else if (const auto *isExpr = AstCast<const IsExpr>(&expr)) {
             if (isExpr->operand) {
                 VisitExpr(*isExpr->operand);
             }
         }
-        else if (const auto *blockExpr = dynamic_cast<const BlockExpr *>(&expr)) {
+        else if (const auto *blockExpr = AstCast<const BlockExpr>(&expr)) {
             if (blockExpr->block) {
                 VisitBlock(*blockExpr->block);
             }
         }
-        else if (const auto *matchExpr = dynamic_cast<const MatchExpr *>(&expr)) {
+        else if (const auto *matchExpr = AstCast<const MatchExpr>(&expr)) {
             if (matchExpr->subject) {
                 VisitExpr(*matchExpr->subject);
             }
@@ -924,7 +941,7 @@ private:
                 }
             }
         }
-        else if (const auto *catchExpr = dynamic_cast<const CatchExpr *>(&expr)) {
+        else if (const auto *catchExpr = AstCast<const CatchExpr>(&expr)) {
             if (catchExpr->subject) {
                 VisitExpr(*catchExpr->subject);
             }
@@ -939,7 +956,7 @@ private:
                 }
             }
         }
-        else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expr)) {
+        else if (const auto *mapped = AstCast<const MappedTryExpr>(&expr)) {
             if (mapped->operand) {
                 VisitExpr(*mapped->operand);
             }
@@ -947,12 +964,12 @@ private:
                 VisitExpr(*mapped->mapper);
             }
         }
-        else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+        else if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {
             if (construct->operand) {
                 VisitExpr(*construct->operand);
             }
         }
-        else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expr)) {
+        else if (const auto *diverge = AstCast<const DivergeExpr>(&expr)) {
             if (diverge->value) {
                 VisitExpr(*diverge->value);
             }

@@ -1,0 +1,91 @@
+// Filling a caller's buffer with an identifier, from the system's generator or from a supplied source.
+// Each character is a random byte masked down to the smallest power of two that covers the alphabet. A masked value
+// past the end of the alphabet is thrown away rather than folded back in with a remainder, because folding would
+// make the first characters of the alphabet more likely than the rest. With the default alphabet the mask is the
+// whole alphabet and nothing is thrown away; with a custom one at most half the bytes are, and bytes are requested
+// in batches sized so that one batch usually suffices.
+// The batch of random bytes is zeroized before returning, since an identifier is often a secret such as a session
+// token and the bytes it was drawn from say what it is. A failure leaves the destination zeroized too, rather than
+// holding the first part of an identifier that a careless caller might use anyway.
+
+import Entropy::{ EntropyError, EntropySource, FillFrom, SystemEntropy };
+import Memory::ZeroizeBlock;
+
+// How many random bytes one batch holds. A default identifier needs twenty-one, and a custom alphabet of any size
+// needs on average fewer than twice its length, so this covers the common cases in one request.
+const BatchSize: uint = 128;
+
+// Writes an identifier drawn from `alphabet`, which the caller has validated, into the whole of `into`.
+func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) -> ! EntropyError {
+    let mask = IndexMask(alphabet.length);
+    var batch: byte[128];
+    var written: uint = 0;
+    while written < into.length {
+        // Ask for about as many bytes as the rest of the identifier should need, given the rejection rate.
+        let wanted = (into.length - written) * (mask + 1) * 16 / (alphabet.length * 10) + 1;
+        let take = wanted > BatchSize ? BatchSize : wanted;
+        FillFrom(source, (@batch[0]) as *var opaque, take) catch {
+            error => {
+                ZeroizeBlock((@batch[0]) as *var opaque, BatchSize);
+                if into.length > 0 { ZeroizeBlock(into.data as *var opaque, into.length); }
+                fail error;
+            }
+        };
+        var index: uint = 0;
+        while index < take && written < into.length {
+            let position = (batch[index] as uint) & mask;
+            if position < alphabet.length {
+                into[written] = alphabet[position];
+                written = written + 1;
+            }
+            index = index + 1;
+        }
+    }
+    ZeroizeBlock((@batch[0]) as *var opaque, BatchSize);
+    return;
+}
+
+/// Fills the whole of `into` with an identifier from the default alphabet, using the operating system's generator.
+/// The identifier is as long as `into`; `NanoIdLength` characters is the standard length. Each character is one
+/// random byte, so a twenty-one-character identifier costs twenty-one bytes of entropy. Reports what the system
+/// reported when it could not supply random bytes, leaving `into` zeroized. An empty `into` succeeds and requests
+/// nothing.
+/// @param into the destination, filled completely
+/// @returns success when every character was written
+/// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
+pub func GenerateNanoId(into: var char8[..]) -> ! EntropyError {
+    var system = SystemEntropy();
+    return Fill(system, into, NanoIdAlphabet);
+}
+
+/// Fills the whole of `into` with an identifier drawn from `alphabet`, using the operating system's generator.
+/// Every character of `alphabet` is equally likely at every position. Reports an alphabet failure from
+/// `ValidateAlphabet` before requesting any random bytes, leaving `into` untouched, and `Entropy` when the system
+/// could not supply them, leaving `into` zeroized.
+/// @param into the destination, filled completely
+/// @param alphabet between two and 256 distinct ASCII characters
+/// @returns success when every character was written
+/// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
+pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) -> ! NanoIdError {
+    var system = SystemEntropy();
+    return GenerateNanoIdFrom(system, into, alphabet);
+}
+
+/// Fills the whole of `into` with an identifier drawn from `alphabet`, using random bytes from `source`.
+/// The seam for a test, or for a caller with its own generator: the identifier is exactly as unpredictable as the
+/// bytes `source` supplies, so a deterministic source gives deterministic identifiers. Reports an alphabet failure
+/// from `ValidateAlphabet` before using `source`, leaving `into` untouched, and `Entropy` with what `source`
+/// reported, leaving `into` zeroized.
+/// @param source where the random bytes come from
+/// @param into the destination, filled completely
+/// @param alphabet between two and 256 distinct ASCII characters
+/// @returns success when every character was written
+/// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id-from
+pub func GenerateNanoIdFrom(source: &var EntropySource, into: var char8[..],
+                            alphabet: char8[..] = NanoIdAlphabet) -> ! NanoIdError {
+    ValidateAlphabet(alphabet)?;
+    Fill(source, into, alphabet) catch {
+        error => fail NanoIdError::Entropy(error)
+    };
+    return;
+}

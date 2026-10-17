@@ -1,0 +1,37 @@
+import Core::{ #target, OperatingSystem };
+import Linux::{ RTLD_NOW, dlclose, dlerror, dlopen, dlsym };
+
+when #target.os == OperatingSystem::Linux {
+func Main() -> int {
+    // A null name opens the program itself, whose global scope includes the C library the loader lives in.
+    let program = dlopen(null, RTLD_NOW);
+    if program == null {
+        return 1;
+    }
+
+    dlerror();
+    if dlsym(program, "getpid".data) == null || dlerror() != null {
+        return 2;
+    }
+
+    if dlsym(program, "RuxNoSuchSymbol".data) != null {
+        return 3;
+    }
+    if dlerror() == null {
+        return 4;
+    }
+    // Reading the error cleared it.
+    if dlerror() != null {
+        return 5;
+    }
+
+    if dlclose(program) != 0 {
+        return 6;
+    }
+    return 0;
+}
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

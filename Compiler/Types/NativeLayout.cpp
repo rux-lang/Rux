@@ -25,25 +25,25 @@ std::optional<NativeLayout> ComputeNativeLayout(const TypeRef &type, const Nativ
             }
             nativeCase.layout = *payloadLayout;
         }
-        nativeCase.payload = std::move(payload);
-        layout.cases.push_back(std::move(nativeCase));
+        nativeCase.payload = payload;
+        layout.cases.push_back(nativeCase);
         return true;
     };
 
     if (type.IsSum()) {
-        for (std::size_t index = 0; index < type.inner.size(); ++index) {
-            if (!addCase(index, type.inner[index])) {
+        for (std::size_t index = 0; index < type->inner.size(); ++index) {
+            if (!addCase(index, type->inner[index])) {
                 return std::nullopt;
             }
         }
     }
     else if (type.IsOptional() && !type.IsNoneValue()) {
-        if (!addCase(NativeAbsentTag, std::nullopt) || !addCase(NativePresentTag, type.inner[0])) {
+        if (!addCase(NativeAbsentTag, std::nullopt) || !addCase(NativePresentTag, type->inner[0])) {
             return std::nullopt;
         }
     }
     else if (type.IsFallible() && !type.IsIncompleteNative()) {
-        if (!addCase(NativeSuccessTag, type.inner[0]) || !addCase(NativeFailureTag, type.inner[1])) {
+        if (!addCase(NativeSuccessTag, type->inner[0]) || !addCase(NativeFailureTag, type->inner[1])) {
             return std::nullopt;
         }
     }

@@ -1,0 +1,152 @@
+import Core::Assert;
+
+// An interface value owns what it was made from, and the value is destroyed exactly once: when the scope the interface
+// value was made in ends, as a named local of that scope would be, or, for a value stored in a variable, when the
+// variable's scope ends or a later value of the same type is stored at the same place.
+interface Named {
+    func Id(self: &Self) -> int;
+}
+
+struct Tracked {
+    drops: *var int;
+    id: int;
+}
+
+extend Tracked : Named {
+    func Id(self: &Tracked) -> int {
+        return self.id;
+    }
+
+    func ~Tracked(self: &var Tracked) {
+        *self.drops = *self.drops + 1;
+    }
+}
+
+func Read(value: Named) -> int {
+    return value.Id();
+}
+
+func Local(drops: *var int) -> int {
+    let value: Named = Tracked { drops: drops, id: 7 };
+    return value.Id();
+}
+
+func Argument(drops: *var int) -> int {
+    return Read(Tracked { drops: drops, id: 3 });
+}
+
+func Moved(drops: *var int) -> int {
+    var tracked = Tracked { drops: drops, id: 5 };
+    let value: Named = <-tracked;
+    return value.Id();
+}
+
+func Repeated(drops: *var int) -> int {
+    var total = 0;
+    for i in 0..3 {
+        let value: Named = Tracked { drops: drops, id: i };
+        total += value.Id();
+    }
+    return total;
+}
+
+// Another type the same interface values hold, so a variable can be given values of two types in turn.
+struct Other {
+    drops: *var int;
+}
+
+extend Other : Named {
+    func Id(self: &Other) -> int {
+        return 100;
+    }
+
+    func ~Other(self: &var Other) {
+        *self.drops = *self.drops + 1;
+    }
+}
+
+struct Slot {
+    named: Named;
+}
+
+// A value stored in a variable's interface value replaces the one it held, which is destroyed there and then.
+func Replaced(drops: *var int) -> int {
+    var value: Named = Tracked { drops: drops, id: 1 };
+    value = Tracked { drops: drops, id: 2 };
+    Assert(*drops == 1, "the replaced value is destroyed when it is replaced");
+    return value.Id();
+}
+
+// A value stored in a loop belongs to the variable, not to the pass, so it outlives the loop.
+func StoredInLoop(drops: *var int) -> int {
+    var value: Named = Tracked { drops: drops, id: 0 };
+    var i = 1;
+    while i <= 3 {
+        value = Tracked { drops: drops, id: i };
+        i += 1;
+    }
+    Assert(*drops == 3, "every value a pass replaced is destroyed");
+    return value.Id();
+}
+
+// A field of a local is a place of its own, kept the same way.
+func StoredInField(drops: *var int) -> int {
+    var slot = Slot { named: Other { drops: drops } };
+    var i = 0;
+    while i < 2 {
+        slot.named = Tracked { drops: drops, id: 40 + i };
+        i += 1;
+    }
+    return slot.named.Id();
+}
+
+// A store that may not run leaves nothing to destroy on the path that skipped it.
+func StoredMaybe(drops: *var int, store: bool) -> int {
+    var value: Named = Other { drops: drops };
+    if store {
+        value = Tracked { drops: drops, id: 8 };
+    }
+    return value.Id();
+}
+
+// A value moved in is kept the same way, and its old variable is not destroyed again.
+func MovedIn(drops: *var int) -> int {
+    var value: Named = Tracked { drops: drops, id: 1 };
+    var tracked = Tracked { drops: drops, id: 6 };
+    value = <-tracked;
+    return value.Id();
+}
+
+func Main() -> int {
+    var drops = 0;
+    Assert(Local(@drops) == 7, "a local interface value reads what it holds");
+    Assert(drops == 1, "and destroys it when its scope ends");
+    drops = 0;
+    Assert(Argument(@drops) == 3, "an interface argument reads what it holds");
+    Assert(drops == 1, "and the caller destroys it once");
+    drops = 0;
+    Assert(Moved(@drops) == 5, "a moved value is held by the interface value");
+    Assert(drops == 1, "and destroyed once, not also as the moved-from variable");
+    drops = 0;
+    Assert(Repeated(@drops) == 3, "each pass makes its own interface value");
+    Assert(drops == 3, "and each pass destroys its own");
+    drops = 0;
+    Assert(Replaced(@drops) == 2, "a variable holds the value stored in it last");
+    Assert(drops == 2, "and destroys it when its scope ends");
+    drops = 0;
+    Assert(StoredInLoop(@drops) == 3, "a value stored in a loop is alive after it");
+    Assert(drops == 4, "and destroyed with its variable");
+    drops = 0;
+    Assert(StoredInField(@drops) == 41, "a field holds the value stored in it last");
+    Assert(drops == 3, "every value it held is destroyed once");
+    drops = 0;
+    Assert(StoredMaybe(@drops, true) == 8, "a store that runs replaces the value");
+    Assert(drops == 2, "and both values are destroyed once");
+    drops = 0;
+    Assert(StoredMaybe(@drops, false) == 100, "a store that does not run leaves the value");
+    Assert(drops == 1, "and only that value is destroyed");
+    drops = 0;
+    Assert(MovedIn(@drops) == 6, "a value moved in replaces the value");
+    Assert(drops == 2, "each value is destroyed once");
+    return 0;
+}

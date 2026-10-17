@@ -1,28 +1,21 @@
 // Crossing the boundary to C, where a string is a pointer and a promise.
-//
 // A C string carries no length: it ends at the first zero byte, and the byte itself is not part of the text. That
 // convention meets Rux text at exactly two edges, and both need a check nothing else in this package needs.
-//
 // Going out, the text must not contain a zero byte. One in the middle would silently truncate whatever C does with
 // the pointer — a path that opens the wrong file, a query that drops its tail — so a string holding one is
 // refused, not truncated. Truncation is the attack, not the accident: text that reads one way to a checker reading
 // lengths and another way to a C API reading terminators is how "safe.txt\0.exe" gets past a filter.
-//
 // Coming in, the terminator is how far to read, and the bytes must still be UTF-8: nothing about C promises text,
 // so bytes from C are input, and input is validated.
-//
 // Nothing here weakens what `String` promises. A `CString` is its own type owning its own copy, so the NUL it
 // appends is never visible through anything else, and a `String` never holds one.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::Option;
 import Memory::Copy;
 
 /// Text carrying the terminator C expects, in storage of its own.
-///
 /// Move-only: it explicitly prohibits copying, owns its block, and gives it back when it dies. The terminator is
 /// part of the block and not part of the text, so `Length` answers without it.
-///
 /// @see https://rux-lang.dev/docs/api/text/c-string
 pub struct CString {
     /// The bytes, ending with the one zero byte the text does not contain. Null only for a `CString` that was
@@ -39,30 +32,25 @@ extend CString {
     func =(self: &var CString, other: &CString);
 
     /// A terminated copy of `text`, or why the text cannot cross the boundary.
-    ///
     /// Refuses a zero byte for the reason `FromView` does: text that ends early on the C side of the boundary is
     /// how a checked name and a used name part company.
-    ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
     /// @returns the terminated copy, or a failure when the text holds an interior zero byte
-    /// @see https://rux-lang.dev/docs/api/text/c-string/from-text
+    /// @see https://rux-lang.dev/docs/api/text/c-string#from-text
     pub func FromText(allocator: Allocator, text: char8[..]) -> CString ! TextError {
         return CString::FromView(allocator, StringView::FromValidated(text));
     }
 
     /// A terminated copy of `view`, or why the text cannot cross the boundary.
-    ///
     /// Fails with `InvalidUtf8` when the text contains a zero byte — refused rather than truncated,
     /// because text that ends early on the C side of the boundary is the classic way a checked name and a used name
     /// part company. Reports `OutOfMemory` when the copy cannot be made.
-    ///
     /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
-    ///
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to act on
     /// @returns the terminated copy, or a failure when the text holds an interior zero byte
-    /// @see https://rux-lang.dev/docs/api/text/c-string/from-view
+    /// @see https://rux-lang.dev/docs/api/text/c-string#from-view
     pub func FromView(allocator: Allocator, view: StringView) -> CString ! TextError {
         let bytes = view.Bytes();
         var index: uint = 0;
@@ -89,17 +77,15 @@ extend CString {
     }
 
     /// A copy of the C text at `raw`, read to its terminator, or why it is not text.
-    ///
     /// `raw` is borrowed for the call and its bytes are copied, so the C side keeps whatever it handed over.
     /// `limit` bounds the search for the terminator: C promises one exists, and this is what the promise costs when
     /// it is broken — reports `InvalidUtf8` after `limit` bytes rather than reading memory forever. Bytes that are
     /// not UTF-8 are refused the same way, since nothing about C promises text.
-    ///
     /// @param allocator where the storage comes from
     /// @param raw the null-terminated bytes to copy
     /// @param limit the most bytes to read before giving up on finding a terminator
     /// @returns the copy, or a failure when no terminator was found within `limit`
-    /// @see https://rux-lang.dev/docs/api/text/c-string/from-raw
+    /// @see https://rux-lang.dev/docs/api/text/c-string#from-raw
     pub func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> CString ! TextError {
         if raw == null {
             fail TextError::InvalidUtf8;
@@ -131,39 +117,32 @@ extend CString {
     }
 
     /// How many bytes of text come before the terminator.
-    ///
     /// @returns how many bytes precede the terminator
-    /// @see https://rux-lang.dev/docs/api/text/c-string/length
+    /// @see https://rux-lang.dev/docs/api/text/c-string#length
     pub func Length(self: &CString) -> uint {
         return self.length;
     }
 
     /// The pointer C expects: the text, then one zero byte.
-    ///
     /// Borrowed. Valid until this `CString` is released or dies, and no longer — C code that keeps it past that is
     /// keeping a pointer into a freed block.
-    ///
     /// @returns the address to hand to a C interface, which stays valid while this does
-    /// @see https://rux-lang.dev/docs/api/text/c-string/raw
+    /// @see https://rux-lang.dev/docs/api/text/c-string#raw
     pub func Raw(self: &CString) -> *char8 {
         return self.data;
     }
 
     /// The text without its terminator, as a view.
-    ///
     /// The view borrows this `CString` and must not outlive it.
-    ///
     /// @returns the bytes as text, without the terminator
-    /// @see https://rux-lang.dev/docs/api/text/c-string/view
+    /// @see https://rux-lang.dev/docs/api/text/c-string#view
     pub func View(self: &CString) -> StringView {
         return StringView::FromValidated((self.data)[..self.length]);
     }
 
     /// Gives the block back and leaves a `CString` that owns nothing.
-    ///
     /// Safe to call twice, since what it leaves behind owns nothing.
-    ///
-    /// @see https://rux-lang.dev/docs/api/text/c-string/clear
+    /// @see https://rux-lang.dev/docs/api/text/c-string#clear
     pub func Clear(self: &var CString) {
         if self.data != null {
             let layout = Layout::New(self.length + 1, 1);
@@ -174,12 +153,9 @@ extend CString {
         self.data = null;
         self.length = 0;
     }
-}
 
-extend CString {
     /// Gives the block back.
-    ///
-    /// @see https://rux-lang.dev/docs/api/text/c-string/destructor
+    /// @see https://rux-lang.dev/docs/api/text/c-string#destructor
     func ~CString(self: &var CString) {
         self.Clear();
     }

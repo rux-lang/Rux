@@ -1,0 +1,108 @@
+// The Script property: the writing system each character belongs to, such as Latin, Greek or Han, from the Unicode
+// Character Database's `Scripts.txt`. Characters shared between scripts, such as digits and punctuation, are in the
+// Common script, and combining marks that take the script of what they follow are in Inherited. A point the
+// database assigns to no script is in Unknown.
+
+/// A script. `Copy`.
+/// Scripts are named by their long names in the database, such as `Latin` or `Old_Italic`, and found by name loosely:
+/// case, spaces, hyphens and underscores are ignored, so `old italic` names `Old_Italic`.
+/// @see https://rux-lang.dev/docs/api/unicode/scripts#script
+pub struct Script {
+    number: uint32;
+}
+
+// The bytes of a script's long name.
+func ScriptNameUnit(number: uint32, index: uint) -> uint8 {
+    let offset = ScriptNameIndex[number as uint * 2] as uint;
+    return ScriptNameBytes[offset + index] as uint8;
+}
+
+// A name's byte as loose matching compares it: an ASCII letter in lower case, and zero for a byte it ignores.
+func LooseUnit(byte: uint8) -> uint8 {
+    if byte == 0x20u8 || byte == 0x2Du8 || byte == 0x5Fu8 { return 0; }
+    if byte >= 0x41u8 && byte <= 0x5Au8 { return byte + 32u8; }
+    return byte;
+}
+
+// Whether script `number`'s name is `name` under loose matching.
+func ScriptNamed(number: uint32, name: char8[..]) -> bool {
+    let length = ScriptNameIndex[number as uint * 2 + 1] as uint;
+    var stored: uint = 0;
+    var given: uint = 0;
+    while true {
+        while stored < length && LooseUnit(ScriptNameUnit(number, stored)) == 0u8 { stored = stored + 1; }
+        while given < name.length && LooseUnit(name[given] as uint8) == 0u8 { given = given + 1; }
+        if stored == length || given == name.length { return stored == length && given == name.length; }
+        if LooseUnit(ScriptNameUnit(number, stored)) != LooseUnit(name[given] as uint8) { return false; }
+        stored = stored + 1;
+        given = given + 1;
+    }
+    return false;
+}
+
+extend Script {
+    /// The script whose long name is `name`, matched loosely.
+    /// @param name the name, such as `Greek` or `old_italic`
+    /// @returns the script, or `none` when no script has that name
+    /// @see https://rux-lang.dev/docs/api/unicode/scripts#from-name
+    pub func FromName(name: char8[..]) -> Script? {
+        let count = (ScriptNameIndex.length / 2) as uint32;
+        var number: uint32 = 0;
+        while number < count {
+            if ScriptNamed(number, name) { return Script { number: number }; }
+            number = number + 1u32;
+        }
+        return none;
+    }
+
+    /// The script of points the database assigns to none.
+    /// @returns the Unknown script
+    /// @see https://rux-lang.dev/docs/api/unicode/scripts#unknown
+    pub func Unknown() -> Script {
+        return Script { number: UnknownScript[0] };
+    }
+
+    /// Whether `other` is the same script.
+    /// @param other the other script
+    /// @returns whether they are one script
+    /// @see https://rux-lang.dev/docs/api/unicode/scripts#equals
+    pub func Equals(self: &Script, other: Script) -> bool {
+        return self.number == other.number;
+    }
+
+    /// The script's number: a stable small integer, less than `ScriptCount()`, in the order of the scripts' names.
+    /// @returns the number
+    /// @see https://rux-lang.dev/docs/api/unicode/scripts#number
+    pub func Number(self: &Script) -> uint32 {
+        return self.number;
+    }
+
+    /// Writes the script's long name, such as `Old_Italic`, into `into`.
+    /// @param into room for the name; the longest is under 32 bytes
+    /// @returns how many bytes were written, which is fewer than the name's length when `into` is too short
+    /// @see https://rux-lang.dev/docs/api/unicode/scripts#write-name
+    pub func WriteName(self: &Script, into: var char8[..]) -> uint {
+        let length = ScriptNameIndex[self.number as uint * 2 + 1] as uint;
+        var index: uint = 0;
+        while index < length && index < into.length {
+            into[index] = ScriptNameUnit(self.number, index) as char8;
+            index = index + 1;
+        }
+        return index;
+    }
+}
+
+/// The script `scalar` belongs to.
+/// @param scalar the scalar value to classify
+/// @returns its script, Unknown for a point the database assigns to none
+/// @see https://rux-lang.dev/docs/api/unicode/scripts#script-of
+pub func ScriptOf(scalar: char32) -> Script {
+    return Script { number: RangeValue(ScriptRanges[..], scalar as uint32, UnknownScript[0]) };
+}
+
+/// How many scripts there are, Unknown among them.
+/// @returns the count
+/// @see https://rux-lang.dev/docs/api/unicode/scripts#script-count
+pub func ScriptCount() -> uint {
+    return ScriptNameIndex.length / 2;
+}

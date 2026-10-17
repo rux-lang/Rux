@@ -155,6 +155,18 @@ func Choose<T, U>(useLeft: bool, left: T, right: U) -> T | U {
     return right;
 }
 
+// A tuple or array literal converts into a native form whole, element values included.
+func TuplePair(a: int32, b: int32) -> (int32, int32)? {
+    return (a, b);
+}
+
+func TupleSum(pair: (int32, int32)?) -> int32 {
+    return match pair {
+        p? => p.0 * 100i32 + p.1,
+        none => -1i32
+    };
+}
+
 func Main() -> ! IoError {
     Assert(Describe(Read(3i32) catch { e => Panic("unexpected read failure") }) == 0i32, "a defaults member");
     Assert(Describe(Read(4i32) catch { e => Panic("unexpected read failure") }) == 2i32, "an options member");
@@ -221,6 +233,32 @@ func Main() -> ! IoError {
     Assert(ValueOr<int32, IoError>(.Failure(IoError { code: 1i32 }), 6i32) == 6i32, "a generic fallback");
     let same: int32 = Choose<int32, int32>(true, 1i32, 2i32);
     Assert(same == 1i32, "equal generic members collapse");
+
+    // Native forms built directly from a tuple or array literal hold its elements.
+    let first: int32 = 80;
+    let second: int32 = 24;
+    let wrapped: (int32, int32)? = (first, second);
+    Assert(TupleSum(wrapped) == 8024i32, "a tuple literal converts into an optional");
+    Assert(TupleSum(.Some((first, second))) == 8024i32, "and is the payload of '.Some'");
+    Assert(TupleSum(TuplePair(first, second)) == 8024i32, "and returns as one");
+    let channel: (int32, int32) ! bool = (first, second);
+    let fromChannel = match channel {
+        .Success(p) => p.0 + p.1,
+        .Failure(_) => -1i32
+    };
+    Assert(fromChannel == 104i32, "a tuple literal converts into a fallible success");
+    let member: (int32, int32) | bool = (first, second);
+    let fromMember = match member {
+        p: (int32, int32) => p.1,
+        _: bool => -1i32
+    };
+    Assert(fromMember == 24i32, "and into a sum member");
+    let row: int32[2]? = [first, second];
+    let fromRow = match row {
+        p? => p[0] - p[1],
+        none => -1i32
+    };
+    Assert(fromRow == 56i32, "an array literal converts into an optional");
 
     // A unit-only discard: recovering a unit success needs no value.
     Save(false) catch { else => {} };

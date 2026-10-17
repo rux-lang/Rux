@@ -1,2 +1,32 @@
-// float128 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `float128`: IEEE 754 binary128.
+// One hundred and thirteen bits of significand, so about thirty-four decimal digits. Its arithmetic runs in software
+// on every target. The compiler supplies the finite limits, which are too long to be worth spelling out in decimal.
+
+/// An IEEE 754 binary128 floating-point number.
+/// @see https://rux-lang.dev/docs/api/core/floating-point#float128
+extend float128 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-bits
+    pub const Bits: uint = 128;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-bytes
+    pub const Bytes: uint = 16;
+    /// The lowest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-lowest
+    pub intrinsic const Lowest: float128;
+    /// The highest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-max
+    pub intrinsic const Max: float128;
+    /// The smallest positive normal value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-min-positive
+    pub intrinsic const MinPositive: float128;
+    /// The difference between one and the next representable value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-epsilon
+    pub intrinsic const Epsilon: float128;
+    /// Positive infinity.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-infinity
+    pub intrinsic const Infinity: float128;
+    /// A quiet not-a-number value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float128-nan
+    pub intrinsic const NaN: float128;
+}

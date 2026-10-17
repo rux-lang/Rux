@@ -36,9 +36,9 @@ func Main() -> int {
     // The units no text can spell refuse to convert, each platform's own kind.
     var hostile: OsUnit[3];
     when #target.os == .Windows {
-        hostile[0] = 0x0061u16;
-        hostile[1] = 0xD800u16;
-        hostile[2] = 0x0062u16;
+        hostile[0] = 0x0061;
+        hostile[1] = 0xD800;
+        hostile[2] = 0x0062;
     }
     else {
         hostile[0] = 0x61u8 as char8;

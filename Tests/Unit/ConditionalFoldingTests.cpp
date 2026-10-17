@@ -502,6 +502,9 @@ func Do() -> int {
     REQUIRE(model.diagnostics.size() == 1);
     CHECK(model.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(model.diagnostics[0].message == "deprecated path");
+    // The caret sits on the '#' that starts the directive, not on its '('.
+    CHECK(model.diagnostics[0].location.line == 5);
+    CHECK(model.diagnostics[0].location.column == 5);
 }
 
 TEST_CASE("a #Warn call leaves no runtime code behind") {
@@ -964,12 +967,13 @@ TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
 import Core::{ #config, #compiler, #source, SemanticVersion };
 
-const FutureCompiler = SemanticVersion(1, 2, 4);
+const FutureCompiler = SemanticVersion { major: 1, minor: 2, patch: 4 };
 
 func Selected() -> int {
     when #config.Has("sqlite") &&
         #config.Get("allocator") == "mimalloc" &&
         #compiler.HasFeature("conditional-compilation") &&
+        #compiler.HasFeature("when-attribute") &&
         !#compiler.HasFeature("imaginary-feature") &&
         #compiler.version.major == 1 &&
         #compiler.version.minor == 2 &&
@@ -981,7 +985,7 @@ func Selected() -> int {
         #compiler.version > SemanticVersion(1, 2, 2) &&
         #compiler.version >= SemanticVersion(1, 2, 3) &&
         #source.function == "Selected" &&
-        #source.module == "test" {
+        #source.module == "" {
         return 1;
     } else {
         return 0;

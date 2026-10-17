@@ -1,0 +1,2 @@
+12:20: error: overloaded function 'Scale' has no function type here to choose an overload by
+13:48: error: no overload of 'Scale' has type 'func(float64) -> float64'

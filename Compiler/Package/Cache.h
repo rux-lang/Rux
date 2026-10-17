@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace Rux::Packages {
@@ -37,4 +38,9 @@ struct InstalledPackage {
 /// Build and check use this instead of contacting the registry, so a build never needs the network.
 [[nodiscard]] std::optional<InstalledPackage>
 FindInstalledPackage(const IdentitySegment &ns, const IdentitySegment &name, const VersionRange &range);
+
+/// The version a requirement resolves to among `installed`, as listed by InstalledVersions, for a caller that looks
+/// one package up for several requirements without listing its versions again.
+[[nodiscard]] std::optional<InstalledPackage> FindInstalledPackage(std::span<const InstalledPackage> installed,
+                                                                   const VersionRange &range);
 } // namespace Rux::Packages

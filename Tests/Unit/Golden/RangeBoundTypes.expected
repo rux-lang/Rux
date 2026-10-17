@@ -1,0 +1,2 @@
+8:22: error: range bounds 'int32' and 'uint32' have no common type
+9:24: error: integer literal is out of range for type 'uint8'

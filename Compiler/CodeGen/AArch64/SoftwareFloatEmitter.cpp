@@ -18,7 +18,7 @@ bool AArch64FunctionEmitter::EmitSoftwareFloatNegation(const LirInstr &instructi
         return false;
     }
 
-    const PrimitiveInfo *primitive = FindPrimitive(operandType.kind);
+    const PrimitiveInfo *primitive = FindPrimitive(operandType->kind);
     const int size = RuntimeSize(operandType);
     const int signBit = primitive ? static_cast<int>(primitive->bits - 1) : size * 8 - 1;
     Must(encoder.LoadImm64(A64::Xn(kMask), std::uint64_t{1} << (signBit % 64)), "a software-float sign mask");
@@ -45,7 +45,7 @@ bool AArch64FunctionEmitter::EmitSoftwareFloatConstant(const LirInstr &instructi
     }
 
     const int size = RuntimeSize(instruction.type);
-    const PrimitiveInfo *primitive = FindPrimitive(instruction.type.kind);
+    const PrimitiveInfo *primitive = FindPrimitive(instruction.type->kind);
     const FloatFormat *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
     const auto encoding = format ? ParseFloatEncoding(instruction.strArg, *format) : std::nullopt;
     const WideInteger bits = encoding ? encoding->Bits() : WideInteger::Zero(static_cast<std::uint32_t>(size * 8));

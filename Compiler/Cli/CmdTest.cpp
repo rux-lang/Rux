@@ -3,6 +3,7 @@
 #include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
+#include "Cli/JobsOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Cli/Testing/TestPackages.h"
@@ -11,6 +12,7 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "Package/Manifest.h"
+#include "Parallel/WorkerPool.h"
 
 #include <algorithm>
 #include <charconv>
@@ -20,9 +22,11 @@
 #include <format>
 #include <map>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -36,20 +40,21 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const Reporter output(stdout, reporterOptions);
     const Reporter diagnostics(stderr, reporterOptions);
     bool isRelease = false;
-    bool denyLegacyProtocols = false;
-    std::size_t jobs = 1;
+    bool useBuildCache = true;
+    // Test packages are independent, so by default one runs per logical core.
+    std::size_t jobs = Parallel::DefaultJobs();
     std::string_view target;
     std::map<std::string, std::string> defines;
+    std::vector<std::string_view> testArguments;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto arg = args[i];
+        // Everything after `--` goes to each test program, where a generated runner reads it as filters.
+        if (arg == "--") {
+            testArguments.assign(args.begin() + static_cast<std::ptrdiff_t>(i) + 1, args.end());
+            break;
+        }
         if (arg == "--jobs") {
-            if (i + 1 == args.size()) {
-                diagnostics.Error("option '--jobs' requires a positive integer");
-                return 1;
-            }
-            const auto value = args[++i];
-            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), jobs);
-            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || jobs == 0) {
+            if (i + 1 == args.size() || !ParseJobCount(args[++i], jobs)) {
                 diagnostics.Error("option '--jobs' requires a positive integer");
                 return 1;
             }
@@ -59,8 +64,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             isRelease = true;
             continue;
         }
-        if (arg == "--deny-legacy-protocols") {
-            denyLegacyProtocols = true;
+        if (arg == "--no-cache") {
+            useBuildCache = false;
             continue;
         }
         if (arg == "--target" && i + 1 < args.size()) {
@@ -123,7 +128,10 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
 
     std::filesystem::path projectRoot;
     std::vector<TestRoot> testRoots;
+    // Packages whose own sources hold '#Test()' functions, run beside the packages under Tests/.
+    std::vector<TestPackage> sourceTestPackages;
     std::vector<std::filesystem::path> localPackageRoots;
+    std::set<std::string> localNamespaces;
     if (manifestPath) {
         auto manifestResult = Manifest::Load(*manifestPath);
         if (!manifestResult.Ok()) {
@@ -160,6 +168,12 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     return 1;
                 }
                 localPackageRoots.push_back(memberDir);
+                if (memberResult.manifest->package.ns)
+                    localNamespaces.insert(memberResult.manifest->package.ns->Normalized());
+                if (SourcesDeclareTests(memberDir)) {
+                    sourceTestPackages.push_back(
+                        {memberDir, std::filesystem::path(member).generic_string(), *memberResult.manifest});
+                }
                 if (auto memberTests = memberDir / "Tests"; std::filesystem::exists(memberTests, ec)) {
                     testRoots.push_back({std::move(memberTests), std::filesystem::path(member).generic_string()});
                 }
@@ -170,6 +184,9 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                             std::format("{} v{} {}", manifest->package.name.Text(), manifest->package.version.Text(),
                                         FormatBuildContext(profile, *targetTriple)));
             testRoots.push_back({projectRoot / "Tests", {}});
+            if (SourcesDeclareTests(projectRoot)) {
+                sourceTestPackages.push_back({projectRoot, manifest->package.name.Text(), *manifest});
+            }
         }
     }
     else {
@@ -203,22 +220,27 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     auto discovered = DiscoverTestPackages(testRoots);
     for (const auto &diagnostic : discovered.diagnostics)
         diagnostics.Write(diagnostic.Render(), MessageVisibility::Always);
-    const auto &testPackages = discovered.packages;
     if (!discovered.diagnostics.empty()) {
         return 1;
     }
-    if (!discovered.anyRootExists) {
-        output.Success("Passed", std::format("0 tests in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
+    discovered.packages.insert(discovered.packages.begin(), std::make_move_iterator(sourceTestPackages.begin()),
+                               std::make_move_iterator(sourceTestPackages.end()));
+    const auto &testPackages = discovered.packages;
+    if (!discovered.anyRootExists && testPackages.empty()) {
+        output.Success("Passed",
+                       std::format("0 test packages in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
         output.Detail("No test directory found at 'Tests/'");
         return 0;
     }
     if (testPackages.empty()) {
-        output.Success("Passed", std::format("0 tests in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
+        output.Success("Passed",
+                       std::format("0 test packages in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
         output.Detail("No executable test packages found under 'Tests/'");
         return 0;
     }
 
-    output.Progress("Running", Reporting::FormatCount(testPackages.size(), "test"));
+    // What runs is a package each, however many tests each package holds.
+    output.Progress("Running", Reporting::FormatCount(testPackages.size(), "test package"));
 
     auto ReportCapturedOutput = [&](const std::string_view captured) {
         if (captured.empty()) {
@@ -235,6 +257,9 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     // captured diagnostics or program output that explains it.
     int passed = 0;
     int failed = 0;
+    int unmatched = 0;
+    // Runners that had a test their filters matched, which is what a run with filters is for.
+    int matchedRunners = 0;
     const auto suiteStart = std::chrono::steady_clock::now();
     std::vector<TestTask> tasks;
     for (const auto &package : testPackages) {
@@ -248,12 +273,16 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     compileOptions.profile = profile;
     compileOptions.defines = defines;
     compileOptions.localPackageRoots = localPackageRoots;
-    compileOptions.denyLegacyProtocols = denyLegacyProtocols;
+    compileOptions.localNamespaces = localNamespaces;
+    compileOptions.useBuildCache = useBuildCache;
+    // Packages built side by side share the cores rather than each starting a thread per core.
+    compileOptions.jobs = std::max<std::size_t>(1, Parallel::DefaultJobs() / jobs);
     std::vector<TestOutcome> outcomes(testPackages.size());
     RunTestTasks(
         tasks, jobs,
         [&](const std::size_t index) {
-            outcomes[index] = RunTestPackage(testPackages[index], compileOptions, diagnostics.Style().enabled);
+            outcomes[index] =
+                RunTestPackage(testPackages[index], compileOptions, diagnostics.Style().enabled, testArguments);
         },
         [&](const std::size_t index) {
             const std::string &label = testPackages[index].label;
@@ -261,9 +290,21 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             if (!outcome.executable.empty())
                 output.Verbose(std::format("Running '{}'", outcome.executable.string()));
             const auto detail = std::format("{} in {}", label, Reporting::FormatDuration(outcome.duration));
-            if (outcome.status == TestStatus::Passed) {
+            if (outcome.runner && outcome.status != TestStatus::NoMatch && outcome.status != TestStatus::BuildError) {
+                ++matchedRunners;
+            }
+            if (outcome.status == TestStatus::NoMatch) {
+                ++unmatched;
+                output.Success("Skipped", std::format("{} (no test matches)", detail));
+            }
+            else if (outcome.status == TestStatus::Passed) {
                 ++passed;
                 output.Success("Passed", detail);
+                // Arguments for the runner ask it for something, such as `--list` or a filter, so what it said is
+                // the answer and is shown even when the package passed.
+                if (!testArguments.empty()) {
+                    ReportCapturedOutput(outcome.output);
+                }
             }
             else {
                 ++failed;
@@ -280,6 +321,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     diagnostics.Note("the test executable could not be launched");
                     break;
                 case TestStatus::Passed:
+                case TestStatus::NoMatch:
                     break;
                 }
                 diagnostics.Write(outcome.diagnostics, MessageVisibility::Always);
@@ -289,16 +331,24 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             output.Flush();
         });
     const auto elapsed = ElapsedMs(suiteStart);
-    const int total = passed + failed;
+    const int total = passed + failed + unmatched;
+    // Filters that no package had a test for ran nothing, which a misspelt name must not pass for.
+    const bool nothingMatched = unmatched > 0 && matchedRunners == 0;
+    if (nothingMatched) {
+        diagnostics.Error("no test matches the filter in any package");
+        diagnostics.Help("run 'rux test -- --list' to see the test names");
+    }
     if (!opts.quiet) {
-        const auto totals = std::format("{} in {} ({} passed, {} failed)", Reporting::FormatCount(total, "test"),
-                                        Reporting::FormatDuration(elapsed), passed, failed);
-        if (failed == 0) {
+        std::string totals =
+            std::format("{} in {} ({} passed, {} failed", Reporting::FormatCount(total, "test package"),
+                        Reporting::FormatDuration(elapsed), passed, failed);
+        totals += unmatched > 0 ? std::format(", {} without a matching test)", unmatched) : ")";
+        if (failed == 0 && !nothingMatched) {
             output.Success("Passed", totals);
         }
         else {
             output.Failure("Failed", totals);
         }
     }
-    return failed == 0 ? 0 : 1;
+    return failed == 0 && !nothingMatched ? 0 : 1;
 }

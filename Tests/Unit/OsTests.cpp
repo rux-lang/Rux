@@ -1,5 +1,6 @@
 #include "Driver/BuildTarget.h"
 #include "System/Os.h"
+#include "System/X86CpuFeatures.h"
 #include "Target/Platform.h"
 
 #include <array>
@@ -161,4 +162,42 @@ TEST_CASE("direct target execution accepts process and native OS architectures o
     constexpr Rux::System::HostArchitectureInfo physicalX64{.processArch = Arch::X86_64, .nativeArch = Arch::X86_64};
     CHECK(CanExecuteTargetDirectly(OS::Linux, physicalX64, OS::Linux, Arch::X86_64));
     CHECK_FALSE(CanExecuteTargetDirectly(OS::Linux, physicalX64, OS::Linux, Arch::AArch64));
+}
+
+TEST_CASE("x86 feature detection requires hardware and enabled OS register state") {
+    constexpr auto xsave = 1U << 26;
+    constexpr auto osxsave = 1U << 27;
+    constexpr auto avx = 1U << 28;
+    constexpr auto extensions = (1U << 5) | (1U << 16);
+    constexpr auto ready = xsave | osxsave | avx;
+    const auto full = DecodeX86CpuFeatures(7, ready, 1U << 26, extensions, 0xE6);
+    CHECK(full.Has(CpuFeature::SSE2 | CpuFeature::AVX | CpuFeature::AVX2 | CpuFeature::AVX512));
+    for (const auto absent : {xsave, osxsave, avx}) {
+        const auto features = DecodeX86CpuFeatures(7, ready & ~absent, 1U << 26, extensions, 0xE6);
+        CHECK(features.Has(CpuFeature::SSE2));
+        CHECK_FALSE(features.Has(CpuFeature::AVX));
+        CHECK_FALSE(features.Has(CpuFeature::AVX2));
+        CHECK_FALSE(features.Has(CpuFeature::AVX512));
+    }
+    CHECK_FALSE(CanReadXcr0(0));
+    CHECK_FALSE(CanReadXcr0(xsave));
+    CHECK_FALSE(CanReadXcr0(osxsave));
+    CHECK(CanReadXcr0(xsave | osxsave));
+    for (const auto state : {0x0U, 0x2U, 0x4U, 0xE0U}) {
+        const auto features = DecodeX86CpuFeatures(7, ready, 0, extensions, state);
+        CHECK_FALSE(features.Has(CpuFeature::AVX));
+        CHECK_FALSE(features.Has(CpuFeature::AVX2));
+        CHECK_FALSE(features.Has(CpuFeature::AVX512));
+    }
+    for (const auto state : {0x6U, 0x26U, 0x66U, 0xA6U, 0xC6U}) {
+        const auto features = DecodeX86CpuFeatures(7, ready, 0, extensions, state);
+        CHECK(features.Has(CpuFeature::AVX | CpuFeature::AVX2));
+        CHECK_FALSE(features.Has(CpuFeature::AVX512));
+    }
+    const auto noLeaf7 = DecodeX86CpuFeatures(6, ready, 0, extensions, 0xE6);
+    CHECK(noLeaf7.Has(CpuFeature::AVX));
+    CHECK_FALSE(noLeaf7.Has(CpuFeature::AVX2));
+    CHECK_FALSE(noLeaf7.Has(CpuFeature::AVX512));
+    CHECK(DecodeX86CpuFeatures(0, ready, 1U << 26, extensions, 0xE6).mask == 0);
+    CHECK_FALSE(DecodeX86CpuFeatures(7, ready, 0, 0, 0xE6).Has(CpuFeature::AVX512));
 }

@@ -1,0 +1,84 @@
+import Allocator::SystemAllocator;
+import Collections::Vector;
+import Core::{ Assert, Chain, Enumerate, Filter, Map, Skip, Take, Walk, Zip };
+
+// Each adaptor changes what a cursor yields and asks it for nothing it does not need; adaptors feed each other with
+// no type arguments written; and a container's own iterator feeds them as well as a slice does.
+
+var Asked: int32 = 0;
+
+// A cursor that counts how often it is asked, to show that the adaptors are lazy.
+struct Naturals {
+    next: int32;
+}
+
+extend Naturals {
+    func Next(self: &var Naturals) -> int32? {
+        Asked = Asked + 1;
+        self.next = self.next + 1;
+        return self.next - 1;
+    }
+}
+
+func Square(value: int32) -> int32 {
+    return value * value;
+}
+
+func IsEven(value: int32) -> bool {
+    return value % 2 == 0;
+}
+
+func Wide(value: int32) -> int64 {
+    return value as int64 * 1000;
+}
+
+func Main() -> int {
+    let numbers: int32[6] = [1, 2, 3, 4, 5, 6];
+
+    var squares: int32 = 0;
+    for value in Map(Walk(numbers[..]), Square) { squares = squares + value; }
+    Assert(squares == 91, "Map over a slice");
+
+    var evens: int32 = 0;
+    for value in Filter(Walk(numbers[..]), IsEven) { evens = evens * 10 + value; }
+    Assert(evens == 246, "Filter keeps order");
+
+    var window: int32 = 0;
+    for value in Take(Skip(Walk(numbers[..]), 2), 3) { window = window * 10 + value; }
+    Assert(window == 345, "Skip then Take");
+
+    var positions: uint = 0;
+    var weighted: int32 = 0;
+    for entry in Enumerate(Walk(numbers[..])) {
+        positions = positions + entry.index;
+        weighted = weighted + entry.item * entry.index as int32;
+    }
+    Assert(positions == 15u && weighted == 70, "Enumerate counts from zero");
+
+    let letters = "abcdefgh";
+    var zipped: int64 = 0;
+    var pairs: uint = 0;
+    for pair in Zip(Walk(numbers[..]), Walk(letters)) {
+        zipped = zipped + pair.first as int64 * pair.second as int64;
+        pairs = pairs + 1;
+    }
+    Assert(pairs == 6u && zipped == 1 * 97 + 2 * 98 + 3 * 99 + 4 * 100 + 5 * 101 + 6 * 102, "Zip stops at the shorter");
+
+    let more: int32[2] = [7, 8];
+    var joined: int32 = 0;
+    for value in Chain(Walk(numbers[0..2]), Walk(more[..])) { joined = joined * 10 + value; }
+    Assert(joined == 1278, "Chain reads one then the other");
+
+    // Laziness: an endless cursor yields only what is taken, and every adaptor composes with every other.
+    var lazy: int64 = 0;
+    for value in Take(Map(Filter(Map(Naturals { next: 0 }, Square), IsEven), Wide), 3) { lazy = lazy + value; }
+    Assert(lazy == (0 + 4 + 16) * 1000 && Asked == 5, "nothing is computed ahead of the take");
+
+    // A container's own iterator feeds the adaptors too.
+    var vector = Vector<int32>(SystemAllocator());
+    for value in numbers[..] { vector.Push(value) catch { else => return 1 }; }
+    var fromVector: int32 = 0;
+    for value in Filter(vector.Iterate(), IsEven) { fromVector = fromVector + value; }
+    Assert(fromVector == 12, "a vector's iterator is a cursor");
+    return 0;
+}

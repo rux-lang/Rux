@@ -8,8 +8,12 @@
 #include "Reporting/Reporting.h"
 
 #include <cstdio>
+#include <format>
+#include <print>
 #include <span>
+#include <string>
 #include <string_view>
+#include <utility>
 
 namespace Rux::CliSupport {
 enum class MessageVisibility {
@@ -35,6 +39,9 @@ using ValueAlign = Reporting::ValueAlign;
 class Reporter {
 public:
     Reporter(std::FILE *inputOutput, ReporterOptions inputOptions = {});
+    /// A reporter that collects what it would print into `inputCapture`, styled for `styleOf`, the stream the text is
+    /// written to later. Work that runs side by side reports through these so its reports never interleave.
+    Reporter(std::string &inputCapture, std::FILE *styleOf, ReporterOptions inputOptions = {});
 
     [[nodiscard]] bool Visible(MessageVisibility visibility) const;
     [[nodiscard]] const Reporting::Style &Style() const;
@@ -59,11 +66,20 @@ public:
     void Summary(std::string_view title, std::span<const TableRow> rows) const;
 
 private:
+    template <typename... Arguments>
+    void Print(std::format_string<Arguments...> format, Arguments &&...arguments) const {
+        if (capture != nullptr)
+            capture->append(std::format(format, std::forward<Arguments>(arguments)...));
+        else
+            std::print(output, format, std::forward<Arguments>(arguments)...);
+    }
+
     void Labeled(std::string_view label, std::string_view text, std::string_view color, bool indented = false) const;
     void Status(std::string_view primary, std::string_view detail, Reporting::StatusKind kind,
                 MessageVisibility visibility) const;
 
     std::FILE *output;
+    std::string *capture = nullptr;
     ReporterOptions options;
     Reporting::Style style;
 };

@@ -1,8 +1,8 @@
 # Narrow Float Conversion
 
-This page is the settled contract for converting `float32` and `float64` to and from decimal text: which algorithm the first-party packages use, where it comes from, how large its workspace is and why that size is enough, what precision is supported, and how the results are checked against something that did not come from the same code. It exists because the phase D plan requires all five recorded before any of the conversion is written — an exactness claim made after the fact is a claim nobody can audit.
+This page is the settled contract for converting `float32` and `float64` to and from decimal text, and for rendering the two narrower widths, `float16` and `float8`: which algorithm the first-party packages use, where it comes from, how large its workspace is and why that size is enough, what precision is supported, and how the results are checked against something that did not come from the same code. It exists because the phase D plan requires all five recorded before any of the conversion is written — an exactness claim made after the fact is a claim nobody can audit.
 
-The wide widths are a separate contract. `Float80` through `Float512` convert through the allocating `BigNat` in [`Rux/Format`](../Packages/Format), take an allocator explicitly, and do not implement `Display` or `Debug`. Nothing on this page changes that.
+The wide widths are a separate contract. `Float80` through `Float512` convert through the allocating `BigNat` in [`Rux/Format`](../Packages/Format), take an allocator explicitly, and do not implement `Display` or `Debug`; the `float80` through `float512` primitives reach them through `FromValue` and implement neither protocol either. Nothing on this page changes that.
 
 Return to the [main README](../README.md) for the complete documentation index.
 
@@ -14,7 +14,7 @@ That rules out the table-driven shortest-representation algorithms in their publ
 
 ## The algorithm
 
-**Exact rational digit generation**, the method Steele and White described in *How to Print Floating-Point Numbers Accurately* (1990) and Burger and Dybvig refined in *Printing Floating-Point Numbers Quickly and Accurately* (1996), commonly called Dragon4.
+**Exact rational digit generation**, the method Steele and White described in _How to Print Floating-Point Numbers Accurately_ (1990) and Burger and Dybvig refined in _Printing Floating-Point Numbers Quickly and Accurately_ (1996), commonly called Dragon4.
 
 The value is `f × 2^e` with `f` an integer below `2^53` and `e` an integer. The algorithm forms it as an exact ratio of two integers, `R / S`, together with two more integers `M+` and `M-` that measure the distance to the neighbouring representable values. Digits come out one at a time by multiplying the remainder by ten and dividing, and generation stops as soon as what has been emitted is closer to the value than to either neighbour — which is the definition of a shortest representation that reads back to the same bits. Fixed precision stops on a digit count instead and rounds the remainder to nearest with ties to even. Parsing runs the same machinery in the other direction: the decimal is formed as an exact ratio, scaled into [1, 2), and the significand's bits are taken from it by long division. What the division leaves is the tail, held exactly, so “is it more than half” is a comparison rather than an estimate and a tie is a tie rather than a value that landed near one.
 
@@ -34,14 +34,14 @@ The fixed workspace is `FixedNat`: an unsigned integer of exactly **sixty-four 6
 
 The bound comes from the worst case of the six quantities the two directions hold, for `float64`, which is the wider of the two narrow formats:
 
-| Direction | Quantity                                          | Largest value                  | Bits    |
-| --------- | -------------------------------------------------- | ------------------------------ | ------- |
-| Rendering | `R` for a large value, `f × 2^(e+1)`              | `2^53 × 2^972` = `2^1025`      | 1,025   |
-| Rendering | `S` for a small value, `2^(1-e)` at `e = -1074`   | `2^1075`                       | 1,075   |
-| Rendering | `R` after scaling a small value by `10^324`       | `2^54 × 10^324` ≈ `2^1131`     | 1,131   |
-| Rendering | `S` after scaling a large value by `10^309`       | `2 × 10^309` ≈ `2^1029`        | 1,029   |
-| Reading   | the retained digits, `10^768`                     | `10^768`                       | 2,551   |
-| Reading   | `S` for a long decimal with a tiny exponent       | `10^1108`                      | 3,681   |
+| Direction | Quantity                                        | Largest value              | Bits  |
+| --------- | ----------------------------------------------- | -------------------------- | ----- |
+| Rendering | `R` for a large value, `f × 2^(e+1)`            | `2^53 × 2^972` = `2^1025`  | 1,025 |
+| Rendering | `S` for a small value, `2^(1-e)` at `e = -1074` | `2^1075`                   | 1,075 |
+| Rendering | `R` after scaling a small value by `10^324`     | `2^54 × 10^324` ≈ `2^1131` | 1,131 |
+| Rendering | `S` after scaling a large value by `10^309`     | `2 × 10^309` ≈ `2^1029`    | 1,029 |
+| Reading   | the retained digits, `10^768`                   | `10^768`                   | 2,551 |
+| Reading   | `S` for a long decimal with a tiny exponent     | `10^1108`                  | 3,681 |
 
 The largest is 3,681 bits, from the denominator a decimal with the full retained digit count and an exponent at the bottom of the range is read over. Long division shifts a remainder left by at most one bit per step and never past the divisor's width, so nothing during either direction exceeds that figure by more than a limb. Sixty-four limbs gives 4,096 bits: **415 bits of headroom over the worst case**, which is over six limbs.
 
@@ -64,6 +64,16 @@ A precision renders in fixed notation and supports **0 through 1,100 digits incl
 The bound is chosen to be exactly enough rather than round. The smallest `float64` subnormal is `2^-1074`, whose exact decimal expansion has 1,074 fractional digits and no more; the largest finite `float64` has 309 integer digits. Every `float64` therefore has an exact decimal representation within 1,100 digits, and a precision past that could only ask for zeros. `float32` needs 149 fractional digits at most and is covered by the same bound.
 
 Refusing rather than clamping is the point. A caller that asks for 5,000 digits has miscalculated something, and answering with 1,100 digits and 3,900 zeros would hide it.
+
+## `float16` and `float8`
+
+`float16` is IEEE binary16 and `float8` is the E4M3 format: four exponent bits biased by 7, three fraction bits, and IEEE-style infinities and NaNs in the all-ones exponent, so its largest finite value is 240. Both render without allocating, through the same exact digit generation and the same workspace as the two wider narrow formats. `BitsOfFloat16` and `BitsOfFloat8` read the stored bits through a pointer, as the wider two do, and `DecomposeFloat16` and `DecomposeFloat8` take a value apart into the significand, exponent and binade-bottom flag the generator takes.
+
+The shortest digits are the shortest at the value's own width. Widening to `float32` first and rendering that would find the shortest decimal for the wider value, whose neighbours are much closer, and print more digits than a `float16` or `float8` needs: `0.1f16` is stored as 0.0999755859375, which renders as `0.1` at its own width and as `0.099975586` measured against a `float32`'s neighbours. A precision and the `e` and `E` styles go through the same writers as the wider two. Fixed notation gives way to scientific from a decimal exponent of 5 for `float16` and 3 for `float8`, the digit counts that tell every value of the width apart, as 9 does for `float32` and 17 for `float64`.
+
+The workspace bound needs no new derivation. The largest quantity either width holds is the scaled numerator for `float16`'s smallest subnormal, `2^-24`, scaled by `10^8`, which is about `2^39` and fits in one of the sixty-four limbs; `float8`'s largest is about `2^15`. The precision bound is untouched too: the longest exact expansion of a `float16` is that of `2^-24`, with 24 fractional digits, and of a `float8` that of `2^-9`, with nine.
+
+Both widths are small enough to check whole rather than by sample. `Tools/FloatVectors --narrow` renders every `float8` and `float16` bit pattern with the compiler's exact float arithmetic, verifies each finite text against the compiler's own parser and against the one-digit-shorter alternative, checks that every negative pattern is the positive text with a minus sign, and writes the tables the `Format` package tests walk: all 256 `float8` patterns and all 65,536 `float16` ones, beside the precision, scientific, sign, width and classification cases. Reading decimal text back into a `float16` or a `float8` is not provided.
 
 ## Reference vectors
 

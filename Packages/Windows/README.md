@@ -19,6 +19,11 @@ rux add Rux/Windows
 | `Memory`    | `VirtualAlloc`, `VirtualFree`, `VirtualProtect`, `VirtualLock`, and the state and protection flags |
 | `Entropy`   | `BCryptGenRandom` behind a `GetRandom` that either fills the buffer or fails            |
 | `Clock`     | `QueryPerformanceCounter`, `QueryPerformanceFrequency`, the precise wall clock, and the epoch conversion |
+| `Shell`     | `CommandLineToArgvW`, which splits the command line into arguments the way the C runtime does |
+| `Synch`     | `WaitOnAddress`, `WakeByAddressSingle` and `WakeByAddressAll`, from the synchronization API set |
+| `ProcessControl` | `CreateProcessW` and its structures, `CreatePipe`, handle inheritance, `GetExitCodeProcess`, `TerminateProcess` and `SetEnvironmentVariableW` |
+| `TimeZone`  | `GetTimeZoneInformation`, `TimeZoneInformation` and `TimeZoneRuleDate`                 |
+| `Winsock`   | `WSAStartup`, `WSAGetLastError`, the Ws2_32 socket calls, `ioctlsocket` with `FIONBIO`, `WSAPoll` with `WsaPollFd` and the `POLL*` flags, `getaddrinfo` and `freeaddrinfo`, `WsaData`, `AddressInfo` and the socket constants |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

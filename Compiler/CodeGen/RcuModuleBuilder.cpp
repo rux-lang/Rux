@@ -24,6 +24,10 @@ namespace {
         return ".rodata";
     case RcuModuleSection::Data:
         return ".data";
+    case RcuModuleSection::Bss:
+        return ".bss";
+    case RcuModuleSection::Tls:
+        return ".tls";
     }
     return "<invalid>";
 }
@@ -35,6 +39,15 @@ namespace {
         return 8;
     case RcuRelType::Abs32:
     case RcuRelType::Rel32:
+    case RcuRelType::TlsOffset32:
+    case RcuRelType::TlvDescriptorRel32:
+    case RcuRelType::ImportSlotRel32:
+    case RcuRelType::AArch64ImportSlotPage21:
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+    case RcuRelType::AArch64TlsHi12:
+    case RcuRelType::AArch64TlsLo12Nc:
+    case RcuRelType::AArch64TlvDescriptorPage21:
+    case RcuRelType::AArch64TlvDescriptorPageOff12:
     case RcuRelType::AArch64Call26:
     case RcuRelType::AArch64Jump26:
     case RcuRelType::AArch64CondBr19:
@@ -54,11 +67,20 @@ namespace {
 }
 
 [[nodiscard]] constexpr bool IsAArch64InstructionRelocation(const std::uint16_t type) noexcept {
-    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64MovwUabsG3;
+    return IsAArch64InstructionRelocationType(type);
 }
 
+/// The alignment a section starts with before any value asks for more: code at a cache-friendly sixteen, data at the
+/// doubleword every pointer, length and 64-bit scalar the emitters place there needs.
+[[nodiscard]] constexpr std::uint16_t BaseAlignment(const RcuModuleSection section) noexcept {
+    return section == RcuModuleSection::Text ? 16 : 8;
+}
+
+/// A section's recorded alignment is the strictest any of its values asked for, never less than its base. The linker
+/// pads each object's section to this before appending it, so an offset `AlignSection` made a multiple of N stays a
+/// multiple of N at run time only if N is recorded here.
 [[nodiscard]] RcuSection MakeSection(const RcuModuleSection id, std::vector<std::uint8_t> data,
-                                     std::vector<RcuReloc> relocations) {
+                                     std::vector<RcuReloc> relocations, const std::uint16_t alignment) {
     RcuSection section;
     section.data = std::move(data);
     section.relocs = std::move(relocations);
@@ -67,21 +89,29 @@ namespace {
         section.name = ".text";
         section.type = RcuSecType::Text;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
-        section.alignment = 16;
         break;
     case RcuModuleSection::RoData:
         section.name = ".rodata";
         section.type = RcuSecType::RoData;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
-        section.alignment = 8;
         break;
     case RcuModuleSection::Data:
         section.name = ".data";
         section.type = RcuSecType::Data;
         section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
-        section.alignment = 8;
+        break;
+    case RcuModuleSection::Bss:
+        section.name = ".bss";
+        section.type = RcuSecType::Bss;
+        section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        break;
+    case RcuModuleSection::Tls:
+        section.name = ".tls";
+        section.type = RcuSecType::Tls;
+        section.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write | RcuSecFlag::Tls;
         break;
     }
+    section.alignment = std::max(BaseAlignment(id), alignment);
     return section;
 }
 } // namespace
@@ -127,6 +157,8 @@ std::uint32_t RcuModuleBuilder::AlignSection(const RcuModuleSection section, con
     while (data.size() % alignment != 0) {
         data.push_back(0);
     }
+    auto &strictest = sectionAlignments[SectionIndex(section)];
+    strictest = std::max(strictest, alignment);
     return static_cast<std::uint32_t>(data.size());
 }
 
@@ -155,7 +187,7 @@ bool RcuModuleBuilder::TruncateSection(const RcuModuleSection section, const std
 }
 
 std::optional<std::uint32_t> RcuModuleBuilder::FindSymbol(const std::string_view name) const {
-    const auto found = std::ranges::find(symbolNames, name, &decltype(symbolNames)::value_type::first);
+    const auto found = symbolNames.find(name);
     if (found == symbolNames.end()) {
         return std::nullopt;
     }
@@ -191,7 +223,7 @@ std::optional<std::uint32_t> RcuModuleBuilder::DeclareSymbol(RcuSymbolDeclaratio
                        .kind = declaration.kind,
                        .visibility = declaration.visibility});
     symbolStates.push_back({});
-    symbolNames.emplace_back(symbols.back().name, index);
+    symbolNames.emplace(symbols.back().name, index);
     return index;
 }
 
@@ -225,7 +257,7 @@ std::optional<std::uint32_t> RcuModuleBuilder::DeclareExternal(std::string name,
                        .kind = kind,
                        .visibility = RcuSymVis::Global});
     symbolStates.push_back({.external = true});
-    symbolNames.emplace_back(symbols.back().name, index);
+    symbolNames.emplace(symbols.back().name, index);
     return index;
 }
 
@@ -314,7 +346,7 @@ bool RcuModuleBuilder::EndFunction(const std::uint32_t symbolIndex) {
 std::optional<std::uint32_t> RcuModuleBuilder::InternedLiteral(const std::string_view family,
                                                                const std::string_view key) const {
     const auto composite = LiteralKey(family, key);
-    const auto found = std::ranges::find(literals, composite, &decltype(literals)::value_type::first);
+    const auto found = literals.find(composite);
     return found == literals.end() ? std::nullopt : std::optional(found->second);
 }
 
@@ -324,7 +356,7 @@ bool RcuModuleBuilder::RecordInternedLiteral(std::string family, std::string key
         return false;
     }
     const auto composite = LiteralKey(family, key);
-    const auto found = std::ranges::find(literals, composite, &decltype(literals)::value_type::first);
+    const auto found = literals.find(composite);
     if (found != literals.end()) {
         if (found->second == symbolIndex) {
             return true;
@@ -332,7 +364,7 @@ bool RcuModuleBuilder::RecordInternedLiteral(std::string family, std::string key
         Report(std::format("RCU literal '{}:{}' was interned with two symbols", family, key));
         return false;
     }
-    literals.emplace_back(composite, symbolIndex);
+    literals.emplace(composite, symbolIndex);
     return true;
 }
 
@@ -410,13 +442,22 @@ RcuModuleBuildResult RcuModuleBuilder::Finalize() {
     file.ruxVersion = description.ruxVersion;
     file.compilerFlags = description.compilerFlags;
     file.sourceHash = description.sourceHash;
-    file.sections.reserve(3);
-    file.sections.push_back(
-        MakeSection(RcuModuleSection::Text, std::move(sectionData[0]), std::move(sectionRelocations[0])));
-    file.sections.push_back(
-        MakeSection(RcuModuleSection::RoData, std::move(sectionData[1]), std::move(sectionRelocations[1])));
-    file.sections.push_back(
-        MakeSection(RcuModuleSection::Data, std::move(sectionData[2]), std::move(sectionRelocations[2])));
+    file.sections.reserve(5);
+    file.sections.push_back(MakeSection(RcuModuleSection::Text, std::move(sectionData[0]),
+                                        std::move(sectionRelocations[0]), sectionAlignments[0]));
+    file.sections.push_back(MakeSection(RcuModuleSection::RoData, std::move(sectionData[1]),
+                                        std::move(sectionRelocations[1]), sectionAlignments[1]));
+    file.sections.push_back(MakeSection(RcuModuleSection::Data, std::move(sectionData[2]),
+                                        std::move(sectionRelocations[2]), sectionAlignments[2]));
+    // Sections are found by their fixed index, so a thread-local template keeps an empty zero-fill section before it.
+    if (!sectionData[3].empty() || !sectionData[4].empty()) {
+        file.sections.push_back(MakeSection(RcuModuleSection::Bss, std::move(sectionData[3]),
+                                            std::move(sectionRelocations[3]), sectionAlignments[3]));
+    }
+    if (!sectionData[4].empty()) {
+        file.sections.push_back(MakeSection(RcuModuleSection::Tls, std::move(sectionData[4]),
+                                            std::move(sectionRelocations[4]), sectionAlignments[4]));
+    }
     file.symbols = std::move(symbols);
     result.file = std::move(file);
     return result;

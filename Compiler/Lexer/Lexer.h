@@ -127,7 +127,7 @@ private:
     Token ScanString(SourceLocation start,
                      std::size_t prefixLen = 0); // "…" / c8"…" / c16"…" / c32"…"
     Token ScanChar(SourceLocation start,
-                   std::size_t prefixLen = 0); // '…' / c8'…' / c16'…' / c32'…'
+                   std::size_t prefixLen = 0); // '…' / c8'…' / c16'…' … c512'…'
     Token ScanSymbol(SourceLocation start);    // operators & punctuation
     Token ScanUnknown(SourceLocation start);   // fallback for bad chars
 

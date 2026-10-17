@@ -1,0 +1,90 @@
+import Allocator::SystemAllocator;
+import Collections::Vector;
+import Core::Assert;
+import Text::String;
+
+// A direct loop over an array or a slice gives every pass its own copy of the element, which the end of the pass
+// destroys. The loop used to copy the element's bytes instead of calling its `=`, so each pass destroyed state the
+// sequence still owned, and the sequence destroyed it again when it went out of scope.
+
+struct Counter {
+    copies: int32;
+    drops: int32;
+}
+
+struct Counted {
+    counter: *var Counter;
+    id: int32;
+}
+
+extend Counted {
+    func =(self: &var Counted, other: &Counted) {
+        self.counter = other.counter;
+        self.id = other.id;
+        self.counter.copies = self.counter.copies + 1;
+    }
+
+    func ~Counted(self: &var Counted) {
+        self.counter.drops = self.counter.drops + 1;
+    }
+}
+
+func SumIds(items: Counted[..]) -> int32 {
+    var sum: int32 = 0;
+    for item in items {
+        sum = sum + item.id;
+    }
+    return sum;
+}
+
+// Every element is copied for its pass and the copy destroyed, whether the pass ends, breaks or continues.
+func LoopOverCounted(counter: *var Counter) {
+    let items: Counted[3] = [Counted { counter: counter, id: 1 }, Counted { counter: counter, id: 2 },
+                             Counted { counter: counter, id: 3 }];
+    Assert(SumIds(items[..]) == 6, "a loop over a slice visits every element");
+    Assert(counter.copies == 3 && counter.drops == 3, "each pass copies its element and destroys the copy");
+
+    var seen: int32 = 0;
+    for item in items {
+        seen = seen + 1;
+        if item.id == 2 {
+            break;
+        }
+    }
+    Assert(seen == 2, "the loop leaves at the second element");
+    Assert(counter.copies == 5 && counter.drops == 5, "leaving the loop destroys that pass's copy");
+
+    for item in items[1..] {
+        if item.id == 2 {
+            continue;
+        }
+        seen = seen + item.id;
+    }
+    Assert(seen == 5, "continue skips to the next element");
+    Assert(counter.copies == 7 && counter.drops == 7, "continuing destroys that pass's copy");
+}
+
+func Main() -> int {
+    var counter = Counter { copies: 0, drops: 0 };
+    LoopOverCounted(@counter);
+    Assert(counter.drops == 10, "the array destroys its own elements once");
+
+    // The shape `Test::RunBenchmarks` loops over: text in a vector, visited through its slice.
+    let a = String::FromBytes(SystemAllocator(), "hello") catch { else => return 1 };
+    let b = String::FromBytes(SystemAllocator(), "world") catch { else => return 2 };
+    var texts = Vector<String>(SystemAllocator());
+    texts.Push(<-a) catch { else => return 3 };
+    texts.Push(<-b) catch { else => return 4 };
+    var bytes: uint = 0;
+    for text in texts.AsSlice() {
+        bytes = bytes + text.Bytes().length;
+    }
+    Assert(bytes == 10u, "every string is visited");
+    let words: String[2] = [String::FromBytes(SystemAllocator(), "one") catch { else => return 5 },
+                            String::FromBytes(SystemAllocator(), "two") catch { else => return 6 }];
+    for word in words[..] {
+        bytes = bytes + word.Bytes().length;
+    }
+    Assert(bytes == 16u, "an array of strings is visited");
+    return 0;
+}

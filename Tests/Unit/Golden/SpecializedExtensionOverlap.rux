@@ -1,0 +1,28 @@
+// Two specializations may declare methods of the same name, since each extends its own instantiation; a generic
+// extension's method of that name would compete with them for every instantiation they name.
+struct Pair<T> {
+    left: T;
+    right: T;
+}
+
+extend Pair<int32> {
+    func Sum(self: &Pair<int32>) -> int32 {
+        return self.left + self.right;
+    }
+}
+
+extend Pair<int64> {
+    func Sum(self: &Pair<int64>) -> int64 {
+        return self.left + self.right;
+    }
+}
+
+extend Pair<T> {
+    func Sum(self: &Pair<T>) -> T {
+        return self.left;
+    }
+}
+
+func Main() -> int {
+    return 0;
+}

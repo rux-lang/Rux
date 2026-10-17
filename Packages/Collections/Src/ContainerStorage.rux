@@ -1,18 +1,14 @@
 // Talking to an allocator in elements rather than bytes.
-//
 // Every container here holds a run of `T` and needs three things from an allocator: storage for a count of them,
 // storage of a different count with the old contents carried over, and the storage given back. Doing that by hand
 // means computing a layout at each site, and a layout computed wrongly is the defect that writes past the end of a
 // block the allocator thought was smaller. These helpers exist so it is computed once.
-//
 // The layout comes from `sizeof(T)` and `alignof(T)`, asked of the element type at each instantiation. That is what
 // makes these usable by a container that has never seen an element and has none to hand: nothing here needs a sample
 // value.
-//
 // A count of zero is not an error. It asks the allocator for a zero-sized block, which every allocator here answers
 // with a shared non-null aligned address, so an empty container is not a special shape and needs no null checks
 // downstream. That block must still be released, exactly like any other.
-//
 // Internal to this package, and package-private so that it stays that way: these are the plumbing every container
 // shares, not something a caller reaches for. What a caller reaches for is a container, and what the plumbing does
 // is visible through one — a zero-sized element, a growth the allocator refuses, and the destruction of everything

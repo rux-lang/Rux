@@ -1,8 +1,10 @@
 // Checking for literals, names, operators and assignment, including the
 // mutability rules an assignment target has to satisfy.
 
+#include "Lexer/Lexer.h"
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Analysis/AnalysisContext.h"
+#include "Syntax/Parser/Detail/AstDumpWriter.h"
 #include "Types/NativeLayout.h"
 #include "Types/PrimitiveCatalog.h"
 
@@ -11,6 +13,16 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+/// The value a write through a reference to a scalar stores: the referent, read as a plain value.
+TypeRef ScalarReferent(const TypeRef &reference) {
+    if (reference->kind != TypeRef::Kind::Reference || reference->inner.empty()) {
+        return reference;
+    }
+    TypeRef referent = reference->inner.front();
+    referent.isMut = false;
+    return referent;
+}
+
 std::string_view OperatorName(const TokenKind op) noexcept {
     using TK = TokenKind;
     switch (op) {
@@ -126,22 +138,22 @@ TokenKind BinaryOperation(const TokenKind op) noexcept {
 }
 
 bool IsAssignablePlace(const Expr &expression) noexcept {
-    if (dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const SelfExpr *>(&expression) ||
-        dynamic_cast<const FieldExpr *>(&expression) || dynamic_cast<const IndexExpr *>(&expression)) {
+    if (AstCast<const IdentExpr>(&expression) || AstCast<const SelfExpr>(&expression) ||
+        AstCast<const FieldExpr>(&expression) || AstCast<const IndexExpr>(&expression)) {
         return true;
     }
-    const auto *unary = dynamic_cast<const UnaryExpr *>(&expression);
+    const auto *unary = AstCast<const UnaryExpr>(&expression);
     return unary && unary->op == TokenKind::Star;
 }
 
 /// Addresses: a function value is the address of its entry point, so it converts to and from pointers, but never to a
 /// numeric or character value.
 bool IsAddressValue(const TypeRef &type) noexcept {
-    return type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Func;
+    return type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Func;
 }
 
 bool IsCastValue(const TypeRef &type) noexcept {
-    return type.IsNumeric() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer;
+    return type.IsNumeric() || type.IsBool() || type.IsChar() || type->kind == TypeRef::Kind::Pointer;
 }
 } // namespace
 
@@ -169,25 +181,42 @@ void AnalysisContext::ValidateSuffixedIntegerLiteral(const LiteralExpr &literal,
     }
 }
 
+void AnalysisContext::ValidateCharLiteral(const Token &literal, const SourceLocation location) {
+    if (literal.kind != TokenKind::CharLiteral) {
+        return;
+    }
+    const TypeRef type = CharLiteralType(literal);
+    const std::optional<std::uint32_t> codePoint = Lexer::DecodeCharLiteralCodePoint(literal.text);
+    if (!codePoint || IsOneCharacterOf(type->kind, *codePoint)) {
+        return;
+    }
+    const std::string_view text = literal.text;
+    const std::size_t open = text.find('\'');
+    const std::string_view character = text.substr(open + 1, text.size() - open - 2);
+    const std::string_view prefix = text.substr(0, open);
+    std::string help = std::format("write a string literal such as {}\"{}\"", prefix, character);
+    if (type->kind == TypeRef::Kind::Char8 && *codePoint <= 0xFF) {
+        help += std::format(", or a byte such as 0x{:02X}u8", *codePoint);
+    }
+    EmitError(location,
+              std::format("character '{}' (U+{:04X}) does not fit one '{}' code unit", character, *codePoint,
+                          type.ToString()),
+              {}, std::move(help));
+}
+
 std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &expression) {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         if (!negatedIntegerLiterals.contains(literal)) {
             ValidateSuffixedIntegerLiteral(*literal, false);
         }
-        const TypeRef type = LiteralType(literal->token);
-        if (const PrimitiveInfo *primitive = FindPrimitive(type.kind); primitive && !primitive->implemented) {
-            EmitError(literal->location,
-                      std::format("primitive type '{}' is reserved but is not implemented in this compiler version",
-                                  primitive->name));
-            return type;
-        }
-        return type;
+        ValidateCharLiteral(literal->token, literal->location);
+        return LiteralType(literal->token);
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         // A minus and the literal under it are one written value, so the magnitude is checked against the negative
         // end of the range rather than the positive one: `-128i8` is in range where `128i8` is not.
         if (unary->op == TokenKind::Minus) {
-            if (const auto *operand = dynamic_cast<const LiteralExpr *>(unary->operand.get())) {
+            if (const auto *operand = AstCast<const LiteralExpr>(unary->operand.get())) {
                 negatedIntegerLiterals.insert(operand);
                 ValidateSuffixedIntegerLiteral(*operand, true);
             }
@@ -197,7 +226,14 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         TypeRef operandType = CheckExpr(*unary->operand);
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
-            if (!CheckAssignableTarget(*unary->operand, operandType, OperatorName(unary->op))) {
+            if (const Symbol *reference = ReferenceWriteTarget(*unary->operand, false, false)) {
+                const bool writable = CheckReferenceWrite(*unary->operand, *reference);
+                operandType = ScalarReferent(operandType);
+                if (!writable) {
+                    return operandType;
+                }
+            }
+            else if (!CheckAssignableTarget(*unary->operand, operandType, OperatorName(unary->op))) {
                 return operandType;
             }
         }
@@ -207,9 +243,30 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             operandType.isMut = PlaceIsWritable(*unary->operand, operandType);
             checkingPlainAssignmentTarget = savedAssignmentTarget;
             if (operandType.isMut) {
+                ReportPartWriteIntoEmptyLocal(*unary->operand, "take the address of", unary->location);
                 MarkTrackedAssignment(*unary->operand, unary->location);
             }
-            return TypeRef::MakePointer(std::move(operandType));
+            return TypeRef::MakePointer(operandType);
+        }
+        if (unary->op == TokenKind::Star && operandType->kind == TypeRef::Kind::Reference &&
+            !operandType->inner.empty()) {
+            // A reference already reads and writes its referent, so the operator is only ever a leftover from pointer
+            // code. Naming the operand without it is the whole fix, and the referent type keeps the rest of the
+            // expression from failing twice.
+            const auto *name = AstCast<const IdentExpr>(unary->operand.get());
+            const bool receiver = AstCast<const SelfExpr>(unary->operand.get()) != nullptr;
+            const std::string spelled = name ? name->name : receiver ? "self" : "";
+            std::string help = "remove the '*'";
+            if (!spelled.empty()) {
+                help = std::format("write '{}' in place of '*{}'", spelled, spelled);
+                if (operandType->inner.front().IsNumeric()) {
+                    help += std::format(", as in '{} += 1'", spelled);
+                }
+            }
+            EmitError(unary->location,
+                      std::format("operator '*' requires a pointer operand, but found '{}'", operandType.ToString()),
+                      {"a reference reads and writes its referent without '*'"}, help);
+            return ScalarReferent(operandType);
         }
         if (unary->op == TokenKind::Plus || unary->op == TokenKind::Minus || unary->op == TokenKind::Bang ||
             unary->op == TokenKind::Tilde) {
@@ -217,24 +274,31 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         return CheckUnary(unary->op, operandType, unary->location);
     }
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         const TypeRef operandType = CheckExpr(*move->operand);
         ConsumeExplicitValue(*move->operand, operandType, move->location);
         return operandType;
     }
-    if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+    if (const auto *tryExpression = AstCast<const TryExpr>(&expression)) {
         return CheckTryExpression(*tryExpression);
     }
-    if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         TypeRef operandType = CheckExpr(*postfix->operand);
-        const bool isAssignable = CheckAssignableTarget(*postfix->operand, operandType, OperatorName(postfix->op));
+        bool isAssignable = false;
+        if (const Symbol *reference = ReferenceWriteTarget(*postfix->operand, false, false)) {
+            isAssignable = CheckReferenceWrite(*postfix->operand, *reference);
+            operandType = ScalarReferent(operandType);
+        }
+        else {
+            isAssignable = CheckAssignableTarget(*postfix->operand, operandType, OperatorName(postfix->op));
+        }
         if (isAssignable && !operandType.IsUnknown() && !operandType.IsNumeric()) {
             EmitError(postfix->location, std::format("operator '{}' requires a numeric operand, but found '{}'",
                                                      OperatorName(postfix->op), operandType.ToString()));
         }
         return operandType;
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         if (binary->op == TokenKind::QuestionQuestion) {
             return CheckCoalesceExpression(*binary);
         }
@@ -245,14 +309,18 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         // That reading is only a mistake once `B` turns out to name a type, so it is caught here rather than by the
         // parser, with the grouping the author meant.
         if (binary->op == TokenKind::Pipe &&
-            (dynamic_cast<const IsExpr *>(binary->left.get()) || dynamic_cast<const CastExpr *>(binary->left.get()))) {
-            const auto *name = dynamic_cast<const IdentExpr *>(binary->right.get());
+            (AstCast<const IsExpr>(binary->left.get()) || AstCast<const CastExpr>(binary->left.get()))) {
+            const auto *name = AstCast<const IdentExpr>(binary->right.get());
             const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
             if (symbol && symbol->kind == Symbol::Kind::Type) {
-                const bool test = dynamic_cast<const IsExpr *>(binary->left.get()) != nullptr;
+                const auto *isTest = AstCast<const IsExpr>(binary->left.get());
+                const auto *cast = AstCast<const CastExpr>(binary->left.get());
+                const bool test = isTest != nullptr;
+                const std::string first =
+                    ParserDumpDetail::DeclarationPrinter::TypeString(test ? isTest->type.get() : cast->type.get());
                 static_cast<void>(CheckExpr(*binary->left));
                 EmitError(binary->location, std::format("a sum type after '{}' must be grouped", test ? "is" : "as"),
-                          {}, std::format("write 'value {} (A | {})'", test ? "is" : "as", name->name));
+                          {}, std::format("write 'value {} ({} | {})'", test ? "is" : "as", first, name->name));
                 return TypeRef::MakeUnknown();
             }
         }
@@ -260,28 +328,55 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         TypeRef right = CheckExpr(*binary->right);
         return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location, binary);
     }
-    if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+    if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
         const bool simpleAssignment = assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow;
-        checkingPlainAssignmentTarget = simpleAssignment;
+        // A write through a reference reads the reference itself, so its name is checked as a use rather than as a
+        // place the assignment initializes.
+        const Symbol *writtenReference = ReferenceWriteTarget(*assignment->target, simpleAssignment, simpleAssignment);
+        checkingPlainAssignmentTarget = simpleAssignment && !writtenReference;
         // A plain assignment whose target is an index may be a call to `[]=` rather than a store. Naming the exact
         // node lets the target check resolve the setter while it already holds the object and index types, so
         // neither is checked twice, and leaves every other index in the expression a read.
         const IndexExpr *savedAssignmentIndex = indexAssignmentTarget;
-        indexAssignmentTarget = simpleAssignment ? dynamic_cast<const IndexExpr *>(assignment->target.get()) : nullptr;
+        indexAssignmentTarget = simpleAssignment ? AstCast<const IndexExpr>(assignment->target.get()) : nullptr;
         TypeRef target = CheckExpr(*assignment->target);
         indexAssignmentTarget = savedAssignmentIndex;
         checkingPlainAssignmentTarget = savedAssignmentTarget;
+        // A function named as the value takes its overload or type arguments from the function type it is stored as.
+        if (simpleAssignment && target->kind == TypeRef::Kind::Func &&
+            (AstCast<const IdentExpr>(assignment->value.get()) || AstCast<const PathExpr>(assignment->value.get()))) {
+            expectedExpressionTypes.insert_or_assign(assignment->value.get(), target);
+        }
         TypeRef value = CheckExpr(*assignment->value);
-        checkingPlainAssignmentTarget = simpleAssignment;
-        if (const auto *indexTarget = dynamic_cast<const IndexExpr *>(assignment->target.get());
+        // `a = b = 7` reads as a chain, but the inner assignment is a statement-like expression with no value.
+        if (const auto *inner = AstCast<const AssignExpr>(assignment->value.get())) {
+            EmitError(inner->location, "an assignment produces no value and cannot be chained", {},
+                      "assign each target in its own statement");
+            checkingPlainAssignmentTarget = savedAssignmentTarget;
+            return TypeRef::MakeOpaque();
+        }
+        checkingPlainAssignmentTarget = simpleAssignment && !writtenReference;
+        if (const auto *indexTarget = AstCast<const IndexExpr>(assignment->target.get());
             indexTarget && indexAssignments.contains(indexTarget)) {
             FinishIndexedAssignment(*assignment, target, value);
             checkingPlainAssignmentTarget = savedAssignmentTarget;
             return TypeRef::MakeOpaque();
         }
-        const bool isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
+        bool isAssignable = false;
+        if (writtenReference) {
+            isAssignable = CheckReferenceWrite(*assignment->target, *writtenReference);
+            target = ScalarReferent(target);
+        }
+        else {
+            isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
+        }
         checkingPlainAssignmentTarget = savedAssignmentTarget;
+        if (isAssignable && simpleAssignment && target->kind != TypeRef::Kind::Reference) {
+            ReportPartWriteIntoEmptyLocal(*assignment->target, "write", assignment->location);
+            RecordPlaceReplacement(*assignment, writtenReference != nullptr);
+            CheckViewAssignment(*assignment->target, *assignment->value, target, assignment->location);
+        }
         if (isAssignable && !simpleAssignment && !target.IsUnknown() && !value.IsUnknown()) {
             const TypeRef result = CheckBinary(assignment->op, target, value, *assignment->target, *assignment->value,
                                                assignment->location);
@@ -293,7 +388,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         else if (isAssignable) {
             const FuncDecl *copyOperation = nullptr;
-            if (assignment->op == TokenKind::Assign && target.kind != TypeRef::Kind::Reference) {
+            if (assignment->op == TokenKind::Assign && target->kind != TypeRef::Kind::Reference) {
                 const TypeProperties properties = ClassifyTypeProperties(target);
                 if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
                     copyOperation = LookupSourceSpecialOperation(target, "=", assignment->location);
@@ -314,7 +409,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                     EmitError(assignment->location,
                               AssignmentErrorMessage(
                                   *assignment->value, target,
-                                  std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
+                                  std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
                     return TypeRef::MakeOpaque();
                 }
                 if (!copyOperation->body) {
@@ -323,24 +418,38 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                               "use '<-' if ownership should move instead");
                     return TypeRef::MakeOpaque();
                 }
-                valueCopies.insert_or_assign(
-                    assignment->value.get(),
-                    ValueCopy{ValueConsumptionKind::Assignment, target, copyOperation, assignment->location});
+                // Only a source that stays with another owner — a named place, borrowed storage, or a reference — is
+                // copied. A fresh temporary has no other owner, so it transfers into the target as it stands, the way
+                // it initializes a binding; copying it would leave the temporary itself with no owner to destroy it.
+                if (!IsFreshTemporarySource(*assignment->value, value, target)) {
+                    valueCopies.insert_or_assign(
+                        assignment->value.get(),
+                        ValueCopy{ValueConsumptionKind::Assignment, target, copyOperation, assignment->location});
+                }
                 MarkTrackedAssignment(*assignment->target, assignment->location);
                 return TypeRef::MakeOpaque();
             }
-            const bool nullReference = target.kind == TypeRef::Kind::Reference && IsNullLiteral(*assignment->value);
+            const bool nullReference = target->kind == TypeRef::Kind::Reference && IsNullLiteral(*assignment->value);
             const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
                                                        CanAssignExprTo(*assignment->value, value, target));
-            if (!compatible) {
+            const Symbol *rebound = !compatible && !nullReference && simpleAssignment
+                                      ? ReferenceWriteTarget(*assignment->target, true, false)
+                                      : nullptr;
+            if (rebound && !value.IsUnknown() && CanAssignExprTo(*assignment->value, value, ScalarReferent(target))) {
+                EmitError(assignment->location,
+                          std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString()),
+                          {std::format("'=' points the 'var' reference '{}' at other storage", rebound->name)},
+                          std::format("declare '{}' with 'let' to write through it", rebound->name));
+            }
+            else if (!compatible) {
                 EmitError(assignment->location,
                           AssignmentErrorMessage(
                               *assignment->value, target,
-                              std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
+                              std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
             }
             else if (simpleAssignment) {
                 const bool explicitMove = assignment->op == TokenKind::MoveArrow;
-                if (explicitMove && target.kind == TypeRef::Kind::Reference) {
+                if (explicitMove && target->kind == TypeRef::Kind::Reference) {
                     EmitError(assignment->location, "cannot move ownership into a reference",
                               {"a reference target stores a non-owning alias"},
                               "write '=' to assign or reborrow the reference");
@@ -352,24 +461,26 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                 if (explicitMove) {
                     ConsumeExplicitValue(*assignment->value, value, assignment->location);
                 }
-                else if (target.kind != TypeRef::Kind::Reference) {
+                else if (target->kind != TypeRef::Kind::Reference) {
                     ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
                 }
-                MarkTrackedAssignment(*assignment->target, assignment->location);
-                if (!explicitMove && target.kind == TypeRef::Kind::Reference) {
+                if (!writtenReference) {
+                    MarkTrackedAssignment(*assignment->target, assignment->location);
+                }
+                if (!explicitMove && target->kind == TypeRef::Kind::Reference) {
                     RegisterReferenceAssignment(*assignment->target, *assignment->value, target);
                 }
             }
         }
         return TypeRef::MakeOpaque();
     }
-    if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         const TypeRef operandType = ReadBorrowedScalar(*cast->operand, CheckExpr(*cast->operand));
         TypeRef targetType = ResolveType(*cast->type);
         // An unsubstituted type parameter is not yet any particular type, so whether it can be cast is a question only
         // an instantiation can answer. Defer it there, the same way a unary or binary operator on a `T` already is,
         // rather than rejecting the generic body for a cast that every instantiation of it would accept.
-        if (operandType.kind == TypeRef::Kind::TypeParam || targetType.kind == TypeRef::Kind::TypeParam) {
+        if (operandType->kind == TypeRef::Kind::TypeParam || targetType->kind == TypeRef::Kind::TypeParam) {
             if (currentFunctionDecl) {
                 deferredCastChecks[currentFunctionDecl].push_back({operandType, targetType, cast->location});
             }
@@ -391,33 +502,50 @@ bool AnalysisContext::CastTypesAreCompatible(const TypeRef &operand, const TypeR
     if (operand.IsUnknown() || target.IsUnknown()) {
         return true;
     }
-    if (operand.kind == TypeRef::Kind::Func || target.kind == TypeRef::Kind::Func) {
+    if (operand->kind == TypeRef::Kind::Func || target->kind == TypeRef::Kind::Func) {
         return IsAddressValue(operand) && IsAddressValue(target);
     }
 
-    const std::string operandName = NamedBaseTypeName(operand);
-    const std::string targetName = NamedBaseTypeName(target);
-    const CaseTypeDeclaration operandCase = operandName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(operandName);
-    const CaseTypeDeclaration targetCase = targetName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(targetName);
+    const CaseTypeDeclaration operandCase = CastCaseType(operand);
+    const CaseTypeDeclaration targetCase = CastCaseType(target);
     if ((operandCase && operandCase.IsVariant()) || (targetCase && targetCase.IsVariant())) {
         return false;
     }
     if (operandCase || targetCase) {
         if (operandCase && targetCase) {
-            return operandName == targetName;
+            return NamedBaseTypeName(operand) == NamedBaseTypeName(target);
         }
         return operandCase ? target.IsInteger() : operand.IsInteger();
     }
     return IsCastValue(operand) && IsCastValue(target);
 }
 
+AnalysisContext::CaseTypeDeclaration AnalysisContext::CastCaseType(const TypeRef &type) const {
+    const TypeRef &value = type->kind == TypeRef::Kind::Reference && !type->inner.empty() ? type->inner.front() : type;
+    if (value->kind != TypeRef::Kind::Named) {
+        return {};
+    }
+    return CaseTypeNamed(BaseTypeName(value->name));
+}
+
 void AnalysisContext::CheckCast(const TypeRef &operand, const TypeRef &target, const SourceLocation location) {
+    // A cast may retype an address but never add write access to what a read-only pointer reaches, so a value seen
+    // through a `*T` stays unwritten whatever type the address is given. Untyped memory is the explicit escape:
+    // `*opaque` to `*var T` retypes an address nothing typed, and `*T` to `*var opaque` writes nothing by itself, as
+    // the C functions that take a `void *` they only read declare it.
+    if (operand->kind == TypeRef::Kind::Pointer && target->kind == TypeRef::Kind::Pointer && !operand->inner.empty() &&
+        !target->inner.empty() && !operand->inner.front().isMut && target->inner.front().isMut &&
+        !operand->inner.front().IsOpaque() && !target->inner.front().IsOpaque()) {
+        EmitError(location,
+                  std::format("cannot cast '{}' to '{}', which would give a read-only pointer write access",
+                              operand.ToString(), target.ToString()),
+                  {"a cast may drop write access but never add it, so a value reached through a '*T' stays unwritten"},
+                  "take the address of a 'var' place, which is already writable");
+        return;
+    }
     if (!CastTypesAreCompatible(operand, target)) {
-        const std::string operandName = NamedBaseTypeName(operand);
-        const std::string targetName = NamedBaseTypeName(target);
-        const CaseTypeDeclaration operandCase =
-            operandName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(operandName);
-        const CaseTypeDeclaration targetCase = targetName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(targetName);
+        const CaseTypeDeclaration operandCase = CastCaseType(operand);
+        const CaseTypeDeclaration targetCase = CastCaseType(target);
         if ((operandCase && operandCase.IsVariant()) || (targetCase && targetCase.IsVariant())) {
             const std::string sourceKind = operandCase && operandCase.IsVariant() ? "variant" : "scalar type";
             const std::string destinationKind = targetCase && targetCase.IsVariant() ? "variant" : "scalar type";
@@ -440,7 +568,7 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
     if (const auto it = deferredScalarReads.find(&declaration); it != deferredScalarReads.end()) {
         for (const DeferredScalarRead &check : it->second) {
             const TypeRef reference = SubstituteTypeParameters(check.reference, substitutions);
-            TypeRef value = reference.inner.front();
+            TypeRef value = reference->inner.front();
             value.isMut = false;
             if (!reference.CanReadScalarTo(value)) {
                 EmitError(check.location,
@@ -457,9 +585,21 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
     }
     if (const auto it = deferredBinaryChecks.find(&declaration); it != deferredBinaryChecks.end()) {
         for (const DeferredBinaryCheck &check : it->second) {
-            static_cast<void>(CheckBinary(check.op, SubstituteTypeParameters(check.left, substitutions),
-                                          SubstituteTypeParameters(check.right, substitutions), *check.leftExpression,
-                                          *check.rightExpression, check.location, check.binaryExpression));
+            const TypeRef left = SubstituteTypeParameters(check.left, substitutions);
+            const TypeRef right = SubstituteTypeParameters(check.right, substitutions);
+            const TypeRef result = CheckBinary(check.op, left, right, *check.leftExpression, *check.rightExpression,
+                                               check.location, check.binaryExpression);
+            // The generic expression has the type of its operand written in the type parameters. An instantiation in
+            // which the other operand is wider would widen the result, and every instantiation shares one type.
+            const TypeRef &kept =
+                MentionsTypeParameter(check.left) || !MentionsTypeParameter(check.right) ? left : right;
+            if (result.IsInteger() && kept.IsInteger() && result != kept) {
+                EmitError(check.location,
+                          std::format("operator '{}' widens '{}' to '{}' for these type arguments, but the generic "
+                                      "expression has type '{}'",
+                                      OperatorName(check.op), kept.ToString(), result.ToString(), kept.ToString()),
+                          {}, "convert the wider operand with 'as' to the type parameter's type");
+            }
         }
     }
     if (const auto it = deferredCastChecks.find(&declaration); it != deferredCastChecks.end()) {
@@ -538,7 +678,7 @@ TypeRef AnalysisContext::CheckUnary(const TokenKind op, const TypeRef &operand, 
     if (operand.IsUnknown()) {
         return TypeRef::MakeUnknown();
     }
-    if (operand.kind == TypeRef::Kind::TypeParam &&
+    if (operand->kind == TypeRef::Kind::TypeParam &&
         (op == TokenKind::Bang || op == TokenKind::Minus || op == TokenKind::Tilde || op == TokenKind::PlusPlus ||
          op == TokenKind::MinusMinus)) {
         if (currentFunctionDecl) {
@@ -566,11 +706,11 @@ TypeRef AnalysisContext::CheckUnary(const TokenKind op, const TypeRef &operand, 
         }
         return operand;
     case TokenKind::Star:
-        if (operand.kind != TypeRef::Kind::Pointer) {
+        if (operand->kind != TypeRef::Kind::Pointer) {
             EmitError(location,
                       std::format("operator '*' requires a pointer operand, but found '{}'", operand.ToString()));
         }
-        return operand.inner.empty() ? TypeRef::MakeUnknown() : operand.inner[0];
+        return operand->inner.empty() ? TypeRef::MakeUnknown() : operand->inner[0];
     case TokenKind::At:
         return TypeRef::MakePointer(operand);
     case TokenKind::PlusPlus:
@@ -585,6 +725,68 @@ TypeRef AnalysisContext::CheckUnary(const TokenKind op, const TypeRef &operand, 
     }
 }
 
+void AnalysisContext::CheckShiftCount(const TypeRef &shifted, const Expr &count, std::string_view operatorName) {
+    // A count known while compiling is checked here; any other is checked when the shift runs.
+    const std::optional<std::uint64_t> bytes = shifted.SizeInBytes();
+    const std::optional<std::int64_t> value = EvalConstInteger(count);
+    if (!bytes || !value) {
+        return;
+    }
+    const std::int64_t width = static_cast<std::int64_t>(*bytes * 8);
+    if (*value >= 0 && *value < width) {
+        return;
+    }
+    EmitError(
+        count.location,
+        std::format("shift count {} is out of range for '{}', which takes counts from 0 to {}", *value,
+                    shifted.ToString(), width - 1),
+        {std::format("a '{}' by the width or more, or by a negative count, has no meaningful result", operatorName)},
+        *value >= width ? "to clear the value, assign zero" : "shift the other way by the positive count");
+}
+
+std::optional<TypeRef> AnalysisContext::CommonOperandType(const Expr &leftExpr, const TypeRef &leftType,
+                                                          const Expr &rightExpr, const TypeRef &rightType) {
+    if ((leftType.IsInteger() && rightType.IsChar()) || (rightType.IsInteger() && leftType.IsChar())) {
+        return leftType.IsInteger() ? leftType : rightType;
+    }
+    if (leftType.IsChar() && rightType.IsChar()) {
+        return leftType;
+    }
+    if (leftType.IsInteger() && rightType.IsInteger()) {
+        // An unsuffixed literal or a constant expression carries the default `int`, and takes the other operand's
+        // type when its value fits there, whichever side it is written on: `2 * count` and `count * 2` are both
+        // the type of `count`.
+        if (leftType->kind == TypeRef::Kind::Int && rightType->kind != TypeRef::Kind::Int &&
+            CanAssignExprTo(leftExpr, leftType, rightType)) {
+            return rightType;
+        }
+        if (rightType->kind == TypeRef::Kind::Int && leftType->kind != TypeRef::Kind::Int &&
+            CanAssignExprTo(rightExpr, rightType, leftType)) {
+            return leftType;
+        }
+        // Otherwise the narrower operand widens to the wider one's type, exactly as an assignment would widen it,
+        // so `small + big` is as wide as `big + small`. Operands of different signedness have no such type: one
+        // of them would change value.
+        if (leftType.IsSigned() != rightType.IsSigned()) {
+            return std::nullopt;
+        }
+        if (rightType.IsAssignableTo(leftType)) {
+            return leftType;
+        }
+        if (leftType.IsAssignableTo(rightType)) {
+            return rightType;
+        }
+        return std::nullopt;
+    }
+    if (CanAssignExprTo(rightExpr, rightType, leftType)) {
+        return leftType;
+    }
+    if (CanAssignExprTo(leftExpr, leftType, rightType)) {
+        return rightType;
+    }
+    return std::nullopt;
+}
+
 TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType, const TypeRef &rightType,
                                      const Expr &leftExpression, const Expr &rightExpression,
                                      const SourceLocation location, const BinaryExpr *binaryExpression) {
@@ -592,8 +794,8 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     const TypeRef right = ReadBorrowedScalar(rightExpression, rightType);
     const TokenKind operation = BinaryOperation(op);
     const std::string_view operatorName = OperatorName(op);
-    const bool comparesNullPointer = (IsNullLiteral(leftExpression) && right.kind == TypeRef::Kind::Pointer) ||
-                                     (IsNullLiteral(rightExpression) && left.kind == TypeRef::Kind::Pointer);
+    const bool comparesNullPointer = (IsNullLiteral(leftExpression) && right->kind == TypeRef::Kind::Pointer) ||
+                                     (IsNullLiteral(rightExpression) && left->kind == TypeRef::Kind::Pointer);
     if (comparesNullPointer && (operation == TokenKind::Equal || operation == TokenKind::BangEqual)) {
         return TypeRef::MakeBool();
     }
@@ -616,7 +818,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
         case TokenKind::GreaterEqual:
             return TypeRef::MakeBool();
         default:
-            return left;
+            // The operand written in the type parameters is the one whose type the expression keeps in every
+            // instantiation, as `1 + value` keeps the type of `value`.
+            return MentionsTypeParameter(left) || !MentionsTypeParameter(right) ? left : right;
         }
     }
 
@@ -640,41 +844,73 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     const auto isNumericOrChar = [](const TypeRef &type) { return type.IsNumeric() || type.IsChar(); };
     const auto isIntegerOrChar = [](const TypeRef &type) { return type.IsInteger() || type.IsChar(); };
     const auto compatibleType = [&](const Expr &leftExpr, const TypeRef &leftType, const Expr &rightExpr,
-                                    const TypeRef &rightType) -> std::optional<TypeRef> {
-        if ((leftType.IsInteger() && rightType.IsChar()) || (rightType.IsInteger() && leftType.IsChar())) {
-            return leftType.IsInteger() ? leftType : rightType;
+                                    const TypeRef &rightType) {
+        return CommonOperandType(leftExpr, leftType, rightExpr, rightType);
+    };
+
+    // Two integers of different signedness are the one pair the operators cannot widen to a common type, so the error
+    // says why and how to choose one.
+    const auto reportIncompatible = [&](const std::string_view verb) {
+        std::vector<std::string> notes;
+        std::optional<std::string> help;
+        if (left.IsInteger() && right.IsInteger() && left.IsSigned() != right.IsSigned()) {
+            notes.emplace_back("the operands differ in signedness, so neither converts to the other's type");
+            help = "convert one operand with 'as' to the type the operation should use";
         }
-        if (leftType.IsChar() && rightType.IsChar()) {
-            return leftType;
-        }
-        if (leftType.IsInteger() && rightType.IsInteger()) {
-            // Two integers normally settle on the left operand's type. An unsuffixed literal carries the default
-            // `int`, though, so that rule made `2 * count` an `int` while `count * 2` was a `uint` — the same
-            // expression mirrored, one spelling compiling and the other not. A literal takes the other operand's
-            // type whichever side it is written on. The guard is narrow: an `int`-typed expression that is not a
-            // literal is not assignable to another width, so only a literal can flip the result.
-            if (leftType.kind == TypeRef::Kind::Int && rightType.kind != TypeRef::Kind::Int &&
-                CanAssignExprTo(leftExpr, leftType, rightType)) {
-                return rightType;
-            }
-            return leftType;
-        }
-        if (CanAssignExprTo(rightExpr, rightType, leftType)) {
-            return leftType;
-        }
-        if (CanAssignExprTo(leftExpr, leftType, rightType)) {
-            return rightType;
-        }
-        return std::nullopt;
+        EmitError(location,
+                  std::format("operator '{}' cannot {} left operand '{}' with right operand '{}'", operatorName, verb,
+                              left.ToString(), right.ToString()),
+                  std::move(notes), std::move(help));
     };
 
     using TK = TokenKind;
+    // An unsuffixed literal beside an integer operand takes that operand's type, so it has to be a value of that type.
+    // Without this, `count == -1` with an unsigned `count` compared the bits of `-1`, and `narrow + 300` wrapped the
+    // literal, both silently. A shift is left out: its amount is never converted to the shifted operand's type.
+    const auto literalOutOfRange = [&](const Expr &literal, const Expr &otherExpression, const TypeRef &otherType) {
+        if (IsUnsuffixedIntegerLiteral(otherExpression) || !IsIntegerLiteralOutOfRangeFor(literal, otherType)) {
+            return false;
+        }
+        EmitError(literal.location, std::format("integer literal is out of range for type '{}'", otherType.ToString()));
+        return true;
+    };
     switch (operation) {
-    case TK::Plus: {
-        if (left.kind == TypeRef::Kind::Pointer && isIntegerOrChar(right)) {
+    case TK::Plus:
+    case TK::Minus:
+    case TK::Star:
+    case TK::Slash:
+    case TK::Percent:
+    case TK::Amp:
+    case TK::Pipe:
+    case TK::Caret:
+        if (literalOutOfRange(rightExpression, leftExpression, left)) {
             return left;
         }
-        if (isIntegerOrChar(left) && right.kind == TypeRef::Kind::Pointer) {
+        if (literalOutOfRange(leftExpression, rightExpression, right)) {
+            return right;
+        }
+        break;
+    case TK::Equal:
+    case TK::BangEqual:
+    case TK::Less:
+    case TK::LessEqual:
+    case TK::Greater:
+    case TK::GreaterEqual:
+        if (literalOutOfRange(rightExpression, leftExpression, left) ||
+            literalOutOfRange(leftExpression, rightExpression, right)) {
+            return TypeRef::MakeBool();
+        }
+        break;
+    default:
+        break;
+    }
+
+    switch (operation) {
+    case TK::Plus: {
+        if (left->kind == TypeRef::Kind::Pointer && isIntegerOrChar(right)) {
+            return left;
+        }
+        if (isIntegerOrChar(left) && right->kind == TypeRef::Kind::Pointer) {
             return right;
         }
         if (isNumericOrChar(left) && isNumericOrChar(right)) {
@@ -682,12 +918,11 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return *result;
             }
         }
-        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                        operatorName, left.ToString(), right.ToString()));
+        reportIncompatible("combine");
         return left;
     }
     case TK::Minus: {
-        if (left.kind == TypeRef::Kind::Pointer && isIntegerOrChar(right)) {
+        if (left->kind == TypeRef::Kind::Pointer && isIntegerOrChar(right)) {
             return left;
         }
         if (isNumericOrChar(left) && isNumericOrChar(right)) {
@@ -695,8 +930,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return *result;
             }
         }
-        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                        operatorName, left.ToString(), right.ToString()));
+        reportIncompatible("combine");
         return left;
     }
     case TK::Star:
@@ -707,8 +941,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return *result;
             }
         }
-        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                        operatorName, left.ToString(), right.ToString()));
+        reportIncompatible("combine");
         return left;
     }
     case TK::Amp:
@@ -731,8 +964,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             return *result;
         }
         else {
-            EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                            operatorName, left.ToString(), right.ToString()));
+            reportIncompatible("combine");
         }
         return left;
     }
@@ -747,6 +979,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             EmitError(location, std::format("operator '{}' requires an integer right operand, but found '{}'",
                                             operatorName, right.ToString()));
         }
+        else {
+            CheckShiftCount(left, rightExpression, operatorName);
+        }
         return left;
     case TK::GreaterGreaterGreater:
         if (!left.IsSigned()) {
@@ -756,6 +991,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
         if (!right.IsInteger()) {
             EmitError(location, std::format("operator '{}' requires an integer right operand, but found '{}'",
                                             operatorName, right.ToString()));
+        }
+        else {
+            CheckShiftCount(left, rightExpression, operatorName);
         }
         return left;
     case TK::AmpAmp:
@@ -784,7 +1022,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 if (IsUnsuffixedIntegerLiteral(expression)) {
                     return true;
                 }
-                const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression);
+                const auto *construct = AstCast<const NativeConstructExpr>(&expression);
                 return construct && construct->operand && contextual(*construct->operand);
             };
             const auto completes = [&](const Expr &expression, const TypeRef &type, const TypeRef &other) {
@@ -827,26 +1065,96 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             }
             return TypeRef::MakeBool();
         }
-        if (left.kind == TypeRef::Kind::Tuple && left == right) {
+        if (left->kind == TypeRef::Kind::Tuple && right->kind == TypeRef::Kind::Tuple) {
+            // Two tuples compare as one type. A tuple literal has no type of its own beyond its elements' defaults,
+            // so `pair == (3, true)` builds the literal as the other operand's type, the way a scalar literal is.
+            TypeRef compared = left;
+            if (left != right) {
+                if (AstCast<const TupleExpr>(&rightExpression) && CanAssignExprTo(rightExpression, right, left)) {
+                    compared = left;
+                }
+                else if (AstCast<const TupleExpr>(&leftExpression) && CanAssignExprTo(leftExpression, left, right)) {
+                    compared = right;
+                }
+                else {
+                    EmitError(location,
+                              std::format("operator '{}' cannot compare left operand '{}' with right operand '{}'",
+                                          operatorName, left.ToString(), right.ToString()),
+                              {"two tuples compare as one type"});
+                    return TypeRef::MakeBool();
+                }
+            }
             if (operation != TK::Equal && operation != TK::BangEqual) {
                 EmitError(location,
-                          std::format("operator '{}' is not defined for tuple '{}'", operatorName, left.ToString()),
+                          std::format("operator '{}' is not defined for tuple '{}'", operatorName, compared.ToString()),
                           {"tuples have structural equality but no built-in ordering"});
                 return TypeRef::MakeBool();
             }
             VariantEqualityPayload plan;
-            plan.type = left;
+            plan.type = compared;
             std::unordered_set<std::string> activeTypes;
-            if (BuildVariantEqualityPayload(plan, location, left.ToString(), {}, {}, activeTypes) && binaryExpression) {
+            if (BuildVariantEqualityPayload(plan, location, compared.ToString(), {}, {}, activeTypes) &&
+                binaryExpression) {
                 aggregateEqualities.insert_or_assign(binaryExpression, operation == TK::BangEqual);
-                aggregateEqualityPlans.insert_or_assign(left.ToString(), std::move(plan));
+                if (left != right) {
+                    aggregateEqualityOperandTypes.insert_or_assign(binaryExpression, compared);
+                }
+                aggregateEqualityPlans.insert_or_assign(compared.ToString(), std::move(plan));
+            }
+            return TypeRef::MakeBool();
+        }
+        if (left->kind == TypeRef::Kind::Array && right->kind == TypeRef::Kind::Array) {
+            // Two fixed arrays compare element by element as one type, and an array literal is built as the other
+            // operand's type, as a tuple literal is. Comparing them as machine values compared at most one word of
+            // their bytes, and ordered them by those bytes as if they were one number.
+            TypeRef compared = left;
+            if (left != right) {
+                const auto isLiteral = [](const Expr &expression) {
+                    return AstCast<const ArrayExpr>(&expression) || AstCast<const ArrayRepeatExpr>(&expression);
+                };
+                if (isLiteral(rightExpression) && CanAssignExprTo(rightExpression, right, left)) {
+                    compared = left;
+                }
+                else if (isLiteral(leftExpression) && CanAssignExprTo(leftExpression, left, right)) {
+                    compared = right;
+                }
+                else {
+                    EmitError(location,
+                              std::format("operator '{}' cannot compare left operand '{}' with right operand '{}'",
+                                          operatorName, left.ToString(), right.ToString()),
+                              {"two arrays compare as one type, element by element"});
+                    return TypeRef::MakeBool();
+                }
+            }
+            if (operation != TK::Equal && operation != TK::BangEqual) {
+                EmitError(location,
+                          std::format("operator '{}' is not defined for array '{}'", operatorName, compared.ToString()),
+                          {"arrays have element-wise equality but no built-in ordering"},
+                          "compare the elements in the order that defines it");
+                return TypeRef::MakeBool();
+            }
+            if (!compared->arrayLength) {
+                EmitError(location, std::format("operator '{}' cannot compare flexible array '{}', which has no length",
+                                                operatorName, compared.ToString()));
+                return TypeRef::MakeBool();
+            }
+            VariantEqualityPayload plan;
+            plan.type = compared;
+            std::unordered_set<std::string> activeTypes;
+            if (BuildVariantEqualityPayload(plan, location, compared.ToString(), {}, {}, activeTypes) &&
+                binaryExpression) {
+                aggregateEqualities.insert_or_assign(binaryExpression, operation == TK::BangEqual);
+                if (left != right) {
+                    aggregateEqualityOperandTypes.insert_or_assign(binaryExpression, compared);
+                }
+                aggregateEqualityPlans.insert_or_assign(compared.ToString(), std::move(plan));
             }
             return TypeRef::MakeBool();
         }
         const bool sameNamedType =
-            left.kind == TypeRef::Kind::Named && right.kind == TypeRef::Kind::Named && left.name == right.name;
+            left->kind == TypeRef::Kind::Named && right->kind == TypeRef::Kind::Named && left->name == right->name;
         const CaseTypeDeclaration caseType =
-            sameNamedType ? CaseTypeNamed(BaseTypeName(left.name)) : CaseTypeDeclaration{};
+            sameNamedType ? CaseTypeNamed(BaseTypeName(left->name)) : CaseTypeDeclaration{};
         if ((operation == TK::Equal || operation == TK::BangEqual) && caseType.IsVariant()) {
             std::unordered_set<std::string> activeTypes;
             if (BuildVariantEqualityPlan(left, location, activeTypes) && binaryExpression) {
@@ -868,8 +1176,8 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
         // defined. Derive what can be derived from the operators the type does declare, and reject the rest.
         // Only when both sides are the same struct. Comparing a struct with something else is a plain type mismatch,
         // and the message below says so more usefully than "not defined" would.
-        if (left.kind == TypeRef::Kind::Named && right.kind == TypeRef::Kind::Named &&
-            BaseTypeName(left.name) == BaseTypeName(right.name) && structDecls.contains(BaseTypeName(left.name))) {
+        if (left->kind == TypeRef::Kind::Named && right->kind == TypeRef::Kind::Named &&
+            BaseTypeName(left->name) == BaseTypeName(right->name) && structDecls.contains(BaseTypeName(left->name))) {
             const auto declares = [&](const std::string &name, const TypeRef &receiver, const TypeRef &argument) {
                 return LookupOperatorMethod(receiver, name, {argument}) != nullptr;
             };
@@ -891,6 +1199,49 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                     aggregateEqualityPlans.insert_or_assign(left.ToString(), std::move(plan));
                 }
                 return TypeRef::MakeBool();
+            }
+
+            // An operator the type declares but this package cannot see, as when generic code in another package
+            // compares the type, is reported as private rather than as missing.
+            const auto hiddenOperator = [&](const std::string &name) -> const FuncDecl * {
+                const auto type = methodsByType.find(NamedBaseTypeName(left));
+                if (type == methodsByType.end()) {
+                    return nullptr;
+                }
+                const auto declared = type->second.find(name);
+                if (declared == type->second.end() || declared->second.empty() ||
+                    !AccessibleMethodCandidates(left, name).empty()) {
+                    return nullptr;
+                }
+                return declared->second.front();
+            };
+            std::vector<std::string> serving = {std::string(operatorName)};
+            if (operation == TK::BangEqual) {
+                serving.emplace_back("==");
+            }
+            else if (operation == TK::Greater || ordered) {
+                serving.emplace_back("<");
+            }
+            for (const std::string &name : serving) {
+                if (const FuncDecl *hidden = hiddenOperator(name)) {
+                    const auto info = declarationInfos.find(hidden);
+                    const std::string owner =
+                        info == declarationInfos.end() ? std::string{} : PackageDisplayName(info->second.ownerPackage);
+                    std::vector<std::string> notes;
+                    if (info != declarationInfos.end() && !info->second.sourceName.empty()) {
+                        notes.push_back(std::format("'{}' is declared at '{}':{}:{}", name, info->second.sourceName,
+                                                    hidden->location.line, hidden->location.column));
+                    }
+                    notes.emplace_back("code in another package, such as a generic collection, uses only the "
+                                       "operators it can see");
+                    EmitError(
+                        location,
+                        std::format("operator '{}' of '{}' is private to package '{}'", name, left.DisplayString(),
+                                    owner),
+                        std::move(notes),
+                        std::format("add 'pub' to '{}' and to the declaration of '{}'", left.DisplayString(), name));
+                    return TypeRef::MakeBool();
+                }
             }
 
             // Ordering requires declared operators; structural equality alone does not define an order.
@@ -926,8 +1277,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             (operation == TK::Equal || operation == TK::BangEqual) &&
             ((left.IsBool() && right.IsInteger()) || (left.IsInteger() && right.IsBool()));
         if (!boolIntegerComparison && !compatibleType(leftExpression, left, rightExpression, right)) {
-            EmitError(location, std::format("operator '{}' cannot compare left operand '{}' with right operand '{}'",
-                                            operatorName, left.ToString(), right.ToString()));
+            reportIncompatible("compare");
         }
         return TypeRef::MakeBool();
     }
@@ -938,12 +1288,12 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
 
 bool AnalysisContext::BuildVariantEqualityPlan(const TypeRef &type, const SourceLocation useLocation,
                                                std::unordered_set<std::string> &activeTypes) {
-    const std::string key = type.ToString();
+    const std::string &key = type.ToString();
     if (variantEqualityPlans.contains(key) || activeTypes.contains(key)) {
         return true;
     }
 
-    const CaseTypeDeclaration resolved = CaseTypeNamed(BaseTypeName(type.name));
+    const CaseTypeDeclaration resolved = CaseTypeNamed(BaseTypeName(type->name));
     if (!resolved.IsVariant()) {
         return false;
     }
@@ -954,7 +1304,7 @@ bool AnalysisContext::BuildVariantEqualityPlan(const TypeRef &type, const Source
     plan.type = type;
 
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     const std::size_t argumentCount = std::min(arguments.size(), resolved.declaration->typeParams.size());
     for (std::size_t index = 0; index < argumentCount; ++index) {
         substitutions.emplace(resolved.declaration->typeParams[index].name, arguments[index]);
@@ -1007,7 +1357,7 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
         payload.operation = VariantEqualityPayload::Operation::Deferred;
         return true;
     }
-    if (type.IsNumeric() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer) {
+    if (type.IsNumeric() || type.IsBool() || type.IsChar() || type->kind == TypeRef::Kind::Pointer) {
         payload.operation = VariantEqualityPayload::Operation::Builtin;
         return true;
     }
@@ -1031,12 +1381,12 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
         }
         return true;
     }
-    if (type.kind == TypeRef::Kind::Tuple) {
+    if (type->kind == TypeRef::Kind::Tuple) {
         payload.operation = VariantEqualityPayload::Operation::Tuple;
-        for (std::size_t index = 0; index < type.inner.size(); ++index) {
+        for (std::size_t index = 0; index < type->inner.size(); ++index) {
             VariantEqualityPayload element;
             element.index = index;
-            element.type = type.inner[index];
+            element.type = type->inner[index];
             if (!BuildVariantEqualityPayload(element, useLocation, variantTypeName, declarationName, caseName,
                                              activeTypes)) {
                 return false;
@@ -1045,10 +1395,10 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
         }
         return true;
     }
-    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
+    if (type->kind == TypeRef::Kind::Array && !type->inner.empty()) {
         payload.operation = VariantEqualityPayload::Operation::Array;
         VariantEqualityPayload element;
-        element.type = type.inner.front();
+        element.type = type->inner.front();
         if (!BuildVariantEqualityPayload(element, useLocation, variantTypeName, declarationName, caseName,
                                          activeTypes)) {
             return false;
@@ -1056,8 +1406,8 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
         payload.elements.push_back(std::move(element));
         return true;
     }
-    if (type.kind == TypeRef::Kind::Named) {
-        const CaseTypeDeclaration nested = CaseTypeNamed(BaseTypeName(type.name));
+    if (type->kind == TypeRef::Kind::Named) {
+        const CaseTypeDeclaration nested = CaseTypeNamed(BaseTypeName(type->name));
         if (nested.declaration && !nested.IsVariant()) {
             payload.operation = VariantEqualityPayload::Operation::Builtin;
             return true;
@@ -1072,7 +1422,7 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
             payload.customEquality = method;
             return true;
         }
-        if (const auto structure = structDecls.find(BaseTypeName(type.name)); structure != structDecls.end()) {
+        if (const auto structure = structDecls.find(BaseTypeName(type->name)); structure != structDecls.end()) {
             const std::string key = type.ToString();
             if (!activeTypes.insert(key).second) {
                 EmitError(useLocation, std::format("structural equality for '{}' requires a finite value layout", key));
@@ -1113,7 +1463,7 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
 }
 
 bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&place)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&place)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
         if (!symbol) {
             return false;
@@ -1126,22 +1476,22 @@ bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
     // The receiver is a parameter like any other. A receiver taken by value is a copy the method may not rewrite unless
     // it was declared `var self: T`; a receiver taken by reference is decided by what the reference points at, which
     // the branches below read off the pointer.
-    if (dynamic_cast<const SelfExpr *>(&place)) {
+    if (AstCast<const SelfExpr>(&place)) {
         const Symbol *symbol = currentScope->Lookup("self");
         return symbol != nullptr && !symbol->isMut;
     }
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
+    if (const auto *field = AstCast<const FieldExpr>(&place)) {
         const bool savedProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*field->object);
         checkingBorrowProjectionRoot = savedProjectionRoot;
-        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-            !objectType.inner.empty()) {
-            return !objectType.inner[0].isMut;
+        if ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+            !objectType->inner.empty()) {
+            return !objectType->inner[0].isMut;
         }
         return PlaceIsImmutable(*field->object);
     }
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
+    if (const auto *index = AstCast<const IndexExpr>(&place)) {
         if (IsIndexOperatorCall(*index)) {
             // The operator's result is a temporary, so nothing about the receiver's mutability describes it.
             return false;
@@ -1150,33 +1500,51 @@ bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
         checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*index->object);
         checkingBorrowProjectionRoot = savedProjectionRoot;
-        const TypeRef &valueType =
-            objectType.kind == TypeRef::Kind::Reference && !objectType.inner.empty() ? objectType.inner[0] : objectType;
+        const TypeRef &valueType = objectType->kind == TypeRef::Kind::Reference && !objectType->inner.empty()
+                                     ? objectType->inner[0]
+                                     : objectType;
         if (valueType.IsSlice()) {
             return !valueType.IsWritableSlice();
         }
-        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-            !objectType.inner.empty()) {
-            return !objectType.inner[0].isMut;
+        if ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+            !objectType->inner.empty()) {
+            return !objectType->inner[0].isMut;
         }
         return PlaceIsImmutable(*index->object);
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&place); unary && unary->op == TokenKind::Star) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&place); unary && unary->op == TokenKind::Star) {
         const TypeRef pointer = CheckExpr(*unary->operand);
-        return pointer.kind == TypeRef::Kind::Pointer && !pointer.inner.empty() && !pointer.inner[0].isMut;
+        return pointer->kind == TypeRef::Kind::Pointer && !pointer->inner.empty() && !pointer->inner[0].isMut;
     }
     return false;
 }
 
 bool AnalysisContext::PlaceIsWritable(const Expr &place, const TypeRef &placeType) {
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&place); unary && unary->op == TokenKind::Star) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&place); unary && unary->op == TokenKind::Star) {
         return placeType.isMut;
     }
     return !PlaceIsImmutable(place);
 }
 
+std::optional<std::string> AnalysisContext::ImmutableBindingHelp(const Symbol &binding) {
+    if (!binding.isParameter) {
+        return std::format("declare '{}' with 'var' to make it mutable", binding.name);
+    }
+    // A parameter has no `var` form. A reference parameter already writes its referent with `=` and `<-`, so a write
+    // still refused here is one no declaration would make legal.
+    if (binding.type->kind == TypeRef::Kind::Reference || binding.type.IsUnknown()) {
+        return std::nullopt;
+    }
+    const std::string writable = std::format("&var {}", binding.type.ToString());
+    if (binding.name == "self") {
+        return std::format("take the receiver as 'self: {}' to change the caller's value", writable);
+    }
+    return std::format("take '{}' as '{}' to change the caller's value, or move it into a 'var' local", binding.name,
+                       writable);
+}
+
 void AnalysisContext::CheckMutability(const Expr &target) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&target)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&target)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
         if (!symbol) {
             return;
@@ -1186,31 +1554,37 @@ void AnalysisContext::CheckMutability(const Expr &target) {
             return;
         }
         if (symbol->kind == Symbol::Kind::Var && !symbol->isMut) {
-            EmitError(target.location, std::format("cannot modify immutable variable '{}'", identifier->name), {},
-                      std::format("declare '{}' with 'var' to make it mutable", identifier->name));
+            if (symbol->isParameter) {
+                EmitError(target.location, std::format("cannot modify parameter '{}'", identifier->name),
+                          {"a parameter is immutable"}, ImmutableBindingHelp(*symbol));
+            }
+            else {
+                EmitError(target.location, std::format("cannot modify immutable variable '{}'", identifier->name), {},
+                          ImmutableBindingHelp(*symbol));
+            }
         }
     }
-    else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&target); unary && unary->op == TokenKind::Star) {
+    else if (const auto *unary = AstCast<const UnaryExpr>(&target); unary && unary->op == TokenKind::Star) {
         const TypeRef pointer = CheckExpr(*unary->operand);
-        if (pointer.kind == TypeRef::Kind::Pointer && !pointer.inner.empty() && !pointer.inner[0].isMut) {
+        if (pointer->kind == TypeRef::Kind::Pointer && !pointer->inner.empty() && !pointer->inner[0].isMut) {
             EmitError(target.location,
                       std::format("cannot modify data through read-only pointer '{}'", pointer.ToString()));
         }
     }
-    else if (dynamic_cast<const SelfExpr *>(&target)) {
+    else if (AstCast<const SelfExpr>(&target)) {
         if (const Symbol *symbol = currentScope->Lookup("self"); symbol && !symbol->isMut) {
-            EmitError(target.location, "cannot modify immutable receiver 'self'", {},
-                      "declare the receiver with 'var' to make it mutable");
+            EmitError(target.location, "cannot modify immutable receiver 'self'", {"a receiver is immutable"},
+                      ImmutableBindingHelp(*symbol));
         }
     }
-    else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
+    else if (const auto *field = AstCast<const FieldExpr>(&target)) {
         const TypeRef objectType = CheckExpr(*field->object);
-        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-            !objectType.inner.empty()) {
-            if (!objectType.inner[0].isMut) {
+        if ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+            !objectType->inner.empty()) {
+            if (!objectType->inner[0].isMut) {
                 EmitError(
                     target.location,
-                    objectType.kind == TypeRef::Kind::Reference
+                    objectType->kind == TypeRef::Kind::Reference
                         ? std::format("cannot modify data through immutable reference '{}'", objectType.ToString())
                         : std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
@@ -1219,14 +1593,14 @@ void AnalysisContext::CheckMutability(const Expr &target) {
             CheckMutability(*field->object);
         }
     }
-    else if (const auto *index = dynamic_cast<const IndexExpr *>(&target); index && !IsIndexOperatorCall(*index)) {
+    else if (const auto *index = AstCast<const IndexExpr>(&target); index && !IsIndexOperatorCall(*index)) {
         const TypeRef objectType = CheckExpr(*index->object);
-        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-            !objectType.inner.empty()) {
-            if (!objectType.inner[0].isMut) {
+        if ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+            !objectType->inner.empty()) {
+            if (!objectType->inner[0].isMut) {
                 EmitError(
                     target.location,
-                    objectType.kind == TypeRef::Kind::Reference
+                    objectType->kind == TypeRef::Kind::Reference
                         ? std::format("cannot modify data through immutable reference '{}'", objectType.ToString())
                         : std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
@@ -1276,7 +1650,8 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
                                     receiver));
         return false;
     }
-    if (!IsAssignablePlace(target)) {
+    // A qualified name is a place only when it names a module variable; every other path names a value.
+    if (!IsAssignablePlace(target) && !globalReferences.contains(&target)) {
         EmitError(target.location,
                   std::format("operator '{}' requires an assignable target, but its left operand has type '{}'",
                               operatorName, targetType.ToString()));
@@ -1285,5 +1660,93 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
     CheckBorrowedMutation(target, target.location);
     CheckMutability(target);
     return true;
+}
+
+const Symbol *AnalysisContext::ReferenceWriteTarget(const Expr &target, const bool replaces, const bool rebinds) const {
+    const Symbol *symbol = nullptr;
+    if (const auto *identifier = AstCast<const IdentExpr>(&target)) {
+        symbol = currentScope->Lookup(identifier->name);
+    }
+    else if (AstCast<const SelfExpr>(&target)) {
+        symbol = currentScope->Lookup("self");
+    }
+    if (!symbol || symbol->kind != Symbol::Kind::Var || symbol->type->kind != TypeRef::Kind::Reference ||
+        symbol->type->inner.empty()) {
+        return nullptr;
+    }
+    const TypeRef &referent = symbol->type->inner.front();
+    const bool scalar = referent.IsNumeric() || referent.IsBool() || referent.IsChar();
+    // `=` and `<-` replace the referent whole, so any value type can be written that way; an operator that reads the
+    // old value first is defined for scalars only. An interface view's referent is a value of a type the view does not
+    // know, so there is nothing of a known type to replace.
+    const bool interfaceView = referent->kind == TypeRef::Kind::Named && interfaceDecls.contains(referent->name);
+    if (!scalar && (!replaces || interfaceView || referent.IsUnknown())) {
+        return nullptr;
+    }
+    // `alias = other` points a `var alias: &var T` at other storage, so only a binding that cannot be rebound — a
+    // parameter, a receiver, or a `let` alias — reads a plain assignment as a write through it.
+    return rebinds && symbol->isMut ? nullptr : symbol;
+}
+
+bool AnalysisContext::CheckReferenceWrite(const Expr &target, const Symbol &reference) {
+    if (!reference.type->inner.front().isMut) {
+        TypeRef writable = reference.type;
+        writable = writable.WithWritableInner(true);
+        EmitError(target.location,
+                  std::format("cannot modify '{}' through immutable reference '{}'", reference.name,
+                              reference.type.ToString()),
+                  {}, std::format("declare '{}' as '{}' to write through it", reference.name, writable.ToString()));
+        return false;
+    }
+    CheckBorrowedMutation(target, target.location);
+    referenceWrites.insert(&target);
+    return true;
+}
+
+void AnalysisContext::RecordPlaceReplacement(const AssignExpr &assignment, const bool wholeReferent) {
+    // A referent is the caller's live value, so replacing it whole always finds an old value to destroy.
+    if (wholeReferent) {
+        placeReplacements.insert_or_assign(&assignment, PlaceReplacement{});
+        return;
+    }
+    // Walk out from the place through the projections that stay inside one value — a field, a tuple element, a
+    // built-in array element — to the storage they are part of. That storage decides whether the place already holds
+    // a value: a reference or a slice addresses initialized values, and a raw pointer may address storage that is
+    // still to be initialized, which the write then initializes rather than replaces.
+    const Expr *place = assignment.target.get();
+    while (true) {
+        const Expr *object = nullptr;
+        if (const auto *field = AstCast<const FieldExpr>(place)) {
+            object = field->object.get();
+        }
+        else if (const auto *index = AstCast<const IndexExpr>(place); index && !IsIndexOperatorCall(*index)) {
+            object = index->object.get();
+        }
+        if (!object) {
+            break;
+        }
+        const auto objectType = expressionTypes.find(object);
+        if (objectType == expressionTypes.end() || objectType->second->kind == TypeRef::Kind::Pointer) {
+            return;
+        }
+        if (objectType->second->kind == TypeRef::Kind::Reference || SliceElementType(objectType->second)) {
+            placeReplacements.insert_or_assign(&assignment, PlaceReplacement{});
+            return;
+        }
+        place = object;
+    }
+    // A binding written whole is destroyed and marked live by its own cleanup. A part of one holds a value exactly
+    // while the binding owns its value, which only lowering's record of that binding can tell: a `var` declared without
+    // a value, or one moved from, owns nothing, and its parts are initialized rather than replaced.
+    if (place == assignment.target.get()) {
+        return;
+    }
+    const auto *identifier = AstCast<const IdentExpr>(place);
+    if (!identifier) {
+        return;
+    }
+    if (const Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
+        placeReplacements.insert_or_assign(&assignment, PlaceReplacement{identifier});
+    }
 }
 } // namespace Rux::SemanticDetail

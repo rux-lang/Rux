@@ -1,5 +1,4 @@
 // int512: the widest signed integer the language has, and the one nothing exercised before.
-//
 // The shared wide-integer test named int128, int256, uint128 and uint512, so this width was implemented and had no
 // coverage at all. At eight lanes everything is the same in kind as int256 and further apart in practice: a carry
 // crosses six lanes it neither starts nor ends in, a shift by 256 moves half the value, and the sign bit is seven

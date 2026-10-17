@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Dns"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Net: the DNS resolver asks a server on the loopback interface for IPv4 and IPv6 addresses, reports a name that does not exist, and gives up on a server that never answers."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Net = { Path = "../../../../Packages/Net" }
+Thread = { Path = "../../../../Packages/Thread" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Net"

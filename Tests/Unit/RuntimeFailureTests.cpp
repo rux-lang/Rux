@@ -13,6 +13,7 @@
 #include "Syntax/Parser/Parser.h"
 #include "System/Process.h"
 #include "Target/TargetTriple.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <chrono>
@@ -84,7 +85,7 @@ const LirInstr *FindFailure(const LirPackage &package, const LirOpcode opcode, c
         for (const auto &function : module.funcs) {
             for (const auto &block : function.blocks) {
                 const auto found = std::ranges::find(block.instrs, opcode, &LirInstr::op);
-                if (found != block.instrs.end() && found->sourceFunction == functionName) {
+                if (found != block.instrs.end() && found->source.Get().function == functionName) {
                     return &*found;
                 }
             }
@@ -156,7 +157,7 @@ std::vector<std::uint8_t> LinkRuntimeFailures(const Target::OS os, const Target:
     }
 
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto output = std::filesystem::temp_directory_path() / ("rux-runtime-failure-" + std::to_string(nonce) +
+    const auto output = Rux::Testing::TestTemporaryDirectory() / ("rux-runtime-failure-" + std::to_string(nonce) +
                                                                   (os == Target::OS::Windows ? ".exe" : std::string{}));
     std::error_code fileError;
     std::filesystem::remove(output, fileError);
@@ -195,14 +196,63 @@ TEST_CASE("runtime failure lowering preserves qualified function, logical path, 
     REQUIRE(assertion != nullptr);
     REQUIRE(panic != nullptr);
 
-    CHECK_EQ(assertion->sourceFunction, "Reporter::AssertNow");
-    CHECK_EQ(panic->sourceFunction, "Reporter::PanicNow");
-    CHECK_EQ(assertion->sourceFile, "Src/Runtime.rux");
-    CHECK_EQ(panic->sourceFile, "Src/Runtime.rux");
-    CHECK_EQ(assertion->sourceLine, 8);
-    CHECK_EQ(assertion->sourceColumn, 15);
-    CHECK_EQ(panic->sourceLine, 12);
-    CHECK_EQ(panic->sourceColumn, 14);
+    CHECK_EQ(assertion->source.Get().function, "Reporter::AssertNow");
+    CHECK_EQ(panic->source.Get().function, "Reporter::PanicNow");
+    CHECK_EQ(assertion->source.Get().file, "Src/Runtime.rux");
+    CHECK_EQ(panic->source.Get().file, "Src/Runtime.rux");
+    CHECK_EQ(assertion->source.Get().line, 8);
+    CHECK_EQ(assertion->source.Get().column, 9);
+    CHECK_EQ(panic->source.Get().line, 12);
+    CHECK_EQ(panic->source.Get().column, 9);
+}
+
+TEST_CASE("a generic instance reports failures at the file its body was written in") {
+    const auto triple = Target::TargetTriple::From(Target::OS::Linux, Target::Arch::X86_64);
+    REQUIRE(triple.has_value());
+    CompileTimeContext context;
+    context.target = Driver::TargetContextForTriple(*triple);
+    context.targetTriple = triple->CanonicalName();
+    context.sourceRoot = "Project";
+
+    // The instance of `Check` is lowered into Main.rux, which uses it, but its panic is written in Generic.rux.
+    const auto parse = [](const std::string &source, const std::string &path) {
+        Lexer lexer(source, path);
+        auto lexed = lexer.Tokenize();
+        REQUIRE_FALSE(lexed.HasErrors());
+        Parser parser(std::move(lexed.tokens), path);
+        auto parsed = parser.Parse();
+        CAPTURE(parsed.diagnostics.empty() ? std::string{} : parsed.diagnostics.front().message);
+        REQUIRE_FALSE(parsed.HasErrors());
+        return parsed;
+    };
+    auto generic = parse(std::string(kRuntimePrelude) + R"(
+pub func Check<T>(value: T, ok: bool) -> T {
+    if !ok {
+        Panic("not ok");
+    }
+    return value;
+}
+)",
+                         "Project/Src/Generic.rux");
+    auto main = parse(R"(
+func Main() -> int {
+    return Check(1, false);
+}
+)",
+                      "Project/Src/Main.rux");
+
+    SemanticAnalyzer analyzer({&generic.module, &main.module}, {}, "RuntimeFailureTest", context);
+    auto model = analyzer.Analyze();
+    CAPTURE(model.diagnostics.empty() ? std::string{} : model.diagnostics.front().message);
+    REQUIRE_FALSE(model.HasErrors());
+    AstToHirLowering hirLowering(model);
+    HirToLirLowering lirLowering(hirLowering.Generate(), context.target);
+    const LirPackage package = lirLowering.Generate();
+
+    const LirInstr *panic = FindFailure(package, LirOpcode::Panic, "Check");
+    REQUIRE(panic != nullptr);
+    CHECK_EQ(panic->source.Get().file, "Src/Generic.rux");
+    CHECK_EQ(panic->source.Get().line, 6);
 }
 
 TEST_CASE("ELF, PE, and Mach-O images preserve runtime failure text on both backends") {
@@ -214,8 +264,8 @@ TEST_CASE("ELF, PE, and Mach-O images preserve runtime failure text on both back
             CHECK(ContainsText(bytes, "Assertion failed: "));
             CHECK(ContainsText(bytes, "Panic: "));
             CHECK(ContainsText(bytes, "Помилка 🚨"));
-            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:17:11)\n"));
-            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:18:10)\n"));
+            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:17:5)\n"));
+            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:18:5)\n"));
         }
     }
 }
@@ -245,7 +295,7 @@ TEST_CASE("Windows runtime failures renew stack arguments between output writes"
         objects.push_back(StackArgumentClobberingWriter());
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
         const auto executable =
-            std::filesystem::temp_directory_path() / ("rux-runtime-stack-arguments-" + std::to_string(nonce) + ".exe");
+            Rux::Testing::TestTemporaryDirectory() / ("rux-runtime-stack-arguments-" + std::to_string(nonce) + ".exe");
         Linker linker(std::move(objects), "RuntimeFailureTest", {}, ArtifactKind::Executable, Target::OS::Windows,
                       Target::Arch::X86_64);
         REQUIRE(linker.Link(executable));
@@ -258,7 +308,7 @@ TEST_CASE("Windows runtime failures renew stack arguments between output writes"
         CHECK(result->exitCode == static_cast<int>(0xc000001dU));
         const bool panic = statement.starts_with("Panic");
         const auto layout = BuildRuntimeFailureLayout(panic ? RuntimeFailureKind::Panic : RuntimeFailureKind::Assertion,
-                                                      "Main", "Src/Runtime.rux", 3, panic ? 27 : 28);
+                                                      "Main", "Src/Runtime.rux", 3, 22);
         CHECK(result->output == layout.Join(panic ? "first line\nsecond line" : ""));
     }
 }
@@ -278,6 +328,7 @@ TEST_CASE("Windows assembly supplies the overlapped argument for every runtime f
             begin = call + 1;
             ++writes;
         }
-        CHECK(writes == 3);
+        // Three for the report, and three more in the stack-trace printer: a frame's prefix, its name and the line end.
+        CHECK(writes == 6);
     }
 }

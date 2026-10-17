@@ -1,0 +1,85 @@
+// How severe a record is, and the least severe level a build keeps.
+
+import Core::#config;
+
+/// How severe a record is, from the most detailed to the most serious. `Copy`.
+/// @see https://rux-lang.dev/docs/api/log/level#level
+pub enum Level: uint8 {
+    /// The finest detail, for following a program step by step.
+    Trace = 0,
+    /// Detail for diagnosing a problem.
+    Debug = 1,
+    /// The ordinary progress of a program.
+    Info = 2,
+    /// Something unexpected that the program recovered from.
+    Warn = 3,
+    /// Something that failed.
+    Error = 4
+}
+
+extend Level {
+    /// The level's name in lower case, as JSON records give it: `trace`, `debug`, `info`, `warn` or `error`.
+    /// @returns the name
+    /// @see https://rux-lang.dev/docs/api/log/level#name
+    pub func Name(self: &Level) -> char8[..] {
+        match self {
+            Level::Trace => return "trace",
+            Level::Debug => return "debug",
+            Level::Info => return "info",
+            Level::Warn => return "warn",
+            Level::Error => return "error"
+        }
+    }
+
+    /// The level's label in upper case and five columns wide, as text records give it.
+    /// @returns the label
+    /// @see https://rux-lang.dev/docs/api/log/level#label
+    pub func Label(self: &Level) -> char8[..] {
+        match self {
+            Level::Trace => return "TRACE",
+            Level::Debug => return "DEBUG",
+            Level::Info => return "INFO ",
+            Level::Warn => return "WARN ",
+            Level::Error => return "ERROR"
+        }
+    }
+
+    /// The level named `text`, in any case; `warning` is read as `warn`.
+    /// @param text the name
+    /// @returns the level, or `none` for a name that is not one
+    /// @see https://rux-lang.dev/docs/api/log/level#parse
+    pub func Parse(text: char8[..]) -> Level? {
+        if SameName(text, "trace") { return Level::Trace; }
+        if SameName(text, "debug") { return Level::Debug; }
+        if SameName(text, "info") { return Level::Info; }
+        if SameName(text, "warn") || SameName(text, "warning") { return Level::Warn; }
+        if SameName(text, "error") { return Level::Error; }
+        return none;
+    }
+}
+
+// Whether `text` is `name`, which is in lower case, ignoring the case of `text`.
+func SameName(text: char8[..], name: char8[..]) -> bool {
+    if text.length != name.length { return false; }
+    var index: uint = 0;
+    while index < text.length {
+        var byte = text[index] as uint8;
+        if byte >= 0x41u8 && byte <= 0x5Au8 { byte = byte + 32u8; }
+        if byte != name[index] as uint8 { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+/// The least severe level this build keeps, from the `LogLevel` build define: `trace`, `debug`, `info`, `warn` or
+/// `error`, and `trace` when it is not defined. A record below it is dropped before anything about it is done,
+/// whatever level a logger is set to, so a release build can leave out its tracing entirely.
+/// @returns the level
+/// @see https://rux-lang.dev/docs/api/log/level#compiled-level
+pub func CompiledLevel() -> Level {
+    when #config.Get("LogLevel") == "error" { return Level::Error; }
+    else when #config.Get("LogLevel") == "warn" { return Level::Warn; }
+    else when #config.Get("LogLevel") == "info" { return Level::Info; }
+    else when #config.Get("LogLevel") == "debug" { return Level::Debug; }
+    else { return Level::Trace; }
+}

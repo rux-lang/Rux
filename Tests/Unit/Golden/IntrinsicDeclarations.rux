@@ -1,6 +1,3 @@
-intrinsic type Mystery;
-intrinsic type float;
-intrinsic type float64;
 extend float64 {
     pub intrinsic const Infinity: int8;
     pub const Bits: uint = 64u;
@@ -10,4 +7,18 @@ func Main() {
     let missing = int8::Min;
     let range = 0..2;
     let start = range.start;
+}
+
+// The compiler implements a fixed set of intrinsic functions, emits each call
+// for one signature, and fills in only the fields it knows of a value.
+struct Target { pointerBits: uint; wordSize: uint; }
+struct Machine { os: uint; }
+intrinsic #target: Target;
+intrinsic #machine: Machine;
+intrinsic func Frobnicate(value: int) -> int;
+intrinsic func Assert(condition: int, message: char8[..]);
+intrinsic func Panic(message: char8[..]) -> int;
+intrinsic func #Warn(message: char8[..], extra: int);
+extend Target {
+    intrinsic func Measure(self: &Target) -> uint;
 }

@@ -1,2 +1,33 @@
-// float256 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `float256`: IEEE 754 binary256.
+// Two hundred and thirty-seven bits of significand, so about seventy-one decimal digits. Its arithmetic runs in
+// software on every target. The compiler supplies the finite limits, which are too long to be worth spelling out in
+// decimal.
+
+/// An IEEE 754 binary256 floating-point number.
+/// @see https://rux-lang.dev/docs/api/core/floating-point#float256
+extend float256 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-bits
+    pub const Bits: uint = 256;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-bytes
+    pub const Bytes: uint = 32;
+    /// The lowest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-lowest
+    pub intrinsic const Lowest: float256;
+    /// The highest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-max
+    pub intrinsic const Max: float256;
+    /// The smallest positive normal value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-min-positive
+    pub intrinsic const MinPositive: float256;
+    /// The difference between one and the next representable value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-epsilon
+    pub intrinsic const Epsilon: float256;
+    /// Positive infinity.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-infinity
+    pub intrinsic const Infinity: float256;
+    /// A quiet not-a-number value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float256-nan
+    pub intrinsic const NaN: float256;
+}

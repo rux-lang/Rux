@@ -1,0 +1,50 @@
+// An interface value made in a function, at the return or in a local first, would point at storage the function gives
+// up; one the function was handed is passed on, through a local too.
+interface Named {
+    func Id(self: &Self) -> int;
+}
+
+struct Plain {
+    id: int;
+}
+
+extend Plain : Named {
+    func Id(self: &Plain) -> int {
+        return self.id;
+    }
+}
+
+func Make() -> Named {
+    return Plain { id: 4 };
+}
+
+func Forward(value: Named) -> Named {
+    return value;
+}
+
+func MakeLocal() -> Named {
+    let value: Named = Plain { id: 5 };
+    return value;
+}
+
+func MakeAssigned(given: Named) -> Named {
+    var value = given;
+    value = Plain { id: 6 };
+    return value;
+}
+
+func MakeCopied() -> Named {
+    let first: Named = Plain { id: 7 };
+    let second = first;
+    return second;
+}
+
+func ForwardLocal(given: Named) -> Named {
+    let value = given;
+    return value;
+}
+
+func Main() -> int {
+    let value = Make();
+    return value.Id() - 4;
+}

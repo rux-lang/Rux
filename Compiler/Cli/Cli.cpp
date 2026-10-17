@@ -79,7 +79,7 @@ std::optional<std::string_view> AttachedValue(const std::string_view argument) {
 
 /// Whether giving the option more than once is meaningful rather than a mistake, as it is for `--define`.
 bool IsRepeatable(const std::string_view option) {
-    return option == "--define" || option == "--emit";
+    return option == "--define" || option == "--emit" || option == "--disable-pass";
 }
 
 bool Contains(const std::vector<std::string_view> &values, const std::string_view value) {
@@ -122,6 +122,8 @@ std::string_view ValueDescription(const OptionSpec &option) {
         return "compile-time definition";
     if (preferred == "--emit")
         return "output kind";
+    if (preferred == "--format")
+        return "documentation format";
     if (option.flags.contains("<dir>"))
         return "directory";
     return "path";
@@ -147,6 +149,8 @@ std::string_view SampleValue(const std::string_view command, const OptionSpec &o
         return "Feature=true";
     if (preferred == "--emit")
         return "lir";
+    if (preferred == "--format")
+        return "json";
     if (preferred == "--output")
         return option.flags.contains("<dir>") ? "Docs" : "Dist/Package.ruxpkg";
     if (preferred == "--path")

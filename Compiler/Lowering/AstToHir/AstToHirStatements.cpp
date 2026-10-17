@@ -9,12 +9,31 @@
 #include <utility>
 
 namespace Rux::AstToHirDetail {
+namespace {
+/// Whether a `let` pattern binds a name anywhere. Semantic analysis admits only names, `_`, tuples and structures
+/// there.
+bool LetPatternBindsName(const Pattern &pattern) {
+    if (AstCast<const IdentPattern>(&pattern)) {
+        return true;
+    }
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
+        return std::ranges::any_of(tuple->elements,
+                                   [](const PatternPtr &element) { return LetPatternBindsName(*element); });
+    }
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
+        return std::ranges::any_of(
+            structure->fields, [](const StructPattern::Field &field) { return LetPatternBindsName(*field.pattern); });
+    }
+    return false;
+}
+} // namespace
+
 bool AstToHirContext::IsDiagnosticIntrinsicCall(const Expr &expression) const {
-    const auto *call = dynamic_cast<const CallExpr *>(&expression);
+    const auto *call = AstCast<const CallExpr>(&expression);
     if (!call) {
         return false;
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(call->callee.get());
+    const auto *identifier = AstCast<const IdentExpr>(call->callee.get());
     if (!identifier) {
         return false;
     }
@@ -27,29 +46,69 @@ HirBlock AstToHirContext::LowerBlock(const Block &block) {
     loweredBlock.location = block.location;
     PushScope();
     for (const auto &statement : block.stmts) {
-        if (const auto *expressionStatement = dynamic_cast<const ExprStmt *>(statement.get());
+        if (const auto *expressionStatement = AstCast<const ExprStmt>(statement.get());
             expressionStatement && IsDiagnosticIntrinsicCall(*expressionStatement->expr)) {
             continue;
         }
-        if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(statement.get())) {
+        if (const auto *deferStatement = AstCast<const DeferStmt>(statement.get())) {
             if (!deferStack.empty() && deferStatement->deferredStmt) {
                 deferStack.back().push_back(deferStatement);
             }
             continue;
         }
-        loweredBlock.stmts.push_back(LowerStmt(*statement));
+        LowerStmtInto(loweredBlock, *statement);
     }
     if (!deferStack.empty()) {
         const auto deferred = deferStack.back();
         for (auto defIt = deferred.rbegin(); defIt != deferred.rend(); ++defIt) {
             if ((*defIt)->deferredStmt) {
-                loweredBlock.stmts.push_back(LowerStmt(*(*defIt)->deferredStmt));
+                LowerStmtInto(loweredBlock, *(*defIt)->deferredStmt);
             }
         }
     }
     AppendCurrentScopeCleanups(loweredBlock);
     PopScope();
     return loweredBlock;
+}
+
+CleanupPlanner::LoopToken AstToHirContext::BeginLoop(const std::string &label) {
+    loopDeferBases.emplace_back(label, deferStack.size());
+    return cleanupPlanner.BeginLoop(label);
+}
+
+void AstToHirContext::EndLoop(const CleanupPlanner::LoopToken token) {
+    cleanupPlanner.EndLoop(token);
+    loopDeferBases.pop_back();
+}
+
+HirStmtPtr AstToHirContext::LowerLoopExit(HirStmtPtr jump, const std::string &label, const SourceLocation location) {
+    // The defer scopes opened inside the loop the jump leaves: the innermost loop, or the one with the label.
+    auto target = loopDeferBases.rbegin();
+    if (!label.empty()) {
+        target = std::ranges::find_if(loopDeferBases.rbegin(), loopDeferBases.rend(),
+                                      [&](const auto &loop) { return loop.first == label; });
+    }
+    if (target == loopDeferBases.rend()) {
+        return jump;
+    }
+    std::vector<const Stmt *> deferred;
+    for (std::size_t scope = deferStack.size(); scope > target->second; --scope) {
+        const auto &registered = deferStack[scope - 1];
+        for (auto statement = registered.rbegin(); statement != registered.rend(); ++statement) {
+            if ((*statement)->deferredStmt)
+                deferred.push_back((*statement)->deferredStmt.get());
+        }
+    }
+    if (deferred.empty()) {
+        return jump;
+    }
+    auto exit = std::make_unique<HirScopeStmt>();
+    exit->location = location;
+    exit->block.location = location;
+    for (const Stmt *statement : deferred)
+        LowerStmtInto(exit->block, *statement);
+    exit->block.stmts.push_back(std::move(jump));
+    return exit;
 }
 
 HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLocation location) {
@@ -89,21 +148,66 @@ HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLo
         exit->block.stmts.push_back(std::move(capture));
     }
     for (const Stmt *statement : deferred)
-        exit->block.stmts.push_back(LowerStmt(*statement));
+        LowerStmtInto(exit->block, *statement);
     returned->cleanups = FunctionCleanups();
     exit->block.stmts.push_back(std::move(returned));
     return exit;
 }
 
+void AstToHirContext::LowerStmtInto(HirBlock &block, const Stmt &stmt) {
+    HirStmtPtr lowered = LowerStmt(stmt);
+    for (HirStmtPtr &declaration : statementPrelude) {
+        block.stmts.push_back(std::move(declaration));
+    }
+    statementPrelude.clear();
+    block.stmts.push_back(std::move(lowered));
+}
+
+std::string AstToHirContext::InterfaceHolderKey(const InterfaceHolderSite &site) const {
+    return std::format("{}|{}|{}", static_cast<const void *>(site.owner), site.place,
+                       SubstituteCurrentType(site.type).ToString());
+}
+
+void AstToHirContext::DeclareInterfaceHolders(const LetStmt &local) {
+    const std::vector<InterfaceHolderSite> *holders = model.TryGetInterfaceHolders(local);
+    if (holders == nullptr) {
+        return;
+    }
+    for (const InterfaceHolderSite &holder : *holders) {
+        const std::string key = InterfaceHolderKey(holder);
+        if (interfaceHolderBindings.contains(key)) {
+            continue;
+        }
+        const TypeRef type = SubstituteCurrentType(holder.type);
+        const std::string name = std::format("$interface.{}", interfaceValueOrdinal);
+        const std::uint64_t bindingId = RegisterCleanupBinding(name, type, local.location);
+        if (bindingId == 0) {
+            continue;
+        }
+        ++interfaceValueOrdinal;
+        // Declared without a value, so its drop flag says it holds nothing until the first value is stored in it.
+        auto declared = std::make_unique<HirLetStmt>();
+        declared->location = local.location;
+        declared->isMut = true;
+        declared->name = name;
+        declared->type = type;
+        declared->bindingId = bindingId;
+        statementPrelude.push_back(std::move(declared));
+        interfaceHolderBindings.emplace(key, std::make_pair(name, bindingId));
+    }
+}
+
 HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
-    if (const auto *statement = dynamic_cast<const ExprStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ExprStmt>(&stmt)) {
         auto lowered = std::make_unique<HirExprStmt>();
         lowered->location = statement->location;
         lowered->expr = LowerExpr(*statement->expr);
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const LetStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const LetStmt>(&stmt)) {
+        // The holders come first, so a value the initializer makes into an interface value is kept in one of them.
+        DeclareInterfaceHolders(*statement);
         auto lowered = std::make_unique<HirLetStmt>();
         lowered->location = statement->location;
         lowered->isMut = statement->isMut;
@@ -121,7 +225,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
             call->type = constructedType;
             auto callee = std::make_unique<HirVarExpr>();
             callee->location = statement->location;
-            callee->name = ConcreteMethodCalleeName(BaseTypeName(constructedType.name), constructedType, constructor);
+            callee->name = ConcreteMethodCalleeName(BaseTypeName(constructedType->name), constructedType, constructor);
             callee->type = AssociatedFunctionType(constructedType, constructor);
             call->callee = std::move(callee);
             const auto substitutions = MethodTypeSubstitutions(constructedType);
@@ -145,7 +249,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         }
         lowered->type = explicitType ? *explicitType : (lowered->init ? lowered->init->type : TypeRef::MakeUnknown());
         if (statement->pattern) {
-            lowered->pattern = LowerLetPattern(*statement->pattern, lowered->type, statement->isMut);
+            lowered->pattern = LowerLetPattern(*statement->pattern, lowered->type, statement->isMut, true);
             return lowered;
         }
 
@@ -160,7 +264,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const IfStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const IfStmt>(&stmt)) {
         auto lowered = std::make_unique<HirIfStmt>();
         lowered->location = statement->location;
         lowered->condition = LowerExpr(*statement->condition);
@@ -178,39 +282,39 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const WhileStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const WhileStmt>(&stmt)) {
         auto lowered = std::make_unique<HirWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
         lowered->condition = LowerExpr(*statement->condition);
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const DoWhileStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const DoWhileStmt>(&stmt)) {
         auto lowered = std::make_unique<HirDoWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         lowered->condition = LowerExpr(*statement->condition);
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const LoopStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const LoopStmt>(&stmt)) {
         auto lowered = std::make_unique<HirLoopStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const ForStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ForStmt>(&stmt)) {
         // A subject the iterator convention drives is desugared into the calls that drive it. An array, a slice and a
         // range keep the direct loop, which the back ends already lower without any call at all.
         if (const ResolvedIteration *iteration = model.TryGetIteration(*statement);
@@ -224,17 +328,18 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->variable = statement->variable;
         lowered->iterable = LowerExpr(*statement->iterable);
         TypeRef elementType = TypeRef::MakeUnknown();
-        if (lowered->iterable->type.IsIterableRange() && !lowered->iterable->type.inner.empty()) {
-            elementType = lowered->iterable->type.inner[0];
+        if (lowered->iterable->type.IsIterableRange() && !lowered->iterable->type->inner.empty()) {
+            elementType = lowered->iterable->type->inner[0];
         }
         else if (const auto sliceElement = IndexElementType(lowered->iterable->type)) {
             elementType = *sliceElement;
+            lowered->elementCopy = BuildCopyPlan(elementType);
         }
         lowered->varType = elementType;
         HirSymbol *outer = currentScope->Lookup(statement->variable);
         lowered->reusesOuterVar =
             outer != nullptr && outer->kind == HirSymbol::Kind::Var && outer->isMut && outer->type == elementType;
-        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
         PushScope();
         if (!lowered->reusesOuterVar) {
             HirSymbol variable;
@@ -248,17 +353,18 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->body = LowerBlock(*statement->body);
         AppendCurrentScopeCleanups(lowered->body);
         PopScope();
-        cleanupPlanner.EndLoop(cleanupLoop);
+        EndLoop(cleanupLoop);
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const MatchStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const MatchStmt>(&stmt)) {
         auto lowered = std::make_unique<HirMatchStmt>();
         lowered->location = statement->location;
+        lowered->exhaustive = model.IsExhaustiveMatch(*statement);
         lowered->subject = LowerMatchSubject(*statement->subject);
-        // An arm's bindings own what they took only if the subject was handed over. Matching a subject that is
-        // borrowed copies the payload out of something that still owns it, and destroying both is the double
-        // destruction this is here to avoid.
+        // An arm's bindings own what they took only if the match owns its subject: one handed over, a temporary, or
+        // the copy a by-value match makes. Matching a borrowed subject reads the payload out of something that still
+        // owns it, and destroying both is the double destruction this is here to avoid.
         const bool armsOwnPayload = lowered->subject->consumption.has_value();
         for (const auto &arm : statement->arms) {
             HirMatchArm loweredArm;
@@ -276,7 +382,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const ReturnStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ReturnStmt>(&stmt)) {
         HirExprPtr value = statement->value ? LowerExprAs(**statement->value, currentReturnType) : nullptr;
         if (!value && CompletesWithoutValue(currentReturnType)) {
             value = CompletionValue(currentReturnType, statement->location);
@@ -284,48 +390,48 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return LowerFunctionReturn(std::move(value), statement->location);
     }
 
-    if (const auto *statement = dynamic_cast<const FailStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const FailStmt>(&stmt)) {
         return LowerFail(statement->value.get(), statement->location);
     }
 
-    if (const auto *statement = dynamic_cast<const BreakStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const BreakStmt>(&stmt)) {
         auto lowered = std::make_unique<HirBreakStmt>();
         lowered->location = stmt.location;
         lowered->label = statement->label;
         lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
-        return lowered;
+        return LowerLoopExit(std::move(lowered), statement->label, stmt.location);
     }
 
-    if (const auto *statement = dynamic_cast<const ContinueStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const ContinueStmt>(&stmt)) {
         auto lowered = std::make_unique<HirContinueStmt>();
         lowered->location = stmt.location;
         lowered->label = statement->label;
         lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
-        return lowered;
+        return LowerLoopExit(std::move(lowered), statement->label, stmt.location);
     }
 
-    if (const auto *statement = dynamic_cast<const DeferStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const DeferStmt>(&stmt)) {
         auto lowered = std::make_unique<HirExprStmt>();
         lowered->location = statement->location;
         return lowered;
     }
 
-    if (const auto *statement = dynamic_cast<const DeclStmt *>(&stmt)) {
+    if (const auto *statement = AstCast<const DeclStmt>(&stmt)) {
         auto lowered = std::make_unique<HirLocalDecl>();
         lowered->location = statement->location;
         CollectDecl(*statement->decl);
-        if (const auto *function = dynamic_cast<const FuncDecl *>(statement->decl.get())) {
+        if (const auto *function = AstCast<const FuncDecl>(statement->decl.get())) {
             lowered->description = std::format("func {}", function->name);
         }
-        else if (const auto *constant = dynamic_cast<const ConstDecl *>(statement->decl.get())) {
+        else if (const auto *constant = AstCast<const ConstDecl>(statement->decl.get())) {
             lowered->description = std::format("const {}", constant->name);
             HirConst loweredConstant = LowerConst(*constant);
             lowered->hasConstant = true;
             lowered->constantName = std::move(loweredConstant.name);
-            lowered->constantType = std::move(loweredConstant.type);
+            lowered->constantType = loweredConstant.type;
             lowered->constantValue = std::move(loweredConstant.value);
         }
-        else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(statement->decl.get())) {
+        else if (const auto *alias = AstCast<const TypeAliasDecl>(statement->decl.get())) {
             lowered->description = std::format("type {}", alias->name);
         }
         else {
@@ -340,13 +446,19 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     return lowered;
 }
 
-HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable) {
-    if (dynamic_cast<const WildcardPattern *>(&pattern)) {
+HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable,
+                                               const bool discardsParts) {
+    if (AstCast<const WildcardPattern>(&pattern)) {
         auto lowered = std::make_unique<HirWildcardPattern>();
         lowered->location = pattern.location;
+        // The destructure owns its whole initializer, so a part bound to nobody has no other owner left and is
+        // destroyed here, like a temporary nobody kept.
+        if (const DropGluePlan *glue = discardsParts ? model.TryGetDropGlue(type) : nullptr) {
+            lowered->discardGlue = glue->symbol;
+        }
         return lowered;
     }
-    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         auto lowered = std::make_unique<HirBindingPattern>();
         lowered->location = identifier->location;
         lowered->name = identifier->name;
@@ -361,49 +473,115 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
             symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
         }
         lowered->bindingId = symbol.bindingId;
+        // Inside the payload of a borrowed native subject, a binding names the payload where it lies.
+        const PatternBindingMode *mode = model.TryGetPatternBindingMode(pattern);
+        lowered->alias = mode && *mode == PatternBindingMode::Alias;
         Define(std::move(symbol));
         return lowered;
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         auto lowered = std::make_unique<HirTuplePattern>();
         lowered->location = tuple->location;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
             TypeRef elementType = TypeRef::MakeUnknown();
-            if (type.kind == TypeRef::Kind::Tuple && i < type.inner.size()) {
-                elementType = type.inner[i];
+            if (type->kind == TypeRef::Kind::Tuple && i < type->inner.size()) {
+                elementType = type->inner[i];
             }
-            lowered->elements.push_back(LowerLetPattern(*tuple->elements[i], elementType, isMutable));
+            lowered->elements.push_back(LowerLetPattern(*tuple->elements[i], elementType, isMutable, discardsParts));
         }
         return lowered;
     }
-    return LowerPattern(pattern);
+    // Inside a case payload a structure pattern may test its fields, so only a destructuring `let`, where every part is
+    // irrefutable, takes one apart here.
+    const auto *structPattern = discardsParts ? AstCast<const StructPattern>(&pattern) : nullptr;
+    if (structPattern) {
+        // A structure pattern that binds nothing takes nothing out, so the value is discarded whole and a destructor
+        // its type declares runs on it.
+        if (!LetPatternBindsName(*structPattern)) {
+            auto lowered = std::make_unique<HirWildcardPattern>();
+            lowered->location = structPattern->location;
+            if (const DropGluePlan *glue = model.TryGetDropGlue(type)) {
+                lowered->discardGlue = glue->symbol;
+            }
+            return lowered;
+        }
+        auto lowered = std::make_unique<HirStructPattern>();
+        lowered->location = structPattern->location;
+        lowered->typeName = NamedBaseTypeName(type);
+        lowered->resolvedType = type;
+        for (const auto &field : structPattern->fields) {
+            HirStructPatternField loweredField;
+            loweredField.name = field.name;
+            loweredField.type = StructFieldType(type, field.name);
+            loweredField.pattern = LowerLetPattern(*field.pattern, loweredField.type, isMutable, true);
+            lowered->fields.push_back(std::move(loweredField));
+        }
+        // A field the pattern leaves out has no owner once the value is taken apart, so it is discarded like a field
+        // bound to `_`, after the written ones.
+        if (const auto declaration = structDecls.find(lowered->typeName); declaration != structDecls.end()) {
+            for (const auto &field : declaration->second->fields) {
+                if (std::ranges::any_of(structPattern->fields,
+                                        [&](const auto &written) { return written.name == field.name; })) {
+                    continue;
+                }
+                HirStructPatternField omitted;
+                omitted.name = field.name;
+                omitted.type = StructFieldType(type, field.name);
+                auto wildcard = std::make_unique<HirWildcardPattern>();
+                wildcard->location = structPattern->location;
+                if (const DropGluePlan *glue = model.TryGetDropGlue(omitted.type)) {
+                    wildcard->discardGlue = glue->symbol;
+                }
+                omitted.pattern = std::move(wildcard);
+                lowered->fields.push_back(std::move(omitted));
+            }
+        }
+        return lowered;
+    }
+    return LowerPattern(pattern, type);
 }
 
 HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRef &subjectType) {
     if (HirPatternPtr native = LowerNativePattern(pattern, subjectType)) {
         return native;
     }
-    if (dynamic_cast<const WildcardPattern *>(&pattern)) {
+    if (AstCast<const WildcardPattern>(&pattern)) {
         auto lowered = std::make_unique<HirWildcardPattern>();
         lowered->location = pattern.location;
         return lowered;
     }
-    if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+    if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
         auto lowered = std::make_unique<HirLiteralPattern>();
         lowered->location = literal->location;
         lowered->type = LiteralType(literal->value);
+        // A literal is compared at the width of what it matches, which inside a tuple or a structure is the element's
+        // own type rather than the literal's default. That holds for a bool too: every width has the same two values.
+        const bool sameFamily = (lowered->type.IsInteger() && subjectType.IsInteger()) ||
+                                (lowered->type.IsFloat() && subjectType.IsFloat()) ||
+                                (lowered->type.IsChar() && subjectType.IsChar()) ||
+                                (lowered->type.IsBool() && subjectType.IsBool());
+        if (sameFamily) {
+            lowered->type = subjectType;
+        }
         if (literal->value.kind == TokenKind::IntLiteral || literal->value.kind == TokenKind::FloatLiteral) {
             lowered->value = StripNumericLiteralSuffix(literal->value.text);
         }
         else if (literal->value.kind == TokenKind::CharLiteral) {
             lowered->value = DecodeCharLiteral(literal->value.text);
         }
+        else if (literal->value.kind == TokenKind::StringLiteral) {
+            // Matched against the subject's own code units, so the literal is encoded at the subject's width.
+            lowered->value = DecodeStringLiteral(literal->value.text);
+            if (subjectType.IsSlice() && !subjectType->inner.empty() && subjectType->inner[0].IsChar()) {
+                lowered->type = subjectType;
+            }
+        }
         else {
             lowered->value = literal->value.text;
         }
         return lowered;
     }
-    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         auto lowered = std::make_unique<HirBindingPattern>();
         lowered->location = identifier->location;
         lowered->name = identifier->name;
@@ -421,7 +599,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         Define(std::move(symbol));
         return lowered;
     }
-    if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+    if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         auto lowered = std::make_unique<HirRangePattern>();
         lowered->location = range->location;
         lowered->inclusive = range->inclusive;
@@ -429,7 +607,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         lowered->hi = LowerPattern(*range->hi);
         return lowered;
     }
-    if (const auto *enumPattern = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumPattern = AstCast<const EnumPattern>(&pattern)) {
         auto lowered = std::make_unique<HirEnumPattern>();
         lowered->location = enumPattern->location;
         lowered->path = enumPattern->path;
@@ -443,8 +621,8 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
             lowered->path = {enumName, variantName};
             lowered->resolvedType = subjectType;
         }
-        else if (enumPattern->path.size() == 1 && subjectType.kind == TypeRef::Kind::Named) {
-            enumName = BaseTypeName(subjectType.name);
+        else if (enumPattern->path.size() == 1 && subjectType->kind == TypeRef::Kind::Named) {
+            enumName = BaseTypeName(subjectType->name);
             variantName = enumPattern->path[0];
             lowered->path = {enumName, variantName};
             lowered->resolvedType = subjectType;
@@ -465,7 +643,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
             }
             if (const auto enumIt = enumDecls.find(enumName); enumIt != enumDecls.end()) {
                 lowered->form = enumIt->second->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
-                const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
+                const auto typeArguments = ParseTypeArgsFromTypeName(subjectType->name);
                 const auto &parameters = enumIt->second->typeParams;
                 const std::size_t count = std::min(parameters.size(), typeArguments.size());
                 for (std::size_t i = 0; i < count; ++i) {
@@ -501,6 +679,14 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
                     lowered->args.push_back(
                         LowerLetPattern(*it->second, ResolveTypeWithSubstitution(*field.type, substitutions), false));
                 }
+                else if (enumPattern->braced) {
+                    // A named field the pattern leaves out matches anything. Spelled as a wildcard, it is destroyed
+                    // with the other unbound payloads when the arm takes over a consumed subject.
+                    auto wildcard = std::make_unique<HirWildcardPattern>();
+                    wildcard->location = enumPattern->location;
+                    lowered->argIndices.push_back(&field - variant->namedFields.data());
+                    lowered->args.push_back(std::move(wildcard));
+                }
             }
         }
         else {
@@ -527,7 +713,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         }
         return lowered;
     }
-    if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structPattern = AstCast<const StructPattern>(&pattern)) {
         auto lowered = std::make_unique<HirStructPattern>();
         lowered->location = structPattern->location;
         lowered->typeName = NamedBaseTypeName(subjectType);
@@ -535,23 +721,41 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         for (const auto &field : structPattern->fields) {
             HirStructPatternField loweredField;
             loweredField.name = field.name;
-            loweredField.pattern = LowerPattern(*field.pattern);
+            loweredField.type = StructFieldType(subjectType, field.name);
+            loweredField.pattern = LowerPattern(*field.pattern, loweredField.type);
             lowered->fields.push_back(std::move(loweredField));
+        }
+        // A field the pattern leaves out is still part of what it matches; spelled as a wildcard, it is destroyed with
+        // the other unbound parts when the arm takes over a consumed subject.
+        if (const auto declaration = structDecls.find(lowered->typeName); declaration != structDecls.end()) {
+            for (const auto &field : declaration->second->fields) {
+                if (std::ranges::any_of(structPattern->fields,
+                                        [&](const auto &written) { return written.name == field.name; })) {
+                    continue;
+                }
+                HirStructPatternField omitted;
+                omitted.name = field.name;
+                omitted.type = StructFieldType(subjectType, field.name);
+                auto wildcard = std::make_unique<HirWildcardPattern>();
+                wildcard->location = structPattern->location;
+                omitted.pattern = std::move(wildcard);
+                lowered->fields.push_back(std::move(omitted));
+            }
         }
         return lowered;
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         auto lowered = std::make_unique<HirTuplePattern>();
         lowered->location = tuple->location;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
-            const TypeRef elementType = subjectType.kind == TypeRef::Kind::Tuple && i < subjectType.inner.size()
-                                          ? subjectType.inner[i]
+            const TypeRef elementType = subjectType->kind == TypeRef::Kind::Tuple && i < subjectType->inner.size()
+                                          ? subjectType->inner[i]
                                           : TypeRef::MakeUnknown();
             lowered->elements.push_back(LowerPattern(*tuple->elements[i], elementType));
         }
         return lowered;
     }
-    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         auto lowered = std::make_unique<HirGuardedPattern>();
         lowered->location = guarded->location;
         lowered->inner = LowerPattern(*guarded->inner, subjectType);

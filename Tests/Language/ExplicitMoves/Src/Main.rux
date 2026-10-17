@@ -50,6 +50,13 @@ func MoveNamed() -> int32 {
     return moved.value;
 }
 
+// A custom '=' takes its source by reference, so a reference is copied from as it stands.
+func CopyFrom(source: &CopyOnly) -> int32 {
+    var local = CopyOnly { value: 0i32, copies: source.copies };
+    local = source;
+    return local.value;
+}
+
 func Main() -> int {
     let first = 40i32;
     let second <- first;
@@ -74,6 +81,9 @@ func Main() -> int {
     }
     if sizeof(Immovable) != sizeof(int32) {
         return 5;
+    }
+    if CopyFrom(original) != 11i32 || copies != 2i32 {
+        return 6;
     }
     return 0;
 }

@@ -1,3 +1,4 @@
+#include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "OptimizerTestSupport.h"
 
 using namespace Rux;
@@ -12,11 +13,63 @@ TEST_CASE("optimization pipelines are selected explicitly by profile") {
     CHECK(debug.HirPassNames().empty());
     CHECK(debug.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier"});
     CHECK(release.HirPassNames() == std::vector<std::string_view>{"hir-constant-folder"});
-    CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation",
-                                                                  "lir-dead-code-elimination", "lir-cfg-cleanup"});
-    CHECK(artifactRelease.LirPassNames() ==
-          std::vector<std::string_view>{"lir-cfg-verifier", "lir-constant-copy-propagation",
-                                        "lir-dead-code-elimination", "lir-cfg-cleanup", "lir-declaration-pruner"});
+    CHECK(release.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier",
+                                                                  "lir-frame-address-placement",
+                                                                  "lir-ssa-verifier",
+                                                                  "lir-cfg-cleanup",
+                                                                  "lir-view-parameters",
+                                                                  "lir-scalar-replacement",
+                                                                  "lir-memory-promotion",
+                                                                  "lir-constant-memory",
+                                                                  "lir-constant-copy-propagation",
+                                                                  "lir-scalar-combines",
+                                                                  "lir-cfg-cleanup",
+                                                                  "lir-dead-code-elimination",
+                                                                  "lir-leaf-inliner",
+                                                                  "lir-scalar-combines",
+                                                                  "lir-local-value-numbering",
+                                                                  "lir-loop-invariants",
+                                                                  "lir-loop-versioning",
+                                                                  "lir-block-coalescing",
+                                                                  "lir-fill-widening",
+                                                                  "lir-dead-code-elimination",
+                                                                  "lir-dead-loop-elimination",
+                                                                  "lir-if-conversion",
+                                                                  "lir-cfg-cleanup",
+                                                                  "lir-pointer-induction",
+                                                                  "lir-dead-code-elimination",
+                                                                  "lir-loop-unrolling",
+                                                                  "lir-cfg-verifier",
+                                                                  "lir-ssa-verifier"});
+    CHECK(artifactRelease.LirPassNames() == std::vector<std::string_view>{"lir-cfg-verifier",
+                                                                          "lir-frame-address-placement",
+                                                                          "lir-ssa-verifier",
+                                                                          "lir-cfg-cleanup",
+                                                                          "lir-view-parameters",
+                                                                          "lir-scalar-replacement",
+                                                                          "lir-memory-promotion",
+                                                                          "lir-constant-memory",
+                                                                          "lir-constant-copy-propagation",
+                                                                          "lir-scalar-combines",
+                                                                          "lir-cfg-cleanup",
+                                                                          "lir-dead-code-elimination",
+                                                                          "lir-leaf-inliner",
+                                                                          "lir-scalar-combines",
+                                                                          "lir-local-value-numbering",
+                                                                          "lir-loop-invariants",
+                                                                          "lir-loop-versioning",
+                                                                          "lir-block-coalescing",
+                                                                          "lir-fill-widening",
+                                                                          "lir-dead-code-elimination",
+                                                                          "lir-dead-loop-elimination",
+                                                                          "lir-if-conversion",
+                                                                          "lir-cfg-cleanup",
+                                                                          "lir-pointer-induction",
+                                                                          "lir-dead-code-elimination",
+                                                                          "lir-loop-unrolling",
+                                                                          "lir-cfg-verifier",
+                                                                          "lir-ssa-verifier",
+                                                                          "lir-declaration-pruner"});
 }
 
 TEST_CASE("pass pipeline reports changes and preserves explicit order") {
@@ -33,6 +86,7 @@ TEST_CASE("pass pipeline reports changes and preserves explicit order") {
     CHECK(report.change == Optimization::PassChange::Changed);
     CHECK(report.reachedFixedPoint);
     CHECK(report.iterations == 2);
+    CHECK(report.passStatistics.empty());
     CHECK(runs == std::vector<std::string_view>{"first", "second", "first", "second"});
     REQUIRE(firstObserver->contexts.size() == 2);
     CHECK(firstObserver->contexts[0].iteration == 0);
@@ -52,6 +106,68 @@ TEST_CASE("pass pipeline stops at its fixed-point limit") {
     CHECK_FALSE(report.reachedFixedPoint);
     CHECK(report.iterations == 3);
     CHECK(runs.size() == 3);
+}
+
+TEST_CASE("pass bisection skips only explicitly disabled passes and records optional measurements") {
+    HirPackage package;
+    std::vector<std::string_view> runs;
+    Optimization::HirPassPipeline pipeline(BuildProfile::Release, 4, "HIR");
+    pipeline.Add(std::make_unique<RecordingHirPass>("disabled", runs, 10));
+    pipeline.Add(std::make_unique<RecordingHirPass>("enabled", runs, 1));
+    const std::vector<std::string> disabled{"disabled"};
+    pipeline.Configure(disabled, true);
+    const auto report = pipeline.Run(package);
+    CHECK(report.reachedFixedPoint);
+    CHECK(runs == std::vector<std::string_view>{"enabled", "enabled"});
+    REQUIRE_EQ(report.passStatistics.size(), 2);
+    CHECK(report.passStatistics[0].disabled);
+    CHECK_EQ(report.passStatistics[0].runs, 0);
+    CHECK_EQ(report.passStatistics[1].runs, 2);
+    CHECK_EQ(report.passStatistics[1].changes, 1);
+    CHECK_EQ(report.passStatistics[1].ir, "HIR");
+    CHECK_GE(report.passStatistics[1].elapsed.count(), 0);
+}
+
+TEST_CASE("configured optimization rejects unknown or mandatory pass exclusions") {
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    for (const std::string name : {"typo", "lir-cfg-verifier", "lir-ssa-verifier", "lir-frame-address-placement"}) {
+        const std::vector<std::string> disabled{name};
+        CHECK_FALSE(pipeline.Configure(disabled, false).empty());
+    }
+    const std::vector<std::string> disabled{"lir-leaf-inliner", "lir-loop-invariants"};
+    CHECK(pipeline.Configure(disabled, true).empty());
+    auto package = CompileToLir("func Main() -> int { return (7 + 5) * 3; }", BuildProfile::Debug);
+    const auto report = pipeline.RunLir(package);
+    CHECK_FALSE(report.HasErrors());
+    CHECK(std::ranges::any_of(report.passStatistics, [](const auto &pass) { return pass.instructionsRemoved > 0; }));
+    CHECK(std::ranges::any_of(report.passStatistics, [](const auto &pass) {
+        return pass.name == "lir-leaf-inliner" && pass.disabled && pass.runs == 0;
+    }));
+}
+
+TEST_CASE("pass measurements leave optimized code unchanged") {
+    auto plain = CompileToLir(R"(
+        func Twice(value: int) -> int { return value * 2; }
+        func Main(limit: int) -> int {
+            var total = 0;
+            for i in 0..limit { total += Twice(i); }
+            return total;
+        }
+    )",
+                              BuildProfile::Debug);
+    auto measured = plain;
+    auto plainPipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    auto measuredPipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    REQUIRE(measuredPipeline.Configure({}, true).empty());
+    const auto plainReport = plainPipeline.RunLir(plain);
+    const auto measuredReport = measuredPipeline.RunLir(measured);
+    REQUIRE_FALSE(plainReport.HasErrors());
+    REQUIRE_FALSE(measuredReport.HasErrors());
+    CHECK_EQ(plainReport.iterations, measuredReport.iterations);
+    CHECK(plainReport.passStatistics.empty());
+    CHECK_FALSE(measuredReport.passStatistics.empty());
+    CHECK_EQ(AssemblyPrinter(plain, Target::OS::Windows).Generate(),
+             AssemblyPrinter(measured, Target::OS::Windows).Generate());
 }
 
 TEST_CASE("independent optimization pipelines do not share constant-folding analysis state") {

@@ -106,18 +106,18 @@ void ExpressionPrinter::Pad() const {
 }
 
 void ExpressionPrinter::Print(const Expr &expression) {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         PrintLiteralExpr(*literal);
     }
-    else if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    else if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         Pad();
         out << "IdentExpr '" << identifier->name << "'\n";
     }
-    else if (dynamic_cast<const SelfExpr *>(&expression) != nullptr) {
+    else if (AstCast<const SelfExpr>(&expression) != nullptr) {
         Pad();
         out << "SelfExpr\n";
     }
-    else if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
+    else if (const auto *path = AstCast<const PathExpr>(&expression)) {
         Pad();
         out << "PathExpr '";
         for (std::size_t index = 0; index < path->segments.size(); ++index) {
@@ -128,16 +128,16 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         out << "'\n";
     }
-    else if (const auto *query = dynamic_cast<const TypeQueryExpr *>(&expression)) {
+    else if (const auto *query = AstCast<const TypeQueryExpr>(&expression)) {
         Pad();
         out << (query->query == TypeQueryExpr::Query::Size ? "SizeOfExpr " : "AlignOfExpr ")
             << TypeString(query->type.get()) << '\n';
     }
-    else if (const auto *shorthand = dynamic_cast<const EnumShorthandExpr *>(&expression)) {
+    else if (const auto *shorthand = AstCast<const EnumShorthandExpr>(&expression)) {
         Pad();
         out << "EnumShorthandExpr '." << shorthand->variant << "'\n";
     }
-    else if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression)) {
+    else if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression)) {
         static constexpr const char *names[] = {"#source.line",        "#source.column",
                                                 "#source.file",        "#source.fileName",
                                                 "#source.filePath",    "#source.function",
@@ -163,7 +163,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    else if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         Pad();
         out << "UnaryExpr " << OperatorString(unary->op) << '\n';
         ++indent;
@@ -172,7 +172,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    else if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         Pad();
         out << "MoveExpr <-\n";
         ++indent;
@@ -181,7 +181,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+    else if (const auto *tryExpression = AstCast<const TryExpr>(&expression)) {
         Pad();
         out << "TryExpr\n";
         ++indent;
@@ -190,7 +190,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    else if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         Pad();
         out << "BinaryExpr " << OperatorString(binary->op) << '\n';
         ++indent;
@@ -202,7 +202,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+    else if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         Pad();
         out << "AssignExpr " << OperatorString(assignment->op) << '\n';
         ++indent;
@@ -214,7 +214,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression)) {
+    else if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
         Pad();
         out << "TernaryExpr\n";
         ++indent;
@@ -241,7 +241,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         --indent;
         --indent;
     }
-    else if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+    else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         Pad();
         out << "RangeExpr " << (range->inclusive ? "..." : "..") << '\n';
         ++indent;
@@ -253,7 +253,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *call = dynamic_cast<const CallExpr *>(&expression)) {
+    else if (const auto *call = AstCast<const CallExpr>(&expression)) {
         Pad();
         out << "CallExpr\n";
         ++indent;
@@ -288,7 +288,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *indexExpression = dynamic_cast<const IndexExpr *>(&expression)) {
+    else if (const auto *indexExpression = AstCast<const IndexExpr>(&expression)) {
         Pad();
         out << "IndexExpr\n";
         ++indent;
@@ -300,7 +300,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *fieldExpression = dynamic_cast<const FieldExpr *>(&expression)) {
+    else if (const auto *fieldExpression = AstCast<const FieldExpr>(&expression)) {
         Pad();
         out << "FieldExpr '." << fieldExpression->field << "'\n";
         ++indent;
@@ -309,7 +309,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *structInitializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    else if (const auto *structInitializer = AstCast<const StructInitExpr>(&expression)) {
         Pad();
         out << "StructInitExpr '" << structInitializer->typeName;
         if (!structInitializer->typeArgs.empty()) {
@@ -335,7 +335,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    else if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         Pad();
         out << "ArrayExpr [" << array->elements.size() << "]\n";
         ++indent;
@@ -346,7 +346,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    else if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         Pad();
         out << "ArrayRepeatExpr\n";
         ++indent;
@@ -358,7 +358,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    else if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         Pad();
         out << "CastExpr as " << TypeString(cast->type.get()) << '\n';
         ++indent;
@@ -367,7 +367,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *is = dynamic_cast<const IsExpr *>(&expression)) {
+    else if (const auto *is = AstCast<const IsExpr>(&expression)) {
         Pad();
         out << "IsExpr is " << TypeString(is->type.get()) << '\n';
         ++indent;
@@ -376,12 +376,12 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *block = dynamic_cast<const BlockExpr *>(&expression)) {
+    else if (const auto *block = AstCast<const BlockExpr>(&expression)) {
         if (block->block) {
             printBlock(*block->block);
         }
     }
-    else if (const auto *match = dynamic_cast<const MatchExpr *>(&expression)) {
+    else if (const auto *match = AstCast<const MatchExpr>(&expression)) {
         Pad();
         out << "MatchExpr\n";
         ++indent;
@@ -400,7 +400,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
         Pad();
         out << "CatchExpr\n";
         ++indent;
@@ -421,7 +421,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
         Pad();
         out << "MappedTryExpr '" << mapped->binding << "'\n";
         ++indent;
@@ -433,7 +433,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+    else if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         Pad();
         out << "NativeConstructExpr '."
             << (construct->kind == NativeConstructExpr::Kind::Success   ? "Success"
@@ -446,11 +446,11 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (dynamic_cast<const NoneExpr *>(&expression)) {
+    else if (AstCast<const NoneExpr>(&expression)) {
         Pad();
         out << "NoneExpr\n";
     }
-    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+    else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         Pad();
         static constexpr const char *kKeywords[] = {"return", "fail", "break", "continue"};
         out << "DivergeExpr '" << kKeywords[static_cast<int>(diverge->kind)] << "'";

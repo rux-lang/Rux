@@ -190,6 +190,38 @@ TEST_CASE("RCU module builder aligns section buffers without owning literal enco
           "cannot align RCU section '.rodata' to 3 bytes: alignment must be a power of two");
 }
 
+TEST_CASE("RCU module builder records the strictest alignment a section's values asked for") {
+    // The linker pads each object's section to its recorded alignment, so a sixteen-byte offset in a section that
+    // records eight can land eight bytes past a boundary in memory. The record has to grow with the requests.
+    RcuModuleBuilder builder(Description());
+    builder.SectionData(RcuModuleSection::RoData).push_back(0x01);
+    CHECK(builder.AlignSection(RcuModuleSection::RoData, 16) == 16);
+    builder.SectionData(RcuModuleSection::RoData).push_back(0x02);
+    CHECK(builder.AlignSection(RcuModuleSection::RoData, 4) == 20);
+    CHECK(builder.AlignSection(RcuModuleSection::Data, 32) == 0);
+    CHECK(builder.AlignSection(RcuModuleSection::Text, 64) == 0);
+    const auto table = builder.AddDefinition(Constant("Table"), RcuModuleSection::RoData, 16, 1);
+    REQUIRE(table.has_value());
+
+    auto result = builder.Finalize();
+    REQUIRE_FALSE(result.HasErrors());
+    REQUIRE(result.file.has_value());
+    REQUIRE(result.file->sections.size() == 3);
+    CHECK(result.file->sections[RCU_TEXT_IDX].alignment == 64);
+    CHECK(result.file->sections[RCU_RODATA_IDX].alignment == 16);
+    CHECK(result.file->sections[RCU_DATA_IDX].alignment == 32);
+
+    // A request below a section's base alignment leaves the base in place.
+    RcuModuleBuilder narrow(Description());
+    CHECK(narrow.AlignSection(RcuModuleSection::RoData, 2) == 0);
+    CHECK(narrow.AlignSection(RcuModuleSection::Text, 4) == 0);
+    auto narrowResult = narrow.Finalize();
+    REQUIRE(narrowResult.file.has_value());
+    CHECK(narrowResult.file->sections[RCU_TEXT_IDX].alignment == 16);
+    CHECK(narrowResult.file->sections[RCU_RODATA_IDX].alignment == 8);
+    CHECK(narrowResult.file->sections[RCU_DATA_IDX].alignment == 8);
+}
+
 TEST_CASE("RCU module builder rejects unknown architectures and architecture-specific relocations") {
     RcuModuleBuilder unknown(Description(0xFF));
     const auto unknownResult = unknown.Finalize();

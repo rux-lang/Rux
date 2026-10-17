@@ -1,52 +1,51 @@
 // Printing, with the failure a caller can act on returned rather than swallowed.
-//
-// Every overload returns the `IoError` of the write it made. Most call sites will keep ignoring it, and that is
-// now their decision rather than this module's: a program logging to a terminal loses nothing by not looking,
-// while one whose output feeds a closed pipe finally has something to look at. The bytes go through the standard
-// output handle, so the console-versus-redirection encoding is decided where it always is, not re-decided here.
+// Every overload returns the `IoError` of the write it made, or `none` when there was nothing to report. Most call
+// sites will keep ignoring it, and that is their decision rather than this module's: a program logging to a terminal
+// loses nothing by not looking, while one whose output feeds a closed pipe has something to look at. That is why the
+// result is an optional failure rather than a fallible, which a statement could not leave unread. The bytes go
+// through the standard output handle, so the console-versus-redirection encoding is decided where it always is, not
+// re-decided here.
 
 import Format::WriteFormat;
 import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter };
 
 // The one write under everything here.
-func PrintBytes(bytes: char8[..]) -> IoError {
+func PrintBytes(bytes: char8[..]) -> ! IoError {
     var out = StandardOut::Acquire();
     return WriteAll(out, bytes);
 }
 
+// The failure a write reported, as the optional every printing call returns.
+func FailureOf(outcome: ! IoError) -> IoError? {
+    outcome catch { error => return error };
+    return none;
+}
+
 // What one printing call reports, given the slot the adapter recorded into and what the formatter said.
-//
 // The slot is read first, because a stream failure is the more specific answer: the formatter saw `WriterFailure`
 // and can say nothing about what a broken pipe was, while the slot holds the failure itself. Only once the stream
 // is known to be healthy is the formatter's own failure worth translating, and by then it can only be a fault of
 // the request or of the value.
-func Reported(failure: IoError, formatted: ! FormatError) -> IoError {
-    if failure.IsError() { return failure; }
-    return match formatted {
-        .Success(_) => IoError::Ok(),
-        .Failure(reason) => ToIoError(reason)
-    };
+func Reported(failure: IoError?, formatted: ! FormatError) -> IoError? {
+    if failure is IoError { return failure; }
+    formatted catch { reason => return ToIoError(reason) };
+    return none;
 }
 
 /// Writes a value's text to standard output.
-///
 /// Nothing is allocated: the value writes itself straight to the stream.
-///
 /// The value arrives as an interface value, which copies it — or takes it, for a type that prohibits copying.
 /// `WriteValueLine` is the borrowing form, and takes any destination, so a value that must not be given up goes
 /// through a `ConsoleWriter` and that instead.
-///
-/// # Failures
 /// A stream failure is returned as the stream reported it. A formatting failure on a healthy stream is translated
 /// by `ToIoError`, so a request that was wrong arrives as `InvalidInput` and stays distinguishable from anything
 /// the destination did. Which formatting failure it was does not survive that translation, since `IoError` has no
 /// room for one; a caller who needs it builds a `ConsoleWriter` and calls `Text::WriteValue` themselves.
-///
 /// @param value the value to write
-/// @returns what the stream reported, or the translated formatting failure on a healthy stream
-/// @see https://rux-lang.dev/docs/api/io/print-value
-pub func PrintValue(value: Display) -> IoError {
-    var failure = IoError::Ok();
+/// @returns what the stream reported, or the translated formatting failure on a healthy stream, or `none`
+/// @see https://rux-lang.dev/docs/api/io/print#print-value
+pub func PrintValue(value: Display) -> IoError? {
+    var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = value.WriteDisplay(writer, FormatSpec::Plain());
@@ -54,233 +53,281 @@ pub func PrintValue(value: Display) -> IoError {
 }
 
 /// Writes a value's text to standard output, then a newline.
-///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
-/// @see https://rux-lang.dev/docs/api/io/print-value-line
-pub func PrintValueLine(value: Display) -> IoError {
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-line#print-value-line
+pub func PrintValueLine(value: Display) -> IoError? {
     return Terminate(PrintValue(value));
 }
 
-/// Writes a string to standard output.
-///
+/// Writes a value's text to standard output.
+/// A `String`, a `StringView` or a `char8[..]` is written as the UTF-8 bytes it holds, unchanged: nothing is
+/// substituted and no brace is special, so `Print("{{}}")` writes `{{}}`. Each primitive overload writes its value as
+/// `PrintValue` does, through the type's `Display` conformance, and any other value goes through `PrintValue` itself.
+/// Given arguments after it, the first text is a pattern instead: each `{}` or `{:spec}` takes the next argument in
+/// order, and `{{` and `}}` write a literal brace.
+/// Every overload returns the failure its write met as an `IoError`, or `none`. A program logging to a terminal loses
+/// nothing by ignoring it; one whose output feeds a pipe that may close has something to look at.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: String) -> IoError {
-    return PrintBytes((value.data)[..value.length]);
+pub func Print(value: String) -> IoError? {
+    return FailureOf(PrintBytes((value.data)[..value.length]));
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes the text a `StringView` borrows to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: StringView) -> IoError {
-    return PrintBytes(value.Bytes());
+pub func Print(value: StringView) -> IoError? {
+    return FailureOf(PrintBytes(value.Bytes()));
 }
 
 /// Writes text to standard output.
-///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char8[..]) -> IoError {
-    return PrintBytes(value);
+pub func Print(value: char8[..]) -> IoError? {
+    return FailureOf(PrintBytes(value));
 }
 
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
-///
-/// Allocates nothing: the arguments write themselves to the stream as they are reached. Failures report as
-/// `PrintValue`'s do.
-///
-/// @param format the format string, with `{}` for each argument
-/// @returns `None` when the whole value was written
-/// @see https://rux-lang.dev/docs/api/io/print-format
-pub func Print(format: char8[..], args: Display...) -> IoError {
-    var failure = IoError::Ok();
+/// A placeholder is `{}` or `{:spec}`, and `{{` and `}}` write a literal brace. `format` is marked `#Format()`, so a
+/// string literal passed for it has its placeholders counted against the arguments while compiling, and a mismatch is
+/// a compile error; a pattern only known at run time that does not match reports through the returned failure and
+/// prints nothing. Allocates nothing: the arguments write themselves to the stream as they are reached. Failures
+/// report as `PrintValue`'s do.
+/// @param format the format string, with a placeholder for each argument
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(#Format() format: char8[..], args: Display...) -> IoError? {
+    var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = WriteFormat(writer, format, args...);
     return Reported(failure, formatted);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `bool8` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: bool8) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: bool8) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `bool16` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: bool16) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: bool16) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `bool32` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: bool32) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: bool32) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `bool64` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char8) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: bool64) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `bool128` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char16) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: bool128) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `bool256` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char32) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: bool256) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `bool512` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int8) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: bool512) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `char8` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int16) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: char8) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `char16` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int32) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: char16) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `char32` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int64) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: char32) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `char64` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint8) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: char64) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `char128` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint16) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: char128) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `char256` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint32) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: char256) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `char512` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint64) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: char512) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `int8` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: int8) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `int16` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: int16) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `int32` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: float32) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: int32) -> IoError? {
+    return PrintValue(value);
 }
 
-/// Provides the public `Print` operation.
-///
+/// Writes a `int64` to standard output.
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: float64) -> IoError {
-    let shown: Display = value;
-    return PrintValue(shown);
+pub func Print(value: int64) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `uint8` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint8) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `uint16` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint16) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `uint32` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint32) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `uint64` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint64) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `int` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: int) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `uint` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `float8` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: float8) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `float16` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: float16) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `float32` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: float32) -> IoError? {
+    return PrintValue(value);
+}
+
+/// Writes a `float64` to standard output.
+/// @param value the value to write
+/// @returns the failure, or `none` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
+pub func Print(value: float64) -> IoError? {
+    return PrintValue(value);
 }

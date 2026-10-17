@@ -1,13 +1,11 @@
 // A strict parser is only worth having if it actually refuses things, so most of this test is refusals — the
 // forms that circulate widely and are not the standard's, each rejected with the reason that names what is
 // wrong rather than a single catch-all.
-//
 // Every refusal now also carries where, and the offset is the half that is easy to get wrong quietly. A reason
 // with a wrong offset still passes a test that only checks the reason, and still underlines the wrong character
 // in whatever reports it. So each case below names the exact byte, and the URN cases are the ones that decide the
 // convention: the offsets are into the text as given, so a digit inside a URN is numbered from the start of the
 // whole string and not from the value inside it.
-//
 // Writing has the mirror-image claim. The writers refuse a destination that is too small rather than filling what
 // fits, so the short-buffer cases below check two things together: that the call reported `InsufficientCapacity`,
 // and that the destination still holds the sentinel it was filled with beforehand. The second is the half that
@@ -73,7 +71,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 func Untouched(room: char8[..]) -> bool {
     var index: uint = 0;
     while index < room.length {
-        if (room.data[index] as uint8) != 0x3Fu8 { return false; }
+        if (room.data[index] as uint8) != 0x3F { return false; }
         index = index + 1;
     }
     return true;
@@ -126,7 +124,7 @@ func RefusedBySpec(value: Uuid, spec: FormatSpec) -> bool {
         .Failure(error) => error,
         .Success(_) => return false
     };
-    if writer.Length() != 0u { return false; }
+    if writer.Length() != 0 { return false; }
     return match reported {
         .UnsupportedRequest => true,
         else => false
@@ -139,11 +137,11 @@ func Main() -> int {
     // The canonical form round-trips.
     Assert(Accepts(canonical), "the canonical form parses");
     var value = Parsed(canonical);
-    Assert(value.Version() == 1u8, "and its version is read from the right nibble");
+    Assert(value.Version() == 1, "and its version is read from the right nibble");
     var text: char8[64];
     Assert(Succeeded(Format(value, (@text[0])[..36])), "and writes back into a destination of exactly its length");
     var index: uint = 0;
-    while index < 36u {
+    while index < 36 {
         Assert(text[index] == canonical.data[index], "and it formats back to exactly what was parsed");
         index = index + 1;
     }
@@ -155,8 +153,8 @@ func Main() -> int {
 
     var upperText: char8[64];
     Assert(Succeeded(FormatUpper(value, (@upperText[0])[..36])), "the upper-case form writes");
-    Assert((upperText[0] as uint8) == 0x46u8, "the upper-case form writes upper-case digits");
-    Assert((upperText[8] as uint8) == 0x2Du8, "and keeps the hyphens");
+    Assert((upperText[0] as uint8) == 0x46, "the upper-case form writes upper-case digits");
+    Assert((upperText[8] as uint8) == 0x2D, "and keeps the hyphens");
     Assert(Parsed((@upperText[0])[..36]).Equals(value), "and parses back to the same value");
 
     // The URN form, in both cases of its prefix.
@@ -171,42 +169,42 @@ func Main() -> int {
     // The refusals: every widely-circulated non-standard form. A text short of the canonical length points at its
     // own end, where the missing character would have gone; a longer one points at the first character that has
     // nowhere to be.
-    Assert(Refuses("f81d4fae7dec11d0a76500a0c91e6bf6", 1, 32u),
+    Assert(Refuses("f81d4fae7dec11d0a76500a0c91e6bf6", 1, 32),
            "the hyphen-free form some databases store is refused at its end");
-    Assert(Refuses("{f81d4fae-7dec-11d0-a765-00a0c91e6bf6}", 1, 36u),
+    Assert(Refuses("{f81d4fae-7dec-11d0-a765-00a0c91e6bf6}", 1, 36),
            "the brace-wrapped form Windows tools print is refused at the first character past the form");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf", 1, 35u), "one digit short points at the missing digit");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf67", 1, 36u), "one digit long points at the extra one");
-    Assert(Refuses("", 1, 0u), "and nothing at all is refused at offset zero");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf", 1, 35), "one digit short points at the missing digit");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf67", 1, 36), "one digit long points at the extra one");
+    Assert(Refuses("", 1, 0), "and nothing at all is refused at offset zero");
 
     // Hyphens in the wrong places, which is the error a length check alone would miss.
-    Assert(Refuses("f81d4fae7-dec-11d0-a765-00a0c91e6bf6", 2, 8u),
+    Assert(Refuses("f81d4fae7-dec-11d0-a765-00a0c91e6bf6", 2, 8),
            "a hyphen one position late is refused where the hyphen belonged");
-    Assert(Refuses("f81d4fa-e7dec-11d0-a765-00a0c91e6bf6", 2, 7u),
+    Assert(Refuses("f81d4fa-e7dec-11d0-a765-00a0c91e6bf6", 2, 7),
            "and one position early, where the hyphen stands and a digit belongs");
-    Assert(Refuses("f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 8u), "and a separator that is not a hyphen");
+    Assert(Refuses("f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 8), "and a separator that is not a hyphen");
 
     // Every one of the four hyphen positions is checked, not only the first.
-    Assert(Refuses("f81d4fae-7dec_11d0-a765-00a0c91e6bf6", 2, 13u), "the second hyphen position is checked");
-    Assert(Refuses("f81d4fae-7dec-11d0_a765-00a0c91e6bf6", 2, 18u), "and the third");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765_00a0c91e6bf6", 2, 23u), "and the fourth");
+    Assert(Refuses("f81d4fae-7dec_11d0-a765-00a0c91e6bf6", 2, 13), "the second hyphen position is checked");
+    Assert(Refuses("f81d4fae-7dec-11d0_a765-00a0c91e6bf6", 2, 18), "and the third");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765_00a0c91e6bf6", 2, 23), "and the fourth");
 
     // Characters that are not hexadecimal, at the first, middle and last digit positions.
-    Assert(Refuses("g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 0u), "a letter past f is refused at its position");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf ", 3, 35u), "and so is a trailing space");
-    Assert(Refuses("f81d4fae-7dec-11z0-a765-00a0c91e6bf6", 3, 16u), "and one in the middle of a group");
+    Assert(Refuses("g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 0), "a letter past f is refused at its position");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf ", 3, 35), "and so is a trailing space");
+    Assert(Refuses("f81d4fae-7dec-11z0-a765-00a0c91e6bf6", 3, 16), "and one in the middle of a group");
 
     // A URN prefix that is misspelled, which is its own kind of wrong, pointing at the character that is wrong.
-    Assert(Refuses("urn:uuix:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 7u),
+    Assert(Refuses("urn:uuix:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 7),
            "a misspelled URN prefix is refused at the misspelling");
-    Assert(Refuses("uri:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 2u), "as is the wrong scheme");
-    Assert(Refuses("urn uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 3u), "and a missing separator");
+    Assert(Refuses("uri:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 2), "as is the wrong scheme");
+    Assert(Refuses("urn uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 3), "and a missing separator");
 
     // Inside a URN, the offsets are into the whole text rather than into the value it wraps. That is the
     // convention a caller underlining a character depends on, and the case that proves it.
-    Assert(Refuses("urn:uuid:g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 9u),
+    Assert(Refuses("urn:uuid:g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 9),
            "a bad digit in a URN is numbered from the start of the URN");
-    Assert(Refuses("urn:uuid:f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 17u),
+    Assert(Refuses("urn:uuid:f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 17),
            "and so is a misplaced hyphen inside one");
 
     // The sentinels have text forms too.
@@ -221,9 +219,9 @@ func Main() -> int {
     // fail while still producing something that looks like a UUID.
     var probe = Uuid::Nil();
     index = 0;
-    while index < 16u {
+    while index < 16 {
         probe = Uuid::Nil();
-        probe.bytes[index] = 0x9Cu8 as char8;
+        probe.bytes[index] = 0x9C;
         Assert(Succeeded(Format(probe, (@text[0])[..36])), "every byte position writes");
         Assert(Accepts((@text[0])[..36]) && Parsed((@text[0])[..36]).Equals(probe),
                "every byte position survives the text round trip");
@@ -235,7 +233,7 @@ func Main() -> int {
     // would leave a string that is not a UUID where a caller may go on to read one.
     var room: char8[64];
     index = 0;
-    while index < 64u {
+    while index < 64 {
         room[index] = 0x3Fu8 as char8;
         index = index + 1;
     }
@@ -261,8 +259,8 @@ func Main() -> int {
 
     // The two lengths are constants a caller can size a destination from, and they are the lengths the writers
     // actually require.
-    Assert(UuidTextLength == 36u, "the canonical length is thirty-six");
-    Assert(UuidUrnLength == 45u, "and the URN length is that plus the prefix");
+    Assert(UuidTextLength == 36, "the canonical length is thirty-six");
+    Assert(UuidUrnLength == 45, "and the URN length is that plus the prefix");
 
     // Presentation: the default is the canonical lower-case form, and the URN form is a style.
     let plain = FormatSpec::Plain();
@@ -271,6 +269,9 @@ func Main() -> int {
     Assert(Shown(value, Spec("urn"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "and urn selects the URN one");
     Assert(Shown(nil, plain, "00000000-0000-0000-0000-000000000000"), "the nil UUID shows as all zeros");
     Assert(Shown(max, plain, "ffffffff-ffff-ffff-ffff-ffffffffffff"), "and the max UUID as all fs, in lower case");
+    Assert(Shown(nil, Spec("*<38"), "00000000-0000-0000-0000-000000000000**"), "a width pads the canonical form");
+    Assert(Shown(nil, Spec(">45urn"), "urn:uuid:00000000-0000-0000-0000-000000000000"),
+           "and the URN form, which already fills it");
     Assert(Inspected(value, plain, canonical), "Debug writes the same text");
     Assert(Inspected(value, Spec("urn"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
            "and answers to the same styles");
@@ -282,8 +283,8 @@ func Main() -> int {
     Assert(RefusedBySpec(value, Spec(".8")), "and a precision is refused rather than truncating the form");
 
     // A destination too small reports the writer's own failure through the protocol rather than swallowing it.
-    Assert(RefusedByWriter(value, plain, 35u), "a writer one byte short reports insufficient capacity");
-    Assert(RefusedByWriter(value, Spec("urn"), 44u), "and so does one a byte short of the URN form");
+    Assert(RefusedByWriter(value, plain, 35), "a writer one byte short reports insufficient capacity");
+    Assert(RefusedByWriter(value, Spec("urn"), 44), "and so does one a byte short of the URN form");
 
     // What Display writes parses back, in both forms, which is what makes the pair a round trip rather than two
     // separate opinions about the text.

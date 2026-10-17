@@ -1,0 +1,110 @@
+// A module variable is one storage location for the whole program: every function that names it, in this package or
+// another, reads and writes the same bytes, and those bytes start as the initializer and keep their address. A
+// zero initializer is placed in zero-fill storage and still reads as zero; a non-zero one is placed in initialized
+// data. Wide scalars, arrays and structs are covered because their loads and stores are not a single register move.
+
+import Core::Assert;
+import ModuleVarProvider::{ Bump, Counter, CounterAddress, NextHidden, Seed, Table, TableSum };
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+var Total: int = 0;
+var Big: int128 = (1i128 << 100u32) + 5i128;
+var Huge: uint512 = 7u512;
+var Zeroes: byte[4096] = [0; 4096];
+var Origin: Point = Point { x: 3, y: -4 };
+var Ratio: float64 = 0.5;
+var Ready: bool = false;
+pub var Exported: uint16 = 9;
+
+module Settings {
+    pub var Level: int32 = 3;
+
+    pub func Raise() {
+        Level = Level + 1;
+    }
+}
+
+func Add(amount: int) {
+    Total = Total + amount;
+}
+
+func ReadTotal() -> int {
+    return Total;
+}
+
+func Main() -> int {
+    // Writes in one function are seen by another, and compound assignment works on a module variable.
+    Assert(ReadTotal() == 0, "a zero-initialized variable starts at zero");
+    Add(5);
+    Add(7);
+    Assert(Total == 12, "writes in one function are visible in another");
+    Total += 3;
+    Total++;
+    Assert(ReadTotal() == 16, "compound assignment and increment write the variable");
+
+    // Wide scalars keep every byte.
+    Assert(Big == (1i128 << 100u32) + 5i128, "int128 starts as its initializer");
+    Big = Big * 2i128;
+    Assert(Big == (1i128 << 101u32) + 10i128, "int128 writes keep every byte");
+    Assert(Huge == 7u512, "uint512 starts as its initializer");
+    Huge = (Huge << 400u32) | 1u512;
+    Assert((Huge >> 400u32) == 7u512 && (Huge & 1u512) == 1u512, "uint512 writes keep every byte");
+    Assert(Ratio == 0.5, "float64 starts as its initializer");
+    Ratio = Ratio * 3.0;
+    Assert(Ratio == 1.5, "float64 writes");
+    Assert(!Ready, "bool starts false");
+    Ready = true;
+    Assert(Ready, "bool writes");
+
+    // Zero-fill storage reads as zero and is writable; an array element write sticks.
+    var sum: uint = 0;
+    for value in Zeroes {
+        sum = sum + value as uint;
+    }
+    Assert(sum == 0u, "zero-fill storage reads as zero");
+    Zeroes[4095] = 0xAB;
+    Zeroes[0] = 1;
+    Assert(Zeroes[4095] == 0xAB && Zeroes[0] == 1, "array elements of a module variable are writable");
+
+    // Struct fields.
+    Assert(Origin.x == 3 && Origin.y == -4, "a struct starts as its initializer");
+    Origin.x = 10;
+    Origin = Point { x: Origin.x + 1, y: Origin.y };
+    Assert(Origin.x == 11 && Origin.y == -4, "struct fields and whole structs are writable");
+
+    // A stable address: every `@` gives the same pointer, and writing through it writes the variable.
+    let first: *var int = @Total;
+    let second: *var int = @Total;
+    Assert(first == second, "a module variable has one address");
+    Assert(first as uint % alignof(int) == 0u, "a module variable is aligned");
+    *first = 100;
+    Assert(Total == 100, "a write through the address is a write to the variable");
+
+    // Across packages: the provider's functions and this package see the same storage.
+    Assert(Counter == 0, "an imported variable starts as its initializer");
+    Assert(Bump() == 1 && Bump() == 2, "the provider writes its own variable");
+    Assert(Counter == 2, "this package reads what the provider wrote");
+    Counter = 40;
+    Assert(Bump() == 41, "the provider reads what this package wrote");
+    Assert(CounterAddress() == @Counter, "both packages name one address");
+    *CounterAddress() = 7;
+    Assert(Counter == 7, "a write through the provider's address is seen here");
+    // A path names the same storage as the module's own unqualified name.
+    Assert(Settings::Level == 3, "a module's variable reads through its path");
+    Settings::Level = 10;
+    Settings::Raise();
+    Assert(Settings::Level == 11, "a write through the path is seen inside the module, and the reverse");
+    Settings::Level += 4;
+    Assert(Settings::Level == 15, "compound assignment through a path");
+    Assert(Seed == 0xDEADBEEFu32, "a non-zero initializer is kept");
+    Assert(TableSum() == 10, "an imported array starts as its initializer");
+    Table[1] = 20;
+    Assert(TableSum() == 28, "an imported array element write is seen by the provider");
+    Assert(NextHidden() == 42 && NextHidden() == 44, "a private variable keeps its state between calls");
+    Assert(Exported == 9u16, "a public variable reads in its own package");
+    return 0;
+}

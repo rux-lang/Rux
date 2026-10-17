@@ -12,6 +12,32 @@ func Div<T>(x: T, y: T) -> T {
     return x / y;
 }
 
+// Among overloads that accept a call, the one its arguments fill without a default wins, whichever is declared
+// first, and the most specific conversion wins over a wider one.
+func Extend(x: int, y: int = 1) -> int {
+    return x + y;
+}
+
+func Extend(x: int) -> int {
+    return x;
+}
+
+func Shrink(x: int) -> int {
+    return x;
+}
+
+func Shrink(x: int, y: int = 1) -> int {
+    return x - y;
+}
+
+func Width(value: float32) -> int {
+    return 32;
+}
+
+func Width(value: float64) -> int {
+    return 64;
+}
+
 func Main() -> int {
     let x = Max<int32>(5, 10);
     Assert(x == 10, "Expected 10");
@@ -19,5 +45,10 @@ func Main() -> int {
     Assert(y == 3.14, "Expected 3.14");
     let quotient = Div<float>(10.0, 2.0);
     Assert(quotient == 5.0, "Expected 5.0");
+
+    Assert(Extend(2) == 2 && Shrink(2) == 2, "the overload that needs no default wins in either order");
+    Assert(Extend(2, 5) == 7 && Shrink(2, 5) == -3, "a second argument still reaches the other overload");
+    let narrow: float32 = 1.0f32;
+    Assert(Width(narrow) == 32, "an exact parameter wins over one the argument widens to");
     return 0;
 }

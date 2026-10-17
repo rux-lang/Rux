@@ -96,18 +96,18 @@ TEST_SUITE("OperandWideningLowering") {
             for (const LirInstr &instruction : block.instrs) {
                 if (instruction.op == LirOpcode::Const && instruction.strArg == "18446744073709551616") {
                     foundHighWord = true;
-                    CHECK(instruction.type.kind == TypeRef::Kind::UInt128);
+                    CHECK(instruction.type->kind == TypeRef::Kind::UInt128);
                 }
                 if (instruction.op != LirOpcode::Phi) {
                     continue;
                 }
                 ++merges;
-                CHECK(instruction.type.kind == TypeRef::Kind::UInt128);
+                CHECK(instruction.type->kind == TypeRef::Kind::UInt128);
                 REQUIRE(instruction.phiPreds.size() == 2);
                 for (const auto &[reg, predecessor] : instruction.phiPreds) {
                     CAPTURE(predecessor);
                     REQUIRE(produced.contains(reg));
-                    CHECK(produced.at(reg).kind == TypeRef::Kind::UInt128);
+                    CHECK(produced.at(reg)->kind == TypeRef::Kind::UInt128);
                 }
             }
         }
@@ -124,13 +124,13 @@ TEST_SUITE("OperandWideningLowering") {
         const LirFunc &function = RequireFunction(package, "Select");
         const auto castOperands = OperandTypes(function, LirOpcode::Cast);
         REQUIRE(castOperands.size() == 1);
-        CHECK(castOperands.front().kind == TypeRef::Kind::Int);
+        CHECK(castOperands.front()->kind == TypeRef::Kind::Int);
         std::size_t merges = 0;
         for (const LirBlock &block : function.blocks) {
             for (const LirInstr &instruction : block.instrs) {
                 if (instruction.op == LirOpcode::Phi) {
                     ++merges;
-                    CHECK(instruction.type.kind == TypeRef::Kind::UInt64);
+                    CHECK(instruction.type->kind == TypeRef::Kind::UInt64);
                 }
             }
         }
@@ -148,8 +148,8 @@ TEST_SUITE("OperandWideningLowering") {
         // and the add took in whatever followed them.
         const std::vector<TypeRef> operands = OperandTypes(RequireFunction(package, "Widen"), LirOpcode::Add);
         REQUIRE_EQ(operands.size(), 2);
-        CHECK_EQ(operands[0].kind, TypeRef::Kind::Int128);
-        CHECK_EQ(operands[1].kind, TypeRef::Kind::Int128);
+        CHECK_EQ(operands[0]->kind, TypeRef::Kind::Int128);
+        CHECK_EQ(operands[1]->kind, TypeRef::Kind::Int128);
     }
 
     TEST_CASE("a narrower expression is widened too, not just a literal") {
@@ -161,8 +161,8 @@ TEST_SUITE("OperandWideningLowering") {
 
         const std::vector<TypeRef> operands = OperandTypes(RequireFunction(package, "Widen"), LirOpcode::Sub);
         REQUIRE_EQ(operands.size(), 2);
-        CHECK_EQ(operands[0].kind, TypeRef::Kind::UInt256);
-        CHECK_EQ(operands[1].kind, TypeRef::Kind::UInt256);
+        CHECK_EQ(operands[0]->kind, TypeRef::Kind::UInt256);
+        CHECK_EQ(operands[1]->kind, TypeRef::Kind::UInt256);
     }
 
     TEST_CASE("a compound assignment computes at the place's width") {
@@ -176,8 +176,8 @@ TEST_SUITE("OperandWideningLowering") {
 
         const std::vector<TypeRef> operands = OperandTypes(RequireFunction(package, "Accumulate"), LirOpcode::Add);
         REQUIRE_EQ(operands.size(), 2);
-        CHECK_EQ(operands[0].kind, TypeRef::Kind::Int512);
-        CHECK_EQ(operands[1].kind, TypeRef::Kind::Int512);
+        CHECK_EQ(operands[0]->kind, TypeRef::Kind::Int512);
+        CHECK_EQ(operands[1]->kind, TypeRef::Kind::Int512);
     }
 
     TEST_CASE("a shift count keeps its own width") {
@@ -191,8 +191,8 @@ TEST_SUITE("OperandWideningLowering") {
         // something the back ends already read at its own width.
         const std::vector<TypeRef> operands = OperandTypes(RequireFunction(package, "Shift"), LirOpcode::Shl);
         REQUIRE_EQ(operands.size(), 2);
-        CHECK_EQ(operands[0].kind, TypeRef::Kind::Int128);
-        CHECK_EQ(operands[1].kind, TypeRef::Kind::UInt64);
+        CHECK_EQ(operands[0]->kind, TypeRef::Kind::Int128);
+        CHECK_EQ(operands[1]->kind, TypeRef::Kind::UInt64);
     }
 
     TEST_CASE("pointer arithmetic still offsets by elements") {
@@ -207,6 +207,6 @@ TEST_SUITE("OperandWideningLowering") {
         const LirFunc &function = RequireFunction(package, "Advance");
         const std::vector<TypeRef> operands = OperandTypes(function, LirOpcode::IndexPtr);
         REQUIRE_EQ(operands.size(), 2);
-        CHECK_EQ(operands[0].kind, TypeRef::Kind::Pointer);
+        CHECK_EQ(operands[0]->kind, TypeRef::Kind::Pointer);
     }
 }

@@ -1,0 +1,43 @@
+import Core::Assert;
+
+// A string literal pattern matches a character slice holding the same characters. The arm used to compare the two
+// views' addresses, so no literal arm was ever taken; it now compares the lengths and then every character.
+
+func Pick(word: char8[..]) -> int {
+    return match word {
+        "greet" => 1,
+        "great" => 2,
+        "" => 3,
+        "a\tb" => 4,
+        else => 0
+    };
+}
+
+func Classify(word: char8[..], loud: bool) -> int {
+    match word {
+        "stop" if loud => {
+            return 10;
+        },
+        "stop" => {
+            return 11;
+        },
+        else => {
+            return 12;
+        }
+    }
+}
+
+func Main() -> int {
+    Assert(Pick("greet") == 1, "an equal slice takes its arm");
+    Assert(Pick("great") == 2, "a slice differing in one character takes the other arm");
+    Assert(Pick("") == 3, "the empty literal matches an empty slice");
+    Assert(Pick("a\tb") == 4, "escapes in the pattern are decoded");
+    Assert(Pick("gre") == 0, "a prefix of the literal is not equal to it");
+    Assert(Pick("greeting") == 0, "a slice the literal is a prefix of is not equal to it");
+    let text = "say greet now";
+    Assert(Pick(text[4..9]) == 1, "a slice into longer text matches by its characters");
+    Assert(Classify("stop", true) == 10, "a guarded string arm is taken when its guard holds");
+    Assert(Classify("stop", false) == 11, "and skipped when it does not");
+    Assert(Classify("go", true) == 12, "an unmatched slice falls through to else");
+    return 0;
+}

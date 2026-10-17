@@ -29,7 +29,7 @@ constexpr std::uint64_t kNoBranchSite = ~0ULL;
 }
 
 [[nodiscard]] A64Reg FloatRegister(const TypeRef &type, const unsigned index) {
-    return type.kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
+    return type->kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
 }
 } // namespace
 
@@ -49,7 +49,7 @@ TypeRef AArch64CallEmitter::TypeOfReg(const LirReg reg) const {
     return it == registerTypes.end() ? TypeRef::MakeInt64() : it->second;
 }
 
-void AArch64CallEmitter::EmitWindowsVariadicCallArgs(const std::vector<LirReg> &arguments,
+void AArch64CallEmitter::EmitWindowsVariadicCallArgs(const std::span<const LirReg> arguments,
                                                      const std::vector<TypeRef> &types, const CallLayout &layout) {
     const auto loadSlot = [&](const std::size_t index, const std::int32_t sourceOffset, const A64Reg destination) {
         const ArgLocation &location = layout.args[index];
@@ -178,7 +178,7 @@ void AArch64CallEmitter::LoadResultFromAddress(const ArgLocation &location, cons
                      !aggregate && type.IsSigned());
 }
 
-void AArch64CallEmitter::EmitCallArgs(const std::vector<LirReg> &arguments, const std::vector<TypeRef> &types,
+void AArch64CallEmitter::EmitCallArgs(const std::span<const LirReg> arguments, const std::vector<TypeRef> &types,
                                       const CallLayout &layout) {
     if (layout.windowsVariadic) {
         EmitWindowsVariadicCallArgs(arguments, types, layout);
@@ -233,15 +233,17 @@ void AArch64CallEmitter::EmitCallArgs(const std::vector<LirReg> &arguments, cons
     }
 }
 
-void AArch64CallEmitter::EmitCall(const LirInstr &instruction, const std::vector<LirReg> &arguments,
+void AArch64CallEmitter::EmitCall(const LirInstr &instruction, const std::span<const LirReg> arguments,
                                   const bool indirect) {
     if (instruction.isCVariadic != instruction.cVariadicFixedParamCount.has_value()) {
         Report(
             std::format("AArch64 code generation reached inconsistent C variadic call metadata in '{}'", functionName));
         return;
     }
+    // A call through a function value of a C-variadic type carries the same boundary as a call to the named extern,
+    // counted over the arguments alone, and its tail goes wherever the platform puts an anonymous argument.
     if (instruction.cVariadicFixedParamCount &&
-        (indirect || *instruction.cVariadicFixedParamCount > static_cast<std::uint32_t>(arguments.size()))) {
+        *instruction.cVariadicFixedParamCount > static_cast<std::uint32_t>(arguments.size())) {
         Report(std::format("AArch64 code generation reached an invalid C variadic fixed-parameter count in '{}'",
                            functionName));
         return;
@@ -345,7 +347,7 @@ void AArch64CallEmitter::EmitParamSpills(const LirFunc &function) {
 void AArch64CallEmitter::EmitReturnValue(const LirReg reg, const TypeRef &type) {
     const TypeRef regType = TypeOfReg(reg);
     const bool throughPointer =
-        regType.kind == TypeRef::Kind::Pointer && !regType.inner.empty() && regType.inner[0] == type;
+        regType->kind == TypeRef::Kind::Pointer && !regType->inner.empty() && regType->inner[0] == type;
     if (framePlan.IndirectResultOffset() != 0) {
         const A64Reg destination = A64::Xn(10);
         hooks.LoadScalar(destination, A64::Fp, framePlan.IndirectResultOffset(), 8, false);
@@ -520,12 +522,39 @@ void AArch64TerminatorEmitter::EmitPhiMoves(const std::uint32_t from, const std:
         return;
     }
     for (const auto &step : ResolvePhiMoves(moves->second)) {
-        if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-            hooks.CopyFrameValue(framePlan.PhiTemporaryOffset(), hooks.Disp(step.dst), step.type);
+        const bool save = step.kind == PhiMoveStep::Kind::SaveDestination;
+        if (hooks.IsAggregate(step.type)) {
+            if (save) {
+                hooks.CopyFrameValue(framePlan.PhiTemporaryOffset(), hooks.Disp(step.dst), step.type);
+            }
+            else {
+                hooks.CopyFrameValue(hooks.Disp(step.dst),
+                                     step.sourceIsTemporary ? framePlan.PhiTemporaryOffset() : hooks.Disp(step.src),
+                                     step.type);
+            }
             continue;
         }
-        hooks.CopyFrameValue(hooks.Disp(step.dst),
-                             step.sourceIsTemporary ? framePlan.PhiTemporaryOffset() : hooks.Disp(step.src), step.type);
+        const bool floating = IsFloat(step.type);
+        const A64Reg value = floating ? FloatRegister(step.type, kFpTemp) : A64::Xn(kTemp);
+        const unsigned width = AccessWidth(hooks.RuntimeSize(step.type));
+        if (!save && step.sourceIsTemporary) {
+            hooks.LoadScalar(value, A64::Fp, framePlan.PhiTemporaryOffset(), width, step.type.IsSigned());
+        }
+        else if (floating) {
+            hooks.LoadFpFromSlot(value, save ? step.dst : step.src);
+        }
+        else {
+            hooks.LoadFromSlot(value, save ? step.dst : step.src, step.type);
+        }
+        if (save) {
+            hooks.StoreScalar(value, A64::Fp, framePlan.PhiTemporaryOffset(), width);
+        }
+        else if (floating) {
+            hooks.StoreFpToSlot(value, step.dst);
+        }
+        else {
+            hooks.StoreToSlot(value, step.dst, step.type);
+        }
     }
 }
 

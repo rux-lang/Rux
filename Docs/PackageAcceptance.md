@@ -6,18 +6,18 @@ Acceptance and completion are different states. Every task that built these pack
 
 ## What Acceptance Requires
 
-| Criterion                                                    | State                | Settled by                                    |
-| ------------------------------------------------------------ | -------------------- | --------------------------------------------- |
-| Canonical `SourceLibrary` manifests, no path dependency       | On record            | This host                                     |
-| `rux check` clean on all eight target cells                   | On record            | This host                                     |
-| `rux doc` clean on all eight target cells, routes distinct    | On record            | This host                                     |
-| Deterministic publishable archive                             | On record            | This host                                     |
-| Every documentation example compiles                          | On record, automated | `Tests/Unit/PackageExampleTests.cpp`          |
-| Documentation house style with an empty baseline              | On record, automated | `Tests/Unit/PackageDocumentationStyleTests.cpp` |
-| Native behavior executed on all eight cells                   | **Not on record**    | The [CI matrix](CI-CD.md), never run at a phase commit |
-| Extended CI run pinned to the phase commit                    | **Not on record**    | `CI.yml` with the `extended` scope             |
-| Independent cryptographic review of `Rux/Crypto`              | **Not on record**    | [The review checklist](CryptoReview.md)        |
-| `/storage/` documentation routes retired or redirected        | **Not on record**    | The separate website repository                |
+| Criterion                                                  | State                | Settled by                                             |
+| ---------------------------------------------------------- | -------------------- | ------------------------------------------------------ |
+| Canonical `SourceLibrary` manifests, no path dependency    | On record            | This host                                              |
+| `rux check` clean on all eight target cells                | On record            | This host                                              |
+| `rux doc` clean on all eight target cells, routes distinct | On record            | This host                                              |
+| Deterministic publishable archive                          | On record            | This host                                              |
+| Every documentation example compiles                       | On record, automated | `Tests/Unit/PackageExampleTests.cpp`                   |
+| Documentation house style with an empty baseline           | On record, automated | `Tests/Unit/PackageDocumentationStyleTests.cpp`        |
+| Native behavior executed on all eight cells                | **Not on record**    | The [CI matrix](CI-CD.md), never run at a phase commit |
+| Extended CI run pinned to the phase commit                 | **Not on record**    | `CI.yml` with the `extended` scope                     |
+| Independent cryptographic review of `Rux/Crypto`           | **Not on record**    | [The review checklist](CryptoReview.md)                |
+| `/storage/` documentation routes retired or redirected     | **Not on record**    | The separate website repository                        |
 
 ## Evidence Recorded on This Host
 
@@ -92,8 +92,10 @@ Nine test packages — `Tests/Packages/{Linux,macOS,FreeBSD}/{Descriptors,Mappin
 The package cache has to match the working tree first, or a check resolves a dependency from a stale copy and fails for a reason that is not in the source:
 
 ```sh
-pwsh -File Scripts/SyncLocalPackages.ps1
+sh Run.sh sync
 ```
+
+On Windows, use `./Run.ps1 sync`.
 
 Then the grid, which takes about a minute:
 

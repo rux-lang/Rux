@@ -24,7 +24,7 @@ DropGlueStep AggregateStep(const DropGlueStep::Kind kind, TypeRef type, std::str
                            std::vector<DropGlueStep> children) {
     DropGlueStep step;
     step.kind = kind;
-    step.type = std::move(type);
+    step.type = type;
     step.name = std::move(name);
     step.ordinal = ordinal;
     step.children = std::move(children);
@@ -66,19 +66,19 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
         return {};
     }
 
-    const std::string key = type.ToString();
+    const std::string &key = type.ToString();
     if (!activeTypes.insert(key).second) {
         return {};
     }
 
     std::vector<DropGlueStep> steps;
-    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
-        std::vector<DropGlueStep> elementSteps = BuildDropGlueSteps(type.inner.front(), activeTypes);
+    if (type->kind == TypeRef::Kind::Array && !type->inner.empty()) {
+        std::vector<DropGlueStep> elementSteps = BuildDropGlueSteps(type->inner.front(), activeTypes);
         if (!elementSteps.empty()) {
             DropGlueStep elements;
             elements.kind = DropGlueStep::Kind::ArrayElements;
-            elements.type = type.inner.front();
-            elements.count = type.arrayLength.value_or(0);
+            elements.type = type->inner.front();
+            elements.count = type->arrayLength.value_or(0);
             elements.reverse = true;
             elements.children = std::move(elementSteps);
             steps.push_back(std::move(elements));
@@ -89,12 +89,12 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
         // tag the alternative's native tag, and its single payload at the offset the shared native layout gives it.
         std::vector<std::pair<std::uint64_t, TypeRef>> cases;
         if (type.IsSum()) {
-            for (std::size_t index = 0; index < type.inner.size(); ++index) {
-                cases.emplace_back(index, type.inner[index]);
+            for (std::size_t index = 0; index < type->inner.size(); ++index) {
+                cases.emplace_back(index, type->inner[index]);
             }
         }
         else if (type.IsOptional()) {
-            cases.emplace_back(NativePresentTag, type.inner.front());
+            cases.emplace_back(NativePresentTag, type->inner.front());
         }
         else {
             cases.emplace_back(NativeSuccessTag, type.FallibleSuccess());
@@ -116,17 +116,17 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
             steps.push_back(std::move(step));
         }
     }
-    else if (type.kind == TypeRef::Kind::Tuple) {
-        for (std::size_t offset = 0; offset < type.inner.size(); ++offset) {
-            const std::size_t index = type.inner.size() - offset - 1;
-            std::vector<DropGlueStep> children = BuildDropGlueSteps(type.inner[index], activeTypes);
+    else if (type->kind == TypeRef::Kind::Tuple) {
+        for (std::size_t offset = 0; offset < type->inner.size(); ++offset) {
+            const std::size_t index = type->inner.size() - offset - 1;
+            std::vector<DropGlueStep> children = BuildDropGlueSteps(type->inner[index], activeTypes);
             if (!children.empty()) {
-                steps.push_back(
-                    AggregateStep(DropGlueStep::Kind::TupleElement, type.inner[index], {}, index, std::move(children)));
+                steps.push_back(AggregateStep(DropGlueStep::Kind::TupleElement, type->inner[index], {}, index,
+                                              std::move(children)));
             }
         }
     }
-    else if (type.kind == TypeRef::Kind::Named) {
+    else if (type->kind == TypeRef::Kind::Named) {
         const std::string baseName = NamedBaseTypeName(type);
         if (TypeHasDirectDestructor(baseName)) {
             DropGlueStep invoke;
@@ -135,7 +135,7 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
             steps.push_back(std::move(invoke));
         }
 
-        const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+        const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
         if (const auto structure = structDecls.find(baseName);
             structure != structDecls.end() && arguments.size() == structure->second->typeParams.size()) {
             const StructDecl &declaration = *structure->second;
@@ -146,8 +146,8 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
                 TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
                 std::vector<DropGlueStep> children = BuildDropGlueSteps(fieldType, activeTypes);
                 if (!children.empty()) {
-                    steps.push_back(AggregateStep(DropGlueStep::Kind::Field, std::move(fieldType), field.name, index,
-                                                  std::move(children)));
+                    steps.push_back(
+                        AggregateStep(DropGlueStep::Kind::Field, fieldType, field.name, index, std::move(children)));
                 }
             }
         }
@@ -197,10 +197,29 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
     return steps;
 }
 
-void AnalysisContext::SynthesizeResolvedDropGlue() {
+void AnalysisContext::QueueDropGlueDestructors() {
+    const auto queue = [&](this const auto &self, const std::vector<DropGlueStep> &steps) -> void {
+        for (const DropGlueStep &step : steps) {
+            if (step.kind == DropGlueStep::Kind::InvokeDrop)
+                QueueDropMethodInstantiation(step.type);
+            self(step.children);
+        }
+    };
+    for (const auto &[_, plan] : dropGluePlans)
+        queue(plan.steps);
+}
+
+std::size_t AnalysisContext::ValidatedInstantiationCount() const {
+    std::size_t count = 0;
+    for (const auto &[_, keys] : validatedGenericInstantiations)
+        count += keys.size();
+    return count;
+}
+
+void AnalysisContext::SynthesizeResolvedDropGlue(const std::vector<TypeRef> &recordedTypes) {
     dropGluePlans.clear();
     const auto synthesize = [&](const TypeRef &type) {
-        const std::string key = type.ToString();
+        const std::string &key = type.ToString();
         if (dropGluePlans.contains(key) || !ClassifyTypeProperties(type).IsDroppable()) {
             return;
         }
@@ -210,13 +229,7 @@ void AnalysisContext::SynthesizeResolvedDropGlue() {
             dropGluePlans.emplace(key, DropGluePlan{type, DropGlueSymbol(type), std::move(steps)});
         }
     };
-    for (const auto &[_, type] : expressionTypes) {
-        synthesize(type);
-    }
-    for (const auto &[_, type] : typeNodeTypes) {
-        synthesize(type);
-    }
-    for (const auto &[_, type] : patternTypes) {
+    for (const TypeRef &type : recordedTypes) {
         synthesize(type);
     }
     for (const TypeRef &type : instantiatedTypes) {

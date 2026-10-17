@@ -1,17 +1,13 @@
 // An associative table: keys to values, in no particular order, with constant expected time for everything.
-//
 // Built on the `Table` kernel, so the probing, the displacement and the deletion are described there rather than
 // here. What this adds is the pair of callbacks that give a key type its identity, and the operations a caller
 // actually names.
-//
 // The hash and equality are supplied rather than taken from the key type, because Rux has no closures and an
 // interface value would be stored and dispatched through on every lookup. `Hashing` has ready-made pairs for the
 // usual key types; a caller keying on its own type writes them, and the one rule is that keys comparing equal must
 // hash the same.
-//
 // The hash is seeded, and the seed is drawn from `Rux/Entropy` unless the caller supplies one. That is what stops an
 // adversary who chooses keys from computing a few thousand that collide and turning every lookup into a scan.
-//
 // A map owns its keys and values, so it prohibits copying and is move-only. Entries are destroyed when the map is,
 // when they are cleared, and when they are replaced — but not when they are removed, which hands the value back
 // instead.
@@ -20,9 +16,7 @@ import Allocator::Allocator;
 import Core::Iterator;
 
 /// A hash table from keys to values.
-///
 /// Move-only: it owns its entries and storage and prohibits copying.
-///
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/hash-map
@@ -40,48 +34,42 @@ extend HashMap<K, V> {
     func =(self: &var HashMap<K, V>, other: &HashMap<K, V>);
 
     /// An empty map that has not allocated anything, with a seed drawn from the operating system.
-    ///
     /// `allocator` is borrowed for the call and kept. A program making many maps should draw one seed with
     /// `TableSeed::Random` and use `WithSeed`, since each draw here is a system call.
-    ///
     /// @param allocator where the storage comes from
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @param equals whether two keys are the same
     /// @returns an empty collection that has taken no storage yet
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/new
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#new
     pub func HashMap(allocator: Allocator, hash: func(K, uint64, uint64) -> uint64,
                  equals: func(K, K) -> bool) -> HashMap<K, V> {
         return HashMap::WithSeed<K, V>(allocator, TableSeed::Random(), hash, equals);
     }
 
     /// An empty map that has not allocated anything, hashing with `seed`.
-    ///
     /// `allocator` is borrowed for the call and kept; `seed` is read by value. Two maps sharing a seed hash alike,
     /// which is what a caller drawing one seed for many maps wants and what a test needing the same table twice
     /// needs.
-    ///
     /// @param allocator where the storage comes from
     /// @param seed the two words that key the hash, which decide the iteration order
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @param equals whether two keys are the same
     /// @returns an empty map keyed with that seed
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/with-seed
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#with-seed
     pub func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(K, uint64, uint64) -> uint64,
                   equals: func(K, K) -> bool) -> HashMap<K, V> {
         return HashMap<K, V> { table: Table<K, V>(allocator, seed), hash: hash, equals: equals };
     }
 
     /// An empty map with room for `capacity` entries already taken.
-    ///
     /// The capacity actually taken is rounded up to a power of two above the load factor, so it is larger than asked
     /// for.
-    ///
     /// @param allocator where the storage comes from
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @param equals whether two keys are the same
     /// @returns an empty map with room for that many entries already taken
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/with-capacity
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
                       equals: func(K, K) -> bool) -> HashMap<K, V> ! CollectionError {
         var map = HashMap<K, V>(allocator, hash, equals);
@@ -90,113 +78,88 @@ extend HashMap<K, V> {
     }
 
     /// How many entries the map holds.
-    ///
     /// @returns how many entries it holds
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/length
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#length
     pub func Length(self: &HashMap<K, V>) -> uint {
         return self.table.Length();
     }
 
     /// How many slots the table has.
-    ///
     /// Not how many entries fit: a quarter of the slots are kept free, because a table run fuller spends its time
     /// displacing entries rather than storing them.
-    ///
     /// @returns how many entries fit before the next growth
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/capacity
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#capacity
     pub func Capacity(self: &HashMap<K, V>) -> uint {
         return self.table.Capacity();
     }
 
     /// Whether the map holds no entries.
-    ///
     /// @returns whether it holds nothing
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/is-empty
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#is-empty
     pub func IsEmpty(self: &HashMap<K, V>) -> bool {
         return self.table.IsEmpty();
     }
 
     /// Whether the map has an entry for `key`.
-    ///
     /// `self` is borrowed; `key` is read by value.
-    ///
     /// Runs in constant expected time and allocates nothing.
-    ///
     /// @param key the key to look up
     /// @returns whether an entry with that key is present
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/contains-key
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#contains-key
     pub func ContainsKey(self: &HashMap<K, V>, key: K) -> bool {
         return self.table.Find(key, self.hash, self.equals) != none;
     }
 
     /// The value stored under `key`, or `none` when there is no such entry.
-    ///
     /// `self` is borrowed; the value is returned by copy.
-    ///
     /// @param key the key to look up
     /// @returns a copy of the value, or `none` when the key is absent
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/get
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#get
     pub func Get(self: &HashMap<K, V>, key: K) -> V? {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         return self.table.values[slot];
     }
 
     /// A pointer to the value stored under `key`, or `none` when there is no such entry.
-    ///
     /// `self` is borrowed; the pointer borrows the value where it sits, which is how one that owns something is read
     /// without being taken.
-    ///
-    /// # Safety
-    ///
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
-    ///
     /// @param key the key to look up
     /// @returns the address of the value, or `none` when the key is absent
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/reference
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#reference
     pub func Reference(self: &HashMap<K, V>, key: K) -> (*V)? {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         return @self.table.values[slot];
     }
 
     /// Points `value` at the stored value for `key`, so it can be changed in place.
-    ///
     /// `self` is borrowed mutably; `value` receives the pointer and is left alone when there is no such entry.
     /// Reports whether there was one.
-    ///
     /// An out-parameter rather than an `(*var V)?`, which does not survive lowering inside a generic today.
-    ///
-    /// # Safety
-    ///
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed. Overwriting through
     /// it replaces the value without destroying what was there.
-    ///
     /// @param key the key to look up
     /// @param value receives the address of the stored value
     /// @returns whether the key was present
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/try-reference-mutable
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-reference-mutable
     pub func TryReferenceMutable(self: &var HashMap<K, V>, key: K, value: *var *var V) -> bool {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return false;
         *value = @self.table.values[slot];
         return true;
     }
-}
 
-extend HashMap<K, V> {
     /// Stores `value` under `key`, replacing whatever was there.
-    ///
     /// `self` is borrowed mutably; both are moved in. A key already present keeps its stored key and takes the new
     /// value, and the value it had is destroyed — use `Remove` first where the old one is wanted.
-    ///
     /// A failure leaves the map exactly as it was and both arguments with the caller.
-    ///
     /// Runs in constant expected time.
-    ///
     /// @param key the key to look up
     /// @param value the value to act on
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/insert
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#insert
     pub func Insert(self: &var HashMap<K, V>, key: K, value: V) -> ! CollectionError {
-        match self.table.Find(key, self.hash, self.equals) {
+        let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
+        match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
                 // Reading the old value into a local destroys it when the local's life ends, which is what keeps a
                 // replaced value from being leaked.
@@ -208,7 +171,7 @@ extend HashMap<K, V> {
         }
 
         self.table.EnsureRoom(self.hash)?;
-        if self.table.Place(<-key, <-value, self.hash) == none {
+        if self.table.PlaceHashed(<-key, <-value, hashed) == none {
             // The table has room and the probe still ran past what a distance byte holds, so these keys collide
             // badly enough that a larger table would spread the same collisions over more slots.
             fail CollectionError::Unsupported;
@@ -217,17 +180,13 @@ extend HashMap<K, V> {
     }
 
     /// Takes the entry for `key` out and hands back its value.
-    ///
     /// `self` is borrowed mutably. The value is moved out rather than destroyed, so one that owns something leaves
     /// intact; the key is destroyed, having no other owner. Reports `none` when there is no such entry.
-    ///
     /// The gap closes behind the entry, so the table is left exactly as if it had never been inserted.
-    ///
     /// Runs in constant expected time.
-    ///
     /// @param key the key to look up
     /// @returns the value that was stored, or `none` when the key was absent
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/remove
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#remove
     pub func Remove(self: &var HashMap<K, V>, key: K) -> V? {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         let takenKey <- self.table.keys[slot];
@@ -237,48 +196,39 @@ extend HashMap<K, V> {
     }
 
     /// Makes room for `additional` more entries on top of those already present.
-    ///
     /// `self` is borrowed mutably; the length does not change. A failure leaves the map exactly as it was.
-    ///
     /// @param additional how many more elements to make room for
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/reserve
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#reserve
     pub func Reserve(self: &var HashMap<K, V>, additional: uint) -> ! CollectionError {
         return self.table.Reserve(additional, self.hash);
     }
 
     /// Releases the capacity the entry count does not need.
-    ///
     /// `self` is borrowed mutably. An empty map gives up its storage entirely.
-    ///
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/shrink-to-fit
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#shrink-to-fit
     pub func ShrinkToFit(self: &var HashMap<K, V>) -> ! CollectionError {
         return self.table.ShrinkToFit(self.hash);
     }
 
     /// Destroys every entry, keeping the storage.
-    ///
     /// `self` is borrowed mutably. Runs in time proportional to the capacity.
-    ///
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/clear
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#clear
     pub func Clear(self: &var HashMap<K, V>) {
         self.table.Clear();
     }
 
     /// Walks to the next occupied slot at or after `cursor`, reporting the entry it holds.
-    ///
     /// `self` is borrowed; `cursor` is read and advanced past whatever is reported, so a caller starts it at zero
     /// and keeps calling. `key` and `value` receive copies and are left alone when this reports false.
-    ///
     /// The order is the table's, which is the seed's and not the insertion's. Nothing may be inserted or removed
     /// while a walk is in progress: either moves entries between slots, and a cursor is a slot.
-    ///
     /// @param cursor the position to resume from, advanced past what was read
     /// @param key receives the key
     /// @param value receives the value
     /// @returns whether an entry was read; false at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/try-next-entry
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-next-entry
     pub func TryNextEntry(self: &HashMap<K, V>, cursor: *var uint, key: *var K, value: *var V) -> bool {
         var index = *cursor;
         while index < self.table.Capacity() {
@@ -297,49 +247,26 @@ extend HashMap<K, V> {
         *cursor = index;
         return false;
     }
-}
 
-/// One entry of a map, as a value a caller can hold.
-///
-/// What a walk yields and what a consuming iteration hands back. Two fields rather than a pair, because `entry.key`
-/// says which is which and `entry.0` does not.
-///
-/// @typeParam K the key type
-/// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/key-value
-pub struct KeyValue<K, V> {
-    /// The key the entry was stored under.
-    pub key: K;
-    /// The value stored under it.
-    pub value: V;
-}
-
-extend HashMap<K, V> {
     /// Points `existing` at the value stored under `key`, inserting `value` first when there is none.
-    ///
     /// `self` is borrowed mutably; `key` and `value` are moved in only when there was no entry, and destroyed
     /// otherwise — the map keeps what it already had. `existing` receives a pointer to the stored value either way,
     /// and `inserted` receives whether the map grew; both may be null.
-    ///
     /// This is what an entry API is for, without pretending Rux has closures: a caller that wants to read a value or
     /// put one there gets one operation instead of a lookup followed by an insertion, and does not have to name the
     /// key twice.
-    ///
     /// A failure leaves the map exactly as it was.
-    ///
-    /// # Safety
-    ///
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
-    ///
     /// @param key the key to look up
     /// @param value the value to act on
     /// @param existing receives the value already stored under that key
     /// @param inserted receives whether the value given was the one stored
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/get-or-insert
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#get-or-insert
     pub func GetOrInsert(self: &var HashMap<K, V>, key: K, value: V, existing: *var *var V,
                      inserted: *var bool) -> ! CollectionError {
-        match self.table.Find(key, self.hash, self.equals) {
+        let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
+        match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
                 if existing != null {
                     *existing = @self.table.values[slot];
@@ -353,7 +280,7 @@ extend HashMap<K, V> {
         }
 
         self.table.EnsureRoom(self.hash)?;
-        let placed = self.table.Place(<-key, <-value, self.hash) ?? fail CollectionError::Unsupported;
+        let placed = self.table.PlaceHashed(<-key, <-value, hashed) ?? fail CollectionError::Unsupported;
         if existing != null {
             *existing = @self.table.values[placed];
         }
@@ -364,19 +291,17 @@ extend HashMap<K, V> {
     }
 
     /// Stores `value` under `key` and hands back the value that was there.
-    ///
     /// `self` is borrowed mutably; both are moved in. The old value is moved out rather than destroyed, which is the
     /// difference between this and `Insert`: one hands the previous value back and the other throws it away.
     /// Reports `none` when there was no entry, having inserted this one.
-    ///
     /// A failure leaves the map exactly as it was, and is reported apart from the absence.
-    ///
     /// @param key the key to look up
     /// @param value the value to act on
     /// @returns the value that was there, or `none` when the key was absent
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/replace
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#replace
     pub func Replace(self: &var HashMap<K, V>, key: K, value: V) -> V? ! CollectionError {
-        match self.table.Find(key, self.hash, self.equals) {
+        let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
+        match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
                 let previous <- self.table.values[slot];
                 self.table.values[slot] <- value;
@@ -386,24 +311,21 @@ extend HashMap<K, V> {
         }
 
         self.table.EnsureRoom(self.hash)?;
-        if self.table.Place(<-key, <-value, self.hash) == none {
+        if self.table.PlaceHashed(<-key, <-value, hashed) == none {
             fail CollectionError::Unsupported;
         }
         return none;
     }
 
     /// Takes the entry for `key` out and hands back both halves of it.
-    ///
     /// `self` is borrowed mutably. Both the stored key and the value are moved out, so a key that owns something
     /// leaves intact too — which `Remove` does not offer, since it destroys the key. Reports `none` when there is
     /// no such entry.
-    ///
     /// The stored key is handed back rather than the one that was looked up: the two compare equal, but a key type
     /// carrying anything the equality ignores makes them different values, and the map's is the one that was kept.
-    ///
     /// @param key the key to look up
     /// @returns the whole entry, or `none` when the key was absent
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/remove-entry
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#remove-entry
     pub func RemoveEntry(self: &var HashMap<K, V>, key: K) -> KeyValue<K, V>? {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         let takenKey <- self.table.keys[slot];
@@ -411,16 +333,77 @@ extend HashMap<K, V> {
         self.table.Vacate(slot);
         return KeyValue<K, V> { key: <-takenKey, value: <-takenValue };
     }
+
+    /// An iterator over the entries, by copy.
+    /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
+    /// table's, which is the seed's and not the insertion's.
+    /// Nothing may be inserted or removed while the iterator is alive.
+    /// @returns a cursor over the entries, in an order the seed decides
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#iterate
+    pub func Iterate(self: &HashMap<K, V>) -> HashMapIterator<K, V> {
+        return HashMapIterator<K, V> {
+            keys: self.table.keys,
+            values: self.table.values,
+            states: self.table.states,
+            capacity: self.table.capacity,
+            cursor: 0
+        };
+    }
+
+    /// Takes the map apart into an iterator over its entries.
+    /// Consumes the map: it is moved into the iterator, and the storage goes with it, so nothing is copied and
+    /// nothing is reallocated. Each entry comes out by value, which is how one whose key or value owns something
+    /// leaves.
+    /// Whatever is not taken is destroyed when the iterator's life ends.
+    /// @returns a cursor that consumes the map as it goes
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#into-iterator
+    pub func IntoIterator(self: HashMap<K, V>) -> HashMapIntoIterator<K, V> {
+        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
+        // function ends, and a map left holding the runs would have its destructor release the very storage the
+        // iterator was handed.
+        var map <- self;
+        let taken = HashMapIntoIterator<K, V> {
+            table: Table<K, V> {
+                keys: map.table.keys,
+                values: map.table.values,
+                states: map.table.states,
+                tags: map.table.tags,
+                length: map.table.length,
+                capacity: map.table.capacity,
+                seed: map.table.seed,
+                allocator: map.table.allocator
+            },
+            cursor: 0
+        };
+        map.table.keys = null;
+        map.table.values = null;
+        map.table.states = null;
+        map.table.tags = null;
+        map.table.length = 0;
+        map.table.capacity = 0;
+        return <-taken;
+    }
+}
+
+/// One entry of a map, as a value a caller can hold.
+/// What a walk yields and what a consuming iteration hands back. Two fields rather than a pair, because `entry.key`
+/// says which is which and `entry.0` does not.
+/// @typeParam K the key type
+/// @typeParam V the value type
+/// @see https://rux-lang.dev/docs/api/collections/key-value
+pub struct KeyValue<K, V> {
+    /// The key the entry was stored under.
+    pub key: K;
+    /// The value stored under it.
+    pub value: V;
 }
 
 /// An iterator over the entries of a map, by copy.
-///
 /// Borrows the map, so the map must outlive it and must not be inserted into or removed from while it is alive:
 /// either moves entries between slots, and this walks slots.
-///
 /// @typeParam K the key type
 /// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/hash-map-iterator
+/// @see https://rux-lang.dev/docs/api/collections/hash-map#hash-map-iterator
 pub struct HashMapIterator<K, V> {
     /// Raw borrowed table storage. Kept raw because references cannot be fields.
     keys: *K;
@@ -431,14 +414,12 @@ pub struct HashMapIterator<K, V> {
     cursor: uint;
 }
 
-extend HashMapIterator<K, V> {
+extend HashMapIterator<K, V> : Iterator {
     /// The next entry, or `none` once every slot has been looked at.
-    ///
     /// `self` is borrowed mutably and advanced. The key and value are copies; a map of things that own something is
     /// walked with `TryNextEntry` and a pointer instead.
-    ///
     /// @returns the next entry, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map-iterator/next
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#hash-map-iterator-next
     pub func Next(self: &var HashMapIterator<K, V>) -> KeyValue<K, V>? {
         var index = self.cursor;
         while index < self.capacity {
@@ -454,16 +435,12 @@ extend HashMapIterator<K, V> {
     }
 }
 
-extend HashMapIterator<K, V> : Iterator {}
-
 /// An iterator that takes a map apart, yielding each entry by value.
-///
 /// Move-only: it owns the storage the map owned. Whatever is left when its life ends is destroyed with it, which is
 /// what makes stopping part-way safe.
-///
 /// @typeParam K the key type
 /// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/hash-map-into-iterator
+/// @see https://rux-lang.dev/docs/api/collections/hash-map#hash-map-into-iterator
 pub struct HashMapIntoIterator<K, V> {
     /// The table taken from the map.
     table: Table<K, V>;
@@ -474,14 +451,14 @@ pub struct HashMapIntoIterator<K, V> {
 extend HashMapIntoIterator<K, V> {
     /// Copying a consuming iterator would give two owners of its table.
     func =(self: &var HashMapIntoIterator<K, V>, other: &HashMapIntoIterator<K, V>);
+}
 
+extend HashMapIntoIterator<K, V> : Iterator {
     /// The next entry, moved out, or `none` once every slot has been looked at.
-    ///
     /// `self` is borrowed mutably and advanced. The slot is emptied as the entry leaves, so what remains for the
     /// destructor is exactly what nobody took.
-    ///
     /// @returns the next entry, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map-into-iterator/next
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#hash-map-into-iterator-next
     pub func Next(self: &var HashMapIntoIterator<K, V>) -> KeyValue<K, V>? {
         var index = self.cursor;
         while index < self.table.Capacity() {
@@ -497,65 +474,5 @@ extend HashMapIntoIterator<K, V> {
         }
         self.cursor = index;
         return none;
-    }
-}
-
-extend HashMapIntoIterator<K, V> : Iterator {}
-
-extend HashMap<K, V> {
-    /// An iterator over the entries, by copy.
-    ///
-    /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
-    /// table's, which is the seed's and not the insertion's.
-    ///
-    /// # Safety
-    ///
-    /// Nothing may be inserted or removed while the iterator is alive.
-    ///
-    /// @returns a cursor over the entries, in an order the seed decides
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/iterate
-    pub func Iterate(self: &HashMap<K, V>) -> HashMapIterator<K, V> {
-        return HashMapIterator<K, V> {
-            keys: self.table.keys,
-            values: self.table.values,
-            states: self.table.states,
-            capacity: self.table.capacity,
-            cursor: 0
-        };
-    }
-
-    /// Takes the map apart into an iterator over its entries.
-    ///
-    /// Consumes the map: it is moved into the iterator, and the storage goes with it, so nothing is copied and
-    /// nothing is reallocated. Each entry comes out by value, which is how one whose key or value owns something
-    /// leaves.
-    ///
-    /// Whatever is not taken is destroyed when the iterator's life ends.
-    ///
-    /// @returns a cursor that consumes the map as it goes
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map/into-iterator
-    pub func IntoIterator(self: HashMap<K, V>) -> HashMapIntoIterator<K, V> {
-        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
-        // function ends, and a map left holding the runs would have its destructor release the very storage the
-        // iterator was handed.
-        var map <- self;
-        let taken = HashMapIntoIterator<K, V> {
-            table: Table<K, V> {
-                keys: map.table.keys,
-                values: map.table.values,
-                states: map.table.states,
-                length: map.table.length,
-                capacity: map.table.capacity,
-                seed: map.table.seed,
-                allocator: map.table.allocator
-            },
-            cursor: 0
-        };
-        map.table.keys = null;
-        map.table.values = null;
-        map.table.states = null;
-        map.table.length = 0;
-        map.table.capacity = 0;
-        return <-taken;
     }
 }

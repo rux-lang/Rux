@@ -14,18 +14,18 @@ TEST_CASE("Checked LIR builder rejects undefined register uses") {
     use.op = LirOpcode::Neg;
     use.dst = builder.AllocateRegister();
     use.srcs = {undefined};
-    CHECK_FALSE(builder.Insert(use));
+    CHECK_FALSE(builder.Insert(LirInstr(use)));
     CHECK(function.blocks[0].instrs.empty());
 
     LirInstr define;
     define.op = LirOpcode::Const;
     define.dst = undefined;
     define.strArg = "1";
-    CHECK(builder.Insert(define));
-    CHECK(builder.Insert(use));
+    CHECK(builder.Insert(LirInstr(define)));
+    CHECK(builder.Insert(LirInstr(use)));
     CHECK(function.blocks[0].instrs.size() == 2);
 
-    CHECK_FALSE(builder.Insert(define));
+    CHECK_FALSE(builder.Insert(LirInstr(define)));
     CHECK(function.blocks[0].instrs.size() == 2);
 }
 
@@ -45,7 +45,7 @@ TEST_CASE("Checked LIR builder rejects a second terminator") {
     LirInstr instruction;
     instruction.op = LirOpcode::Const;
     instruction.dst = builder.AllocateRegister();
-    CHECK_FALSE(builder.Insert(instruction));
+    CHECK_FALSE(builder.Insert(LirInstr(instruction)));
     REQUIRE(function.blocks[entry].term);
     CHECK(function.blocks[entry].term->trueTarget == exit);
 }
@@ -61,7 +61,7 @@ TEST_CASE("Checked LIR builder defines parameters before use") {
     instruction.op = LirOpcode::Neg;
     instruction.dst = result;
     instruction.srcs = {parameter};
-    CHECK(builder.Insert(instruction));
+    CHECK(builder.Insert(LirInstr(instruction)));
 
     LirTerminator ret;
     ret.kind = LirTermKind::Return;

@@ -1,0 +1,33 @@
+import Core::Assert;
+
+// Two methods named alike whose only difference is the element type of their variadic parameter are two functions,
+// each with its own symbol, and a call goes to the one its arguments' type names.
+
+struct Totals {
+    calls: int32;
+}
+
+extend Totals {
+    func Sum(self: &var Totals, values: int64...) -> int64 {
+        self.calls = self.calls + 1;
+        var total: int64 = 0;
+        for value in values { total = total + value; }
+        return total;
+    }
+
+    func Sum(self: &var Totals, values: int128...) -> int64 {
+        self.calls = self.calls + 100;
+        var total: int128 = 0;
+        for value in values { total = total + value; }
+        return total as int64 * 10;
+    }
+}
+
+func Main() -> int {
+    var totals = Totals { calls: 0 };
+    Assert(totals.Sum(1i64, 2i64, 3i64) == 6, "the int64 overload");
+    Assert(totals.Sum(1i128, 2i128) == 30, "the int128 overload");
+    Assert(Totals::Sum(totals, 4i64) == 4, "the int64 overload called as Type::Method");
+    Assert(totals.calls == 102, "each call reached its own overload");
+    return 0;
+}

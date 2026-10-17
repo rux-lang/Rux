@@ -93,15 +93,16 @@ std::string Parser::DecodeStringLiteralText(const std::string &text) {
 /// Parses one `#Name(...)` attribute call, with the '#' already consumed. `#Error` and `#Warn` act at each use of the
 /// declaration, `#Allow` suppresses a named lint rule for one declaration, `#Link` describes how an extern declaration
 /// is imported (`#Library` and `#Symbol` are retained as compatibility spellings), and `#When` conditionally includes
-/// the declaration at compile time, `#Abi(...)` selects a calling convention, and `#NoReturn()` marks a function that
-/// never returns to its caller.
+/// the declaration at compile time, `#Abi(...)` selects a calling convention, `#NoReturn()` marks a function that
+/// never returns to its caller, `#Test()` marks a function that a test build of its package runs, and `#Unsendable()`
+/// marks a type whose values stay on the thread that made them.
 void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();
     const std::string name = Advance().text;
 
     if (name != "Error" && name != "Warn" && name != "Allow" && name != "Link" && name != "Library" &&
-        name != "Symbol" && name != "NoReturn" && name != "Abi") {
+        name != "Symbol" && name != "NoReturn" && name != "Test" && name != "Unsendable" && name != "Abi") {
         // `#Intrinsic("Name")` became the `intrinsic` keyword, which takes its
         // name from the declaration instead of repeating it in a string.
         EmitError(nameLoc, name == "Intrinsic"
@@ -128,6 +129,38 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         attrs.noReturnLocation = attributeLoc;
         if (!Check(TokenKind::RightParen)) {
             EmitError(CurrentLocation(), "'#NoReturn' does not accept arguments");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        return;
+    }
+
+    if (name == "Test") {
+        if (attrs.usedTest) {
+            EmitError(nameLoc, "duplicate '#Test' attribute");
+        }
+        attrs.usedTest = true;
+        attrs.testLocation = attributeLoc;
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#Test' does not accept arguments");
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        return;
+    }
+
+    if (name == "Unsendable") {
+        if (attrs.usedUnsendable) {
+            EmitError(nameLoc, "duplicate '#Unsendable' attribute");
+        }
+        attrs.usedUnsendable = true;
+        attrs.unsendableLocation = attributeLoc;
+        if (!Check(TokenKind::RightParen)) {
+            EmitError(CurrentLocation(), "'#Unsendable' does not accept arguments");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
@@ -305,6 +338,70 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
 }
 
+void Parser::ParseParameterAttribute(Param &parameter) {
+    const SourceLocation attributeLoc = Advance().location; // consume '#'
+    const SourceLocation nameLoc = CurrentLocation();
+    const std::string name = Advance().text;
+    if (name != "Format") {
+        EmitError(nameLoc, std::format("unknown parameter attribute '#{}'", name),
+                  "a parameter accepts only '#Format()', which marks a format string");
+        if (Match(TokenKind::LeftParen)) {
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+            ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        }
+        return;
+    }
+
+    ExpectBefore(TokenKind::LeftParen, "'(' after '#Format'");
+    if (parameter.isFormat) {
+        EmitError(nameLoc, "duplicate '#Format' attribute");
+    }
+    parameter.isFormat = true;
+    parameter.formatLocation = attributeLoc;
+    if (!Check(TokenKind::RightParen)) {
+        EmitError(CurrentLocation(), "'#Format' does not accept arguments");
+        while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+            Advance();
+        }
+    }
+    ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+}
+
+void Parser::ValidateFormatParameters(const std::vector<Param> &params) {
+    const Param *format = nullptr;
+    for (const Param &parameter : params) {
+        if (!parameter.isFormat) {
+            continue;
+        }
+        if (parameter.IsReceiver()) {
+            EmitError(parameter.formatLocation, "'#Format' cannot be applied to the receiver 'self'");
+            continue;
+        }
+        if (parameter.isVariadic) {
+            EmitError(parameter.formatLocation,
+                      std::format("'#Format' cannot be applied to variadic parameter '{}'", parameter.name),
+                      "apply it to the format string before the variadic parameter");
+            continue;
+        }
+        if (format) {
+            EmitError(parameter.formatLocation,
+                      std::format("'#Format' is already applied to parameter '{}'", format->name),
+                      "a function has at most one format string");
+            continue;
+        }
+        format = &parameter;
+    }
+    // The placeholders are counted against the arguments a variadic parameter collects, so without one there is
+    // nothing to count them against.
+    if (format && (params.empty() || !params.back().isVariadic || params.back().name == "...")) {
+        EmitError(format->formatLocation,
+                  std::format("'#Format' parameter '{}' must be followed by a variadic parameter", format->name),
+                  "declare the arguments the placeholders take as the last parameter, as in 'args: Display...'");
+    }
+}
+
 /// Parses the attributes that precede a declaration. A declaration may carry any number of `#Name(...)` calls. The
 /// removed `#{...}` metadata form is consumed only for recovery and always produces an error.
 Parser::ParsedAttrs Parser::ParseAttrs() {
@@ -347,28 +444,30 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     decl->allowedLints.insert(decl->allowedLints.end(), attrs.allowedLints.begin(), attrs.allowedLints.end());
 
     const bool namesATypeRule = std::ranges::find(attrs.allowedLints, "naming.type") != attrs.allowedLints.end();
-    if (namesATypeRule && !dynamic_cast<TypeAliasDecl *>(decl.get()) && !dynamic_cast<StructDecl *>(decl.get()) &&
-        !dynamic_cast<EnumDecl *>(decl.get()) && !dynamic_cast<UnionDecl *>(decl.get())) {
+    if (namesATypeRule && !AstCast<TypeAliasDecl>(decl.get()) && !AstCast<StructDecl>(decl.get()) &&
+        !AstCast<EnumDecl>(decl.get()) && !AstCast<UnionDecl>(decl.get())) {
         EmitError(attrs.allowLocation, "'#Allow(\"naming.type\")' can only be applied to a type declaration");
     }
     // A raw binding keeps the spelling the platform published, and for a constant that is a C macro's own name --
     // `SEEK_SET`, `O_RDONLY`, `FILE_ATTRIBUTE_NORMAL` -- which no reader porting code would recognize renamed.
     const bool namesAConstRule = std::ranges::find(attrs.allowedLints, "naming.const") != attrs.allowedLints.end();
-    if (namesAConstRule && !dynamic_cast<ConstDecl *>(decl.get())) {
+    if (namesAConstRule && !AstCast<ConstDecl>(decl.get())) {
         EmitError(attrs.allowLocation, "'#Allow(\"naming.const\")' can only be applied to a constant declaration");
     }
-    if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
-        EmitError(attrs.linkLocation, "'#Link' can only be applied to an extern function or extern block");
+    if (attrs.usedLink && !AstCast<ExternFuncDecl>(decl.get()) && !AstCast<ExternBlockDecl>(decl.get()) &&
+        !AstCast<ExternVarDecl>(decl.get())) {
+        EmitError(attrs.linkLocation,
+                  "'#Link' can only be applied to an extern function, extern variable or extern block");
     }
 
     if (attrs.usedNoReturn) {
-        if (auto *function = dynamic_cast<FuncDecl *>(decl.get())) {
+        if (auto *function = AstCast<FuncDecl>(decl.get())) {
             function->isNoReturn = true;
             if (function->returnType) {
                 EmitError(attrs.noReturnLocation, "'#NoReturn' function cannot declare a return type");
             }
         }
-        else if (auto *externFunction = dynamic_cast<ExternFuncDecl *>(decl.get())) {
+        else if (auto *externFunction = AstCast<ExternFuncDecl>(decl.get())) {
             externFunction->isNoReturn = true;
             if (externFunction->returnType) {
                 EmitError(attrs.noReturnLocation, "'#NoReturn' function cannot declare a return type");
@@ -379,9 +478,42 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
         }
     }
 
-    if (attrs.usedAbi && !dynamic_cast<FuncDecl *>(decl.get()) && !dynamic_cast<ExternFuncDecl *>(decl.get()) &&
-        !dynamic_cast<ExternBlockDecl *>(decl.get())) {
+    if (attrs.usedTest) {
+        if (auto *function = AstCast<FuncDecl>(decl.get())) {
+            function->isTest = true;
+            if (!function->typeParams.empty()) {
+                EmitError(attrs.testLocation, "a '#Test' function cannot be generic");
+            }
+            if (function->Receiver() != nullptr) {
+                EmitError(attrs.testLocation, "a '#Test' function cannot be a method");
+            }
+            else if (!function->params.empty()) {
+                EmitError(attrs.testLocation, "a '#Test' function takes no parameters");
+            }
+            if (!function->body) {
+                EmitError(attrs.testLocation, "a '#Test' function needs a body");
+            }
+        }
+        else {
+            EmitError(attrs.testLocation, "'#Test' can only be applied to a function");
+        }
+    }
+
+    if (attrs.usedUnsendable) {
+        if (AstCast<StructDecl>(decl.get()) || AstCast<EnumDecl>(decl.get()) || AstCast<UnionDecl>(decl.get())) {
+            decl->isUnsendable = true;
+        }
+        else {
+            EmitError(attrs.unsendableLocation, "'#Unsendable' can only be applied to a struct, variant or union");
+        }
+    }
+
+    if (attrs.usedAbi && !AstCast<FuncDecl>(decl.get()) && !AstCast<ExternFuncDecl>(decl.get()) &&
+        !AstCast<ExternBlockDecl>(decl.get())) {
         EmitError(attrs.abiLocation, "'#Abi' can only be applied to a function or extern block");
+    }
+    if (auto *function = AstCast<FuncDecl>(decl.get()); function && attrs.usedAbi) {
+        function->abiLocation = attrs.abiLocation;
     }
 
     return decl;
@@ -390,18 +522,17 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
 /// The constant or function after an `intrinsic`. Its name is the intrinsic's: a constant takes its type (`Target`), a
 /// free function its own name (`Assert`). A method is namespaced by the type it extends, and is keyed in ParseImplDecl.
 DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, const SourceLocation intrinsicLoc) {
+    // Every primitive type is built into the compiler, so a package contributes only its associated constants.
     if (Match(TokenKind::TypeKeyword)) {
-        auto decl = std::make_unique<TypeAliasDecl>();
-        decl->location = intrinsicLoc;
-        decl->isPublic = isPublic;
-        decl->name = ExpectBefore(TokenKind::Ident, "a type name after 'intrinsic type'").text;
-        decl->intrinsicName = decl->name;
-        auto type = std::make_unique<NamedTypeExpr>();
-        type->location = intrinsicLoc;
-        type->name = decl->name;
-        decl->type = std::move(type);
-        ExpectBefore(TokenKind::Semicolon, "';' after the intrinsic type declaration");
-        return ApplyAttrs(std::move(decl), attrs);
+        NamedTypeExpr named;
+        if (Check(TokenKind::Ident)) {
+            named.name = Advance().text;
+        }
+        const std::string extended = named.name.empty() ? "T" : ImplTypeName(named);
+        EmitError(intrinsicLoc, "intrinsic type declarations have been removed; primitive types are built in",
+                  std::format("declare its associated constants in 'extend {} {{ ... }}' instead", extended));
+        // The caller's recovery skips the rest through the ';', and so stops before the `extend` that follows.
+        return nullptr;
     }
     if (Check(TokenKind::StructKeyword)) {
         EmitError(intrinsicLoc, "intrinsic aggregate declarations have been removed; use native slice or range types");

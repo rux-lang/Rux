@@ -68,6 +68,34 @@ TEST_CASE("straight-line move state records locals temporaries assignments and s
     CHECK(tracker.TryGet(temporaryIdentity) == nullptr);
 }
 
+TEST_CASE("a statement's temporaries are forgotten when it ends while its locals stay") {
+    MoveStateTracker tracker;
+    int before = 0;
+    int temporary = 0;
+    int declared = 0;
+    int later = 0;
+    tracker.Reset();
+    tracker.Declare(MoveStateTracker::Temporary(&before), MoveStateTracker::State::Initialized, {1, 1, 0});
+
+    const auto mark = tracker.Mark();
+    tracker.Declare(MoveStateTracker::Temporary(&temporary), MoveStateTracker::State::Initialized, {2, 1, 10});
+    tracker.Declare(MoveStateTracker::Local(&declared), MoveStateTracker::State::Initialized, {2, 5, 14});
+    tracker.Declare(MoveStateTracker::Temporary(&later), MoveStateTracker::State::Initialized, {2, 9, 18});
+    tracker.DiscardTemporariesSince(mark);
+
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&before)) != nullptr);
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&temporary)) == nullptr);
+    CHECK(tracker.TryGet(MoveStateTracker::Local(&declared)) != nullptr);
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&later)) == nullptr);
+    CHECK_EQ(tracker.Save().entries.size(), 2);
+
+    // A mark from another scope depth discards nothing.
+    tracker.BeginScope();
+    tracker.Declare(MoveStateTracker::Temporary(&temporary), MoveStateTracker::State::Initialized, {3, 1, 30});
+    tracker.DiscardTemporariesSince(mark);
+    CHECK(tracker.TryGet(MoveStateTracker::Temporary(&temporary)) != nullptr);
+}
+
 TEST_CASE("semantic analysis diagnoses straight-line reads before initialization") {
     Lexer lexer(R"(
         func Main(parameter: int32) -> int32 {
@@ -189,4 +217,85 @@ TEST_CASE("loop exits preserve only reachable availability states") {
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     const SemanticModel model = analyzer.Analyze();
     CHECK(model.diagnostics.empty());
+}
+
+TEST_CASE("a part written into a droppable local that holds no value names why it holds none") {
+    Lexer lexer(R"(
+struct Handle { code: int32; }
+extend Handle { func ~Handle(self: &var Handle) {} }
+struct Holder { handle: Handle; }
+struct Plain { code: int32; }
+
+func Main(holder: Holder) {
+    var empty: Holder;
+    empty.handle <- Handle { code: 1 };
+    var moved <- holder;
+    let taken <- moved;
+    moved.handle <- Handle { code: 2 };
+    var plain: Plain;
+    plain.code = 3;
+    let read = plain.code;
+}
+)",
+                "part_write.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "part_write.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_EQ(model.diagnostics.size(), 2);
+
+    const SemanticDiagnostic &declared = model.diagnostics[0];
+    CHECK(declared.IsError());
+    CHECK_EQ(declared.location.line, 9);
+    CHECK_EQ(declared.message, "cannot write field 'handle' of 'empty', which holds no value");
+    REQUIRE_EQ(declared.notes.size(), 2);
+    CHECK_EQ(declared.notes[0], "'empty' was declared without a value at 8:5");
+    CHECK_EQ(declared.notes[1],
+             "'Holder' needs destruction, and a value written into a part of storage that holds none would never be "
+             "destroyed");
+    REQUIRE(declared.help.has_value());
+    CHECK_EQ(*declared.help, "initialize 'empty' whole, as in 'empty = Holder { ... }'");
+
+    const SemanticDiagnostic &moved = model.diagnostics[1];
+    CHECK_EQ(moved.location.line, 12);
+    CHECK_EQ(moved.message, "cannot write field 'handle' of 'moved', which holds no value");
+    REQUIRE_FALSE(moved.notes.empty());
+    CHECK_EQ(moved.notes[0], "'moved' was moved at 11:15");
+    REQUIRE(moved.help.has_value());
+    CHECK_EQ(*moved.help, "initialize 'moved' whole, as in 'moved = Holder { ... }'");
+}
+
+TEST_CASE("a part read of a plain local names the parts written so far") {
+    Lexer lexer(R"(
+struct Point { x: int32; y: int32; }
+
+func Main() -> int32 {
+    var q: Point;
+    q.x = 1;
+    let early = q.y;
+    return early + q.x;
+}
+)",
+                "part_read.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "part_read.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_EQ(model.diagnostics.size(), 1);
+
+    const SemanticDiagnostic &read = model.diagnostics[0];
+    CHECK(read.IsError());
+    CHECK_EQ(read.location.line, 7);
+    CHECK_EQ(read.message, "variable 'q' is used before it is initialized");
+    REQUIRE_EQ(read.notes.size(), 2);
+    CHECK_EQ(read.notes[0], "'q' was declared without an initializer at 5:5");
+    CHECK_EQ(read.notes[1], "only 'q.x' has been written, not 'q.y'");
 }

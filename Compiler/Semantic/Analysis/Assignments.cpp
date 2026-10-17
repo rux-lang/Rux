@@ -4,6 +4,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/PrimitiveCatalog.h"
 #include "Types/Type.h"
 
 #include <algorithm>
@@ -21,110 +22,150 @@ namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
 TypeRef AnalysisContext::ReadBorrowedScalar(const Expr &expression, const TypeRef &type) {
-    if (type.kind != TypeRef::Kind::Reference || type.inner.empty()) {
+    if (type->kind != TypeRef::Kind::Reference || type->inner.empty()) {
         return type;
     }
-    TypeRef value = type.inner.front();
+    TypeRef value = type->inner.front();
     value.isMut = false;
     if (!type.CanReadScalarTo(value)) {
         return type;
     }
-    if (value.kind == TypeRef::Kind::TypeParam && currentFunctionDecl) {
+    if (value->kind == TypeRef::Kind::TypeParam && currentFunctionDecl) {
         deferredScalarReads[currentFunctionDecl].push_back({type, expression.location});
     }
     borrowedScalarReads.insert(&expression);
     return value;
 }
 
+namespace {
+bool IsUnprefixedCharLiteral(const Expr &expression) {
+    const auto *literal = AstCast<const LiteralExpr>(&expression);
+    return literal && literal->token.kind == TokenKind::CharLiteral && literal->token.text.starts_with('\'');
+}
+
+bool UnprefixedCharLiteralFits(const Expr &expression, const TypeRef &target) {
+    const auto *literal = AstCast<const LiteralExpr>(&expression);
+    const std::optional<std::uint32_t> codePoint =
+        literal ? Lexer::DecodeCharLiteralCodePoint(literal->token.text) : std::nullopt;
+    return codePoint && IsOneCharacterOf(target->kind, *codePoint);
+}
+} // namespace
+
+TypeRef AnalysisContext::CheckedExpressionType(const Expr &expression) {
+    const auto checked = expressionTypes.find(&expression);
+    return checked != expressionTypes.end() ? checked->second : CheckExpr(expression);
+}
+
 bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
-    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {
         return CanConstructNative(*construct, targetType);
     }
-    if (targetType.kind == TypeRef::Kind::Reference) {
-        TypeRef targetReferent = targetType.inner.front();
+    if (targetType->kind == TypeRef::Kind::Reference) {
+        TypeRef targetReferent = targetType->inner.front();
         TypeRef sourceReferent =
-            exprType.kind == TypeRef::Kind::Reference && !exprType.inner.empty() ? exprType.inner.front() : exprType;
+            exprType->kind == TypeRef::Kind::Reference && !exprType->inner.empty() ? exprType->inner.front() : exprType;
         targetReferent.isMut = false;
         sourceReferent.isMut = false;
         const bool interfaceView = TypeImplementsInterface(sourceReferent, targetReferent);
         if (!exprType.CanImplicitlyBorrowTo(targetType) && !interfaceView) {
             return false;
         }
-        if (exprType.kind == TypeRef::Kind::Reference) {
-            return !exprType.inner.empty() && (!targetType.inner.front().isMut || exprType.inner.front().isMut);
+        if (exprType->kind == TypeRef::Kind::Reference) {
+            return !exprType->inner.empty() && (!targetType->inner.front().isMut || exprType->inner.front().isMut);
         }
         // An index that resolved to a declared `[]` is a call whose result is a temporary, so it is not a place a
         // reference can borrow, however much it looks like one.
         const bool addressable =
-            dynamic_cast<const IdentExpr *>(&expr) || dynamic_cast<const SelfExpr *>(&expr) ||
-            dynamic_cast<const FieldExpr *>(&expr) ||
-            (dynamic_cast<const IndexExpr *>(&expr) && !IsIndexOperatorCall(expr)) ||
-            (dynamic_cast<const UnaryExpr *>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
+            AstCast<const IdentExpr>(&expr) || AstCast<const SelfExpr>(&expr) || AstCast<const FieldExpr>(&expr) ||
+            (AstCast<const IndexExpr>(&expr) && !IsIndexOperatorCall(expr)) ||
+            (AstCast<const UnaryExpr>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
         if (!addressable) {
             return false;
         }
-        return targetType.inner.empty() || !targetType.inner.front().isMut || !PlaceIsImmutable(expr);
+        return targetType->inner.empty() || !targetType->inner.front().isMut || !PlaceIsImmutable(expr);
     }
-    if (exprType.kind == TypeRef::Kind::Array && exprType.arrayLength && !exprType.inner.empty()) {
+    if (exprType->kind == TypeRef::Kind::Array && exprType->arrayLength && !exprType->inner.empty()) {
         if (auto sliceElement = SliceElementType(targetType)) {
             // The view's writability travels on the element; what is checked here is the element's own type.
             sliceElement->isMut = false;
             // An array literal is fresh storage, so it may be viewed either way; a named array may be viewed
             // writably only from a place that can be written.
-            if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr)) {
+            if (const auto *array = AstCast<const ArrayExpr>(&expr)) {
                 for (const auto &element : array->elements) {
-                    const TypeRef elementType = CheckExpr(*element);
+                    const TypeRef elementType = CheckedExpressionType(*element);
                     if (!CanAssignExprTo(*element, elementType, *sliceElement)) {
                         return false;
                     }
                 }
                 return true;
             }
-            if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr)) {
-                const TypeRef elementType = CheckExpr(*repeat->value);
+            if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expr)) {
+                const TypeRef elementType = CheckedExpressionType(*repeat->value);
                 return CanAssignExprTo(*repeat->value, elementType, *sliceElement);
             }
             if (targetType.IsWritableSlice() && !PlaceIsWritable(expr, exprType)) {
                 return false;
             }
-            return exprType.inner[0].IsAssignableTo(*sliceElement);
+            // A named array is viewed in place, so the slice reads its elements at their own width: an `int32[2]`
+            // is no `int64[..]`, whatever converting each element on its own would do.
+            TypeRef element = exprType->inner[0];
+            element.isMut = false;
+            return element.IsUnknown() || sliceElement->IsUnknown() || element == *sliceElement;
         }
     }
 
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr);
-        array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
-        if (array->elements.size() != *targetType.arrayLength) {
+    if (const auto *array = AstCast<const ArrayExpr>(&expr);
+        array && targetType->kind == TypeRef::Kind::Array && targetType->arrayLength && !targetType->inner.empty()) {
+        if (array->elements.size() != *targetType->arrayLength) {
             return false;
         }
         for (const auto &element : array->elements) {
-            const TypeRef elementType = CheckExpr(*element);
-            if (!CanAssignExprTo(*element, elementType, targetType.inner[0])) {
+            const TypeRef elementType = CheckedExpressionType(*element);
+            if (!CanAssignExprTo(*element, elementType, targetType->inner[0])) {
                 return false;
             }
         }
         return true;
     }
 
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr);
-        repeat && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
-        if (exprType.kind != TypeRef::Kind::Array || exprType.arrayLength != targetType.arrayLength) {
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expr);
+        repeat && targetType->kind == TypeRef::Kind::Array && targetType->arrayLength && !targetType->inner.empty()) {
+        if (exprType->kind != TypeRef::Kind::Array || exprType->arrayLength != targetType->arrayLength) {
             return false;
         }
-        const TypeRef elementType = CheckExpr(*repeat->value);
-        return CanAssignExprTo(*repeat->value, elementType, targetType.inner[0]);
+        const TypeRef elementType = CheckedExpressionType(*repeat->value);
+        return CanAssignExprTo(*repeat->value, elementType, targetType->inner[0]);
     }
 
     // Tuple literals are contextually typed element-by-element. This lets
     // each element use the same assignment rules as a scalar expression
     // (notably range-checked unsuffixed integer literals), and naturally
     // handles nested tuple literals as well.
-    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expr);
-        tuple && exprType.kind == TypeRef::Kind::Tuple && targetType.kind == TypeRef::Kind::Tuple) {
-        if (tuple->elements.size() != targetType.inner.size() || exprType.inner.size() != targetType.inner.size()) {
+    if (const auto *tuple = AstCast<const TupleExpr>(&expr);
+        tuple && exprType->kind == TypeRef::Kind::Tuple && targetType->kind == TypeRef::Kind::Tuple) {
+        if (tuple->elements.size() != targetType->inner.size() || exprType->inner.size() != targetType->inner.size()) {
             return false;
         }
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
-            if (!CanAssignExprTo(*tuple->elements[i], exprType.inner[i], targetType.inner[i])) {
+            if (!CanAssignExprTo(*tuple->elements[i], exprType->inner[i], targetType->inner[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // A range literal is contextually typed bound by bound, like a tuple, so `let r: int32..int32 = 1..5;` gives
+    // each unsuffixed bound the annotation's element type. The shape (which bounds exist, inclusive or not) must match.
+    if (const auto *range = AstCast<const RangeExpr>(&expr); range && exprType.IsRange() && targetType.IsRange() &&
+                                                             exprType->kind == targetType->kind &&
+                                                             !targetType->inner.empty()) {
+        const TypeRef &element = targetType->inner.front();
+        for (const Expr *bound : {range->lo.get(), range->hi.get()}) {
+            if (!bound) {
+                continue;
+            }
+            const TypeRef boundType = CheckedExpressionType(*bound);
+            if (!CanAssignExprTo(*bound, boundType, element)) {
                 return false;
             }
         }
@@ -135,6 +176,12 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         return UnsuffixedIntegerLiteralFits(expr, targetType);
     }
 
+    // An unprefixed character literal takes the character width its destination expects, when its one character is
+    // one code unit of that width: `'a'` is a `char8`, but `'é'` needs two UTF-8 units and stays a `char32`.
+    if (targetType.IsChar() && IsUnprefixedCharLiteral(expr)) {
+        return UnprefixedCharLiteralFits(expr, targetType);
+    }
+
     // A constant integer expression (e.g. 10 + 2 * (5 - 3)) coerces to
     // any integer type it fits in, the same way a bare literal does.
     if (targetType.IsInteger()) {
@@ -143,15 +190,57 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
     }
 
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expr)) {
-        const TypeRef thenType = CheckExpr(*ternary->thenExpr);
-        const TypeRef elseType = CheckExpr(*ternary->elseExpr);
+    // An arm that was already checked keeps its recorded type: checking it again would run outside the scope of the
+    // bindings it was checked under, and would track its moves a second time.
+    const auto checkedType = [&](const Expr &arm) {
+        const auto checked = expressionTypes.find(&arm);
+        return checked != expressionTypes.end() ? checked->second : CheckExpr(arm);
+    };
+
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expr)) {
+        const TypeRef thenType = checkedType(*ternary->thenExpr);
+        const TypeRef elseType = checkedType(*ternary->elseExpr);
         if (CanAssignExprTo(*ternary->thenExpr, thenType, targetType) &&
             CanAssignExprTo(*ternary->elseExpr, elseType, targetType)) {
             return true;
         }
     }
 
+    // A match reaches a native or scalar expected type arm by arm, the way a ternary does, so `none` in one arm and
+    // `.Some(v)` in another both take the expected type, as does an unsuffixed `0` taking `int32`. The match then has
+    // that type: converting its provisional type as a whole would treat an open `opaque?` as absence whichever arm ran,
+    // and would read a literal arm at the default `int` width.
+    if (const auto *match = AstCast<const MatchExpr>(&expr);
+        match && !targetType.IsUnknown() &&
+        (MentionsNativeType(targetType) || exprType.MentionsIncompleteNative() || targetType.IsNumeric() ||
+         targetType.IsBool() || targetType.IsChar())) {
+        bool accepted = true;
+        for (const auto &arm : match->arms) {
+            if (IsDivergingExpression(*arm.body)) {
+                continue;
+            }
+            const auto checked = expressionTypes.find(arm.body.get());
+            if (checked == expressionTypes.end() || !CanAssignExprTo(*arm.body, checked->second, targetType)) {
+                accepted = false;
+                break;
+            }
+        }
+        if (accepted) {
+            expressionTypes.insert_or_assign(&expr, targetType);
+            NoteGenericBodyType(targetType);
+            nativeConversions.erase(&expr);
+            return true;
+        }
+        // An open match has no type of its own to convert, so an arm the expected type refuses refuses the match.
+        if (exprType.MentionsIncompleteNative()) {
+            return false;
+        }
+    }
+
+    // `null` is the null pointer of the one pointer a native destination reaches through its levels and members.
+    if (IsNullLiteral(expr) && MentionsNativeType(targetType)) {
+        return NullLiteralReaches(targetType);
+    }
     if (MentionsNativeType(targetType) || MentionsNativeType(exprType)) {
         return CanConvertToNativeType(expr, exprType, targetType);
     }
@@ -161,7 +250,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         return true;
     }
 
-    return exprType.IsAssignableTo(targetType) || (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
+    return exprType.IsAssignableTo(targetType) || (IsNullLiteral(expr) && targetType->kind == TypeRef::Kind::Pointer) ||
            UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
 }
 
@@ -175,8 +264,8 @@ bool AnalysisContext::CanConstructNative(const NativeConstructExpr &construct, c
     while (optionalForm ? level.IsFallible() : level.IsOptional()) {
         route.push_back(NativeConversionStep{optionalForm ? NativeConversionStep::Kind::Success
                                                           : NativeConversionStep::Kind::Presence});
-        TypeRef payload = level.inner.front();
-        level = std::move(payload);
+        TypeRef payload = level->inner.front();
+        level = payload;
     }
     if (level.IsUnknown() || targetType.IsUnknown()) {
         return true;
@@ -188,7 +277,7 @@ bool AnalysisContext::CanConstructNative(const NativeConstructExpr &construct, c
     if (!construct.operand) {
         return true;
     }
-    const TypeRef &channel = construct.kind == NativeConstructExpr::Kind::Failure ? level.inner[1] : level.inner[0];
+    const TypeRef &channel = construct.kind == NativeConstructExpr::Kind::Failure ? level->inner[1] : level->inner[0];
     const auto checked = expressionTypes.find(construct.operand.get());
     const TypeRef operandType = checked != expressionTypes.end() ? checked->second : CheckExpr(*construct.operand);
     if (!CanAssignExprTo(*construct.operand, operandType, channel)) {
@@ -202,6 +291,20 @@ bool AnalysisContext::CanConstructNative(const NativeConstructExpr &construct, c
         nativeConversions.insert_or_assign(&construct, std::move(route));
     }
     return true;
+}
+
+bool AnalysisContext::NullLiteralReaches(const TypeRef &target) {
+    if (target->kind == TypeRef::Kind::Pointer) {
+        return true;
+    }
+    if ((target.IsOptional() || target.IsFallible()) && !target->inner.empty()) {
+        return NullLiteralReaches(target->inner.front());
+    }
+    if (target.IsSum()) {
+        return std::ranges::count_if(target->inner,
+                                     [](const TypeRef &member) { return member->kind == TypeRef::Kind::Pointer; }) == 1;
+    }
+    return false;
 }
 
 bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
@@ -221,7 +324,7 @@ bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &ex
 
     // An unsuffixed literal has no width of its own yet. It descends through presence and success levels, which it can
     // only enter as a present or successful value, and then targets a sum by its literal kind, never by its value.
-    const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const auto *literal = AstCast<const LiteralExpr>(&expr);
     const bool floatLiteral =
         literal && literal->token.kind == TokenKind::FloatLiteral && NumericLiteralSuffix(literal->token.text).empty();
     if (IsUnsuffixedIntegerLiteral(expr) || floatLiteral) {
@@ -229,16 +332,16 @@ bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &ex
         while (level.IsOptional() || level.IsFallible()) {
             route.push_back(NativeConversionStep{level.IsOptional() ? NativeConversionStep::Kind::Presence
                                                                     : NativeConversionStep::Kind::Success});
-            TypeRef payload = level.inner.front();
-            level = std::move(payload);
+            TypeRef payload = level->inner.front();
+            level = payload;
         }
         if (!level.IsSum()) {
             route.push_back(NativeConversionStep{NativeConversionStep::Kind::Identity});
             return record(!MentionsNativeType(level) && CanAssignExprTo(expr, exprType, level));
         }
         std::optional<std::size_t> member;
-        for (std::size_t index = 0; index < level.inner.size(); ++index) {
-            const TypeRef &candidate = level.inner[index];
+        for (std::size_t index = 0; index < level->inner.size(); ++index) {
+            const TypeRef &candidate = level->inner[index];
             if (floatLiteral ? candidate.IsFloat() : candidate.IsInteger()) {
                 if (member) {
                     return record(false);
@@ -250,7 +353,7 @@ bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &ex
             return record(false);
         }
         route.push_back(NativeConversionStep{NativeConversionStep::Kind::Inject, *member});
-        return record(floatLiteral || UnsuffixedIntegerLiteralFits(expr, level.inner[*member]));
+        return record(floatLiteral || UnsuffixedIntegerLiteralFits(expr, level->inner[*member]));
     }
 
     NativeConversion conversion = ClassifyNativeConversion(exprType, targetType);
@@ -259,7 +362,7 @@ bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &ex
 }
 
 std::optional<std::uint64_t> AnalysisContext::EvalArrayLength(const Expr &expr) const {
-    const auto value = EvalConstInt(expr);
+    const auto value = EvalConstInteger(expr);
     if (!value || *value < 0) {
         return std::nullopt;
     }
@@ -269,7 +372,7 @@ std::optional<std::uint64_t> AnalysisContext::EvalArrayLength(const Expr &expr) 
 // Validate array extents AnalysisContext::and reject flexible arrays everywhere except the
 // final, top-level field of a struct. A nested T[] is never a tail field.
 void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail) {
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+    if (const auto *array = AstCast<const ArrayTypeExpr>(&type)) {
         if (!array->size) {
             if (!allowFlexibleTail) {
                 EmitError(array->location, "flexible array type is only allowed as the final field of a struct");
@@ -278,7 +381,7 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         else if (!EvalArrayLength(*array->size)) {
             // A range where the length goes is the nearest miss to the slice spelling, so it is answered as one.
             std::optional<std::string> help;
-            if (dynamic_cast<const RangeExpr *>(array->size.get())) {
+            if (AstCast<const RangeExpr>(array->size.get())) {
                 help = "write 'T[..]' for a slice";
             }
             EmitError(array->size->location, "array length must be a non-negative compile-time integer", {},
@@ -287,11 +390,11 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         ValidateArrayType(*array->element);
         return;
     }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+    if (const auto *slice = AstCast<const SliceTypeExpr>(&type)) {
         ValidateArrayType(*slice->element);
         return;
     }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+    if (const auto *range = AstCast<const RangeTypeExpr>(&type)) {
         if (range->start) {
             ValidateArrayType(*range->start);
         }
@@ -300,21 +403,21 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         }
         return;
     }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(&type)) {
         ValidateArrayType(*pointer->pointee);
         return;
     }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(&type)) {
         ValidateArrayType(*reference->pointee);
         return;
     }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
+    if (const auto *tuple = AstCast<const TupleTypeExpr>(&type)) {
         for (const auto &element : tuple->elements) {
             ValidateArrayType(*element);
         }
         return;
     }
-    if (const auto *function = dynamic_cast<const FunctionTypeExpr *>(&type)) {
+    if (const auto *function = AstCast<const FunctionTypeExpr>(&type)) {
         for (const auto &param : function->params) {
             ValidateArrayType(*param);
         }
@@ -323,7 +426,7 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         }
         return;
     }
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type)) {
+    if (const auto *named = AstCast<const NamedTypeExpr>(&type)) {
         for (const auto &arg : named->typeArgs) {
             ValidateArrayType(*arg);
         }
@@ -361,13 +464,7 @@ TypeRef AnalysisContext::ResolveType(const TypeExpr &expr) {
     TypeRef type = ResolveTypeImpl(expr);
     if (!type.IsUnknown()) {
         typeNodeTypes.insert_or_assign(&expr, type);
-        if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-            if (const Symbol *symbol = currentScope->Lookup(named->name)) {
-                if (const Decl *binding = IntrinsicTypeBinding(*symbol)) {
-                    intrinsicTypeBindings[&expr] = binding;
-                }
-            }
-        }
+        NoteGenericBodyType(type);
     }
     return type;
 }

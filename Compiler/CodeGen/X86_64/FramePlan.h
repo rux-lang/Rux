@@ -2,6 +2,7 @@
 
 #include "CodeGen/Layout.h"
 #include "CodeGen/PhiMoveResolver.h"
+#include "CodeGen/X86_64/Conditions.h"
 #include "Ir/Lir/Lir.h"
 #include "Target/Target.h"
 
@@ -16,6 +17,13 @@ namespace Rux {
 class X86_64FramePlanner;
 
 using X86_64PhiMoves = std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<PhiMove>>>;
+
+struct X86BranchComparison {
+    LirReg left;
+    LirReg right;
+    TypeRef type;
+    X86Condition condition;
+};
 
 /// Every function-local placement decision needed by x86-64 emission. Planning finishes before the first instruction is
 /// written; consumers can only inspect the result, so instruction selection cannot grow or otherwise reshape a frame
@@ -44,6 +52,29 @@ public:
 
     [[nodiscard]] const std::vector<int> &UsedPhysicalRegisters() const {
         return usedPhysicalRegisters;
+    }
+
+    /// Scalar float32/float64 homes are XMM8-XMM15, disjoint from every ABI argument and emitter scratch register.
+    [[nodiscard]] const std::unordered_map<LirReg, int> &FloatRegisters() const {
+        return floatRegisters;
+    }
+
+    /// Full 128-bit Win64 nonvolatile saves, as {architectural XMM number, positive frame offset}.
+    [[nodiscard]] const std::vector<std::pair<int, std::int32_t>> &FloatSaves() const {
+        return floatSaves;
+    }
+
+    [[nodiscard]] const std::unordered_map<LirReg, std::uint64_t> &ImmediateValues() const {
+        return immediateValues;
+    }
+
+    /// Constants whose every use is an allocated immediate instruction; their definition emits no materialization.
+    [[nodiscard]] const std::unordered_set<LirReg> &ElidedImmediates() const {
+        return elidedImmediates;
+    }
+
+    [[nodiscard]] const std::unordered_map<LirReg, X86BranchComparison> &BranchComparisons() const {
+        return branchComparisons;
     }
 
     [[nodiscard]] std::int32_t FrameSize() const {
@@ -80,9 +111,14 @@ private:
     std::unordered_map<LirReg, std::int32_t> slotOffsets;
     std::unordered_map<LirReg, std::int32_t> allocaDataOffsets;
     std::unordered_map<LirReg, TypeRef> registerTypes;
+    std::unordered_map<LirReg, std::uint64_t> immediateValues;
+    std::unordered_set<LirReg> elidedImmediates;
+    std::unordered_map<LirReg, X86BranchComparison> branchComparisons;
     X86_64PhiMoves phiMoves;
     std::unordered_map<LirReg, int> physicalRegisters;
     std::vector<int> usedPhysicalRegisters;
+    std::unordered_map<LirReg, int> floatRegisters;
+    std::vector<std::pair<int, std::int32_t>> floatSaves;
     std::int32_t frameSize = 0;
     std::int32_t hiddenReturnOffset = 0;
     std::int32_t phiTemporaryOffset = 0;

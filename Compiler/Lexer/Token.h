@@ -15,7 +15,7 @@ enum class TokenKind : std::uint8_t {
     IntLiteral,    // 42  0xFF  0b1010  0o77
     FloatLiteral,  // 3.14  1.0e-9
     StringLiteral, // "hello"  c8"hello"  c16"hello"  c32"hello"
-    CharLiteral,   // 'A'
+    CharLiteral,   // 'A'  c8'A'  c16'A'  c32'A'  c64'A'  c128'A'  c256'A'  c512'A'
     BoolLiteral,   // true  false
 
     // Identifiers

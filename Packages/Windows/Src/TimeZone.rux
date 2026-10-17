@@ -1,0 +1,57 @@
+// The system's time zone: its offset from UTC and the rules for its daylight time.
+
+/// When a time-zone rule takes effect, in the layout of `SYSTEMTIME` but read as a rule, not a date.
+/// A rule with `year` zero recurs every year: in `month`, on the `day`th occurrence of `dayOfWeek` (Sunday is zero),
+/// where the fifth occurrence means the last, at `hour`:`minute` local time. A zero `month` means the zone has no
+/// daylight time.
+/// @see https://rux-lang.dev/docs/api/windows/time-zone#time-zone-rule-date
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/ns-timezoneapi-time_zone_information
+pub struct TimeZoneRuleDate {
+    /// The year for a one-time change, or zero for a rule that recurs.
+    pub year: uint16;
+    /// The month, 1 through 12, or zero when there is no change.
+    pub month: uint16;
+    /// The day of the week, Sunday being zero.
+    pub dayOfWeek: uint16;
+    /// Which occurrence of that day in the month, 1 through 5, where 5 is the last.
+    pub day: uint16;
+    /// The hour of the change, in the local time before it.
+    pub hour: uint16;
+    /// The minute of the change.
+    pub minute: uint16;
+    /// The second of the change.
+    pub second: uint16;
+    /// The millisecond of the change.
+    pub milliseconds: uint16;
+}
+
+/// Win32's `TIME_ZONE_INFORMATION`: a zone's offsets and when its daylight time starts and ends.
+/// Each bias is minutes to add to local time to get UTC, so a zone east of Greenwich has a negative one.
+/// @see https://rux-lang.dev/docs/api/windows/time-zone#time-zone-information
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/ns-timezoneapi-time_zone_information
+pub struct TimeZoneInformation {
+    /// The bias of standard time, in minutes.
+    pub bias: int32;
+    /// The name of standard time, NUL-terminated UTF-16.
+    pub standardName: uint16[32];
+    /// When standard time starts.
+    pub standardDate: TimeZoneRuleDate;
+    /// What is added to `bias` during standard time, usually zero.
+    pub standardBias: int32;
+    /// The name of daylight time, NUL-terminated UTF-16.
+    pub daylightName: uint16[32];
+    /// When daylight time starts.
+    pub daylightDate: TimeZoneRuleDate;
+    /// What is added to `bias` during daylight time, usually -60.
+    pub daylightBias: int32;
+}
+
+#Link("Kernel32.dll")
+pub extern {
+    /// Reads the system's current time zone.
+    /// @param information receives the zone
+    /// @returns which part of the year it is now, or `0xFFFFFFFF` on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/time-zone#get-time-zone-information
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/nf-timezoneapi-gettimezoneinformation
+    func GetTimeZoneInformation(information: *var TimeZoneInformation) -> uint32;
+}

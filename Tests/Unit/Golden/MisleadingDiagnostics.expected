@@ -1,0 +1,3 @@
+45:42: error: argument 2 to 'Keep' has type 'func(int32) -> int32', but parameter 'keep' requires 'func(int32) -> bool8'
+47:13: error: condition for 'if' must have type 'bool', but found 'bool ! ParseError'
+53:25: error: cannot call method 'Bump', whose receiver is '&Counter', through raw pointer '*Counter'

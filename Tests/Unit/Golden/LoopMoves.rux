@@ -1,0 +1,102 @@
+// A move inside a loop body reaches the next pass: a value one pass moved out is not there for the next.
+struct Token {
+    id: int;
+}
+
+extend Token {
+    func ~Token(self: &var Token) {}
+}
+
+struct Holder {
+    token: Token;
+}
+
+func Take(token: Token) {}
+
+func ForBody(first: Token) {
+    var held <- first;
+    for i in 0..2 {
+        let id = held.id;
+        Take(<-held);
+    }
+}
+
+func WhileBody(first: Token, more: bool) {
+    var held <- first;
+    while more {
+        Take(<-held);
+    }
+}
+
+func LoopBody(first: Token) {
+    var held <- first;
+    loop {
+        Take(<-held);
+    }
+}
+
+func DoWhileBody(first: Token, more: bool) {
+    var held <- first;
+    do {
+        Take(<-held);
+    } while more;
+}
+
+func ContinuePath(first: Token, skip: bool) {
+    var held <- first;
+    for i in 0..2 {
+        if skip {
+            Take(<-held);
+            continue;
+        }
+        let id = held.id;
+    }
+}
+
+func ParameterEachPass(next: Token) {
+    var holder = Holder { token: Token { id: 0 } };
+    for i in 0..2 {
+        holder.token <- next;
+    }
+}
+
+// Accepted: each pass that moves the value gives it a new one before the next pass, leaves the loop, or moves the
+// pass's own loop variable.
+func Replenished(first: Token) {
+    var held <- first;
+    for i in 0..2 {
+        Take(<-held);
+        held = Token { id: i };
+    }
+}
+
+func LeavesAfterMove(first: Token) {
+    var held <- first;
+    loop {
+        Take(<-held);
+        break;
+    }
+}
+
+func ReturnsAfterMove(first: Token, done: bool) {
+    var held <- first;
+    while true {
+        if done {
+            Take(<-held);
+            return;
+        }
+    }
+}
+
+func MovesItsItem(items: Token[2]) {
+    for item in items {
+        Take(<-item);
+    }
+}
+
+func MovesInnerLocal() {
+    for i in 0..2 {
+        let local = Token { id: i };
+        Take(<-local);
+    }
+}

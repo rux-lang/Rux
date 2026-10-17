@@ -1,0 +1,8 @@
+// An array literal with a declared element type checks every element against it.
+func Main() -> int {
+    let fits: (int32 | bool)[2] = [1i32, true];
+    let refused: int32[2] = [1i32, "two"];
+    let undeclared = [1i32, true];
+    let wide: char8[2] = ['a', 'é'];
+    return 0;
+}

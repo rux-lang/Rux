@@ -1,0 +1,73 @@
+// What an identifier is drawn from, and the ways a caller-supplied alphabet can be unusable.
+// The default alphabet is Nano ID's own: the sixty-four characters that are safe unescaped in a URL, a file name and
+// most identifiers, in the order the reference implementation lists them. Sixty-four is a power of two, so each
+// random byte yields one character with no rejection and no bias. The order is kept so that the same random bytes
+// produce the same identifier here as in every other implementation, which is what makes the test vectors shared.
+// A custom alphabet must be between two and 256 distinct ASCII characters. One character carries no information,
+// more than 256 cannot be indexed by a byte, a repeated character makes that character more likely than the others,
+// and a character outside ASCII is several bytes in UTF-8 where an identifier is promised to be one byte per
+// character.
+
+import Entropy::EntropyError;
+
+/// Nano ID's default alphabet: the sixty-four URL-safe characters `A`–`Z`, `a`–`z`, `0`–`9`, `_` and `-`.
+/// Listed in the reference implementation's order, so the same random bytes give the same identifier here as there.
+/// @see https://rux-lang.dev/docs/api/nanoid/alphabet#nano-id-alphabet
+pub const NanoIdAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
+
+/// The default identifier length, in characters: twenty-one.
+/// Twenty-one characters of the default alphabet carry 126 random bits, more than the 122 of a version 4 UUID, in
+/// twenty-one characters where the UUID takes thirty-six.
+/// @see https://rux-lang.dev/docs/api/nanoid/alphabet#nano-id-length
+pub const NanoIdLength: uint = 21;
+
+/// Why an identifier could not be generated.
+/// Failure-only: a filled destination is the success channel of `! NanoIdError`. Copy, owning nothing. The alphabet
+/// cases are found before any random bytes are requested, so they never consume entropy.
+/// @see https://rux-lang.dev/docs/api/nanoid/nano-id-error
+pub variant NanoIdError {
+    /// The alphabet has fewer than two characters, so an identifier from it carries no information.
+    AlphabetTooSmall,
+    /// The alphabet has more than 256 characters, more than one random byte can choose between.
+    AlphabetTooLarge,
+    /// A character appears twice, which would make it twice as likely as the rest. The offset is the second
+    /// occurrence.
+    DuplicateCharacter(uint),
+    /// A byte outside ASCII. The offset is that byte. Each character of an identifier is one byte, which a character
+    /// that takes several bytes in UTF-8 cannot be.
+    NonAsciiCharacter(uint),
+    /// The operating system could not supply random bytes, for the reason carried.
+    Entropy(EntropyError)
+}
+
+/// Checks that `alphabet` can be drawn from without bias.
+/// It must hold between two and 256 characters, all ASCII and all distinct. Reports `AlphabetTooSmall`,
+/// `AlphabetTooLarge`, `NonAsciiCharacter` or `DuplicateCharacter`, the last two with the offset of the offending
+/// byte. Runs in time linear in the alphabet's length and allocates nothing.
+/// @param alphabet the characters an identifier would be drawn from
+/// @returns success when the alphabet is usable
+/// @see https://rux-lang.dev/docs/api/nanoid/alphabet#validate-alphabet
+pub func ValidateAlphabet(alphabet: char8[..]) -> ! NanoIdError {
+    if alphabet.length < 2 { fail NanoIdError::AlphabetTooSmall; }
+    if alphabet.length > 256 { fail NanoIdError::AlphabetTooLarge; }
+    var seen: bool[128] = [false; 128];
+    var index: uint = 0;
+    while index < alphabet.length {
+        let code = alphabet[index] as uint8 as uint;
+        if code >= 128 { fail NanoIdError::NonAsciiCharacter(index); }
+        if seen[code] { fail NanoIdError::DuplicateCharacter(index); }
+        seen[code] = true;
+        index = index + 1;
+    }
+    return;
+}
+
+// The smallest all-ones mask that covers every index into an alphabet of `length` characters. A random byte masked
+// with it is an index that is either valid or rejected, and at least half the masked values are valid.
+func IndexMask(length: uint) -> uint {
+    var mask: uint = 1;
+    while mask < length - 1 {
+        mask = mask * 2 + 1;
+    }
+    return mask;
+}

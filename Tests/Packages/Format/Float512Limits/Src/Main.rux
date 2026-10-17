@@ -1,0 +1,28 @@
+import Text::{ FormatSpec, TextWriter };
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Succeeded };
+import Format::{ ByteCursor, FloatLayout, WriteWideFloat };
+
+func Check(bits: uint512, expected: char8[..]) {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let layout = FloatLayout::Binary512();
+    var storage: char8[256];
+    var cursor = ByteCursor((@storage[0])[..256]);
+    let writer: &var TextWriter = cursor;
+    Assert(Succeeded(WriteWideFloat(allocator, writer, FormatSpec::Plain(), bits, layout)), "extreme value renders");
+    let text = cursor.Written();
+    Assert(text.length == expected.length, "shortest limit text length");
+    var index: uint = 0;
+    while index < text.length {
+        Assert(text[index] == expected[index], "shortest limit digit");
+        index = index + 1;
+    }
+}
+
+// Golden shortest strings from Tools/FloatVectors --limits, verified by the exact compiler parser.
+func Main() -> int {
+    Check((0x7FFFFFu512 << 488u) - 1u512, "2.06506353983588792439911949458165016952743604930296703478416641768000415533356529360575096775355271514278682370645749348245492937675463590779200088e+1262611");
+    Check(1u512 << 488u, "1.936986403971803627488623572428543460963250743569242152976820404263225780984727937030763605544545579208354072281172669513916893467785427815424510311e-1262611");
+    return 0;
+}

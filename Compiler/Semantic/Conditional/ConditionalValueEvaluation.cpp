@@ -1,6 +1,7 @@
 // Evaluating the expression forms a compile-time condition is built from, and
 // selecting the arm of a compile-time match.
 
+#include "Numeric/FloatParsing.h"
 #include "Semantic/Conditional/ConditionalEvaluatorInternal.h"
 
 #include <cstdint>
@@ -71,7 +72,7 @@ std::string_view ValueTypeName(const CompileTimeValue &value) {
         return "signed integer";
     if (std::holds_alternative<std::uint64_t>(value))
         return "unsigned integer";
-    if (std::holds_alternative<double>(value))
+    if (std::holds_alternative<double>(value) || std::holds_alternative<CompileTimeFloat>(value))
         return "float";
     if (std::holds_alternative<std::string>(value))
         return "string";
@@ -127,7 +128,7 @@ std::string_view OperatorName(const TokenKind op) {
 } // namespace
 
 std::optional<std::uint32_t> ConditionalEvaluator::Impl::SignedIntegerWidth(const Expr &expr) const {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expr)) {
         if (literal->token.kind != TokenKind::IntLiteral) {
             return std::nullopt;
         }
@@ -146,13 +147,13 @@ std::optional<std::uint32_t> ConditionalEvaluator::Impl::SignedIntegerWidth(cons
             return 64;
         return context.target.pointer_size * 8;
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expr)) {
         return SignedIntegerWidth(*unary->operand);
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expr)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expr)) {
         return SignedIntegerWidth(*binary->left);
     }
-    if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (const auto *ident = AstCast<const IdentExpr>(&expr)) {
         if (const auto width = constSignedIntegerWidths.find(ident->name); width != constSignedIntegerWidths.end()) {
             return width->second;
         }
@@ -164,7 +165,7 @@ std::optional<std::uint32_t> ConditionalEvaluator::Impl::SignedIntegerWidth(cons
 }
 
 std::optional<std::uint32_t> ConditionalEvaluator::Impl::UnsignedIntegerWidth(const Expr &expr) const {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expr)) {
         if (literal->token.kind != TokenKind::IntLiteral) {
             return std::nullopt;
         }
@@ -181,13 +182,13 @@ std::optional<std::uint32_t> ConditionalEvaluator::Impl::UnsignedIntegerWidth(co
             return context.target.pointer_size * 8;
         return std::nullopt;
     }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expr)) {
         return UnsignedIntegerWidth(*unary->operand);
     }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expr)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expr)) {
         return UnsignedIntegerWidth(*binary->left);
     }
-    if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (const auto *ident = AstCast<const IdentExpr>(&expr)) {
         if (const auto width = constUnsignedIntegerWidths.find(ident->name);
             width != constUnsignedIntegerWidths.end()) {
             return width->second;
@@ -215,10 +216,24 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalConstantReferenc
         reportedError = true;
         return std::nullopt;
     }
+    const auto floatWidth = constFloatWidths.find(expr.name);
+    const auto enclosingFloatBits = std::exchange(
+        unsuffixedFloatBits, floatWidth != constFloatWidths.end() ? std::optional{floatWidth->second} : std::nullopt);
     auto value = Eval(*declaration->second);
+    unsuffixedFloatBits = enclosingFloatBits;
     constsInProgress.erase(expr.name);
     if (!value) {
         return std::nullopt;
+    }
+
+    if (const auto width = constFloatWidths.find(expr.name); width != constFloatWidths.end()) {
+        if (const auto *floating = std::get_if<CompileTimeFloat>(&*value)) {
+            const auto sourceWidth = floating->value.Format().valueBits;
+            if (sourceWidth == width->second || (sourceWidth == 32 && width->second == 64)) {
+                return Value{CompileTimeFloat{ConvertFloat(floating->value, *FindFloatFormat(width->second))}};
+            }
+            return std::nullopt;
+        }
     }
 
     if (const auto unsignedWidth = constUnsignedIntegerWidths.find(expr.name);
@@ -609,6 +624,40 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalBinary(const Bin
         }
     }
 
+    if (const auto *lf = std::get_if<CompileTimeFloat>(&*left)) {
+        const auto &rf = std::get<CompileTimeFloat>(*right).value;
+        const auto comparison = CompareFloat(lf->value, rf);
+        switch (e.op) {
+        case TokenKind::Less:
+            return Value{comparison == FloatComparison::Less};
+        case TokenKind::LessEqual:
+            return Value{comparison == FloatComparison::Less || comparison == FloatComparison::Equal};
+        case TokenKind::Greater:
+            return Value{comparison == FloatComparison::Greater};
+        case TokenKind::GreaterEqual:
+            return Value{comparison == FloatComparison::Greater || comparison == FloatComparison::Equal};
+        default:
+            break;
+        }
+        const auto &format = lf->value.Format().valueBits >= rf.Format().valueBits ? lf->value.Format() : rf.Format();
+        const auto l = ConvertFloat(lf->value, format);
+        const auto r = ConvertFloat(rf, format);
+        switch (e.op) {
+        case TokenKind::Plus:
+            return Value{CompileTimeFloat{AddFloat(l, r)}};
+        case TokenKind::Minus:
+            return Value{CompileTimeFloat{SubtractFloat(l, r)}};
+        case TokenKind::Star:
+            return Value{CompileTimeFloat{MultiplyFloat(l, r)}};
+        case TokenKind::Slash:
+            return Value{CompileTimeFloat{DivideFloat(l, r)}};
+        case TokenKind::Percent:
+            return Value{CompileTimeFloat{RemainderFloat(l, r)}};
+        default:
+            return std::nullopt;
+        }
+    }
+
     if (const auto *lf = std::get_if<double>(&*left)) {
         const double rf = std::get<double>(*right);
         switch (e.op) {
@@ -664,6 +713,9 @@ bool ConditionalEvaluator::Impl::EvalCondition(const Expr *condition, const Sour
 
 /// The compile-time value against an arm pattern, for the no-match diagnostic.
 std::string ConditionalEvaluator::Impl::FormatValue(const Value &value) {
+    if (const auto *f = std::get_if<CompileTimeFloat>(&value)) {
+        return FormatFloatEncoding(f->value);
+    }
     if (const auto *wide = std::get_if<CompileTimeWideInteger>(&value)) {
         return (wide->isSigned && wide->bits.IsNegative() ? "-" : "") +
                wide->bits.Magnitude(wide->isSigned).ToDecimal();

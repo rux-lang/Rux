@@ -102,7 +102,9 @@ The matrix fixes the target and profile of every cell, so `--all` is incompatibl
 | `--debug`                 | No           | The matrix already includes Debug           |
 | `--release`               | No           | The matrix already includes Release         |
 | `--emit <kind[,kind...]>` | No           | Inspection output is a single-build feature |
+| `--disable-pass <name>`  | No           | Bisection targets one optimization profile  |
 | `--define <name[=value]>` | Yes          | The same definition is applied to each cell |
+| `--jobs <N>`              | Yes          | Cells build side by side on N threads       |
 | `--stats`                 | Yes          | Adds per-cell and aggregate statistics      |
 | `--quiet`                 | Yes          | Suppresses reports, but not errors          |
 | `--verbose`               | Yes          | Identifies each cell as it starts           |
@@ -135,7 +137,7 @@ Artifact paths are printed relative to the directory holding the manifest; an ou
 
 ## Build Statistics
 
-`--stats` follows a single build with four sections. It adds to the ordinary report rather than replacing it, so the progress and outcome lines are the same ones a plain `rux build` prints:
+`--stats` follows a single build with timing, source, optimization, per-pass and performance sections. It adds to the ordinary report rather than replacing it, so the progress and outcome lines are the same ones a plain `rux build` prints:
 
 ```text
 Compiling StringBuilder v0.1.0 (Debug, Windows x86-64)
@@ -147,12 +149,15 @@ Built StringBuilder (Debug, Windows x86-64) in 21 ms
 Time:
   Lexing:                0 ms    0.0%
   Parsing:               0 ms    0.0%
+  Loading dependency:   12 ms   57.1%
+  Reusing modules:       0 ms    0.0%
   Analyzing:             2 ms    9.5%
   Lowering to HIR:       1 ms    4.8%
   Lowering to LIR:       1 ms    4.8%
+  Optimizing LIR:        0 ms    0.0%
   Emitting RCU objects:  1 ms    4.8%
   Linking:               2 ms    9.5%
-  Other:                14 ms   66.7%
+  Other:                 2 ms    9.5%
   Total:                21 ms  100.0%
 
 Source:
@@ -170,6 +175,9 @@ Optimization:
   Declarations pruned:  0
   Estimated IR nodes:   0
 
+Optimization passes:
+  LIR lir-cfg-verifier: 0.012 ms; 1 runs, 0 changed; +0 / -0 instructions
+
 Performance:
   Compile speed:     77 kLOC/s
   Token throughput:  289.9 kTok/s
@@ -181,10 +189,46 @@ Every section is a title at column 0 over indented rows, with the label column s
 
 - **Each fact appears once.** The status line carries the profile, target, and elapsed time, so the rows beneath it carry only what it does not.
 - **A total closes the rows it sums.** `Total` ends the time table; `Declarations pruned` ends the four pruning counts it totals. `Estimated IR nodes` is not one of those four, which is why it sits outside the sum and says so in its label.
-- **`Other` is measured, not padding.** Phase timers cover lexing through linking; the wall clock also includes resolving dependencies, reading manifests, and filesystem work that no phase measures. `Other` is that difference, so the percentage column always reaches 100%.
+- **`Other` is measured, not padding.** Phase timers cover lexing through linking, with `Loading dependency` the resolving, reading and conditional folding of dependency packages apart from their lexing and parsing, `Reusing modules` the hashing of sources and the reading and writing of module packs and precompiled packages, and `Optimizing LIR` the Release optimization passes apart from lowering; the wall clock also includes reading manifests, checking build records, and filesystem work that no phase measures. `Other` is that difference, so the percentage column always reaches 100%.
 - **Phase names match `--verbose`.** Both come from the same list, so a phase named in a progress line or a diagnostic note is spelled the same way here.
 
 `--quiet` suppresses the entire report, statistics included, but never diagnostics.
+
+Per-pass measurements include invocation/change counts and accumulated elapsed time. LIR rows also count instructions
+added and removed across invocations; they do not estimate machine bytes, cycles, or runtime improvement. Counting runs
+outside each pass timer, but instrumentation still adds to total build time. Ordinary builds do not collect these
+measurements. Pass time is already included in the HIR/LIR phase totals, so it must not be added to them again.
+
+### Optimization Bisection
+
+Use a pass name from `--stats` to disable an optional transformation in a single Release build:
+
+```sh
+./Bin/rux --manifest Packages/App/Rux.toml build --release --stats --emit lir,asm --disable-pass lir-loop-invariants
+./Bin/rux --manifest Packages/App/Rux.toml build --release --stats --disable-pass lir-leaf-inliner --disable-pass lir-local-value-numbering
+```
+
+Compare the resulting output, LIR, assembly and timing against an otherwise identical build. The option is repeatable
+and disables every occurrence of that named pass. Unknown/inactive names are errors. CFG/SSA verification and required
+frame-address normalization cannot be disabled. The normal fixed-point limit remains in force; if excluding a pass
+prevents convergence, compilation reports an error. `--all` cannot be combined with pass bisection because its cells
+have different optimization profiles. This diagnostic option changes generated artifacts and is not a portable CPU
+selection or a guarantee that disabling an optimization improves performance.
+
+### Profiler Symbols
+
+`rux build --release --emit symbols` adds section headers and a non-allocated `.symtab` to an ELF image. Each placed
+function gets one local `STT_FUNC` entry with its address and size, so `perf` can name hot functions:
+
+```sh
+./Bin/rux --manifest Packages/App/Rux.toml build --release --target linux-x86_64 --emit symbols
+perf record -o perf.data Packages/App/Bin/Release/Linux/x86-64/App
+perf report -i perf.data --sort symbol
+```
+
+The table is not loaded at run time, and the build's code and data are unchanged. Ordinary builds carry no section
+headers. PE and Mach-O images ignore the request for now; on Windows, map profiler addresses to functions with
+`--emit asm`.
 
 ## Cross-Compilation and Execution
 
@@ -197,6 +241,40 @@ Every section is a title at column 0 over indented rows, with the label column s
 
 See the platform guides for native requirements and runtime verification: [FreeBSD](Platforms/FreeBSD.md), [Linux](Platforms/Linux.md), [macOS](Platforms/macOS.md), and [Windows](Platforms/Windows.md). The [CI/CD guide](CI-CD.md) explains which native, cross-compiler, structural, and transferred-artifact paths protect each target.
 
+## Parallel Compilation
+
+One compilation runs its independent work on worker threads: lexing and parsing of files, checking function bodies in ranges of modules, AST-to-HIR lowering and HIR constant folding of modules, HIR-to-LIR lowering of modules, LIR function passes and RCU object emission of modules. `rux build --jobs N` caps the threads at N; the default is one per logical core the process may run on, so a build started with a restricted CPU affinity (`start /affinity`, `taskset`, `cpuset`) uses only the cores it was given. `rux build --all` builds its cells side by side within the same budget and reports them in matrix order, with the time the whole matrix took, and `rux build` on a workspace builds its members side by side and reports them in member order. `rux check` checks workspace members side by side and `rux lint` lints files side by side, both reporting in order. A package whose semantic analysis reports anything is analyzed again on one thread, so its diagnostics never depend on N. Work is split by index and merged in source order, so the artifact, diagnostics and `--stats` counts are identical for every N (per-pass times in `--stats` add up the time each thread spent).
+
+## Up-to-Date Builds
+
+A successful build writes a record to `<package>/Temp/Cache/<Profile>-<target>.record` (`-test` is appended for test builds and `-check` for `rux check`). It names the request (the compiler executable, target, profile, definitions, disabled passes, `--emit symbols`, workspace sources and `SOURCE_DATE_EPOCH`), every source file and manifest the build read with its size, modification time and SHA-256, the listing of every package's `Src` tree and of the directory each dependency was resolved from, and the artifacts it wrote. The next build of the same request reuses the artifact when all of them still match, and reports it as `Built App (Debug, Windows x86-64) in 12 ms (up to date)`. A source whose modification time changed but whose content did not stays up to date; a changed, added or removed source, a changed manifest, a newly installed dependency version, a rebuilt compiler, or a modified or missing artifact rebuilds.
+
+`rux check` records a package only when checking it reported nothing at all, and skips it while the record is up to date; a package with warnings is checked, and its warnings reported, every time. `--no-cache` on `rux build`, `rux run`, `rux test` and `rux check` always compiles. Builds with `--stats` or `--emit` output other than `symbols` always compile and leave the record alone, and `rux clean` removes the records with the rest of `Temp`. A record never changes what a build produces: it only decides whether the artifact already on disk is the one this build would write.
+
+## Reused Modules
+
+When a build is not up to date, it still compiles only what changed. Every source file of the package and of its dependencies compiles to an object of its own that depends on nothing but that file, the declarations of the whole program and, in Release, which of its declarations the rest of the program reaches. A successful build keeps every object it linked, with what it was compiled from, in `<package>/Temp/Cache/<Profile>-<target>.modules`, and the next build links the kept object of every file whose source did not change as long as the program's declarations did not either. Such a file is analyzed and lowered only for its declarations, signatures, default arguments and generic bodies, which is all the files compiled again need of it; its constants are checked only when code that is compiled again reads them.
+
+The program's declarations are every file's tokens with the bodies of its non-generic functions and methods left out, together with the position of every token where other files' code holds positions: generic functions and extensions, functions with default arguments, and constants whose value reads `#source`. Editing a function body, a comment or the layout therefore recompiles that file alone, unless it moves a generic function or one of those others, while changing a signature, a type, a constant, an import or a generic body recompiles every file. A file is also compiled again when something now reaches a declaration of it that nothing reached before, and a file something was reported about is never kept, so every build reports its warnings again. Nor is a file whose code holds the build's time (`#build.timestamp`, `date` or `time`), which changes with every build that does not set `SOURCE_DATE_EPOCH`; when a constant holds it, no file of the program is kept. The artifact is byte for byte the one a build compiling every file writes: inlining stays within a file, each file carries its own copies of the drop glue and helpers it calls, and the stack-trace printer and the table of every file's functions live in a program object linked last. `--stats` shows how many files were reused. `--no-cache` compiles every file and keeps nothing, inspection output (`--emit` other than `symbols`, `--dump-*`) compiles every file, and `rux check` always checks every body. Setting `RUX_VERIFY_MODULE_CACHE=1` makes every build that reuses files compile the package again from scratch and fail unless the artifacts match; `RUX_VERIFY_MODULE_CACHE=user` does the same while always compiling the package's own files.
+
+## Precompiled Packages
+
+A dependency package compiles to the same objects in every program that uses it, as long as it is compiled the same way: by the same compiler, for the same target and profile, from the same sources and manifest, under the same compile-time context (`[Build].Defines` and `--define`, whether it is a test build, the output kind, `SOURCE_DATE_EPOCH`), from the same place on disk, against dependencies compiled the same way. A build that compiles a dependency package keeps its objects under that key in a cache every package of the user shares, `Rux\Cache\Packages` in `%LOCALAPPDATA%` on Windows and `~/.rux/Cache/Packages` elsewhere (or the directory `RUX_PACKAGE_CACHE` names), and a later build of any package reuses them: a clean build of a small program then analyzes the standard library only for the declarations it uses and compiles none of it.
+
+What a package compiles to can still depend on the program in two ways, and the cache checks both. The program names a package's functions, methods and types after their declarations unless another declaration of the same name forces a qualified name, so a package is kept as variants of its key, each recording the names its declarations had; a build reuses the newest variant and, once the program is analyzed, compiles the package again if the program names its declarations differently. In Release, a package's code is also pruned to what the rest of the program reaches, so each variant records its modules' roots too, and a variant pruned for other roots is compiled again. A reused package's objects are therefore always the ones compiling it would write, and the artifact is byte for byte the same. Deleting a project's `Temp` and `Bin` keeps the cache; `--no-cache` neither reads nor writes it, and deleting the directory is always safe.
+
 ## Parallel Test Builds
 
-`rux test --jobs N` compiles and executes up to N discovered executable packages concurrently. The default is one worker. Each worker owns its compiler state, diagnostics, and captured program output. Reports remain in discovery order, and a failing package does not stop later packages. Packages with overlapping executable or intermediate paths are serialized through the complete compile-and-run operation; path aliases are normalized before scheduling. The option does not add persistent Rux build caching or change package output paths, target validation, or registry restrictions.
+`rux test --jobs N` compiles and executes up to N discovered executable packages concurrently. The default is one worker per logical core. Each worker owns its compiler state, diagnostics, and captured program output, and its compilation uses an equal share of the logical cores. Reports remain in discovery order, and a failing package does not stop later packages. Packages with overlapping executable or intermediate paths are serialized through the complete compile-and-run operation; path aliases are normalized before scheduling. The option does not add persistent Rux build caching or change package output paths, target validation, or registry restrictions.
+
+### Per-pass IR snapshots
+
+`rux build --release --emit passes` writes the input and the state after each executed HIR/LIR pass under
+`Temp/Optimization/<invocation>/Hir` and `Lir`. Names include the one-based fixed-point iteration and pipeline slot;
+`00-00-input.txt` records each pipeline's input. Repeated instances of a pass remain distinct. Each invocation uses a
+new directory, so older snapshots remain available without appearing to belong to a newer, shorter run.
+
+Combine this with `--disable-pass` and `--stats` to identify the transformation responsible for a code change.
+Disabled passes produce no snapshot. Snapshot failures fail the build; the compiler does not silently discard requested
+inspection output. Snapshot I/O is excluded from per-pass timings but included in total compilation time. Ordinary
+builds create no snapshots. `--emit passes` is diagnostic and can produce substantial output for large packages.

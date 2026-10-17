@@ -2,6 +2,7 @@
 
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/SemanticVersion.h"
+#include "Types/Type.h"
 
 #include <cstdint>
 #include <optional>
@@ -55,11 +56,21 @@ private:
     std::unordered_map<std::string, ConstantBinding> associatedDeclarations;
     std::unordered_map<std::string, ConstantBinding> importedConstants;
     std::unordered_map<std::string, std::string> intrinsicBindings;
+    /// The struct an intrinsic value imported from another package was declared with, keyed by the value's name. Its
+    /// private fields stay private to that package in a condition just as they are when read as a value.
+    std::unordered_map<std::string, const StructDecl *> externalIntrinsicTypes;
     std::unordered_set<const ConstDecl *> activeAssociatedConstants;
     std::unordered_set<const Decl *> activeTypeAliases;
+    /// The canonical primitive each alias in scope names, so `Tiny::Max` also finds `int8::Max` where it is used.
+    std::unordered_map<std::string, std::string> aliasPrimitiveTargets;
     void ImportDeclarations(const UseDecl &use);
     void BindImportedDeclaration(const Decl &declaration, const std::vector<Module *> &modules, const Module &source,
                                  bool external = true);
+    /// Bind the constants of one `extend` block under `typeName::Name`.
+    void BindPrimitiveExtension(const ImplDecl &extension, const std::string &typeName,
+                                const std::vector<Module *> &modules, const Module &source, bool external);
+    /// Bind every public constant another package's `extend` blocks declare for one primitive.
+    void BindPrimitiveExtensions(TypeRef::Kind kind, const std::vector<Module *> &modules);
     [[nodiscard]] std::optional<Value> EvalDeclaredConstant(const ConstantBinding &binding, SourceLocation location);
     std::vector<Diagnostic> diags;
     std::string currentFile;
@@ -68,6 +79,9 @@ private:
     std::unordered_map<std::string, const Expr *> constExprs;
     std::unordered_map<std::string, std::uint32_t> constSignedIntegerWidths;
     std::unordered_map<std::string, std::uint32_t> constUnsignedIntegerWidths;
+    std::unordered_map<std::string, std::uint32_t> constFloatWidths;
+    /// The width of the float constant whose initializer is being evaluated, which its unsuffixed literals take.
+    std::optional<std::uint32_t> unsuffixedFloatBits;
     std::unordered_map<std::string, std::vector<std::string>> enumVariants;
     std::unordered_set<std::string> constsInProgress;
     std::unordered_set<std::string> builtinEnumNames;
@@ -85,11 +99,20 @@ private:
     void RegisterConstantImpl(const ConstDecl &decl);
     void CollectCompileTimeDecls(const std::vector<DeclPtr> &decls);
     void SetRuxImportsForModule(const Module &module);
+    /// Bind the package's own declarations: its primitive extensions, then its aliases and nested modules.
+    void BindLocalDeclarations();
+    /// Bind the package's own declarations if a module's imports were set since they were last bound. Every entry
+    /// point that reads or changes the bindings runs this first, so the bindings change in the same order as if each
+    /// module had bound them at once, while a module that evaluates nothing never walks the package.
+    void BindPendingLocalDeclarations();
+    bool localDeclarationsPending = false;
     void CollectRuxImports(const std::vector<DeclPtr> &decls);
     [[nodiscard]] bool RequireRuxImport(const std::string &name, SourceLocation location);
     [[nodiscard]] std::optional<std::string> IntrinsicArgument(const IntrinsicExpr &expr, bool allowEnum = false);
     [[nodiscard]] bool TargetHasFeature(std::string_view name) const;
     [[nodiscard]] std::optional<std::string_view> CompilerParamRoot(const Expr &expr) const;
+    [[nodiscard]] bool CompilerParamFieldIsAccessible(const Expr &root, std::string_view field,
+                                                      SourceLocation location);
     [[nodiscard]] std::optional<Value> EvalCompilerParamField(std::string_view root, std::string_view field,
                                                               SourceLocation location);
     [[nodiscard]] std::optional<ParsedSemanticVersion> EvalSemanticVersion(const Expr &expr);

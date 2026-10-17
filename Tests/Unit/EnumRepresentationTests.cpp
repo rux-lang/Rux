@@ -98,7 +98,7 @@ const std::string kOptionPrelude = R"(
     variant Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Next(self: &var Counter) -> Option<int32> {
+        func Advance(self: &var Counter) -> Option<int32> {
             if self.value >= self.limit { return Option::None<int32>(); }
             let current = self.value;
             self.value = self.value + 1i32;
@@ -112,14 +112,14 @@ TEST_CASE("a returned variant is matched in the representation it was built in")
     const LirPackage package = LowerSource(kOptionPrelude + R"(
         func Main() -> int {
             var it = Counter { value: 0i32, limit: 3i32 };
-            let a = match it.Next() { .Some(v) => v as int, .None => 90 };
-            let b = match it.Next() { .Some(v) => v as int, .None => 90 };
+            let a = match it.Advance() { .Some(v) => v as int, .None => 90 };
+            let b = match it.Advance() { .Some(v) => v as int, .None => 90 };
             return a * 10 + b;
         }
     )");
 
     // The method builds the aggregate: every payload it writes is placed at an offset from the enum's storage.
-    const LirFunc &next = RequireFunction(package, "Counter::Next");
+    const LirFunc &next = RequireFunction(package, "Counter::Advance");
     CHECK(ReadsPayloadByOffset(next));
     CHECK_FALSE(ReadsPayloadByShift(next));
 
@@ -136,7 +136,7 @@ TEST_CASE("a method's returned variant type carries the same layout as one built
         func Main() -> int {
             var it = Counter { value: 0i32, limit: 1i32 };
             let built = Option::Some<int32>(1i32);
-            let returned = it.Next();
+            let returned = it.Advance();
             return match built { .Some(v) => v as int, .None => 0 } +
                    match returned { .Some(v) => v as int, .None => 0 };
         }
@@ -146,7 +146,7 @@ TEST_CASE("a method's returned variant type carries the same layout as one built
     std::vector<TypeRef> optionSlots;
     for (const LirBlock &block : main.blocks) {
         for (const LirInstr &instruction : block.instrs) {
-            if (instruction.op == LirOpcode::Alloca && instruction.type.name == "Option<int32>") {
+            if (instruction.op == LirOpcode::Alloca && instruction.type->name == "Option<int32>") {
                 optionSlots.push_back(instruction.type);
             }
         }
@@ -196,8 +196,8 @@ TEST_CASE("all-unit variants remain tag-sized but retain variant representation"
     const LirFunc &main = RequireFunction(package, "Main");
     CHECK(std::ranges::any_of(main.blocks, [](const LirBlock &block) {
         return std::ranges::any_of(block.instrs, [](const LirInstr &instruction) {
-            return instruction.op == LirOpcode::Alloca && instruction.type.name == "State" &&
-                   instruction.type.inner.size() == 1 && instruction.type.inner.front().kind == TypeRef::Kind::Array;
+            return instruction.op == LirOpcode::Alloca && instruction.type->name == "State" &&
+                   instruction.type->inner.size() == 1 && instruction.type->inner.front()->kind == TypeRef::Kind::Array;
         });
     }));
 }
@@ -235,9 +235,12 @@ TEST_CASE("nested and generic variants receive concrete independent layouts") {
     CHECK_GT(layouts.at("Inner").size, 8);
     CHECK_GT(layouts.at("Outer").size, layouts.at("Inner").size);
     CHECK_EQ(layouts.at("Maybe<uint8>").alignment, 8);
-    CHECK_EQ(layouts.at("Maybe<uint128>").alignment, 8);
+    // A uint128 payload is sixteen-byte aligned, so it starts sixteen bytes in, past the tag and its padding.
+    CHECK_EQ(layouts.at("Maybe<uint128>").alignment, 16);
+    CHECK_EQ(layouts.at("Maybe<uint128>").size, 32);
     CHECK_GT(layouts.at("Maybe<uint128>").size, layouts.at("Maybe<uint8>").size);
-    CHECK_EQ(layouts.at("Maybe<Inner>").size, layouts.at("Maybe<uint128>").size);
+    CHECK_EQ(layouts.at("Maybe<Inner>").size, 24);
+    CHECK_EQ(layouts.at("Maybe<Inner>").alignment, 8);
 }
 
 TEST_CASE("zero-sized payloads do not erase the private variant tag") {
@@ -288,21 +291,22 @@ TEST_CASE("enum and variant type markers reflect declaration kind rather than ca
     for (const LirBlock &block : main.blocks) {
         for (const LirInstr &instruction : block.instrs) {
             if (instruction.op == LirOpcode::Alloca &&
-                (instruction.type.name == "Scalar" || instruction.type.name == "Units" ||
-                 instruction.type.name == "Payload")) {
-                allocations.insert_or_assign(instruction.type.name, instruction.type);
+                (instruction.type->name == "Scalar" || instruction.type->name == "Units" ||
+                 instruction.type->name == "Payload")) {
+                allocations.insert_or_assign(instruction.type->name, instruction.type);
             }
         }
     }
     REQUIRE(allocations.contains("Scalar"));
     REQUIRE(allocations.contains("Units"));
     REQUIRE(allocations.contains("Payload"));
-    REQUIRE_EQ(allocations.at("Scalar").inner.size(), 1);
-    CHECK_EQ(allocations.at("Scalar").inner.front().kind, TypeRef::Kind::UInt8);
+    REQUIRE_EQ(allocations.at("Scalar")->inner.size(), 1);
+    CHECK_EQ(allocations.at("Scalar")->inner.front()->kind, TypeRef::Kind::UInt8);
     for (const std::string name : {"Units", "Payload"}) {
-        REQUIRE_EQ(allocations.at(name).inner.size(), 1);
-        CHECK_EQ(allocations.at(name).inner.front().kind, TypeRef::Kind::Array);
-        CHECK_EQ(allocations.at(name).inner.front().inner.front().kind, TypeRef::Kind::Char8);
+        REQUIRE_EQ(allocations.at(name)->inner.size(), 1);
+        CHECK_EQ(allocations.at(name)->inner.front()->kind, TypeRef::Kind::Array);
+        // The marker's words are as wide as the variant's alignment: a tag word, so eight bytes.
+        CHECK_EQ(allocations.at(name)->inner.front()->inner.front()->kind, TypeRef::Kind::UInt64);
     }
 }
 
@@ -319,13 +323,17 @@ TEST_CASE("generic variant parameters and returns carry identical concrete marke
         }
     )");
 
-    for (const std::string name : {"Byte", "Word"}) {
+    // The marker states the alignment as well as the size: words of the tag's eight bytes for a byte payload, and
+    // sixteen-byte words once the payload is a uint128.
+    for (const auto &[name, word] :
+         {std::pair{"Byte", TypeRef::Kind::UInt64}, std::pair{"Word", TypeRef::Kind::UInt128}}) {
         const LirFunc &function = RequireFunction(package, name);
         REQUIRE_EQ(function.params.size(), 1);
         CHECK_EQ(function.params.front().type, function.returnType);
-        REQUIRE_EQ(function.returnType.inner.size(), 1);
-        CHECK_EQ(function.returnType.inner.front().kind, TypeRef::Kind::Array);
-        CHECK_EQ(function.returnType.inner.front().inner.front().kind, TypeRef::Kind::Char8);
+        REQUIRE_EQ(function.returnType->inner.size(), 1);
+        CHECK_EQ(function.returnType->inner.front()->kind, TypeRef::Kind::Array);
+        CHECK_EQ(function.returnType->inner.front()->inner.front()->kind, word);
+        CHECK_EQ(function.returnType.AlignInBytes(), function.returnType->inner.front()->inner.front().AlignInBytes());
     }
     const LirFunc &byte = RequireFunction(package, "Byte");
     const LirFunc &word = RequireFunction(package, "Word");
@@ -350,10 +358,10 @@ TEST_CASE("declaration spelling does not enter constructor or public function sy
     CHECK(passOutcome.isPublic);
     CHECK_EQ(passCode.name, "PassCode");
     CHECK_EQ(passOutcome.name, "PassOutcome");
-    CHECK_EQ(passCode.params.front().type.name, "Code");
-    CHECK_EQ(passOutcome.params.front().type.name, "Outcome");
-    CHECK_EQ(passCode.returnType.name, "Code");
-    CHECK_EQ(passOutcome.returnType.name, "Outcome");
+    CHECK_EQ(passCode.params.front().type->name, "Code");
+    CHECK_EQ(passOutcome.params.front().type->name, "Outcome");
+    CHECK_EQ(passCode.returnType->name, "Code");
+    CHECK_EQ(passOutcome.returnType->name, "Outcome");
 }
 
 TEST_CASE("several concrete generic layouts are stable across repeated analysis") {

@@ -16,6 +16,10 @@ namespace {
 } // namespace
 
 HirExprPtr AstToHirContext::LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call) {
+    // Only the three checked operations are lowered here; any other intrinsic with three arguments is not one of them.
+    if (intrinsicName != "CheckedAdd" && intrinsicName != "CheckedSub" && intrinsicName != "CheckedMul") {
+        return nullptr;
+    }
     if (call.args.size() != 3) {
         return nullptr;
     }

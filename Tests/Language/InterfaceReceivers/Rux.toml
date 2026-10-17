@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "InterfaceReceivers"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: interface requirements that read or write their receiver"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

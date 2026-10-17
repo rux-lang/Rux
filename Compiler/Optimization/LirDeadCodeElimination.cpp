@@ -2,15 +2,11 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <unordered_map>
-#include <unordered_set>
+#include <cstdint>
 #include <vector>
 
 namespace Rux::Optimization {
 namespace {
-using Registers = std::unordered_set<LirReg>;
-using InstructionSet = std::unordered_set<const LirInstr *>;
-
 enum class InstructionEffect {
     Pure,
     MayTrap,
@@ -34,6 +30,7 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::Shl:
     case LirOpcode::Shr:
     case LirOpcode::Lshr:
+    case LirOpcode::RotateRight:
     case LirOpcode::Neg:
     case LirOpcode::Not:
     case LirOpcode::BitNot:
@@ -48,10 +45,12 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::IndexPtr:
     case LirOpcode::Phi:
     case LirOpcode::GlobalAddr:
+    case LirOpcode::ThreadLocalAddr:
     case LirOpcode::StringAddr:
         return InstructionEffect::Pure;
     case LirOpcode::Div:
     case LirOpcode::Mod:
+    case LirOpcode::Sqrt:
         return InstructionEffect::MayTrap;
     case LirOpcode::Load:
         return InstructionEffect::ReadsMemory;
@@ -62,144 +61,253 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::Assert:
     case LirOpcode::Panic:
         return InstructionEffect::Observable;
+    // Another thread can see an atomic operation and a fence, and an atomic load orders the memory around it even
+    // when nothing reads its result, so none of them is ever removed.
+    case LirOpcode::AtomicLoad:
+    case LirOpcode::AtomicStore:
+    case LirOpcode::AtomicExchange:
+    case LirOpcode::AtomicCmpXchg:
+    case LirOpcode::AtomicFetchAdd:
+    case LirOpcode::AtomicFetchSub:
+    case LirOpcode::AtomicFetchAnd:
+    case LirOpcode::AtomicFetchOr:
+    case LirOpcode::AtomicFetchXor:
+    case LirOpcode::Fence:
+    case LirOpcode::SpinHint:
+    case LirOpcode::WriteStandardError:
+        return InstructionEffect::Observable;
+    // The frame pointer changes only on entry, so reading it twice reads the same value.
+    case LirOpcode::FramePointer:
+        return InstructionEffect::Pure;
+    case LirOpcode::VectorSplat:
+    case LirOpcode::VectorAdd:
+    case LirOpcode::VectorSub:
+    case LirOpcode::VectorMul:
+    case LirOpcode::VectorAnd:
+    case LirOpcode::VectorOr:
+    case LirOpcode::VectorXor:
+    case LirOpcode::VectorShl:
+    case LirOpcode::VectorShr:
+    case LirOpcode::VectorRotateRight:
+        return InstructionEffect::Pure;
+    case LirOpcode::VectorDiv:
+        return InstructionEffect::MayTrap;
+    // Vector memory accesses are produced last, by the unroller, and kept as they are: no store analysis here
+    // reasons about two elements at once.
+    case LirOpcode::VectorLoad:
+    case LirOpcode::VectorStore:
+        return InstructionEffect::Observable;
     }
     return InstructionEffect::Observable;
 }
 
-void AddRegister(Registers &registers, const LirReg reg) {
-    if (reg != LirNoReg) {
-        registers.insert(reg);
+/// One past the highest register `function` names, so per-register facts fit in flat vectors.
+std::size_t RegisterBound(const LirFunc &function) {
+    std::size_t bound = 0;
+    const auto note = [&](const LirReg reg) {
+        if (reg != LirNoReg)
+            bound = std::max(bound, static_cast<std::size_t>(reg) + 1);
+    };
+    for (const auto &parameter : function.params)
+        note(parameter.reg);
+    for (const auto &block : function.blocks) {
+        for (const auto &instruction : block.instrs) {
+            note(instruction.dst);
+            for (const LirReg source : instruction.srcs)
+                note(source);
+            for (const auto &[source, predecessor] : instruction.phiPreds) {
+                static_cast<void>(predecessor);
+                note(source);
+            }
+        }
+        if (block.term) {
+            note(block.term->cond);
+            if (block.term->retVal)
+                note(*block.term->retVal);
+        }
     }
+    return bound;
 }
 
-void AddUses(Registers &registers, const LirInstr &instruction) {
-    for (const LirReg source : instruction.srcs) {
-        AddRegister(registers, source);
-    }
-    for (const auto &[source, predecessor] : instruction.phiPreds) {
-        static_cast<void>(predecessor);
-        AddRegister(registers, source);
-    }
-}
-
-/// The stack slots this function allocates itself.
+/// The stack slots this function allocates itself, as a dense slot number per register (-1 for any other register).
 ///
 /// A store is only a candidate for removal when its destination is one of these: the function owns the storage, so
 /// nothing outside it can observe the write. A store through a pointer that arrived from elsewhere always stays.
-Registers FindLocalAllocas(const LirFunc &function) {
-    Registers localAllocas;
-    for (const auto &block : function.blocks) {
-        for (const auto &instruction : block.instrs) {
-            if (instruction.op == LirOpcode::Alloca && instruction.dst != LirNoReg) {
-                localAllocas.insert(instruction.dst);
-            }
-        }
-    }
+std::vector<std::int32_t> FindLocalAllocas(const LirFunc &function, const std::size_t registerBound,
+                                           std::size_t &slotCount) {
+    std::vector<char> allocated(registerBound, 0);
+    for (const auto &block : function.blocks)
+        for (const auto &instruction : block.instrs)
+            if (instruction.op == LirOpcode::Alloca && instruction.dst != LirNoReg)
+                allocated[instruction.dst] = 1;
 
-    Registers escaped;
+    std::vector<char> escaped(registerBound, 0);
+    const auto isAllocated = [&](const LirReg reg) { return reg != LirNoReg && allocated[reg] != 0; };
     for (const auto &block : function.blocks) {
         for (const auto &instruction : block.instrs) {
             for (std::size_t index = 0; index < instruction.srcs.size(); ++index) {
                 const LirReg source = instruction.srcs[index];
-                if (!localAllocas.contains(source)) {
+                if (!isAllocated(source))
                     continue;
-                }
                 const bool directLoad = instruction.op == LirOpcode::Load && index == 0;
                 const bool directStore = instruction.op == LirOpcode::Store && index == 1;
-                if (!directLoad && !directStore) {
-                    escaped.insert(source);
-                }
+                if (!directLoad && !directStore)
+                    escaped[source] = 1;
             }
             for (const auto &[source, predecessor] : instruction.phiPreds) {
                 static_cast<void>(predecessor);
-                if (localAllocas.contains(source)) {
-                    escaped.insert(source);
-                }
+                if (isAllocated(source))
+                    escaped[source] = 1;
             }
         }
         if (block.term) {
             if ((block.term->kind == LirTermKind::Branch || block.term->kind == LirTermKind::Switch) &&
-                localAllocas.contains(block.term->cond)) {
-                escaped.insert(block.term->cond);
-            }
-            if (block.term->retVal && localAllocas.contains(*block.term->retVal)) {
-                escaped.insert(*block.term->retVal);
-            }
+                isAllocated(block.term->cond))
+                escaped[block.term->cond] = 1;
+            if (block.term->retVal && isAllocated(*block.term->retVal))
+                escaped[*block.term->retVal] = 1;
         }
     }
-    for (const LirReg reg : escaped) {
-        localAllocas.erase(reg);
-    }
-    return localAllocas;
+    std::vector<std::int32_t> slots(registerBound, -1);
+    slotCount = 0;
+    for (std::size_t reg = 0; reg < registerBound; ++reg)
+        if (allocated[reg] != 0 && escaped[reg] == 0)
+            slots[reg] = static_cast<std::int32_t>(slotCount++);
+    return slots;
 }
 
-std::vector<std::uint32_t> Successors(const LirBlock &block, const std::size_t blockCount) {
-    std::vector<std::uint32_t> successors;
-    if (!block.term) {
-        return successors;
-    }
-    const auto append = [&](const std::uint32_t target) {
-        if (target < blockCount && std::ranges::find(successors, target) == successors.end()) {
-            successors.push_back(target);
-        }
+/// Call `visit` with each block `block` can branch to; a target named twice is visited twice.
+template <typename Visit>
+void ForEachSuccessor(const LirBlock &block, const std::size_t blockCount, Visit &&visit) {
+    if (!block.term)
+        return;
+    const auto visitValid = [&](const std::uint32_t target) {
+        if (target < blockCount)
+            visit(target);
     };
     switch (block.term->kind) {
     case LirTermKind::Jump:
-        append(block.term->trueTarget);
+        visitValid(block.term->trueTarget);
         break;
     case LirTermKind::Branch:
-        append(block.term->trueTarget);
-        append(block.term->falseTarget);
+        visitValid(block.term->trueTarget);
+        visitValid(block.term->falseTarget);
         break;
     case LirTermKind::Switch:
-        append(block.term->defaultTarget);
-        for (const auto &switchCase : block.term->cases) {
-            append(switchCase.target);
-        }
+        visitValid(block.term->defaultTarget);
+        for (const auto &switchCase : block.term->cases)
+            visitValid(switchCase.target);
         break;
     case LirTermKind::Return:
     case LirTermKind::Unreachable:
         break;
     }
-    return successors;
 }
 
-/// Walk one block backwards, updating which slots hold a value that is still read later. Backwards is the natural
-/// direction because liveness is about the future: a slot becomes live at a load and dies at the store above it.
-void TransferStorageLiveness(const LirBlock &block, const Registers &localAllocas, Registers &live) {
-    for (auto instruction = block.instrs.rbegin(); instruction != block.instrs.rend(); ++instruction) {
-        if (instruction->op == LirOpcode::Load && instruction->srcs.size() == 1 &&
-            localAllocas.contains(instruction->srcs[0])) {
-            live.insert(instruction->srcs[0]);
-        }
-        else if (instruction->op == LirOpcode::Store && instruction->srcs.size() == 2 &&
-                 localAllocas.contains(instruction->srcs[1])) {
-            live.erase(instruction->srcs[1]);
+/// Sets of local slots, one bit each, one fixed-size row of words per block, all in one allocation.
+class SlotRows {
+public:
+    SlotRows(const std::size_t rows, const std::size_t slots)
+        : width((slots + 63) / 64)
+        , words(rows * width, 0) {
+    }
+
+    [[nodiscard]] std::uint64_t *Row(const std::size_t row) {
+        return words.data() + row * width;
+    }
+
+    [[nodiscard]] const std::uint64_t *Row(const std::size_t row) const {
+        return words.data() + row * width;
+    }
+
+    [[nodiscard]] std::size_t Width() const {
+        return width;
+    }
+
+private:
+    std::size_t width;
+    std::vector<std::uint64_t> words;
+};
+
+void InsertSlot(std::uint64_t *row, const std::size_t slot) {
+    row[slot / 64] |= std::uint64_t{1} << (slot % 64);
+}
+
+void EraseSlot(std::uint64_t *row, const std::size_t slot) {
+    row[slot / 64] &= ~(std::uint64_t{1} << (slot % 64));
+}
+
+bool ContainsSlot(const std::uint64_t *row, const std::size_t slot) {
+    return ((row[slot / 64] >> (slot % 64)) & 1U) != 0;
+}
+
+/// The local slot `instruction` loads directly, or -1.
+std::int32_t LoadedSlot(const LirInstr &instruction, const std::vector<std::int32_t> &slots) {
+    return instruction.op == LirOpcode::Load && instruction.srcs.size() == 1 && instruction.srcs[0] != LirNoReg
+             ? slots[instruction.srcs[0]]
+             : -1;
+}
+
+/// The local slot `instruction` stores to directly, or -1.
+std::int32_t StoredSlot(const LirInstr &instruction, const std::vector<std::int32_t> &slots) {
+    return instruction.op == LirOpcode::Store && instruction.srcs.size() == 2 && instruction.srcs[1] != LirNoReg
+             ? slots[instruction.srcs[1]]
+             : -1;
+}
+
+/// Stores whose value no later load can read, one flag per instruction numbered from `blockStart`, found by iterating
+/// liveness across the control-flow graph until it settles. The iteration is bounded so a malformed graph cannot spin
+/// here.
+std::vector<char> FindDeadStores(const LirFunc &function, const std::vector<std::int32_t> &slots,
+                                 const std::size_t slotCount, const std::vector<std::size_t> &blockStart) {
+    const std::size_t blockCount = function.blocks.size();
+    std::vector<char> deadStores(blockStart.back(), 0);
+    if (slotCount == 0)
+        return deadStores;
+    // A slot is live on entry to a block when the block's first access to it is a load (`reads`), and passes through
+    // from the block's exit when the block does not access it at all, which is what a first access that is a store
+    // (`writes`) rules out. Liveness flows backwards: a slot becomes live at a load and dies at the store above it.
+    SlotRows reads(blockCount, slotCount);
+    SlotRows writes(blockCount, slotCount);
+    for (std::size_t blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
+        std::uint64_t *read = reads.Row(blockIndex);
+        std::uint64_t *written = writes.Row(blockIndex);
+        for (const auto &instruction : function.blocks[blockIndex].instrs) {
+            if (const auto loaded = LoadedSlot(instruction, slots); loaded >= 0) {
+                if (!ContainsSlot(written, static_cast<std::size_t>(loaded)))
+                    InsertSlot(read, static_cast<std::size_t>(loaded));
+            }
+            else if (const auto stored = StoredSlot(instruction, slots); stored >= 0) {
+                if (!ContainsSlot(read, static_cast<std::size_t>(stored)))
+                    InsertSlot(written, static_cast<std::size_t>(stored));
+            }
         }
     }
-}
-
-/// Stores whose value no later load can read, found by iterating liveness across the control-flow graph until it
-/// settles. The iteration is bounded so a malformed graph cannot spin here; running out means nothing is reported dead,
-/// which is the safe answer.
-InstructionSet FindDeadStores(const LirFunc &function, const Registers &localAllocas) {
-    const std::size_t blockCount = function.blocks.size();
-    std::vector<Registers> liveIn(blockCount);
-    std::vector<Registers> liveOut(blockCount);
-    const std::size_t limit = std::max<std::size_t>(1, blockCount * std::max<std::size_t>(localAllocas.size(), 1) + 1);
+    const std::size_t width = reads.Width();
+    SlotRows liveIn(blockCount, slotCount);
+    SlotRows liveOut(blockCount, slotCount);
+    std::vector<std::uint64_t> outgoing(width);
+    const std::size_t limit = std::max<std::size_t>(1, blockCount * slotCount + 1);
     for (std::size_t iteration = 0; iteration < limit; ++iteration) {
         bool changed = false;
         for (std::size_t blockIndex = blockCount; blockIndex-- > 0;) {
-            Registers outgoing;
-            for (const std::uint32_t successor : Successors(function.blocks[blockIndex], blockCount)) {
-                outgoing.insert(liveIn[successor].begin(), liveIn[successor].end());
-            }
-            Registers incoming = outgoing;
-            TransferStorageLiveness(function.blocks[blockIndex], localAllocas, incoming);
-            if (outgoing != liveOut[blockIndex] || incoming != liveIn[blockIndex]) {
-                liveOut[blockIndex] = std::move(outgoing);
-                liveIn[blockIndex] = std::move(incoming);
-                changed = true;
+            std::ranges::fill(outgoing, 0);
+            ForEachSuccessor(function.blocks[blockIndex], blockCount, [&](const std::uint32_t successor) {
+                const std::uint64_t *in = liveIn.Row(successor);
+                for (std::size_t word = 0; word < width; ++word)
+                    outgoing[word] |= in[word];
+            });
+            std::uint64_t *out = liveOut.Row(blockIndex);
+            std::uint64_t *in = liveIn.Row(blockIndex);
+            const std::uint64_t *read = reads.Row(blockIndex);
+            const std::uint64_t *written = writes.Row(blockIndex);
+            for (std::size_t word = 0; word < width; ++word) {
+                const std::uint64_t incoming = read[word] | (outgoing[word] & ~written[word]);
+                if (outgoing[word] != out[word] || incoming != in[word]) {
+                    out[word] = outgoing[word];
+                    in[word] = incoming;
+                    changed = true;
+                }
             }
         }
         if (!changed) {
@@ -207,22 +315,20 @@ InstructionSet FindDeadStores(const LirFunc &function, const Registers &localAll
         }
     }
 
-    InstructionSet deadStores;
+    std::vector<std::uint64_t> live(width);
     for (std::size_t blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
-        Registers live = liveOut[blockIndex];
-        for (auto instruction = function.blocks[blockIndex].instrs.rbegin();
-             instruction != function.blocks[blockIndex].instrs.rend(); ++instruction) {
-            if (instruction->op == LirOpcode::Load && instruction->srcs.size() == 1 &&
-                localAllocas.contains(instruction->srcs[0])) {
-                live.insert(instruction->srcs[0]);
+        std::copy_n(liveOut.Row(blockIndex), width, live.begin());
+        const auto &instructions = function.blocks[blockIndex].instrs;
+        for (std::size_t position = instructions.size(); position-- > 0;) {
+            const auto &instruction = instructions[position];
+            if (const auto loaded = LoadedSlot(instruction, slots); loaded >= 0) {
+                InsertSlot(live.data(), static_cast<std::size_t>(loaded));
             }
-            else if (instruction->op == LirOpcode::Store && instruction->srcs.size() == 2 &&
-                     localAllocas.contains(instruction->srcs[1])) {
+            else if (const auto stored = StoredSlot(instruction, slots); stored >= 0) {
                 // A volatile store is required to happen, so no later read decides whether it survives.
-                if (!live.contains(instruction->srcs[1]) && !instruction->isVolatile) {
-                    deadStores.insert(&*instruction);
-                }
-                live.erase(instruction->srcs[1]);
+                if (!ContainsSlot(live.data(), static_cast<std::size_t>(stored)) && !instruction.isVolatile)
+                    deadStores[blockStart[blockIndex] + position] = 1;
+                EraseSlot(live.data(), static_cast<std::size_t>(stored));
             }
         }
     }
@@ -230,78 +336,105 @@ InstructionSet FindDeadStores(const LirFunc &function, const Registers &localAll
 }
 
 /// Whether the instruction must be kept regardless of who reads its result.
-bool IsRequiredEffect(const LirInstr &instruction, const Registers &localAllocas, const InstructionSet &deadStores) {
-    if (deadStores.contains(&instruction)) {
+bool IsRequiredEffect(const LirInstr &instruction, const std::vector<std::int32_t> &slots, const bool deadStore) {
+    if (deadStore) {
         return false;
     }
     const InstructionEffect effect = EffectOf(instruction.op);
     if (effect == InstructionEffect::Pure) {
         return false;
     }
-    if (effect == InstructionEffect::ReadsMemory && instruction.srcs.size() == 1 &&
-        localAllocas.contains(instruction.srcs[0])) {
+    if (effect == InstructionEffect::ReadsMemory && instruction.srcs.size() == 1 && instruction.srcs[0] != LirNoReg &&
+        slots[instruction.srcs[0]] >= 0) {
         return false;
     }
     return true;
 }
 
 bool EliminateFromFunction(LirFunc &function) {
-    const Registers localAllocas = FindLocalAllocas(function);
-    const InstructionSet deadStores = FindDeadStores(function, localAllocas);
+    const std::size_t registerBound = RegisterBound(function);
+    std::size_t slotCount = 0;
+    const auto slots = FindLocalAllocas(function, registerBound, slotCount);
 
-    std::unordered_map<LirReg, const LirInstr *> definitions;
-    Registers neededRegisters;
-    InstructionSet neededInstructions;
-    for (const auto &block : function.blocks) {
-        for (const auto &instruction : block.instrs) {
+    // Instructions are numbered in block order; a register's definition is the last instruction that writes it.
+    std::vector<std::size_t> blockStart(function.blocks.size() + 1, 0);
+    for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex)
+        blockStart[blockIndex + 1] = blockStart[blockIndex] + function.blocks[blockIndex].instrs.size();
+    const auto deadStores = FindDeadStores(function, slots, slotCount, blockStart);
+    std::vector<const LirInstr *> instructionAt(blockStart.back());
+    constexpr std::size_t kNoDefinition = ~std::size_t{0};
+    std::vector<std::size_t> definitions(registerBound, kNoDefinition);
+    std::vector<char> neededRegisters(registerBound, 0);
+    std::vector<char> neededInstructions(blockStart.back(), 0);
+    std::vector<LirReg> worklist;
+    worklist.reserve(registerBound);
+    const auto needRegister = [&](const LirReg reg) {
+        if (reg != LirNoReg && neededRegisters[reg] == 0) {
+            neededRegisters[reg] = 1;
+            worklist.push_back(reg);
+        }
+    };
+    const auto needUses = [&](const LirInstr &instruction) {
+        for (const LirReg source : instruction.srcs)
+            needRegister(source);
+        for (const auto &[source, predecessor] : instruction.phiPreds) {
+            static_cast<void>(predecessor);
+            needRegister(source);
+        }
+    };
+    for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
+        const auto &block = function.blocks[blockIndex];
+        for (std::size_t position = 0; position < block.instrs.size(); ++position) {
+            const auto &instruction = block.instrs[position];
+            const std::size_t number = blockStart[blockIndex] + position;
+            instructionAt[number] = &instruction;
             if (instruction.dst != LirNoReg) {
-                definitions.insert_or_assign(instruction.dst, &instruction);
+                definitions[instruction.dst] = number;
             }
-            if (IsRequiredEffect(instruction, localAllocas, deadStores)) {
-                neededInstructions.insert(&instruction);
-                AddUses(neededRegisters, instruction);
+            if (IsRequiredEffect(instruction, slots, deadStores[number] != 0)) {
+                neededInstructions[number] = 1;
+                needUses(instruction);
             }
         }
         if (block.term) {
             if (block.term->kind == LirTermKind::Branch || block.term->kind == LirTermKind::Switch) {
-                AddRegister(neededRegisters, block.term->cond);
+                needRegister(block.term->cond);
             }
             if (block.term->retVal) {
-                AddRegister(neededRegisters, *block.term->retVal);
+                needRegister(*block.term->retVal);
             }
         }
     }
 
-    std::vector<LirReg> worklist(neededRegisters.begin(), neededRegisters.end());
     while (!worklist.empty()) {
         const LirReg reg = worklist.back();
         worklist.pop_back();
-        const auto definition = definitions.find(reg);
-        if (definition == definitions.end() || !neededInstructions.insert(definition->second).second) {
+        const std::size_t definition = definitions[reg];
+        if (definition == kNoDefinition || neededInstructions[definition] != 0) {
             continue;
         }
-        Registers sources;
-        AddUses(sources, *definition->second);
-        for (const LirReg source : sources) {
-            if (neededRegisters.insert(source).second) {
-                worklist.push_back(source);
-            }
-        }
+        neededInstructions[definition] = 1;
+        needUses(*instructionAt[definition]);
     }
 
     bool changed = false;
-    for (auto &block : function.blocks) {
-        std::vector<LirInstr> retained;
-        retained.reserve(block.instrs.size());
-        for (auto &instruction : block.instrs) {
-            if (deadStores.contains(&instruction) || !neededInstructions.contains(&instruction)) {
-                changed = true;
-            }
-            else {
-                retained.push_back(std::move(instruction));
-            }
-        }
-        block.instrs = std::move(retained);
+    for (std::size_t blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
+        auto &block = function.blocks[blockIndex];
+        const std::size_t start = blockStart[blockIndex];
+        const auto removed = [&](const std::size_t position) {
+            return deadStores[start + position] != 0 || neededInstructions[start + position] == 0;
+        };
+        std::size_t retained = 0;
+        while (retained < block.instrs.size() && !removed(retained))
+            ++retained;
+        if (retained == block.instrs.size())
+            continue;
+        changed = true;
+        // Compact in place: the instructions before the first removed one stay where they are.
+        for (std::size_t position = retained + 1; position < block.instrs.size(); ++position)
+            if (!removed(position))
+                block.instrs[retained++] = std::move(block.instrs[position]);
+        block.instrs.erase(block.instrs.begin() + static_cast<std::ptrdiff_t>(retained), block.instrs.end());
     }
     return changed;
 }
@@ -311,15 +444,9 @@ std::string_view LirDeadCodeElimination::Name() const noexcept {
     return "lir-dead-code-elimination";
 }
 
-PassChange LirDeadCodeElimination::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            if (!function.isExtern && !function.isAsm) {
-                changed = EliminateFromFunction(function) || changed;
-            }
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+PassChange LirDeadCodeElimination::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (function.isExtern || function.isAsm)
+        return PassChange::None;
+    return EliminateFromFunction(function) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

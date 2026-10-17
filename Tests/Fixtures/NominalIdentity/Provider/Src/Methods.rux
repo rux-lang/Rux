@@ -16,7 +16,7 @@ pub func CheckProvider() -> bool {
     let copied = Echo(error);
     let named = ParseError::Named { record: record };
     let namedSum = match named {
-        .Named(payload) => payload.Sum(),
+        .Named { record: payload } => payload.Sum(),
         .Bad(payload) => 0i64,
         .Empty => 0i64
     };
@@ -25,7 +25,7 @@ pub func CheckProvider() -> bool {
     let matched = match copied {
         ParseError::Bad(payload) => payload.Sum(),
         ParseError::Empty => 0i64,
-        ParseError::Named(payload) => payload.Sum()
+        ParseError::Named { record: payload } => payload.Sum()
     };
     return namedSum == 42i64 && matched == 42i64 && holder.Sum() == 42i64 && error == copied && bits.value == 1234567890123u64 &&
         sizeof(Record) == 16u && sizeof(Mode) == 4u && Mode::Ready as uint32 == 37u32;

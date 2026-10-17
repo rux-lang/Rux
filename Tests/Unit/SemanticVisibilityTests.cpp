@@ -31,10 +31,12 @@ std::unique_ptr<ParseResult> ParseSource(const Source &source) {
 }
 
 std::vector<SemanticDiagnostic> AnalyzePackages(const std::vector<Source> &userSources,
-                                                const std::vector<Source> &dependencySources = {}) {
+                                                const std::vector<Source> &dependencySources = {},
+                                                std::string dependencyDisplayName = {}) {
     std::vector<std::unique_ptr<ParseResult>> dependencies;
     DepPackage dependency;
     dependency.name = "Library";
+    dependency.displayName = std::move(dependencyDisplayName);
     for (const Source &source : dependencySources) {
         dependencies.push_back(ParseSource(source));
         dependency.modules.push_back({source.first, &dependencies.back()->module});
@@ -266,7 +268,40 @@ TEST_CASE("generic instantiations enforce operator visibility from the generic p
         }
     )"}},
                                           {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(rejected, "operator '<' is not defined for 'Ranked'"), Messages(rejected));
+    // The operator exists, so it is reported as private to its package rather than as missing.
+    const SemanticDiagnostic *hidden = FindMessage(rejected, "operator '<' of 'Ranked' is private to package");
+    REQUIRE_MESSAGE(hidden != nullptr, Messages(rejected));
+    CHECK_FALSE(HasMessage(rejected, "is not defined for 'Ranked'"));
+    REQUIRE(hidden->help.has_value());
+    CHECK(hidden->help->contains("'pub'"));
+}
+
+TEST_CASE("a structure pattern names only the fields visible across packages") {
+    const std::string dependency = R"(
+        pub struct Secret { pub value: int; hidden: int; }
+        pub func Seed() -> Secret { return Secret { value: 1, hidden: 2 }; }
+    )";
+
+    const auto letPattern = AnalyzePackages(
+        {{"main.rux", "import Library::{Secret, Seed};\nfunc Main() -> int { let Secret { hidden: h } = Seed(); "
+                      "return h; }"}},
+        {{"api.rux", dependency}});
+    CHECK_MESSAGE(HasMessage(letPattern, "struct field 'hidden' is private to package 'Library'"),
+                  Messages(letPattern));
+
+    const auto matchPattern = AnalyzePackages(
+        {{"main.rux", "import Library::{Secret, Seed};\nfunc Main() -> int { return match Seed() { Secret { hidden: h "
+                      "} => h }; }"}},
+        {{"api.rux", dependency}});
+    CHECK_MESSAGE(HasMessage(matchPattern, "struct field 'hidden' is private to package 'Library'"),
+                  Messages(matchPattern));
+
+    // A public field may be named, and the private one left out of the pattern.
+    const auto accepted = AnalyzePackages(
+        {{"main.rux", "import Library::{Secret, Seed};\nfunc Main() -> int { let Secret { value: v } = Seed(); "
+                      "return v; }"}},
+        {{"api.rux", dependency}});
+    CHECK_MESSAGE(!HasMessage(accepted, "is private"), Messages(accepted));
 }
 
 TEST_CASE("private fields methods constructors associated functions and operators are rejected across packages") {
@@ -566,4 +601,133 @@ TEST_CASE("a root nominal declaration cannot expose a private dependency declara
     )"}},
                                              {{"library.rux", "struct Secret { hidden: int; }"}});
     CHECK_MESSAGE(HasMessage(diagnostics, "Secret' is private to package 'Library'"), Messages(diagnostics));
+}
+
+TEST_CASE("a grouped import of a private item is reported once, naming the package as its manifest does") {
+    const auto diagnostics = AnalyzePackages(
+        {{"main.rux", "import Library::{ Counter, Clamp };\nfunc Main() -> int { return 0; }\n"}},
+        {{"library.rux", "pub struct Counter { value: int; }\nfunc Clamp(value: int) -> int { return value; }\n"}},
+        "Tally");
+    REQUIRE_MESSAGE(diagnostics.size() == 1, Messages(diagnostics));
+    CHECK_EQ(diagnostics[0].message, "function 'Clamp' is private to package 'Tally'");
+}
+
+TEST_CASE("a module path that repeats its package name resolves alike for item and module imports") {
+    const std::vector<Source> library = {{"shapes.rux", R"(
+        pub module Library::Rectangle {
+            pub func Area(width: int, height: int) -> int { return width * height; }
+        }
+        module Library::Sealed { pub func Marked() {} }
+    )"}};
+    for (const std::string_view import :
+         {"import Library::Rectangle;\nfunc Main() -> int { return Rectangle::Area(3, 4); }\n",
+          "import Library::Library::Rectangle;\nfunc Main() -> int { return Rectangle::Area(3, 4); }\n",
+          "import Library::Rectangle::Area;\nfunc Main() -> int { return Area(3, 4); }\n",
+          "import Library::Library::Rectangle::Area;\nfunc Main() -> int { return Area(3, 4); }\n"}) {
+        const auto diagnostics = AnalyzePackages({{"main.rux", std::string(import)}}, library);
+        CHECK_MESSAGE(diagnostics.empty(), import, ": ", Messages(diagnostics));
+    }
+
+    // The module's own package names it the same way.
+    const auto own = AnalyzePackages({{"shapes.rux", R"(
+        module Application::Rectangle {
+            pub func Area(width: int, height: int) -> int { return width * height; }
+        }
+    )"},
+                                      {"main.rux", R"(
+        import Application::Rectangle;
+        func Main() -> int { return Rectangle::Area(3, 4); }
+    )"}});
+    CHECK_MESSAGE(own.empty(), Messages(own));
+
+    // Each segment of the module path keeps its own visibility.
+    const auto sealed = AnalyzePackages({{"main.rux", "import Library::Sealed;\nfunc Main() {}\n"}}, library);
+    REQUIRE_MESSAGE(sealed.size() == 1, Messages(sealed));
+    CHECK_EQ(sealed[0].message, "module 'Sealed' is private to package 'Library'");
+
+    // A missing item points at an import the resolver accepts, spelled as the module was declared.
+    const auto missing = AnalyzePackages({{"main.rux", "import Library::Area;\nfunc Main() {}\n"}}, library);
+    REQUIRE_MESSAGE(missing.size() == 1, Messages(missing));
+    CHECK_EQ(missing[0].message, "name 'Area' was not found in package 'Library'");
+    REQUIRE(missing[0].help.has_value());
+    CHECK_EQ(*missing[0].help, "did you mean 'import Library::Rectangle::Area'?");
+}
+
+TEST_CASE("an int variable selects the overload of its own width, and a caller is told how to pick one") {
+    const std::string library = R"(
+        pub func Midpoint(a: int64, b: int64) -> int64 { return a; }
+        pub func Midpoint(a: int32, b: int32) -> int32 { return a; }
+        pub func Midpoint(a: uint64, b: uint64) -> uint64 { return a; }
+        pub func Midpoint(a: uint32, b: uint32) -> uint32 { return a; }
+    )";
+    const auto variables = AnalyzePackages({{"main.rux", R"(
+            import Library::Midpoint;
+            func Main() -> int {
+                let a: int = 3;
+                let b: int = 8;
+                let middle: int64 = Midpoint(a, b);
+                return 0;
+            }
+        )"}},
+                                           {{"math.rux", library}});
+    CHECK_MESSAGE(variables.empty(), Messages(variables));
+
+    const auto literals = AnalyzePackages({{"main.rux", R"(
+            import Library::Midpoint;
+            func Main() -> int {
+                let middle = Midpoint(3, 8);
+                return 0;
+            }
+        )"}},
+                                          {{"math.rux", library}});
+    const SemanticDiagnostic *ambiguous = FindMessage(literals, "call to 'Midpoint' is ambiguous");
+    REQUIRE_MESSAGE(ambiguous != nullptr, Messages(literals));
+    REQUIRE(ambiguous->help.has_value());
+    CHECK(ambiguous->help->contains("'3i64'"));
+    CHECK_FALSE(ambiguous->help->contains("rename"));
+}
+
+TEST_CASE("an import belongs to the file that writes it, including the module blocks in that file") {
+    const std::vector<Source> library = {{"library.rux", R"(
+        pub func Clamp(value: int) -> int { return value; }
+        pub struct Gauge { value: int; }
+    )"}};
+    const auto diagnostics = AnalyzePackages(
+        {
+            {"first.rux", R"(
+                import Library::{ Clamp, Gauge };
+                func First() -> int { return Clamp(1); }
+                module Tools {
+                    func Nested() -> int { return Clamp(2); }
+                }
+            )"},
+            {"second.rux", R"(
+                func Second() -> int { return Clamp(3); }
+                func Main() -> int { return First() + Second(); }
+            )"},
+        },
+        library);
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "name 'Clamp' is not defined in this scope");
+    CHECK_EQ(diagnostics[0].sourceName, "second.rux");
+    CHECK_EQ(diagnostics[0].help.value_or(""), "import 'Clamp' in this file too");
+}
+
+TEST_CASE("an imported function joins the overloads the package declares under its name") {
+    const std::vector<Source> library = {{"library.rux", R"(
+        pub func Scale(value: int) -> int { return value; }
+    )"}};
+    const auto joined = AnalyzePackages(
+        {
+            {"first.rux", R"(
+                import Library::Scale;
+                func Scale(value: bool) -> int { return 0; }
+                func Main() -> int { return Scale(2) + Scale(true); }
+            )"},
+            {"second.rux", R"(
+                func Other() -> int { return Scale(false); }
+            )"},
+        },
+        library);
+    CHECK_MESSAGE(joined.empty(), Messages(joined));
 }

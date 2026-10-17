@@ -1,0 +1,455 @@
+// A URL held in its normalized text, with where each component sits in it.
+// Parsing and resolving both end in composing a URL from pieces of text: the scheme is checked and lower-cased, the
+// authority's user information, host and port are checked and normalized, and the path, query and fragment are put in
+// normal form, with dot segments removed from the path. What comes out is ASCII, and two URLs that RFC 3986 calls
+// equivalent under syntax-based normalization come out as the same text, so comparing them is comparing text.
+
+import Allocator::Allocator;
+import Core::Iterator;
+import Text::String;
+import Url::{
+    AppendIpv6, AppendNormalized, Bytes, Component, IsAlpha, IsDigit, Lower, ParseIpv4, ParseIpv6, Pieces,
+    RemoveDotSegments, SameIgnoringCase, SplitReference, StartsWith, UrlError
+};
+
+/// What a URL's host is. `Copy`.
+/// @see https://rux-lang.dev/docs/api/url/url#host-kind
+pub enum HostKind: uint8 {
+    /// The URL has no authority, so no host.
+    None = 0,
+    /// A registered name, such as `example.com`, or an empty host.
+    Domain = 1,
+    /// A dotted-decimal IPv4 address.
+    Ipv4 = 2,
+    /// An IPv6 address, written between brackets in the URL.
+    Ipv6 = 3
+}
+
+/// An absolute URL in normalized form.
+/// Read it with `Parse` and resolve references against it with `Resolve`. Every component is a view of the URL's own
+/// text, still percent-encoded; `Decode` turns one into text. Copying a URL copies its text.
+/// @see https://rux-lang.dev/docs/api/url/url#url
+pub struct Url {
+    text: String;
+    allocator: Allocator;
+    schemeEnd: uint;
+    hasAuthority: bool;
+    hasUserinfo: bool;
+    userinfoStart: uint;
+    usernameEnd: uint;
+    userinfoEnd: uint;
+    hostStart: uint;
+    hostEnd: uint;
+    hostKind: HostKind;
+    hasPort: bool;
+    portStart: uint;
+    portEnd: uint;
+    port: uint16;
+    pathStart: uint;
+    pathEnd: uint;
+    hasQuery: bool;
+    queryStart: uint;
+    queryEnd: uint;
+    hasFragment: bool;
+    fragmentStart: uint;
+}
+
+// The port a scheme uses when none is written, for the schemes that have one.
+func DefaultPort(scheme: char8[..]) -> uint16? {
+    if SameIgnoringCase(scheme, "http") || SameIgnoringCase(scheme, "ws") { return 80u16; }
+    if SameIgnoringCase(scheme, "https") || SameIgnoringCase(scheme, "wss") { return 443u16; }
+    if SameIgnoringCase(scheme, "ftp") { return 21u16; }
+    return none;
+}
+
+// Whether a scheme names a network location, so that it needs a host and its empty path is `/`.
+func IsNetworkScheme(scheme: char8[..]) -> bool {
+    return DefaultPort(scheme) != none;
+}
+
+// Builds a normalized URL from pieces, which must include a scheme.
+func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
+    let scheme = pieces.scheme ?? fail UrlError::MissingScheme;
+    if scheme.length == 0 || !IsAlpha(scheme[0] as uint8) { fail UrlError::InvalidScheme; }
+    var out = Bytes(allocator);
+    var index: uint = 0;
+    while index < scheme.length {
+        let c = scheme[index] as uint8;
+        if !(IsAlpha(c) || IsDigit(c) || c == 0x2Bu8 || c == 0x2Du8 || c == 0x2Eu8) { fail UrlError::InvalidScheme; }
+        out.Push(Lower(c))?;
+        index = index + 1;
+    }
+    var url = Url {
+        text: String(allocator), allocator: allocator, schemeEnd: out.length, hasAuthority: pieces.hasAuthority,
+        hasUserinfo: false, userinfoStart: 0, usernameEnd: 0, userinfoEnd: 0, hostStart: 0, hostEnd: 0,
+        hostKind: HostKind::None, hasPort: false, portStart: 0, portEnd: 0, port: 0, pathStart: 0, pathEnd: 0,
+        hasQuery: false, queryStart: 0, queryEnd: 0, hasFragment: false, fragmentStart: 0
+    };
+    out.Push(c8':')?;
+    let network = IsNetworkScheme(scheme);
+
+    if pieces.hasAuthority {
+        out.PushAll("//")?;
+        match pieces.userinfo {
+            .Some(userinfo) => {
+                url.hasUserinfo = true;
+                url.userinfoStart = out.length;
+                var colon: uint = 0;
+                while colon < userinfo.length && userinfo[colon] != ':' { colon = colon + 1; }
+                AppendNormalized(out, userinfo[..colon], Component::Userinfo)?;
+                url.usernameEnd = out.length;
+                if colon < userinfo.length {
+                    out.Push(c8':')?;
+                    AppendNormalized(out, userinfo[colon + 1..], Component::Userinfo)?;
+                }
+                url.userinfoEnd = out.length;
+                out.Push(c8'@')?;
+            },
+            none => {}
+        }
+        let host = pieces.host;
+        if host.length > 0 && host[0] == '[' {
+            if host.length < 2u || host[host.length - 1] != ']' { fail UrlError::InvalidHost; }
+            let groups = ParseIpv6(host[1..host.length - 1]) ?? fail UrlError::InvalidHost;
+            out.Push(c8'[')?;
+            url.hostStart = out.length;
+            AppendIpv6(out, groups)?;
+            url.hostEnd = out.length;
+            out.Push(c8']')?;
+            url.hostKind = HostKind::Ipv6;
+        }
+        else {
+            url.hostStart = out.length;
+            AppendNormalized(out, host, Component::Host)?;
+            url.hostEnd = out.length;
+            url.hostKind = ParseIpv4(out.View()[url.hostStart..url.hostEnd]) != none ? HostKind::Ipv4 : HostKind::Domain;
+            if network && url.hostEnd == url.hostStart { fail UrlError::InvalidHost; }
+        }
+        match pieces.port {
+            .Some(port) => {
+                if port.length > 0 {
+                    var value: uint = 0;
+                    var digit: uint = 0;
+                    while digit < port.length {
+                        let c = port[digit] as uint8;
+                        if !IsDigit(c) { fail UrlError::InvalidPort; }
+                        value = value * 10u + (c - 0x30u8) as uint;
+                        if value > 65535u { fail UrlError::InvalidPort; }
+                        digit = digit + 1;
+                    }
+                    let defaulted = DefaultPort(scheme);
+                    if defaulted == none || (defaulted ?? 0u16) != value as uint16 {
+                        out.Push(c8':')?;
+                        url.hasPort = true;
+                        url.port = value as uint16;
+                        url.portStart = out.length;
+                        AppendDecimal(out, value)?;
+                        url.portEnd = out.length;
+                    }
+                }
+            },
+            none => {}
+        }
+    }
+
+    url.pathStart = out.length;
+    var path = Bytes(allocator);
+    AppendNormalized(path, pieces.path, Component::Path)?;
+    RemoveDotSegments(out, path.View())?;
+    if pieces.hasAuthority && network && out.length == url.pathStart { out.Push(c8'/')?; }
+    url.pathEnd = out.length;
+
+    match pieces.query {
+        .Some(query) => {
+            out.Push(c8'?')?;
+            url.hasQuery = true;
+            url.queryStart = out.length;
+            AppendNormalized(out, query, Component::Query)?;
+            url.queryEnd = out.length;
+        },
+        none => {}
+    }
+    match pieces.fragment {
+        .Some(fragment) => {
+            out.Push(c8'#')?;
+            url.hasFragment = true;
+            url.fragmentStart = out.length;
+            AppendNormalized(out, fragment, Component::Query)?;
+        },
+        none => {}
+    }
+    url.text = String::FromValidated(allocator, out.View()) catch { else => fail UrlError::OutOfMemory };
+    return url;
+}
+
+// Whether an optional piece of text is there.
+func IsSet(text: char8[..]?) -> bool {
+    match text {
+        .Some(_) => return true,
+        none => return false
+    }
+}
+
+// Appends a number in decimal.
+func AppendDecimal(out: &var Bytes, value: uint) -> ! UrlError {
+    var digits: char8[20] = ['0'; 20];
+    var count: uint = 0;
+    var rest = value;
+    while true {
+        digits[count] = (0x30u + rest % 10u) as uint8 as char8;
+        count = count + 1;
+        rest = rest / 10u;
+        if rest == 0u { break; }
+    }
+    while count > 0u {
+        count = count - 1;
+        out.Push(digits[count])?;
+    }
+}
+
+extend Url {
+    /// Reads `text` as an absolute URL and puts it in normalized form.
+    /// Spaces and control characters around the text are ignored. A character a component cannot hold as itself,
+    /// such as a space or a non-ASCII byte, is percent-encoded; a host is not, and refuses one.
+    /// @param allocator what the URL's text is kept in
+    /// @param text the URL
+    /// @returns the URL, or fails with what is wrong with it; a relative reference fails with `MissingScheme`
+    /// @see https://rux-lang.dev/docs/api/url/url#parse
+    pub func Parse(allocator: Allocator, text: char8[..]) -> Url ! UrlError {
+        let pieces = SplitReference(text)?;
+        return Compose(allocator, pieces);
+    }
+
+    /// Resolves `reference` against this URL, as a browser resolves a link on a page, following section 5 of
+    /// RFC 3986. An absolute reference stands on its own; `//host/path`, `/path`, `path`, `?query` and `#fragment`
+    /// replace what they name and keep the rest of this URL.
+    /// @param reference an absolute URL or a relative reference
+    /// @returns the resolved URL, kept with this URL's allocator
+    /// @see https://rux-lang.dev/docs/api/url/url#resolve
+    pub func Resolve(self: &Url, reference: char8[..]) -> Url ! UrlError {
+        var target = SplitReference(reference)?;
+        if IsSet(target.scheme) { return Compose(self.allocator, target); }
+        var merged = Bytes(self.allocator);
+        target.scheme = self.Scheme();
+        if !target.hasAuthority {
+            self.CopyAuthority(@target);
+            if target.path.length == 0 {
+                target.path = self.Path();
+                if !IsSet(target.query) { target.query = self.Query(); }
+            }
+            else if target.path[0] != '/' {
+                let base = self.Path();
+                if self.hasAuthority && base.length == 0 {
+                    merged.Push(c8'/')?;
+                }
+                else {
+                    var cut = base.length;
+                    while cut > 0 && base[cut - 1] != '/' { cut = cut - 1; }
+                    merged.PushAll(base[..cut])?;
+                }
+                merged.PushAll(target.path)?;
+                target.path = merged.View();
+            }
+        }
+        return Compose(self.allocator, target);
+    }
+
+    /// The whole URL, in normalized form.
+    /// @returns the text
+    /// @see https://rux-lang.dev/docs/api/url/url#text
+    pub func Text(self: &Url) -> char8[..] {
+        return self.text.Bytes();
+    }
+
+    /// The scheme, in lower case, without its `:`.
+    /// @returns the scheme
+    /// @see https://rux-lang.dev/docs/api/url/url#scheme
+    pub func Scheme(self: &Url) -> char8[..] {
+        return self.text.Bytes()[..self.schemeEnd];
+    }
+
+    /// Whether the URL has an authority: a `//` with a host, as `http:` URLs do and `mailto:` URLs do not.
+    /// @returns true when it has one
+    /// @see https://rux-lang.dev/docs/api/url/url#has-authority
+    pub func HasAuthority(self: &Url) -> bool {
+        return self.hasAuthority;
+    }
+
+    /// The user name before `@`, percent-encoded, or the empty text when there is none.
+    /// @returns the user name
+    /// @see https://rux-lang.dev/docs/api/url/url#username
+    pub func Username(self: &Url) -> char8[..] {
+        if !self.hasUserinfo { return ""; }
+        return self.text.Bytes()[self.userinfoStart..self.usernameEnd];
+    }
+
+    /// The password after the user name's `:`, percent-encoded, or none when there is none.
+    /// @returns the password
+    /// @see https://rux-lang.dev/docs/api/url/url#password
+    pub func Password(self: &Url) -> char8[..]? {
+        if !self.hasUserinfo || self.usernameEnd == self.userinfoEnd { return none; }
+        return self.text.Bytes()[self.usernameEnd + 1..self.userinfoEnd];
+    }
+
+    /// The host: a lower-case name, a dotted IPv4 address, or an IPv6 address without its brackets. None when the URL
+    /// has no authority.
+    /// @returns the host
+    /// @see https://rux-lang.dev/docs/api/url/url#host
+    pub func Host(self: &Url) -> char8[..]? {
+        if !self.hasAuthority { return none; }
+        return self.text.Bytes()[self.hostStart..self.hostEnd];
+    }
+
+    /// What kind of host the URL has.
+    /// @returns the kind
+    /// @see https://rux-lang.dev/docs/api/url/url#host-kind-of
+    pub func HostKind(self: &Url) -> HostKind {
+        return self.hostKind;
+    }
+
+    /// The port written in the URL, or none when there is none or it is the scheme's default, which normalizing
+    /// leaves out.
+    /// @returns the port
+    /// @see https://rux-lang.dev/docs/api/url/url#port
+    pub func Port(self: &Url) -> uint16? {
+        if !self.hasPort { return none; }
+        return self.port;
+    }
+
+    /// The port a connection uses: the one written, or the scheme's default, or none for a scheme without one.
+    /// @returns the port
+    /// @see https://rux-lang.dev/docs/api/url/url#port-or-default
+    pub func PortOrDefault(self: &Url) -> uint16? {
+        if self.hasPort { return self.port; }
+        return DefaultPort(self.Scheme());
+    }
+
+    /// The path, percent-encoded, without dot segments. A URL with an `http`-like scheme always has at least `/`.
+    /// @returns the path
+    /// @see https://rux-lang.dev/docs/api/url/url#path
+    pub func Path(self: &Url) -> char8[..] {
+        return self.text.Bytes()[self.pathStart..self.pathEnd];
+    }
+
+    /// The path's segments, between its `/`s.
+    /// @returns a walk over the segments
+    /// @see https://rux-lang.dev/docs/api/url/url#path-segments
+    pub func PathSegments(self: &Url) -> SegmentIterator {
+        let path = self.Path();
+        let start = path.length > 0 && path[0] == '/' ? 1u : 0u;
+        return SegmentIterator { rest: path[start..], done: path.length == 0 };
+    }
+
+    /// The query after `?`, percent-encoded, or none when there is no `?`.
+    /// @returns the query
+    /// @see https://rux-lang.dev/docs/api/url/url#query
+    pub func Query(self: &Url) -> char8[..]? {
+        if !self.hasQuery { return none; }
+        return self.text.Bytes()[self.queryStart..self.queryEnd];
+    }
+
+    /// The fragment after `#`, percent-encoded, or none when there is no `#`.
+    /// @returns the fragment
+    /// @see https://rux-lang.dev/docs/api/url/url#fragment
+    pub func Fragment(self: &Url) -> char8[..]? {
+        if !self.hasFragment { return none; }
+        return self.text.Bytes()[self.fragmentStart..];
+    }
+
+    /// Replaces the path. A relative path is made absolute when the URL has an authority.
+    /// @param path the new path, percent-encoded or not
+    /// @returns nothing, or fails when the path cannot be normalized
+    /// @see https://rux-lang.dev/docs/api/url/url#set-path
+    pub func SetPath(self: &var Url, path: char8[..]) -> ! UrlError {
+        var pieces = self.Pieces();
+        var rooted = Bytes(self.allocator);
+        if self.hasAuthority && (path.length == 0 || path[0] != '/') { rooted.Push(c8'/')?; }
+        rooted.PushAll(path)?;
+        pieces.path = rooted.View();
+        self <- Compose(self.allocator, pieces)?;
+    }
+
+    /// Replaces the query, or removes it with none.
+    /// @param query the new query without its `?`, percent-encoded or not
+    /// @returns nothing, or fails when the query cannot be normalized
+    /// @see https://rux-lang.dev/docs/api/url/url#set-query
+    pub func SetQuery(self: &var Url, query: char8[..]?) -> ! UrlError {
+        var pieces = self.Pieces();
+        pieces.query = query;
+        self <- Compose(self.allocator, pieces)?;
+    }
+
+    /// Replaces the fragment, or removes it with none.
+    /// @param fragment the new fragment without its `#`, percent-encoded or not
+    /// @returns nothing, or fails when the fragment cannot be normalized
+    /// @see https://rux-lang.dev/docs/api/url/url#set-fragment
+    pub func SetFragment(self: &var Url, fragment: char8[..]?) -> ! UrlError {
+        var pieces = self.Pieces();
+        pieces.fragment = fragment;
+        self <- Compose(self.allocator, pieces)?;
+    }
+
+    /// Whether two URLs are the same, which after normalization means the same text.
+    /// @param other the URL to compare with
+    /// @returns true when they are equal
+    /// @see https://rux-lang.dev/docs/api/url/url#equals
+    pub func Equals(self: &Url, other: &Url) -> bool {
+        return self.text.Equals(other.text);
+    }
+
+    // This URL's components as pieces, to compose a changed copy from.
+    func Pieces(self: &Url) -> Pieces {
+        var pieces = Pieces {
+            scheme: self.Scheme(), hasAuthority: false, userinfo: none, host: "", port: none, path: self.Path(),
+            query: self.Query(), fragment: self.Fragment()
+        };
+        self.CopyAuthority(@pieces);
+        return pieces;
+    }
+
+    // Copies this URL's authority into `pieces`.
+    func CopyAuthority(self: &Url, pieces: *var Pieces) {
+        pieces.hasAuthority = self.hasAuthority;
+        if !self.hasAuthority { return; }
+        let text = self.text.Bytes();
+        pieces.userinfo = self.hasUserinfo ? text[self.userinfoStart..self.userinfoEnd] : none;
+        pieces.host = self.hostKind == HostKind::Ipv6 ? text[self.hostStart - 1..self.hostEnd + 1]
+                                                      : text[self.hostStart..self.hostEnd];
+        pieces.port = self.hasPort ? text[self.portStart..self.portEnd] : none;
+    }
+}
+
+/// A walk over a path's segments, between its `/`s. `Copy`.
+/// @see https://rux-lang.dev/docs/api/url/url#segment-iterator
+pub struct SegmentIterator {
+    rest: char8[..];
+    done: bool;
+}
+
+extend SegmentIterator {
+    /// The walk itself, so that `for segment in url.PathSegments()` reads every segment.
+    /// @returns a copy of this walk
+    /// @see https://rux-lang.dev/docs/api/url/url#segment-iterator-iterate
+    pub func Iterate(self: &SegmentIterator) -> SegmentIterator {
+        return SegmentIterator { rest: self.rest, done: self.done };
+    }
+}
+
+extend SegmentIterator : Iterator {
+    /// The next segment, still percent-encoded, or none after the last.
+    /// @returns the segment
+    /// @see https://rux-lang.dev/docs/api/url/url#segment-iterator-next
+    pub func Next(self: &var SegmentIterator) -> char8[..]? {
+        if self.done { return none; }
+        var end: uint = 0;
+        while end < self.rest.length && self.rest[end] != '/' { end = end + 1; }
+        let segment = self.rest[..end];
+        if end == self.rest.length {
+            self.done = true;
+        }
+        else {
+            self.rest = self.rest[end + 1..];
+        }
+        return segment;
+    }
+}

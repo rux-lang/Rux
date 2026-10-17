@@ -55,6 +55,8 @@ ParseResult Parser::Parse() {
     }
 
     mod.documentationIssues = std::move(documentationIssues);
+    mod.bodiesNeedConditionalFolding = bodiesNeedConditionalFolding;
+    mod.bodiesDeclareItems = bodiesDeclareItems;
     return ParseResult{std::move(mod), std::move(diagnostics)};
 }
 
@@ -134,34 +136,6 @@ void Parser::RecordDetachedDocumentation(Syntax::Documentation documentation,
 }
 
 // Token helpers
-const Token &Parser::Peek(const std::size_t ahead) const noexcept {
-    const std::size_t idx = pos + ahead;
-    if (idx < tokens.size()) {
-        return tokens[idx];
-    }
-    return tokens.back(); // EOF sentinel
-}
-
-const Token &Parser::Advance() noexcept {
-    if (!IsAtEnd()) {
-        ++pos;
-    }
-    return tokens[pos - 1];
-}
-
-bool Parser::Check(const TokenKind kind) const noexcept {
-    return Peek().kind == kind;
-}
-
-bool Parser::CheckAny(const std::initializer_list<TokenKind> kinds) const noexcept {
-    for (const auto k : kinds) {
-        if (Check(k)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 namespace {
 /// How many generic argument lists a token could close. `Box<Box<int32>>` ends two at once and the lexer hands
 /// that over as a single `>>`, so a lookahead that counts only a bare `>` never sees the list close.
@@ -203,14 +177,6 @@ void Parser::ConsumeCloseAngle() noexcept {
     Advance();
 }
 
-bool Parser::Match(const TokenKind kind) noexcept {
-    if (!Check(kind)) {
-        return false;
-    }
-    Advance();
-    return true;
-}
-
 const Token &Parser::Expect(const TokenKind kind, const std::string_view message) {
     if (Check(kind)) {
         return Advance();
@@ -236,17 +202,9 @@ bool Parser::ConsumeBodyStart(const std::string_view role) {
     return false;
 }
 
-bool Parser::IsAtEnd() const noexcept {
-    return Peek().kind == TokenKind::EndOfFile;
-}
-
 const Token &Parser::Previous() const noexcept {
     assert(pos > 0);
     return tokens[pos - 1];
-}
-
-SourceLocation Parser::CurrentLocation() const noexcept {
-    return Peek().location;
 }
 
 bool Parser::IsGenericStructInitAhead() const noexcept {
@@ -353,10 +311,23 @@ bool Parser::IsTypeArgListAhead() const noexcept {
     }
 
     int angleDepth = 0;
+    int bracketDepth = 0;
     for (std::size_t ahead = 0;; ++ahead) {
         switch (Peek(ahead).kind) {
         case TokenKind::Less:
             ++angleDepth;
+            continue;
+        case TokenKind::LeftBracket:
+            ++bracketDepth;
+            continue;
+        case TokenKind::RightBracket:
+            --bracketDepth;
+            continue;
+        // A fixed array argument spells its length, `Box<int32[2]>`; outside a bracket a number is a comparison.
+        case TokenKind::IntLiteral:
+            if (bracketDepth <= 0) {
+                return false;
+            }
             continue;
         case TokenKind::Greater:
         case TokenKind::GreaterGreater:
@@ -373,8 +344,6 @@ bool Parser::IsTypeArgListAhead() const noexcept {
         case TokenKind::Star:
         case TokenKind::LeftParen:
         case TokenKind::RightParen:
-        case TokenKind::LeftBracket:
-        case TokenKind::RightBracket:
         case TokenKind::Comma:
         case TokenKind::ColonColon:
         case TokenKind::SelfKeyword:

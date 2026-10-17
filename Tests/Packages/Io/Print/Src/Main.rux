@@ -37,13 +37,28 @@ func Main() -> int {
     let bool8Value: bool8 = true;
     let bool16Value: bool16 = false;
     let bool32Value: bool32 = true;
+    let bool64Value: bool64 = false;
+    let bool128Value: bool128 = true;
+    let bool256Value: bool256 = false;
+    let bool512Value: bool512 = true;
     Print(bool8Value); Separator();
     Print(bool16Value); Separator();
     Print(bool32Value); Separator();
+    Print(bool64Value); Separator();
+    Print(bool128Value); Separator();
+    Print(bool256Value); Separator();
+    Print(bool512Value); Separator();
 
     Print(c8'A'); Separator();
     Print(c16'B'); Separator();
     Print(c32'C'); Separator();
+    Print(c64'D'); Separator();
+    Print(c128'E'); Separator();
+    Print(c256'F'); Separator();
+    Print(c512'😀'); Separator();
+    // A value no character has prints as the replacement character, at the widths past the machine word too.
+    var wideBits: uint512 = (1u512 << 300) | 0x41u512;
+    Print(*((@wideBits) as *char512)); Separator();
 
     var system = SystemAllocator();
     let allocator: Allocator = system;

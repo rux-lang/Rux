@@ -133,10 +133,12 @@ $llvmArchive = Get-Upstream -Uri "$llvmBase/$llvmAsset" -Sha256 $llvmSha
 
 # zstd decompresses the archive to a plain tarball first: bsdtar reads zstd
 # only when its libarchive was built with it, which the runner images do not
-# promise, while zstd itself is on every image.
+# promise, while zstd itself is on every image. Releases since 23.1.2 are
+# compressed with a 1 GiB long-distance window, past zstd's default 128 MiB
+# decoding limit, so --long=31 raises that limit to the format's maximum.
 $tarball = Join-Path $work 'llvm.tar'
 if (Get-Command zstd -CommandType Application -ErrorAction SilentlyContinue) {
-    & zstd -d -q --rm -o $tarball $llvmArchive
+    & zstd -d -q --long=31 --rm -o $tarball $llvmArchive
     if ($LASTEXITCODE -ne 0) { throw "could not decompress '$llvmAsset'" }
 }
 else {

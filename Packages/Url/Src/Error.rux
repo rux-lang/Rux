@@ -1,0 +1,20 @@
+// Why text is not a URL, or why a URL could not be built.
+
+/// Why text could not be read or resolved as a URL. `Copy`.
+/// @see https://rux-lang.dev/docs/api/url/error#url-error
+pub enum UrlError: uint8 {
+    /// The text has no scheme, so it is a relative reference that needs a base to resolve against.
+    MissingScheme = 1,
+    /// The scheme does not start with a letter or holds a character a scheme cannot.
+    InvalidScheme = 2,
+    /// The host is empty where one is required, holds a character a host cannot, or is a malformed IPv6 address.
+    InvalidHost = 3,
+    /// The port is not a number from 0 to 65535.
+    InvalidPort = 4,
+    /// A `%` is not followed by two hexadecimal digits.
+    InvalidPercentEncoding = 5,
+    /// The allocator could not supply the storage.
+    OutOfMemory = 6,
+    /// Decoded bytes are not UTF-8 text.
+    InvalidText = 7
+}

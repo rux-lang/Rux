@@ -1,0 +1,8 @@
+31:17: error: variable 'q' is used before it is initialized
+32:16: error: variable 'q' is used before it is initialized
+33:22: error: variable 'q' is used before it is initialized
+40:19: error: variable 'segment' is used before it is initialized
+53:15: error: value 'branch' may be uninitialized on some control-flow paths
+59:20: error: value 'looped' may be unavailable on some control-flow paths
+61:22: error: value 'looped' may be unavailable on some control-flow paths
+69:17: error: variable 'holder' is used before it is initialized

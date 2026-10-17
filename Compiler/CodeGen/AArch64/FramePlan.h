@@ -55,6 +55,10 @@ public:
         return savedVectorRegisters;
     }
 
+    [[nodiscard]] const std::unordered_map<LirReg, std::uint64_t> &ImmediateValues() const {
+        return immediateValues;
+    }
+
     [[nodiscard]] std::int32_t FrameSize() const {
         return frameSize;
     }
@@ -96,6 +100,7 @@ private:
     std::unordered_map<LirReg, std::int32_t> slotOffsets;
     std::unordered_map<LirReg, std::int32_t> allocaDataOffsets;
     std::unordered_map<LirReg, TypeRef> registerTypes;
+    std::unordered_map<LirReg, std::uint64_t> immediateValues;
     AArch64PhiMoves phiMoves;
     std::unordered_map<LirReg, unsigned> generalRegisterHomes;
     std::unordered_map<LirReg, unsigned> vectorRegisterHomes;

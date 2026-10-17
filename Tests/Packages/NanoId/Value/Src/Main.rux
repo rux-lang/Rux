@@ -1,0 +1,78 @@
+// The NanoId value: generated identifiers differ, parsing accepts exactly the standard form and says where anything
+// else went wrong, and equality, ordering and presentation all read the same twenty-one characters.
+
+import Core::{ Failed, Ordering };
+import NanoId::{ NanoId, NanoIdParseError };
+import Text::{ BufferWriter, Display, FormatSpec, ParseFailure, ParseFormatSpec, TextWriter };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Which refusal a parse reported, as a small code: 1 length, 2 character; negative when the offset is wrong.
+func Refusal(text: char8[..], at: uint) -> int {
+    let reported = match NanoId::Parse(text) {
+        .Failure(error) => error,
+        .Success(_) => return 0
+    };
+    if reported.Offset() != at { return -1; }
+    return match reported {
+        .WrongLength(_) => 1,
+        .InvalidCharacter(_) => 2
+    };
+}
+
+func Shown(value: NanoId, expected: char8[..]) -> bool {
+    return ShownWith(value, FormatSpec::Plain(), expected);
+}
+
+func ShownWith(value: NanoId, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[32];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    if Failed(shown.WriteDisplay(sink, spec)) { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Main() -> int {
+    let first = NanoId::Generate() catch { else => return 1 };
+    let second = NanoId::Generate() catch { else => return 2 };
+    if first.Equals(second) { return 3; }
+    if first.Text().length != 21 { return 4; }
+
+    // Round trip through text.
+    let reread = NanoId::Parse(first.Text()) catch { else => return 5 };
+    if !reread.Equals(first) || reread.Compare(first) != Ordering::Equal { return 6; }
+
+    let text = "V1StGXR8_Z5jdHi6B-myT";
+    let parsed = NanoId::Parse(text) catch { else => return 7 };
+    if !Same(parsed.Text(), text) || !Shown(parsed, text) { return 8; }
+    // A width pads the identifier like any other text.
+    var spec = FormatSpec::Plain();
+    spec = ParseFormatSpec(">23") catch { else => return 30 };
+    var padded: char8[23] = [' '; 23];
+    var at: uint = 2;
+    for unit in text {
+        padded[at] = unit;
+        at = at + 1;
+    }
+    if !ShownWith(parsed, spec, padded[..]) { return 31; }
+    let later = NanoId::Parse("V1StGXR8_Z5jdHi6B-myU") catch { else => return 9 };
+    if parsed.Compare(later) != Ordering::Less || later.Compare(parsed) != Ordering::Greater { return 10; }
+    if parsed.Equals(later) { return 11; }
+
+    // The standard form and nothing else.
+    if Refusal("V1StGXR8_Z5jdHi6B-my", 20) != 1 { return 12; }
+    if Refusal("V1StGXR8_Z5jdHi6B-myTT", 21) != 1 { return 13; }
+    if Refusal("", 0) != 1 { return 14; }
+    if Refusal("V1StGXR8 Z5jdHi6B-myT", 8) != 2 { return 15; }
+    if Refusal("V1StGXR8+Z5jdHi6B-myT", 8) != 2 { return 16; }
+    return 0;
+}

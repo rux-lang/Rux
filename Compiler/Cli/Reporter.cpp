@@ -11,6 +11,13 @@ Reporter::Reporter(std::FILE *inputOutput, const ReporterOptions inputOptions)
     , style{ColorEnabled(inputOptions.color, inputOutput)} {
 }
 
+Reporter::Reporter(std::string &inputCapture, std::FILE *styleOf, const ReporterOptions inputOptions)
+    : output(styleOf)
+    , capture(&inputCapture)
+    , options(inputOptions)
+    , style{ColorEnabled(inputOptions.color, styleOf)} {
+}
+
 bool Reporter::Visible(const MessageVisibility visibility) const {
     switch (visibility) {
     case MessageVisibility::Always:
@@ -29,8 +36,8 @@ const Reporting::Style &Reporter::Style() const {
 
 void Reporter::Labeled(const std::string_view label, const std::string_view text, const std::string_view color,
                        const bool indented) const {
-    std::print(output, "{}{}{}{}:{} {}\n", indented ? Reporting::indentation : std::string_view{}, color, style.Bold(),
-               label, style.Reset(), text);
+    Print("{}{}{}{}:{} {}\n", indented ? Reporting::indentation : std::string_view{}, color, style.Bold(), label,
+          style.Reset(), text);
 }
 
 void Reporter::Error(const std::string_view text) const {
@@ -50,8 +57,8 @@ void Reporter::Help(const std::string_view text) const {
 }
 
 void Reporter::Link(const std::string_view text) const {
-    std::print(output, "{}{}{}docs:{} {}{}{}\n", Reporting::indentation, style.Cyan(), style.Bold(), style.Reset(),
-               style.Cyan(), text, style.Reset());
+    Print("{}{}{}docs:{} {}{}{}\n", Reporting::indentation, style.Cyan(), style.Bold(), style.Reset(), style.Cyan(),
+          text, style.Reset());
 }
 
 void Reporter::Status(const std::string_view primary, const std::string_view detail, const Reporting::StatusKind kind,
@@ -59,11 +66,11 @@ void Reporter::Status(const std::string_view primary, const std::string_view det
     if (!Visible(visibility)) {
         return;
     }
-    std::print(output, "{}{}{}{}", style.Color(kind), style.Bold(), primary, style.Reset());
+    Print("{}{}{}{}", style.Color(kind), style.Bold(), primary, style.Reset());
     if (!detail.empty()) {
-        std::print(output, " {}", detail);
+        Print(" {}", detail);
     }
-    std::print(output, "\n");
+    Print("\n");
 }
 
 void Reporter::Progress(const std::string_view primary, const std::string_view detail) const {
@@ -80,37 +87,38 @@ void Reporter::Failure(const std::string_view primary, const std::string_view de
 
 void Reporter::Detail(const std::string_view text, const MessageVisibility visibility) const {
     if (Visible(visibility)) {
-        std::print(output, "{}{}\n", Reporting::indentation, text);
+        Print("{}{}\n", Reporting::indentation, text);
     }
 }
 
 void Reporter::Verbose(const std::string_view text) const {
     if (Visible(MessageVisibility::Verbose)) {
-        std::print(output, "{}{}{}{}\n", Reporting::indentation, style.Dim(), text, style.Reset());
+        Print("{}{}{}{}\n", Reporting::indentation, style.Dim(), text, style.Reset());
     }
 }
 
 void Reporter::Write(const std::string_view text, const MessageVisibility visibility) const {
     if (Visible(visibility)) {
-        std::print(output, "{}", text);
+        Print("{}", text);
     }
 }
 
 void Reporter::Flush() const {
-    std::fflush(output);
+    if (capture == nullptr)
+        std::fflush(output);
 }
 
 void Reporter::Table(const std::span<const TableRow> rows, const MessageVisibility visibility) const {
     if (!Visible(visibility) || rows.empty()) {
         return;
     }
-    std::print(output, "{}", Reporting::RenderRows(rows));
+    Print("{}", Reporting::RenderRows(rows));
 }
 
 void Reporter::Summary(const std::string_view title, const std::span<const TableRow> rows) const {
     if (!Visible(MessageVisibility::Normal)) {
         return;
     }
-    std::print(output, "{}", Reporting::RenderSection(title, rows, style));
+    Print("{}", Reporting::RenderSection(title, rows, style));
 }
 } // namespace Rux::CliSupport

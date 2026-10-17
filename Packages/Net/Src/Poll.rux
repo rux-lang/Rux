@@ -1,0 +1,407 @@
+// Waiting on many sockets at once: a `Poller` holds the sockets registered with it, each with the readiness wanted and
+// a token the caller chooses, and `Wait` reports the ones that are ready with their tokens.
+// It is level-triggered on every system: a socket is reported for as long as it is ready, not only when it becomes so,
+// so a caller that reads part of what is waiting is told again. Linux uses epoll, FreeBSD and macOS kqueue, and Windows
+// `WSAPoll`, which has no registrations of its own, so the poller keeps them and hands the whole list over each time.
+// The sockets are meant to be non-blocking: readiness says a call would not wait, and a non-blocking socket fails
+// with `WouldBlock` in the rare case that it would after all.
+
+import Allocator::Allocator;
+import Collections::Vector;
+import Core::{ #Error, #target };
+import Io::{ IoError, IoErrorKind };
+import Net::{ FailureOf, LastFailure, NoSocket };
+import Time::Duration;
+
+when #target.os {
+    .Linux => import Linux::{
+        Close, EPOLLERR, EPOLLHUP, EPOLLIN, EPOLLOUT, EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL,
+        EPOLL_CTL_MOD, EpollControl, EpollCreate1, EpollEventBytes, EpollEventWordOffset, EpollWait
+    },
+    .FreeBSD => import FreeBSD::{
+        Close, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FD_CLOEXEC, F_SETFD,
+        FcntlInt, Kevent, KeventCall, Kqueue, Timespec
+    },
+    .macOS => import macOS::{
+        Close, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FD_CLOEXEC, F_SETFD,
+        FcntlInt, Kevent, KeventCall, Kqueue, Timespec
+    },
+    .Windows => import Windows::{ POLLERR, POLLHUP, POLLNVAL, POLLRDNORM, POLLWRNORM, WSAPoll, WsaPollFd },
+    else => #Error("Unsupported operating system")
+}
+
+/// The readiness a registration waits for. `Copy`.
+/// @see https://rux-lang.dev/docs/api/net/poller#interest
+pub struct Interest {
+    /// Something to read, or a connection to accept.
+    pub readable: bool;
+    /// Room to write.
+    pub writable: bool;
+}
+
+extend Interest {
+    /// Waiting for something to read, or a connection to accept.
+    /// @returns the interest
+    /// @see https://rux-lang.dev/docs/api/net/poller#interest-readable
+    pub func Readable() -> Interest {
+        return Interest { readable: true, writable: false };
+    }
+
+    /// Waiting for room to write.
+    /// @returns the interest
+    /// @see https://rux-lang.dev/docs/api/net/poller#interest-writable
+    pub func Writable() -> Interest {
+        return Interest { readable: false, writable: true };
+    }
+
+    /// Waiting for either.
+    /// @returns the interest
+    /// @see https://rux-lang.dev/docs/api/net/poller#interest-both
+    pub func Both() -> Interest {
+        return Interest { readable: true, writable: true };
+    }
+}
+
+/// A socket as a `Poller` watches it, from the socket's `PollSource`. It does not keep the socket open, so it is
+/// deregistered before the socket is dropped. `Copy`.
+/// @see https://rux-lang.dev/docs/api/net/poller#poll-source
+pub struct PollSource {
+    handle: uint64;
+}
+
+/// One socket a wait found ready. `Copy`.
+/// A socket ready both to read and to write may be reported once with both, or once for each.
+/// @see https://rux-lang.dev/docs/api/net/poller#poll-event
+pub struct PollEvent {
+    /// The token the socket was registered with.
+    pub token: uint64;
+    /// A read would not wait, or a listener has a connection to accept.
+    pub readable: bool;
+    /// A write would not wait.
+    pub writable: bool;
+    /// The peer has closed the connection or an error is pending; the next read or write says which.
+    pub closed: bool;
+}
+
+extend PollEvent {
+    /// An event for nothing, to fill the room a wait reports into.
+    /// @returns the event
+    /// @see https://rux-lang.dev/docs/api/net/poller#poll-event-new
+    pub func PollEvent() -> PollEvent {
+        return PollEvent { token: 0, readable: false, writable: false, closed: false };
+    }
+}
+
+// One registration. Windows' poller keeps them because `WSAPoll` keeps none, and the kqueue poller so that a socket
+// registered twice, or never, is refused as epoll refuses it.
+struct Registration {
+    handle: uint64;
+    token: uint64;
+    interest: Interest;
+}
+
+/// Waits on many sockets at once. Not copied.
+/// @see https://rux-lang.dev/docs/api/net/poller
+pub struct Poller {
+    // The epoll or kqueue descriptor; `NoSocket` on Windows.
+    handle: uint64;
+    // The registrations on Windows and with kqueue; empty with epoll.
+    registrations: Vector<Registration>;
+    // Room for what one wait reports, as the system lays it out.
+    buffer: Vector<uint64>;
+}
+
+// Milliseconds for a system call's timeout: -1 for none, and at least one for any wait that is not zero.
+func TimeoutMilliseconds(timeout: Duration?) -> int32 {
+    match timeout {
+        .Some(span) => {
+            let nanoseconds = span.TotalNanoseconds() ?? 0x7FFFFFFFFFFFFFFFi64;
+            if nanoseconds <= 0i64 { return 0; }
+            let milliseconds = (nanoseconds + 999999i64) / 1000000i64;
+            return milliseconds > 0x7FFFFFFFi64 ? 0x7FFFFFFFi32 : milliseconds as int32;
+        },
+        none => return -1
+    }
+}
+
+extend Poller {
+    func =(self: &var Poller, other: &Poller);
+
+    /// A poller with no sockets registered.
+    /// @param allocator where Windows' registrations and the room for events come from
+    /// @returns the poller, or why the system would not make one
+    /// @see https://rux-lang.dev/docs/api/net/poller#new
+    pub func New(allocator: Allocator) -> Poller ! IoError {
+        var poller = Poller { handle: NoSocket, registrations: Vector<Registration>(allocator),
+                              buffer: Vector<uint64>(allocator) };
+        when #target.os == .Linux {
+            let created = EpollCreate1(EPOLL_CLOEXEC);
+            if created < 0i64 { fail LastFailure(created); }
+            poller.handle = created as uint64;
+        }
+        else when #target.os == .Windows {
+        }
+        else {
+            let created = Kqueue();
+            if created < 0i64 { fail LastFailure(created); }
+            poller.handle = created as uint64;
+            FcntlInt(created as int32, F_SETFD, FD_CLOEXEC as int64);
+        }
+        return <-poller;
+    }
+
+    /// Watches `source` for `interest`, reporting it with `token`.
+    /// @param source the socket
+    /// @param token the word reported with the socket's events
+    /// @param interest the readiness wanted
+    /// @returns success, or `AlreadyExists` when the socket is registered already
+    /// @see https://rux-lang.dev/docs/api/net/poller#register
+    pub func Register(self: &var Poller, source: PollSource, token: uint64, interest: Interest) -> ! IoError {
+        self.Change(source, token, interest, true)?;
+    }
+
+    /// Changes what a registered socket is watched for, and the token it is reported with.
+    /// @param source the socket
+    /// @param token the word reported with the socket's events
+    /// @param interest the readiness wanted
+    /// @returns success, or `NotFound` when the socket is not registered
+    /// @see https://rux-lang.dev/docs/api/net/poller#modify
+    pub func Modify(self: &var Poller, source: PollSource, token: uint64, interest: Interest) -> ! IoError {
+        self.Change(source, token, interest, false)?;
+    }
+
+    /// Stops watching a socket.
+    /// @param source the socket
+    /// @returns success, or `NotFound` when the socket is not registered
+    /// @see https://rux-lang.dev/docs/api/net/poller#deregister
+    pub func Deregister(self: &var Poller, source: PollSource) -> ! IoError {
+        when #target.os == .Linux {
+            var bytes: uint8[16] = [0u8; 16];
+            let result = EpollControl(self.handle as int32, EPOLL_CTL_DEL, source.handle as int32,
+                                      (@bytes[0]) as *opaque);
+            if result < 0i64 { fail Registered(LastFailure(result)); }
+        }
+        else when #target.os == .Windows {
+            let index = self.Find(source.handle) ?? fail IoError::Of(IoErrorKind::NotFound);
+            self.registrations.SwapRemoveAt(index);
+        }
+        else {
+            let index = self.Find(source.handle) ?? fail IoError::Of(IoErrorKind::NotFound);
+            self.Apply(source.handle, 0, Interest { readable: false, writable: false })?;
+            self.registrations.SwapRemoveAt(index);
+        }
+    }
+
+    /// Waits until a registered socket is ready or `timeout` passes, and reports the ready sockets into `events`.
+    /// @param events room for the events; a wait reports at most this many, and the rest are reported by the next
+    /// @param timeout how long to wait, zero to only look, or `none` to wait without end
+    /// @returns how many events were filled; zero after the timeout or when a signal ended the wait early
+    /// @see https://rux-lang.dev/docs/api/net/poller#wait
+    pub func Wait(self: &var Poller, events: var PollEvent[..], timeout: Duration?) -> uint ! IoError {
+        if events.length == 0u { fail IoError::Of(IoErrorKind::InvalidInput); }
+        let capacity = events.length > 1024u ? 1024u : events.length;
+        let milliseconds = TimeoutMilliseconds(timeout);
+        when #target.os == .Linux {
+            self.Reserve(capacity * EpollEventBytes)?;
+            let base = self.buffer.AsMutableSlice().data as *var uint8;
+            let result = EpollWait(self.handle as int32, base as *var opaque, capacity as int32, milliseconds);
+            if result < 0i64 {
+                let failure = LastFailure(result);
+                if failure.kind == IoErrorKind::Interrupted { return 0; }
+                fail failure;
+            }
+            var index: uint = 0;
+            while index < result as uint {
+                let entry = base[index * EpollEventBytes..(index + 1) * EpollEventBytes];
+                let mask = ReadWord32(entry, 0);
+                events[index] = PollEvent {
+                    token: ReadWord64(entry, EpollEventWordOffset),
+                    readable: (mask & EPOLLIN) != 0u32,
+                    writable: (mask & EPOLLOUT) != 0u32,
+                    closed: (mask & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) != 0u32
+                };
+                index = index + 1;
+            }
+            return result as uint;
+        }
+        else when #target.os == .Windows {
+            let count = self.registrations.Length();
+            if count == 0u {
+                fail IoError::Of(IoErrorKind::InvalidInput);
+            }
+            self.Reserve(count * 16)?;
+            let polled = self.buffer.AsMutableSlice().data as *var WsaPollFd;
+            var index: uint = 0;
+            for registration in self.registrations.AsSlice() {
+                var wanted: int16 = 0;
+                if registration.interest.readable { wanted = wanted | POLLRDNORM; }
+                if registration.interest.writable { wanted = wanted | POLLWRNORM; }
+                polled[index] = WsaPollFd { socket: registration.handle, events: wanted, returned: 0 };
+                index = index + 1;
+            }
+            let result = WSAPoll(polled, count as uint32, milliseconds);
+            if result < 0 { fail LastFailure(0); }
+            var filled: uint = 0;
+            index = 0;
+            while index < count && filled < capacity {
+                let returned = polled[index].returned;
+                if returned != 0i16 {
+                    events[filled] = PollEvent {
+                        token: self.registrations.AsSlice()[index].token,
+                        readable: (returned & POLLRDNORM) != 0i16,
+                        writable: (returned & POLLWRNORM) != 0i16,
+                        closed: (returned & (POLLHUP | POLLERR | POLLNVAL)) != 0i16
+                    };
+                    filled = filled + 1;
+                }
+                index = index + 1;
+            }
+            return filled;
+        }
+        else {
+            self.Reserve(capacity * sizeof(Kevent) as uint)?;
+            let reported = self.buffer.AsMutableSlice().data as *var Kevent;
+            var span = Timespec { seconds: 0, nanoseconds: 0 };
+            var limit: *Timespec = null;
+            if milliseconds >= 0 {
+                span = Timespec { seconds: milliseconds as int64 / 1000i64,
+                                  nanoseconds: (milliseconds as int64 % 1000i64) * 1000000i64 };
+                limit = @span;
+            }
+            let result = KeventCall(self.handle as int32, null, 0, reported, capacity as int32, limit);
+            if result < 0i64 {
+                let failure = LastFailure(result);
+                if failure.kind == IoErrorKind::Interrupted { return 0; }
+                fail failure;
+            }
+            var index: uint = 0;
+            while index < result as uint {
+                let event = reported[index];
+                events[index] = PollEvent {
+                    token: event.userData,
+                    readable: event.filter == EVFILT_READ,
+                    writable: event.filter == EVFILT_WRITE,
+                    closed: (event.flags & (EV_EOF | EV_ERROR)) != 0u16
+                };
+                index = index + 1;
+            }
+            return result as uint;
+        }
+    }
+
+    // Registers a socket, or changes its registration.
+    func Change(self: &var Poller, source: PollSource, token: uint64, interest: Interest, adding: bool) -> ! IoError {
+        when #target.os == .Linux {
+            var mask: uint32 = 0;
+            if interest.readable { mask = mask | EPOLLIN | EPOLLRDHUP; }
+            if interest.writable { mask = mask | EPOLLOUT; }
+            var bytes: uint8[16] = [0u8; 16];
+            WriteWord32(bytes[..], 0, mask);
+            WriteWord64(bytes[..], EpollEventWordOffset, token);
+            let result = EpollControl(self.handle as int32, adding ? EPOLL_CTL_ADD : EPOLL_CTL_MOD,
+                                      source.handle as int32, (@bytes[0]) as *opaque);
+            if result < 0i64 { fail Registered(LastFailure(result)); }
+        }
+        else when #target.os == .Windows {
+            let found = self.Find(source.handle);
+            if adding {
+                if found != none { fail IoError::Of(IoErrorKind::AlreadyExists); }
+                self.registrations.Push(Registration { handle: source.handle, token: token, interest: interest }) catch {
+                    else => fail IoError::Of(IoErrorKind::LimitExceeded)
+                };
+            }
+            else {
+                let index = found ?? fail IoError::Of(IoErrorKind::NotFound);
+                self.registrations.AsMutableSlice()[index] =
+                    Registration { handle: source.handle, token: token, interest: interest };
+            }
+        }
+        else {
+            let found = self.Find(source.handle);
+            if adding && found != none { fail IoError::Of(IoErrorKind::AlreadyExists); }
+            if !adding && found == none { fail IoError::Of(IoErrorKind::NotFound); }
+            self.Apply(source.handle, token, interest)?;
+            let registration = Registration { handle: source.handle, token: token, interest: interest };
+            match found {
+                .Some(index) => self.registrations.AsMutableSlice()[index] = registration,
+                none => self.registrations.Push(registration) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) }
+            }
+        }
+    }
+
+    // Sets the kqueue filters of `handle` to `interest`: each wanted direction added or updated with `token`, and each
+    // unwanted one removed, which may find nothing to remove.
+    func Apply(self: &var Poller, handle: uint64, token: uint64, interest: Interest) -> ! IoError {
+        when #target.os == .FreeBSD || #target.os == .macOS {
+            var changes: Kevent[2] = [
+                Kevent::Of(handle, EVFILT_READ, (interest.readable ? EV_ADD : EV_DELETE) | EV_RECEIPT, token),
+                Kevent::Of(handle, EVFILT_WRITE, (interest.writable ? EV_ADD : EV_DELETE) | EV_RECEIPT, token)
+            ];
+            var receipts: Kevent[2] = [Kevent::Of(0, 0, 0, 0), Kevent::Of(0, 0, 0, 0)];
+            let result = KeventCall(self.handle as int32, @changes[0], 2, @receipts[0], 2, null);
+            if result < 0i64 { fail LastFailure(result); }
+            var index: int64 = 0;
+            while index < result {
+                let receipt = receipts[index as uint];
+                // `ENOENT`: a direction that was not wanted had nothing to remove.
+                if (receipt.flags & EV_ERROR) != 0u16 && receipt.data != 0i64 && receipt.data != 2i64 {
+                    fail FailureOf(receipt.data);
+                }
+                index = index + 1;
+            }
+        }
+    }
+
+    // Where the registration of `handle` is, on Windows and with kqueue.
+    func Find(self: &Poller, handle: uint64) -> uint? {
+        var index: uint = 0;
+        for registration in self.registrations.AsSlice() {
+            if registration.handle == handle { return index; }
+            index = index + 1;
+        }
+        return none;
+    }
+
+    // Makes the event buffer at least `bytes` long.
+    func Reserve(self: &var Poller, bytes: uint) -> ! IoError {
+        let words = (bytes + 7) / 8;
+        while self.buffer.Length() < words {
+            self.buffer.Push(0) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        }
+    }
+
+    func ~Poller(self: &var Poller) {
+        when #target.os != .Windows {
+            if self.handle != NoSocket { Close(self.handle as int32); }
+        }
+        self.handle = NoSocket;
+    }
+}
+
+// epoll reports a socket registered twice as `EEXIST` and one not registered as `ENOENT`.
+func Registered(failure: IoError) -> IoError {
+    if failure.raw == 17i32 { return IoError { kind: IoErrorKind::AlreadyExists, raw: failure.raw }; }
+    if failure.raw == 2i32 { return IoError { kind: IoErrorKind::NotFound, raw: failure.raw }; }
+    return failure;
+}
+
+func ReadWord32(bytes: uint8[..], at: uint) -> uint32 {
+    return bytes[at] as uint32 | (bytes[at + 1] as uint32 << 8) | (bytes[at + 2] as uint32 << 16) |
+           (bytes[at + 3] as uint32 << 24);
+}
+
+func ReadWord64(bytes: uint8[..], at: uint) -> uint64 {
+    return ReadWord32(bytes, at) as uint64 | (ReadWord32(bytes, at + 4) as uint64 << 32);
+}
+
+func WriteWord32(bytes: var uint8[..], at: uint, value: uint32) {
+    bytes[at] = value as uint8;
+    bytes[at + 1] = (value >> 8) as uint8;
+    bytes[at + 2] = (value >> 16) as uint8;
+    bytes[at + 3] = (value >> 24) as uint8;
+}
+
+func WriteWord64(bytes: var uint8[..], at: uint, value: uint64) {
+    WriteWord32(bytes, at, value as uint32);
+    WriteWord32(bytes, at + 4, (value >> 32) as uint32);
+}

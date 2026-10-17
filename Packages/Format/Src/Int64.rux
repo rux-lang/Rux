@@ -1,5 +1,4 @@
 // The decimal text of an `int64`.
-//
 // A negative value opens with a minus sign; a positive one carries no sign, since a sign that is always there is
 // noise and one that is there on request belongs to the placeholder rather than the value.
 
@@ -7,36 +6,29 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend int64 : Display {
     /// Writes this value's digits.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int64/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int64-write-display
     pub func WriteDisplay(self: &int64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let wide = self;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
-        let negative = wide < 0i64;
-        let magnitude = negative ? ~(wide as uint64) + 1u64 : wide as uint64;
+        let negative = wide < 0;
+        let magnitude = negative ? ~(wide as uint64) + 1 : wide as uint64;
         return WriteIntegerSpec(writer, spec, magnitude, negative);
     }
 }
 
 extend int64 : Debug {
     /// The same digits: a number reads the same whoever is looking.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int64/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int64-write-debug
     pub func WriteDebug(self: &int64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }

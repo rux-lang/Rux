@@ -88,6 +88,8 @@ LexerResult Lexer::Tokenize() {
     tokens.clear();
     comments.clear();
     diagnostics.clear();
+    // Rux source runs at about one token per five bytes, so the token list rarely has to grow.
+    tokens.reserve(source.size() / 5 + 16);
     pos = 0;
     line = 1;
     col = 1;
@@ -260,10 +262,16 @@ Token Lexer::NextToken() {
     // Prefixed character and string literals. The prefix names the code unit, so `c8'x'` is one char8 and `c8"x"` is
     // a slice of char8. Only the exact spellings are prefixes: `c8` with anything but a quote after it, and `c16 "x"`
     // with a space between, are an identifier and go on to be scanned as one.
-    // char64 names a scalar character only; it introduces no string encoding.
+    // char64, char128, char256 and char512 name a scalar character only; they introduce no string encoding.
     if (c == 'c') {
         if (Peek(1) == '6' && Peek(2) == '4' && Peek(3) == '\'') {
             return ScanChar(start, 3);
+        }
+        const bool scalarWidth = (Peek(1) == '1' && Peek(2) == '2' && Peek(3) == '8') ||
+                                 (Peek(1) == '2' && Peek(2) == '5' && Peek(3) == '6') ||
+                                 (Peek(1) == '5' && Peek(2) == '1' && Peek(3) == '2');
+        if (scalarWidth && Peek(4) == '\'') {
+            return ScanChar(start, 4);
         }
         std::size_t width = 0;
         if (Peek(1) == '8') {
@@ -538,10 +546,13 @@ Token Lexer::ScanNumber(SourceLocation start) {
         EmitError(start, "numeric separator '_' must appear between digits", "write digit separators like '1_000'",
                   std::string(LiteralDocumentation));
     }
+    // A number right after '.' is a tuple index, so `pair.0.1` keeps its second '.' as an access instead of reading a
+    // float literal '0.1'.
+    const bool tupleIndex = !tokens.empty() && tokens.back().kind == TokenKind::Dot;
     // Check for floating-point  .  or  e/E
     const bool hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
     const bool hasExp = (Peek() == 'e' || Peek() == 'E');
-    if (hasDot || hasExp) {
+    if (!tupleIndex && (hasDot || hasExp)) {
         return ScanFloatSuffix(start, tokenStart);
     }
     ConsumeNumberSuffix(start);

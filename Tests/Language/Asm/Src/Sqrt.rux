@@ -1,4 +1,4 @@
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 // Floating-point asm functions. On x86-64 they are SSE2 with an explicit Win64
 // convention, whose first float64 arguments arrive in xmm0, xmm1, ... and whose

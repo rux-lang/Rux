@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ForCustomCopy"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: ForCustomCopy"
+
+[Dependencies]
+Allocator = { Path = "../../../Packages/Allocator" }
+Collections = { Path = "../../../Packages/Collections" }
+Core = { Path = "../../../Packages/Core" }
+Text = { Path = "../../../Packages/Text" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"
