@@ -127,6 +127,10 @@ Missing = { Namespace = "Acme", Version = "2.0.0" }
     CHECK(info.output.contains("Resolved Rux/Json @ ^1.0.0 to 1.2.0"));
     CHECK(info.output.contains("Missing Acme/Missing @ 2.0.0"));
 
+    const auto infoJson = Run(std::array<std::string_view, 4>{"--manifest", manifest, "info", "--json"});
+    REQUIRE(infoJson.exitCode == 0);
+    CHECK(infoJson.output.contains("\"manifestVersion\": 1"));
+
     const auto quiet = Run(std::array<std::string_view, 4>{"--quiet", "--manifest", manifest, "list"});
     CHECK(quiet.exitCode == 0);
     CHECK(quiet.output.empty());
