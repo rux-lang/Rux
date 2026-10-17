@@ -783,11 +783,16 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
             // function was handed, or got from a call, is passed on as it is.
             const bool returnsInterface =
                 currentReturnType->kind == TypeRef::Kind::Named && interfaceDecls.contains(currentReturnType->name);
+            const bool returnsOptionalInterface = currentReturnType.IsOptional() &&
+                                                  currentReturnType->inner.size() == 1 &&
+                                                  currentReturnType->inner.front()->kind == TypeRef::Kind::Named &&
+                                                  interfaceDecls.contains(currentReturnType->inner.front()->name);
             const bool valueIsInterface =
                 valueType->kind == TypeRef::Kind::Named && interfaceDecls.contains(valueType->name);
             const auto *returnedName = AstCast<const IdentExpr>(value);
             const Symbol *returnedLocal = returnedName ? currentScope->Lookup(returnedName->name) : nullptr;
-            if (returnsInterface && valueIsInterface && returnedLocal && frameInterfaceLocals.contains(returnedLocal)) {
+            if ((returnsInterface || returnsOptionalInterface) && returnedLocal &&
+                frameInterfaceLocals.contains(returnedLocal)) {
                 const std::string function =
                     currentFunctionDecl ? std::format("'{}'", currentFunctionDecl->name) : "the function";
                 EmitError(

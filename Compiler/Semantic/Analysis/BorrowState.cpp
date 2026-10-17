@@ -1150,10 +1150,15 @@ bool AnalysisContext::MakesFrameInterfaceValue(const Expr &value, const TypeRef 
     const auto isInterface = [this](const TypeRef &type) {
         return !type.IsUnknown() && type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
     };
-    if (!isInterface(targetType) || valueType.IsUnknown()) {
+    // An optional interface value holds one in place, so it carries the same storage when present.
+    const auto holdsInterface = [&](const TypeRef &type) {
+        return isInterface(type) ||
+               (!type.IsUnknown() && type.IsOptional() && type->inner.size() == 1 && isInterface(type->inner.front()));
+    };
+    if (!holdsInterface(targetType) || valueType.IsUnknown()) {
         return false;
     }
-    if (!isInterface(valueType)) {
+    if (!holdsInterface(valueType)) {
         return true;
     }
     const auto *identifier = AstCast<const IdentExpr>(&value);
@@ -1193,15 +1198,27 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
         }
     }
     const auto *identifier = AstCast<const IdentExpr>(root);
-    const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+    const Symbol *symbol = identifier                    ? currentScope->Lookup(identifier->name)
+                         : AstCast<const SelfExpr>(root) ? currentScope->Lookup("self")
+                                                         : nullptr;
     if (symbol == nullptr || symbol->kind != Symbol::Kind::Var) {
         return;
     }
     const bool local = functionLocals.contains(symbol);
+    const bool keptInCall = local && !throughIndirection && symbol->type->kind != TypeRef::Kind::Reference &&
+                            symbol->type->kind != TypeRef::Kind::Pointer;
     if (makesFrameInterface) {
-        // A local keeps it, as a view of a local array; storing it anywhere that outlives the call is not tracked.
-        if (local && !throughIndirection) {
+        // A local keeps it, as a view of a local array; storage that outlives the call cannot hold it.
+        if (keptInCall) {
             frameInterfaceLocals.insert(symbol);
+        }
+        else {
+            const std::string function =
+                currentFunctionDecl ? std::format("'{}'", currentFunctionDecl->name) : "the function";
+            EmitError(location,
+                      std::format("cannot store an interface value made in {} where it outlives the call", function),
+                      {std::format("it points at storage {} gives up when it returns", function)},
+                      "store the concrete value, and make the interface value where it is used");
         }
         if (!TypeHoldsView(targetType)) {
             return;
