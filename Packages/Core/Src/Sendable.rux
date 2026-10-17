@@ -1,0 +1,10 @@
+// Sendable: whether a value may move to another thread.
+// The compiler knows this marker by name. A type is sendable unless it is or holds a reference, or a type declared
+// `#Unsendable()`, such as a handle whose count is not atomic. A raw pointer is sendable: what it shares is the
+// program's to vouch for.
+
+/// A type whose values may move to another thread: the bound a thread's context and result are written with.
+/// Every type satisfies it except a reference and a type that is or holds one declared `#Unsendable()`, which is how
+/// a type whose state is not safe to share across threads, such as `Rc`, keeps to the thread that made it.
+/// @see https://rux-lang.dev/docs/api/core/sendable
+pub interface Sendable {}

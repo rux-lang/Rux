@@ -130,8 +130,9 @@ TEST_CASE("a string's members read the same two fields a slice's do") {
             }
         }
     }
-    // The literal's own two stores, then the reads of each member, then the data pointer the index goes through.
-    CHECK_EQ(fields, std::vector<std::string>{"data", "length", "data", "length", "data"});
+    // The literal's own two stores, then the reads of each member, then the data pointer and the length the checked
+    // index goes through, and last the two fields of the message its failure path reports.
+    CHECK_EQ(fields, std::vector<std::string>{"data", "length", "data", "length", "data", "length", "data", "length"});
 }
 
 TEST_CASE("weakening a returned view preserves its aggregate representation") {
@@ -169,12 +170,12 @@ TEST_CASE("char64 literals lower as full-width decoded scalar constants") {
                                                                                       {"Escaped", "10"}}) {
         CAPTURE(name);
         const auto &function = RequireFunction(package, name);
-        CHECK_EQ(function.returnType.kind, TypeRef::Kind::Char64);
+        CHECK_EQ(function.returnType->kind, TypeRef::Kind::Char64);
         CHECK_EQ(Constants(function), std::vector<std::string>{value});
         for (const auto &block : function.blocks) {
             for (const auto &instruction : block.instrs) {
                 if (instruction.op == LirOpcode::Const) {
-                    CHECK_EQ(instruction.type.kind, TypeRef::Kind::Char64);
+                    CHECK_EQ(instruction.type->kind, TypeRef::Kind::Char64);
                 }
             }
         }

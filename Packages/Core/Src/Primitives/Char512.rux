@@ -1,2 +1,21 @@
-// char512 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `char512`: one Unicode scalar value, in sixty-four bytes.
+// The same repertoire `char32` holds, in sixteen times the storage: the range stops at U+10FFFF and the surrogates are
+// rejected, because a scalar value is what this carries. Its literals take the `c512` prefix; there is no `c512`
+// string encoding.
+
+/// One Unicode scalar value, in sixty-four bytes.
+/// @see https://rux-lang.dev/docs/api/core/characters#char512
+extend char512 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char512-bits
+    pub const Bits: uint = 512;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char512-bytes
+    pub const Bytes: uint = 64;
+    /// The first code unit or Unicode scalar value.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char512-min
+    pub const Min: char512 = 0u32 as char512;
+    /// The last code unit or Unicode scalar value.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char512-max
+    pub const Max: char512 = 1114111u32 as char512;
+}

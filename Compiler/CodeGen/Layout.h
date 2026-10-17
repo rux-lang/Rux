@@ -35,6 +35,19 @@ namespace Rux::Layout {
 /// Multiword integer primitives travel through stack storage and aggregate ABI lanes rather than one machine register.
 [[nodiscard]] bool IsWideInteger(const TypeRef &t);
 
+/// A multiword integer, bool or character. All three are lowered through the same word-by-word paths; a wide bool keeps
+/// its value in the low word and zeros above it, and a wide character is the unsigned integer of its code point.
+[[nodiscard]] bool IsWideScalar(const TypeRef &t);
+
+/// Any primitive held as multiword storage rather than in one machine register: a wide scalar, or a software float
+/// wider than a doubleword.
+[[nodiscard]] bool IsWideValue(const TypeRef &t);
+
+/// Bytes of scratch storage an instruction's wide lowering needs, or zero when it has none. The result and every source
+/// operand count, because a comparison or a narrowing conversion reads a wide operand while producing a narrow result.
+[[nodiscard]] int WideTemporarySize(const LirInstr &instruction,
+                                    const std::unordered_map<LirReg, TypeRef> &registerTypes);
+
 /// The unsigned integer type of the same width, which is how a logical right shift reads its operand: `lshr` on a
 /// signed type is the one place a value's bits are widened by its width rather than by its signedness. Anything that is
 /// not a signed integer already reads that way and is returned unchanged.
@@ -76,6 +89,16 @@ using LayoutMap = std::unordered_map<std::string, StructLayout>;
 void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &layouts,
                         const std::unordered_set<std::string> &interfaceNames);
 
+/// Every struct declaration, struct layout and interface name of a package. A module reaches types the module beside
+/// it declared, so each module emitter needs the whole package's; they are computed once and shared read-only.
+struct PackageLayouts {
+    std::vector<LirStructDecl> structDecls;
+    LayoutMap layouts;
+    std::unordered_set<std::string> interfaceNames;
+};
+
+[[nodiscard]] PackageLayouts BuildPackageLayouts(const LirPackage &package);
+
 /// The shared native layout of a sum, optional, or fallible, with each member sized by the runtime layout rules, or
 /// nullopt for any other type. Every stage that stores, matches, copies, or passes a native value reads this record.
 [[nodiscard]] std::optional<NativeLayout> RuntimeNativeLayout(const TypeRef &t, const LayoutMap &layouts,
@@ -87,6 +110,13 @@ void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &la
 /// is stated once here rather than beside each of them.
 [[nodiscard]] int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts,
                                 const std::unordered_set<std::string> &interfaceNames);
+
+/// Alignment of a LIR type as the running program lays it out, the companion of `RuntimeSizeOf`: a struct answers
+/// from its computed layout, an interface value is word-aligned, and a composite takes its strictest element's. Struct
+/// field placement, frame slots, call layout and block copies all read this, so they agree with each other and with
+/// the `alignof` semantic analysis reports.
+[[nodiscard]] int RuntimeAlignmentOf(const TypeRef &type, const LayoutMap &layouts,
+                                     const std::unordered_set<std::string> &interfaceNames);
 
 /// Byte offset of `fieldName` inside the value `pointerType` addresses, which is what a FieldPtr adds to its base.
 /// `pointerType` is the type the base register holds, so a pointer is expected and anything else has no field to find.

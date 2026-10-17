@@ -1,0 +1,536 @@
+#include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarCast.h"
+#include "CodeGen/X86_64/ScalarMachine.h"
+#include "CodeGen/X86_64/ScalarMemory.h"
+
+#include <doctest.h>
+
+using namespace Rux;
+
+TEST_CASE("Allocated scalar casts encode exact source widths and signedness") {
+    const std::vector<std::pair<X86ScalarCastInstruction, std::vector<std::uint8_t>>> cases = {
+        {{12, 3, 1, false}, {0x4C, 0x0F, 0xB6, 0xE3}}, {{3, 12, 1, true}, {0x49, 0x0F, 0xBE, 0xDC}},
+        {{6, 7, 1, false}, {0x48, 0x0F, 0xB6, 0xF7}},  {{15, 14, 2, true}, {0x4D, 0x0F, 0xBF, 0xFE}},
+        {{12, 3, 4, false}, {0x44, 0x8B, 0xE3}},       {{12, 3, 4, true}, {0x4C, 0x63, 0xE3}},
+        {{12, 3, 8, false}, {0x4C, 0x8B, 0xE3}},       {{3, 3, 4, false}, {0x8B, 0xDB}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarCastInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+    CHECK(ScalarCastMnemonic(cases[0].first) == "movzx");
+    CHECK(ScalarCastOperands(cases[0].first) == "r12, bl");
+    CHECK(ScalarCastMnemonic(cases[5].first) == "movsxd");
+    CHECK(ScalarCastOperands(cases[4].first) == "r12d, ebx");
+}
+
+TEST_CASE("Scalar cast selection retains wide floating Boolean and volatile fallbacks") {
+    const std::vector<TypeRef> types = {TypeRef::MakeUInt8(),
+                                        TypeRef::MakeInt8(),
+                                        TypeRef::MakeUInt16(),
+                                        TypeRef::MakeInt16(),
+                                        TypeRef::MakeUInt32(),
+                                        TypeRef::MakeInt32(),
+                                        TypeRef::MakeUInt64(),
+                                        TypeRef::MakeInt64(),
+                                        TypeRef::MakePrimitive(TypeRef::Kind::Char8),
+                                        TypeRef::MakePointer(TypeRef::MakeUInt8())};
+    for (const auto &source : types) {
+        for (const auto &destination : types) {
+            LirFunc function;
+            function.name = "Convert";
+            function.params = {{0, source, "input"}};
+            function.returnType = destination;
+            function.blocks.resize(1);
+            LirInstr cast;
+            cast.op = LirOpcode::Cast;
+            cast.dst = 1;
+            cast.srcs = {0};
+            cast.type = destination;
+            cast.strArg = source.ToString();
+            function.blocks[0].instrs = {cast};
+            function.blocks[0].term.emplace();
+            function.blocks[0].term->kind = LirTermKind::Return;
+            function.blocks[0].term->retVal = 1;
+            function.blocks[0].term->retType = destination;
+            const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+            const auto selected = SelectScalarCastInstruction(cast, plan);
+            REQUIRE(selected.has_value());
+            CHECK_EQ(selected->sourceBytes, Layout::SizeOf(source));
+            CHECK_EQ(selected->signedSource, source.IsSigned());
+            cast.isVolatile = true;
+            CHECK_FALSE(SelectScalarCastInstruction(cast, plan).has_value());
+            cast.isVolatile = false;
+            cast.srcs = {9999};
+            CHECK_FALSE(SelectScalarCastInstruction(cast, plan).has_value());
+        }
+    }
+    for (const auto &type : {TypeRef::MakeFloat32(), TypeRef::MakeFloat64(), TypeRef::MakeBool(),
+                             TypeRef::MakePrimitive(TypeRef::Kind::UInt128), TypeRef::MakeNamed("Aggregate")})
+        CHECK_FALSE(ScalarCastType(type));
+}
+
+namespace {
+LirFunc Arithmetic(const TypeRef &type, const LirOpcode operation, const bool keepLeft = true) {
+    LirFunc function;
+    function.name = "Arithmetic";
+    function.params = {{0, type, "left"}, {1, type, "right"}};
+    function.returnType = type;
+    LirInstr instruction;
+    instruction.op = operation;
+    instruction.type = type;
+    instruction.dst = 2;
+    instruction.srcs = {0, 1};
+    LirBlock block;
+    block.label = "entry";
+    block.instrs.push_back(instruction);
+    if (keepLeft) {
+        LirInstr use;
+        use.op = LirOpcode::Cast;
+        use.type = type;
+        use.dst = 3;
+        use.srcs = {0};
+        block.instrs.push_back(use);
+    }
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 2;
+    block.term->retType = type;
+    function.blocks.push_back(std::move(block));
+    return function;
+}
+} // namespace
+
+TEST_CASE("Selected scalar integer operations encode architectural register operands") {
+    const std::vector<std::pair<LirOpcode, std::vector<std::uint8_t>>> cases = {
+        {LirOpcode::Add, {0x49, 0x89, 0xDD, 0x4D, 0x01, 0xE5}},
+        {LirOpcode::Sub, {0x49, 0x89, 0xDD, 0x4D, 0x29, 0xE5}},
+        {LirOpcode::Mul, {0x49, 0x89, 0xDD, 0x4D, 0x0F, 0xAF, 0xEC}},
+        {LirOpcode::And, {0x49, 0x89, 0xDD, 0x4D, 0x21, 0xE5}},
+        {LirOpcode::Or, {0x49, 0x89, 0xDD, 0x4D, 0x09, 0xE5}},
+        {LirOpcode::Xor, {0x49, 0x89, 0xDD, 0x4D, 0x31, 0xE5}},
+    };
+    for (const auto &[operation, expected] : cases) {
+        const auto function = Arithmetic(TypeRef::MakeUInt64(), operation);
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan);
+        REQUIRE(selected.has_value());
+        CHECK_EQ(selected->destination, 13);
+        CHECK_EQ(selected->left, 3);
+        CHECK_EQ(selected->right, 12);
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(*selected);
+        CHECK(bytes == expected);
+    }
+}
+
+TEST_CASE("Selected scalar floating operations retain SSE width and operand order") {
+    const std::vector<std::pair<LirOpcode, std::uint8_t>> operations = {
+        {LirOpcode::Add, 0x58}, {LirOpcode::Sub, 0x5C}, {LirOpcode::Mul, 0x59}, {LirOpcode::Div, 0x5E}};
+    for (const bool single : {false, true}) {
+        for (const auto &[operation, opcode] : operations) {
+            const auto function = Arithmetic(single ? TypeRef::MakeFloat32() : TypeRef::MakeFloat64(), operation);
+            const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+            const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan);
+            REQUIRE(selected.has_value());
+            std::vector<std::uint8_t> bytes;
+            X64Enc encoder(bytes);
+            encoder.EmitScalarMachineInstruction(*selected);
+            const std::vector<std::uint8_t> expected = {
+                0x45, 0x0F, 0x28, 0xD0, static_cast<std::uint8_t>(single ? 0xF3 : 0xF2), 0x45, 0x0F, opcode, 0xD1};
+            CHECK(bytes == expected);
+        }
+    }
+}
+
+TEST_CASE("Allocated uint32 arithmetic uses zero-extending 32-bit destinations") {
+    const std::vector<std::pair<LirOpcode, std::vector<std::uint8_t>>> cases = {
+        {LirOpcode::Add, {0x41, 0x89, 0xDD, 0x45, 0x01, 0xE5}},
+        {LirOpcode::Sub, {0x41, 0x89, 0xDD, 0x45, 0x29, 0xE5}},
+        {LirOpcode::Mul, {0x41, 0x89, 0xDD, 0x45, 0x0F, 0xAF, 0xEC}},
+        {LirOpcode::And, {0x41, 0x89, 0xDD, 0x45, 0x21, 0xE5}},
+        {LirOpcode::Or, {0x41, 0x89, 0xDD, 0x45, 0x09, 0xE5}},
+        {LirOpcode::Xor, {0x41, 0x89, 0xDD, 0x45, 0x31, 0xE5}},
+    };
+    for (const auto &[operation, expected] : cases) {
+        const auto function = Arithmetic(TypeRef::MakeUInt32(), operation);
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan);
+        REQUIRE(selected.has_value());
+        CHECK(selected->registerClass == X86ScalarRegisterClass::Integer32);
+        CHECK_EQ(ScalarMachineRegister(*selected, selected->destination), "r13d");
+        CHECK_EQ(ScalarMachineRegister(*selected, selected->left), "ebx");
+        CHECK_EQ(ScalarMachineRegister(*selected, selected->right), "r12d");
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(*selected);
+        CHECK(bytes == expected);
+    }
+}
+
+TEST_CASE("Scalar machine selection retains narrow fixed-register and spilled fallbacks") {
+    for (const auto &type : {TypeRef::MakeInt8(), TypeRef::MakeInt32(), TypeRef::MakeInt64()}) {
+        const auto function = Arithmetic(type, type == TypeRef::MakeInt64() ? LirOpcode::Div : LirOpcode::Add);
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan).has_value());
+    }
+    auto function = Arithmetic(TypeRef::MakeUInt64(), LirOpcode::Add);
+    for (LirReg reg = 4; reg < 10; ++reg)
+        function.params.push_back({reg, TypeRef::MakeUInt64(), "extra"});
+    function.blocks[0].instrs[0].srcs[1] = 9;
+    const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+    // Allocation priorities may preserve the last parameter. Select an actual stack-home parameter instead of
+    // relying on a particular allocation order to make register 9 spill.
+    LirReg spilled = LirNoReg;
+    for (const auto &parameter : function.params)
+        if (!plan.PhysicalRegisters().contains(parameter.reg))
+            spilled = parameter.reg;
+    REQUIRE_NE(spilled, LirNoReg);
+    REQUIRE(plan.SlotOffsets().contains(spilled));
+    function.blocks[0].instrs[0].srcs[1] = spilled;
+    CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan).has_value());
+}
+
+TEST_CASE("x86 scalar arithmetic coalesces a dying left input without a physical copy") {
+    for (const auto &type :
+         {TypeRef::MakeUInt32(), TypeRef::MakeUInt64(), TypeRef::MakeFloat32(), TypeRef::MakeFloat64()}) {
+        const auto function = Arithmetic(type, LirOpcode::Sub, false);
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[0], plan);
+        REQUIRE(selected.has_value());
+        CHECK_EQ(selected->destination, selected->left);
+        CHECK_NE(selected->destination, selected->right);
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(*selected);
+        CHECK_EQ(bytes.size(), type.IsFloat() ? 5 : 3);
+    }
+}
+
+namespace {
+LirFunc ImmediateArithmetic(const TypeRef &type, const LirOpcode operation, const std::string &literal) {
+    auto function = Arithmetic(type, operation);
+    function.params.pop_back();
+    LirInstr constant;
+    constant.op = LirOpcode::Const;
+    constant.type = type;
+    constant.dst = 1;
+    constant.strArg = literal;
+    function.blocks[0].instrs.insert(function.blocks[0].instrs.begin(), constant);
+    return function;
+}
+} // namespace
+
+TEST_CASE("Allocated integer immediates encode all arithmetic groups and omit constant homes") {
+    const std::vector<std::pair<LirOpcode, std::vector<std::uint8_t>>> cases = {
+        {LirOpcode::Add, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xC4, 0x2A}},
+        {LirOpcode::Sub, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xEC, 0x2A}},
+        {LirOpcode::Mul, {0x4C, 0x6B, 0xE3, 0x2A}},
+        {LirOpcode::And, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xE4, 0x2A}},
+        {LirOpcode::Or, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xCC, 0x2A}},
+        {LirOpcode::Xor, {0x49, 0x89, 0xDC, 0x49, 0x83, 0xF4, 0x2A}},
+    };
+    for (const auto &[operation, expected] : cases) {
+        const auto function = ImmediateArithmetic(TypeRef::MakeUInt64(), operation, "42");
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        REQUIRE(plan.ElidedImmediates().contains(1));
+        CHECK_FALSE(plan.PhysicalRegisters().contains(1));
+        const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+        REQUIRE(selected.has_value());
+        CHECK(selected->immediate == 42);
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(*selected);
+        CHECK(bytes == expected);
+    }
+}
+
+TEST_CASE("Immediate selection preserves 32-bit patterns and 64-bit sign extension") {
+    for (const auto &type : {TypeRef::MakeUInt32(), TypeRef::MakeUInt64(), TypeRef::MakeInt64()}) {
+        for (const auto value :
+             {0ULL, 127ULL, 128ULL, 2147483647ULL, 2147483648ULL, 4294967295ULL, 18446744071562067968ULL,
+              18446744073709551487ULL, 18446744073709551488ULL, 18446744073709551615ULL}) {
+            const auto function = ImmediateArithmetic(type, LirOpcode::Add, std::to_string(value));
+            const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+            const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+            REQUIRE(selected.has_value());
+            const bool fits =
+                type == TypeRef::MakeUInt32() || value <= 2147483647ULL || value >= 18446744071562067968ULL;
+            CHECK(selected->immediate.has_value() == fits);
+            CHECK(plan.ElidedImmediates().contains(1) == fits);
+        }
+    }
+    auto function = ImmediateArithmetic(TypeRef::MakeUInt32(), LirOpcode::Add, "4294967295");
+    const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Linux);
+    const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+    REQUIRE(selected.has_value());
+    std::vector<std::uint8_t> bytes;
+    X64Enc encoder(bytes);
+    encoder.EmitScalarMachineInstruction(*selected);
+    CHECK(bytes == std::vector<std::uint8_t>{0x41, 0x89, 0xDC, 0x41, 0x83, 0xC4, 0xFF});
+}
+
+TEST_CASE("Constants with non-immediate or volatile uses retain materialization") {
+    for (const auto mode : {0, 1, 2}) {
+        auto function = ImmediateArithmetic(TypeRef::MakeUInt64(), LirOpcode::Add, "42");
+        if (mode == 0)
+            function.blocks[0].term->retVal = 1;
+        else if (mode == 1)
+            function.blocks[0].instrs.back().srcs = {1};
+        else
+            function.blocks[0].instrs[0].isVolatile = true;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        CHECK_FALSE(plan.ElidedImmediates().contains(1));
+        CHECK(plan.SlotOffsets().contains(1));
+    }
+}
+
+TEST_CASE("Scalar memory encoding preserves widths extensions and extended address registers") {
+    const std::vector<std::pair<X86ScalarMemoryInstruction, std::vector<std::uint8_t>>> cases = {
+        {{3, 12, 1, false, false, false}, {0x4C, 0x0F, 0xB6, 0x23}},
+        {{13, 12, 1, false, false, true}, {0x4D, 0x0F, 0xBE, 0x65, 0}},
+        {{12, 6, 2, false, false, false}, {0x49, 0x0F, 0xB7, 0x34, 0x24}},
+        {{3, 12, 2, false, false, true}, {0x4C, 0x0F, 0xBF, 0x23}},
+        {{13, 12, 4, false, false, false}, {0x45, 0x8B, 0x65, 0}},
+        {{13, 12, 4, false, false, true}, {0x4D, 0x63, 0x65, 0}},
+        {{12, 13, 8, false, false, false}, {0x4D, 0x8B, 0x2C, 0x24}},
+        {{3, 6, 1, true, false, false}, {0x40, 0x88, 0x33}},
+        {{13, 12, 2, true, false, false}, {0x66, 0x45, 0x89, 0x65, 0}},
+        {{12, 13, 4, true, false, false}, {0x45, 0x89, 0x2C, 0x24}},
+        {{12, 13, 8, true, false, false}, {0x4D, 0x89, 0x2C, 0x24}},
+        {{12, 9, 4, false, true, false}, {0xF3, 0x45, 0x0F, 0x10, 0x0C, 0x24}},
+        {{13, 10, 8, true, true, false}, {0xF2, 0x45, 0x0F, 0x11, 0x55, 0}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMemoryInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+    CHECK_EQ(ScalarMemoryValue({3, 6, 1, true, false, false}), "sil");
+    CHECK_EQ(ScalarMemoryValue({3, 12, 4, false, false, true}), "r12");
+    CHECK_EQ(ScalarMemoryValue({3, 12, 4, false, false, false}), "r12d");
+    CHECK_EQ(ScalarMemoryMnemonic({3, 12, 4, false, false, true}), "movsxd");
+}
+
+TEST_CASE("Scalar memory selection uses allocated homes and retains unsupported fallbacks") {
+    for (const auto &type : {TypeRef::MakeInt8(), TypeRef::MakeUInt8(), TypeRef::MakeInt16(), TypeRef::MakeUInt16(),
+                             TypeRef::MakeInt32(), TypeRef::MakeUInt32(), TypeRef::MakeInt64(), TypeRef::MakeUInt64(),
+                             TypeRef::MakeChar8(), TypeRef::MakeChar32(), TypeRef::MakeFloat32(),
+                             TypeRef::MakeFloat64(), TypeRef::MakePointer(TypeRef::MakeUInt64())}) {
+        LirFunc function;
+        function.name = "Memory";
+        function.returnType = type;
+        function.params = {{0, TypeRef::MakePointer(type), "pointer"}, {1, type, "value"}};
+        function.blocks.resize(1);
+        LirInstr load;
+        load.op = LirOpcode::Load;
+        load.dst = 2;
+        load.type = type;
+        load.srcs = {0};
+        LirInstr store;
+        store.op = LirOpcode::Store;
+        store.type = type;
+        store.srcs = {1, 0};
+        function.blocks[0].instrs = {load, store};
+        function.blocks[0].term.emplace();
+        function.blocks[0].term->kind = LirTermKind::Return;
+        function.blocks[0].term->retVal = 2;
+        function.blocks[0].term->retType = type;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        REQUIRE(SelectScalarMemoryInstruction(load, plan).has_value());
+        REQUIRE(SelectScalarMemoryInstruction(store, plan).has_value());
+        load.isVolatile = true;
+        CHECK_FALSE(SelectScalarMemoryInstruction(load, plan).has_value());
+        load.isVolatile = false;
+        load.strArg = "named";
+        CHECK_FALSE(SelectScalarMemoryInstruction(load, plan).has_value());
+        load.strArg.clear();
+        load.srcs = {9999};
+        CHECK_FALSE(SelectScalarMemoryInstruction(load, plan).has_value());
+        store.op = LirOpcode::AtomicStore;
+        CHECK_FALSE(SelectScalarMemoryInstruction(store, plan).has_value());
+    }
+}
+
+TEST_CASE("Allocated address encoding handles scales extended SIB and displacement boundaries") {
+    const std::vector<std::pair<X86ScalarAddressInstruction, std::vector<std::uint8_t>>> cases = {
+        {{13, 3, 12, 8, 0, {}, {}}, {0x4E, 0x8D, 0x2C, 0xE3}},
+        {{3, 13, 14, 4, 0, {}, {}}, {0x4B, 0x8D, 0x5C, 0xB5, 0}},
+        {{12, 13, -1, 1, 0, {}, {}}, {0x4D, 0x8D, 0x65, 0}},
+        {{3, 12, -1, 1, 127, {}, {}}, {0x49, 0x8D, 0x5C, 0x24, 0x7F}},
+        {{3, 12, -1, 1, 128, {}, {}}, {0x49, 0x8D, 0x9C, 0x24, 0x80, 0, 0, 0}},
+        {{3, 6, 7, 2, -128, {}, {}}, {0x48, 0x8D, 0x5C, 0x7E, 0x80}},
+        {{3, 6, 7, 1, -129, {}, {}}, {0x48, 0x8D, 0x9C, 0x3E, 0x7F, 0xFF, 0xFF, 0xFF}},
+        {{12, 0, 10, 8, 0, -24, -32},
+         {0x48, 0x8B, 0x85, 0xE8, 0xFF, 0xFF, 0xFF, 0x4C, 0x8B, 0x95, 0xE0, 0xFF, 0xFF, 0xFF, 0x4E, 0x8D, 0x24, 0xD0}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarAddressInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+    CHECK_EQ(ScalarAddressOperands({13, 3, 12, 8, 0, {}, {}}), "r13, [rbx + r12 * 8]");
+    CHECK_EQ(ScalarAddressOperands({3, 13, -1, 1, -128, {}, {}}), "rbx, [r13 - 128]");
+}
+
+TEST_CASE("Allocated address selection retains narrow index and unusual layout fallbacks") {
+    const auto pointer = TypeRef::MakePointer(TypeRef::MakeUInt64());
+    for (const auto &indexType : {TypeRef::MakeUInt64(), TypeRef::MakeInt64(), TypeRef::MakeUInt32(),
+                                  TypeRef::MakeInt32(), TypeRef::MakeUInt8(), TypeRef::MakeInt8()}) {
+        LirFunc function;
+        function.name = "Address";
+        function.returnType = pointer;
+        function.params = {{0, pointer, "base"}, {1, indexType, "index"}};
+        LirInstr address;
+        address.op = LirOpcode::IndexPtr;
+        address.type = pointer;
+        address.dst = 2;
+        address.srcs = {0, 1};
+        function.blocks.resize(1);
+        function.blocks[0].instrs = {address};
+        function.blocks[0].term.emplace();
+        function.blocks[0].term->kind = LirTermKind::Return;
+        function.blocks[0].term->retVal = 2;
+        function.blocks[0].term->retType = pointer;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        for (const int scale : {1, 2, 4, 8})
+            CHECK_EQ(SelectScalarAddressInstruction(address, plan, scale).has_value(), Layout::SizeOf(indexType) == 8);
+        CHECK_FALSE(SelectScalarAddressInstruction(address, plan, 3).has_value());
+        address.isVolatile = true;
+        CHECK_FALSE(SelectScalarAddressInstruction(address, plan, 8).has_value());
+    }
+}
+
+TEST_CASE("Constant address offsets preserve wrapping and signed displacement limits") {
+    LirInstr address;
+    address.op = LirOpcode::IndexPtr;
+    address.type = TypeRef::MakePointer(TypeRef::MakeUInt64());
+    address.dst = 2;
+    address.srcs = {0, 1};
+    CHECK(ScalarAddressImmediate(address, 1, 8) == 8);
+    CHECK(ScalarAddressImmediate(address, UINT64_MAX, 8) == -8);
+    CHECK(ScalarAddressImmediate(address, 268435455, 8) == 2147483640);
+    CHECK_FALSE(ScalarAddressImmediate(address, 268435456, 8));
+    CHECK(ScalarAddressImmediate(address, UINT64_MAX - 268435455, 8) == INT32_MIN);
+    CHECK_FALSE(ScalarAddressImmediate(address, UINT64_MAX - 268435456, 8));
+    CHECK(ScalarAddressImmediate(address, std::uint64_t{1} << 61, 8) == 0);
+    CHECK_FALSE(ScalarAddressImmediate(address, 1, 3));
+
+    for (const auto &indexType : {TypeRef::MakeUInt64(), TypeRef::MakeUInt32()}) {
+        LirFunc function;
+        function.name = "Step";
+        function.params = {{0, address.type, "pointer"}};
+        function.returnType = address.type;
+        function.blocks.resize(1);
+        LirInstr literal;
+        literal.op = LirOpcode::Const;
+        literal.dst = 1;
+        literal.type = indexType;
+        literal.strArg = "1";
+        function.blocks[0].instrs = {literal, address};
+        function.blocks[0].term.emplace();
+        function.blocks[0].term->kind = LirTermKind::Return;
+        function.blocks[0].term->retVal = 2;
+        function.blocks[0].term->retType = address.type;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        const auto selected = SelectScalarAddressInstruction(address, plan, 8);
+        if (indexType == TypeRef::MakeUInt64()) {
+            REQUIRE(selected.has_value());
+            CHECK(selected->index == -1);
+            CHECK(selected->displacement == 8);
+            CHECK(selected->destination == selected->base);
+            CHECK(plan.ElidedImmediates().contains(1));
+        }
+        else {
+            CHECK_FALSE(selected.has_value());
+            CHECK_FALSE(plan.ElidedImmediates().contains(1));
+        }
+    }
+}
+
+TEST_CASE("Allocated constant shifts and rotates encode width count and opcode extension") {
+    const std::vector<std::pair<X86ScalarMachineInstruction, std::vector<std::uint8_t>>> cases = {
+        {{X86ScalarRegisterClass::Integer64, 13, 3, 1, 0xC1, false, false, "ror", 63},
+         {0x49, 0x89, 0xDD, 0x49, 0xC1, 0xCD, 63}},
+        {{X86ScalarRegisterClass::Integer32, 13, 3, 1, 0xC1, false, false, "ror", 31},
+         {0x41, 0x89, 0xDD, 0x41, 0xC1, 0xCD, 31}},
+        {{X86ScalarRegisterClass::Integer64, 3, 3, 4, 0xC1, false, false, "shl", 7}, {0x48, 0xC1, 0xE3, 7}},
+        {{X86ScalarRegisterClass::Integer64, 12, 12, 5, 0xC1, false, false, "shr", 63}, {0x49, 0xC1, 0xEC, 63}},
+        {{X86ScalarRegisterClass::Integer64, 12, 12, 7, 0xC1, false, false, "sar", 63}, {0x49, 0xC1, 0xFC, 63}},
+        {{X86ScalarRegisterClass::Integer32, 12, 12, 4, 0xC1, false, false, "shl", 0}, {0x45, 0x89, 0xE4}},
+    };
+    for (const auto &[instruction, expected] : cases) {
+        std::vector<std::uint8_t> bytes;
+        X64Enc encoder(bytes);
+        encoder.EmitScalarMachineInstruction(instruction);
+        CHECK(bytes == expected);
+    }
+}
+
+TEST_CASE("Constant shift selection elides covered counts but preserves oversized fallbacks") {
+    for (const auto &type : {TypeRef::MakeUInt32(), TypeRef::MakeUInt64(), TypeRef::MakeInt64()}) {
+        const auto width = Layout::SizeOf(type) * 8;
+        for (const auto operation : {LirOpcode::Shl, LirOpcode::Shr, LirOpcode::Lshr}) {
+            for (int count = 0; count < width; ++count) {
+                const auto function = ImmediateArithmetic(type, operation, std::to_string(count));
+                const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+                const auto selected = SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan);
+                REQUIRE(selected.has_value());
+                CHECK_EQ(selected->immediate, count);
+                CHECK_EQ(selected->mnemonic, operation == LirOpcode::Shl                      ? "shl"
+                                             : operation == LirOpcode::Shr && type.IsSigned() ? "sar"
+                                                                                              : "shr");
+                CHECK(plan.ElidedImmediates().contains(1));
+                CHECK_FALSE(plan.PhysicalRegisters().contains(1));
+            }
+            for (const auto &count : {std::to_string(width), std::to_string(width + 1), std::string("-1")}) {
+                const auto function = ImmediateArithmetic(type, operation, count);
+                const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+                CHECK_FALSE(SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan).has_value());
+                CHECK_FALSE(plan.ElidedImmediates().contains(1));
+            }
+        }
+    }
+}
+
+TEST_CASE("Allocated rotations coalesce their last input and reject unsupported counts") {
+    for (const auto &type : {TypeRef::MakeUInt32(), TypeRef::MakeUInt64()}) {
+        auto function = Arithmetic(type, LirOpcode::RotateRight, false);
+        auto &rotate = function.blocks[0].instrs[0];
+        rotate.srcs = {0};
+        const auto width = Layout::SizeOf(type) * 8;
+        for (int count = 0; count < width; ++count) {
+            rotate.strArg = std::to_string(count);
+            const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+            const auto selected = SelectScalarMachineInstruction(rotate, plan);
+            REQUIRE(selected.has_value());
+            CHECK_EQ(selected->destination, selected->left);
+            CHECK_EQ(selected->immediate, count);
+            CHECK_EQ(selected->mnemonic, "ror");
+        }
+        rotate.strArg = std::to_string(width);
+        CHECK_FALSE(
+            SelectScalarMachineInstruction(rotate, PlanX86_64Frame(function, {}, {}, Target::OS::Windows)).has_value());
+        rotate.strArg = "1";
+        rotate.isVolatile = true;
+        CHECK_FALSE(
+            SelectScalarMachineInstruction(rotate, PlanX86_64Frame(function, {}, {}, Target::OS::Windows)).has_value());
+    }
+}
+
+TEST_CASE("Immediate shift counts retain their independent source integer type") {
+    for (const auto &countType :
+         {TypeRef::MakeInt(), TypeRef::MakeInt8(), TypeRef::MakeUInt16(), TypeRef::MakeUInt64()}) {
+        auto function = ImmediateArithmetic(TypeRef::MakeUInt32(), LirOpcode::Shr, "13");
+        function.blocks[0].instrs[0].type = countType;
+        const auto plan = PlanX86_64Frame(function, {}, {}, Target::OS::Windows);
+        REQUIRE(SelectScalarMachineInstruction(function.blocks[0].instrs[1], plan).has_value());
+        CHECK(plan.ElidedImmediates().contains(1));
+    }
+}

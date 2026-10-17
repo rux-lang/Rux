@@ -6,7 +6,6 @@ import Core::{ Assert, Panic };
 // The plumbing every container shares: what an error means, and what the iterators yield. None of it is
 // interesting on its own, which is exactly why it is worth testing once here rather than discovering it through
 // whichever container gets it wrong.
-//
 // The allocator helpers used to be checked here directly. They are package-private now — they are how a container
 // talks to an allocator in elements rather than bytes, not something a caller composes with — so what they do is
 // checked through the containers instead, in Tests/Packages/Collections/ContainerStorage. That is the better place for it:
@@ -26,7 +25,7 @@ func Main() -> int {
            "and so does a block the allocator did not hand out, which is the same thing from here");
 
     // The iterators, over a run the test owns.
-    var values: int32[5] = [0, 0, 0, 0, 0];
+    var values: int32[5] = [0; 5];
     var index: uint = 0;
     for element in MutableReferenceIterator<int32>((@values[0])[..5]) {
         *element = (index * 10) as int32;
@@ -53,13 +52,18 @@ func Main() -> int {
     Assert(seen == 5, "driving an iterator by hand yields every element");
     Assert(drained.Next() == none, "and an exhausted iterator stays exhausted");
 
-    // A `for` loop over an iterator walks a copy of it, so the iterator the caller holds is where it was. Worth
-    // knowing rather than discovering: a loop is not a way to advance an iterator someone else is also reading.
-    var untouched = ValueIterator<int32>(items);
-    for value in untouched {
+    // A `for` loop over an iterator variable advances the variable itself, so a loop that stops early leaves it
+    // where the walk stopped and the next read resumes there.
+    var resumed = ValueIterator<int32>(items);
+    for value in resumed {
+        seen = seen + 1;
+        break;
+    }
+    Assert(resumed.Next() is int32, "a loop that stops early leaves the iterator after the item it read");
+    for value in resumed {
         seen = seen + 1;
     }
-    Assert(untouched.Next() is int32, "a loop over an iterator leaves the caller's own where it was");
+    Assert(resumed.Next() == none, "a loop that runs to the end leaves the iterator exhausted");
 
     // Nothing to walk yields nothing, rather than one of something.
     var nothing = ValueIterator<int32>([]);

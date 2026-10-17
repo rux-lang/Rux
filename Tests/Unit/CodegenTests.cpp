@@ -14,6 +14,7 @@
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 #include "Target/Platform.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <array>
@@ -177,7 +178,13 @@ TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
         CHECK(aarch64.sections[section].name == x86.sections[section].name);
         CHECK(aarch64.sections[section].type == x86.sections[section].type);
         CHECK(aarch64.sections[section].flags == x86.sections[section].flags);
-        CHECK(aarch64.sections[section].alignment == x86.sections[section].alignment);
+        if (section == RCU_TEXT_IDX) {
+            CHECK(aarch64.sections[section].alignment == 16);
+            CHECK(x86.sections[section].alignment == 32);
+        }
+        else {
+            CHECK(aarch64.sections[section].alignment == x86.sections[section].alignment);
+        }
     }
     CHECK(aarch64.sections[RCU_RODATA_IDX].data == x86.sections[RCU_RODATA_IDX].data);
     CHECK(aarch64.sections[RCU_DATA_IDX].data == x86.sections[RCU_DATA_IDX].data);
@@ -265,8 +272,11 @@ TEST_CASE("RCU default calling convention follows the requested target") {
 
     const std::string linuxAssembly = AssemblyPrinter(package, Target::OS::Linux).Generate();
     const std::string windowsAssembly = AssemblyPrinter(package, Target::OS::Windows).Generate();
-    CHECK(linuxAssembly.find("mov     rdi, rax\n    call    Consume") != std::string::npos);
-    CHECK(windowsAssembly.find("mov     rcx, rax\n    sub     rsp, 32\n    call    Consume") != std::string::npos);
+    // The text follows the object code: System V sets AL before the call, and Win64 reserves the home area first.
+    CHECK(linuxAssembly.find("mov     rax, rbx\n    mov     rdi, rax\n    mov     eax, 0\n    call    Consume") !=
+          std::string::npos);
+    CHECK(windowsAssembly.find("sub     rsp, 32\n    mov     rax, rbx\n    mov     rcx, rax\n    call    Consume") !=
+          std::string::npos);
 }
 
 TEST_CASE("RCU System V calls pass two-word aggregates in two registers") {
@@ -408,16 +418,19 @@ TEST_CASE("assembly phi lowering breaks a swap cycle with a stack temporary") {
     package.modules.push_back(std::move(module));
 
     const std::string output = AssemblyPrinter(std::move(package), Target::OS::Linux).Generate();
-    const auto &slots = plan.SlotOffsets();
-    const std::string expected = std::format("mov     rax, qword [rbp - {}]\n"
-                                             "    mov     qword [rbp - {}], rax\n"
-                                             "    mov     rax, qword [rbp - {}]\n"
-                                             "    mov     qword [rbp - {}], rax\n"
-                                             "    mov     rax, qword [rbp - {}]\n"
-                                             "    mov     qword [rbp - {}], rax",
-                                             slots.at(3), plan.PhiTemporaryOffset(), slots.at(4), slots.at(3),
-                                             plan.PhiTemporaryOffset(), slots.at(4));
-    CHECK(output.find(std::format("sub     rsp, {}", plan.FrameSize())) != std::string::npos);
+    constexpr std::array names = {"rbx", "r12", "r13", "r14", "r15"};
+    const auto firstHome = names.at(plan.PhysicalRegisters().at(3));
+    const auto secondHome = names.at(plan.PhysicalRegisters().at(4));
+    const std::string expected =
+        std::format("mov     rax, {}\n"
+                    "    mov     qword [rbp - {}], rax\n"
+                    "    mov     rax, {}\n"
+                    "    mov     {}, rax\n"
+                    "    mov     rax, qword [rbp - {}]\n"
+                    "    mov     {}, rax",
+                    firstHome, plan.PhiTemporaryOffset(), secondHome, firstHome, plan.PhiTemporaryOffset(), secondHome);
+    CHECK(output.find(std::format("sub     rsp, {}", plan.FrameSize() - plan.UsedPhysicalRegisters().size() * 8)) !=
+          std::string::npos);
     CHECK(output.find(expected) != std::string::npos);
 }
 
@@ -501,8 +514,8 @@ TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") 
             if (instruction.op != LirOpcode::Alloca) {
                 continue;
             }
-            hasInlineArray |= instruction.type.kind == TypeRef::Kind::Array && instruction.type.arrayLength == 4 &&
-                              instruction.type.inner == std::vector{TypeRef::MakeInt()};
+            hasInlineArray |= instruction.type->kind == TypeRef::Kind::Array && instruction.type->arrayLength == 4 &&
+                              instruction.type->inner == std::vector{TypeRef::MakeInt()};
             hasSliceView |= instruction.type == TypeRef::MakeSlice(TypeRef::MakeInt());
         }
     }
@@ -834,7 +847,7 @@ TEST_CASE("LIR dumps resolved convention and C variadic call metadata") {
     module.funcs.push_back(std::move(caller));
     package.modules.push_back(std::move(module));
 
-    const auto path = std::filesystem::temp_directory_path() / "rux-call-metadata-lir.txt";
+    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-call-metadata-lir.txt";
     REQUIRE(LirPrinter::Dump(package, path));
     std::ifstream input(path);
     REQUIRE(input.good());

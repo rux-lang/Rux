@@ -39,10 +39,10 @@ bool X86_64CallEmitter::IsSysVMemoryAggregate(const TypeRef &type) const {
 }
 
 bool X86_64CallEmitter::IsPointerToWin64ByRefAggregate(const TypeRef &type) const {
-    return type.kind == TypeRef::Kind::Pointer && !type.inner.empty() && IsWin64ByRefAggregate(type.inner[0]);
+    return type->kind == TypeRef::Kind::Pointer && !type->inner.empty() && IsWin64ByRefAggregate(type->inner[0]);
 }
 
-int X86_64CallEmitter::CallFrameSize(const std::vector<LirReg> &arguments, const bool win64,
+int X86_64CallEmitter::CallFrameSize(const std::span<const LirReg> arguments, const bool win64,
                                      const int startIndex) const {
     if (win64) {
         const std::size_t count = arguments.size() + static_cast<std::size_t>(startIndex);
@@ -76,7 +76,7 @@ int X86_64CallEmitter::CallFrameSize(const std::vector<LirReg> &arguments, const
     return AlignUp(static_cast<int>(stackArguments * 8), 16);
 }
 
-void X86_64CallEmitter::StoreSysVStackArguments(const std::vector<LirReg> &arguments, const int startIndex) const {
+void X86_64CallEmitter::StoreSysVStackArguments(const std::span<const LirReg> arguments, const int startIndex) const {
     int integerIndex = startIndex;
     int floatIndex = 0;
     int stackIndex = 0;
@@ -126,7 +126,7 @@ void X86_64CallEmitter::StoreSysVStackArguments(const std::vector<LirReg> &argum
     }
 }
 
-void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, const CallingConvention convention,
+void X86_64CallEmitter::EmitArguments(const std::span<const LirReg> arguments, const CallingConvention convention,
                                       const int startIndex) const {
     const auto &types = framePlan.RegisterTypes();
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
@@ -160,8 +160,14 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
                 continue;
             }
             if (IsFloat(type)) {
-                SizeOf(type) == 4 ? encoder.MovssXmmNLoad(index, displacement)
-                                  : encoder.MovsdXmmNLoad(index, displacement);
+                if (const auto found = framePlan.FloatRegisters().find(argument);
+                    found != framePlan.FloatRegisters().end()) {
+                    encoder.MovXmm(index, found->second);
+                }
+                else {
+                    SizeOf(type) == 4 ? encoder.MovssXmmNLoad(index, displacement)
+                                      : encoder.MovsdXmmNLoad(index, displacement);
+                }
             }
             else if (IsWin64ByRefAggregate(type)) {
                 encoder.LeaArgStackWin64(index, displacement);
@@ -185,8 +191,14 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
         const std::int32_t displacement = Disp(argument);
         if (IsFloat(type)) {
             if (floatIndex < 8) {
-                SizeOf(type) == 4 ? encoder.MovssXmmNLoad(floatIndex, displacement)
-                                  : encoder.MovsdXmmNLoad(floatIndex, displacement);
+                if (const auto found = framePlan.FloatRegisters().find(argument);
+                    found != framePlan.FloatRegisters().end()) {
+                    encoder.MovXmm(floatIndex, found->second);
+                }
+                else {
+                    SizeOf(type) == 4 ? encoder.MovssXmmNLoad(floatIndex, displacement)
+                                      : encoder.MovsdXmmNLoad(floatIndex, displacement);
+                }
                 ++floatIndex;
             }
         }
@@ -232,7 +244,7 @@ bool X86_64CallEmitter::EmitBitCast(const LirInstr &instruction) const {
         return false;
     }
     if (instruction.strArg == "FloatBits64") {
-        encoder.MovsdXmm0Load(Disp(instruction.srcs[0]));
+        hooks.LoadA(instruction.srcs[0], TypeRef::MakeFloat64());
         encoder.Byte(0x66);
         encoder.Byte(0x48);
         encoder.Byte(0x0F);
@@ -248,7 +260,7 @@ bool X86_64CallEmitter::EmitBitCast(const LirInstr &instruction) const {
         encoder.Byte(0xC0); // movq xmm0, rax
     }
     else if (instruction.strArg == "FloatBits32") {
-        encoder.MovssXmm0Load(Disp(instruction.srcs[0]));
+        hooks.LoadA(instruction.srcs[0], TypeRef::MakeFloat32());
         encoder.Byte(0x66);
         encoder.Byte(0x0F);
         encoder.Byte(0x7E);
@@ -270,7 +282,7 @@ bool X86_64CallEmitter::EmitBitCast(const LirInstr &instruction) const {
     return true;
 }
 
-void X86_64CallEmitter::EmitPreparedCall(const LirInstr &instruction, const std::vector<LirReg> &arguments,
+void X86_64CallEmitter::EmitPreparedCall(const LirInstr &instruction, const std::span<const LirReg> arguments,
                                          const bool indirect) const {
     const bool win64 = EffectiveConvention(instruction.callConv) == CallingConvention::Win64;
     const bool hiddenReturn = instruction.dst != LirNoReg && (win64 ? IsWin64ByRefAggregate(instruction.type)
@@ -403,8 +415,8 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
                 encoder.Dword(static_cast<std::uint32_t>(temporary + 8));
             }
             else if (IsFloat(step.type)) {
-                step.type.kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Store(temporary)
-                                                         : encoder.MovsdXmm0Store(temporary);
+                step.type->kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Store(temporary)
+                                                          : encoder.MovsdXmm0Store(temporary);
             }
             else if (const int scalarSize = size > 0 ? size : 8; scalarSize == 8) {
                 encoder.MovRaxStore(temporary);
@@ -433,8 +445,8 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
             encoder.Byte(0xD2); // mov rdx, r10
         }
         else if (IsFloat(step.type)) {
-            step.type.kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Load(temporary)
-                                                     : encoder.MovsdXmm0Load(temporary);
+            step.type->kind == TypeRef::Kind::Float32 ? encoder.MovssXmm0Load(temporary)
+                                                      : encoder.MovsdXmm0Load(temporary);
         }
         else if (const int scalarSize = size > 0 ? size : 8; scalarSize == 8) {
             encoder.MovRaxLoad(temporary);
@@ -552,27 +564,53 @@ void X86_64TerminatorEmitter::Emit(const std::uint32_t blockIndex, const LirTerm
     switch (terminator.kind) {
     case LirTermKind::Jump: {
         EmitPhiMoves(blockIndex, terminator.trueTarget);
-        std::uint32_t patch;
-        encoder.Jmp(patch);
-        jumpPatches.push_back({patch, terminator.trueTarget});
+        if (terminator.trueTarget != blockIndex + 1) {
+            std::uint32_t patch;
+            encoder.Jmp(patch);
+            jumpPatches.push_back({patch, terminator.trueTarget});
+        }
         break;
     }
     case LirTermKind::Branch: {
-        hooks.LoadA(terminator.cond, types.contains(terminator.cond) ? types.at(terminator.cond) : TypeRef::MakeBool());
-        encoder.TestRaxRax();
+        auto condition = X86Condition::NotEqual;
+        if (const auto found = framePlan.BranchComparisons().find(terminator.cond);
+            found != framePlan.BranchComparisons().end()) {
+            const auto &comparison = found->second;
+            hooks.LoadA(comparison.right, comparison.type);
+            encoder.MovR10Rax();
+            hooks.LoadA(comparison.left, comparison.type);
+            encoder.CmpRaxR10();
+            condition = comparison.condition;
+        }
+        else {
+            hooks.LoadA(terminator.cond,
+                        types.contains(terminator.cond) ? types.at(terminator.cond) : TypeRef::MakeBool());
+            encoder.TestRaxRax();
+        }
+        const auto conditionalJump = [&](const X86Condition selected) {
+            encoder.Byte(0x0F);
+            encoder.Byte(static_cast<std::uint8_t>(0x80U | static_cast<std::uint8_t>(selected)));
+            const auto patch = encoder.Size();
+            encoder.Dword(0);
+            return patch;
+        };
         const bool truePhi = HasPhiMoves(blockIndex, terminator.trueTarget);
         const bool falsePhi = HasPhiMoves(blockIndex, terminator.falseTarget);
         if (!truePhi && !falsePhi) {
-            std::uint32_t falsePatch;
-            encoder.Jz(falsePatch);
-            jumpPatches.push_back({falsePatch, terminator.falseTarget});
-            std::uint32_t truePatch;
-            encoder.Jmp(truePatch);
-            jumpPatches.push_back({truePatch, terminator.trueTarget});
+            if (terminator.falseTarget == blockIndex + 1) {
+                jumpPatches.push_back({conditionalJump(condition), terminator.trueTarget});
+            }
+            else {
+                jumpPatches.push_back({conditionalJump(Inverse(condition)), terminator.falseTarget});
+                if (terminator.trueTarget != blockIndex + 1) {
+                    std::uint32_t truePatch;
+                    encoder.Jmp(truePatch);
+                    jumpPatches.push_back({truePatch, terminator.trueTarget});
+                }
+            }
         }
         else {
-            std::uint32_t falseTrampoline;
-            encoder.Jz(falseTrampoline);
+            const auto falseTrampoline = conditionalJump(Inverse(condition));
             EmitPhiMoves(blockIndex, terminator.trueTarget);
             std::uint32_t truePatch;
             encoder.Jmp(truePatch);
@@ -580,9 +618,11 @@ void X86_64TerminatorEmitter::Emit(const std::uint32_t blockIndex, const LirTerm
             const auto here = static_cast<std::int32_t>(encoder.Size());
             encoder.Patch32(falseTrampoline, here - static_cast<std::int32_t>(falseTrampoline + 4));
             EmitPhiMoves(blockIndex, terminator.falseTarget);
-            std::uint32_t falsePatch;
-            encoder.Jmp(falsePatch);
-            jumpPatches.push_back({falsePatch, terminator.falseTarget});
+            if (terminator.falseTarget != blockIndex + 1) {
+                std::uint32_t falsePatch;
+                encoder.Jmp(falsePatch);
+                jumpPatches.push_back({falsePatch, terminator.falseTarget});
+            }
         }
         break;
     }
@@ -590,6 +630,9 @@ void X86_64TerminatorEmitter::Emit(const std::uint32_t blockIndex, const LirTerm
         if (terminator.retVal && *terminator.retVal != LirNoReg) {
             framePlan.HiddenReturnOffset() != 0 ? hooks.StoreHiddenReturnValue(*terminator.retVal, terminator.retType)
                                                 : LoadReturnValue(*terminator.retVal, terminator.retType);
+        }
+        for (const auto &[reg, offset] : framePlan.FloatSaves()) {
+            encoder.MovXmmRestore(reg, -offset);
         }
         if (const auto &saved = framePlan.UsedPhysicalRegisters(); !saved.empty()) {
             const std::int32_t remainder = framePlan.FrameSize() - static_cast<std::int32_t>(saved.size() * 8);

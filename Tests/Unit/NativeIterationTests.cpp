@@ -58,7 +58,13 @@ TEST_CASE("a Next returning an optional drives a loop with its payload") {
         extend Members {
             func Next(self: &var Members) -> (int32 | bool)? { return none; }
         }
-        func Use(counter: Counter, bag: Bag, lookups: Lookups, outcomes: Outcomes, units: Units, members: Members) {
+        func Use(counted: Counter, bag: Bag, looked: Lookups, outcome: Outcomes, unit: Units, member: Members) {
+            // A loop advances an iterator variable in place, so each one is a writable copy of its parameter.
+            var counter = counted;
+            var lookups = looked;
+            var outcomes = outcome;
+            var units = unit;
+            var members = member;
             var total = 0i32;
             for value in counter {
                 total = total + value;

@@ -2,10 +2,13 @@
 
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Lowering/HirToLir/HirToLirContext.h"
+#include "Numeric/IntegerLiteral.h"
+#include "Optimization/ConstantEvaluator.h"
 #include "Types/NativeLayout.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <format>
 #include <string_view>
@@ -27,14 +30,63 @@ namespace {
     }
     return false;
 }
+
+/// The type a constant array element folds at. The evaluator models integers, bools and floats; a character folds as
+/// the unsigned integer of its width, which spells the same code point the character's own literal does.
+[[nodiscard]] TypeRef FoldingType(const TypeRef &type) {
+    const PrimitiveInfo *primitive = FindPrimitive(type->kind);
+    if (!primitive || primitive->category != PrimitiveCategory::Char) {
+        return type;
+    }
+    const auto primitives = PrimitiveCatalog();
+    const auto found = std::ranges::find_if(primitives, [&](const PrimitiveInfo &candidate) {
+        return candidate.category == PrimitiveCategory::UnsignedInt && candidate.bits == primitive->bits;
+    });
+    return found == primitives.end() ? type : TypeRef::MakePrimitive(found->kind);
+}
+
+/// The value a constant array element computes, folded the way the optimizer folds it, so a named constant whose
+/// initializer is an expression (`const Sum = 2 + 3`) still has a literal to lay out.
+[[nodiscard]] std::optional<Optimization::TypedConstant>
+FoldConstElement(const HirExpr &e, const std::unordered_map<std::string, const HirConst *> &constants) {
+    if (const auto *lit = HirCast<const HirLiteralExpr>(&e)) {
+        std::string_view text = lit->value;
+        if (const auto parts = SplitIntegerLiteral(text); parts && !lit->type.IsFloat()) {
+            text.remove_suffix(parts->suffix.size());
+        }
+        return Optimization::ParseConstant(text, FoldingType(lit->type));
+    }
+    if (const auto *v = HirCast<const HirVarExpr>(&e)) {
+        const auto it = constants.find(v->name);
+        return it != constants.end() && it->second->value ? FoldConstElement(*it->second->value, constants)
+                                                          : std::nullopt;
+    }
+    if (const auto *u = HirCast<const HirUnaryExpr>(&e)) {
+        const auto operand = FoldConstElement(*u->operand, constants);
+        return operand ? Optimization::EvaluateUnary(u->op, *operand) : std::nullopt;
+    }
+    if (const auto *b = HirCast<const HirBinaryExpr>(&e)) {
+        const auto left = FoldConstElement(*b->left, constants);
+        const auto right = left ? FoldConstElement(*b->right, constants) : std::nullopt;
+        return right ? Optimization::EvaluateBinary(b->op, *left, *right) : std::nullopt;
+    }
+    if (const auto *c = HirCast<const HirCastExpr>(&e)) {
+        const auto operand = FoldConstElement(*c->operand, constants);
+        return operand ? Optimization::CastConstant(*operand, FoldingType(c->targetType)) : std::nullopt;
+    }
+    return std::nullopt;
+}
 } // namespace
 
 HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics)
     : targetContext(target)
-    , diagnostics(outputDiagnostics) {
+    , diagnostics(&outputDiagnostics) {
+    softFloatPolicy.arch = target.arch;
 }
 
-LirPackage HirToLirContext::Run(const HirPackage &hir) {
+LirPackage HirToLirContext::Run(const HirPackage &hir, Parallel::WorkerPool *pool, const bool programModule,
+                                const bool externalFailures, std::vector<char> *moduleFailuresOut) {
+    std::vector<char> moduleFailures(hir.modules.size(), 0);
     typeLayouts = &hir.typeLayouts;
     globalConsts.clear();
     for (const auto &mod : hir.modules) {
@@ -68,6 +120,16 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
         for (const auto &c : mod.consts) {
             globalConsts[c.name] = &c;
             globalConsts[mod.name + "::" + c.name] = &c;
+        }
+    }
+    globalVars.clear();
+    externVars.clear();
+    for (const auto &mod : hir.modules) {
+        for (const auto &global : mod.globals) {
+            globalVars[global.name] = &global;
+        }
+        for (const auto &variable : mod.externVars) {
+            externVars.emplace(variable.name, &variable);
         }
     }
     // Calling conventions are resolved package-wide: a call may target an
@@ -105,22 +167,70 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
             funcNames.insert(f.name);
         }
     }
+    dropGluePlans.clear();
+    dropGlueInstances.clear();
     for (const DropGluePlan &plan : hir.dropGlues) {
         dropGlueSymbols.emplace(plan.type.ToString(), plan.symbol);
+        dropGluePlans.emplace(plan.symbol, &plan);
+    }
+    for (const HirFunc &instance : hir.dropGlueInstances) {
+        if (instance.callConv != CallingConvention::Default) {
+            funcConvs[instance.name] = instance.callConv;
+        }
+        funcNames.insert(instance.name);
+        dropGlueInstances.emplace(instance.name, &instance);
     }
     LirPackage pkg;
     pkg.dropGlues = hir.dropGlues;
-    for (const auto &mod : hir.modules) {
-        pkg.modules.push_back(LowerModule(mod));
-    }
-    // Glue is synthesized once the modules are lowered, because a plan describes a type rather than a module and every
-    // cleanup in the package names the same symbol for it. It joins the last module for the same reason a monomorphized
-    // instance does: a function has to belong to one to be emitted.
-    if (!pkg.modules.empty()) {
-        for (LirFunc &glue : SynthesizeDropGlue(hir.dropGlues)) {
-            pkg.modules.back().funcs.push_back(std::move(glue));
+    pkg.modules.resize(hir.modules.size());
+    // Lowering a module re-points its constants' names at its own declarations. Only a name two modules share makes
+    // that order visible, so such a package is lowered one module after another.
+    std::unordered_set<std::string_view> constantNames;
+    bool sharedConstantName = false;
+    for (const auto &mod : hir.modules)
+        for (const auto &c : mod.consts)
+            sharedConstantName = !constantNames.insert(c.name).second || sharedConstantName;
+    if (pool == nullptr || pool->Jobs() == 1 || sharedConstantName) {
+        for (std::size_t index = 0; index < hir.modules.size(); ++index) {
+            const bool failedBefore = emittedRuntimeFailure;
+            emittedRuntimeFailure = false;
+            pkg.modules[index] = LowerSelfContainedModule(hir.modules[index]);
+            moduleFailures[index] = emittedRuntimeFailure ? 1 : 0;
+            emittedRuntimeFailure = failedBefore || emittedRuntimeFailure;
         }
     }
+    else {
+        // Each thread lowers with its own copy of the package tables built above. What one module leaves behind for
+        // the package — diagnostics and whether it can panic — is kept apart and merged in module order, so the
+        // package is the same as lowering the modules one after another.
+        std::vector<std::optional<HirToLirContext>> workers(pool->Jobs());
+        std::vector<std::vector<Diagnostic>> moduleDiagnostics(hir.modules.size());
+        pool->ForEachOnWorker(hir.modules.size(), [&](const std::size_t index, const std::size_t worker) {
+            auto &context = workers[worker];
+            if (!context)
+                context.emplace(*this);
+            context->diagnostics = &moduleDiagnostics[index];
+            context->emittedRuntimeFailure = false;
+            pkg.modules[index] = context->LowerSelfContainedModule(hir.modules[index]);
+            moduleFailures[index] = context->emittedRuntimeFailure ? 1 : 0;
+        });
+        for (std::size_t index = 0; index < hir.modules.size(); ++index) {
+            diagnostics->insert(diagnostics->end(), std::make_move_iterator(moduleDiagnostics[index].begin()),
+                                std::make_move_iterator(moduleDiagnostics[index].end()));
+            emittedRuntimeFailure = emittedRuntimeFailure || moduleFailures[index] != 0;
+        }
+    }
+    // A program that can panic gets the stack-trace printer its failure paths call, once: in the program module after
+    // every source module, or in the last source module.
+    if (moduleFailuresOut != nullptr)
+        *moduleFailuresOut = moduleFailures;
+    if ((emittedRuntimeFailure || externalFailures) && (programModule || !pkg.modules.empty())) {
+        if (programModule) {
+            pkg.modules.emplace_back().name = std::string(kProgramModuleName);
+        }
+        pkg.modules.back().funcs.push_back(SynthesizeBacktrace(*diagnostics));
+    }
+    VerifySoftFloatLowering(pkg, softFloatPolicy, *diagnostics);
     return pkg;
 }
 
@@ -136,7 +246,7 @@ const std::string &HirToLirContext::SymbolFor(const std::string &name) const {
 /// A bool wider than `int` is not one of them: C has no such type, so there is nothing to promote it to and it is
 /// passed at its own width. The same holds for every bool at or above 32 bits.
 [[nodiscard]] std::optional<TypeRef> HirToLirContext::CVariadicPromotion(const TypeRef &type) {
-    switch (type.kind) {
+    switch (type->kind) {
     case TypeRef::Kind::Float32:
         return TypeRef::MakeFloat64();
     case TypeRef::Kind::Bool8:
@@ -153,25 +263,47 @@ const std::string &HirToLirContext::SymbolFor(const std::string &name) const {
     }
 }
 
-/// Preserve the declaration boundary on every target. Apple and FreeBSD AArch64 apply C's default argument promotions
-/// before their platform call layouts; keeping the promotion in LIR makes the value's ABI type explicit and lets code
-/// generation move it like any other converted value.
+/// Preserve the declaration boundary on every target, and pass the anonymous arguments as C passes them.
 void HirToLirContext::SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr) {
     const auto found = cVariadicFixedParamCounts.find(name);
     if (found == cVariadicFixedParamCounts.end()) {
         return;
     }
-    call.isCVariadic = true;
-    call.cVariadicFixedParamCount = found->second;
+    PassCVariadicArguments(call, found->second, expr);
+}
 
-    const bool promotesAArch64 = targetContext.arch == Target::Arch::AArch64 &&
-                                 (targetContext.os == Target::OS::MacOS || targetContext.os == Target::OS::FreeBSD);
-    if (!promotesAArch64) {
-        return;
-    }
-    for (std::size_t i = found->second; i < call.srcs.size() && i < expr.args.size(); ++i) {
-        if (const auto promoted = CVariadicPromotion(expr.args[i]->type)) {
-            call.srcs[i] = EmitCast(call.srcs[i], expr.args[i]->type, *promoted);
+/// C applies its default argument promotions to every anonymous argument, on every target: the callee reads a value
+/// narrower than `int` with `va_arg(list, int)` and a float with `va_arg(list, double)`, so an argument left at its own
+/// width was read with bits nothing wrote, or as the wrong format. Keeping the promotion in LIR makes the value's ABI
+/// type explicit and lets code generation place it like any other converted value; Apple's stack tail and the
+/// Windows AArch64 general-purpose copy then see the double they expect.
+///
+/// Win64 x64 adds one rule of its own. A variadic callee spills rcx, rdx, r8 and r9 to its home area and reads every
+/// anonymous argument from there, so a double the caller placed only in an xmm register was never seen. The ABI asks
+/// for the value in both registers; the integer one is the copy a variadic callee reads, so the double travels as its
+/// bits, which also lands it in the right stack slot past the fourth argument.
+///
+/// The call also records where the declared parameters end. Apple AArch64 moves every anonymous argument to the stack
+/// and Windows AArch64 every one to the general-purpose registers, so code generation places the tail only once it
+/// knows the boundary, whether the callee is a named extern or a function value of a C-variadic type.
+void HirToLirContext::PassCVariadicArguments(LirInstr &call, const std::size_t fixedCount, const HirCallExpr &expr) {
+    call.isCVariadic = true;
+    call.cVariadicFixedParamCount = static_cast<std::uint32_t>(fixedCount);
+    const CallingConvention convention = call.callConv == CallingConvention::Default
+                                           ? PlatformDefaultConvention(targetContext.os, targetContext.arch)
+                                           : ResolveCConvention(call.callConv, targetContext.os, targetContext.arch);
+    const bool win64 = targetContext.arch == Target::Arch::X86_64 && convention == CallingConvention::Win64;
+    for (std::size_t i = fixedCount; i < call.srcs.size() && i < expr.args.size(); ++i) {
+        TypeRef type = expr.args[i]->type;
+        if (const auto promoted = CVariadicPromotion(type)) {
+            call.srcs[i] = EmitCast(call.srcs[i], type, *promoted);
+            type = *promoted;
+        }
+        if (win64 && type->kind == TypeRef::Kind::Float64) {
+            const TypeRef bitsType = TypeRef::MakeUInt64();
+            const LirReg slot = EmitAlloca(bitsType);
+            EmitStore(call.srcs[i], slot, type);
+            call.srcs[i] = EmitLoad(slot, bitsType);
         }
     }
 }
@@ -181,8 +313,17 @@ LirReg HirToLirContext::NewReg() {
     return builder->AllocateRegister();
 }
 
+LirReg HirToLirContext::DefineParameter(const TypeRef &type) {
+    const LirReg reg = builder->DefineParameter();
+    if (registerKinds.size() <= reg) {
+        registerKinds.resize(reg + 1, TypeRef::Kind::Unknown);
+    }
+    registerKinds[reg] = type->kind;
+    return reg;
+}
+
 void HirToLirContext::BuilderFailure(std::string detail) const {
-    diagnostics.push_back(ErrorDiagnostic(
+    diagnostics->push_back(ErrorDiagnostic(
         std::format("invalid internal LIR while lowering function '{}': {}",
                     currentFunction.empty() ? "<unknown>" : currentFunction, std::move(detail)),
         {"HIR-to-LIR lowering generated an instruction or control-flow edge rejected by the checked builder"},
@@ -212,7 +353,14 @@ void HirToLirContext::SetBlock(const std::uint32_t idx) {
 }
 
 // Instruction emission
-void HirToLirContext::Emit(LirInstr i) const {
+void HirToLirContext::Emit(LirInstr &&i) {
+    if (EmitSoftFloatReplacement(i)) {
+        return;
+    }
+    if (i.op == LirOpcode::Panic || i.op == LirOpcode::Assert) {
+        emittedRuntimeFailure = true;
+    }
+    RecordRegisterKind(i);
     if (!builder->Insert(std::move(i))) {
         BuilderFailure("cannot insert instruction into the current block: " + std::string(builder->FailureReason()));
     }
@@ -239,11 +387,20 @@ void HirToLirContext::Branch(const LirReg cond, const std::uint32_t trueTarget, 
                             .cases = {}});
 }
 
+void HirToLirContext::ReturnNothing() {
+    // The entry point's result is the process's exit status, so a `Main` without one reports success.
+    if (voidEntryPoint) {
+        Return(EmitConst("0", TypeRef::MakeInt()), TypeRef::MakeInt());
+        return;
+    }
+    Return(std::nullopt, TypeRef::MakeOpaque());
+}
+
 void HirToLirContext::Return(const std::optional<LirReg> val, TypeRef type) const {
     LirTerminator t;
     t.kind = LirTermKind::Return;
     t.retVal = val;
-    t.retType = std::move(type);
+    t.retType = type;
     Terminate(std::move(t));
 }
 
@@ -253,6 +410,39 @@ void HirToLirContext::Unreachable() const {
     Terminate(std::move(t));
 }
 
+void HirToLirContext::EmitRuntimeTrap(const std::string_view message, const SourceLocation &location) {
+    // The message travels as the same char8 view a `Panic` argument does, so both back ends print it through the
+    // one runtime-failure path they already have.
+    const TypeRef elementType = TypeRef::MakeChar8();
+    const TypeRef sliceType = TypeRef::MakeSlice(elementType);
+    const LirReg slot = EmitAlloca(sliceType);
+    const std::string text(message);
+    EmitStore(EmitStringAddr(text, elementType), EmitFieldPtr(slot, "data", TypeRef::MakePointer(elementType)),
+              TypeRef::MakePointer(elementType));
+    EmitStore(EmitConst(std::to_string(text.size()), TypeRef::MakeUInt64()),
+              EmitFieldPtr(slot, "length", TypeRef::MakeUInt64()), TypeRef::MakeUInt64());
+
+    LirInstr panic;
+    panic.op = LirOpcode::Panic;
+    panic.type = TypeRef::MakeOpaque();
+    panic.srcs = {slot};
+    panic.strArg = text;
+    panic.source.Edit() = {
+        .file = currentSourceFile, .function = currentSourceFunction, .line = location.line, .column = location.column};
+    Emit(std::move(panic));
+    Unreachable();
+}
+
+void HirToLirContext::EmitTrapUnless(const LirReg condition, const std::string_view message,
+                                     const SourceLocation &location) {
+    const std::uint32_t passed = NewBlock("check.ok");
+    const std::uint32_t failed = NewBlock("check.fail");
+    Branch(condition, passed, failed);
+    SetBlock(failed);
+    EmitRuntimeTrap(message, location);
+    SetBlock(passed);
+}
+
 // Instruction builders
 
 LirReg HirToLirContext::EmitConst(std::string value, TypeRef type) {
@@ -260,7 +450,7 @@ LirReg HirToLirContext::EmitConst(std::string value, TypeRef type) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Const;
-    i.type = std::move(type);
+    i.type = type;
     i.strArg = std::move(value);
     Emit(std::move(i));
     return r;
@@ -271,7 +461,7 @@ LirReg HirToLirContext::EmitAlloca(TypeRef type) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Alloca;
-    i.type = std::move(type);
+    i.type = type;
     Emit(std::move(i));
     return r;
 }
@@ -281,7 +471,7 @@ LirReg HirToLirContext::EmitAlloca(TypeRef type, std::uint64_t count) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Alloca;
-    i.type = std::move(type);
+    i.type = type;
     i.strArg = std::to_string(count);
     Emit(std::move(i));
     return r;
@@ -306,17 +496,25 @@ HirTypeLayout HirToLirContext::TypeLayoutOf(const TypeRef &type) const {
             return {native->size, native->alignment};
         }
     }
-    // Manually constructed HIR may omit semantic facts. Primitive-only recipes retain their self-contained layout.
+    // HIR without a semantic fact for this type -- one built by hand, or a composite no declaration names -- is laid
+    // out by the type's own reading, the one rule semantic analysis and code generation share: a tuple or an array of
+    // 128-bit elements takes their sixteen-byte alignment here exactly as it does there. Only a type that reading
+    // cannot place at all falls back to a word.
     const auto size = type.SizeInBytes().value_or(8);
-    return {size, PrimitiveAlign(type.kind, 8).value_or(size > 0 ? std::min<std::uint64_t>(size, 8) : 1)};
+    return {size, type.AlignInBytes().value_or(size > 0 ? std::min<std::uint64_t>(size, 8) : 1)};
 }
 
 LirReg HirToLirContext::EmitLoad(LirReg ptr, TypeRef type) {
+    // The result of a void call has no register, so a generic slot of that type holds nothing to read back: the
+    // store into it was dropped, and so is the load.
+    if (type.IsOpaque()) {
+        return LirNoReg;
+    }
     const LirReg r = NewReg();
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Load;
-    i.type = std::move(type);
+    i.type = type;
     i.srcs = {ptr};
     Emit(std::move(i));
     return r;
@@ -327,17 +525,20 @@ LirReg HirToLirContext::EmitNamedLoad(std::string name, TypeRef type) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::Load;
-    i.type = std::move(type);
+    i.type = type;
     i.strArg = std::move(name);
     Emit(std::move(i));
     return r;
 }
 
-void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type, const bool isVolatile) const {
+void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type, const bool isVolatile) {
+    if (val == LirNoReg && type.IsOpaque()) {
+        return;
+    }
     LirInstr i;
     i.dst = LirNoReg;
     i.op = LirOpcode::Store;
-    i.type = std::move(type);
+    i.type = type;
     i.srcs = {val, ptr};
     i.isVolatile = isVolatile;
     Emit(std::move(i));
@@ -348,7 +549,7 @@ LirReg HirToLirContext::EmitBinary(const LirOpcode op, LirReg l, LirReg r, TypeR
     LirInstr i;
     i.dst = dst;
     i.op = op;
-    i.type = std::move(type);
+    i.type = type;
     i.srcs = {l, r};
     Emit(std::move(i));
     return dst;
@@ -374,16 +575,194 @@ LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef to
         const LirReg tested = EmitBinary(LirOpcode::CmpNe, src, zero, TypeRef::MakeBool());
         return TypeRef::MakeBool() == toType ? tested : EmitWidenBool(tested, toType);
     }
+    // A float the target computes in software converts through a helper that saturates the same way, so it stays
+    // one cast here for the software-float rewrite to replace.
+    if (fromType.IsFloat() && toType.IsInteger() &&
+        softFloatPolicy.For(fromType->kind) == Target::FloatLowering::Native) {
+        return EmitFloatToInteger(src, fromType, toType);
+    }
+    return EmitConversion(src, fromType, toType);
+}
 
+LirReg HirToLirContext::EmitConversion(const LirReg src, const TypeRef &fromType, TypeRef toType) {
     LirReg dst = NewReg();
     LirInstr i;
     i.dst = dst;
     i.op = LirOpcode::Cast;
-    i.type = std::move(toType);
+    i.type = toType;
     i.srcs = {src};
     i.strArg = fromType.ToString();
     Emit(std::move(i));
     return dst;
+}
+
+namespace {
+/// The exact decimal spelling of 2^exponent, which every float literal reader rounds to the power itself.
+std::string PowerOfTwoDecimal(const std::uint32_t exponent) {
+    std::string digits = "1"; // least significant digit first
+    for (std::uint32_t step = 0; step < exponent; ++step) {
+        int carry = 0;
+        for (char &digit : digits) {
+            const int doubled = (digit - '0') * 2 + carry;
+            digit = static_cast<char>('0' + doubled % 10);
+            carry = doubled / 10;
+        }
+        if (carry != 0) {
+            digits.push_back(static_cast<char>('0' + carry));
+        }
+    }
+    return {digits.rbegin(), digits.rend()};
+}
+
+/// The largest finite value of a hardware float type, exactly.
+std::string LargestFinite(const TypeRef &floatType) {
+    return floatType->kind == TypeRef::Kind::Float32
+             ? "340282346638528859811704183484516925440.0"
+             : "179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878"
+               "17154045895351438246423432132688946418276846754670353751698604991057655128207624549009038932894407586"
+               "85084551339423045832369032229481658085593321233482747978262041447231687381771809192998812504040261841"
+               "24858368.0";
+}
+
+/// The bits of a float type's significand field, which an exponent-and-significand decomposition reads.
+std::uint32_t SignificandFieldBits(const TypeRef &floatType) {
+    return floatType->kind == TypeRef::Kind::Float32 ? 23 : 52;
+}
+} // namespace
+
+/// Converts a float to an integer by the language rule: toward zero when the value fits, the type's minimum or maximum
+/// when it does not, and zero for a NaN, identically on every target. The hardware conversions disagree outside the
+/// range — x86-64 answers with the most negative 64-bit value, AArch64 saturates at 32 or 64 bits — so the range is
+/// settled here and each back end only converts values it can represent. A value of 2^63 or more in magnitude is
+/// assembled from its exponent and significand, which is how an integer wider than 64 bits receives it.
+LirReg HirToLirContext::EmitFloatToInteger(const LirReg value, const TypeRef &fromType, const TypeRef &toType) {
+    assert((fromType.kind == TypeRef::Kind::Float32 || fromType.kind == TypeRef::Kind::Float64) &&
+           "only a machine float converts to an integer through compare-and-branch lowering");
+    const TypeRef boolType = TypeRef::MakeBool();
+    const std::uint32_t width = static_cast<std::uint32_t>(toType.SizeInBytes().value_or(8) * 8);
+    const bool isSigned = toType.IsSigned();
+    const std::uint32_t magnitudeBits = isSigned ? width - 1 : width;
+    const std::uint32_t floatMaxExponent = fromType->kind == TypeRef::Kind::Float32 ? 127 : 1023;
+    const LirReg result = EmitAlloca(toType);
+    const std::uint32_t done = NewBlock("ftoi.done");
+
+    const auto storeConstant = [&](const std::string &literal) {
+        EmitStore(EmitConst(literal, toType), result, toType);
+        Jump(done);
+    };
+    const auto branchTo = [&](const LirReg condition, const std::string_view label, const std::string &literal) {
+        const std::uint32_t taken = NewBlock(std::string(label));
+        const std::uint32_t next = NewBlock("ftoi.next");
+        Branch(condition, taken, next);
+        SetBlock(taken);
+        storeConstant(literal);
+        SetBlock(next);
+    };
+
+    // A NaN is the one value unequal to itself.
+    branchTo(EmitBinary(LirOpcode::CmpNe, value, value, boolType), "ftoi.nan", "0");
+
+    // Below the range: at or under the minimum for a signed type, at or under -1 for an unsigned one, whose fraction
+    // above -1 truncates to zero anyway. A bound past the float's own range leaves only the infinity beyond it.
+    const std::string minimum = isSigned ? "-" + PowerOfTwoDecimal(width - 1) : "0";
+    LirReg below = LirNoReg;
+    if (!isSigned) {
+        below = EmitBinary(LirOpcode::CmpLe, value, EmitConst("-1.0", fromType), boolType);
+    }
+    else if (width - 1 <= floatMaxExponent) {
+        below = EmitBinary(LirOpcode::CmpLe, value, EmitConst("-" + PowerOfTwoDecimal(width - 1) + ".0", fromType),
+                           boolType);
+    }
+    else {
+        below = EmitBinary(LirOpcode::CmpLt, value, EmitConst("-" + LargestFinite(fromType), fromType), boolType);
+    }
+    branchTo(below, "ftoi.min", minimum);
+
+    // At or above 2^magnitudeBits nothing fits; the maximum is one less.
+    const std::string maximum = [&] {
+        std::string bound = PowerOfTwoDecimal(magnitudeBits);
+        for (auto digit = bound.rbegin(); digit != bound.rend(); ++digit) {
+            if (*digit != '0') {
+                --*digit;
+                break;
+            }
+            *digit = '9';
+        }
+        return bound;
+    }();
+    const LirReg above =
+        magnitudeBits <= floatMaxExponent
+            ? EmitBinary(LirOpcode::CmpGe, value, EmitConst(PowerOfTwoDecimal(magnitudeBits) + ".0", fromType),
+                         boolType)
+            : EmitBinary(LirOpcode::CmpGt, value, EmitConst(LargestFinite(fromType), fromType), boolType);
+    branchTo(above, "ftoi.max", maximum);
+
+    // Every target converts an in-range value of up to 64 bits directly. A wider target takes a value within 2^63 of
+    // zero through a signed 64-bit integer and assembles a larger one.
+    if (width <= 64) {
+        EmitStore(EmitConversion(value, fromType, toType), result, toType);
+        Jump(done);
+        SetBlock(done);
+        return EmitLoad(result, toType);
+    }
+    const TypeRef int64Type = TypeRef::MakeInt64();
+    const TypeRef uint64Type = TypeRef::MakeUInt64();
+    const std::uint32_t small = NewBlock("ftoi.small");
+    const std::uint32_t large = NewBlock("ftoi.large");
+    const std::string twoTo63 = PowerOfTwoDecimal(63) + ".0";
+    if (isSigned) {
+        const std::uint32_t lowerCheck = NewBlock("ftoi.lower");
+        Branch(EmitBinary(LirOpcode::CmpLt, value, EmitConst(twoTo63, fromType), boolType), lowerCheck, large);
+        SetBlock(lowerCheck);
+        Branch(EmitBinary(LirOpcode::CmpGt, value, EmitConst("-" + twoTo63, fromType), boolType), small, large);
+    }
+    else {
+        Branch(EmitBinary(LirOpcode::CmpLt, value, EmitConst(twoTo63, fromType), boolType), small, large);
+    }
+
+    SetBlock(small);
+    const LirReg narrow = EmitConversion(value, fromType, int64Type);
+    EmitStore(EmitConversion(narrow, int64Type, toType), result, toType);
+    Jump(done);
+
+    // The value is an integer of at least 2^63 in magnitude: its significand, with the hidden bit restored, shifted
+    // left by what the exponent says is above the significand's lowest bit.
+    SetBlock(large);
+    const LirReg spill = EmitAlloca(fromType);
+    EmitStore(value, spill, fromType);
+    const bool single = fromType->kind == TypeRef::Kind::Float32;
+    const TypeRef bitsType = single ? TypeRef::MakeUInt32() : uint64Type;
+    const LirReg rawBits = EmitLoad(spill, bitsType);
+    const LirReg bits = single ? EmitConversion(rawBits, bitsType, uint64Type) : rawBits;
+    const std::uint32_t fieldBits = SignificandFieldBits(fromType);
+    const std::uint64_t fieldMask = (std::uint64_t{1} << fieldBits) - 1;
+    const LirReg biased = EmitBinary(
+        LirOpcode::And, EmitBinary(LirOpcode::Lshr, bits, EmitConst(std::to_string(fieldBits), uint64Type), uint64Type),
+        EmitConst(single ? "255" : "2047", uint64Type), uint64Type);
+    const LirReg significand = EmitBinary(
+        LirOpcode::Or, EmitBinary(LirOpcode::And, bits, EmitConst(std::to_string(fieldMask), uint64Type), uint64Type),
+        EmitConst(std::to_string(fieldMask + 1), uint64Type), uint64Type);
+    const std::uint64_t bias = (single ? 127 : 1023) + fieldBits;
+    const LirReg shift = EmitBinary(LirOpcode::Sub, biased, EmitConst(std::to_string(bias), uint64Type), uint64Type);
+    const LirReg widened = toType == uint64Type ? significand : EmitConversion(significand, uint64Type, toType);
+    const LirReg magnitude = EmitBinary(LirOpcode::Shl, widened, shift, toType);
+    if (!isSigned) {
+        EmitStore(magnitude, result, toType);
+        Jump(done);
+    }
+    else {
+        const std::uint32_t negative = NewBlock("ftoi.negative");
+        const std::uint32_t positive = NewBlock("ftoi.positive");
+        Branch(EmitBinary(LirOpcode::CmpLt, value, EmitConst("0.0", fromType), boolType), negative, positive);
+        SetBlock(negative);
+        EmitStore(EmitUnary(LirOpcode::Neg, magnitude, toType), result, toType);
+        Jump(done);
+        SetBlock(positive);
+        EmitStore(magnitude, result, toType);
+        Jump(done);
+    }
+    SetBlock(done);
+    return EmitLoad(result, toType);
 }
 
 /// Restate an already-normalized `bool8` at a wider bool's storage.
@@ -445,7 +824,7 @@ LirReg HirToLirContext::EmitIndexPtr(LirReg base, LirReg idx, const TypeRef &ele
 }
 
 bool HirToLirContext::IsPointerArithmetic(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Pointer && !type.inner.empty();
+    return type->kind == TypeRef::Kind::Pointer && !type->inner.empty();
 }
 
 /// Offsets a pointer by a count of elements, scaling by the pointee size.
@@ -455,7 +834,7 @@ bool HirToLirContext::IsPointerArithmetic(const TypeRef &type) {
 /// nothing for a named type. Emitting the multiply here silently skipped it for every struct, so `ptr + 1` advanced one
 /// byte instead of one element. Routing through IndexPtr gives pointer arithmetic and `ptr[n]` one scaling rule.
 LirReg HirToLirContext::EmitPointerOffset(LirReg base, LirReg index, const TypeRef &pointerType) {
-    return EmitIndexPtr(base, index, pointerType.inner[0]);
+    return EmitIndexPtr(base, index, pointerType->inner[0]);
 }
 
 /// Moves a pointer one element forward or back, for `++` and `--`. A negative index is correct for the back end's
@@ -473,7 +852,19 @@ LirReg HirToLirContext::EmitGlobalAddr(std::string label, TypeRef pointee) {
     LirInstr i;
     i.dst = r;
     i.op = LirOpcode::GlobalAddr;
-    i.type = TypeRef::MakePointer(std::move(pointee));
+    i.type = TypeRef::MakePointer(pointee);
+    i.strArg = std::move(label);
+    Emit(std::move(i));
+    return r;
+}
+
+/// The current thread's copy of a thread-local variable: the same symbol, reached relative to the thread's own storage.
+LirReg HirToLirContext::EmitThreadLocalAddr(std::string label, TypeRef pointee) {
+    LirReg r = NewReg();
+    LirInstr i;
+    i.dst = r;
+    i.op = LirOpcode::ThreadLocalAddr;
+    i.type = TypeRef::MakePointer(pointee);
     i.strArg = std::move(label);
     Emit(std::move(i));
     return r;
@@ -491,8 +882,8 @@ LirReg HirToLirContext::EmitStringAddr(std::string value, const TypeRef &elemTyp
 }
 
 [[nodiscard]] bool HirToLirContext::IsInterfaceType(const TypeRef &t) const {
-    const TypeRef &candidate = t.kind == TypeRef::Kind::Reference && !t.inner.empty() ? t.inner.front() : t;
-    return candidate.kind == TypeRef::Kind::Named && interfacesByName.contains(candidate.name);
+    const TypeRef &candidate = t->kind == TypeRef::Kind::Reference && !t->inner.empty() ? t->inner.front() : t;
+    return candidate->kind == TypeRef::Kind::Named && interfacesByName.contains(candidate->name);
 }
 
 bool HirToLirContext::IsSliceType(const TypeRef &type) {
@@ -506,25 +897,25 @@ bool HirToLirContext::IsViewType(const TypeRef &type) {
 }
 
 bool HirToLirContext::IsArrayType(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Array;
+    return type->kind == TypeRef::Kind::Array;
 }
 
 /// Whether a type names an instantiation of a generic enum that carries payloads -- the shape whose size the front
 /// end records as a layout marker. A type argument still naming one of the declaration's own parameters is the
 /// generic declaration rather than an instantiation of it, and has no layout until it has been substituted.
 bool HirToLirContext::IsInstantiatedPayloadEnum(const TypeRef &type) const {
-    if (type.kind != TypeRef::Kind::Named || !type.name.ends_with('>')) {
+    if (type->kind != TypeRef::Kind::Named || !type->name.ends_with('>')) {
         return false;
     }
-    const std::size_t open = type.name.find('<');
+    const std::size_t open = type->name.find('<');
     if (open == std::string::npos) {
         return false;
     }
-    const auto declared = genericPayloadEnums.find(type.name.substr(0, open));
+    const auto declared = genericPayloadEnums.find(type->name.substr(0, open));
     if (declared == genericPayloadEnums.end()) {
         return false;
     }
-    const std::string_view args(type.name.data() + open + 1, type.name.size() - open - 2);
+    const std::string_view args(type->name.data() + open + 1, type->name.size() - open - 2);
     return std::ranges::none_of(declared->second,
                                 [&](const std::string &param) { return ContainsIdentifier(args, param); });
 }
@@ -540,14 +931,14 @@ std::optional<std::uint64_t> HirToLirContext::EnumLayoutSize(const TypeRef &type
     if (type.IsSum() || type.IsOptional() || type.IsFallible()) {
         return TypeLayoutOf(type).size;
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }
-    if (!type.inner.empty() && type.inner[0].kind == TypeRef::Kind::Array) {
+    if (!type->inner.empty() && type->inner[0]->kind == TypeRef::Kind::Array) {
         return type.SizeInBytes();
     }
     if (IsInstantiatedPayloadEnum(type)) {
-        BuilderFailure(std::format("variant type '{}' reached lowering without a layout marker", type.name));
+        BuilderFailure(std::format("variant type '{}' reached lowering without a layout marker", type->name));
     }
     return std::nullopt;
 }
@@ -562,20 +953,20 @@ bool HirToLirContext::IsAggregateEnumType(const TypeRef &type) const {
 /// The type an enum's tag is stored as, which is what a match has to read it back as. Defaults to a full word, so an
 /// enum this pass never saw declared behaves as it always did.
 TypeRef HirToLirContext::EnumTagType(const TypeRef &enumType) const {
-    if (enumType.kind != TypeRef::Kind::Named) {
+    if (enumType->kind != TypeRef::Kind::Named) {
         return TypeRef::MakeInt64();
     }
-    const auto found = enumTagTypes.find(enumType.name);
+    const auto found = enumTagTypes.find(enumType->name);
     return found == enumTagTypes.end() ? TypeRef::MakeInt64() : found->second;
 }
 
 bool HirToLirContext::IsStringSliceLiteral(const HirLiteralExpr &e) {
-    return e.type.IsSlice() && !e.type.inner.empty() && e.type.inner[0].IsChar();
+    return e.type.IsSlice() && !e.type->inner.empty() && e.type->inner[0].IsChar();
 }
 
 TypeRef HirToLirContext::StringSliceElementType(const HirLiteralExpr &e) {
-    if (e.type.IsSlice() && !e.type.inner.empty()) {
-        TypeRef element = e.type.inner[0];
+    if (e.type.IsSlice() && !e.type->inner.empty()) {
+        TypeRef element = e.type->inner[0];
         element.isMut = false;
         return element;
     }
@@ -583,9 +974,61 @@ TypeRef HirToLirContext::StringSliceElementType(const HirLiteralExpr &e) {
 }
 
 // Module lowering
+LirModule HirToLirContext::LowerSelfContainedModule(const HirModule &mod) {
+    softFloatHelpers = {};
+    LirModule lm = LowerModule(mod);
+    std::unordered_set<std::string> defined;
+    for (const LirFunc &function : lm.funcs)
+        defined.insert(function.name);
+    // Glue and destructor instances may destroy or call further ones, so the module is scanned until nothing new is
+    // called. Plans come in the order the package sorted them, so the module's functions do not depend on the order
+    // its calls were found in.
+    std::size_t scanned = 0;
+    for (;;) {
+        std::unordered_set<std::string> called;
+        for (; scanned < lm.funcs.size(); ++scanned)
+            for (const LirBlock &block : lm.funcs[scanned].blocks)
+                for (const LirInstr &instruction : block.instrs)
+                    if (instruction.op == LirOpcode::Call && !defined.contains(instruction.strArg) &&
+                        (dropGluePlans.contains(instruction.strArg) || dropGlueInstances.contains(instruction.strArg)))
+                        called.insert(instruction.strArg);
+        if (called.empty())
+            break;
+        std::vector<const DropGluePlan *> plans;
+        std::vector<const HirFunc *> instances;
+        for (const std::string &symbol : called) {
+            defined.insert(symbol);
+            if (const auto plan = dropGluePlans.find(symbol); plan != dropGluePlans.end())
+                plans.push_back(plan->second);
+            else
+                instances.push_back(dropGlueInstances.at(symbol));
+        }
+        std::ranges::sort(plans);
+        std::ranges::sort(instances);
+        for (const DropGluePlan *plan : plans)
+            lm.funcs.push_back(SynthesizeDropGlueFunc(*plan));
+        for (const HirFunc *instance : instances)
+            lm.funcs.push_back(LowerFunc(*instance));
+    }
+    // Software-float helpers are private to the module that calls them, on the same terms.
+    for (LirFunc &helper : softFloatHelpers.SynthesizePending(*diagnostics)) {
+        lm.funcs.push_back(std::move(helper));
+    }
+    softFloatHelpers = {};
+    return lm;
+}
+
+LirReg HirToLirContext::ExternVarAddr(const HirExternVar &variable) {
+    if (!std::ranges::contains(reachedExternVars, &variable)) {
+        reachedExternVars.push_back(&variable);
+    }
+    return EmitGlobalAddr(variable.name, variable.type);
+}
+
 LirModule HirToLirContext::LowerModule(const HirModule &mod) {
     // funcConvs is populated package-wide in Run() before any module is
     // lowered, so cross-module (imported) calls resolve correctly.
+    reachedExternVars.clear();
     LirModule lm;
     lm.name = mod.name;
     for (const auto &iface : mod.interfaces) {
@@ -627,16 +1070,38 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         LirConstDecl cd;
         cd.name = c.name;
         cd.isPublic = c.isPublic;
+        cd.isExported = c.isExported;
         cd.type = c.type;
         cd.value = PrintConstExpr(*c.value);
         CollectConstContents(c, cd);
+        if (!cd.hasSequenceData) {
+            if (auto scalars = ConstValueScalars(c)) {
+                cd.scalars = std::move(*scalars);
+                cd.hasValueData = true;
+            }
+        }
         lm.consts.push_back(std::move(cd));
+    }
+    for (const auto &global : mod.globals) {
+        LirGlobal lg;
+        lg.name = global.name;
+        lg.isPublic = global.isPublic;
+        lg.isExported = global.isExported;
+        lg.type = global.type;
+        lg.isThreadLocal = global.isThreadLocal;
+        std::vector<LirConstMember> path;
+        if (!global.value || !CollectConstValueScalars(*global.value, global.type, path, lg.scalars)) {
+            // Laying the storage out as zeros would start the program with a value nobody wrote.
+            BuilderFailure(
+                std::format("the initial value of module variable '{}' has no layout in module storage", global.name));
+        }
+        lm.globals.push_back(std::move(lg));
     }
     for (const auto &ta : mod.typeAliases) {
         lm.typeAliases.push_back({ta.name, ta.isPublic, ta.type});
     }
     for (const auto &ev : mod.externVars) {
-        lm.externVars.push_back({ev.name, ev.isPublic, ev.type});
+        lm.externVars.push_back({ev.name, ev.isPublic, ev.type, ev.isExported, ev.dll});
     }
     for (const auto &ef : mod.externFuncs) {
         LirFunc lf;
@@ -657,7 +1122,8 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
     for (const auto &f : mod.funcs) {
         // Generic declarations remain useful in HIR inspection, but have no runtime layout until instantiated.
         // Emitting their symbolic bodies can manufacture scalar casts for aggregate or zero-sized payloads.
-        if (f.typeParams.empty())
+        // A declaration-only function compiles to nothing: its module's code is reused from an earlier build.
+        if (f.typeParams.empty() && !f.isDeclarationOnly)
             lm.funcs.push_back(LowerFunc(f));
     }
     for (const auto &impl : mod.impls) {
@@ -665,7 +1131,8 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
             BuilderFailure("implementation method and linker-name tables have different sizes");
         }
         for (std::size_t i = 0; i < std::min(impl.methods.size(), impl.methodLinkerNames.size()); ++i) {
-            lm.funcs.push_back(LowerFunc(impl.methods[i], impl.methodLinkerNames[i]));
+            if (!impl.methods[i].isDeclarationOnly)
+                lm.funcs.push_back(LowerFunc(impl.methods[i], impl.methodLinkerNames[i]));
         }
         if (!impl.vtableLabel.empty()) {
             LirVtable vt;
@@ -674,39 +1141,50 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
             lm.vtables.push_back(std::move(vt));
         }
     }
+    // An extern variable another module declares is declared here too, with its library, since this module's code
+    // reaches it.
+    for (const HirExternVar *variable : reachedExternVars) {
+        if (std::ranges::none_of(lm.externVars, [&](const LirExternVar &own) { return own.name == variable->name; })) {
+            lm.externVars.push_back({variable->name, false, variable->type, false, variable->dll});
+        }
+    }
+    reachedExternVars.clear();
     return lm;
 }
 
 /// Render a simple constant expression to a printable string.
 std::string HirToLirContext::PrintConstExpr(const HirExpr &e) {
-    if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
+    if (auto *lit = HirCast<const HirLiteralExpr>(&e)) {
         return lit->value;
     }
-    if (auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
+    if (auto *v = HirCast<const HirVarExpr>(&e)) {
         return v->name;
     }
-    if (auto *b = dynamic_cast<const HirBinaryExpr *>(&e)) {
+    if (auto *b = HirCast<const HirBinaryExpr>(&e)) {
         return PrintConstExpr(*b->left) + " op " + PrintConstExpr(*b->right);
     }
     return "<const>";
 }
 
 /// The literal an array element spells out, with a leading minus folded in and a named constant resolved to the literal
-/// it stands for. Anything else is not a constant the backend can lay out; the semantic analyzer rejects those before
-/// we get here.
+/// it stands for. A named constant computed from an expression, or an element the lowering wrapped in a cast, is folded
+/// to the literal of its value. The semantic analyzer rejects anything else before we get here.
 std::optional<std::string> HirToLirContext::PrintConstElement(const HirExpr &e) const {
-    if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
+    if (auto *lit = HirCast<const HirLiteralExpr>(&e)) {
         return lit->value;
     }
-    if (auto *u = dynamic_cast<const HirUnaryExpr *>(&e); u && u->op == TokenKind::Minus) {
+    if (auto *u = HirCast<const HirUnaryExpr>(&e); u && u->op == TokenKind::Minus) {
         if (const auto inner = PrintConstElement(*u->operand)) {
             return inner->starts_with('-') ? inner->substr(1) : "-" + *inner;
         }
     }
-    if (auto *v = dynamic_cast<const HirVarExpr *>(&e)) {
+    if (auto *v = HirCast<const HirVarExpr>(&e)) {
         if (const auto it = globalConsts.find(v->name); it != globalConsts.end()) {
             return PrintConstElement(*it->second->value);
         }
+    }
+    if (const auto folded = FoldConstElement(e, globalConsts)) {
+        return folded->ToLiteral();
     }
     return std::nullopt;
 }
@@ -716,7 +1194,7 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
     if (!IsViewType(c.type) && !IsArrayType(c.type)) {
         return;
     }
-    if (auto *lit = dynamic_cast<const HirLiteralExpr *>(c.value.get()); lit && IsStringSliceLiteral(*lit)) {
+    if (auto *lit = HirCast<const HirLiteralExpr>(c.value.get()); lit && IsStringSliceLiteral(*lit)) {
         cd.isTextSlice = true;
         cd.hasSequenceData = true;
         cd.text = lit->value;
@@ -724,10 +1202,10 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
         return;
     }
     const HirExpr *value = c.value.get();
-    if (const auto *view = dynamic_cast<const HirArrayToSliceExpr *>(value)) {
+    if (const auto *view = HirCast<const HirArrayToSliceExpr>(value)) {
         value = view->value.get();
     }
-    if (auto *arr = dynamic_cast<const HirArrayExpr *>(value)) {
+    if (auto *arr = HirCast<const HirArrayExpr>(value)) {
         std::vector<std::string> elements;
         const std::size_t count =
             arr->repeatedElement ? static_cast<std::size_t>(arr->repeatCount) : arr->elements.size();
@@ -735,6 +1213,8 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
             const HirExpr *element = arr->repeatedElement ? arr->repeatedElement.get() : arr->elements[index].get();
             const auto printed = PrintConstElement(*element);
             if (!printed) {
+                // Without contents the constant would be laid out as zeros, which is a silent wrong value.
+                BuilderFailure(std::format("element {} of constant '{}' has no compile-time value", index, c.name));
                 return;
             }
             elements.push_back(*printed);
@@ -746,20 +1226,125 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
     }
 }
 
+/// The scalars a constant that is not a sequence folds to, or nullopt when some part of its value has no layout the
+/// code generators know: an enum with payloads, an optional, a slice, a value no folding reaches. A constant with
+/// scalars is laid out in read-only data, and `@C` addresses those bytes rather than a fresh copy, so every `@C` is the
+/// same pointer.
+std::optional<std::vector<LirConstScalar>> HirToLirContext::ConstValueScalars(const HirConst &c) const {
+    if (!c.value || c.type.IsUnknown() || IsViewType(c.type) || IsArrayType(c.type)) {
+        return std::nullopt;
+    }
+    std::vector<LirConstMember> path;
+    std::vector<LirConstScalar> scalars;
+    if (!CollectConstValueScalars(*c.value, c.type, path, scalars)) {
+        return std::nullopt;
+    }
+    return scalars;
+}
+
+/// Gathers the scalars of one part of a constant's value, of `type`, at `path`. A scalar part is laid out at the type
+/// it is stored at, the way a run-time initializer stores it: the constant's own type at the top, and a member's own
+/// type within a struct, tuple or array.
+bool HirToLirContext::CollectConstValueScalars(const HirExpr &value, const TypeRef &type,
+                                               std::vector<LirConstMember> &path,
+                                               std::vector<LirConstScalar> &scalars) const {
+    // A pointer constant has a layout only as the literal `null` spells; an address is a relocation, not bytes.
+    if (type->kind == TypeRef::Kind::Pointer) {
+        const auto *literal = HirCast<const HirLiteralExpr>(&value);
+        if (!literal || !SplitIntegerLiteral(literal->value)) {
+            return false;
+        }
+        scalars.push_back({path, type, literal->value});
+        return true;
+    }
+    if (type.IsInteger() || type.IsFloat() || type.IsBool() || type.IsChar()) {
+        const auto literal = PrintConstElement(value);
+        if (!literal) {
+            return false;
+        }
+        scalars.push_back({path, type, *literal});
+        return true;
+    }
+    // An enum without payloads is its tag, laid out as the integer the tag is stored as.
+    if (type->kind == TypeRef::Kind::Named && enumTagTypes.contains(type->name) && !IsAggregateEnumType(type)) {
+        const auto literal = PrintConstElement(value);
+        if (!literal) {
+            return false;
+        }
+        scalars.push_back({path, EnumTagType(type), *literal});
+        return true;
+    }
+    // A constant initialized from another stands for that one's value.
+    if (const auto *name = HirCast<const HirVarExpr>(&value)) {
+        const auto it = globalConsts.find(name->name);
+        return it != globalConsts.end() && it->second->value &&
+               CollectConstValueScalars(*it->second->value, type, path, scalars);
+    }
+    const auto member = [&](const HirExpr &part, const TypeRef &partType, std::string name) {
+        path.push_back({type, std::move(name)});
+        const bool collected = CollectConstValueScalars(part, partType, path, scalars);
+        path.pop_back();
+        return collected;
+    };
+    if (const auto *init = HirCast<const HirStructInitExpr>(&value); init && type->kind == TypeRef::Kind::Named) {
+        return std::ranges::all_of(init->fields, [&](const HirStructInitField &field) {
+            return field.value && member(*field.value, field.value->type, field.name);
+        });
+    }
+    if (const auto *tuple = HirCast<const HirTupleExpr>(&value);
+        tuple && type->kind == TypeRef::Kind::Tuple && tuple->elements.size() == type->inner.size()) {
+        for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
+            if (!tuple->elements[index] ||
+                !member(*tuple->elements[index], type->inner[index], std::to_string(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (const auto *array = HirCast<const HirArrayExpr>(&value);
+        array && type->kind == TypeRef::Kind::Array && !type->inner.empty() && type->arrayLength) {
+        const std::size_t count =
+            array->repeatedElement ? static_cast<std::size_t>(array->repeatCount) : array->elements.size();
+        if (count != *type->arrayLength) {
+            return false;
+        }
+        for (std::size_t index = 0; index < count; ++index) {
+            const HirExpr *element =
+                array->repeatedElement ? array->repeatedElement.get() : array->elements[index].get();
+            if (!element || !member(*element, type->inner.front(), std::to_string(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
 // Function lowering
 LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nameOverride) {
     currentFunction = nameOverride.empty() ? hf.name : std::string(nameOverride);
+    currentSourceFile = hf.sourceFile;
+    currentSourceFunction = hf.sourceFunction.empty() ? hf.name : hf.sourceFunction;
     locals.clear();
+    hiddenLocals.clear();
+    bindingSlots.clear();
     localConsts.clear();
     enumPayloadSlots.clear();
     partialCleanupFrames.clear();
     LirFunc lf;
     lf.name = nameOverride.empty() ? hf.name : std::string(nameOverride);
+    lf.displayName = currentSourceFunction;
     lf.isPublic = hf.isPublic;
+    lf.isExported = hf.isExported;
     lf.isExtern = false;
     lf.isNoReturn = hf.isNoReturn;
     lf.callConv = hf.callConv;
     lf.returnType = hf.returnType;
+    // The root package's `Main` alone keeps its bare name; without a result it still owes the process a status.
+    voidEntryPoint = lf.name == "Main" && hf.params.empty() && hf.returnType.IsOpaque();
+    if (voidEntryPoint) {
+        lf.returnType = TypeRef::MakeInt();
+    }
     // An asm function is an opaque blob of raw x86-64: no params to spill,
     // no basic blocks, no automatic prologue/epilogue. Its instructions are
     // carried verbatim to the code generator, which encodes them directly.
@@ -772,36 +1357,37 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
         return lf;
     }
     dropFlags.clear();
+    registerKinds.clear();
     CheckedLirBuilder functionBuilder(lf);
     builder = &functionBuilder;
     SetBlock(NewBlock("entry"));
     for (const auto &param : hf.params) {
         const std::string &name = param.name;
         const TypeRef &type = param.type;
-        const LirReg pr = builder->DefineParameter();
+        const LirReg pr = DefineParameter(param.isVariadic ? TypeRef::MakePointer(type) : type);
         if (param.isVariadic) {
-            locals[name] = pr;
+            BindLocal(name, pr, param.bindingId);
             lf.params.push_back({pr, TypeRef::MakePointer(type), name});
         }
         else if (IsInterfaceType(type)) {
             // Interface values are 16-byte fat ptrs; callers pass their
             // address. pr holds that address directly — no extra
             // alloca.
-            locals[name] = pr;
-            lf.params.push_back({pr, TypeRef::MakePointer(type), name});
+            BindLocal(name, pr, param.bindingId);
+            lf.params.push_back({pr, TypeRef::MakePointer(type), name, true});
         }
         else if (IsViewType(type)) {
             // Slice and string values are 16-byte {data, length} structs;
             // callers pass a pointer. pr holds that pointer directly — FieldPtr
             // handles the indirection. Register with Pointer<type> so
             // ResolveFieldOffset can compute field offsets.
-            locals[name] = pr;
-            lf.params.push_back({pr, TypeRef::MakePointer(type), name});
+            BindLocal(name, pr, param.bindingId);
+            lf.params.push_back({pr, TypeRef::MakePointer(type), name, true});
         }
         else {
             const LirReg slot = EmitAlloca(type);
             EmitStore(pr, slot, type);
-            locals[name] = slot;
+            BindLocal(name, slot, param.bindingId);
             lf.params.push_back({pr, type, name});
         }
     }
@@ -813,15 +1399,50 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     if (hf.body) {
         LowerBlock(*hf.body);
         if (!IsTerminated()) {
-            Return(std::nullopt, TypeRef::MakeOpaque());
+            // Analysis refuses a '#NoReturn' body that can end, so this is only a backstop for one it could not see
+            // through: coming back would continue the caller in code it marked unreachable.
+            if (hf.isNoReturn) {
+                EmitRuntimeTrap("'#NoReturn' function returned", hf.location);
+            }
+            else {
+                ReturnNothing();
+            }
         }
     }
     builder = nullptr;
     return lf;
 }
 
+void HirToLirContext::BindLocal(const std::string &name, const LirReg slot, const std::uint64_t bindingId) {
+    const auto previous = locals.find(name);
+    hiddenLocals.emplace_back(name, previous == locals.end() ? std::nullopt : std::optional<LirReg>(previous->second));
+    locals[name] = slot;
+    if (bindingId != 0) {
+        bindingSlots[bindingId] = slot;
+    }
+}
+
+void HirToLirContext::LeaveLocalScope(const std::size_t mark) {
+    while (hiddenLocals.size() > mark) {
+        auto &[name, previous] = hiddenLocals.back();
+        if (previous) {
+            locals[name] = *previous;
+        }
+        else {
+            locals.erase(name);
+        }
+        hiddenLocals.pop_back();
+    }
+}
+
 // Block / statement lowering
 void HirToLirContext::LowerBlock(const HirBlock &block) {
+    const std::size_t scope = EnterLocalScope();
+    LowerBlockStatements(block);
+    LeaveLocalScope(scope);
+}
+
+void HirToLirContext::LowerBlockStatements(const HirBlock &block) {
     for (const auto &stmt : block.stmts) {
         if (IsTerminated()) {
             break;
@@ -843,7 +1464,18 @@ HirToLirLowering::HirToLirLowering(HirPackage inputHir, TargetContext inputTarge
 LirPackage HirToLirLowering::Generate() {
     diagnostics.clear();
     HirToLirDetail::HirToLirContext lowering(target, diagnostics);
-    return lowering.Run(hir);
+    return lowering.Run(hir, pool, programModule, externalFailures, &moduleFailures);
+}
+
+void HirToLirLowering::ReleaseHir() {
+    auto modules = std::move(hir.modules);
+    hir = HirPackage{};
+    const auto release = [&](const std::size_t index) { modules[index] = HirModule{}; };
+    if (pool != nullptr)
+        pool->ForEach(modules.size(), release);
+    else
+        for (std::size_t index = 0; index < modules.size(); ++index)
+            release(index);
 }
 
 const std::vector<Diagnostic> &HirToLirLowering::Diagnostics() const noexcept {

@@ -1,8 +1,10 @@
 #include "Optimization/LirDeclarationPruner.h"
 
 #include "Optimization/LirReachability.h"
+#include "Parallel/WorkerPool.h"
 
 #include <cstddef>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -57,28 +59,37 @@ PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &con
         return PassChange::None;
     }
 
-    const auto reachability = LirReachabilityAnalysis::Run(package, artifactKind);
-    LirPruningStats ignoredStats;
-    LirPruningStats &stats = context.lirPruning != nullptr ? *context.lirPruning : ignoredStats;
-    bool changed = false;
-
-    for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
+    std::optional<LirReachabilityResult> wholePackage;
+    if (!moduleRoots) {
+        wholePackage = LirReachabilityAnalysis::Run(package, artifactKind);
+    }
+    // A module keeps what the rest of the program needs of it and what that reaches inside it, so modules are pruned
+    // on their own, side by side; their counts are added up in module order afterwards.
+    std::vector<LirPruningStats> moduleStats(package.modules.size());
+    std::vector<char> moduleChanged(package.modules.size(), 0);
+    const auto pruneModule = [&](const std::size_t moduleIndex) {
         auto &module = package.modules[moduleIndex];
-        changed = Prune(
-                      module.funcs,
-                      [&](const std::size_t index) {
-                          return reachability.IsReachable({LirDeclarationKind::Function, moduleIndex, index});
-                      },
-                      [&](const LirFunc &function) {
-                          if (function.isExtern) {
-                              ++stats.externDeclarations;
-                          }
-                          else {
-                              ++stats.functionDefinitions;
-                          }
-                          stats.estimatedIrNodes += EstimateNodes(function);
-                      }) ||
-                  changed;
+        auto &stats = moduleStats[moduleIndex];
+        static const std::vector<LirModuleRoot> noRoots;
+        const LirReachabilityResult reachability =
+            wholePackage
+                ? *wholePackage
+                : LirReachabilityAnalysis::RunModule(
+                      package, moduleIndex, moduleIndex < moduleRoots->size() ? (*moduleRoots)[moduleIndex] : noRoots);
+        bool changed = Prune(
+            module.funcs,
+            [&](const std::size_t index) {
+                return reachability.IsReachable({LirDeclarationKind::Function, moduleIndex, index});
+            },
+            [&](const LirFunc &function) {
+                if (function.isExtern) {
+                    ++stats.externDeclarations;
+                }
+                else {
+                    ++stats.functionDefinitions;
+                }
+                stats.estimatedIrNodes += EstimateNodes(function);
+            });
         changed = Prune(
                       module.consts,
                       [&](const std::size_t index) {
@@ -100,6 +111,16 @@ PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &con
                       }) ||
                   changed;
         changed = Prune(
+                      module.globals,
+                      [&](const std::size_t index) {
+                          return reachability.IsReachable({LirDeclarationKind::Global, moduleIndex, index});
+                      },
+                      [&](const LirGlobal &) {
+                          ++stats.constants;
+                          ++stats.estimatedIrNodes;
+                      }) ||
+                  changed;
+        changed = Prune(
                       module.externVars,
                       [&](const std::size_t index) {
                           return reachability.IsReachable({LirDeclarationKind::ExternVariable, moduleIndex, index});
@@ -109,6 +130,27 @@ PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &con
                           ++stats.estimatedIrNodes;
                       }) ||
                   changed;
+        moduleChanged[moduleIndex] = changed ? 1 : 0;
+    };
+    // Whole-package reachability numbers declarations by module and index, which pruning one module would shift under
+    // another still reading it, so that case stays on one thread.
+    if (context.pool != nullptr && !wholePackage)
+        context.pool->ForEach(package.modules.size(), pruneModule);
+    else
+        for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex)
+            pruneModule(moduleIndex);
+
+    LirPruningStats ignoredStats;
+    LirPruningStats &total = context.lirPruning != nullptr ? *context.lirPruning : ignoredStats;
+    bool changed = false;
+    for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
+        const auto &stats = moduleStats[moduleIndex];
+        total.functionDefinitions += stats.functionDefinitions;
+        total.constants += stats.constants;
+        total.vtables += stats.vtables;
+        total.externDeclarations += stats.externDeclarations;
+        total.estimatedIrNodes += stats.estimatedIrNodes;
+        changed = changed || moduleChanged[moduleIndex] != 0;
     }
     return changed ? PassChange::Changed : PassChange::None;
 }

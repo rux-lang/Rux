@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ScalarConstantAddress"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Scalar module constants have stable aligned addresses and complete read-only storage across packages."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+ScalarConstantProvider = { Path = "../../Fixtures/ScalarConstantAddress" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

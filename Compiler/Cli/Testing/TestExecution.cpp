@@ -9,31 +9,19 @@ namespace Rux::CliSupport {
 using namespace Driver;
 using namespace System;
 
-TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, const bool color) {
+TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, const bool color,
+                           const std::span<const std::string_view> arguments) {
     TestOutcome outcome;
+    outcome.runner = SourcesDeclareTests(package.dir);
     const auto started = std::chrono::steady_clock::now();
     auto Finish = [&]() {
         outcome.duration = ElapsedMs(started);
         return outcome;
     };
 
-    for (const auto &dependency : package.manifest.dependencies) {
-        if (!dependency.IsPath()) {
-            outcome.status = TestStatus::BuildError;
-            outcome.output = std::format(
-                "error: test dependency '{}' must use a local Path entry in '{}'; registry dependencies are "
-                "not allowed\n",
-                dependency.importName.Text(), (package.dir / "Rux.toml").string());
-            outcome.diagnostics = std::move(outcome.output);
-            outcome.output.clear();
-            return Finish();
-        }
-    }
-
     // Build the package quietly (suppress per-file build output for tests).
     copts.manifestPath = package.dir / "Rux.toml";
     copts.manifest = package.manifest;
-    copts.localDependenciesOnly = true;
     copts.isTest = true;
     copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
         outcome.diagnostics += RenderDiagnostic(diagnostic, color, sourceLineLookup);
@@ -60,7 +48,7 @@ TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, con
 
     // Execute the test binary, capturing its combined stdout/stderr.
     std::error_code launchError;
-    auto run = RunCaptured(exePath, {}, &launchError);
+    auto run = RunCaptured(exePath, arguments, &launchError);
     if (!run) {
         if (launchError) {
             outcome.diagnostics =
@@ -77,6 +65,11 @@ TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, con
     outcome.output = std::move(run->output);
 
     outcome.status = outcome.exitCode == 0 ? TestStatus::Passed : TestStatus::Failed;
+    // The runner's code and line for filters that chose no test: both, so that a program of its own that happens to
+    // exit with 3 still fails.
+    if (!arguments.empty() && outcome.exitCode == 3 && outcome.output.contains("no test matches the filter")) {
+        outcome.status = TestStatus::NoMatch;
+    }
     return Finish();
 }
 } // namespace Rux::CliSupport

@@ -1,0 +1,299 @@
+// Lazy adaptors: cursors that wrap another cursor and change what it yields, one item at a time.
+// Each adaptor holds the cursor it wraps and asks it for an item only when it is asked for one, so nothing is computed
+// ahead and nothing is stored. They take any value with a `Next` returning `T?` — a container's iterator, a `Walk`
+// over a slice, or another adaptor — through the `Cursor<T>` bound, and their item types are deduced from what
+// that `Next` returns, so a chain reads without type arguments:
+// `for value in Take(Filter(Map(Walk(numbers), Square), IsEven), 3) { ... }`.
+// An adaptor owns the cursor it was given; give it a copy, or move the cursor in, as with any argument.
+
+/// Anything that yields items of type `T` one at a time through `Next`, which `for` and every adaptor here drive.
+/// A type conforms by having the method, whether or not it says `extend X : Cursor<T>`. Only usable as a bound.
+/// @typeParam T the item type
+/// @see https://rux-lang.dev/docs/api/core/adaptors#cursor
+pub interface Cursor<T> {
+    /// The next item, or `none` once there are no more.
+    /// @returns the item
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#cursor-next
+    func Next(self: &var Self) -> T?;
+}
+
+/// A cursor over the elements of a slice, by copy. `Copy`.
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/core/adaptors#slice-cursor
+pub struct SliceCursor<T> {
+    items: T[..];
+    at: uint;
+}
+
+extend SliceCursor<T> {
+    /// The next element, or `none` after the last.
+    /// @returns the element
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#slice-cursor-next
+    pub func Next(self: &var SliceCursor<T>) -> T? {
+        if self.at >= self.items.length { return none; }
+        self.at = self.at + 1;
+        return self.items[self.at - 1];
+    }
+}
+
+/// A cursor over the elements of `items`, so a slice can feed the adaptors.
+/// @typeParam T the element type
+/// @param items the elements, which must outlive the cursor
+/// @returns the cursor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#walk
+pub func Walk<T>(items: T[..]) -> SliceCursor<T> {
+    return SliceCursor<T> { items: items, at: 0 };
+}
+
+/// The items of a cursor, each passed through a function.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @typeParam U what the function makes of each
+/// @see https://rux-lang.dev/docs/api/core/adaptors#mapped
+pub struct Mapped<I: Cursor<T>, T, U> {
+    source: I;
+    transform: func(T) -> U;
+}
+
+extend Mapped<I, T, U> {
+    /// The next item, transformed.
+    /// @returns the item
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#mapped-next
+    pub func Next(self: &var Mapped<I, T, U>) -> U? {
+        let item = self.source.Next() ?? return none;
+        return self.transform(item);
+    }
+}
+
+/// Each item of `source` passed through `transform`, as it is asked for.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @typeParam U what `transform` makes of each item
+/// @param source the cursor to wrap
+/// @param transform what to do to each item
+/// @returns the adaptor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#map
+pub func Map<I: Cursor<T>, T, U>(source: I, transform: func(T) -> U) -> Mapped<I, T, U> {
+    return Mapped<I, T, U> { source: source, transform: transform };
+}
+
+/// The items of a cursor that pass a test.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @see https://rux-lang.dev/docs/api/core/adaptors#filtered
+pub struct Filtered<I: Cursor<T>, T> {
+    source: I;
+    keep: func(T) -> bool;
+}
+
+extend Filtered<I, T> {
+    /// The next item that passes the test.
+    /// @returns the item
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#filtered-next
+    pub func Next(self: &var Filtered<I, T>) -> T? {
+        while true {
+            let item = self.source.Next() ?? return none;
+            if self.keep(item) { return item; }
+        }
+        return none;
+    }
+}
+
+/// The items of `source` for which `keep` holds.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @param source the cursor to wrap
+/// @param keep the test each item must pass
+/// @returns the adaptor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#filter
+pub func Filter<I: Cursor<T>, T>(source: I, keep: func(T) -> bool) -> Filtered<I, T> {
+    return Filtered<I, T> { source: source, keep: keep };
+}
+
+/// At most a number of items from the front of a cursor.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @see https://rux-lang.dev/docs/api/core/adaptors#taken
+pub struct Taken<I: Cursor<T>, T> {
+    source: I;
+    left: uint;
+}
+
+extend Taken<I, T> {
+    /// The next item, or `none` once the count is reached; the wrapped cursor is not asked again after that.
+    /// @returns the item
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#taken-next
+    pub func Next(self: &var Taken<I, T>) -> T? {
+        if self.left == 0 { return none; }
+        self.left = self.left - 1;
+        return self.source.Next();
+    }
+}
+
+/// The first `count` items of `source`, or all of them if it has fewer.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @param source the cursor to wrap
+/// @param count how many items at most
+/// @returns the adaptor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#take
+pub func Take<I: Cursor<T>, T>(source: I, count: uint) -> Taken<I, T> {
+    return Taken<I, T> { source: source, left: count };
+}
+
+/// The items of a cursor after a number of them.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @see https://rux-lang.dev/docs/api/core/adaptors#skipped
+pub struct Skipped<I: Cursor<T>, T> {
+    source: I;
+    skip: uint;
+}
+
+extend Skipped<I, T> {
+    /// The next item, passing over the skipped ones the first time it is asked.
+    /// @returns the item
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#skipped-next
+    pub func Next(self: &var Skipped<I, T>) -> T? {
+        while self.skip > 0 {
+            self.skip = self.skip - 1;
+            let passed = self.source.Next() ?? return none;
+        }
+        return self.source.Next();
+    }
+}
+
+/// The items of `source` after its first `count`.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @param source the cursor to wrap
+/// @param count how many items to pass over
+/// @returns the adaptor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#skip
+pub func Skip<I: Cursor<T>, T>(source: I, count: uint) -> Skipped<I, T> {
+    return Skipped<I, T> { source: source, skip: count };
+}
+
+/// An item and its position, counting from zero. `Copy` when the item is.
+/// @typeParam T the item type
+/// @see https://rux-lang.dev/docs/api/core/adaptors#indexed
+pub struct Indexed<T> {
+    /// Where the item came in the sequence.
+    pub index: uint;
+    /// The item.
+    pub item: T;
+}
+
+/// The items of a cursor with their positions.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @see https://rux-lang.dev/docs/api/core/adaptors#enumerated
+pub struct Enumerated<I: Cursor<T>, T> {
+    source: I;
+    index: uint;
+}
+
+extend Enumerated<I, T> {
+    /// The next item with its position.
+    /// @returns the item and its position
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#enumerated-next
+    pub func Next(self: &var Enumerated<I, T>) -> Indexed<T>? {
+        let item = self.source.Next() ?? return none;
+        self.index = self.index + 1;
+        return Indexed<T> { index: self.index - 1, item: item };
+    }
+}
+
+/// Each item of `source` with its position, counting from zero.
+/// @typeParam I the wrapped cursor
+/// @typeParam T what it yields
+/// @param source the cursor to wrap
+/// @returns the adaptor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#enumerate
+pub func Enumerate<I: Cursor<T>, T>(source: I) -> Enumerated<I, T> {
+    return Enumerated<I, T> { source: source, index: 0 };
+}
+
+/// One item from each of two cursors. `Copy` when both are.
+/// @typeParam A the first item type
+/// @typeParam B the second item type
+/// @see https://rux-lang.dev/docs/api/core/adaptors#pair
+pub struct Pair<A, B> {
+    /// The item from the first cursor.
+    pub first: A;
+    /// The item from the second cursor.
+    pub second: B;
+}
+
+/// The items of two cursors side by side.
+/// @typeParam I the first cursor
+/// @typeParam J the second cursor
+/// @typeParam A what the first yields
+/// @typeParam B what the second yields
+/// @see https://rux-lang.dev/docs/api/core/adaptors#zipped
+pub struct Zipped<I: Cursor<A>, J: Cursor<B>, A, B> {
+    first: I;
+    second: J;
+}
+
+extend Zipped<I, J, A, B> {
+    /// The next item of each, or `none` once either runs out.
+    /// @returns the pair
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#zipped-next
+    pub func Next(self: &var Zipped<I, J, A, B>) -> Pair<A, B>? {
+        let left = self.first.Next() ?? return none;
+        let right = self.second.Next() ?? return none;
+        return Pair<A, B> { first: left, second: right };
+    }
+}
+
+/// The items of `first` and `second` in pairs, as long as both last.
+/// @typeParam I the first cursor
+/// @typeParam J the second cursor
+/// @typeParam A what the first yields
+/// @typeParam B what the second yields
+/// @param first the first cursor
+/// @param second the second cursor
+/// @returns the adaptor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#zip
+pub func Zip<I: Cursor<A>, J: Cursor<B>, A, B>(first: I, second: J) -> Zipped<I, J, A, B> {
+    return Zipped<I, J, A, B> { first: first, second: second };
+}
+
+/// The items of one cursor and then of another.
+/// @typeParam I the first cursor
+/// @typeParam J the second cursor
+/// @typeParam T what both yield
+/// @see https://rux-lang.dev/docs/api/core/adaptors#chained
+pub struct Chained<I: Cursor<T>, J: Cursor<T>, T> {
+    first: I;
+    second: J;
+    firstDone: bool;
+}
+
+extend Chained<I, J, T> {
+    /// The next item of the first cursor, then of the second once the first has run out.
+    /// @returns the item
+    /// @see https://rux-lang.dev/docs/api/core/adaptors#chained-next
+    pub func Next(self: &var Chained<I, J, T>) -> T? {
+        if !self.firstDone {
+            match self.first.Next() {
+                .Some(item) => return item,
+                none => self.firstDone = true
+            }
+        }
+        return self.second.Next();
+    }
+}
+
+/// The items of `first` followed by the items of `second`.
+/// @typeParam I the first cursor
+/// @typeParam J the second cursor
+/// @typeParam T what both yield
+/// @param first the cursor read first
+/// @param second the cursor read after it
+/// @returns the adaptor
+/// @see https://rux-lang.dev/docs/api/core/adaptors#chain
+pub func Chain<I: Cursor<T>, J: Cursor<T>, T>(first: I, second: J) -> Chained<I, J, T> {
+    return Chained<I, J, T> { first: first, second: second, firstDone: false };
+}

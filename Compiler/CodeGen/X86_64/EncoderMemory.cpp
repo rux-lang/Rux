@@ -2,8 +2,88 @@
 // frame layout addresses spill slots through.
 
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarCast.h"
+#include "CodeGen/X86_64/ScalarMemory.h"
 
 namespace Rux {
+
+void X64Enc::EmitScalarCastInstruction(const X86ScalarCastInstruction &instruction) const {
+    const bool wide = instruction.sourceBytes != 4 || instruction.signedSource;
+    const auto rex = static_cast<std::uint8_t>(0x40 | (wide ? 8 : 0) | (instruction.destination >= 8 ? 4 : 0) |
+                                               (instruction.source >= 8 ? 1 : 0));
+    if (rex != 0x40)
+        Byte(rex);
+    if (instruction.sourceBytes < 4) {
+        Byte(0x0F);
+        Byte(static_cast<std::uint8_t>((instruction.signedSource ? 0xBE : 0xB6) +
+                                       (instruction.sourceBytes == 2 ? 1 : 0)));
+    }
+    else {
+        Byte(instruction.sourceBytes == 4 && instruction.signedSource ? 0x63 : 0x8B);
+    }
+    Byte(static_cast<std::uint8_t>(0xC0 | ((instruction.destination & 7) << 3) | (instruction.source & 7)));
+}
+
+void X64Enc::EmitScalarAddressInstruction(const X86ScalarAddressInstruction &instruction) const {
+    if (instruction.baseSlot)
+        MovRaxLoad(*instruction.baseSlot);
+    if (instruction.indexSlot)
+        MovR10Load(*instruction.indexSlot);
+    Byte(static_cast<std::uint8_t>(0x48 | (instruction.destination >= 8 ? 4 : 0) | (instruction.index >= 8 ? 2 : 0) |
+                                   (instruction.base >= 8 ? 1 : 0)));
+    Byte(0x8D);
+    const int base = instruction.base & 7;
+    const bool sib = instruction.index >= 0 || base == 4;
+    const auto displacement = instruction.displacement;
+    const int mode = displacement == 0 && base != 5 ? 0 : displacement >= -128 && displacement <= 127 ? 1 : 2;
+    Byte(static_cast<std::uint8_t>((mode << 6) | ((instruction.destination & 7) << 3) | (sib ? 4 : base)));
+    if (sib) {
+        const int shift = instruction.scale == 8 ? 3 : instruction.scale == 4 ? 2 : instruction.scale == 2 ? 1 : 0;
+        const int index = instruction.index >= 0 ? instruction.index & 7 : 4;
+        Byte(static_cast<std::uint8_t>((shift << 6) | (index << 3) | base));
+    }
+    if (mode == 1)
+        Byte(static_cast<std::uint8_t>(displacement));
+    else if (mode == 2)
+        Dword(u(displacement));
+}
+
+void X64Enc::EmitScalarMemoryInstruction(const X86ScalarMemoryInstruction &instruction) const {
+    if (instruction.floating)
+        Byte(instruction.bytes == 4 ? 0xF3 : 0xF2);
+    else if (instruction.store && instruction.bytes == 2)
+        Byte(0x66);
+    const bool wide =
+        !instruction.floating &&
+        (instruction.bytes == 8 || (!instruction.store && (instruction.bytes < 4 || instruction.signedLoad)));
+    const auto rex = static_cast<std::uint8_t>(0x40 | (wide ? 8 : 0) | (instruction.value >= 8 ? 4 : 0) |
+                                               (instruction.address >= 8 ? 1 : 0));
+    // A byte store from SPL/BPL/SIL/DIL needs REX even when no extension bit is set.
+    if (rex != 0x40 || (!instruction.floating && instruction.store && instruction.bytes == 1 && instruction.value >= 4))
+        Byte(rex);
+    if (instruction.floating) {
+        Byte(0x0F);
+        Byte(instruction.store ? 0x11 : 0x10);
+    }
+    else if (instruction.store) {
+        Byte(instruction.bytes == 1 ? 0x88 : 0x89);
+    }
+    else if (instruction.bytes < 4) {
+        Byte(0x0F);
+        Byte(instruction.signedLoad ? (instruction.bytes == 1 ? 0xBE : 0xBF) : (instruction.bytes == 1 ? 0xB6 : 0xB7));
+    }
+    else {
+        Byte(instruction.bytes == 4 && instruction.signedLoad ? 0x63 : 0x8B);
+    }
+    const auto base = instruction.address & 7;
+    const auto mode = base == 5 ? 0x40 : 0;
+    Byte(static_cast<std::uint8_t>(mode | ((instruction.value & 7) << 3) | base));
+    if (base == 4)
+        Byte(0x24); // No index, scale one; REX.B selects R12 rather than RSP when required.
+    if (base == 5)
+        Byte(0); // RBP/R13 require an explicit displacement, even when it is zero.
+}
 
 void X64Enc::MovRaxLoad(const int32_t d) const {
     Byte(0x48);

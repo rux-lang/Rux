@@ -1,0 +1,18 @@
+// A match expression on a tuple must produce a value for every combination of its elements; a statement need not.
+enum Light { Red, Green }
+
+func Main() -> int {
+    let pair: (int32, int32) = (1i32, 2i32);
+    let zero = match pair { (0, _) => 1i32, (_, 0) => 2i32 };
+    let flags = (true, false);
+    let partial = match flags { (true, true) => 1i32, (false, _) => 2i32 };
+    let complete = match flags { (true, true) => 1i32, (true, false) => 2i32, (false, true) => 3i32, (false, false) => 4i32 };
+    let guarded = match flags { (true, _) => 1i32, (false, _) if zero > 0 => 2i32 };
+    let state = (Light::Red, true);
+    let lit = match state { (Light::Red, _) => 1i32, (Light::Green, true) => 2i32 };
+    let covered = match pair { (0, y) => y, (x, _) => x };
+    match pair {
+        (0, _) => {}
+    }
+    return (zero + partial + complete + guarded + lit + covered) as int;
+}

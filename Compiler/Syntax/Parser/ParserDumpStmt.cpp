@@ -32,25 +32,25 @@ void StatementPrinter::PrintBlock(const Block &block) {
 }
 
 void StatementPrinter::Print(const Stmt &statement) {
-    if (const auto *let = dynamic_cast<const LetStmt *>(&statement)) {
+    if (const auto *let = AstCast<const LetStmt>(&statement)) {
         PrintLetStmt(*let);
     }
-    else if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
+    else if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
         PrintIfStmt(*ifStatement);
     }
-    else if (const auto *whileStatement = dynamic_cast<const WhileStmt *>(&statement)) {
+    else if (const auto *whileStatement = AstCast<const WhileStmt>(&statement)) {
         PrintWhileStmt(*whileStatement);
     }
-    else if (const auto *forStatement = dynamic_cast<const ForStmt *>(&statement)) {
+    else if (const auto *forStatement = AstCast<const ForStmt>(&statement)) {
         PrintForStmt(*forStatement);
     }
-    else if (const auto *matchStatement = dynamic_cast<const MatchStmt *>(&statement)) {
+    else if (const auto *matchStatement = AstCast<const MatchStmt>(&statement)) {
         PrintMatchStmt(*matchStatement);
     }
-    else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
+    else if (const auto *returnStatement = AstCast<const ReturnStmt>(&statement)) {
         PrintReturnStmt(*returnStatement);
     }
-    else if (const auto *failStatement = dynamic_cast<const FailStmt *>(&statement)) {
+    else if (const auto *failStatement = AstCast<const FailStmt>(&statement)) {
         Pad();
         out << "FailStmt\n";
         if (failStatement->value) {
@@ -59,18 +59,18 @@ void StatementPrinter::Print(const Stmt &statement) {
             --indent;
         }
     }
-    else if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(&statement)) {
+    else if (const auto *deferStatement = AstCast<const DeferStmt>(&statement)) {
         PrintDeferStmt(*deferStatement);
     }
-    else if (dynamic_cast<const BreakStmt *>(&statement)) {
+    else if (AstCast<const BreakStmt>(&statement)) {
         Pad();
         out << "BreakStmt\n";
     }
-    else if (dynamic_cast<const ContinueStmt *>(&statement)) {
+    else if (AstCast<const ContinueStmt>(&statement)) {
         Pad();
         out << "ContinueStmt\n";
     }
-    else if (const auto *expressionStatement = dynamic_cast<const ExprStmt *>(&statement)) {
+    else if (const auto *expressionStatement = AstCast<const ExprStmt>(&statement)) {
         Pad();
         out << "ExprStmt\n";
         ++indent;
@@ -79,7 +79,7 @@ void StatementPrinter::Print(const Stmt &statement) {
         }
         --indent;
     }
-    else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
+    else if (const auto *declarationStatement = AstCast<const DeclStmt>(&statement)) {
         if (declarationStatement->decl) {
             printDeclaration(*declarationStatement->decl);
         }
@@ -235,19 +235,19 @@ void StatementPrinter::PrintDeferStmt(const DeferStmt &statement) {
 }
 
 void StatementPrinter::PrintPattern(const Pattern &pattern) {
-    if (dynamic_cast<const WildcardPattern *>(&pattern)) {
+    if (AstCast<const WildcardPattern>(&pattern)) {
         Pad();
         out << "WildcardPattern\n";
     }
-    else if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+    else if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
         Pad();
         out << "LiteralPattern '" << literal->value.text << "'\n";
     }
-    else if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    else if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         Pad();
         out << "IdentPattern '" << identifier->name << "'\n";
     }
-    else if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+    else if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         Pad();
         out << "RangePattern " << (range->inclusive ? "..." : "..") << '\n';
         ++indent;
@@ -259,7 +259,7 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
         }
         --indent;
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         Pad();
         out << "EnumPattern '";
         if (enumeration->path.size() == 1) {
@@ -298,7 +298,7 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
             --indent;
         }
     }
-    else if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         Pad();
         out << "StructPattern '" << structure->typeName << "'\n";
         ++indent;
@@ -313,7 +313,7 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
         }
         --indent;
     }
-    else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         Pad();
         out << "TuplePattern [" << tuple->elements.size() << "]\n";
         ++indent;
@@ -324,12 +324,12 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
         }
         --indent;
     }
-    else if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+    else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         Pad();
         out << "TypedPattern '" << (typed->name.empty() ? "_" : typed->name)
             << "' : " << DeclarationPrinter::TypeString(typed->type.get()) << "\n";
     }
-    else if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         Pad();
         out << "PresencePattern\n";
         ++indent;
@@ -338,11 +338,11 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
         }
         --indent;
     }
-    else if (dynamic_cast<const NonePattern *>(&pattern)) {
+    else if (AstCast<const NonePattern>(&pattern)) {
         Pad();
         out << "NonePattern\n";
     }
-    else if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         Pad();
         out << "GuardedPattern\n";
         ++indent;

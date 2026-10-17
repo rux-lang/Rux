@@ -17,9 +17,10 @@ public:
     /// Generate assembly text for all modules in the package.
     [[nodiscard]] std::string Generate() const;
 
-    /// Write the assembly text to `path`. Returns false on I/O error.
-    static bool Emit(const LirPackage &package, const std::filesystem::path &path,
-                     Target::OS targetOs = Target::HostOS);
+    /// Write the assembly text to `path`. Returns false on I/O error. With `machineSelection`, every function the
+    /// machine selector supports is printed as that path emits it, matching a Release object.
+    static bool Emit(const LirPackage &package, const std::filesystem::path &path, Target::OS targetOs = Target::HostOS,
+                     bool machineSelection = false);
 
 private:
     LirPackage lir;

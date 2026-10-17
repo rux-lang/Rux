@@ -3,14 +3,14 @@
 #include <algorithm>
 #include <format>
 #include <fstream>
-#include <sstream>
+#include <string>
 
 namespace Rux {
 bool SourceLoadResult::HasErrors() const noexcept {
     return std::ranges::any_of(diagnostics, &Diagnostic::IsError);
 }
 
-SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir) {
+SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir, Parallel::WorkerPool *pool) {
     SourceLoadResult result;
     const auto srcDir = manifestDir / "Src";
     std::error_code filesystemError;
@@ -52,27 +52,44 @@ SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir) {
                                       {},
                                       {}});
     }
-    for (const auto &path : paths) {
-        auto file = LoadFile(path);
-        if (!file) {
-            result.diagnostics.push_back(ErrorDiagnostic(std::format("cannot read source file '{}'", path.string()), {},
-                                                         "check that the file is readable"));
+    // Files are read side by side and reported in path order.
+    std::vector<std::optional<SourceFile>> files(paths.size());
+    const auto read = [&](const std::size_t index) { files[index] = LoadFile(paths[index]); };
+    if (pool != nullptr)
+        pool->ForEach(paths.size(), read);
+    else
+        for (std::size_t index = 0; index < paths.size(); ++index)
+            read(index);
+    for (std::size_t index = 0; index < paths.size(); ++index) {
+        if (!files[index]) {
+            result.diagnostics.push_back(
+                ErrorDiagnostic(std::format("cannot read source file '{}'", paths[index].string()), {},
+                                "check that the file is readable"));
             continue;
         }
-        result.files.push_back(std::move(*file));
+        result.files.push_back(std::move(*files[index]));
     }
     return result;
 }
 
 std::optional<SourceFile> SourceLoader::LoadFile(const std::filesystem::path &path) {
-    std::ifstream stream(path, std::ios::binary);
+    // Stamped before the read: an edit that lands after it leaves a stamp older than the file, so the next build
+    // looks at the file again rather than trusting what this build read. One query of the file answers both parts.
+    std::error_code stampError;
+    const std::filesystem::directory_entry entry(path, stampError);
+    const auto size = stampError ? 0 : entry.file_size(stampError);
+    const auto modified = stampError ? std::filesystem::file_time_type{} : entry.last_write_time(stampError);
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream) {
         return std::nullopt;
     }
-
-    std::ostringstream buf;
-    buf << stream.rdbuf();
-    if (!stream && !stream.eof()) {
+    const auto end = stream.tellg();
+    if (end < 0) {
+        return std::nullopt;
+    }
+    std::string text(static_cast<std::size_t>(end), '\0');
+    stream.seekg(0);
+    if (!stream.read(text.data(), static_cast<std::streamsize>(text.size()))) {
         return std::nullopt;
     }
 
@@ -83,7 +100,9 @@ std::optional<SourceFile> SourceLoader::LoadFile(const std::filesystem::path &pa
     }
     return SourceFile{
         .path = std::move(absolutePath),
-        .source = buf.str(),
+        .source = std::move(text),
+        .size = stampError ? ~std::uintmax_t{0} : size,
+        .modified = stampError ? std::filesystem::file_time_type{} : modified,
     };
 }
 

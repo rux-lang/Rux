@@ -1,4 +1,9 @@
+#include "CodeGen/AArch64/MachineEmission.h"
+#include "CodeGen/AArch64/MachineSelection.h"
 #include "CodeGen/AArch64/ModuleEmitter.h"
+#include "Ir/Lir/LirVectors.h"
+
+#include <algorithm>
 
 namespace Rux::AArch64Detail {
 
@@ -12,13 +17,20 @@ RcuFile AArch64ModuleEmitter::Generate() {
 
 void AArch64ModuleEmitter::GenInstr(AArch64FunctionEmitter &functionEmitter, AArch64CallEmitter &callEmitter,
                                     AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr) {
-    if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr) || callEmitter.Emit(instr)) {
+    if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr) ||
+        functionEmitter.EmitAtomic(instr) || functionEmitter.EmitThreadLocal(instr) || callEmitter.Emit(instr)) {
         return;
     }
     switch (instr.op) {
     case LirOpcode::Assert:
     case LirOpcode::Panic:
         GenAssert(terminatorEmitter, instr);
+        break;
+    case LirOpcode::FramePointer:
+        StoreToSlot(A64::Fp, instr.dst, instr.type);
+        break;
+    case LirOpcode::WriteStandardError:
+        EmitWriteStandardError(instr);
         break;
     case LirOpcode::Phi:
         // Nothing: the value arrived in this register's slot along the edge
@@ -61,7 +73,7 @@ void AArch64ModuleEmitter::GenAsmFunc(const LirFunc &func) {
     const std::uint32_t symIdx = funcSyms.contains(func.name)
                                    ? funcSyms.at(func.name)
                                    : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                                   func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                                   RcuSymVis::ForDefinition(func.isPublic, func.isExported));
     funcSyms[func.name] = symIdx;
     if (!moduleBuilder.BeginFunction(symIdx)) {
         return;
@@ -80,12 +92,23 @@ void AArch64ModuleEmitter::GenAsmFunc(const LirFunc &func) {
 
 void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
     if (func.isExtern) {
-        GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
+        GetOrAddExtern(func.name, RcuSymKind::ExternFunc, ExternLibrary(func));
         return;
     }
     currentFunc = func.name;
     if (func.isAsm) {
         GenAsmFunc(func);
+        currentFunc.clear();
+        return;
+    }
+    // This back end selects no vectors: it emits the scalar instructions they stand for.
+    if (HasVectorInstructions(func)) {
+        LirFunc scalar = func;
+        Devectorize(scalar);
+        GenFunc(scalar);
+        return;
+    }
+    if (machineSelection && GenMachineFunc(func)) {
         currentFunc.clear();
         return;
     }
@@ -109,7 +132,7 @@ void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
     const std::uint32_t symIdx = funcSyms.contains(func.name)
                                    ? funcSyms.at(func.name)
                                    : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                                   func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                                   RcuSymVis::ForDefinition(func.isPublic, func.isExported));
     funcSyms[func.name] = symIdx;
     if (!moduleBuilder.BeginFunction(symIdx)) {
         activeFramePlan = nullptr;
@@ -146,6 +169,62 @@ void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
     activeFramePlan = nullptr;
     currentFunc.clear();
 }
+
+std::uint32_t AArch64ModuleEmitter::ResolveMachineSymbol(const AArch64Machine::SymbolRef &symbol) {
+    using Kind = AArch64Machine::SymbolRef::Kind;
+    switch (symbol.kind) {
+    case Kind::Global:
+        return ResolveGlobalSymbol(symbol.text);
+    case Kind::NamedData:
+        return GetOrAddExtern(symbol.text, RcuSymKind::ExternData);
+    case Kind::Function:
+        return ResolveCallSymbol(symbol.text);
+    case Kind::String:
+        return InternStringLiteral(symbol.text);
+    case Kind::Float32:
+        return InternF32(symbol.text);
+    case Kind::Float64:
+        return InternF64(symbol.text);
+    case Kind::Kernel32:
+        return GetOrAddExtern(symbol.text, RcuSymKind::ExternFunc, std::string(kKernel32));
+    }
+    return kNoSymbol;
+}
+
+bool AArch64ModuleEmitter::GenMachineFunc(const LirFunc &func) {
+    if (ReachesImportedData(func)) {
+        return false;
+    }
+    const AArch64Machine::SelectionContext context{layouts, interfaceNames, callPlanner, targetOs, backtrace.enabled};
+    auto selected = AArch64Machine::SelectFunction(func, context);
+    if (!selected) {
+        return false;
+    }
+    const auto emitted = AArch64Machine::EmitFunction(*selected, targetOs);
+    if (!emitted) {
+        return false;
+    }
+    const std::uint32_t symIdx = funcSyms.contains(func.name)
+                                   ? funcSyms.at(func.name)
+                                   : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
+                                                   RcuSymVis::ForDefinition(func.isPublic, func.isExported));
+    funcSyms[func.name] = symIdx;
+    std::vector<std::uint32_t> symbols;
+    symbols.reserve(selected->symbols.size());
+    for (const auto &symbol : selected->symbols) {
+        symbols.push_back(ResolveMachineSymbol(symbol));
+    }
+    if (!moduleBuilder.BeginFunction(symIdx)) {
+        return true;
+    }
+    const auto start = static_cast<std::uint32_t>(TextData().size());
+    TextData().insert(TextData().end(), emitted->bytes.begin(), emitted->bytes.end());
+    for (const auto &use : emitted->symbolUses) {
+        AddTextReloc(start + use.offset, symbols.at(use.symbol), use.type, use.addend);
+    }
+    (void)moduleBuilder.EndFunction(symIdx);
+    return true;
+}
 } // namespace Rux::AArch64Detail
 
 namespace Rux {
@@ -160,21 +239,45 @@ AArch64RcuEmitter::AArch64RcuEmitter(const LirPackage &package, std::string inpu
 }
 
 std::vector<RcuFile> AArch64RcuEmitter::Generate() const {
-    std::vector<RcuFile> result;
-    result.reserve(lir.modules.size());
     // Struct layouts and interface names are gathered across the whole package
     // first: a module reaches types the module beside it declared, and a frame
     // cannot be laid out without their sizes.
-    std::vector<LirStructDecl> structDecls;
-    std::vector<std::string> interfaceNames;
-    for (const auto &module : lir.modules) {
-        structDecls.insert(structDecls.end(), module.structs.begin(), module.structs.end());
-        interfaceNames.insert(interfaceNames.end(), module.interfaceNames.begin(), module.interfaceNames.end());
-    }
-    for (const auto &module : lir.modules) {
-        AArch64ModuleEmitter gen(module, structDecls, interfaceNames, packageName, targetOs, buildInfo, diagnostics);
-        result.push_back(gen.Generate());
-    }
+    const auto layouts = Layout::BuildPackageLayouts(lir);
+    // Modules trace their failures and list their functions when asked to, or when the package holds the stack-trace
+    // printer; the module holding the printer also lists every module's table.
+    const auto holdsPrinter = [](const LirModule &module) {
+        return std::ranges::any_of(module.funcs,
+                                   [](const LirFunc &function) { return function.name == kBacktraceFunctionName; });
+    };
+    const bool tracesPanics = backtraces || std::ranges::any_of(lir.modules, holdsPrinter);
+    std::vector<std::string> tables;
+    tables.reserve(lir.modules.size());
+    for (const LirModule &module : lir.modules)
+        tables.push_back(FunctionTableSymbol(module.name));
+    const auto backtraceOf = [&](const std::size_t index) {
+        return BacktraceTables{tracesPanics, tables[index],
+                               holdsPrinter(lir.modules[index]) ? tables : std::vector<std::string>{}};
+    };
+    // Modules are independent objects, so each is emitted on its own; diagnostics merge in module order.
+    std::vector<RcuFile> result(lir.modules.size());
+    std::vector<std::vector<Diagnostic>> moduleDiagnostics(lir.modules.size());
+    const auto emit = [&](const std::size_t index) {
+        if (index < emittedModules.size() && !emittedModules[index])
+            return;
+        AArch64ModuleEmitter gen(lir.modules[index], layouts, packageName, targetOs, buildInfo,
+                                 moduleDiagnostics[index]);
+        gen.SetBacktrace(backtraceOf(index));
+        gen.SetMachineSelection(machineSelection);
+        result[index] = gen.Generate();
+    };
+    if (pool != nullptr)
+        pool->ForEach(lir.modules.size(), emit);
+    else
+        for (std::size_t index = 0; index < lir.modules.size(); ++index)
+            emit(index);
+    for (auto &emitted : moduleDiagnostics)
+        diagnostics.insert(diagnostics.end(), std::make_move_iterator(emitted.begin()),
+                           std::make_move_iterator(emitted.end()));
     return result;
 }
 } // namespace Rux

@@ -1,9 +1,7 @@
 // SHA-512 and its three truncations, from FIPS 180-4.
-//
 // The same shape as SHA-256 one size up: sixty-four bit words, eighty rounds, blocks of a hundred and twenty
 // eight bytes, and a length count of a hundred and twenty eight bits. The rotation amounts and shift distances
 // differ, and so does everything derived from them; nothing here is SHA-256 with a wider type.
-//
 // Four functions share the compression: SHA-512 keeps all eight words, SHA-384 keeps six, and SHA-512/224 and
 // SHA-512/256 keep the first twenty-eight and thirty-two bytes. Each starts from a different initial state --
 // the truncations' states are themselves derived by hashing their own names, which is what stops any of them
@@ -68,9 +66,7 @@ func RotateRight64(value: uint64, amount: uint64) -> uint64 {
 }
 
 /// An incremental SHA-512, SHA-384, SHA-512/224 or SHA-512/256.
-///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/sha512
 pub struct Sha512 {
     /// The eight working words.
@@ -90,65 +86,61 @@ extend Sha512 {
     func Start(initial: uint64[8], outputLength: uint) -> Sha512 {
         var buffer: char8[128];
         var index: uint = 0;
-        while index < 128u {
+        while index < 128 {
             buffer[index] = 0u8 as char8;
-            index = index + 1u;
+            index = index + 1;
         }
         return Sha512 { state: initial, buffer: buffer, buffered: 0, length: 0, outputLength: outputLength };
     }
 
     /// A SHA-512 state.
-    ///
     /// @returns a hasher producing a 512-bit digest
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/new
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#new
     pub func Sha512() -> Sha512 {
-        return Sha512::Start(Sha512InitialState, 64u);
+        return Sha512::Start(Sha512InitialState, 64);
     }
 
     /// A SHA-384 state.
-    ///
     /// @returns a hasher producing a 384-bit digest
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-384
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#new-384
     pub func New384() -> Sha512 {
-        return Sha512::Start(Sha384InitialState, 48u);
+        return Sha512::Start(Sha384InitialState, 48);
     }
 
     /// A SHA-512/224 state.
-    ///
     /// @returns a hasher producing SHA-512/224
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-trunc224
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#new-trunc224
     pub func NewTrunc224() -> Sha512 {
-        return Sha512::Start(Sha512Trunc224InitialState, 28u);
+        return Sha512::Start(Sha512Trunc224InitialState, 28);
     }
 
     /// A SHA-512/256 state.
-    ///
     /// @returns a hasher producing SHA-512/256
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-trunc256
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#new-trunc256
     pub func NewTrunc256() -> Sha512 {
-        return Sha512::Start(Sha512Trunc256InitialState, 32u);
+        return Sha512::Start(Sha512Trunc256InitialState, 32);
     }
 
     // One block of a hundred and twenty eight bytes.
     func Compress(self: &var Sha512, block: *char8) {
         var schedule: uint64[80];
         var index: uint = 0;
-        while index < 16u {
-            var word = 0u64;
+        while index < 16 {
+            var word: uint64 = 0;
             var part: uint = 0;
-            while part < 8u {
-                word = (word << 8u64) | (block[index * 8u + part] as uint8 as uint64);
+            while part < 8 {
+                word = (word << 8) | (block[index * 8 + part] as uint8 as uint64);
                 part = part + 1;
             }
             schedule[index] = word;
             index = index + 1;
         }
-        while index < 80u {
-            let previous = schedule[index - 15u];
-            let recent = schedule[index - 2u];
-            let s0 = RotateRight64(previous, 1u64) ^ RotateRight64(previous, 8u64) ^ (previous >> 7u64);
-            let s1 = RotateRight64(recent, 19u64) ^ RotateRight64(recent, 61u64) ^ (recent >> 6u64);
-            schedule[index] = schedule[index - 16u] + s0 + schedule[index - 7u] + s1;
+        while index < 80 {
+            let previous = schedule[index - 15];
+            let recent = schedule[index - 2];
+            let s0 = RotateRight64(previous, 1) ^ RotateRight64(previous, 8) ^ (previous >> 7);
+            let s1 = RotateRight64(recent, 19) ^ RotateRight64(recent, 61) ^ (recent >> 6);
+            schedule[index] = schedule[index - 16] + s0 + schedule[index - 7] + s1;
             index = index + 1;
         }
 
@@ -162,11 +154,11 @@ extend Sha512 {
         var h = self.state[7];
 
         index = 0;
-        while index < 80u {
-            let sigma1 = RotateRight64(e, 14u64) ^ RotateRight64(e, 18u64) ^ RotateRight64(e, 41u64);
+        while index < 80 {
+            let sigma1 = RotateRight64(e, 14) ^ RotateRight64(e, 18) ^ RotateRight64(e, 41);
             let choose = (e & f) ^ ((~e) & g);
             let temp1 = h + sigma1 + choose + Sha512RoundConstants[index] + schedule[index];
-            let sigma0 = RotateRight64(a, 28u64) ^ RotateRight64(a, 34u64) ^ RotateRight64(a, 39u64);
+            let sigma0 = RotateRight64(a, 28) ^ RotateRight64(a, 34) ^ RotateRight64(a, 39);
             let majority = (a & b) ^ (a & c) ^ (b & c);
             let temp2 = sigma0 + majority;
             h = g;
@@ -193,77 +185,74 @@ extend Sha512 {
 
 extend Sha512 : Digest {
     /// Adds `bytes` to the message.
-    ///
     /// @param bytes the bytes to absorb
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/update
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#update
     pub func Update(self: &var Sha512, bytes: char8[..]) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
-        if self.buffered > 0u {
-            while index < bytes.length && self.buffered < 128u {
+        if self.buffered > 0 {
+            while index < bytes.length && self.buffered < 128 {
                 self.buffer[self.buffered] = bytes[index];
-                self.buffered = self.buffered + 1u;
+                self.buffered = self.buffered + 1;
                 index = index + 1;
             }
-            if self.buffered == 128u {
+            if self.buffered == 128 {
                 self.Compress(@self.buffer[0]);
                 self.buffered = 0;
             }
         }
-        while index + 128u <= bytes.length {
+        while index + 128 <= bytes.length {
             self.Compress(@bytes[index]);
-            index = index + 128u;
+            index = index + 128;
         }
         while index < bytes.length {
             self.buffer[self.buffered] = bytes[index];
-            self.buffered = self.buffered + 1u;
+            self.buffered = self.buffered + 1;
             index = index + 1;
         }
     }
 
     /// Writes the digest into `into`.
-    ///
     /// The padding carries a hundred and twenty eight bit length, so the final block needs seventeen free bytes
     /// rather than nine; a block with fewer takes a whole further block.
-    ///
     /// @param into receives the output
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/finish
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#finish
     pub func Finish(self: &var Sha512, into: var char8[..]) {
-        let bitLength = self.length * 8u64;
+        let bitLength = self.length * 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
-        self.buffered = self.buffered + 1u;
-        if self.buffered > 112u {
-            while self.buffered < 128u {
+        self.buffered = self.buffered + 1;
+        if self.buffered > 112 {
+            while self.buffered < 128 {
                 self.buffer[self.buffered] = 0u8 as char8;
-                self.buffered = self.buffered + 1u;
+                self.buffered = self.buffered + 1;
             }
             self.Compress(@self.buffer[0]);
             self.buffered = 0;
         }
-        while self.buffered < 112u {
+        while self.buffered < 112 {
             self.buffer[self.buffered] = 0u8 as char8;
-            self.buffered = self.buffered + 1u;
+            self.buffered = self.buffered + 1;
         }
         // The high half of the length is zero for any message a machine can hold.
         var shift: uint = 0;
-        while shift < 8u {
-            self.buffer[112u + shift] = 0u8 as char8;
+        while shift < 8 {
+            self.buffer[112 + shift] = 0u8 as char8;
             shift = shift + 1;
         }
         shift = 0;
-        while shift < 8u {
-            self.buffer[120u + shift] =
-                ((bitLength >> ((56u - shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
+        while shift < 8 {
+            self.buffer[120 + shift] =
+                ((bitLength >> ((56 - shift * 8) as uint64)) & 0xFF) as uint8 as char8;
             shift = shift + 1;
         }
         self.Compress(@self.buffer[0]);
 
         var index: uint = 0;
         while index < self.outputLength {
-            let word = self.state[index / 8u];
-            let byteShift = (7u - (index % 8u)) * 8u;
+            let word = self.state[index / 8];
+            let byteShift = (7u - (index % 8)) * 8;
             if index < into.length {
-                into[index] = ((word >> (byteShift as uint64)) & 0xFFu64) as uint8 as char8;
+                into[index] = ((word >> (byteShift as uint64)) & 0xFF) as uint8 as char8;
             }
             index = index + 1;
         }
@@ -271,27 +260,24 @@ extend Sha512 : Digest {
     }
 
     /// Sixty-four, forty-eight, thirty-two or twenty-eight bytes, depending on which variant this is.
-    ///
     /// @returns how many bytes a digest occupies
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/digest-length
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#digest-length
     pub func DigestLength(self: &Sha512) -> uint {
         return self.outputLength;
     }
 
     /// A hundred and twenty eight bytes, for every variant.
-    ///
     /// @returns how many bytes the compression function consumes at a time
-    /// @see https://rux-lang.dev/docs/api/crypto/sha512/block-length
+    /// @see https://rux-lang.dev/docs/api/crypto/sha512#block-length
     pub func BlockLength(self: &Sha512) -> uint {
-        return 128u;
+        return 128;
     }
 }
 
 /// The SHA-512 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/sha512-of
+/// @see https://rux-lang.dev/docs/api/crypto/sha512#sha512-of
 pub func Sha512Of(bytes: char8[..], into: var char8[..]) {
     var digest = Sha512();
     digest.Update(bytes);
@@ -299,10 +285,9 @@ pub func Sha512Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA-384 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/sha384-of
+/// @see https://rux-lang.dev/docs/api/crypto/sha512#sha384-of
 pub func Sha384Of(bytes: char8[..], into: var char8[..]) {
     var digest = Sha512::New384();
     digest.Update(bytes);
@@ -310,10 +295,9 @@ pub func Sha384Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA-512/224 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/sha512-trunc224-of
+/// @see https://rux-lang.dev/docs/api/crypto/sha512#sha512-trunc224-of
 pub func Sha512Trunc224Of(bytes: char8[..], into: var char8[..]) {
     var digest = Sha512::NewTrunc224();
     digest.Update(bytes);
@@ -321,10 +305,9 @@ pub func Sha512Trunc224Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA-512/256 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/sha512-trunc256-of
+/// @see https://rux-lang.dev/docs/api/crypto/sha512#sha512-trunc256-of
 pub func Sha512Trunc256Of(bytes: char8[..], into: var char8[..]) {
     var digest = Sha512::NewTrunc256();
     digest.Update(bytes);

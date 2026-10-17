@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <format>
+#include <functional>
 #include <ranges>
+#include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -22,11 +26,11 @@ NameSet AnalyzeBlockLiveness(const Block &block, NameSet liveAfter, LiveAfterMap
 void RecordBlockLastUses(const Block &block, LastUseMap &result);
 
 void CollectPatternUses(const Pattern &pattern, NameSet &uses) {
-    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         CollectPatternUses(*guarded->inner, uses);
         CollectExpressionUses(*guarded->guard, uses);
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         for (const auto &argument : enumeration->args) {
             CollectPatternUses(*argument, uses);
         }
@@ -34,12 +38,12 @@ void CollectPatternUses(const Pattern &pattern, NameSet &uses) {
             CollectPatternUses(*argument.pattern, uses);
         }
     }
-    else if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         for (const auto &field : structure->fields) {
             CollectPatternUses(*field.pattern, uses);
         }
     }
-    else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         for (const auto &element : tuple->elements) {
             CollectPatternUses(*element, uses);
         }
@@ -47,63 +51,63 @@ void CollectPatternUses(const Pattern &pattern, NameSet &uses) {
 }
 
 void CollectExpressionUses(const Expr &expression, NameSet &uses) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         uses.insert(identifier->name);
     }
-    else if (dynamic_cast<const SelfExpr *>(&expression)) {
+    else if (AstCast<const SelfExpr>(&expression)) {
         uses.insert("self");
     }
-    else if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression)) {
+    else if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression)) {
         for (const auto &argument : intrinsic->args) {
             CollectExpressionUses(*argument, uses);
         }
     }
-    else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    else if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         CollectExpressionUses(*unary->operand, uses);
     }
-    else if (const auto *propagation = dynamic_cast<const TryExpr *>(&expression)) {
+    else if (const auto *propagation = AstCast<const TryExpr>(&expression)) {
         CollectExpressionUses(*propagation->operand, uses);
     }
-    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
         CollectExpressionUses(*mapped->operand, uses);
         if (mapped->mapper) {
             CollectExpressionUses(*mapped->mapper, uses);
         }
     }
-    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+    else if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         if (construct->operand) {
             CollectExpressionUses(*construct->operand, uses);
         }
     }
-    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+    else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         if (diverge->value) {
             CollectExpressionUses(*diverge->value, uses);
         }
     }
-    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
         CollectExpressionUses(*recovery->subject, uses);
         for (const auto &arm : recovery->arms) {
             CollectPatternUses(*arm.pattern, uses);
             CollectExpressionUses(*arm.body, uses);
         }
     }
-    else if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    else if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         CollectExpressionUses(*postfix->operand, uses);
     }
-    else if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    else if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         CollectExpressionUses(*binary->left, uses);
         CollectExpressionUses(*binary->right, uses);
     }
-    else if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+    else if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         CollectExpressionUses(*assignment->target, uses);
         CollectExpressionUses(*assignment->value, uses);
     }
-    else if (const auto *conditional = dynamic_cast<const TernaryExpr *>(&expression)) {
+    else if (const auto *conditional = AstCast<const TernaryExpr>(&expression)) {
         CollectExpressionUses(*conditional->condition, uses);
         CollectExpressionUses(*conditional->thenExpr, uses);
         CollectExpressionUses(*conditional->elseExpr, uses);
     }
-    else if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+    else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         if (range->lo) {
             CollectExpressionUses(*range->lo, uses);
         }
@@ -111,51 +115,51 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
             CollectExpressionUses(*range->hi, uses);
         }
     }
-    else if (const auto *call = dynamic_cast<const CallExpr *>(&expression)) {
+    else if (const auto *call = AstCast<const CallExpr>(&expression)) {
         CollectExpressionUses(*call->callee, uses);
         for (const auto &argument : call->args) {
             CollectExpressionUses(*argument, uses);
         }
     }
-    else if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    else if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         CollectExpressionUses(*index->object, uses);
         CollectExpressionUses(*index->index, uses);
     }
-    else if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    else if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         CollectExpressionUses(*field->object, uses);
     }
-    else if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    else if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         for (const auto &initializedField : initializer->fields) {
             CollectExpressionUses(*initializedField.value, uses);
         }
     }
-    else if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    else if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         for (const auto &element : array->elements) {
             CollectExpressionUses(*element, uses);
         }
     }
-    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    else if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         CollectExpressionUses(*repeat->value, uses);
     }
-    else if (const auto *spread = dynamic_cast<const SpreadExpr *>(&expression)) {
+    else if (const auto *spread = AstCast<const SpreadExpr>(&expression)) {
         CollectExpressionUses(*spread->operand, uses);
     }
-    else if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    else if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         for (const auto &element : tuple->elements) {
             CollectExpressionUses(*element, uses);
         }
     }
-    else if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    else if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         CollectExpressionUses(*cast->operand, uses);
     }
-    else if (const auto *test = dynamic_cast<const IsExpr *>(&expression)) {
+    else if (const auto *test = AstCast<const IsExpr>(&expression)) {
         CollectExpressionUses(*test->operand, uses);
     }
-    else if (const auto *block = dynamic_cast<const BlockExpr *>(&expression)) {
+    else if (const auto *block = AstCast<const BlockExpr>(&expression)) {
         LiveAfterMap ignored;
         AddAll(uses, AnalyzeBlockLiveness(*block->block, {}, ignored));
     }
-    else if (const auto *match = dynamic_cast<const MatchExpr *>(&expression)) {
+    else if (const auto *match = AstCast<const MatchExpr>(&expression)) {
         CollectExpressionUses(*match->subject, uses);
         for (const auto &arm : match->arms) {
             CollectPatternUses(*arm.pattern, uses);
@@ -175,14 +179,14 @@ NameSet ExpressionUses(const Expr *expression) {
 NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter, LiveAfterMap &result) {
     result.insert_or_assign(&statement, liveAfter);
     NameSet live = liveAfter;
-    if (const auto *expression = dynamic_cast<const ExprStmt *>(&statement)) {
+    if (const auto *expression = AstCast<const ExprStmt>(&statement)) {
         AddAll(live, ExpressionUses(expression->expr.get()));
     }
-    else if (const auto *binding = dynamic_cast<const LetStmt *>(&statement)) {
+    else if (const auto *binding = AstCast<const LetStmt>(&statement)) {
         live.erase(binding->name);
         AddAll(live, ExpressionUses(binding->init.get()));
     }
-    else if (const auto *conditional = dynamic_cast<const IfStmt *>(&statement)) {
+    else if (const auto *conditional = AstCast<const IfStmt>(&statement)) {
         NameSet branches;
         if (conditional->elseBlock) {
             AddAll(branches, AnalyzeBlockLiveness(*conditional->elseBlock, liveAfter, result));
@@ -198,7 +202,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         AddAll(branches, ExpressionUses(conditional->condition.get()));
         AddAll(live, branches);
     }
-    else if (const auto *whileLoop = dynamic_cast<const WhileStmt *>(&statement)) {
+    else if (const auto *whileLoop = AstCast<const WhileStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         AddAll(loopLive, ExpressionUses(whileLoop->condition.get()));
         for (;;) {
@@ -212,7 +216,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *doWhileLoop = dynamic_cast<const DoWhileStmt *>(&statement)) {
+    else if (const auto *doWhileLoop = AstCast<const DoWhileStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         AddAll(loopLive, ExpressionUses(doWhileLoop->condition.get()));
         for (;;) {
@@ -226,7 +230,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *infiniteLoop = dynamic_cast<const LoopStmt *>(&statement)) {
+    else if (const auto *infiniteLoop = AstCast<const LoopStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         for (;;) {
             NameSet next = liveAfter;
@@ -238,7 +242,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *forLoop = dynamic_cast<const ForStmt *>(&statement)) {
+    else if (const auto *forLoop = AstCast<const ForStmt>(&statement)) {
         NameSet loopLive = liveAfter;
         for (;;) {
             NameSet next = liveAfter;
@@ -253,7 +257,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         live = std::move(loopLive);
     }
-    else if (const auto *match = dynamic_cast<const MatchStmt *>(&statement)) {
+    else if (const auto *match = AstCast<const MatchStmt>(&statement)) {
         for (const auto &arm : match->arms) {
             NameSet armLive = liveAfter;
             AddAll(armLive, ExpressionUses(arm.body.get()));
@@ -262,7 +266,7 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         AddAll(live, ExpressionUses(match->subject.get()));
     }
-    else if (const auto *returned = dynamic_cast<const ReturnStmt *>(&statement)) {
+    else if (const auto *returned = AstCast<const ReturnStmt>(&statement)) {
         live.clear();
         AddAll(live, ExpressionUses(returned->value ? returned->value->get() : nullptr));
     }
@@ -277,64 +281,64 @@ NameSet AnalyzeBlockLiveness(const Block &block, NameSet liveAfter, LiveAfterMap
 }
 
 void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, LastUseMap &result) {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         auto &offset = offsets[identifier->name];
         offset = std::max(offset, identifier->location.offset);
     }
-    else if (dynamic_cast<const SelfExpr *>(&expression)) {
+    else if (AstCast<const SelfExpr>(&expression)) {
         auto &offset = offsets["self"];
         offset = std::max(offset, expression.location.offset);
     }
-    else if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression)) {
+    else if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression)) {
         for (const auto &argument : intrinsic->args) {
             RecordExpressionLastUses(*argument, offsets, result);
         }
     }
-    else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    else if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         RecordExpressionLastUses(*unary->operand, offsets, result);
     }
-    else if (const auto *propagation = dynamic_cast<const TryExpr *>(&expression)) {
+    else if (const auto *propagation = AstCast<const TryExpr>(&expression)) {
         RecordExpressionLastUses(*propagation->operand, offsets, result);
     }
-    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
         RecordExpressionLastUses(*mapped->operand, offsets, result);
         if (mapped->mapper) {
             RecordExpressionLastUses(*mapped->mapper, offsets, result);
         }
     }
-    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+    else if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         if (construct->operand) {
             RecordExpressionLastUses(*construct->operand, offsets, result);
         }
     }
-    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+    else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         if (diverge->value) {
             RecordExpressionLastUses(*diverge->value, offsets, result);
         }
     }
-    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
         RecordExpressionLastUses(*recovery->subject, offsets, result);
         for (const auto &arm : recovery->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
         }
     }
-    else if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    else if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         RecordExpressionLastUses(*postfix->operand, offsets, result);
     }
-    else if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    else if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         RecordExpressionLastUses(*binary->left, offsets, result);
         RecordExpressionLastUses(*binary->right, offsets, result);
     }
-    else if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+    else if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         RecordExpressionLastUses(*assignment->target, offsets, result);
         RecordExpressionLastUses(*assignment->value, offsets, result);
     }
-    else if (const auto *conditional = dynamic_cast<const TernaryExpr *>(&expression)) {
+    else if (const auto *conditional = AstCast<const TernaryExpr>(&expression)) {
         RecordExpressionLastUses(*conditional->condition, offsets, result);
         RecordExpressionLastUses(*conditional->thenExpr, offsets, result);
         RecordExpressionLastUses(*conditional->elseExpr, offsets, result);
     }
-    else if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+    else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         if (range->lo) {
             RecordExpressionLastUses(*range->lo, offsets, result);
         }
@@ -342,50 +346,50 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
             RecordExpressionLastUses(*range->hi, offsets, result);
         }
     }
-    else if (const auto *call = dynamic_cast<const CallExpr *>(&expression)) {
+    else if (const auto *call = AstCast<const CallExpr>(&expression)) {
         RecordExpressionLastUses(*call->callee, offsets, result);
         for (const auto &argument : call->args) {
             RecordExpressionLastUses(*argument, offsets, result);
         }
     }
-    else if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    else if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         RecordExpressionLastUses(*index->object, offsets, result);
         RecordExpressionLastUses(*index->index, offsets, result);
     }
-    else if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    else if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         RecordExpressionLastUses(*field->object, offsets, result);
     }
-    else if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    else if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         for (const auto &initializedField : initializer->fields) {
             RecordExpressionLastUses(*initializedField.value, offsets, result);
         }
     }
-    else if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    else if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
         for (const auto &element : array->elements) {
             RecordExpressionLastUses(*element, offsets, result);
         }
     }
-    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    else if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         RecordExpressionLastUses(*repeat->value, offsets, result);
     }
-    else if (const auto *spread = dynamic_cast<const SpreadExpr *>(&expression)) {
+    else if (const auto *spread = AstCast<const SpreadExpr>(&expression)) {
         RecordExpressionLastUses(*spread->operand, offsets, result);
     }
-    else if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    else if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         for (const auto &element : tuple->elements) {
             RecordExpressionLastUses(*element, offsets, result);
         }
     }
-    else if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    else if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         RecordExpressionLastUses(*cast->operand, offsets, result);
     }
-    else if (const auto *test = dynamic_cast<const IsExpr *>(&expression)) {
+    else if (const auto *test = AstCast<const IsExpr>(&expression)) {
         RecordExpressionLastUses(*test->operand, offsets, result);
     }
-    else if (const auto *block = dynamic_cast<const BlockExpr *>(&expression)) {
+    else if (const auto *block = AstCast<const BlockExpr>(&expression)) {
         RecordBlockLastUses(*block->block, result);
     }
-    else if (const auto *match = dynamic_cast<const MatchExpr *>(&expression)) {
+    else if (const auto *match = AstCast<const MatchExpr>(&expression)) {
         RecordExpressionLastUses(*match->subject, offsets, result);
         for (const auto &arm : match->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
@@ -403,15 +407,15 @@ void RemoveBlockUsesFromOffsets(const Block &block, LastUseOffsets &offsets) {
 
 void RecordStatementLastUses(const Stmt &statement, LastUseMap &result) {
     LastUseOffsets &offsets = result[&statement];
-    if (const auto *expression = dynamic_cast<const ExprStmt *>(&statement)) {
+    if (const auto *expression = AstCast<const ExprStmt>(&statement)) {
         RecordExpressionLastUses(*expression->expr, offsets, result);
     }
-    else if (const auto *binding = dynamic_cast<const LetStmt *>(&statement)) {
+    else if (const auto *binding = AstCast<const LetStmt>(&statement)) {
         if (binding->init) {
             RecordExpressionLastUses(*binding->init, offsets, result);
         }
     }
-    else if (const auto *conditional = dynamic_cast<const IfStmt *>(&statement)) {
+    else if (const auto *conditional = AstCast<const IfStmt>(&statement)) {
         RecordExpressionLastUses(*conditional->condition, offsets, result);
         RecordBlockLastUses(*conditional->thenBlock, result);
         RemoveBlockUsesFromOffsets(*conditional->thenBlock, offsets);
@@ -425,32 +429,32 @@ void RecordStatementLastUses(const Stmt &statement, LastUseMap &result) {
             RemoveBlockUsesFromOffsets(*conditional->elseBlock, offsets);
         }
     }
-    else if (const auto *whileLoop = dynamic_cast<const WhileStmt *>(&statement)) {
+    else if (const auto *whileLoop = AstCast<const WhileStmt>(&statement)) {
         RecordExpressionLastUses(*whileLoop->condition, offsets, result);
         RecordBlockLastUses(*whileLoop->body, result);
         RemoveBlockUsesFromOffsets(*whileLoop->body, offsets);
     }
-    else if (const auto *doWhileLoop = dynamic_cast<const DoWhileStmt *>(&statement)) {
+    else if (const auto *doWhileLoop = AstCast<const DoWhileStmt>(&statement)) {
         RecordBlockLastUses(*doWhileLoop->body, result);
         RecordExpressionLastUses(*doWhileLoop->condition, offsets, result);
         RemoveBlockUsesFromOffsets(*doWhileLoop->body, offsets);
     }
-    else if (const auto *infiniteLoop = dynamic_cast<const LoopStmt *>(&statement)) {
+    else if (const auto *infiniteLoop = AstCast<const LoopStmt>(&statement)) {
         RecordBlockLastUses(*infiniteLoop->body, result);
         RemoveBlockUsesFromOffsets(*infiniteLoop->body, offsets);
     }
-    else if (const auto *forLoop = dynamic_cast<const ForStmt *>(&statement)) {
+    else if (const auto *forLoop = AstCast<const ForStmt>(&statement)) {
         RecordExpressionLastUses(*forLoop->iterable, offsets, result);
         RecordBlockLastUses(*forLoop->body, result);
         RemoveBlockUsesFromOffsets(*forLoop->body, offsets);
     }
-    else if (const auto *match = dynamic_cast<const MatchStmt *>(&statement)) {
+    else if (const auto *match = AstCast<const MatchStmt>(&statement)) {
         RecordExpressionLastUses(*match->subject, offsets, result);
         for (const auto &arm : match->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
         }
     }
-    else if (const auto *returned = dynamic_cast<const ReturnStmt *>(&statement); returned && returned->value) {
+    else if (const auto *returned = AstCast<const ReturnStmt>(&statement); returned && returned->value) {
         RecordExpressionLastUses(**returned->value, offsets, result);
     }
 }
@@ -532,7 +536,7 @@ void AnalysisContext::FinishBorrowAnalysis() {
 }
 
 void AnalysisContext::ExpireBorrowAtLastUse(const Symbol &symbol, const SourceLocation location) {
-    if (symbol.type.kind != TypeRef::Kind::Reference || !currentBorrowStatement) {
+    if (symbol.type->kind != TypeRef::Kind::Reference || !currentBorrowStatement) {
         return;
     }
     const auto live = borrowLiveAfter.find(currentBorrowStatement);
@@ -571,11 +575,11 @@ void AnalysisContext::EndBorrowScope(const Scope &scope) {
 const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) const {
     const Expr *root = &expression;
     while (true) {
-        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
             root = field->object.get();
             continue;
         }
-        if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+        if (const auto *index = AstCast<const IndexExpr>(root)) {
             // An operator index produces a fresh value, so no reference the object was reached through aliases it.
             if (IsIndexOperatorCall(*index)) {
                 return nullptr;
@@ -585,13 +589,13 @@ const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) cons
         }
         break;
     }
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(root)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
-        return symbol && symbol->type.kind == TypeRef::Kind::Reference ? symbol : nullptr;
+        return symbol && symbol->type->kind == TypeRef::Kind::Reference ? symbol : nullptr;
     }
-    if (dynamic_cast<const SelfExpr *>(root)) {
+    if (AstCast<const SelfExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup("self");
-        return symbol && symbol->type.kind == TypeRef::Kind::Reference ? symbol : nullptr;
+        return symbol && symbol->type->kind == TypeRef::Kind::Reference ? symbol : nullptr;
     }
     return nullptr;
 }
@@ -613,7 +617,7 @@ std::optional<AnalysisContext::BorrowPlace> AnalysisContext::ResolveBorrowPlace(
     }
 
     BorrowPlace place{root, analyzed.projections};
-    if (root->type.kind == TypeRef::Kind::Reference) {
+    if (root->type->kind == TypeRef::Kind::Reference) {
         if (const auto provenance = activeBorrows.find(root); provenance != activeBorrows.end()) {
             place = provenance->second.place;
             place.projections.insert(place.projections.end(), analyzed.projections.begin(), analyzed.projections.end());
@@ -648,11 +652,11 @@ bool AnalysisContext::ReportBorrowConflict(const BorrowPlace &place, const bool 
 void AnalysisContext::RegisterReferenceBinding(const Symbol &alias, const Expr &initializer,
                                                const TypeRef &referenceType) {
     const auto place = ResolveBorrowPlace(initializer);
-    if (!place || referenceType.inner.empty()) {
+    if (!place || referenceType->inner.empty()) {
         return;
     }
     const Symbol *parent = ReferenceSourceAlias(initializer);
-    const bool exclusive = referenceType.inner.front().isMut;
+    const bool exclusive = referenceType->inner.front().isMut;
     if (ReportBorrowConflict(*place, exclusive, parent, initializer.location,
                              exclusive ? "borrow exclusively" : "borrow")) {
         return;
@@ -662,18 +666,18 @@ void AnalysisContext::RegisterReferenceBinding(const Symbol &alias, const Expr &
 
 void AnalysisContext::RegisterReferenceAssignment(const Expr &target, const Expr &initializer,
                                                   const TypeRef &referenceType) {
-    const auto *identifier = dynamic_cast<const IdentExpr *>(&target);
+    const auto *identifier = AstCast<const IdentExpr>(&target);
     Symbol *alias = identifier ? currentScope->Lookup(identifier->name) : nullptr;
-    if (!alias || alias->type.kind != TypeRef::Kind::Reference) {
+    if (!alias || alias->type->kind != TypeRef::Kind::Reference) {
         return;
     }
     const auto place = ResolveBorrowPlace(initializer);
     const Symbol *parent = ReferenceSourceAlias(initializer);
     activeBorrows.erase(alias);
-    if (!place || referenceType.inner.empty()) {
+    if (!place || referenceType->inner.empty()) {
         return;
     }
-    const bool exclusive = referenceType.inner.front().isMut;
+    const bool exclusive = referenceType->inner.front().isMut;
     if (!ReportBorrowConflict(*place, exclusive, parent, initializer.location,
                               exclusive ? "borrow exclusively" : "borrow")) {
         activeBorrows.insert_or_assign(alias, ActiveBorrow{alias, parent, *place, exclusive, initializer.location});
@@ -749,11 +753,11 @@ bool AnalysisContext::CheckBorrowedMove(const Expr &expression, const SourceLoca
 void AnalysisContext::BeginReceiverReferenceBorrow(const CallExpr &call, const Expr &receiver,
                                                    const TypeRef &referenceType) {
     const auto place = ResolveBorrowPlace(receiver);
-    if (!place || referenceType.inner.empty()) {
+    if (!place || referenceType->inner.empty()) {
         return;
     }
     const Symbol *parent = ReferenceSourceAlias(receiver);
-    const bool exclusive = referenceType.inner.front().isMut;
+    const bool exclusive = referenceType->inner.front().isMut;
     if (!ReportBorrowConflict(*place, exclusive, parent, receiver.location,
                               exclusive ? "borrow exclusively" : "borrow")) {
         pendingCallBorrows[&call].push_back({nullptr, parent, *place, exclusive, receiver.location});
@@ -769,7 +773,7 @@ void AnalysisContext::ValidateCallReferenceBorrows(const CallExpr &call, const s
     const std::size_t count = std::min(call.args.size(), parameterTypes.size());
     for (std::size_t index = 0; index < count; ++index) {
         const TypeRef &parameter = parameterTypes[index];
-        if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
+        if (parameter->kind != TypeRef::Kind::Reference || parameter->inner.empty()) {
             continue;
         }
         if (RejectSubsetViewUse(*call.args[index], call.args[index]->location, "be passed to a reference parameter")) {
@@ -780,7 +784,7 @@ void AnalysisContext::ValidateCallReferenceBorrows(const CallExpr &call, const s
             continue;
         }
         const Symbol *parent = ReferenceSourceAlias(*call.args[index]);
-        const bool exclusive = parameter.inner.front().isMut;
+        const bool exclusive = parameter->inner.front().isMut;
         bool conflict = ReportBorrowConflict(*place, exclusive, parent, call.args[index]->location,
                                              exclusive ? "borrow exclusively" : "borrow");
         for (const ActiveBorrow &temporary : temporaries) {
@@ -846,25 +850,25 @@ AnalysisContext::BorrowSnapshot AnalysisContext::ProjectBorrows(const BorrowSnap
 }
 
 bool AnalysisContext::TypeStoresReference(const TypeRef &type) {
-    if (type.kind == TypeRef::Kind::Reference) {
+    if (type->kind == TypeRef::Kind::Reference) {
         return true;
     }
     // A native sum, optional, or fallible stores its payloads the way a tuple stores its elements, so one holding a
     // reference anywhere is reference-storing as a whole.
-    if (type.kind == TypeRef::Kind::Array || type.kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
+    if (type->kind == TypeRef::Kind::Array || type->kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
         type.IsFallible()) {
-        return std::ranges::any_of(type.inner, [&](const TypeRef &element) { return TypeStoresReference(element); });
+        return std::ranges::any_of(type->inner, [&](const TypeRef &element) { return TypeStoresReference(element); });
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return false;
     }
 
-    const std::string base = BaseTypeName(type.name);
-    if (!referenceStorageChecks.insert(type.name).second) {
+    const std::string base = BaseTypeName(type->name);
+    if (!referenceStorageChecks.insert(type->name).second) {
         return false;
     }
-    const auto finish = [&] { referenceStorageChecks.erase(type.name); };
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const auto finish = [&] { referenceStorageChecks.erase(type->name); };
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     if (const auto structure = structDecls.find(base); structure != structDecls.end()) {
         std::unordered_map<std::string, TypeRef> substitutions;
         for (std::size_t index = 0; index < std::min(arguments.size(), structure->second->typeParams.size()); ++index) {
@@ -919,5 +923,363 @@ void AnalysisContext::ValidateStoredType(const TypeRef &type, const SourceLocati
                   {"references are non-owning aliases and cannot escape into aggregate storage"},
                   "store the owned value or a raw pointer when an address must outlive the borrow");
     }
+}
+} // namespace Rux::SemanticDetail
+
+namespace Rux::SemanticDetail {
+bool AnalysisContext::TypeHoldsView(const TypeRef &type) {
+    if (type.IsSlice()) {
+        return true;
+    }
+    if (type->kind == TypeRef::Kind::Array || type->kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
+        type.IsFallible()) {
+        return std::ranges::any_of(type->inner, [&](const TypeRef &element) { return TypeHoldsView(element); });
+    }
+    if (type->kind != TypeRef::Kind::Named) {
+        return false;
+    }
+    if (const auto known = viewHoldingTypes.find(type->name); known != viewHoldingTypes.end()) {
+        return known->second;
+    }
+    if (!viewHoldingChecks.insert(type->name).second) {
+        return false;
+    }
+    const std::string base = BaseTypeName(type->name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
+    const auto substitutionsFor = [&](const std::vector<TypeParameter> &parameters) {
+        std::unordered_map<std::string, TypeRef> substitutions;
+        for (std::size_t index = 0; index < std::min(arguments.size(), parameters.size()); ++index) {
+            substitutions.emplace(parameters[index].name, arguments[index]);
+        }
+        return substitutions;
+    };
+    bool holds = false;
+    if (const auto structure = structDecls.find(base); structure != structDecls.end()) {
+        const auto substitutions = substitutionsFor(structure->second->typeParams);
+        holds = std::ranges::any_of(structure->second->fields, [&](const StructDecl::Field &field) {
+            return TypeHoldsView(ResolveTypeWithSubstitution(*field.type, substitutions));
+        });
+    }
+    else if (const auto enumeration = enumDecls.find(base); enumeration != enumDecls.end()) {
+        const auto substitutions = substitutionsFor(enumeration->second->typeParams);
+        for (const EnumDecl::Variant &variant : enumeration->second->variants) {
+            for (const auto &field : variant.fields) {
+                holds = holds || TypeHoldsView(ResolveTypeWithSubstitution(*field, substitutions));
+            }
+            for (const auto &field : variant.namedFields) {
+                holds = holds || TypeHoldsView(ResolveTypeWithSubstitution(*field.type, substitutions));
+            }
+        }
+    }
+    else if (const auto unionType = unionDecls.find(base); unionType != unionDecls.end()) {
+        holds = std::ranges::any_of(unionType->second->fields, [&](const UnionDecl::Field &field) {
+            return TypeHoldsView(ResolveType(*field.type));
+        });
+    }
+    viewHoldingChecks.erase(type->name);
+    viewHoldingTypes.emplace(type->name, holds);
+    return holds;
+}
+
+namespace {
+/// The local whose own storage `expression` names: the local itself, or a part of it reached by fields and indexes,
+/// never through a pointer, a reference or a view, which reach storage the local does not hold.
+const Symbol *LocalStorageRoot(const Expr &expression, Scope &scope, const std::unordered_set<const Symbol *> &locals,
+                               const std::function<TypeRef(const Expr &)> &typeOf) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
+        const Symbol *symbol = scope.Lookup(identifier->name);
+        if (symbol == nullptr || symbol->kind != Symbol::Kind::Var || !locals.contains(symbol)) {
+            return nullptr;
+        }
+        const TypeRef &type = symbol->type;
+        const bool indirect =
+            type->kind == TypeRef::Kind::Reference || type->kind == TypeRef::Kind::Pointer || type.IsSlice();
+        return indirect ? nullptr : symbol;
+    }
+    const Expr *object = nullptr;
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
+        object = field->object.get();
+    }
+    else if (const auto *index = AstCast<const IndexExpr>(&expression);
+             index && !AstCast<const RangeExpr>(index->index.get())) {
+        object = index->object.get();
+    }
+    if (object == nullptr) {
+        return nullptr;
+    }
+    const TypeRef objectType = typeOf(*object);
+    if (objectType->kind == TypeRef::Kind::Reference || objectType->kind == TypeRef::Kind::Pointer ||
+        objectType.IsSlice()) {
+        return nullptr;
+    }
+    return LocalStorageRoot(*object, scope, locals, typeOf);
+}
+
+void AddUnique(std::vector<const Symbol *> &into, const Symbol *symbol) {
+    if (!std::ranges::contains(into, symbol)) {
+        into.push_back(symbol);
+    }
+}
+} // namespace
+
+std::vector<const Symbol *> AnalysisContext::LocalArraysViewed(const Expr &expression, const TypeRef &targetType) {
+    std::vector<const Symbol *> viewed;
+    const std::function<TypeRef(const Expr &)> typeOf = [this](const Expr &part) {
+        return CheckedExpressionType(part);
+    };
+    const auto addAll = [&](const std::vector<const Symbol *> &symbols) {
+        for (const Symbol *symbol : symbols) {
+            AddUnique(viewed, symbol);
+        }
+    };
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
+        return LocalArraysViewed(*move->operand, targetType);
+    }
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
+        addAll(LocalArraysViewed(*ternary->thenExpr, targetType));
+        addAll(LocalArraysViewed(*ternary->elseExpr, targetType));
+        return viewed;
+    }
+    const TypeRef type = typeOf(expression);
+    // A fixed array where a view is expected is viewed in place, as `return buffer` from a function returning a slice.
+    if (type->kind == TypeRef::Kind::Array && targetType.IsSlice()) {
+        if (const Symbol *root = LocalStorageRoot(expression, *currentScope, functionLocals, typeOf)) {
+            AddUnique(viewed, root);
+        }
+        return viewed;
+    }
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
+        if (AstCast<const RangeExpr>(index->index.get())) {
+            // Slicing an array the function holds views its storage; slicing a view views what that view does.
+            if (typeOf(*index->object)->kind == TypeRef::Kind::Array) {
+                if (const Symbol *root = LocalStorageRoot(*index->object, *currentScope, functionLocals, typeOf)) {
+                    AddUnique(viewed, root);
+                }
+                return viewed;
+            }
+            return LocalArraysViewed(*index->object, TypeRef::MakeUnknown());
+        }
+        return TypeHoldsView(type) ? LocalArraysViewed(*index->object, TypeRef::MakeUnknown()) : viewed;
+    }
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
+        return TypeHoldsView(type) ? LocalArraysViewed(*field->object, TypeRef::MakeUnknown()) : viewed;
+    }
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
+        const Symbol *symbol = currentScope->Lookup(identifier->name);
+        if (const auto sources = symbol ? viewSources.find(symbol) : viewSources.end(); sources != viewSources.end()) {
+            addAll(sources->second);
+        }
+        return viewed;
+    }
+    if (const auto *structure = AstCast<const StructInitExpr>(&expression)) {
+        for (const StructInitExpr::Field &field : structure->fields) {
+            addAll(LocalArraysViewed(*field.value, StructFieldType(type, field.name)));
+        }
+        return viewed;
+    }
+    // A call's result may view whatever the views it was handed view: `spec.WithOptions(options[..])` returns a spec
+    // holding that slice. Nothing in a signature says which argument a returned view comes from, so every argument
+    // holding views, and a method's receiver, is taken to be one, as a single borrowed input is in lifetime elision.
+    if (const auto *call = AstCast<const CallExpr>(&expression); call && TypeHoldsView(type)) {
+        for (const ExprPtr &argument : call->args) {
+            if (TypeHoldsView(typeOf(*argument))) {
+                addAll(LocalArraysViewed(*argument, TypeRef::MakeUnknown()));
+            }
+        }
+        if (const auto *method = AstCast<const FieldExpr>(call->callee.get());
+            method && TypeHoldsView(typeOf(*method->object))) {
+            addAll(LocalArraysViewed(*method->object, TypeRef::MakeUnknown()));
+        }
+        return viewed;
+    }
+    if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
+        const bool sequence = targetType->kind == TypeRef::Kind::Array || targetType.IsSlice();
+        const TypeRef element =
+            sequence && !targetType->inner.empty() ? targetType->inner.front() : TypeRef::MakeUnknown();
+        for (const ExprPtr &item : array->elements) {
+            addAll(LocalArraysViewed(*item, element));
+        }
+        return viewed;
+    }
+    if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
+        for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
+            const TypeRef element = targetType->kind == TypeRef::Kind::Tuple && index < targetType->inner.size()
+                                      ? targetType->inner[index]
+                                      : TypeRef::MakeUnknown();
+            addAll(LocalArraysViewed(*tuple->elements[index], element));
+        }
+    }
+    return viewed;
+}
+
+void AnalysisContext::RecordViewSources(const Symbol &local, const Expr &value, const TypeRef &type) {
+    if (type.IsUnknown() || !TypeHoldsView(type)) {
+        return;
+    }
+    const std::vector<const Symbol *> viewed = LocalArraysViewed(value, type);
+    if (viewed.empty()) {
+        return;
+    }
+    // Every store adds to what the local may view rather than replacing it: a branch that stores another view leaves
+    // the first one possible on the path that skipped it.
+    auto &sources = viewSources[&local];
+    for (const Symbol *symbol : viewed) {
+        AddUnique(sources, symbol);
+    }
+}
+
+void AnalysisContext::CheckViewEscape(const Expr &value, const TypeRef &type, const SourceLocation location,
+                                      const std::string_view what) {
+    if (type.IsUnknown() || !TypeHoldsView(type)) {
+        return;
+    }
+    const std::vector<const Symbol *> viewed = LocalArraysViewed(value, type);
+    if (viewed.empty()) {
+        return;
+    }
+    const Symbol &array = *viewed.front();
+    const std::string function = currentFunctionDecl ? currentFunctionDecl->name : std::string("the function");
+    EmitError(location,
+              std::format("{} views local array '{}', which is freed when '{}' returns", what, array.name, function),
+              {std::format("'{}' is declared at {}:{}", array.name, array.location.line, array.location.column),
+               "a slice is a view of storage it does not own, and that storage must outlive it"},
+              "return an owned container such as a 'Vector', or take the storage as a parameter");
+}
+
+bool AnalysisContext::MakesFrameInterfaceValue(const Expr &value, const TypeRef &valueType, const TypeRef &targetType) {
+    const auto isInterface = [this](const TypeRef &type) {
+        return !type.IsUnknown() && type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
+    };
+    // An optional interface value holds one in place, so it carries the same storage when present.
+    const auto holdsInterface = [&](const TypeRef &type) {
+        return isInterface(type) ||
+               (!type.IsUnknown() && type.IsOptional() && type->inner.size() == 1 && isInterface(type->inner.front()));
+    };
+    if (!holdsInterface(targetType) || valueType.IsUnknown()) {
+        return false;
+    }
+    if (!holdsInterface(valueType)) {
+        return true;
+    }
+    const auto *identifier = AstCast<const IdentExpr>(&value);
+    const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+    return symbol != nullptr && frameInterfaceLocals.contains(symbol);
+}
+
+bool AnalysisContext::IsHolderCoercion(const TypeRef &valueType, const TypeRef &targetType) {
+    const auto isInterface = [this](const TypeRef &type) {
+        return !type.IsUnknown() && type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
+    };
+    return isInterface(targetType) && !valueType.IsUnknown() && !isInterface(valueType) &&
+           MayNeedDestruction(valueType);
+}
+
+void AnalysisContext::RecordInterfaceHolder(const Expr &value, const LetStmt &owner, std::string place,
+                                            const TypeRef &type) {
+    InterfaceHolderSite site{&owner, std::move(place), type};
+    auto &holders = interfaceHolders[&owner];
+    if (std::ranges::none_of(holders, [&](const InterfaceHolderSite &holder) {
+            return holder.place == site.place && holder.type == site.type;
+        })) {
+        holders.push_back(site);
+    }
+    interfaceHolderSites.insert_or_assign(&value, std::move(site));
+}
+
+void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType,
+                                          const SourceLocation location) {
+    const bool makesFrameInterface = MakesFrameInterfaceValue(value, CheckedExpressionType(value), targetType);
+    if (targetType.IsUnknown() || (!TypeHoldsView(targetType) && !makesFrameInterface)) {
+        return;
+    }
+    // Walk to the name the target is part of, noting whether the way there leaves the local's own storage.
+    const Expr *root = &target;
+    bool throughIndirection = false;
+    bool throughIndex = false;
+    std::vector<std::string_view> fields;
+    const auto indirect = [this](const Expr &object, const bool viewIsIndirect) {
+        const TypeRef objectType = CheckedExpressionType(object);
+        return objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference ||
+               (viewIsIndirect && objectType.IsSlice());
+    };
+    while (true) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
+            throughIndirection = throughIndirection || indirect(*field->object, false);
+            fields.push_back(field->field);
+            root = field->object.get();
+        }
+        else if (const auto *index = AstCast<const IndexExpr>(root)) {
+            throughIndirection = throughIndirection || indirect(*index->object, true);
+            throughIndex = true;
+            root = index->object.get();
+        }
+        else if (const auto *unary = AstCast<const UnaryExpr>(root); unary && unary->op == TokenKind::Star) {
+            throughIndirection = true;
+            root = unary->operand.get();
+        }
+        else {
+            break;
+        }
+    }
+    const auto *identifier = AstCast<const IdentExpr>(root);
+    const Symbol *symbol = identifier                    ? currentScope->Lookup(identifier->name)
+                         : AstCast<const SelfExpr>(root) ? currentScope->Lookup("self")
+                                                         : nullptr;
+    if (symbol == nullptr || symbol->kind != Symbol::Kind::Var) {
+        return;
+    }
+    const bool local = functionLocals.contains(symbol);
+    const bool keptInCall = local && !throughIndirection && symbol->type->kind != TypeRef::Kind::Reference &&
+                            symbol->type->kind != TypeRef::Kind::Pointer;
+    if (makesFrameInterface) {
+        // A local keeps it, as a view of a local array; storage that outlives the call cannot hold it.
+        if (keptInCall) {
+            frameInterfaceLocals.insert(symbol);
+            // The value is kept with the local it is stored in, so it lives as long as the local and the next value of
+            // its type stored at the same place replaces it. An element of an array has no place of its own here.
+            const auto owner = localDeclarations.find(symbol);
+            // An element has no place of its own, so the value lives in storage of the block that made it: a block
+            // inside the one that declared the array ends, or runs again, while the element still points at it.
+            const TypeRef valueType = CheckedExpressionType(value);
+            if (const auto declared = localScopes.find(symbol);
+                throughIndex && declared != localScopes.end() && declared->second != currentScope &&
+                !valueType.IsUnknown() &&
+                !(valueType->kind == TypeRef::Kind::Named && interfaceDecls.contains(valueType->name))) {
+                EmitError(location,
+                          std::format("an interface value made in this block cannot be stored in an element of '{}', "
+                                      "which outlives the block",
+                                      symbol->name),
+                          {"the value it is made from lives in the block, which a loop runs again and every exit ends"},
+                          std::format("store the concrete values in the array, or make the interface value in the "
+                                      "block that declares '{}'",
+                                      symbol->name));
+            }
+            if (!throughIndex && owner != localDeclarations.end() &&
+                IsHolderCoercion(CheckedExpressionType(value), targetType)) {
+                std::string place;
+                for (auto name = fields.rbegin(); name != fields.rend(); ++name) {
+                    place += place.empty() ? std::string(*name) : std::format(".{}", *name);
+                }
+                RecordInterfaceHolder(value, *owner->second, std::move(place), CheckedExpressionType(value));
+            }
+        }
+        else {
+            const std::string function =
+                currentFunctionDecl ? std::format("'{}'", currentFunctionDecl->name) : "the function";
+            EmitError(location,
+                      std::format("cannot store an interface value made in {} where it outlives the call", function),
+                      {std::format("it points at storage {} gives up when it returns", function)},
+                      "store the concrete value, and make the interface value where it is used");
+        }
+        if (!TypeHoldsView(targetType)) {
+            return;
+        }
+    }
+    if (local && !throughIndirection && symbol->type->kind != TypeRef::Kind::Reference) {
+        RecordViewSources(*symbol, value, targetType);
+        return;
+    }
+    // A module variable, or storage reached through a pointer or a reference, outlives the call.
+    CheckViewEscape(value, targetType, location, "stored value");
 }
 } // namespace Rux::SemanticDetail

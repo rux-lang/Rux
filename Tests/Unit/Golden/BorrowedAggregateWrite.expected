@@ -1,0 +1,6 @@
+18:5: error: cannot modify 'pair' through immutable reference '&Pair'
+22:10: error: copying type 'Token' is prohibited
+36:11: error: cannot assign 'Pair' to '&var Pair'
+41:5: error: cannot modify 'pair' while it is immutably borrowed
+46:5: error: cannot modify parameter 'pair'
+26:10: error: move-only value 'value' requires an explicit '<-' in assignment

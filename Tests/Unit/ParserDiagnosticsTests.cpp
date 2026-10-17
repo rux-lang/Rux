@@ -849,3 +849,44 @@ TEST_CASE("a when match arm accepts an expression body and a block body") {
     CAPTURE(DiagnosticMessages(parsed));
     CHECK_FALSE(parsed.HasErrors());
 }
+
+TEST_CASE("a format attribute is recorded on its parameter") {
+    const ParseResult result =
+        ParseSource("func Show(prefix: int32, #Format() format: char8[..], values: int32...) {}");
+    REQUIRE_FALSE(result.HasErrors());
+    REQUIRE_EQ(result.module.items.size(), 1);
+    const auto *function = dynamic_cast<const FuncDecl *>(result.module.items.front().get());
+    REQUIRE(function != nullptr);
+    REQUIRE_EQ(function->params.size(), 3);
+    CHECK_FALSE(function->params[0].isFormat);
+    CHECK(function->params[1].isFormat);
+    CHECK_EQ(function->params[1].name, "format");
+    CHECK_EQ(function->params[1].formatLocation.column, 26);
+    CHECK_EQ(function->params[1].location.column, 36);
+    CHECK_FALSE(function->params[2].isFormat);
+}
+
+TEST_CASE("a format attribute is refused where it cannot describe a format string") {
+    struct Case {
+        std::string_view source;
+        std::string_view message;
+    };
+
+    const Case cases[] = {
+        {"func F(#Format() a: char8[..], #Format() b: char8[..], values: int32...) {}",
+         "'#Format' is already applied to parameter 'a'"},
+        {"func F(#Format() #Format() a: char8[..], values: int32...) {}", "duplicate '#Format' attribute"},
+        {"func F(#Format() a: char8[..]) {}", "'#Format' parameter 'a' must be followed by a variadic parameter"},
+        {"func F(a: char8[..], #Format() values: int32...) {}",
+         "'#Format' cannot be applied to variadic parameter 'values'"},
+        {"extend Point { func F(#Format() self: &Point, values: int32...) {} }",
+         "'#Format' cannot be applied to the receiver 'self'"},
+        {"func F(#Format(1) a: char8[..], values: int32...) {}", "'#Format' does not accept arguments"},
+        {"func F(#Shape() a: char8[..], values: int32...) {}", "unknown parameter attribute '#Shape'"},
+    };
+    for (const Case &entry : cases) {
+        CAPTURE(entry.source);
+        const ParseResult result = ParseSource(entry.source);
+        CHECK_MESSAGE(FindDiagnostic(result, entry.message) != nullptr, DiagnosticMessages(result));
+    }
+}

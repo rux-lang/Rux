@@ -1,0 +1,19 @@
+// rux:target linux-aarch64
+// An `add` or a memory operand that names a symbol completes an `adrp`, so the symbol must name a function or a
+// module variable. A condition name is not a symbol where an instruction takes one.
+var Counter: int64 = 0;
+
+asm func Names(x: int64, y: int64) -> int64 {
+    adrp x2, Counter
+    ldr x2, [x2, Counter]
+    cmp x0, x1
+    csel x0, x0, x1, gt
+    b.eq done
+    add x0, x0, banana
+done:
+    ret
+}
+
+func Main() -> int {
+    return 0;
+}

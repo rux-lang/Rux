@@ -1,11 +1,11 @@
 // The text of a `float32`.
-//
 // The shortest decimal that reads back as the same value, which is what a reader almost always wants: 0.1 prints as
 // "0.1" rather than as the seventeen digits its binary value really is. A precision in the placeholder asks for
-// fixed notation instead, and is honoured exactly when the value has that many digits to give.
+// fixed notation instead, and is honoured exactly when the value has that many digits to give; the `e` and `E`
+// styles ask for scientific notation.
 
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // The largest finite float32, held here as the float64 it widens to exactly.
 const MaxFinite32 = 3.4028234663852886e38;
@@ -18,49 +18,55 @@ const ScientificFrom32 = 9;
 // Whether the value is a NaN, on the same terms as the float64 overload: a
 // NaN is the only value not equal to itself.
 /// Provides the public `IsNan` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is a NaN
-/// @see https://rux-lang.dev/docs/api/format/is-nan
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-nan
 pub func IsNan(value: float32) -> bool {
     return value != value;
 }
 
 // Whether the value is one of the two infinities.
 /// Provides the public `IsInfinite` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is either infinity
-/// @see https://rux-lang.dev/docs/api/format/is-infinite
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-infinite
 pub func IsInfinite(value: float32) -> bool {
     return value as float64 > MaxFinite32 || (value as float64) < -MaxFinite32;
 }
 
 // Whether the value is an ordinary number: neither a NaN nor an infinity.
 /// Provides the public `IsFinite` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is neither infinite nor a NaN
-/// @see https://rux-lang.dev/docs/api/format/is-finite
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-finite
 pub func IsFinite(value: float32) -> bool {
     return value as float64 >= -MaxFinite32 && value as float64 <= MaxFinite32;
 }
 
 extend float32 : Display {
     /// Writes this value's decimal text.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
     /// more than the longest rendering — sign, digits, point and exponent — can need.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
+    /// A precision asks for that many digits after the point in fixed notation. The style `e` or `E` asks for
+    /// scientific notation, `1.2345e+05`, where a precision counts the digits after the mantissa's point. A NaN or an
+    /// infinity renders as `NaN`, `Inf` or `-Inf` under every placeholder.
+    /// Reports `UnsupportedRequest` for any other style or a precision past `MaximumPrecision`, and otherwise
+    /// whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float32/write-display
+    /// @see https://rux-lang.dev/docs/api/format/float-text#float32-write-display
     pub func WriteDisplay(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+        var mark = c8'e';
+        let scientific = ScientificMark(spec, @mark)?;
+        // A NaN or an infinity has no digits for a precision or an exponent to place, so it renders the same under
+        // every placeholder, with only the sign and the alignment applied.
+        if IsNan(self) || IsInfinite(self) {
+            return WriteNonFinite(writer, spec, IsNan(self), self < 0.0);
+        }
+        if scientific {
+            return WriteScientificNotation(writer, spec, DecomposeFloat32(self), mark);
+        }
         // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
         // without moving it.
         var storage: char8[52];
@@ -84,14 +90,11 @@ extend float32 : Display {
 
 extend float32 : Debug {
     /// The same text.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float32/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/float-text#float32-write-debug
     pub func WriteDebug(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -117,6 +120,6 @@ func WriteFloat(cursor: &var ByteCursor, value: float32) {
     // would give the shortest decimal for the wider value, which is a different and longer number.
     let parts = DecomposeFloat32(value);
     if !WriteShortestFloat(cursor, parts, ScientificFrom32) {
-        WriteDecimal(cursor, value as float64, 9u);
+        WriteDecimal(cursor, value as float64, 9);
     }
 }

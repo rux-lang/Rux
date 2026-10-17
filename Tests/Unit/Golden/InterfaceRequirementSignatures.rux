@@ -1,0 +1,73 @@
+// A requirement names what an implementation provides, so it has no body, and an implementation takes and returns
+// exactly what the requirement says.
+interface Shape {
+    func Area(self: &Self) -> float64;
+    func Scale(self: &var Self, factor: float64);
+    func Describe(self: &Self) -> int32 {
+        return 0;
+    }
+}
+
+struct Square {
+    side: float64;
+}
+
+extend Square : Shape {
+    func Area(self: &Square) -> int32 {
+        return 1;
+    }
+
+    func Scale(self: &var Square, factor: int32) {
+        self.side = self.side * 2.0;
+    }
+
+    func Describe(self: &Square) -> int32 {
+        return 0;
+    }
+}
+
+struct Circle {
+    radius: float64;
+}
+
+extend Circle : Shape {
+    func Area(self: &Circle) -> float64 {
+        return self.radius * self.radius * 3.0;
+    }
+
+    func Scale(self: &var Circle, factor: float64) {
+        self.radius = self.radius * factor;
+    }
+
+    func Describe(self: &Circle) -> int32 {
+        return 1;
+    }
+}
+
+// A bound is satisfied by methods of the right names only when they also have the right signatures.
+struct Triangle {
+    base: float64;
+}
+
+extend Triangle {
+    func Area(self: &Triangle, height: float64) -> float64 {
+        return self.base * height;
+    }
+
+    func Scale(self: &var Triangle, factor: float64) {
+        self.base = self.base * factor;
+    }
+
+    func Describe(self: &Triangle) -> int32 {
+        return 2;
+    }
+}
+
+func Measure<T: Shape>(shape: T) -> float64 {
+    return shape.Area();
+}
+
+func Main() -> int {
+    let area = Measure(Triangle { base: 2.0 });
+    return 0;
+}

@@ -1,2 +1,33 @@
-// float512 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `float512`: the binary512 interchange format.
+// Four hundred and eighty-nine bits of significand, so about one hundred and forty-seven decimal digits, following the
+// IEEE 754 progression of interchange widths. Its arithmetic runs in software on every target. The compiler supplies
+// the finite limits, which would run to hundreds of digits in decimal.
+
+/// A binary512 floating-point number in the IEEE 754 interchange-format progression.
+/// @see https://rux-lang.dev/docs/api/core/floating-point#float512
+extend float512 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-bits
+    pub const Bits: uint = 512;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-bytes
+    pub const Bytes: uint = 64;
+    /// The lowest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-lowest
+    pub intrinsic const Lowest: float512;
+    /// The highest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-max
+    pub intrinsic const Max: float512;
+    /// The smallest positive normal value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-min-positive
+    pub intrinsic const MinPositive: float512;
+    /// The difference between one and the next representable value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-epsilon
+    pub intrinsic const Epsilon: float512;
+    /// Positive infinity.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-infinity
+    pub intrinsic const Infinity: float512;
+    /// A quiet not-a-number value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float512-nan
+    pub intrinsic const NaN: float512;
+}

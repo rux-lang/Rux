@@ -1,0 +1,238 @@
+// The one walk over arguments that parsing and every query share.
+// Validating once and then answering each question by walking the arguments again keeps a parse free of storage: the
+// walk is the record. Because both use this scanner, a question can never be answered from a reading of the
+// arguments different from the one that was validated.
+// The grammar is the conventional one. `--name` and `--name=value` are long options, and a long option that takes a
+// value may have it as the next argument. `-abc` is the short options `a`, `b` and `c`, and the first of them that
+// takes a value takes the rest of the cluster, or the next argument when it ends the cluster. `--` ends options, after
+// which every argument is positional, and `-` alone is positional. In a command with subcommands, the first positional
+// argument names the subcommand, and every argument after it belongs to the subcommand.
+
+import Path::{ OsStringView, OsUnit };
+import Process::{ Argument, ArgumentCount };
+
+/// Where the arguments being parsed come from.
+/// `Copy`. A slice is borrowed and must outlive every parse made from it; the process's own arguments last as long as
+/// the process.
+/// @see https://rux-lang.dev/docs/api/commandline/parsed#argument-source
+pub variant ArgumentSource {
+    /// Arguments given as views, without the program's name.
+    Given(OsStringView[..]),
+    /// The process's own arguments after the program's name.
+    ProcessArguments
+}
+
+extend ArgumentSource {
+    /// How many arguments there are.
+    /// @returns the argument count, not counting the program's name
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#argument-source-count
+    pub func Count(self: &ArgumentSource) -> uint {
+        let count = ArgumentCount();
+        return match self {
+            .Given(arguments) => arguments.length,
+            .ProcessArguments => count == 0 ? 0 : count - 1
+        };
+    }
+
+    /// The argument at `index`, counting from zero after the program's name.
+    /// @param index the argument's position
+    /// @returns the argument, or an empty view past the last one
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#argument-source-at
+    pub func At(self: &ArgumentSource, index: uint) -> OsStringView {
+        return match self {
+            .Given(arguments) => index < arguments.length ? arguments[index] : OsStringView(),
+            .ProcessArguments => Argument(index + 1) ?? OsStringView()
+        };
+    }
+}
+
+// What a step of the walk found. An option is identified by its index in the specification, or by one of the built-in
+// codes below; its value is present only when it takes one.
+const HelpOption: uint = 0xFFFFFFF0;
+const VersionOption: uint = 0xFFFFFFF1;
+
+variant Item {
+    // An option, its value when it takes one, and the argument it was found in.
+    Option(uint, OsStringView?, uint),
+    // A positional argument, the positional it fills, and the argument's index.
+    Positional(uint, OsStringView, uint),
+    // The subcommand at its index in the specification, named by the argument at the given index.
+    Command(uint, uint)
+}
+
+struct Scanner {
+    spec: *CommandSpec;
+    source: ArgumentSource;
+    // The next argument to read, and where the walk stops.
+    index: uint;
+    end: uint;
+    // The position inside a cluster of short options, or zero when not in one.
+    cluster: uint;
+    optionsEnded: bool;
+    positionals: uint;
+}
+
+func Scan(spec: *CommandSpec, source: ArgumentSource, start: uint, end: uint) -> Scanner {
+    return Scanner {
+        spec: spec,
+        source: source,
+        index: start,
+        end: end,
+        cluster: 0,
+        optionsEnded: false,
+        positionals: 0
+    };
+}
+
+// The option with long name `name`, or the built-in help or version option when the command declares none of that
+// name, or none.
+func FindLong(spec: &CommandSpec, name: OsStringView) -> uint? {
+    let units = name.Units();
+    var index: uint = 0;
+    while index < spec.options.length {
+        if UnitsAre(units, spec.options[index].name) { return index; }
+        index = index + 1;
+    }
+    if UnitsAre(units, "help") { return HelpOption; }
+    if spec.version.length > 0 && UnitsAre(units, "version") { return VersionOption; }
+    return none;
+}
+
+// The option with short name `letter`, or a built-in one, or none.
+func FindShort(spec: &CommandSpec, letter: uint32) -> uint? {
+    var index: uint = 0;
+    while index < spec.options.length {
+        let short = spec.options[index].short as uint32;
+        if short != 0 && short == letter { return index; }
+        index = index + 1;
+    }
+    if letter == 0x68 { return HelpOption; }
+    if spec.version.length > 0 && letter == 0x56 { return VersionOption; }
+    return none;
+}
+
+// Whether the option at `option` takes a value. The built-in ones never do.
+func TakesValue(spec: &CommandSpec, option: uint) -> bool {
+    return option < spec.options.length && spec.options[option].value.length > 0;
+}
+
+// The long name of an option, for an error.
+func LongName(spec: &CommandSpec, option: uint) -> char8[..] {
+    if option == HelpOption { return "help"; }
+    if option == VersionOption { return "version"; }
+    return spec.options[option].name;
+}
+
+// The subcommand named `word`, or none.
+func FindCommand(spec: &CommandSpec, word: OsStringView) -> uint? {
+    var index: uint = 0;
+    while index < spec.commands.length {
+        if UnitsAre(word.Units(), spec.commands[index].name) { return index; }
+        index = index + 1;
+    }
+    return none;
+}
+
+extend Scanner {
+    // A walk from the same position, independent of this one.
+    func Copy(self: &Scanner) -> Scanner {
+        return Scanner {
+            spec: self.spec,
+            source: self.source,
+            index: self.index,
+            end: self.end,
+            cluster: self.cluster,
+            optionsEnded: self.optionsEnded,
+            positionals: self.positionals
+        };
+    }
+
+    // The next item, none at the end, or why the arguments do not match.
+    func Next(self: &var Scanner) -> Item? ! CommandLineError {
+        if self.cluster > 0 { return self.NextShort(); }
+        if self.index >= self.end { return .Success(none); }
+        let at = self.index;
+        let argument = self.source.At(at);
+        let units = argument.Units();
+        self.index = self.index + 1;
+        if !self.optionsEnded && units.length >= 2 && UnitAt(units, 0) == 0x2D {
+            if UnitAt(units, 1) == 0x2D {
+                if units.length == 2 {
+                    self.optionsEnded = true;
+                    return self.Next();
+                }
+                return self.Long(argument, at);
+            }
+            self.cluster = 1;
+            return self.NextShort();
+        }
+        return self.Positional(argument, at);
+    }
+
+    func Long(self: &var Scanner, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
+        let units = argument.Units();
+        var equals: uint = 2;
+        while equals < units.length && UnitAt(units, equals) != 0x3D {
+            equals = equals + 1;
+        }
+        let option = FindLong(*self.spec, Part(units, 2, equals)) ?? 0xFFFFFFFF;
+        if option == 0xFFFFFFFF { fail CommandLineError::UnknownOption(argument); }
+        if !TakesValue(*self.spec, option) {
+            if equals < units.length { fail CommandLineError::UnexpectedValue(LongName(*self.spec, option)); }
+            return .Success(.Some(Item::Option(option, none, at)));
+        }
+        if equals < units.length {
+            return .Success(.Some(Item::Option(option, .Some(Part(units, equals + 1, units.length)), at)));
+        }
+        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(*self.spec, option)); }
+        let value = self.source.At(self.index);
+        self.index = self.index + 1;
+        return .Success(.Some(Item::Option(option, .Some(value), at)));
+    }
+
+    // The next short option in the cluster that started at the argument before `index`.
+    func NextShort(self: &var Scanner) -> Item? ! CommandLineError {
+        let at = self.index - 1;
+        let argument = self.source.At(at);
+        let units = argument.Units();
+        let position = self.cluster;
+        let option = FindShort(*self.spec, UnitAt(units, position)) ?? 0xFFFFFFFF;
+        if option == 0xFFFFFFFF {
+            self.cluster = 0;
+            fail CommandLineError::UnknownOption(argument);
+        }
+        if !TakesValue(*self.spec, option) {
+            self.cluster = position + 1 < units.length ? position + 1 : 0;
+            return .Success(.Some(Item::Option(option, none, at)));
+        }
+        self.cluster = 0;
+        if position + 1 < units.length {
+            return .Success(.Some(Item::Option(option, .Some(Part(units, position + 1, units.length)), at)));
+        }
+        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(*self.spec, option)); }
+        let value = self.source.At(self.index);
+        self.index = self.index + 1;
+        return .Success(.Some(Item::Option(option, .Some(value), at)));
+    }
+
+    func Positional(self: &var Scanner, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
+        if self.spec.commands.length > 0 {
+            let command = FindCommand(*self.spec, argument) ?? 0xFFFFFFFF;
+            if command == 0xFFFFFFFF { fail CommandLineError::UnknownCommand(argument); }
+            // Everything after the subcommand's name is the subcommand's to read.
+            self.index = self.end;
+            return .Success(.Some(Item::Command(command, at)));
+        }
+        let declared = self.spec.positionals.length;
+        if declared == 0 { fail CommandLineError::UnexpectedArgument(argument); }
+        var slot = self.positionals;
+        if slot >= declared {
+            if self.spec.positionals[declared - 1].kind != PositionalKind::Remaining {
+                fail CommandLineError::UnexpectedArgument(argument);
+            }
+            slot = declared - 1;
+        }
+        self.positionals = self.positionals + 1;
+        return .Success(.Some(Item::Positional(slot, argument, at)));
+    }
+}

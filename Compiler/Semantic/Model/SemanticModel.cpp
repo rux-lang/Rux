@@ -10,11 +10,6 @@
 #include <utility>
 
 namespace Rux {
-const Decl *SemanticModel::TryGetIntrinsicTypeBinding(const TypeExpr &type) const noexcept {
-    const auto found = facts.intrinsicTypeBindings.find(&type);
-    return found == facts.intrinsicTypeBindings.end() ? nullptr : found->second;
-}
-
 const ConstDecl *SemanticModel::TryGetAssociatedConstant(const Expr &expression) const noexcept {
     const auto found = facts.associatedConstants.find(&expression);
     return found == facts.associatedConstants.end() ? nullptr : found->second;
@@ -23,6 +18,16 @@ const ConstDecl *SemanticModel::TryGetAssociatedConstant(const Expr &expression)
 const ConstDecl *SemanticModel::TryGetConstantReference(const Expr &expression) const noexcept {
     const auto found = facts.constantReferences.find(&expression);
     return found == facts.constantReferences.end() ? nullptr : found->second;
+}
+
+const GlobalDecl *SemanticModel::TryGetGlobalReference(const Expr &expression) const noexcept {
+    const auto found = facts.globalReferences.find(&expression);
+    return found == facts.globalReferences.end() ? nullptr : AstCast<const GlobalDecl>(found->second);
+}
+
+const ExternVarDecl *SemanticModel::TryGetExternVariableReference(const Expr &expression) const noexcept {
+    const auto found = facts.globalReferences.find(&expression);
+    return found == facts.globalReferences.end() ? nullptr : AstCast<const ExternVarDecl>(found->second);
 }
 
 const EvaluatedAssociatedConstant *SemanticModel::TryGetConstantValue(const ConstDecl &declaration) const noexcept {
@@ -60,21 +65,22 @@ std::string SubstituteIdentityName(std::string name, const std::unordered_map<st
 /// Substitute type parameters throughout a type, including nested ones, so a generic argument is resolved wherever it
 /// appears.
 TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
-    if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
-        if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
+    if (type->kind == TypeRef::Kind::TypeParam || type->kind == TypeRef::Kind::Named) {
+        if (const auto substitution = substitutions.find(type->name); substitution != substitutions.end()) {
             TypeRef substituted = substitution->second;
             // Writability belongs to the parameter slot in *var T, not to the caller's plain T argument.
             substituted.isMut = type.isMut;
             return substituted;
         }
-        if (type.kind == TypeRef::Kind::Named) {
-            type.name = SubstituteIdentityName(std::move(type.name), substitutions);
-        }
     }
-    for (auto &inner : type.inner) {
-        inner = SubstituteIdentityType(std::move(inner), substitutions);
+    std::vector<TypeRef> inner;
+    inner.reserve(type->inner.size());
+    for (const TypeRef &member : type->inner) {
+        inner.push_back(SubstituteIdentityType(member, substitutions));
     }
-    return TypeRef::Renormalize(std::move(type));
+    const std::string name =
+        type->kind == TypeRef::Kind::Named ? SubstituteIdentityName(type->name, substitutions) : type->name;
+    return TypeRef::Renormalize(type.With(name, inner));
 }
 
 /// Encode a type into the form a linker name embeds, so two instantiations differing only by argument get distinct
@@ -97,10 +103,10 @@ const TypeRef &RequireSubstitution(const std::unordered_map<std::string, TypeRef
 
 std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef &type) {
     const TypeRef &owner =
-        (type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()
-            ? type.inner.front()
+        (type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Reference) && !type->inner.empty()
+            ? type->inner.front()
             : type;
-    std::string name = owner.kind == TypeRef::Kind::Named ? owner.name : owner.ToString();
+    std::string name = owner->kind == TypeRef::Kind::Named ? owner->name : owner.ToString();
     // A slice keeps its element in the name, because `extend int[]` and `extend char8[]` are different method sets. Any
     // other generic instantiation shares one, so it reduces to the declaration that owns it.
     if (const std::size_t arguments = name.find('<'); arguments != std::string::npos && !owner.IsSlice()) {
@@ -135,10 +141,10 @@ ResolvedCallableBinding
 ResolvedCallableBinding::Instantiate(const std::unordered_map<std::string, TypeRef> &contextSubstitutions) const {
     ResolvedCallableBinding concrete = *this;
     for (auto &[_, type] : concrete.substitutions) {
-        type = SubstituteIdentityType(std::move(type), contextSubstitutions);
+        type = SubstituteIdentityType(type, contextSubstitutions);
     }
     if (concrete.receiverType) {
-        concrete.receiverType = SubstituteIdentityType(std::move(*concrete.receiverType), contextSubstitutions);
+        concrete.receiverType = SubstituteIdentityType(*concrete.receiverType, contextSubstitutions);
     }
     concrete.linkerName = LinkerNameFor(concrete.substitutions);
     return concrete;
@@ -166,6 +172,15 @@ const TypeRef *SemanticModel::TryGetType(const Expr &expression) const noexcept 
 
 bool SemanticModel::HasBorrowedScalarRead(const Expr &expression) const noexcept {
     return facts.borrowedScalarReads.contains(&expression);
+}
+
+bool SemanticModel::HasReferenceWrite(const Expr &expression) const noexcept {
+    return facts.referenceWrites.contains(&expression);
+}
+
+const PlaceReplacement *SemanticModel::TryGetPlaceReplacement(const Expr &assignment) const noexcept {
+    const auto found = facts.placeReplacements.find(&assignment);
+    return found == facts.placeReplacements.end() ? nullptr : &found->second;
 }
 
 const std::vector<NativeConversionStep> *SemanticModel::TryGetNativeConversion(const Expr &expression) const noexcept {
@@ -222,6 +237,11 @@ const std::unordered_map<std::string, ResolvedTypeLayout> &SemanticModel::TypeLa
     return facts.typeLayouts;
 }
 
+const TypeRef *SemanticModel::TryGetAggregateEqualityOperandType(const BinaryExpr &expression) const noexcept {
+    const auto fact = facts.aggregateEqualityOperandTypes.find(&expression);
+    return fact == facts.aggregateEqualityOperandTypes.end() ? nullptr : &fact->second;
+}
+
 const bool *SemanticModel::TryGetAggregateEquality(const BinaryExpr &expression) const noexcept {
     const auto fact = facts.aggregateEqualities.find(&expression);
     return fact == facts.aggregateEqualities.end() ? nullptr : &fact->second;
@@ -247,6 +267,26 @@ const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallEx
     return binding == facts.callableBindings.end() ? nullptr : &binding->second;
 }
 
+const ResolvedCallableBinding *SemanticModel::TryGetFunctionReferenceBinding(const Expr &reference) const noexcept {
+    const auto binding = facts.functionReferenceBindings.find(&reference);
+    return binding == facts.functionReferenceBindings.end() ? nullptr : &binding->second;
+}
+
+const InterfaceHolderSite *SemanticModel::TryGetInterfaceHolderSite(const Expr &value) const noexcept {
+    const auto site = facts.interfaceHolderSites.find(&value);
+    return site == facts.interfaceHolderSites.end() ? nullptr : &site->second;
+}
+
+const std::vector<InterfaceHolderSite> *SemanticModel::TryGetInterfaceHolders(const LetStmt &local) const noexcept {
+    const auto holders = facts.interfaceHolders.find(&local);
+    return holders == facts.interfaceHolders.end() ? nullptr : &holders->second;
+}
+
+const Decl *SemanticModel::TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept {
+    const auto declaration = facts.asmSymbolDeclarations.find(&operand);
+    return declaration == facts.asmSymbolDeclarations.end() ? nullptr : declaration->second;
+}
+
 const ResolvedDefaultConstructor *SemanticModel::TryGetDefaultConstructor(const LetStmt &statement) const noexcept {
     const auto constructor = facts.defaultConstructors.find(&statement);
     return constructor == facts.defaultConstructors.end() ? nullptr : &constructor->second;
@@ -255,6 +295,10 @@ const ResolvedDefaultConstructor *SemanticModel::TryGetDefaultConstructor(const 
 bool SemanticModel::IsEffectivelyPublic(const Decl &declaration) const noexcept {
     const auto visibility = facts.effectiveVisibilities.find(&declaration);
     return visibility != facts.effectiveVisibilities.end() && visibility->second;
+}
+
+bool SemanticModel::IsExported(const Decl &declaration) const noexcept {
+    return facts.exportedDeclarations.contains(&declaration);
 }
 
 const ResolvedSymbolIdentity *SemanticModel::TryGetSymbolIdentity(const Decl &declaration) const noexcept {
@@ -296,6 +340,18 @@ const ResolvedIndexAssignment *SemanticModel::TryGetIndexAssignment(const IndexE
 const ResolvedIteration *SemanticModel::TryGetIteration(const ForStmt &statement) const noexcept {
     const auto iteration = facts.iterations.find(&statement);
     return iteration == facts.iterations.end() ? nullptr : &iteration->second;
+}
+
+bool SemanticModel::IsExhaustiveMatch(const MatchExpr &expression) const noexcept {
+    return facts.exhaustiveMatchExpressions.contains(&expression);
+}
+
+bool SemanticModel::IsExhaustiveMatch(const MatchStmt &statement) const noexcept {
+    return facts.exhaustiveMatchStatements.contains(&statement);
+}
+
+bool SemanticModel::IsOwnedMatchSubject(const Expr &subject) const noexcept {
+    return facts.ownedMatchSubjects.contains(&subject);
 }
 
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {

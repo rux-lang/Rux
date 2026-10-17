@@ -1,0 +1,231 @@
+// The POSIX `TZ` rule: a standard time, perhaps a daylight time, and the dates each starts on.
+// A rule such as `CET-1CEST,M3.5.0,M10.5.0/3` says how a zone keeps time in every year, which is how a TZif file
+// describes the years after its last listed change, and how the `TZ` variable may describe a zone without any file.
+// Offsets in a rule are written west of Greenwich positive, the opposite of every other offset, so they are negated
+// as they are read. A change takes effect at its time in the local time it ends: the start of daylight time in
+// standard time and its end in daylight time.
+
+import Collections::Vector;
+import Time::{ Date, IsLeapYear };
+import TimeZone::TimeZoneError;
+
+// One kind of local time: its offset east of UTC, whether it is daylight time, and where its abbreviation is.
+struct ZoneType {
+    offset: int32;
+    daylight: bool;
+    abbreviation: uint;
+    abbreviationLength: uint;
+}
+
+// A date a rule changes on.
+struct RuleDate {
+    // 0 for `Jn`, a day from 1 to 365 that never counts February 29; 1 for `n`, a day from 0 to 365 that does; and 2
+    // for `Mm.w.d`, the `w`th weekday `d` of month `m`, the fifth being the last.
+    kind: uint8;
+    day: uint16;
+    month: uint8;
+    week: uint8;
+    weekday: uint8;
+    // Seconds after local midnight, which may be negative or more than a day.
+    time: int32;
+}
+
+// A whole rule.
+struct Rule {
+    present: bool;
+    standard: ZoneType;
+    hasDaylight: bool;
+    daylight: ZoneType;
+    start: RuleDate;
+    end: RuleDate;
+}
+
+func NoRule() -> Rule {
+    let zero = ZoneType { offset: 0, daylight: false, abbreviation: 0, abbreviationLength: 0 };
+    let date = RuleDate { kind: 2, day: 0, month: 0, week: 0, weekday: 0, time: 0 };
+    return Rule { present: false, standard: zero, hasDaylight: false, daylight: zero, start: date, end: date };
+}
+
+// Reads `text` as a rule, adding its abbreviations to `names`.
+func ParseRule(text: char8[..], names: &var Vector<char8>) -> Rule ! TimeZoneError {
+    var rule = NoRule();
+    var at: uint = 0;
+    rule.standard = ZoneType { offset: 0, daylight: false, abbreviation: 0, abbreviationLength: 0 };
+    ParseName(text, @at, names, @rule.standard)?;
+    rule.standard.offset = -ParseOffset(text, @at, 24)?;
+    rule.present = true;
+    if at == text.length { return rule; }
+    rule.hasDaylight = true;
+    rule.daylight = ZoneType { offset: 0, daylight: true, abbreviation: 0, abbreviationLength: 0 };
+    ParseName(text, @at, names, @rule.daylight)?;
+    if at < text.length && text[at] != ',' {
+        rule.daylight.offset = -ParseOffset(text, @at, 24)?;
+    }
+    else {
+        rule.daylight.offset = rule.standard.offset + 3600;
+    }
+    if at == text.length {
+        // POSIX leaves the dates to the implementation; this is the United States rule, as the C libraries use.
+        rule.start = RuleDate { kind: 2, day: 0, month: 3, week: 2, weekday: 0, time: 7200 };
+        rule.end = RuleDate { kind: 2, day: 0, month: 11, week: 1, weekday: 0, time: 7200 };
+        return rule;
+    }
+    if text[at] != ',' { fail TimeZoneError::InvalidRule; }
+    at = at + 1;
+    rule.start = ParseDate(text, @at)?;
+    if at >= text.length || text[at] != ',' { fail TimeZoneError::InvalidRule; }
+    at = at + 1;
+    rule.end = ParseDate(text, @at)?;
+    if at != text.length { fail TimeZoneError::InvalidRule; }
+    return rule;
+}
+
+func IsLetter(c: char8) -> bool {
+    let value = c as uint8;
+    return (value >= 0x41u8 && value <= 0x5Au8) || (value >= 0x61u8 && value <= 0x7Au8);
+}
+
+func IsDecimal(c: char8) -> bool {
+    let value = c as uint8;
+    return value >= 0x30u8 && value <= 0x39u8;
+}
+
+// Reads an abbreviation, three or more letters or anything between `<` and `>`, into `names`.
+func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: *var ZoneType) -> ! TimeZoneError {
+    var start = *at;
+    var end = start;
+    if start < text.length && text[start] == '<' {
+        start = start + 1;
+        end = start;
+        while end < text.length && text[end] != '>' { end = end + 1; }
+        if end == text.length { fail TimeZoneError::InvalidRule; }
+        *at = end + 1;
+    }
+    else {
+        while end < text.length && IsLetter(text[end]) { end = end + 1; }
+        *at = end;
+    }
+    if end - start < 3u { fail TimeZoneError::InvalidRule; }
+    into.abbreviation = names.Length();
+    into.abbreviationLength = end - start;
+    names.PushSlice(text[start..end]) catch { else => fail TimeZoneError::OutOfMemory };
+    names.Push(c8'\0') catch { else => fail TimeZoneError::OutOfMemory };
+}
+
+// Reads `[+-]h[h][:mm[:ss]]` as seconds, its hours at most `maximumHours`.
+func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 ! TimeZoneError {
+    var sign: int32 = 1;
+    if *at < text.length && (text[*at] == '+' || text[*at] == '-') {
+        if text[*at] == '-' { sign = -1; }
+        *at = *at + 1;
+    }
+    let hours = ParseNumber(text, at, 3)?;
+    if hours > maximumHours { fail TimeZoneError::InvalidRule; }
+    var seconds = hours * 3600;
+    if *at < text.length && text[*at] == ':' {
+        *at = *at + 1;
+        let minutes = ParseNumber(text, at, 2)?;
+        if minutes > 59 { fail TimeZoneError::InvalidRule; }
+        seconds = seconds + minutes * 60;
+        if *at < text.length && text[*at] == ':' {
+            *at = *at + 1;
+            let rest = ParseNumber(text, at, 2)?;
+            if rest > 59 { fail TimeZoneError::InvalidRule; }
+            seconds = seconds + rest;
+        }
+    }
+    return sign * seconds;
+}
+
+// Reads one to `digits` decimal digits.
+func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 ! TimeZoneError {
+    var value: int32 = 0;
+    var count: uint = 0;
+    while *at < text.length && IsDecimal(text[*at]) && count < digits {
+        value = value * 10 + (text[*at] as uint8 - 0x30u8) as int32;
+        *at = *at + 1;
+        count = count + 1;
+    }
+    if count == 0u { fail TimeZoneError::InvalidRule; }
+    return value;
+}
+
+// Reads a date, `Jn`, `n` or `Mm.w.d`, and its optional `/time`.
+func ParseDate(text: char8[..], at: *var uint) -> RuleDate ! TimeZoneError {
+    var date = RuleDate { kind: 1, day: 0, month: 0, week: 0, weekday: 0, time: 7200 };
+    if *at < text.length && text[*at] == 'J' {
+        *at = *at + 1;
+        date.kind = 0;
+        let day = ParseNumber(text, at, 3)?;
+        if day < 1 || day > 365 { fail TimeZoneError::InvalidRule; }
+        date.day = day as uint16;
+    }
+    else if *at < text.length && text[*at] == 'M' {
+        *at = *at + 1;
+        date.kind = 2;
+        let month = ParseNumber(text, at, 2)?;
+        if *at >= text.length || text[*at] != '.' { fail TimeZoneError::InvalidRule; }
+        *at = *at + 1;
+        let week = ParseNumber(text, at, 1)?;
+        if *at >= text.length || text[*at] != '.' { fail TimeZoneError::InvalidRule; }
+        *at = *at + 1;
+        let weekday = ParseNumber(text, at, 1)?;
+        if month < 1 || month > 12 || week < 1 || week > 5 || weekday > 6 { fail TimeZoneError::InvalidRule; }
+        date.month = month as uint8;
+        date.week = week as uint8;
+        date.weekday = weekday as uint8;
+    }
+    else {
+        let day = ParseNumber(text, at, 3)?;
+        if day > 365 { fail TimeZoneError::InvalidRule; }
+        date.day = day as uint16;
+    }
+    if *at < text.length && text[*at] == '/' {
+        *at = *at + 1;
+        // Version 3 of the TZif format lets the time run from -167 to 167 hours.
+        date.time = ParseOffset(text, at, 167)?;
+    }
+    return date;
+}
+
+// The day, counted from 1970-01-01, a rule date falls on in `year`.
+func RuleDay(date: &RuleDate, year: int32) -> int64 {
+    let january = (Date::New(year, 1, 1) ?? Date { year: 1970, month: 1, day: 1 }).DaysFromEpoch();
+    if date.kind == 0u8 {
+        var day = date.day as int64 - 1i64;
+        if IsLeapYear(year) && date.day >= 60u16 { day = day + 1i64; }
+        return january + day;
+    }
+    if date.kind == 1u8 { return january + date.day as int64; }
+    let first = (Date::New(year, date.month, 1) ?? Date { year: 1970, month: 1, day: 1 }).DaysFromEpoch();
+    // 1970-01-01 was a Thursday, day four of a week that starts on Sunday.
+    let weekdayOfFirst = ((first % 7i64 + 7i64) % 7i64 + 4i64) % 7i64;
+    var day = first + (date.weekday as int64 - weekdayOfFirst + 7i64) % 7i64 + (date.week as int64 - 1i64) * 7i64;
+    let length = MonthLength(year, date.month);
+    while day >= first + length { day = day - 7i64; }
+    return day;
+}
+
+func MonthLength(year: int32, month: uint8) -> int64 {
+    if month == 2u8 { return IsLeapYear(year) ? 29i64 : 28i64; }
+    if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 { return 30i64; }
+    return 31i64;
+}
+
+// The year a moment falls in, by its local time at `offset`.
+func YearAt(seconds: int64, offset: int32) -> int32 {
+    let local = seconds + offset as int64;
+    var days = local / 86400i64;
+    if local % 86400i64 < 0i64 { days = days - 1i64; }
+    return Date::FromEpochDays(days).year;
+}
+
+// The kind of time a rule gives at `seconds` after the epoch.
+func RuleTypeAt(rule: &Rule, seconds: int64) -> ZoneType {
+    if !rule.hasDaylight { return rule.standard; }
+    let year = YearAt(seconds, rule.standard.offset);
+    let start = RuleDay(rule.start, year) * 86400i64 + rule.start.time as int64 - rule.standard.offset as int64;
+    let end = RuleDay(rule.end, year) * 86400i64 + rule.end.time as int64 - rule.daylight.offset as int64;
+    let inDaylight = start < end ? (seconds >= start && seconds < end) : !(seconds >= end && seconds < start);
+    return inDaylight ? rule.daylight : rule.standard;
+}

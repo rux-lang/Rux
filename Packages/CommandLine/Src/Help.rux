@@ -1,0 +1,228 @@
+// Help, usage and version text, written from the same description the arguments are checked against.
+// The layout is the conventional one: the summary, a usage line, then the arguments, options and subcommands, each in
+// two columns with the descriptions aligned. `--help` and `--version` are listed with the options a command declares,
+// unless it declares its own of the same name.
+
+import Text::{ FormatError, TextWriter, WriteAscii, WriteBytes, WriteScalar };
+
+// Writes `count` spaces.
+func WriteSpaces(writer: &var TextWriter, count: uint) -> ! FormatError {
+    var written: uint = 0;
+    while written < count {
+        WriteAscii(writer, c8' ')?;
+        written = written + 1;
+    }
+    return;
+}
+
+// How wide an option's left column is: `-o, --output <FILE>`, with room for the short form whether there is one.
+func OptionWidth(option: &OptionSpec) -> uint {
+    var width = 6 + option.name.length;
+    if option.value.length > 0 {
+        width = width + 3 + option.value.length;
+    }
+    return width;
+}
+
+// Writes an option's left column.
+func WriteOptionColumn(writer: &var TextWriter, option: &OptionSpec) -> ! FormatError {
+    if option.short != '\0' {
+        WriteAscii(writer, c8'-')?;
+        WriteScalar(writer, option.short)?;
+        WriteBytes(writer, ", --")?;
+    }
+    else {
+        WriteBytes(writer, "    --")?;
+    }
+    WriteBytes(writer, option.name)?;
+    if option.value.length > 0 {
+        WriteBytes(writer, " <")?;
+        WriteBytes(writer, option.value)?;
+        WriteAscii(writer, c8'>')?;
+    }
+    return;
+}
+
+// The two built-in options as they are listed, when the command does not declare its own.
+func HelpOptionSpec() -> OptionSpec {
+    return Flag("help", 'h', "Print this help");
+}
+
+func VersionOptionSpec() -> OptionSpec {
+    return Flag("version", 'V', "Print the version");
+}
+
+// Whether the command declares an option of this long name itself.
+func Declares(spec: &CommandSpec, name: char8[..]) -> bool {
+    return match OptionIndex(spec, name) {
+        .Some(_) => true,
+        none => false
+    };
+}
+
+// How wide a positional is as the usage line writes it.
+func PositionalWidth(positional: &PositionalSpec) -> uint {
+    return positional.name.length + (positional.kind == PositionalKind::Remaining ? 5 : 2);
+}
+
+// How a positional is written in the usage line: `<name>`, `[name]` or `[name...]`.
+func WritePositionalUsage(writer: &var TextWriter, positional: &PositionalSpec) -> ! FormatError {
+    match positional.kind {
+        .Required => {
+            WriteAscii(writer, c8'<')?;
+            WriteBytes(writer, positional.name)?;
+            WriteAscii(writer, c8'>')?;
+        },
+        .Optional => {
+            WriteAscii(writer, c8'[')?;
+            WriteBytes(writer, positional.name)?;
+            WriteAscii(writer, c8']')?;
+        },
+        .Remaining => {
+            WriteAscii(writer, c8'[')?;
+            WriteBytes(writer, positional.name)?;
+            WriteBytes(writer, "...]")?;
+        }
+    }
+    return;
+}
+
+/// Writes the usage line, such as `Usage: tool [options] <input> [output]`.
+/// `parent` names the command a subcommand belongs to, so that its usage reads `tool build ...`; it is empty for the
+/// program itself. Reports whatever the writer reported.
+/// @param spec the command
+/// @param writer the destination
+/// @param parent the name of the command this one is a subcommand of, or empty
+/// @returns success when the whole line was accepted
+/// @see https://rux-lang.dev/docs/api/commandline/help#write-usage
+pub func WriteUsage(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..] = "") -> ! FormatError {
+    WriteBytes(writer, "Usage: ")?;
+    if parent.length > 0 {
+        WriteBytes(writer, parent)?;
+        WriteAscii(writer, c8' ')?;
+    }
+    WriteBytes(writer, spec.name)?;
+    WriteBytes(writer, " [options]")?;
+    for positional in spec.positionals {
+        WriteAscii(writer, c8' ')?;
+        WritePositionalUsage(writer, positional)?;
+    }
+    if spec.commands.length > 0 {
+        WriteBytes(writer, " <command>")?;
+    }
+    WriteAscii(writer, c8'\n')?;
+    return;
+}
+
+/// Writes the full help text: the summary, the usage line, and the arguments, options and subcommands with their
+/// descriptions aligned.
+/// Reports whatever the writer reported. Allocates nothing.
+/// @param spec the command
+/// @param writer the destination
+/// @param parent the name of the command this one is a subcommand of, or empty
+/// @returns success when the whole text was accepted
+/// @see https://rux-lang.dev/docs/api/commandline/help#write-help
+pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..] = "") -> ! FormatError {
+    if spec.summary.length > 0 {
+        WriteBytes(writer, spec.summary)?;
+        WriteBytes(writer, "\n\n")?;
+    }
+    WriteUsage(spec, writer, parent)?;
+
+    if spec.positionals.length > 0 {
+        var width: uint = 0;
+        for positional in spec.positionals {
+            width = PositionalWidth(positional) > width ? PositionalWidth(positional) : width;
+        }
+        WriteBytes(writer, "\nArguments:\n")?;
+        for positional in spec.positionals {
+            WriteBytes(writer, "  ")?;
+            WritePositionalUsage(writer, positional)?;
+            WriteSpaces(writer, width - PositionalWidth(positional) + 2)?;
+            WriteBytes(writer, positional.help)?;
+            WriteAscii(writer, c8'\n')?;
+        }
+    }
+
+    let help = HelpOptionSpec();
+    let version = VersionOptionSpec();
+    let listsHelp = !Declares(spec, "help");
+    let listsVersion = spec.version.length > 0 && !Declares(spec, "version");
+    var width: uint = 0;
+    for option in spec.options {
+        width = OptionWidth(option) > width ? OptionWidth(option) : width;
+    }
+    if listsHelp && OptionWidth(help) > width {
+        width = OptionWidth(help);
+    }
+    if listsVersion && OptionWidth(version) > width {
+        width = OptionWidth(version);
+    }
+    WriteBytes(writer, "\nOptions:\n")?;
+    for option in spec.options {
+        WriteBytes(writer, "  ")?;
+        WriteOptionColumn(writer, option)?;
+        WriteSpaces(writer, width - OptionWidth(option) + 2)?;
+        WriteBytes(writer, option.help)?;
+        WriteAscii(writer, c8'\n')?;
+    }
+    if listsHelp {
+        WriteBytes(writer, "  ")?;
+        WriteOptionColumn(writer, help)?;
+        WriteSpaces(writer, width - OptionWidth(help) + 2)?;
+        WriteBytes(writer, help.help)?;
+        WriteAscii(writer, c8'\n')?;
+    }
+    if listsVersion {
+        WriteBytes(writer, "  ")?;
+        WriteOptionColumn(writer, version)?;
+        WriteSpaces(writer, width - OptionWidth(version) + 2)?;
+        WriteBytes(writer, version.help)?;
+        WriteAscii(writer, c8'\n')?;
+    }
+
+    if spec.commands.length > 0 {
+        var commandWidth: uint = 0;
+        for command in spec.commands {
+            commandWidth = command.name.length > commandWidth ? command.name.length : commandWidth;
+        }
+        WriteBytes(writer, "\nCommands:\n")?;
+        for command in spec.commands {
+            WriteBytes(writer, "  ")?;
+            WriteBytes(writer, command.name)?;
+            WriteSpaces(writer, commandWidth - command.name.length + 2)?;
+            WriteBytes(writer, command.summary)?;
+            WriteAscii(writer, c8'\n')?;
+        }
+    }
+    return;
+}
+
+/// Writes the version line, such as `tool 1.4.2`.
+/// Reports whatever the writer reported.
+/// @param spec the command
+/// @param writer the destination
+/// @returns success when the whole line was accepted
+/// @see https://rux-lang.dev/docs/api/commandline/help#write-version
+pub func WriteVersion(spec: &CommandSpec, writer: &var TextWriter) -> ! FormatError {
+    WriteBytes(writer, spec.name)?;
+    if spec.version.length > 0 {
+        WriteAscii(writer, c8' ')?;
+        WriteBytes(writer, spec.version)?;
+    }
+    WriteAscii(writer, c8'\n')?;
+    return;
+}
+
+extend Parsed {
+    /// Writes the help text of the command this parse is for, naming its parent in the usage line when it is a
+    /// subcommand.
+    /// Reports whatever the writer reported.
+    /// @param writer the destination
+    /// @returns success when the whole text was accepted
+    /// @see https://rux-lang.dev/docs/api/commandline/parsed#write-help
+    pub func WriteHelp(self: &Parsed, writer: &var TextWriter) -> ! FormatError {
+        let parent = self.parent == null ? "" : self.parent.name;
+        return WriteHelp(*self.spec, writer, parent);
+    }
+}

@@ -1,0 +1,371 @@
+// The process's environment: `name=value` pairs, as the system started the process with them and as changed since.
+// Names and values are native text, so they are views of native units rather than `String`. A name is matched exactly
+// on the Unix systems and without regard to ASCII case on Windows, which is each system's own rule.
+// Changes made through `SetVariable` and `RemoveVariable` are kept in a table beside the environment the process
+// started with, and every reader here consults the table first, so `Variable`, `Environment` and every process this
+// package starts see them. Their text is never freed, which is what keeps every view this package has handed out
+// valid for the life of the process; an environment is changed rarely enough that this costs little. Windows is also
+// told of each change, so code that asks the system sees it too; the C library's own environment on the Unix systems
+// is not changed.
+
+import Core::{ #target, AtomicExchange, Iterator, MemoryOrder, SpinHint };
+import Io::{ IoError, IoErrorKind };
+import Memory::{ Alloc, Realloc };
+import Path::{ OsStringView, OsUnit };
+
+when #target.os == .Windows {
+    import Windows::SetEnvironmentVariableW;
+}
+
+/// One environment variable: its name and its value.
+/// `Copy`. Both views borrow storage the process owns for its whole life.
+/// @see https://rux-lang.dev/docs/api/process/environment#environment-variable
+pub struct EnvironmentVariable {
+    /// The name, the units before the first `=`.
+    pub name: OsStringView;
+    /// The value, every unit after the first `=`, which may itself contain `=` and may be empty.
+    pub value: OsStringView;
+}
+
+// One changed variable: its name, and its new value or its removal.
+struct Change {
+    name: OsStringView;
+    value: OsStringView;
+    removed: bool;
+}
+
+// The changes, at most one a name, and the word that keeps threads changing or reading them apart.
+var Changes: *var Change = null;
+var ChangeCount: uint = 0;
+var ChangeCapacity: uint = 0;
+var ChangesHeld: uint32 = 0;
+
+func HoldChanges() {
+    while AtomicExchange(@ChangesHeld, 1u32, MemoryOrder::Acquire) != 0u32 {
+        SpinHint();
+    }
+}
+
+func ReleaseChanges() {
+    AtomicExchange(@ChangesHeld, 0u32, MemoryOrder::Release);
+}
+
+// Splits `name=value` at its first `=`. An entry with no `=` is all name with an empty value.
+func SplitEntry(entry: OsStringView) -> EnvironmentVariable {
+    let units = entry.Units();
+    var at: uint = 0;
+    while at < units.length && units[at] != (0x3D as OsUnit) {
+        at = at + 1;
+    }
+    let name = at == 0 ? OsStringView() : OsStringView::FromUnits(units[..at]);
+    let value = at + 1 >= units.length ? OsStringView() : OsStringView::FromUnits(units[at + 1..]);
+    return EnvironmentVariable { name: name, value: value };
+}
+
+// Whether two native names are the same variable, under the system's rule.
+func NativeNamesEqual(left: OsStringView, right: OsStringView) -> bool {
+    let a = left.Units();
+    let b = right.Units();
+    if a.length != b.length { return false; }
+    var index: uint = 0;
+    while index < a.length {
+        when #target.os == .Windows {
+            if FoldAscii(a[index] as uint32) != FoldAscii(b[index] as uint32) { return false; }
+        }
+        else {
+            if a[index] != b[index] { return false; }
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+// The change recorded for a native name, or null. The caller holds the table.
+func ChangeFor(name: OsStringView) -> *var Change {
+    var index: uint = 0;
+    while index < ChangeCount {
+        if NativeNamesEqual(Changes[index].name, name) { return @Changes[index]; }
+        index = index + 1;
+    }
+    return null;
+}
+
+/// A walk over the environment variables: those the process started with, in the order the system holds them, then
+/// those set since.
+/// `Copy`, holding only a position, so it allocates nothing.
+/// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator
+pub struct EnvironmentIterator {
+    next: uint;
+    // Whether the walk has passed the starting environment and reached the variables set since.
+    changes: bool;
+}
+
+/// Every environment variable of the process.
+/// Cannot fail and allocates nothing.
+/// @returns a walk over the environment
+/// @see https://rux-lang.dev/docs/api/process/environment#environment
+pub func Environment() -> EnvironmentIterator {
+    return EnvironmentIterator { next: 0, changes: false };
+}
+
+extend EnvironmentIterator {
+    /// The walk itself, so that `for variable in Environment()` reads every variable.
+    /// @returns a copy of this walk from its current position
+    /// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator-iterate
+    pub func Iterate(self: &EnvironmentIterator) -> EnvironmentIterator {
+        return EnvironmentIterator { next: self.next, changes: self.changes };
+    }
+}
+
+extend EnvironmentIterator : Iterator {
+    /// The next variable, or none after the last.
+    /// @returns the variable's name and value
+    /// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator-next
+    pub func Next(self: &var EnvironmentIterator) -> EnvironmentVariable? {
+        HoldChanges();
+        while !self.changes {
+            match NativeEnvironmentEntry(self.next) {
+                .Some(entry) => {
+                    self.next = self.next + 1;
+                    let variable = SplitEntry(entry);
+                    if ChangeFor(variable.name) == null {
+                        ReleaseChanges();
+                        return variable;
+                    }
+                },
+                none => {
+                    self.changes = true;
+                    self.next = 0;
+                }
+            }
+        }
+        while self.next < ChangeCount {
+            let change = Changes[self.next];
+            self.next = self.next + 1;
+            if !change.removed {
+                ReleaseChanges();
+                return EnvironmentVariable { name: change.name, value: change.value };
+            }
+        }
+        ReleaseChanges();
+        return none;
+    }
+}
+
+// The next Unicode scalar of UTF-8 `text` at `at`, advancing `at`, or none for a malformed sequence.
+func NextScalar(text: char8[..], at: *var uint) -> uint32? {
+    let first = text[*at] as uint8 as uint32;
+    var count: uint = 1;
+    var scalar = first;
+    if first >= 0xF0 {
+        count = 4;
+        scalar = first & 0x07;
+    }
+    else if first >= 0xE0 {
+        count = 3;
+        scalar = first & 0x0F;
+    }
+    else if first >= 0xC0 {
+        count = 2;
+        scalar = first & 0x1F;
+    }
+    else if first >= 0x80 {
+        return none;
+    }
+    if *at + count > text.length { return none; }
+    var index: uint = 1;
+    while index < count {
+        let next = text[*at + index] as uint8 as uint32;
+        if (next & 0xC0) != 0x80 { return none; }
+        scalar = (scalar << 6) | (next & 0x3F);
+        index = index + 1;
+    }
+    *at = *at + count;
+    return scalar;
+}
+
+// An ASCII letter in upper case, and every other unit as it is.
+func FoldAscii(unit: uint32) -> uint32 {
+    return unit >= 0x61 && unit <= 0x7A ? unit - 32 : unit;
+}
+
+// Whether a native name is `name`, under the system's rule for comparing names.
+func NameMatches(native: OsStringView, name: char8[..]) -> bool {
+    let units = native.Units();
+    when #target.os == .Windows {
+        // UTF-16 on one side and UTF-8 on the other, so the comparison goes scalar by scalar, through surrogate
+        // pairs where a scalar needs two units.
+        var unitAt: uint = 0;
+        var byteAt: uint = 0;
+        while byteAt < name.length {
+            let scalar = NextScalar(name, @byteAt) ?? 0xFFFFFFFF;
+            if scalar == 0xFFFFFFFF { return false; }
+            if scalar > 0xFFFF {
+                let offset = scalar - 0x10000;
+                if unitAt + 2 > units.length { return false; }
+                if units[unitAt] as uint32 != 0xD800 + (offset >> 10) { return false; }
+                if units[unitAt + 1] as uint32 != 0xDC00 + (offset & 0x3FF) { return false; }
+                unitAt = unitAt + 2;
+            }
+            else {
+                if unitAt >= units.length || FoldAscii(units[unitAt] as uint32) != FoldAscii(scalar) { return false; }
+                unitAt = unitAt + 1;
+            }
+        }
+        return unitAt == units.length;
+    }
+    else {
+        if units.length != name.length { return false; }
+        var index: uint = 0;
+        while index < name.length {
+            if units[index] != name[index] { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+}
+
+/// The value of the environment variable `name`, or none when it is not set.
+/// `name` is UTF-8 text. It is matched exactly on the Unix systems and without regard to ASCII case on Windows, which
+/// is how each system matches names. A variable set or removed with `SetVariable` or `RemoveVariable` reads as it was
+/// last changed. When the starting environment names a variable twice, the first is the one returned, as the C
+/// library's `getenv` returns it. A variable set to the empty string is present, with an empty value. The view borrows
+/// storage the process owns for its whole life. Runs in time linear in the size of the environment and allocates
+/// nothing.
+/// @param name the variable's name
+/// @returns the variable's value, or none when no variable has that name
+/// @see https://rux-lang.dev/docs/api/process/environment#variable
+pub func Variable(name: char8[..]) -> OsStringView? {
+    if name.length == 0 { return none; }
+    HoldChanges();
+    var index: uint = 0;
+    while index < ChangeCount {
+        let change = Changes[index];
+        if NameMatches(change.name, name) {
+            ReleaseChanges();
+            if change.removed { return none; }
+            return change.value;
+        }
+        index = index + 1;
+    }
+    ReleaseChanges();
+    for variable in Environment() {
+        if NameMatches(variable.name, name) { return variable.value; }
+    }
+    return none;
+}
+
+// `text` as native units in storage that is never freed, followed by a NUL so the system can read it too. A NUL
+// inside the text is refused, and so is malformed UTF-8 on Windows, which has no UTF-16 form.
+func PermanentText(text: char8[..]) -> OsStringView ! IoError {
+    var count: uint = 0;
+    var at: uint = 0;
+    while at < text.length {
+        when #target.os == .Windows {
+            let scalar = NextScalar(text, @at) ?? 0xFFFFFFFFu32;
+            if scalar == 0xFFFFFFFFu32 { fail IoError::Of(IoErrorKind::InvalidText); }
+            if scalar == 0u32 { fail IoError::Of(IoErrorKind::InvalidInput); }
+            count = count + (scalar > 0xFFFFu32 ? 2u : 1u);
+        }
+        else {
+            if text[at] as uint8 == 0u8 { fail IoError::Of(IoErrorKind::InvalidInput); }
+            at = at + 1;
+            count = count + 1;
+        }
+    }
+    let units = Alloc((count + 1) * sizeof(OsUnit)) as *var OsUnit;
+    if units == null { fail IoError::Of(IoErrorKind::LimitExceeded); }
+    when #target.os == .Windows {
+        var written: uint = 0;
+        at = 0;
+        while at < text.length {
+            let scalar = NextScalar(text, @at) ?? 0u32;
+            if scalar > 0xFFFFu32 {
+                let offset = scalar - 0x10000u32;
+                units[written] = (0xD800u32 + (offset >> 10)) as uint16;
+                units[written + 1] = (0xDC00u32 + (offset & 0x3FFu32)) as uint16;
+                written = written + 2;
+            }
+            else {
+                units[written] = scalar as uint16;
+                written = written + 1;
+            }
+        }
+    }
+    else {
+        var index: uint = 0;
+        while index < count {
+            units[index] = text[index];
+            index = index + 1;
+        }
+    }
+    units[count] = 0 as OsUnit;
+    if count == 0 { return OsStringView::FromUnits(units[..0]); }
+    return OsStringView::FromUnits(units[..count]);
+}
+
+// Records a change for `name`, replacing an earlier one.
+func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! IoError {
+    HoldChanges();
+    let existing = ChangeFor(name);
+    if existing != null {
+        existing.value = value;
+        existing.removed = removed;
+        ReleaseChanges();
+        return;
+    }
+    if ChangeCount == ChangeCapacity {
+        let capacity = ChangeCapacity == 0 ? 8u : ChangeCapacity * 2u;
+        let grown = Realloc(Changes as *opaque, capacity * sizeof(Change)) as *var Change;
+        if grown == null {
+            ReleaseChanges();
+            fail IoError::Of(IoErrorKind::LimitExceeded);
+        }
+        Changes = grown;
+        ChangeCapacity = capacity;
+    }
+    Changes[ChangeCount] = Change { name: name, value: value, removed: removed };
+    ChangeCount = ChangeCount + 1;
+    ReleaseChanges();
+}
+
+// Refuses a name the environment cannot hold: an empty one, or one with `=`, which ends a name.
+func CheckName(name: char8[..]) -> ! IoError {
+    if name.length == 0 { fail IoError::Of(IoErrorKind::InvalidInput); }
+    var index: uint = 0;
+    while index < name.length {
+        if name[index] as uint8 == 0x3Du8 { fail IoError::Of(IoErrorKind::InvalidInput); }
+        index = index + 1;
+    }
+}
+
+/// Sets the environment variable `name` to `value`, for this process and every process it starts from now on.
+/// Both are UTF-8 text. The change is seen by `Variable` and `Environment`, by `Command`, and on Windows by the system;
+/// the C library's own environment on the Unix systems is not changed. Views handed out before stay valid.
+/// @param name the variable's name, which may not be empty or contain `=` or NUL
+/// @param value its new value, which may not contain NUL
+/// @returns nothing, or fails with `InvalidInput` for a name or value the environment cannot hold
+/// @see https://rux-lang.dev/docs/api/process/environment#set-variable
+pub func SetVariable(name: char8[..], value: char8[..]) -> ! IoError {
+    CheckName(name)?;
+    let nativeName = PermanentText(name)?;
+    let nativeValue = PermanentText(value)?;
+    RecordChange(nativeName, nativeValue, false)?;
+    when #target.os == .Windows {
+        SetEnvironmentVariableW(nativeName.Units().data, nativeValue.Units().data);
+    }
+}
+
+/// Removes the environment variable `name`, for this process and every process it starts from now on.
+/// Removing a variable that is not set does nothing. Views of its value handed out before stay valid.
+/// @param name the variable's name, which may not be empty or contain `=` or NUL
+/// @returns nothing, or fails with `InvalidInput` for a name the environment cannot hold
+/// @see https://rux-lang.dev/docs/api/process/environment#remove-variable
+pub func RemoveVariable(name: char8[..]) -> ! IoError {
+    CheckName(name)?;
+    let nativeName = PermanentText(name)?;
+    RecordChange(nativeName, OsStringView(), true)?;
+    when #target.os == .Windows {
+        SetEnvironmentVariableW(nativeName.Units().data, null);
+    }
+}

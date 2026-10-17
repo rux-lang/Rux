@@ -20,3 +20,4 @@ ReadmeFile = "README.md"
 Allocator = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
 Memory = { Namespace = "Rux", Version = "0.1.0" }
+Unicode = { Namespace = "Rux", Version = "0.1.0" }

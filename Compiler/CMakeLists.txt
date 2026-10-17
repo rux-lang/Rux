@@ -47,6 +47,7 @@ add_subdirectory(Cli)
 add_subdirectory(Source)
 add_subdirectory(System)
 add_subdirectory(Crypto)
+add_subdirectory(Parallel)
 add_subdirectory(Package)
 add_subdirectory(Types)
 add_subdirectory(Lexer)
@@ -72,8 +73,9 @@ add_subdirectory(Driver)
 add_library(RuxCore INTERFACE)
 target_link_libraries(RuxCore INTERFACE RuxDriver RuxPackageServices)
 
+target_sources(rux PRIVATE ${RUX_ALLOCATOR_NEW_SOURCE})
 target_link_libraries(rux PRIVATE
-    RuxDriver RuxPackageServices RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp RuxCliReporting RuxReporting)
+    RuxDriver RuxPackageServices RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp RuxCliReporting RuxReporting RuxParallel)
 
 # Emit the compiler directly to Bin/ in the source tree while keeping CMake
 # intermediates in the build directory. Configuration-specific properties keep

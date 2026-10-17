@@ -1,5 +1,4 @@
 // `none`: the outer absence of the optional type its context expects.
-//
 // `none` is a reserved keyword, written the same way as a value and as a pattern. As a value it takes its whole type
 // from its context, so `let value = none;` has no type to infer; it reaches through success levels to the optional it
 // stands for, and selects the absence of that optional only, never of a level inside it. As a pattern it matches the

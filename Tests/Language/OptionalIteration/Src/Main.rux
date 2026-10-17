@@ -1,5 +1,4 @@
 // Iteration driven by a native optional: `Next -> Item?`.
-//
 // Each iteration calls `Next` once. A present result continues the loop with its payload and only the outer absence
 // ends it, so an item may itself be absent, failed, or the unit without ending anything. Loops over a container use
 // its `Iterate`, which borrows the container and hands out an independent iterator; a temporary iterator lives exactly

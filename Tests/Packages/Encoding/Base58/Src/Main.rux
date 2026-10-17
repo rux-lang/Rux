@@ -1,0 +1,99 @@
+// Base58 is checked against values computed independently, including leading zero bytes, which become leading `1`s
+// rather than vanishing into the number. The capacity refusals check the documented exception to the package's rule:
+// the destination was scratch space, so it is left zeroed rather than untouched, and never holds a partial encoding.
+
+import Encoding::{ Base58Decode, Base58Encode, Base58EncodedMaxLength, DecodeError };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func SameBytes(actual: byte[..], expected: byte[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Vector(bytes: byte[..], encoded: char8[..]) -> bool {
+    var room: char8[64];
+    let written = Base58Encode(bytes, room[..]) catch { else => return false };
+    if !Same(room[..written], encoded) { return false; }
+    var back: byte[64];
+    let read = Base58Decode(encoded, back[..]) catch { else => return false };
+    return SameBytes(back[..read], bytes);
+}
+
+func InvalidAt(text: char8[..], at: uint) -> bool {
+    var room: byte[8] = [0x3F; 8];
+    let reported = match Base58Decode(text, room[..]) {
+        .Failure(error) => error,
+        .Success(_) => return false
+    };
+    for value in room {
+        if value != 0x3F { return false; }
+    }
+    return match reported {
+        .InvalidCharacter(offset) => offset == at,
+        else => false
+    };
+}
+
+func Main() -> int {
+    let hello = "Hello World!";
+    if !Vector((hello.data as *byte)[..hello.length], "2NEpo7TZRRrLZSi2U") { return 1; }
+    let zeros: byte[6] = [0, 0, 0x28, 0x7F, 0xB4, 0xCD];
+    if !Vector(zeros[..], "11233QC4") { return 2; }
+    let one: byte[1] = [0];
+    if !Vector(one[..], "1") { return 3; }
+    if !Vector(one[..0], "") { return 4; }
+    var counting: byte[32];
+    var index: uint = 0;
+    while index < 32 {
+        counting[index] = index as byte;
+        index = index + 1;
+    }
+    if !Vector(counting[..], "1thX6LZfHDZZKUs92febYZhYRcXddmzfzF2NvTkPNE") { return 5; }
+
+    // The bound holds for the largest value of a length, which needs the most digits.
+    var largest: byte[32] = [0xFF; 32];
+    var room: char8[45];
+    let written = Base58Encode(largest[..], room[..Base58EncodedMaxLength(32)]) catch { else => return 6 };
+    if written != 44 { return 7; }
+
+    // The look-alike characters the alphabet leaves out are refused where they stand.
+    if !InvalidAt("2NE0o7", 3) || !InvalidAt("O", 0) || !InvalidAt("abI", 2) || !InvalidAt("xyzl", 3) { return 8; }
+
+    // Too short a destination: refused, and left zeroed.
+    var short: char8[10] = ['?'; 10];
+    match Base58Encode((hello.data as *byte)[..hello.length], short[..]) {
+        .Failure(_) => {},
+        .Success(_) => return 9
+    }
+    for character in short {
+        if character != '\0' { return 10; }
+    }
+    var shortBytes: byte[4] = [0x3F; 4];
+    match Base58Decode("2NEpo7TZRRrLZSi2U", shortBytes[..]) {
+        .Failure(error) => {
+            match error {
+                .InsufficientCapacity(_) => {},
+                else => return 11
+            }
+        },
+        .Success(_) => return 12
+    }
+    for value in shortBytes {
+        if value != 0 { return 13; }
+    }
+    return 0;
+}

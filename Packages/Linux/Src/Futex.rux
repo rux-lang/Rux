@@ -1,0 +1,48 @@
+// Waiting on a word in memory until another thread changes it, which is what every lock is built on.
+// `futex(2)` puts the calling thread to sleep only if the word still holds the value the caller last saw, and checks
+// that in the kernel, so a wake that lands between the caller's check and its sleep is never lost. Only the private
+// forms are bound: the word is never shared with another process.
+
+import Core::{ #Error, #target };
+import Linux::{ Syscall6, Timespec };
+
+when #target.arch {
+    .X86_64 => {
+        const SysFutex: uint64 = 202;
+    },
+    .AArch64 => {
+        const SysFutex: uint64 = 98;
+    },
+    else => #Error("Unsupported architecture")
+}
+
+/// `FUTEX_WAIT_PRIVATE`: sleep while the word holds the expected value.
+/// @see https://rux-lang.dev/docs/api/linux/futex#futex-wait-private
+pub const FutexWaitPrivate: int32 = 128;
+
+/// `FUTEX_WAKE_PRIVATE`: wake threads sleeping on the word.
+/// @see https://rux-lang.dev/docs/api/linux/futex#futex-wake-private
+pub const FutexWakePrivate: int32 = 129;
+
+/// Sleeps while `*address` equals `expected`, until a wake, a signal or the timeout.
+/// Returns at once with `-EAGAIN` when the word already differs, which is how a caller learns it changed.
+/// @param address the word to wait on, four-byte aligned
+/// @param expected the value the caller last saw there
+/// @param timeout how long to wait at most, relative to now, or null to wait without a limit
+/// @returns zero after a wake, or a negative error number: `EAGAIN`, `EINTR` or `ETIMEDOUT`
+/// @see https://rux-lang.dev/docs/api/linux/futex#futex-wait
+/// @see https://man7.org/linux/man-pages/man2/futex.2.html
+pub func FutexWait(address: *uint32, expected: uint32, timeout: *Timespec) -> int64 {
+    return Syscall6(SysFutex, address as uint64, FutexWaitPrivate as uint64, expected as uint64, timeout as uint64, 0,
+                    0);
+}
+
+/// Wakes up to `count` threads sleeping on `address`.
+/// @param address the word they wait on
+/// @param count how many to wake at most
+/// @returns how many were woken, or a negative error number
+/// @see https://rux-lang.dev/docs/api/linux/futex#futex-wake
+/// @see https://man7.org/linux/man-pages/man2/futex.2.html
+pub func FutexWake(address: *uint32, count: int32) -> int64 {
+    return Syscall6(SysFutex, address as uint64, FutexWakePrivate as uint64, count as uint64, 0, 0, 0);
+}

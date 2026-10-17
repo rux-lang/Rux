@@ -11,14 +11,14 @@ namespace Rux::AArch64Detail {
 void AArch64ModuleEmitter::PredeclareFunctions() {
     for (const auto &func : mod.funcs) {
         if (func.isExtern) {
-            GetOrAddExtern(func.name, RcuSymKind::ExternFunc, func.dll);
+            GetOrAddExtern(func.name, RcuSymKind::ExternFunc, ExternLibrary(func));
             continue;
         }
         if (funcSyms.contains(func.name)) {
             continue;
         }
         funcSyms[func.name] = DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                            func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                            RcuSymVis::ForDefinition(func.isPublic, func.isExported));
     }
 }
 
@@ -102,7 +102,7 @@ void AArch64ModuleEmitter::EmitVtables() {
 // it reaches those of any other slice.
 void AArch64ModuleEmitter::EmitConstSlice(const LirConstDecl &c) {
     const int elemSize = std::max(SizeOf(c.elementType), 1);
-    const std::uint32_t elemsOff = AlignRodata(std::min(elemSize, 8));
+    const std::uint32_t elemsOff = AlignRodata(AlignOf(c.elementType));
     std::uint64_t length = 0;
     if (c.isTextSlice) {
         // Text is emitted in the constant's own encoding, and its length counts that encoding's code units.
@@ -131,35 +131,100 @@ void AArch64ModuleEmitter::EmitConstSlice(const LirConstDecl &c) {
 
     dataSyms[c.name] =
         DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                         c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData, headerOff, 16);
+                         RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::RoData, headerOff, 16);
 }
 
 void AArch64ModuleEmitter::GenModule() {
-    for (const auto &name : packageInterfaceNames) {
-        interfaceNames.insert(name);
-    }
-    BuildStructLayouts(structDecls, layouts, interfaceNames);
-
     PredeclareFunctions();
     for (const auto &ev : mod.externVars) {
-        GetOrAddExtern(ev.name, RcuSymKind::ExternData);
+        GetOrAddExtern(ev.name, RcuSymKind::ExternData, ev.dll);
+        importedData.insert(ev.name);
     }
     for (const auto &c : mod.consts) {
         // A constant of sequence type is addressed rather than inlined, so
         // it needs its contents behind its name and not a placeholder.
         if (!c.hasSequenceData) {
-            EmitScalarConst(c);
+            EmitConstValue(c);
         }
-        else if (c.type.kind == TypeRef::Kind::Array) {
+        else if (c.type->kind == TypeRef::Kind::Array) {
             EmitConstArray(c);
         }
         else {
             EmitConstSlice(c);
         }
     }
-    EmitVtables();
-    for (const auto &func : mod.funcs) {
-        GenFunc(func);
+    for (const auto &global : mod.globals) {
+        EmitGlobal(global);
     }
+    EmitVtables();
+    PredeclareFunctionTables();
+    for (const auto &func : mod.funcs) {
+        const auto start = static_cast<std::uint32_t>(enc.Size());
+        GenFunc(func);
+        const auto end = static_cast<std::uint32_t>(enc.Size());
+        if (backtrace.enabled && !func.isExtern && end > start) {
+            if (const auto symbol = funcSyms.find(func.name); symbol != funcSyms.end()) {
+                functionRanges.push_back(
+                    {symbol->second, end - start, func.displayName.empty() ? func.name : func.displayName});
+            }
+        }
+    }
+    EmitFunctionTables();
+}
+
+void AArch64ModuleEmitter::PredeclareFunctionTables() {
+    if (!backtrace.enabled) {
+        return;
+    }
+    dataSyms[backtrace.table] = DeclareSymbol(backtrace.table, {}, RcuSymKind::Const, RcuSymVis::Global);
+    if (backtrace.IsProgram()) {
+        const std::string tables(kFunctionTablesSymbol);
+        dataSyms[tables] = DeclareSymbol(tables, {}, RcuSymKind::Const, RcuSymVis::Global);
+    }
+}
+
+// Each entry is the function's address, its length in bytes, and its name as an address and a length; a count leads.
+void AArch64ModuleEmitter::EmitFunctionTables() {
+    if (!backtrace.enabled) {
+        return;
+    }
+    const auto pushWord = [&](const std::uint64_t value) {
+        for (int index = 0; index < 8; ++index) {
+            RodataData().push_back(static_cast<std::uint8_t>(value >> (index * 8)));
+        }
+    };
+    std::vector<std::uint32_t> names;
+    names.reserve(functionRanges.size());
+    for (const FunctionRange &range : functionRanges) {
+        names.push_back(InternStringLiteral(range.name));
+    }
+    const std::uint32_t tableOff = AlignRodata(8);
+    pushWord(functionRanges.size());
+    for (std::size_t index = 0; index < functionRanges.size(); ++index) {
+        const auto slot = static_cast<std::uint32_t>(RodataData().size());
+        pushWord(0);
+        AddRodataReloc(slot, functionRanges[index].symbol, RcuRelType::Abs64);
+        pushWord(functionRanges[index].size);
+        const auto nameSlot = static_cast<std::uint32_t>(RodataData().size());
+        pushWord(0);
+        AddRodataReloc(nameSlot, names[index], RcuRelType::Abs64);
+        pushWord(functionRanges[index].name.size());
+    }
+    (void)moduleBuilder.DefineSymbol(dataSyms.at(backtrace.table), RcuModuleSection::RoData, tableOff,
+                                     static_cast<std::uint32_t>(RodataData().size()) - tableOff);
+    if (!backtrace.IsProgram()) {
+        return;
+    }
+    const std::uint32_t tablesOff = AlignRodata(8);
+    pushWord(backtrace.programTables.size());
+    for (const std::string &name : backtrace.programTables) {
+        const auto slot = static_cast<std::uint32_t>(RodataData().size());
+        pushWord(0);
+        const auto known = dataSyms.find(name);
+        AddRodataReloc(slot, known != dataSyms.end() ? known->second : GetOrAddExtern(name, RcuSymKind::ExternData),
+                       RcuRelType::Abs64);
+    }
+    (void)moduleBuilder.DefineSymbol(dataSyms.at(std::string(kFunctionTablesSymbol)), RcuModuleSection::RoData,
+                                     tablesOff, static_cast<std::uint32_t>(RodataData().size()) - tablesOff);
 }
 } // namespace Rux::AArch64Detail

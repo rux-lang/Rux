@@ -1,10 +1,8 @@
 // Reading text out of a byte stream, a line at a time.
-//
 // A line ends at a line feed, and a carriage return immediately before it belongs to the ending, not the line --
 // that one rule is the whole of newline normalization, and it makes files from either lineage read the same. A
 // carriage return anywhere else is content: the platform that ended lines with it alone has been gone thirty
 // years, and treating every stray CR as an ending would corrupt honest text to accommodate a ghost.
-//
 // The bound is not advice. A caller reading lines from an untrusted stream names the longest line it will hold,
 // and a longer one is `LimitExceeded` rather than a slow exhaustion of memory: unbounded line reading from a
 // socket is how a peer that never sends a newline takes the process down.
@@ -13,39 +11,41 @@ import Core::Failed;
 import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 
 /// Appends the next line of `reader` to `builder`, without its ending.
-///
 /// A line ends at a line feed; a carriage return immediately before it is part of the ending. The last line of a
 /// stream needs no ending: what stands before the end is a line, and `EndOfStream` is reported only when the
 /// stream ends with nothing before it, so a caller loops until exactly that.
-///
 /// The line must be UTF-8 — `InvalidText` otherwise, including a sequence cut short by the end of the stream --
 /// and at most `limit` bytes, `LimitExceeded` otherwise. Only validated bytes ever reach the builder, and on
 /// either failure it is cleared and the offending line consumed through its ending, so the caller can report the
 /// line and read on. A scalar value split across the buffer's edge is completed from the next refill, not
 /// condemned: where the buffer happens to end is not a property of the text.
-///
 /// @param reader where the bytes come from
 /// @param builder receives the line, appended to whatever it already holds
 /// @param limit the most bytes to accept before reporting the line too long
-/// @returns `None` when a line was read; `IsEnd` at the end of input with nothing appended
-/// @see https://rux-lang.dev/docs/api/io/read-text-line
-pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, limit: uint) -> IoError {
+/// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
+/// @see https://rux-lang.dev/docs/api/io/read-line#read-text-line
+pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, limit: uint) -> ! IoError {
     var appended: uint = 0;
-    var failure = IoErrorKind::None;
+    var failure: IoErrorKind? = none;
     var carry: char8[4];
     var carryLength: uint = 0;
     var pendingCr = false;
     var sawAnything = false;
     while true {
-        let filled = reader.Fill();
-        if filled.IsError() {
-            if !filled.IsEnd() { return filled; }
+        var ended = false;
+        reader.Fill() catch {
+            error if error.IsEnd() => {
+                ended = true;
+            },
+            error => fail error
+        };
+        if ended {
             // The stream is over. A sequence still waiting for its continuation bytes was cut by the end,
             // and a carriage return still waiting for a line feed turns out to have been content.
-            if carryLength > 0 && failure == IoErrorKind::None {
+            if carryLength > 0 && failure == none {
                 failure = IoErrorKind::InvalidText;
             }
-            if pendingCr && failure == IoErrorKind::None {
+            if pendingCr && failure == none {
                 if appended + 1 > limit {
                     failure = IoErrorKind::LimitExceeded;
                 }
@@ -53,16 +53,17 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                     failure = IoErrorKind::Other;
                 }
             }
-            if failure != IoErrorKind::None {
+            if failure != none {
                 builder.Clear();
-                return IoError::Of(failure);
+                fail IoError::Of(failure ?? IoErrorKind::Other);
             }
-            return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+            if !sawAnything { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return;
         }
         sawAnything = true;
         let held = reader.Buffered();
 
-        if carryLength > 0 && failure == IoErrorKind::None {
+        if carryLength > 0 && failure == none {
             // A scalar value the previous chunk cut is finished first, from the bytes that just arrived.
             var joined: char8[8];
             var at: uint = 0;
@@ -70,7 +71,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 joined[at] = carry[at];
                 at = at + 1;
             }
-            let borrowed = held.length < 4u ? held.length : 4u;
+            let borrowed = held.length < 4 ? held.length : 4;
             var extra: uint = 0;
             while extra < borrowed {
                 joined[carryLength + extra] = held.data[extra];
@@ -122,13 +123,13 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             pendingCr = false;
             if held.data[0] == c8'\n' {
                 reader.Consume(1);
-                if failure != IoErrorKind::None {
+                if failure != none {
                     builder.Clear();
-                    return IoError::Of(failure);
+                    fail IoError::Of(failure ?? IoErrorKind::Other);
                 }
-                return IoError::Ok();
+                return;
             }
-            if failure == IoErrorKind::None {
+            if failure == none {
                 if appended + 1 > limit {
                     failure = IoErrorKind::LimitExceeded;
                 }
@@ -165,7 +166,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 }
             }
 
-            if failure == IoErrorKind::None {
+            if failure == none {
                 let piece = (held.data)[..content];
                 var probe = content;
                 var valid = true;
@@ -193,7 +194,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                     failure = IoErrorKind::InvalidText;
                 }
 
-                if failure == IoErrorKind::None {
+                if failure == none {
                     let settledPiece = (held.data)[..settled];
                     if appended + settled > limit {
                         failure = IoErrorKind::LimitExceeded;
@@ -212,13 +213,12 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             }
             reader.Consume(sawFeed ? lineEnd + 1 : held.length);
             if sawFeed {
-                if failure != IoErrorKind::None {
+                if failure != none {
                     builder.Clear();
-                    return IoError::Of(failure);
+                    fail IoError::Of(failure ?? IoErrorKind::Other);
                 }
-                return IoError::Ok();
+                return;
             }
         }
     }
-    return IoError::Ok();
 }

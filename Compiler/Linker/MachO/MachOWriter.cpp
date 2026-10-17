@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -239,7 +240,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     std::unordered_map<std::string, std::string> explicitImportLib;
     for (const auto &object : objects) {
         for (const auto &symbol : object.symbols) {
-            if (symbol.kind != RcuSymKind::ExternFunc || symbol.name.empty() || symbol.typeName.empty()) {
+            if ((symbol.kind != RcuSymKind::ExternFunc && symbol.kind != RcuSymKind::ExternData) ||
+                symbol.name.empty() || symbol.typeName.empty()) {
                 continue;
             }
             const std::string library = NormalizeDylibName(symbol.typeName);
@@ -252,15 +254,18 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     }
 
     // Assign the graph's referenced externals to libraries. Function addresses
-    // resolve to generated stubs. Imported data still needs GOT-aware lowering
-    // and is rejected explicitly rather than producing an invalid direct
-    // reference.
+    // resolve to generated stubs. Imported data takes the same non-lazy pointer
+    // slot a function's stub jumps through, and the code reads its address from
+    // the slot dyld binds.
     std::unordered_map<std::string, std::string> importLib;
     for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
         if (external.kind == RcuSymKind::ExternData) {
-            Error("external data symbol '" + external.name + "' cannot be imported by the Mach-O " +
-                  std::string(Target::ToDisplayString(targetArch)) +
-                  " linker because GOT-aware lowering is not implemented");
+            const auto explicitIt = explicitImportLib.find(external.name);
+            if (explicitIt == explicitImportLib.end()) {
+                Error("undefined external symbol '" + external.name + "'");
+                continue;
+            }
+            importLib.try_emplace(external.name, explicitIt->second);
             continue;
         }
         if (external.kind != RcuSymKind::ExternFunc) {
@@ -283,6 +288,17 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     }
     if (!errors.empty()) {
         return false;
+    }
+
+    // Thread-local variables are reached through descriptors dyld sets up, so an image with any is dyld-linked, and the
+    // descriptors start out bound to libdyld's bootstrap function.
+    const bool hasTls = std::ranges::any_of(objects, [](const RcuFile &object) {
+        return std::ranges::any_of(object.sections, [](const RcuSection &section) {
+            return section.type == RcuSecType::Tls && !section.data.empty();
+        });
+    });
+    if (hasTls) {
+        importLib.try_emplace(std::string(MachO::kTlvBootstrapSymbol), kDefaultLib);
     }
 
     // An arm64 executable cannot be static, so it is dyld-linked even when it
@@ -363,11 +379,11 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         WriteU32(textPrefix, 0xD400'1001); // svc #0x80
     }
     else {
+        // The call's return address is what leaves RSP eight past a sixteen-byte boundary at Main's entry, as the
+        // System V ABI requires; an extra eight-byte adjustment here would hand every frame a misaligned base.
         textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xE4, 0xF0}); // and rsp, -16
-        textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xEC, 0x08}); // sub rsp, 8
         callMainDisp = textPrefix.size() + 1;
         textPrefix.insert(textPrefix.end(), {0xE8, 0, 0, 0, 0});       // call Main
-        textPrefix.insert(textPrefix.end(), {0x48, 0x83, 0xC4, 0x08}); // add rsp, 8
         textPrefix.insert(textPrefix.end(), {0x89, 0xC7});             // mov edi, eax
         textPrefix.insert(textPrefix.end(), {0xB8, 0x01, 0, 0, 0x02}); // SYS_exit
         textPrefix.insert(textPrefix.end(), {0x0F, 0x05});             // syscall
@@ -376,10 +392,31 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     // owns per-object alignment and all typed symbol/relocation offsets.
     RcuLayoutPrefixes prefixes;
     prefixes.text = textPrefix;
+    // The image layout has one file-backed writable section. Include zero-fill
+    // storage there so its symbols and relocation sites have valid addresses.
+    prefixes.materializeBss = true;
     const RcuObjectLayout layout = RcuObjectLayout::Build(objects, prefixes);
     Buf textBuffer = layout.Data(RcuMergedSection::Text);
     Buf rodataBuffer = layout.Data(RcuMergedSection::RoData);
     Buf dataBuffer = layout.Data(RcuMergedSection::Data);
+    Buf threadDataBuffer = layout.Data(RcuMergedSection::Tls);
+
+    // One descriptor per thread-local variable: a function returning this thread's copy, a key dyld fills in, and the
+    // variable's offset in the template.
+    static constexpr uint64_t kDescriptorSize = 24;
+    std::map<uint64_t, uint64_t> descriptorByOffset;
+    for (size_t objectIndex = 0; objectIndex < objects.size(); ++objectIndex) {
+        for (size_t symbolIndex = 0; symbolIndex < objects[objectIndex].symbols.size(); ++symbolIndex) {
+            const auto placement = layout.Symbol({.objectIndex = objectIndex, .symbolIndex = symbolIndex});
+            if (placement && placement->section == RcuMergedSection::Tls) {
+                descriptorByOffset.try_emplace(placement->offset, descriptorByOffset.size());
+            }
+        }
+    }
+    Buf threadVariables(descriptorByOffset.size() * kDescriptorSize, 0);
+    for (const auto &[offset, descriptor] : descriptorByOffset) {
+        Patch64(threadVariables, descriptor * kDescriptorSize + 16, offset);
+    }
 
     // The architecture owns the instruction sequence and its fixed size. An
     // x86-64 stub jumps through a RIP-relative pointer. An Apple ARM64 stub uses
@@ -419,6 +456,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         .fileAlignment = architecture->fileAlignment,
         .instructionStubAlignment = architecture->instructionStubAlignment,
         .instructionStubSize = architecture->instructionStubSize,
+        .textAlignment = std::max<uint64_t>(layout.Alignment(RcuMergedSection::Text), 16),
+        .constantDataAlignment = std::max<uint64_t>(layout.Alignment(RcuMergedSection::RoData), 16),
+        .writableDataAlignment = std::max<uint64_t>(layout.Alignment(RcuMergedSection::Data), 8),
         .cpuType = architecture->cpuType,
         .cpuSubtype = architecture->cpuSubtype,
         .threadStateFlavor = architecture->threadStateFlavor,
@@ -429,6 +469,9 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         .constantDataSize = rodataBuffer.size(),
         .importPointerSize = importPointers.size(),
         .writableDataSize = dataBuffer.size(),
+        .threadVariableSize = threadVariables.size(),
+        .threadDataSize = threadDataBuffer.size(),
+        .threadDataAlignment = std::max<uint64_t>(layout.Alignment(RcuMergedSection::Tls), 1),
         .importCount = importNames.size(),
         .dynamic = dynamic,
         .shared = isShared,
@@ -451,6 +494,11 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                  : std::nullopt;
     };
 
+    std::vector<uint64_t> descriptorSlots;
+    for (uint64_t descriptor = 0; descriptor < descriptorByOffset.size(); ++descriptor) {
+        descriptorSlots.push_back(imageLayout.threadVariableAddress + descriptor * kDescriptorSize -
+                                  imageLayout.dataSegmentAddress);
+    }
     const MachO::LinkEditLayout linkEdit = MachO::LinkEditBuilder::Build({
         .graph = *graph,
         .objects = objects,
@@ -469,6 +517,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                 .dataSegmentIndex = imageLayout.dataSegmentIndex,
             },
         .codeSignatureIdentifier = packageName,
+        .threadVariableDescriptors = descriptorSlots,
         .dynamic = dynamic,
         .shared = isShared,
         .slid = slidImage,
@@ -581,10 +630,67 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         case RcuMergedSection::Data:
             buffer = &dataBuffer;
             break;
+        case RcuMergedSection::Tls:
+            buffer = &threadDataBuffer;
+            break;
         case RcuMergedSection::Bss:
             continue;
         }
 
+        // Code reaches a thread-local variable through its descriptor, so these relocations name the variable and are
+        // resolved against the descriptor the linker made for it.
+        uint16_t relocationType = relocation.type;
+        if (relocationType == RcuRelType::TlvDescriptorRel32 ||
+            relocationType == RcuRelType::AArch64TlvDescriptorPage21 ||
+            relocationType == RcuRelType::AArch64TlvDescriptorPageOff12) {
+            const auto variable = reference.definition ? layout.Symbol(*reference.definition) : std::nullopt;
+            const auto descriptor = variable && variable->section == RcuMergedSection::Tls
+                                      ? descriptorByOffset.find(variable->offset)
+                                      : descriptorByOffset.end();
+            if (descriptor == descriptorByOffset.end()) {
+                const std::string error =
+                    "thread-local relocation to '" + symbol.name + "' names a variable that is not thread-local";
+                Error(error, RelocationNotes(reference, error));
+                continue;
+            }
+            relocationType = relocationType == RcuRelType::TlvDescriptorRel32         ? RcuRelType::Rel32
+                           : relocationType == RcuRelType::AArch64TlvDescriptorPage21 ? RcuRelType::AArch64AdrPrelPgHi21
+                                                                                      : RcuRelType::AArch64AddAbsLo12Nc;
+            std::string relocationError;
+            if (!ApplyMachORelocation(*architecture, *buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
+                                      imageLayout.threadVariableAddress + descriptor->second * kDescriptorSize,
+                                      relocation.addend, relocationType, symbol.name, relocationError)) {
+                auto notes = RelocationNotes(reference, relocationError);
+                Error(std::move(relocationError), std::move(notes));
+            }
+            continue;
+        }
+
+        // A reference to an imported datum's slot addresses the non-lazy pointer dyld binds to its address.
+        if (const std::optional<uint16_t> plain = PlainImportSlotRelocation(relocationType)) {
+            const auto import = std::ranges::find(importNames, symbol.name);
+            if (reference.resolution != RcuLinkResolution::External || import == importNames.end()) {
+                const std::string error = "extern variable '" + symbol.name + "' is not imported from a library";
+                Error(error, RelocationNotes(reference, error));
+                continue;
+            }
+            const auto index = static_cast<uint64_t>(std::distance(importNames.begin(), import));
+            std::string relocationError;
+            if (!ApplyMachORelocation(*architecture, *buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
+                                      imageLayout.importPointerAddress + index * 8, relocation.addend, *plain,
+                                      symbol.name, relocationError)) {
+                auto notes = RelocationNotes(reference, relocationError);
+                Error(std::move(relocationError), std::move(notes));
+            }
+            continue;
+        }
+
+        if (reference.resolution == RcuLinkResolution::External && symbol.kind == RcuSymKind::ExternData) {
+            const std::string error =
+                "imported data symbol '" + symbol.name + "' is read through its import slot, not addressed directly";
+            Error(error, RelocationNotes(reference, error));
+            continue;
+        }
         std::optional<uint64_t> targetAddress;
         if (reference.resolution == RcuLinkResolution::External) {
             const auto import = importStubs.find(symbol.name);
@@ -636,6 +742,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     appendAt(imageLayout.constantDataOffset, rodataBuffer);
     appendAt(imageLayout.importPointerOffset, importPointers);
     appendAt(imageLayout.writableDataOffset, dataBuffer);
+    if (hasTls) {
+        appendAt(imageLayout.threadVariableOffset, threadVariables);
+        appendAt(imageLayout.threadDataOffset, threadDataBuffer);
+    }
     appendAt(imageLayout.linkEditOffset, linkEdit.contents);
     image.resize(static_cast<std::size_t>(linkEdit.codeSignatureOffset), 0);
 

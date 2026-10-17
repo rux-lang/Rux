@@ -1,0 +1,41 @@
+// This package is built with `LogLevel = "warn"`, so records below `Warn` are dropped however low a logger's own level
+// is set, and the ones at or above it are still written.
+
+import Allocator::SystemAllocator;
+import Core::Assert;
+import Io::{ IoError, Writer };
+import Log::{ CompiledLevel, Enabled, Level, LogFormat, Logger, SetLevel };
+
+struct Count {
+    writes: uint;
+}
+
+struct CountingSink {
+    count: *var Count;
+}
+
+extend CountingSink : Writer {
+    pub func Write(self: &var CountingSink, bytes: char8[..]) -> uint ! IoError {
+        self.count.writes = self.count.writes + 1;
+        return bytes.length;
+    }
+
+    pub func Flush(self: &var CountingSink) -> ! IoError {}
+}
+
+func Main() -> int {
+    Assert(CompiledLevel() == Level::Warn, "the build define sets the compiled level");
+    var count = Count { writes: 0 };
+    var logger = Logger::New(SystemAllocator(), CountingSink { count: @count }, LogFormat::Text);
+    logger.SetLevel(Level::Trace);
+    logger.Trace("dropped");
+    logger.Debug("dropped");
+    logger.Info("dropped");
+    Assert(count.writes == 0u && !logger.Enabled(Level::Info), "records below the compiled level are dropped");
+    logger.Warn("kept");
+    logger.Error("kept");
+    Assert(count.writes == 2u, "one write for each record at or above it");
+    SetLevel(Level::Trace);
+    Assert(!Enabled(Level::Info) && Enabled(Level::Warn), "the process-wide log keeps the compiled level too");
+    return 0;
+}

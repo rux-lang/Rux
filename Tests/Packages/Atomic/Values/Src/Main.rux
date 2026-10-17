@@ -1,0 +1,86 @@
+// One thread cannot see atomicity, so this checks what each operation leaves and returns: the old value from every
+// read-modify-write, a compare-exchange that succeeds exactly when it matches and fails with what it found, wrapping
+// arithmetic at every width, and the `With` forms in every order, including the orders they quietly strengthen.
+
+import Atomic::Atomic;
+import Core::MemoryOrder;
+
+// A module variable starts as a constant: each width's `Zero`, reached through an alias of its instantiation.
+type Hits = Atomic<uint64>;
+type Level = Atomic<int32>;
+type Flag = Atomic<bool>;
+var Count: Hits = Hits::Zero;
+var Depth: Level = Level::Zero;
+var Ready: Flag = Flag::False;
+
+func Main() -> int {
+    let counter = Atomic<int64>(10);
+    if counter.Load() != 10 { return 1; }
+    counter.Store(11);
+    if counter.LoadWith(MemoryOrder::Acquire) != 11 || counter.LoadWith(MemoryOrder::Release) != 11 { return 2; }
+    if counter.FetchAdd(4) != 11 || counter.Load() != 15 { return 3; }
+    if counter.FetchSub(20) != 15 || counter.Load() != -5 { return 4; }
+    if counter.Exchange(7) != -5 { return 5; }
+
+    match counter.CompareExchange(7, 8) {
+        .Success(previous) => {
+            if previous != 7 { return 6; }
+        },
+        .Failure(_) => return 7
+    }
+    match counter.CompareExchange(7, 9) {
+        .Success(_) => return 8,
+        .Failure(found) => {
+            if found != 8 { return 9; }
+        }
+    }
+    if counter.Load() != 8 { return 10; }
+
+    var orders: MemoryOrder[5] = [MemoryOrder::Relaxed, MemoryOrder::Acquire, MemoryOrder::Release,
+                                  MemoryOrder::AcquireRelease, MemoryOrder::SequentiallyConsistent];
+    var expected: int64 = 8;
+    for order in orders {
+        counter.StoreWith(expected, order);
+        if counter.LoadWith(order) != expected { return 11; }
+        if counter.FetchAddWith(2, order) != expected { return 12; }
+        if counter.FetchSubWith(1, order) != expected + 2 { return 13; }
+        expected = expected + 1;
+        for failure in orders {
+            match counter.CompareExchangeWith(expected, expected + 1, order, failure) {
+                .Success(_) => {},
+                .Failure(_) => return 14
+            }
+            expected = expected + 1;
+            match counter.CompareExchangeWith(-1, 0, order, failure) {
+                .Success(_) => return 15,
+                .Failure(found) => {
+                    if found != expected { return 16; }
+                }
+            }
+        }
+    }
+
+    let small = Atomic<uint8>(250);
+    if small.FetchAdd(10) != 250 || small.Load() != 4 { return 17; }
+    let signed = Atomic<int16>(-1);
+    if signed.FetchAnd(0x0F0F) != -1 || signed.Load() != 0x0F0F { return 18; }
+    if signed.FetchOr(-0x1000) != 0x0F0F { return 19; }
+    if signed.FetchXor(-1) >= 0 { return 20; }
+
+    let flag = Atomic<bool>(false);
+    if flag.Exchange(true) || !flag.Load() { return 21; }
+    if !flag.FetchAnd(false) || flag.Load() { return 22; }
+
+    var first: int32 = 1;
+    var second: int32 = 2;
+    let pointer = Atomic<*int32>(@first as *int32);
+    if *pointer.Load() != 1 { return 23; }
+    if *pointer.Exchange(@second as *int32) != 1 || *pointer.Load() != 2 { return 24; }
+
+    if Count.Load() != 0u64 || Depth.Load() != 0i32 || Ready.Load() { return 25; }
+    Count.FetchAdd(3u64);
+    Depth.FetchSub(2i32);
+    Ready.Store(true);
+    if Count.Load() != 3u64 || Depth.Load() != -2i32 || !Ready.Load() { return 26; }
+    return 0;
+}

@@ -1,23 +1,19 @@
 // The four normal forms, over scalar values.
-//
 // Normalization is what makes "the same text" a checkable claim: an e-with-acute is one scalar value or two, and a
 // comparison that has not normalized calls them different. NFD takes everything apart canonically and orders the
 // marks; NFC puts back together what has a composed form; the K forms do the same after compatibility
 // decomposition, which also flattens ligatures, width variants and the like — a bigger hammer, for callers who
 // mean "the same characters" more loosely.
-//
 // Everything works on slices of scalar values and writes into a caller's buffer, reporting the length or refusing
 // for want of room; nothing here allocates. Text-level normalization is a walk over a string's scalars into one of
 // these and back out through a builder, and belongs beside the text types rather than here.
-//
 // Hangul is arithmetic throughout: a syllable decomposes into its jamo and recomposes from them by formula, which
 // is why none of it is in the tables.
 
 
 
 /// The first Hangul syllable, LV and LVT composition's base.
-///
-/// @see https://rux-lang.dev/docs/api/unicode/hangul-base
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#hangul-base
 pub const HangulBase: uint32 = 0xAC00;
 
 // The jamo bases and counts the arithmetic runs on.
@@ -33,7 +29,7 @@ func DecomposeHangul(offset: uint32, into: var char32[..], at: uint, written: *v
     let lead = HangulLeadBase + offset / (HangulVowelCount * HangulTrailCount);
     let vowel = HangulVowelBase + (offset % (HangulVowelCount * HangulTrailCount)) / HangulTrailCount;
     let trail = offset % HangulTrailCount;
-    let needed: uint = trail == 0u32 ? 2u : 3u;
+    let needed: uint = trail == 0 ? 2 : 3;
     if at + needed > into.length { return false; }
     into[at] = lead as char32;
     into[at + 1] = vowel as char32;
@@ -105,34 +101,25 @@ func CanonicalOrder(items: var char32[..], length: uint) {
 }
 
 /// Writes the canonical decomposition of `text` into `into`, marks in canonical order: NFD.
-///
 /// Reports the length through `written`, or `false` without a defined result when the room is short. The
 /// decompositions are fully expanded in the tables, so nothing recurses.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to decompose
 /// @param into receives the decomposition
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/decompose-canonical
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#decompose-canonical
 pub func DecomposeCanonical(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     return Decompose(text, false, into, written);
 }
 
 /// Writes the compatibility decomposition of `text` into `into`, marks in canonical order: NFKD.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to decompose
 /// @param into receives the decomposition
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/decompose-compatibility
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#decompose-compatibility
 pub func DecomposeCompatibility(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     return Decompose(text, true, into, written);
 }
@@ -166,7 +153,7 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
         return true;
     }
     if first >= HangulBase && first < HangulBase + HangulSyllableCount &&
-       (first - HangulBase) % HangulTrailCount == 0u32 && second > HangulTrailBase &&
+       (first - HangulBase) % HangulTrailCount == 0 && second > HangulTrailBase &&
        second < HangulTrailBase + HangulTrailCount {
         *composed = (first + (second - HangulTrailBase)) as char32;
         return true;
@@ -195,7 +182,6 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
 }
 
 // The canonical composition pass, run over text that is already decomposed and ordered.
-//
 // Each mark composes with the nearest starter before it unless something blocks the way: another starter, or a
 // mark of the same or higher class. Two adjacent starters compose where a form exists, which is where Hangul LV
 // and LVT come from. This is the UAX #15 algorithm; the blocking rule is the whole of its subtlety, and the
@@ -204,7 +190,7 @@ func Compose(items: var char32[..], length: uint) -> uint {
     if length == 0 { return 0; }
     var result: uint = 1;
     var starterAt: uint = 0;
-    var haveStarter = CombiningClassOf(items.data[0]) == 0u32;
+    var haveStarter = CombiningClassOf(items.data[0]) == 0;
     // The class of the last kept character: what a new mark must exceed to reach the starter behind it.
     var lastClass = CombiningClassOf(items.data[0]);
 
@@ -214,13 +200,13 @@ func Compose(items: var char32[..], length: uint) -> uint {
         let currentClass = CombiningClassOf(current);
         var composed = 0u32 as char32;
 
-        if haveStarter && lastClass < currentClass && currentClass != 0u32 &&
+        if haveStarter && lastClass < currentClass && currentClass != 0 &&
            ComposePair(items.data[starterAt], current, @composed) {
             // An unblocked mark reaches its starter; the classes of what stands between are unchanged.
             items.data[starterAt] = composed;
         }
-        else if currentClass == 0u32 {
-            if haveStarter && lastClass == 0u32 && ComposePair(items.data[starterAt], current, @composed) {
+        else if currentClass == 0 {
+            if haveStarter && lastClass == 0 && ComposePair(items.data[starterAt], current, @composed) {
                 // Two adjacent starters with a composed form, which is Hangul's L+V and LV+T.
                 items.data[starterAt] = composed;
             }
@@ -243,16 +229,12 @@ func Compose(items: var char32[..], length: uint) -> uint {
 }
 
 /// Writes the NFC of `text` into `into`: canonical decomposition, canonical order, then composition.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to normalize
 /// @param into receives the normalized form
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/normalize-canonical
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#normalize-canonical
 pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCanonical(text, into, @length) { return false; }
@@ -261,16 +243,12 @@ pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *va
 }
 
 /// Writes the NFKC of `text` into `into`: compatibility decomposition, canonical order, then composition.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to normalize
 /// @param into receives the normalized form
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/normalize-compatibility
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#normalize-compatibility
 pub func NormalizeCompatibility(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCompatibility(text, into, @length) { return false; }

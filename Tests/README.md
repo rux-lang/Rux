@@ -34,7 +34,7 @@ Test manifests are intentionally uniform:
 - Every dependency is a `{ Path = "..." }` inline table resolving below the root `Packages/` directory or `Tests/Fixtures/`. A renamed dependency sets `Package` explicitly.
 - Registry dependencies are forbidden in test manifests.
 
-During workspace tests, transitive dependencies in publishable first-party package manifests are resolved from matching local workspace members. Registry fallback is disabled, so the suite does not require `rux install`, a populated package cache, or network access.
+During workspace tests, transitive dependencies in publishable first-party package manifests are resolved from matching local workspace members. A workspace owns the namespaces its members declare, and every member here declares `Rux`, so a `Rux` package is never taken from the package cache and the suite does not require `rux install`, a populated package cache, or network access. A registry dependency in a namespace no member declares falls back to the package cache, which is what lets a user workspace test packages built on the standard library. `rux test` itself accepts registry dependencies in a test manifest; the rule above that forbids them here is a repository convention checked by `Unit/ManifestTests.cpp`.
 
 `Language/CoreOptional` exercises inference, arrays, range syntax, and scalar arithmetic without dependencies. `Language/IntrinsicReplacement` imports `Fixtures/IntrinsicProvider` as `Foundation`, including scalar aliases, constants, a character-slice alias, and compiler context. Slice and range operations need no provider. Fixture providers are local-only `SourceLibrary` packages; they are not executable tests or workspace library APIs.
 
@@ -112,7 +112,7 @@ Related C++ cases are grouped by responsibility: semantic type and binding facts
 
 ## Running Concurrently
 
-Use `./Bin/rux test --release --jobs 16` (with `.exe` on Windows), or repository helpers with `-Jobs N` / `--jobs N`. Helpers and CI default to at most four available processors; direct `rux test` defaults to one. Failures do not cancel later packages. Output and diagnostics are collected per package and rendered in discovery order, with artifact collisions serialized.
+Use `./Bin/rux test --release --jobs 16` (with `.exe` on Windows), or repository helpers with `-Jobs N` / `--jobs N`. Helpers and CI default to at most four available processors; direct `rux test` defaults to one per logical core. Failures do not cancel later packages. Output and diagnostics are collected per package and rendered in discovery order, with artifact collisions serialized.
 
 The existing `rux-tests` executable has disjoint CTest source groups: Numeric, Frontend, Lowering, Backends, Driver, Cli, and Optimization. `Unit.GroupCoverage` enumerates registrations and checks exact coverage, including skipped cases and reference-vector includes. A shared-artifact resource lock protects fixture groups. `ctest --test-dir Build --parallel 16 --output-on-failure -C Release` also runs repository and installer behavior checks exactly once. Direct doctest filters remain available for focused checks.
 

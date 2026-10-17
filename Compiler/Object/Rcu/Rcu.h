@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -21,6 +22,8 @@ constexpr uint32_t Data = 2;
 constexpr uint32_t RoData = 3;
 constexpr uint32_t Bss = 4;
 constexpr uint32_t Meta = 5;
+/// The thread-local template: every thread's copy of the thread-local variables starts as these bytes.
+constexpr uint32_t Tls = 6;
 } // namespace RcuSecType
 
 namespace RcuSecFlag {
@@ -30,6 +33,7 @@ constexpr uint32_t Read = 0x04;
 constexpr uint32_t Write = 0x08;
 constexpr uint32_t Merge = 0x10;
 constexpr uint32_t Strings = 0x20;
+constexpr uint32_t Tls = 0x40;
 } // namespace RcuSecFlag
 
 namespace RcuSymKind {
@@ -43,10 +47,23 @@ constexpr uint8_t ExternFunc = 6;
 constexpr uint8_t ExternData = 7;
 } // namespace RcuSymKind
 
+// Symbol binding. Global and Weak definitions are linkable across the objects of one artifact; Exported is a Global
+// definition that a library artifact also publishes as part of its interface.
 namespace RcuSymVis {
 constexpr uint8_t Local = 0;
 constexpr uint8_t Global = 1;
 constexpr uint8_t Weak = 2;
+constexpr uint8_t Exported = 3;
+
+/// Whether a symbol with this visibility binds strongly across objects.
+[[nodiscard]] constexpr bool IsGlobal(const uint8_t visibility) noexcept {
+    return visibility == Global || visibility == Exported;
+}
+
+/// The visibility of a definition: object-local, linkable across objects, or also exported from a library.
+[[nodiscard]] constexpr uint8_t ForDefinition(const bool isPublic, const bool isExported) noexcept {
+    return isExported ? Exported : isPublic ? Global : Local;
+}
 } // namespace RcuSymVis
 
 // Machine architecture an object was compiled for, stored in byte 6 of the
@@ -67,6 +84,17 @@ constexpr uint16_t None = 0;
 constexpr uint16_t Abs64 = 1;
 constexpr uint16_t Abs32 = 2;
 constexpr uint16_t Rel32 = 3;
+/// A 32-bit field holding a thread-local variable's offset in the form its target reaches the variable with: from the
+/// thread pointer on ELF, and from the start of the thread's block (`SECREL`) on PE.
+constexpr uint16_t TlsOffset32 = 4;
+/// A 32-bit PC-relative field addressing a thread-local variable's Mach-O descriptor rather than the variable itself.
+/// The linker makes one descriptor per variable, so the relocation names the variable and the linker finds its
+/// descriptor.
+constexpr uint16_t TlvDescriptorRel32 = 5;
+/// A 32-bit PC-relative field addressing the slot that holds an imported data symbol's address rather than the symbol
+/// itself: the IAT entry on PE, a GOT entry on ELF, and a non-lazy pointer on Mach-O. The relocation names the symbol,
+/// and the linker finds its slot, which the loader fills.
+constexpr uint16_t ImportSlotRel32 = 6;
 
 constexpr uint16_t AArch64Call26 = 16;
 constexpr uint16_t AArch64Jump26 = 17;
@@ -81,6 +109,18 @@ constexpr uint16_t AArch64MovwUabsG2 = 25;
 constexpr uint16_t AArch64MovwUabsG3 = 26;
 constexpr uint16_t AArch64Prel32 = 27;
 constexpr uint16_t AArch64Prel64 = 28;
+/// The high and low twelve bits of a thread-local offset, in the immediate of an `add`: R_AARCH64_TLSLE_ADD_TPREL_HI12
+/// and _LO12_NC on ELF, and the section-relative pair on PE.
+constexpr uint16_t AArch64TlsHi12 = 29;
+constexpr uint16_t AArch64TlsLo12Nc = 30;
+/// The page and page offset of a thread-local variable's Mach-O descriptor, in an `adrp` and an `add` that build its
+/// address; ARM64_RELOC_TLVP_LOAD_PAGE21 and _PAGEOFF12 name the same fields.
+constexpr uint16_t AArch64TlvDescriptorPage21 = 31;
+constexpr uint16_t AArch64TlvDescriptorPageOff12 = 32;
+/// The page and page offset of an imported data symbol's slot, in the `adrp` and the 64-bit `ldr` that read its
+/// address: R_AARCH64_ADR_GOT_PAGE and LD64_GOT_LO12_NC name the same fields on ELF.
+constexpr uint16_t AArch64ImportSlotPage21 = 33;
+constexpr uint16_t AArch64ImportSlotLo12Nc = 34;
 } // namespace RcuRelType
 
 /// The architecture byte an object built for `arch` carries, or RcuArch::Unknown when RCU has no encoding for that
@@ -120,6 +160,16 @@ constexpr uint16_t AArch64Prel64 = 28;
         return "ABS_32";
     case RcuRelType::Rel32:
         return "REL_32";
+    case RcuRelType::TlsOffset32:
+        return "TLS_OFFSET_32";
+    case RcuRelType::TlvDescriptorRel32:
+        return "TLV_DESCRIPTOR_REL_32";
+    case RcuRelType::ImportSlotRel32:
+        return "IMPORT_SLOT_REL_32";
+    case RcuRelType::AArch64ImportSlotPage21:
+        return "AARCH64_IMPORT_SLOT_PAGE21";
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+        return "AARCH64_IMPORT_SLOT_LO12_NC";
     case RcuRelType::AArch64Call26:
         return "AARCH64_CALL26";
     case RcuRelType::AArch64Jump26:
@@ -146,8 +196,50 @@ constexpr uint16_t AArch64Prel64 = 28;
         return "AARCH64_PREL32";
     case RcuRelType::AArch64Prel64:
         return "AARCH64_PREL64";
+    case RcuRelType::AArch64TlsHi12:
+        return "AARCH64_TLSLE_ADD_TPREL_HI12";
+    case RcuRelType::AArch64TlsLo12Nc:
+        return "AARCH64_TLSLE_ADD_TPREL_LO12_NC";
+    case RcuRelType::AArch64TlvDescriptorPage21:
+        return "AARCH64_TLVP_PAGE21";
+    case RcuRelType::AArch64TlvDescriptorPageOff12:
+        return "AARCH64_TLVP_PAGEOFF12";
     default:
         return "?";
+    }
+}
+
+/// The word an ELF executable's entry stub stores the kernel's initial stack address in. The linker defines it for
+/// every ELF executable, and `Core::ProcessStartFrame` reads it.
+constexpr std::string_view kProcessStartFrameSymbol = "__rux_start_frame";
+
+/// How the stack-trace printer's table of one module's functions is named. The linker treats what such a table refers
+/// to as weak: listing a function there does not keep it in the image.
+constexpr std::string_view kFunctionTablePrefix = "__rux_function_table_";
+
+/// The word a PE image's thread-local storage directory names, which the loader fills with the image's TLS slot. The
+/// linker defines it for every PE image with thread-local variables.
+constexpr std::string_view kTlsIndexSymbol = "_tls_index";
+
+/// Whether a relocation is an AArch64 instruction-field kind, whose immediate is split across an instruction word.
+[[nodiscard]] constexpr bool IsAArch64InstructionRelocationType(const uint16_t type) noexcept {
+    return (type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64MovwUabsG3) ||
+           (type >= RcuRelType::AArch64TlsHi12 && type <= RcuRelType::AArch64ImportSlotLo12Nc);
+}
+
+/// The plain PC-relative relocation an import-slot relocation is applied as once the linker has found the slot: the
+/// instruction reads the slot's contents, so it addresses the slot as it would any other data. Nothing for any other
+/// kind.
+[[nodiscard]] constexpr std::optional<uint16_t> PlainImportSlotRelocation(const uint16_t type) noexcept {
+    switch (type) {
+    case RcuRelType::ImportSlotRel32:
+        return RcuRelType::Rel32;
+    case RcuRelType::AArch64ImportSlotPage21:
+        return RcuRelType::AArch64AdrPrelPgHi21;
+    case RcuRelType::AArch64ImportSlotLo12Nc:
+        return RcuRelType::AArch64LdstAbsLo12Nc;
+    default:
+        return std::nullopt;
     }
 }
 
@@ -159,6 +251,7 @@ constexpr uint16_t RCU_TEXT_IDX = 0;
 constexpr uint16_t RCU_RODATA_IDX = 1;
 constexpr uint16_t RCU_DATA_IDX = 2;
 constexpr uint16_t RCU_BSS_IDX = 3;
+constexpr uint16_t RCU_TLS_IDX = 4;
 
 // In-memory structures
 

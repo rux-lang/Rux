@@ -31,7 +31,7 @@ Most floating-point functions provide both `float64` and `float32` overloads. Th
 - **Radicals** — `Sqrt2` and `InvSqrt2`.
 - **Angle conversion** — `RadPerDeg`, `DegPerRad`, `DegToRad`, and `RadToDeg`.
 
-All constants are `float64` values rounded to the nearest representable value. See the [constants reference](https://rux-lang.dev/docs/api/math#constants) for the complete list.
+All constants are `float64` values rounded to the nearest representable value. See the [constants reference](https://rux-lang.dev/docs/api/math/constants) for the complete list.
 
 ### Elementary functions
 
@@ -89,6 +89,10 @@ The integer APIs are generic over signed and unsigned integer widths:
 - `PowChecked<T>` raises an integer to a non-negative integer power.
 
 Checked operations follow the same convention as checked arithmetic in `Rux/Core`: they return `true` when the mathematical result is not representable. Their raw output pointers must be non-null, correctly aligned, and writable for one value for the duration of the call.
+
+### Complex numbers
+
+`Complex` over `float64` and `Complex32` over `float32` have `+`, `-`, `*` and `/`, `Abs`, `Arg`, `Norm`, `Conjugate`, `Negate`, `Scale`, `FromPolar`, and `Exp`, `Log`, `Sqrt` and `Pow` on the principal branch. Division uses Smith's method and the magnitude goes through `Hypot`, so neither overflows for parts far from one.
 
 ## Numerical behavior
 

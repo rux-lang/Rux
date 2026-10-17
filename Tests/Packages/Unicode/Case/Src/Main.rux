@@ -1,5 +1,5 @@
 import Core::{ Assert };
-import Unicode::{ Fold, ToLowerFull, ToLowerSimple, ToTitleSimple, ToUpperFull, ToUpperSimple };
+import Unicode::{ Fold, NextInCaseOrbit, ToLowerFull, ToLowerSimple, ToTitleSimple, ToUpperFull, ToUpperSimple };
 
 // The cases that separate the three kinds of mapping from each other: the sharp s, whose uppercase is two letters
 // no simple mapping can spell; the sigmas, three of which fold to one; and the dotted I, whose full lowercase
@@ -55,6 +55,24 @@ func Main() -> int {
     Assert(storage[0] == Scalar(0x66) && storage[1] == Scalar(0x66) && storage[2] == Scalar(0x69), "f f i");
     Assert(Fold(Scalar(0x30), room, @written) && written == 1 && storage[0] == Scalar(0x30),
            "a digit folds to itself");
+
+    // Case orbits: every value with the same simple folding, visited in a cycle.
+    Assert(NextInCaseOrbit(Scalar(0x61)) == Scalar(0x41) && NextInCaseOrbit(Scalar(0x41)) == Scalar(0x61),
+           "a and A are an orbit of two");
+    Assert(NextInCaseOrbit(Scalar(0x4B)) == Scalar(0x6B) && NextInCaseOrbit(Scalar(0x6B)) == Scalar(0x212A) &&
+               NextInCaseOrbit(Scalar(0x212A)) == Scalar(0x4B),
+           "K, k and the Kelvin sign are an orbit of three");
+    Assert(NextInCaseOrbit(Scalar(0xDF)) == Scalar(0x1E9E) && NextInCaseOrbit(Scalar(0x1E9E)) == Scalar(0xDF),
+           "the sharp s and its capital fold together though neither is the other's simple uppercase");
+    var seen: uint = 0;
+    var member = NextInCaseOrbit(Scalar(0x3B8));
+    while member != Scalar(0x3B8) && seen < 8 {
+        seen = seen + 1;
+        member = NextInCaseOrbit(member);
+    }
+    Assert(seen == 3, "theta has three other forms");
+    Assert(NextInCaseOrbit(Scalar(0x130)) == Scalar(0x130), "the dotted capital I folds with nothing");
+    Assert(NextInCaseOrbit(Scalar(0x30)) == Scalar(0x30), "a digit is alone");
 
     return 0;
 }

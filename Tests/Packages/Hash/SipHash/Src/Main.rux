@@ -16,15 +16,40 @@ func Main() -> int {
     }
 
     // The paper's inputs: byte i is i, for every length.
-    var input: byte[64];
+    var input: byte[272];
     index = 0;
-    while index < 64 {
+    while index < 272 {
         input[index] = index as byte;
         index++;
     }
 
     let keyBytes = @key[0] as *byte;
     let bytes = @input[0] as *byte;
+
+    // Compare the independent one-shot path with streaming over every short length, offset and split. Offset input
+    // also exercises unaligned words, and every read stays within the initialized object.
+    for offset in 0u..8u {
+        for length in 0u..=64u {
+            let oneShot = SipHash24Of(bytes + offset, length, 0x0706050403020100u64, 0x0F0E0D0C0B0A0908u64);
+            for split in 0u..=length {
+                var parts = SipHash24::WithKeyBytes(keyBytes);
+                parts.Write(bytes + offset, split);
+                parts.Write(bytes + offset + split, length - split);
+                Assert(parts.Finish() == oneShot, "one-shot and streaming agree at every short split and alignment");
+            }
+        }
+    }
+    for length in 248u..=272u {
+        var parts = SipHash24::WithKeyBytes(keyBytes);
+        var offset: uint = 0;
+        while offset < length {
+            let take = length - offset < 13u ? length - offset : 13u;
+            parts.Write(bytes + offset, take);
+            offset += take;
+        }
+        Assert(parts.Finish() == SipHash24Of(bytes, length, 0x0706050403020100u64, 0x0F0E0D0C0B0A0908u64),
+               "one-shot and streaming agree when the length tag wraps its low byte");
+    }
 
     // A hasher keyed from the paper's bytes, and the same key as two words, must agree.
     var fromBytes = SipHash24::WithKeyBytes(keyBytes);

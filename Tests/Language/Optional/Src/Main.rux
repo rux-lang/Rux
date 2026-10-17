@@ -1,5 +1,4 @@
 // Optionals: `T?` is either a present `T` or absent, and `T??` keeps both levels.
-//
 // An optional never collapses: `none`, `.Some(none)`, and `.Some(.Some(value))` are three different `int32??` values,
 // each written directly. A plain value becomes present in an optional context, and an optional is matched with
 // `.Some(pattern)` or its suffix spelling `pattern?`, with `none`, or with a typed presence pattern. `value?` removes one
@@ -87,6 +86,21 @@ func Unwrap(counter: *var Counter, value: Tracked?) -> int32 {
     return tracked.id;
 }
 
+// An array of optionals is viewed as a slice of them like any other array.
+func Present(values: int32?[..]) -> uint {
+    var count: uint = 0;
+    for value in values {
+        if value is int32 {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+func Length<T>(values: T[..]) -> uint {
+    return values.length;
+}
+
 func Main() -> int {
     // Every optional state is constructed directly and stays distinct.
     Assert(Classify(Lookup(0i32)) == -2i32, "outer absence");
@@ -148,5 +162,17 @@ func Main() -> int {
     Assert(counter.count == 2i32, "which is destroyed once, with no fallback built");
     Assert(Unwrap(@counter, none) == 0i32, "the fallback for an absent owner");
     Assert(counter.count == 3i32, "the fallback is destroyed once");
+
+    let readings: int32?[4] = [3i32, none, 5i32, none];
+    Assert(Present(readings) == 2, "an optional array converts to an optional slice argument");
+    Assert(Length(readings) == 4, "and to a generic slice parameter");
+
+    // An annotation gives its type to every arm of a match, so 'none' and a plain value are both its arms.
+    let n: int32 = 3;
+    let annotated: int32? = match n { 0 => none, else => n };
+    Assert(annotated == .Some(3i32), "a plain arm becomes the present value of the annotated optional");
+    let zero: int32 = 0;
+    let missing: int32? = match zero { 0 => none, else => zero };
+    Assert(missing == none, "a 'none' arm takes the annotated optional type");
     return 0;
 }

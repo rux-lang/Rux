@@ -1,27 +1,26 @@
+// A native optional: a present value or absence, asked about, recovered from, and matched.
+
 import Core::Assert;
-import Core::Option;
 
 func Main() -> int {
-    let optSome = Option::Some<int>(42);
-    let optNone = Option::None<int>();
+    let optSome: int? = .Some(42);
+    let optNone: int? = none;
 
-    Assert(optSome.IsSome(), "optSome should be Some");
-    Assert(!optSome.IsNone(), "optSome should not be None");
-    Assert(optNone.IsNone(), "optNone should be None");
-    Assert(!optNone.IsSome(), "optNone should not be Some");
+    Assert(optSome is int, "optSome should be present");
+    Assert(!(optNone is int), "optNone should be absent");
 
-    Assert(optSome.ValueOr(0) == 42, "ValueOr should return 42");
-    Assert(optNone.ValueOr(100) == 100, "ValueOr should return fallback 100");
+    Assert((optSome ?? 0) == 42, "?? should return 42");
+    Assert((optNone ?? 100) == 100, "?? should return fallback 100");
 
     let val = match optSome {
-        .Some(v) => v,
-        .None => 0
+        v? => v,
+        none => 0
     };
     Assert(val == 42, "match on optSome should be 42");
 
     let noneVal = match optNone {
         .Some(v) => v,
-        .None => 999
+        none => 999
     };
     Assert(noneVal == 999, "match on optNone should be 999");
 

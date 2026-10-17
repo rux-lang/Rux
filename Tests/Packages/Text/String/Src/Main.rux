@@ -5,7 +5,6 @@ import Text::{ String, StringView, TextError };
 // A string owns its bytes and gives them back when it dies, which is the whole of what changed: it used to hold a
 // block from a global allocator and be released by hand, and every release that was forgotten was a leak nothing
 // reported.
-//
 // So the checks here are mostly about ownership — that a copy is independent, that an early release leaves
 // something usable, that the block a builder hands over is given back to the allocator it came from — and about
 // the invariant that makes the rest of the package cheap: what a string holds is UTF-8, checked once on the way in.

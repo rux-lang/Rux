@@ -58,6 +58,23 @@ std::size_t PaddedMemberSize(const std::size_t dataSize) {
     return 60 + dataSize + (dataSize & 1U);
 }
 
+/// The length of a BSD member's name field: the name and at least one NUL, padded so the data after the 60-byte
+/// header starts on an eight-byte boundary, which is where ld64 expects a Mach-O object.
+std::size_t BsdNameLength(const std::string_view name) {
+    std::size_t length = name.size() + 1;
+    while ((60 + length) % 8 != 0) {
+        ++length;
+    }
+    return length;
+}
+
+/// A BSD member's size: Apple's `ar` writes every name in the `#1/<length>` form, the name leading the data, and pads
+/// the data so the next member's header starts on an eight-byte boundary too. The padding is part of the member.
+std::size_t BsdMemberDataSize(const std::string_view name, const std::size_t dataSize) {
+    const std::size_t size = BsdNameLength(name) + dataSize;
+    return size + (8 - (60 + size) % 8) % 8;
+}
+
 struct SymbolReference {
     std::string name;
     std::size_t memberIndex = 0;
@@ -121,6 +138,11 @@ std::vector<std::uint8_t> BsdLinkerMember(const std::vector<SymbolReference> &sy
         strings.push_back(0);
     }
 
+    // The string table keeps the symbol table's length a multiple of eight, as Apple's `ranlib` leaves it.
+    while ((4 + symbols.size() * 8 + 4 + strings.size()) % 8 != 0) {
+        strings.push_back(0);
+    }
+
     std::vector<std::uint8_t> data;
     PutLittle32(data, static_cast<std::uint32_t>(symbols.size() * 8));
     for (std::size_t i = 0; i < symbols.size(); ++i) {
@@ -152,6 +174,8 @@ bool WriteBytes(const std::filesystem::path &path, const std::span<const std::ui
     return true;
 }
 
+constexpr std::string_view kBsdSymbolTableName = "__.SYMDEF SORTED";
+
 enum class ArchiveFormat : std::uint8_t {
     Gnu,
     Bsd,
@@ -171,7 +195,10 @@ bool BuildArchive(const std::span<const NativeObject> objects, const ArchiveForm
         format == ArchiveFormat::Bsd ? BsdLinkerMember(symbols, zeroOffsets) : FirstLinkerMember(symbols, zeroOffsets);
     const auto provisionalSecond =
         format == ArchiveFormat::Coff ? SecondLinkerMember(symbols, zeroOffsets) : std::vector<std::uint8_t>{};
-    std::size_t cursor = 8 + PaddedMemberSize(provisionalFirst.size());
+    const auto memberSize = [&](const std::string_view name, const std::size_t dataSize) {
+        return format == ArchiveFormat::Bsd ? 60 + BsdMemberDataSize(name, dataSize) : PaddedMemberSize(dataSize);
+    };
+    std::size_t cursor = 8 + memberSize(kBsdSymbolTableName, provisionalFirst.size());
     if (format == ArchiveFormat::Coff) {
         cursor += PaddedMemberSize(provisionalSecond.size());
     }
@@ -179,7 +206,7 @@ bool BuildArchive(const std::span<const NativeObject> objects, const ArchiveForm
     memberOffsets.reserve(objects.size());
     for (const auto &object : objects) {
         memberOffsets.push_back(static_cast<std::uint32_t>(cursor));
-        cursor += PaddedMemberSize(object.bytes.size());
+        cursor += memberSize(object.name, object.bytes.size());
     }
     const auto first = format == ArchiveFormat::Bsd ? BsdLinkerMember(symbols, memberOffsets)
                                                     : FirstLinkerMember(symbols, memberOffsets);
@@ -188,13 +215,27 @@ bool BuildArchive(const std::span<const NativeObject> objects, const ArchiveForm
 
     archive.assign({'!', '<', 'a', 'r', 'c', 'h', '>', '\n'});
     const auto appendMember = [&](const std::string &name, const std::span<const std::uint8_t> data) {
+        if (format == ArchiveFormat::Bsd) {
+            const std::size_t size = BsdMemberDataSize(name, data.size());
+            const std::size_t nameLength = BsdNameLength(name);
+            std::string header = std::format("#1/{}", nameLength);
+            header.resize(16, ' ');
+            header += DecimalField(0, 12) + DecimalField(0, 6) + DecimalField(0, 6) + std::string("100644  ") +
+                      DecimalField(size, 10) + "`\n";
+            archive.insert(archive.end(), header.begin(), header.end());
+            archive.insert(archive.end(), name.begin(), name.end());
+            archive.insert(archive.end(), nameLength - name.size(), 0);
+            archive.insert(archive.end(), data.begin(), data.end());
+            archive.insert(archive.end(), size - nameLength - data.size(), 0);
+            return;
+        }
         AppendHeader(archive, name, data.size());
         archive.insert(archive.end(), data.begin(), data.end());
         if ((data.size() & 1U) != 0) {
             archive.push_back('\n');
         }
     };
-    appendMember(format == ArchiveFormat::Bsd ? "__.SYMDEF SORTED" : "/", first);
+    appendMember(format == ArchiveFormat::Bsd ? std::string(kBsdSymbolTableName) : "/", first);
     if (format == ArchiveFormat::Coff) {
         appendMember("/", second);
     }

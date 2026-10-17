@@ -1,0 +1,56 @@
+import Allocator::SystemAllocator;
+import Collections::PriorityQueue;
+import Core::Assert;
+
+// The largest element always comes out first, ties and all; a reversed `<` turns the queue into a min-queue; and
+// elements that own something are moved in and out without copies.
+
+pub struct Job {
+    priority: int32;
+}
+
+extend Job {
+    pub func <(self: &Job, other: Job) -> bool {
+        return self.priority > other.priority;
+    }
+}
+
+pub struct Owned {
+    value: int32;
+}
+
+extend Owned {
+    func =(self: &var Owned, other: &Owned);
+
+    pub func <(self: &Owned, other: &Owned) -> bool {
+        return self.value < other.value;
+    }
+}
+
+func Main() -> int {
+    var queue = PriorityQueue<int32>(SystemAllocator());
+    Assert(queue.IsEmpty() && queue.Pop() == none && queue.Peek() == none, "an empty queue");
+    let values: int32[8] = [5, 1, 9, 3, 9, 7, 2, 8];
+    for value in values[..] { queue.Push(value) catch { else => return 1 }; }
+    Assert(queue.Length() == 8u && *(queue.Peek() ?? return 2) == 9, "the largest is at the front");
+    let expected: int32[8] = [9, 9, 8, 7, 5, 3, 2, 1];
+    for value in expected[..] { Assert((queue.Pop() ?? -1) == value, "elements come out largest first"); }
+    Assert(queue.IsEmpty(), "every element came out");
+
+    var jobs = PriorityQueue<Job>(SystemAllocator());
+    jobs.Push(Job { priority: 4 }) catch { else => return 3 };
+    jobs.Push(Job { priority: 1 }) catch { else => return 4 };
+    jobs.Push(Job { priority: 3 }) catch { else => return 5 };
+    Assert((jobs.Pop() ?? Job { priority: 0 }).priority == 1, "a reversed `<` makes a min-queue");
+    jobs.Clear();
+    Assert(jobs.Length() == 0u, "clearing empties it");
+
+    var owned = PriorityQueue<Owned>(SystemAllocator());
+    owned.Push(Owned { value: 2 }) catch { else => return 6 };
+    owned.Push(Owned { value: 6 }) catch { else => return 7 };
+    match owned.Pop() {
+        .Some(top) => Assert(top.value == 6, "a move-only element is moved out"),
+        none => Assert(false, "something is there")
+    }
+    return 0;
+}

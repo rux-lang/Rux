@@ -1,0 +1,94 @@
+// The file the process is running.
+// `Argument(0)` is whatever the parent passed as the program's name, which may be a bare name found on the search
+// path, a relative path, or anything at all; it is no way to find the executable again. Each system knows the file it
+// loaded and says so: Windows through `GetModuleFileNameW`, Linux through the `/proc/self/exe` link, FreeBSD through
+// the `kern.proc.pathname` sysctl and macOS through `_NSGetExecutablePath`. The answer is asked for each time, into a
+// buffer grown until the whole path fits.
+
+import Allocator::Allocator;
+import Core::{ #Error, #target };
+import Io::{ IoError, IoErrorKind };
+import Path::{ OsStringView, OsUnit, Path, PathBuffer };
+import Process::{ Buffer, FailureOf };
+
+when #target.os {
+    .Linux => import Linux::{ AtFdCwd, ReadlinkAt },
+    .FreeBSD => import FreeBSD::{ ENOMEM, QueryExecutablePath },
+    .macOS => import macOS::_NSGetExecutablePath,
+    .Windows => import Windows::{ GetLastError, GetModuleFileNameW },
+    else => #Error("Unsupported operating system")
+}
+
+// The longest path a system answers with that is still worth growing for; past it the answer is refused.
+const LongestPath: uint = 1u << 20;
+
+/// The path of the executable file the process is running, as the system loaded it.
+/// Unlike `Argument(0)`, which is whatever the parent chose to pass, this is the file itself, so a program that runs
+/// itself again or finds files installed beside it can rely on it. Windows, Linux and FreeBSD give an absolute path
+/// with symbolic links resolved; macOS gives the path the executable was loaded by, which may be relative to the
+/// directory the process started in or pass through links. Fails with `NotFound` when the system cannot say, as when
+/// Linux has no `/proc` mounted, and with `LimitExceeded` when the path cannot be stored.
+/// @param allocator what the path is kept in
+/// @returns the executable's path
+/// @see https://rux-lang.dev/docs/api/process/executable#current-executable
+pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
+    var units = Buffer<OsUnit>(allocator);
+    var room: uint = 260;
+    while room <= LongestPath {
+        units.Clear();
+        units.Reserve(room)?;
+        when #target.os == .Windows {
+            let written = GetModuleFileNameW(null, units.data, room as uint32) as uint;
+            if written == 0u { fail FailureOf(GetLastError() as int64); }
+            // A path that fills the buffer was cut short, terminator and all.
+            if written < room {
+                units.length = written;
+                return ToPathBuffer(allocator, units.View());
+            }
+        }
+        else when #target.os == .Linux {
+            let written = ReadlinkAt(AtFdCwd, "/proc/self/exe\0".data, units.data, room);
+            if written < 0 { fail FailureOf(-written); }
+            // The link's text is not terminated, and a text that fills the buffer may have been cut.
+            if (written as uint) < room {
+                units.length = written as uint;
+                return ToPathBuffer(allocator, units.View());
+            }
+        }
+        else when #target.os == .FreeBSD {
+            var length = room;
+            let status = QueryExecutablePath(units.data, @length);
+            if status == -ENOMEM {
+                room = room * 2u;
+                continue;
+            }
+            if status < 0 { fail FailureOf(-status); }
+            // The length counts the terminator.
+            units.length = length > 0u ? length - 1u : 0u;
+            return ToPathBuffer(allocator, units.View());
+        }
+        else {
+            var size = room as uint32;
+            if _NSGetExecutablePath(units.data, @size) == 0 {
+                var length: uint = 0;
+                while length < room && units.data[length] != 0u8 as char8 {
+                    length = length + 1;
+                }
+                units.length = length;
+                return ToPathBuffer(allocator, units.View());
+            }
+            // Too short: the size needed is reported, so the next attempt fits.
+            room = size as uint > room ? size as uint : room * 2u;
+            continue;
+        }
+        room = room * 2u;
+    }
+    fail IoError::Of(IoErrorKind::LimitExceeded);
+}
+
+// Keeps the native units as a path through `allocator`.
+func ToPathBuffer(allocator: Allocator, units: OsUnit[..]) -> PathBuffer ! IoError {
+    if units.length == 0u { fail IoError::Of(IoErrorKind::NotFound); }
+    return PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(units)))
+        catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+}

@@ -2,7 +2,9 @@
 #include "Linker/Linker.h"
 #include "Linker/MachO/CodeSignature.h"
 #include "Linker/MachO/MachOLayout.h"
+#include "Linker/NativeObjectWriter.h"
 #include "MachOReader.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -163,7 +165,7 @@ TEST_CASE("Mach-O signed output is deterministic") {
     program.sections.push_back(TextSection({0x31, 0xC0, 0xC3}));
     program.symbols.push_back({"Main", "int", 0, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
 
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-deterministic-first");
     const std::vector<std::uint8_t> second =
@@ -198,7 +200,7 @@ TEST_CASE("Mach-O linker resolves local functions defined in another object") {
 
         const std::vector<std::uint8_t> bytes = LinkBytes(
             {std::move(caller), std::move(definitions)}, ArtifactKind::Executable,
-            std::filesystem::temp_directory_path() / ("rux-macho-cross-object-local-function-" + std::string(suffix)),
+            Rux::Testing::TestTemporaryDirectory() / ("rux-macho-cross-object-local-function-" + std::string(suffix)),
             targetArch);
         MachOImage image;
         std::string error;
@@ -234,7 +236,7 @@ TEST_CASE("Mach-O reader reports the freestanding x86-64 thread entry") {
 
     const MachOImage image =
         LinkAndRead(std::move(program), ArtifactKind::Executable,
-                    std::filesystem::temp_directory_path() / "rux-macho-reader-static-executable-test");
+                    Rux::Testing::TestTemporaryDirectory() / "rux-macho-reader-static-executable-test");
     CHECK(image.Architecture() == MachOArchitecture::X86_64);
     CHECK(image.fileType == 2); // MH_EXECUTE
     CHECK(image.HasCommand(0x05));
@@ -256,7 +258,7 @@ TEST_CASE("Mach-O reader reports the x86-64 executable structure") {
         {"getpid", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
     const MachOImage image = LinkAndRead(std::move(program), ArtifactKind::Executable,
-                                         std::filesystem::temp_directory_path() / "rux-macho-reader-executable-test");
+                                         Rux::Testing::TestTemporaryDirectory() / "rux-macho-reader-executable-test");
     CHECK(image.Architecture() == MachOArchitecture::X86_64);
     CHECK(image.cpuSubtype == 3);
     CHECK(image.fileType == 2); // MH_EXECUTE
@@ -281,6 +283,202 @@ TEST_CASE("Mach-O reader reports the x86-64 executable structure") {
     }
 }
 
+TEST_CASE("Mach-O linker starts and declares each section on its recorded alignment") {
+    // __const follows the code and stubs, and __data follows one eight-byte import pointer, so neither start is aligned
+    // past eight by accident. Each must start on the strictest alignment its inputs recorded and say so in its header.
+    for (std::size_t padding = 0; padding < 32; padding += 4) {
+        CAPTURE(padding);
+        RcuFile program;
+        program.arch = RcuArch::X86_64;
+        std::vector<std::uint8_t> code(padding, 0x90);
+        code.insert(code.end(), {0xE8, 0, 0, 0, 0, 0x31, 0xC0, 0xC3});
+        auto text = TextSection(std::move(code));
+        text.relocs.push_back({static_cast<std::uint32_t>(padding + 1), 3, RcuRelType::Rel32, 0});
+        program.sections.push_back(std::move(text));
+
+        RcuSection rodata;
+        rodata.name = ".rodata";
+        rodata.type = RcuSecType::RoData;
+        rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+        rodata.alignment = 32;
+        rodata.data.assign(64, 0x5A);
+        program.sections.push_back(std::move(rodata));
+
+        RcuSection data;
+        data.name = ".data";
+        data.type = RcuSecType::Data;
+        data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        data.alignment = 16;
+        data.data.assign(16, 0x33);
+        program.sections.push_back(std::move(data));
+
+        program.symbols.push_back({"Main", "int", 0, static_cast<std::uint32_t>(padding + 8), RCU_TEXT_IDX,
+                                   RcuSymKind::Func, RcuSymVis::Global});
+        program.symbols.push_back({"Table", "", 32, 32, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+        program.symbols.push_back({"Slot", "", 0, 16, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
+        program.symbols.push_back(
+            {"getpid", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        const MachOImage image = LinkAndRead(std::move(program), ArtifactKind::Executable,
+                                             Rux::Testing::TestTemporaryDirectory() / "rux-macho-alignment-test");
+        const MachOSection *textSection = image.Section("__TEXT", "__text");
+        const MachOSection *constSection = image.Section("__TEXT", "__const");
+        const MachOSection *dataSection = image.Section("__DATA", "__data");
+        REQUIRE(textSection != nullptr);
+        REQUIRE(constSection != nullptr);
+        REQUIRE(dataSection != nullptr);
+        CHECK(textSection->alignmentPower == 4);
+        CHECK(constSection->alignmentPower == 5);
+        CHECK(dataSection->alignmentPower == 4);
+        CHECK(constSection->address % 32 == 0);
+        CHECK(constSection->offset % 32 == 0);
+        CHECK(dataSection->address % 16 == 0);
+        CHECK(dataSection->offset % 16 == 0);
+    }
+}
+
+TEST_CASE("Mach-O objects give each section its own aligned address range") {
+    // MH_OBJECT keeps every section in one unnamed segment, and a symbol's n_value is an address in it, so sections
+    // must not overlap there: each starts on its own alignment after the previous one, its data sits at the same
+    // distance from its address in the file, and a relocation's r_address stays an offset into its own section.
+    for (const Target::Arch arch : {Target::Arch::X86_64, Target::Arch::AArch64}) {
+        CAPTURE(Target::ToDisplayString(arch));
+        RcuFile file;
+        file.arch = RcuArchFor(arch);
+        file.sourcePath = "Layout.rux";
+        RcuSection text = TextSection({});
+        if (arch == Target::Arch::X86_64) {
+            text.data = {0x48, 0x8D, 0x05, 0, 0, 0, 0, 0xC3}; // lea rax, [rip + Table]; ret
+            text.relocs.push_back({3, 1, RcuRelType::Rel32, 0});
+        }
+        else {
+            text.alignment = 4;
+            text.data = {0x00, 0x00, 0x00, 0x90, 0x00, 0x00, 0x00, 0x91, 0xC0, 0x03, 0x5F, 0xD6}; // adrp; add; ret
+            text.relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});
+            text.relocs.push_back({4, 1, RcuRelType::AArch64AddAbsLo12Nc, 0});
+        }
+        const std::uint64_t textSize = text.data.size();
+        file.sections.push_back(std::move(text));
+
+        RcuSection rodata;
+        rodata.name = ".rodata";
+        rodata.type = RcuSecType::RoData;
+        rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+        rodata.alignment = 32;
+        for (std::uint8_t i = 0; i < 24; ++i) {
+            rodata.data.push_back(static_cast<std::uint8_t>(0xA0 + i));
+        }
+        file.sections.push_back(std::move(rodata));
+
+        RcuSection data;
+        data.name = ".data";
+        data.type = RcuSecType::Data;
+        data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
+        data.alignment = 8;
+        data.data.assign(12, 0x33);
+        data.relocs.push_back({0, 1, RcuRelType::Abs64, 0});
+        file.sections.push_back(std::move(data));
+
+        file.symbols.push_back({"Main", "int", 0, static_cast<std::uint32_t>(textSize), RCU_TEXT_IDX, RcuSymKind::Func,
+                                RcuSymVis::Global});
+        file.symbols.push_back({"Table", "", 8, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
+        file.symbols.push_back({"Slot", "", 4, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
+        file.symbols.push_back({"Other", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+        NativeObject native;
+        std::string error;
+        REQUIRE_MESSAGE(WriteNativeObject(file, Target::OS::MacOS, arch, native, error), error);
+        MachOImage object;
+        REQUIRE_MESSAGE(ReadMachO64(native.bytes, object, error), error);
+        CHECK(object.fileType == 1); // MH_OBJECT
+        REQUIRE(object.segments.size() == 1);
+        const MachOSegment &segment = object.segments.front();
+        REQUIRE(segment.sections.size() == 3);
+        const MachOSection &textSection = segment.sections[0];
+        const MachOSection &constSection = segment.sections[1];
+        const MachOSection &dataSection = segment.sections[2];
+
+        // __text at 0, __const on the next 32-byte boundary, __data on eight right after it.
+        CHECK(textSection.address == 0);
+        CHECK(textSection.size == textSize);
+        CHECK(constSection.address == 32);
+        CHECK(constSection.size == 24);
+        CHECK(constSection.alignmentPower == 5);
+        CHECK(dataSection.address == 56);
+        CHECK(dataSection.size == 12);
+        CHECK(dataSection.alignmentPower == 3);
+        CHECK(segment.vmAddress == 0);
+        CHECK(segment.vmSize == 68);
+        CHECK(segment.fileSize == 68);
+        CHECK(segment.fileOffset % 32 == 0);
+        for (const MachOSection &section : segment.sections) {
+            CAPTURE(section.name);
+            CHECK(section.offset == segment.fileOffset + section.address);
+            CHECK(section.offset % (std::uint32_t{1} << section.alignmentPower) == 0);
+        }
+        for (std::size_t i = 0; i < 24; ++i) {
+            CHECK(native.bytes[constSection.offset + i] == static_cast<std::uint8_t>(0xA0 + i));
+        }
+        CHECK(native.bytes[dataSection.offset + 8] == 0x33);
+
+        // Defined symbols carry their section's address plus their offset in it; the import stays undefined.
+        REQUIRE(object.symbols.size() == 4);
+        const auto symbol = [&](const std::string_view name) -> const MachOSymbol & {
+            const auto found = std::ranges::find(object.symbols, name, &MachOSymbol::name);
+            REQUIRE(found != object.symbols.end());
+            return *found;
+        };
+        CHECK(symbol("_Main").value == 0);
+        CHECK(symbol("_Main").section == 1);
+        CHECK(symbol("_Table").value == 40);
+        CHECK(symbol("_Table").section == 2);
+        CHECK(symbol("_Slot").value == 60);
+        CHECK(symbol("_Slot").section == 3);
+        CHECK(symbol("_Other").type == 0x01); // N_UNDF | N_EXT
+        CHECK(symbol("_Other").value == 0);
+
+        // Relocation entries follow the section data on an eight-byte boundary and address their own section.
+        const auto word = [&](const std::size_t offset) {
+            return static_cast<std::uint32_t>(native.bytes[offset]) | native.bytes[offset + 1] << 8U |
+                   native.bytes[offset + 2] << 16U | static_cast<std::uint32_t>(native.bytes[offset + 3]) << 24U;
+        };
+        const auto relocationOffset = [&](const std::size_t index) { return word(32 + 72 + index * 80 + 56); };
+        CHECK(relocationOffset(0) >= segment.fileOffset + segment.fileSize);
+        CHECK(relocationOffset(0) % 8 == 0);
+        if (arch == Target::Arch::X86_64) {
+            CHECK(word(relocationOffset(0)) == 3);
+        }
+        else {
+            CHECK(word(relocationOffset(0)) == 0);
+            CHECK(word(relocationOffset(0) + 8) == 4);
+        }
+        CHECK(word(relocationOffset(2)) == 0);
+    }
+}
+
+TEST_CASE("Mach-O freestanding x86-64 entry leaves Main a System V aligned stack") {
+    // The kernel starts the thread with RSP at argc. Rounding it down to sixteen and then calling Main leaves RSP eight
+    // past a boundary at Main's entry, which is what every frame's sixteen-byte slots are planned against.
+    RcuFile program;
+    program.arch = RcuArch::X86_64;
+    program.sections.push_back(TextSection({0x31, 0xC0, 0xC3}));
+    program.symbols.push_back({"Main", "int", 0, 3, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+
+    const std::vector<std::uint8_t> bytes =
+        LinkBytes(std::move(program), ArtifactKind::Executable,
+                  Rux::Testing::TestTemporaryDirectory() / "rux-macho-static-entry-alignment-test");
+    MachOImage image;
+    std::string error;
+    REQUIRE(ReadMachO64(bytes, image, error));
+    const MachOSection *textSection = image.Section("__TEXT", "__text");
+    REQUIRE(textSection != nullptr);
+    const std::vector<std::uint8_t> entry(bytes.begin() + textSection->offset, bytes.begin() + textSection->offset + 9);
+    CHECK(entry == std::vector<std::uint8_t>{0x48, 0x83, 0xE4, 0xF0, 0xE8, entry[5], entry[6], entry[7], entry[8]});
+    const std::int32_t displacement = static_cast<std::int32_t>(entry[5] | entry[6] << 8U | entry[7] << 16U |
+                                                                static_cast<std::uint32_t>(entry[8]) << 24U);
+    CHECK((textSection->address + 9 + displacement) % 16 == 0); // the call reaches Main past the padded stub
+}
+
 TEST_CASE("Mach-O reader reports the x86-64 dylib structure") {
     RcuFile library;
     library.arch = RcuArch::X86_64;
@@ -292,11 +490,11 @@ TEST_CASE("Mach-O reader reports the x86-64 dylib structure") {
     data.alignment = 8;
     data.data = {0x2A, 0, 0, 0};
     library.sections.push_back(std::move(data));
-    library.symbols.push_back({"Answer", "int", 0, 6, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
-    library.symbols.push_back({"Value", "int", 0, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    library.symbols.push_back({"Answer", "int", 0, 6, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
+    library.symbols.push_back({"Value", "int", 0, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported});
 
     const MachOImage image = LinkAndRead(std::move(library), ArtifactKind::SharedLibrary,
-                                         std::filesystem::temp_directory_path() / "librux-macho-reader-test.dylib");
+                                         Rux::Testing::TestTemporaryDirectory() / "librux-macho-reader-test.dylib");
     CHECK(image.Architecture() == MachOArchitecture::X86_64);
     CHECK(image.fileType == 6); // MH_DYLIB
     CHECK(image.Segment("__PAGEZERO") == nullptr);
@@ -326,7 +524,7 @@ TEST_CASE("Mach-O architecture profile diagnoses invalid relocation patches") {
         program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
                       Target::Arch::X86_64);
-        CHECK_FALSE(linker.Link(std::filesystem::temp_directory_path() / "rux-macho-invalid-relocation-test"));
+        CHECK_FALSE(linker.Link(Rux::Testing::TestTemporaryDirectory() / "rux-macho-invalid-relocation-test"));
         REQUIRE(linker.Errors().size() == 1);
         return linker.Errors().front().message;
     };
@@ -413,7 +611,7 @@ TEST_CASE("Mach-O links deterministic signed position-independent AArch64 execut
     program.symbols.push_back({"Helper", "", 32, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     program.symbols.push_back({"Value", "", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
 
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-first", Target::Arch::AArch64);
     const std::vector<std::uint8_t> second =
@@ -553,7 +751,7 @@ TEST_CASE("Mach-O preserves AArch64 section alignment between input objects") {
     program.symbols.push_back({"Main", "int", 0, 16, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     program.symbols.push_back({"__f64_0", "", 0, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
 
-    const auto output = std::filesystem::temp_directory_path() / "rux-macho-aarch64-object-alignment";
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-macho-aarch64-object-alignment";
     const std::vector<std::uint8_t> bytes = LinkBytes({std::move(prefixObject), std::move(program)},
                                                       ArtifactKind::Executable, output, Target::Arch::AArch64);
 
@@ -587,7 +785,7 @@ TEST_CASE("Mach-O links imported AArch64 executables with eager Apple stubs") {
     program.symbols.push_back(
         {"strlen", "/opt/Rux/libExample.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first = LinkBytes(
         program, ArtifactKind::Executable, temporary / "rux-macho-aarch64-import-first", Target::Arch::AArch64);
     const std::vector<std::uint8_t> second = LinkBytes(
@@ -725,20 +923,20 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
     data.data[8] = 42;
     data.relocs.push_back({0, 0, RcuRelType::Abs64, 0});
     publicObject.sections.push_back(std::move(data));
-    publicObject.symbols.push_back({"Answer", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    publicObject.symbols.push_back({"Answer", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
     publicObject.symbols.push_back({"Helper", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     publicObject.symbols.push_back(
         {"puts", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
-    publicObject.symbols.push_back({"AnswerPointer", "", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
-    publicObject.symbols.push_back({"Value", "int", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    publicObject.symbols.push_back({"AnswerPointer", "", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported});
+    publicObject.symbols.push_back({"Value", "int", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported});
 
     RcuFile helperObject;
     helperObject.arch = RcuArch::AArch64;
     helperObject.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6}));
-    helperObject.symbols.push_back({"Helper", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    helperObject.symbols.push_back({"Helper", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
     const std::vector<RcuFile> objects{publicObject, helperObject};
-    const auto temporary = std::filesystem::temp_directory_path();
+    const auto &temporary = Rux::Testing::TestTemporaryDirectory();
     const std::vector<std::uint8_t> first =
         LinkBytes(objects, ArtifactKind::SharedLibrary, temporary / "rux-macho-dylib-first" / "libAnswers.dylib",
                   Target::Arch::AArch64);
@@ -851,7 +1049,7 @@ TEST_CASE("Mach-O AArch64 dylib diagnostics reject duplicate and unresolved defi
         Linker linker(std::move(objects), "MachOTest", {}, ArtifactKind::SharedLibrary, Target::OS::MacOS,
                       Target::Arch::AArch64);
         CHECK_FALSE(
-            linker.Link(std::filesystem::temp_directory_path() / ("rux-macho-aarch64-dylib-" + std::string(suffix))));
+            linker.Link(Rux::Testing::TestTemporaryDirectory() / ("rux-macho-aarch64-dylib-" + std::string(suffix))));
         REQUIRE_FALSE(linker.Errors().empty());
         return linker.Errors().front().message;
     };
@@ -883,7 +1081,7 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
                       Target::Arch::AArch64);
         CHECK_FALSE(
-            linker.Link(std::filesystem::temp_directory_path() / ("rux-macho-aarch64-error-" + std::string(suffix))));
+            linker.Link(Rux::Testing::TestTemporaryDirectory() / ("rux-macho-aarch64-error-" + std::string(suffix))));
         REQUIRE_FALSE(linker.Errors().empty());
         return linker.Errors().front().message;
     };
@@ -904,8 +1102,8 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.symbols.push_back(
             {"errno", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
         CHECK(linkError(std::move(program), "data-import") ==
-              "cannot link Mach-O executable 'MachOTest': external data symbol 'errno' cannot be imported by the "
-              "Mach-O AArch64 linker because GOT-aware lowering is not implemented");
+              "cannot link Mach-O executable 'MachOTest': Mach-O code cannot hold an absolute address in a "
+              "position-independent image; 'errno' must be reached PC-relatively");
     }
     SUBCASE("out-of-range branch") {
         RcuFile program;
@@ -941,4 +1139,52 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.symbols.push_back({"Value", "", 1, 1, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
         CHECK(linkError(std::move(program), "low12-alignment").contains("is not aligned to its access width"));
     }
+}
+
+TEST_CASE("Mach-O linker reads imported data through a non-lazy pointer dyld binds") {
+    // Main: mov rax, [rip + slot]; mov eax, [rax]; ret.
+    RcuFile program;
+    program.arch = RcuArch::X86_64;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    text.data = {0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x8B, 0x00, 0xC3};
+    text.relocs.push_back({3, 1, RcuRelType::ImportSlotRel32, 0});
+    program.sections.push_back(std::move(text));
+    program.symbols.push_back({"Main", "int", 0, 10, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    program.symbols.push_back(
+        {"opterr", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+
+    const auto output = Rux::Testing::TestTemporaryDirectory() / "rux-macho-data-import";
+    std::error_code ec;
+    std::filesystem::remove(output, ec);
+    Linker linker({std::move(program)}, "MachOTest", {}, ArtifactKind::Executable, Target::OS::MacOS,
+                  Target::Arch::X86_64);
+    REQUIRE(linker.Link(output));
+    std::ifstream stream(output, std::ios::binary);
+    REQUIRE(stream.is_open());
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    stream.close();
+    std::filesystem::remove(output, ec);
+
+    MachOImage image;
+    std::string error;
+    REQUIRE_MESSAGE(ReadMachO64(bytes, image, error), error);
+    const auto bind = std::ranges::find(image.binds, std::string("_opterr"), &MachOBind::symbol);
+    REQUIRE(bind != image.binds.end());
+    const std::uint64_t slot = image.segments[bind->segmentIndex].vmAddress + bind->segmentOffset;
+
+    const auto load = std::ranges::search(bytes, std::vector<std::uint8_t>{0x48, 0x8B, 0x05});
+    REQUIRE_FALSE(load.empty());
+    const auto site = static_cast<std::size_t>(load.begin() - bytes.begin());
+    const auto *code = image.Section("__TEXT", "__text");
+    REQUIRE(code != nullptr);
+    const std::uint64_t siteAddress = code->address + (site - code->offset);
+    std::int32_t displacement = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        displacement |= static_cast<std::int32_t>(bytes[site + 3 + i]) << (i * 8U);
+    }
+    CHECK(siteAddress + 7 + static_cast<std::uint64_t>(static_cast<std::int64_t>(displacement)) == slot);
 }

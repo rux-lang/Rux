@@ -3,6 +3,8 @@
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
@@ -35,9 +37,26 @@ bool SameValue(const KnownValue &left, const KnownValue &right) {
 /// Follow a chain of copies to whatever the register ultimately holds. The visited set is not defensive tidiness: a phi
 /// cycle in a loop genuinely produces a copy chain that returns to its start.
 KnownValue Resolve(const Values &values, const LirReg reg) {
+    // Most chains end within a few steps, so the registers visited are kept in place until a long one needs a set.
+    constexpr std::size_t kInline = 16;
+    std::array<LirReg, kInline> recent{};
+    std::size_t count = 0;
+    // Built only when a chain outgrows the array: even an empty set allocates with some standard libraries.
+    std::optional<std::unordered_set<LirReg>> visited;
+    const auto visit = [&](const LirReg candidate) {
+        if (count < kInline) {
+            if (std::find(recent.begin(), recent.begin() + static_cast<std::ptrdiff_t>(count), candidate) !=
+                recent.begin() + static_cast<std::ptrdiff_t>(count))
+                return false;
+            recent[count++] = candidate;
+            return true;
+        }
+        if (!visited)
+            visited.emplace(recent.begin(), recent.end());
+        return visited->insert(candidate).second;
+    };
     LirReg current = reg;
-    std::unordered_set<LirReg> visited;
-    while (visited.insert(current).second) {
+    while (visit(current)) {
         const auto found = values.find(current);
         if (found == values.end()) {
             return KnownValue{std::nullopt, current};
@@ -50,7 +69,10 @@ KnownValue Resolve(const Values &values, const LirReg reg) {
         }
         current = *found->second.copy;
     }
-    return KnownValue{std::nullopt, *std::ranges::min_element(visited)};
+    const LirReg smallest = !visited
+                              ? *std::min_element(recent.begin(), recent.begin() + static_cast<std::ptrdiff_t>(count))
+                              : *std::ranges::min_element(*visited);
+    return KnownValue{std::nullopt, smallest};
 }
 
 /// The one case a switch on a known subject reaches, or its default when no case value equals the subject.
@@ -217,10 +239,10 @@ std::optional<TokenKind> BinaryToken(const LirOpcode opcode) {
 }
 
 std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &values, const LiveEdges &edges,
-                                   const BlockIndex blockIndex) {
+                                   const BlockIndex blockIndex, const std::unordered_set<LirReg> &floatRegisters) {
     if (instruction.op == LirOpcode::Const) {
         if (auto value = ParseConstant(instruction.strArg, instruction.type)) {
-            return KnownValue{std::move(value), std::nullopt};
+            return KnownValue{value, std::nullopt};
         }
         return std::nullopt;
     }
@@ -236,7 +258,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                 if (joined && !SameValue(*joined, incoming)) {
                     return std::nullopt;
                 }
-                joined = std::move(incoming);
+                joined = incoming;
             }
             return joined;
         };
@@ -257,11 +279,24 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         }
         return joined;
     }
+    if (instruction.op == LirOpcode::RotateRight && instruction.srcs.size() == 1) {
+        const KnownValue operand = Resolve(values, instruction.srcs[0]);
+        const auto amount = ParseConstant(instruction.strArg, TypeRef::MakeUInt32());
+        if (operand.constant && amount && amount->RawBits() < operand.constant->Width() &&
+            (instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::UInt64)) {
+            const auto bits = instruction.type->kind == TypeRef::Kind::UInt32
+                                ? std::rotr(static_cast<std::uint32_t>(operand.constant->RawBits()),
+                                            static_cast<int>(amount->RawBits()))
+                                : std::rotr(operand.constant->RawBits(), static_cast<int>(amount->RawBits()));
+            return KnownValue{ParseConstant(std::to_string(bits), instruction.type), std::nullopt};
+        }
+        return std::nullopt;
+    }
     if (const auto token = UnaryToken(instruction.op); token && instruction.srcs.size() == 1) {
         const KnownValue operand = Resolve(values, instruction.srcs[0]);
         if (operand.constant) {
             if (auto result = EvaluateUnary(*token, *operand.constant)) {
-                return KnownValue{std::move(result), std::nullopt};
+                return KnownValue{result, std::nullopt};
             }
         }
         return std::nullopt;
@@ -271,7 +306,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const KnownValue right = Resolve(values, instruction.srcs[1]);
         if (left.constant && right.constant) {
             if (auto result = EvaluateBinary(*token, *left.constant, *right.constant)) {
-                return KnownValue{std::move(result), std::nullopt};
+                return KnownValue{result, std::nullopt};
             }
         }
 
@@ -280,13 +315,16 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const LirReg leftReg = left.copy ? *left.copy : instruction.srcs[0];
         const LirReg rightReg = right.copy ? *right.copy : instruction.srcs[1];
 
-        // Self-identity & idempotence on same operand (for integers / booleans)
-        if (sameOperand && (instruction.type.IsInteger() || instruction.type.IsBool())) {
+        // Self-identity & idempotence on same operand (for integers / booleans). A comparison's own type is always a
+        // bool, so its operands are asked separately: a NaN is unequal to itself, which `x != x` is how one is found.
+        const bool floatOperand =
+            floatRegisters.contains(instruction.srcs[0]) || floatRegisters.contains(instruction.srcs[1]);
+        if (sameOperand && !floatOperand && (instruction.type.IsInteger() || instruction.type.IsBool())) {
             switch (instruction.op) {
             case LirOpcode::Sub:
             case LirOpcode::Xor:
                 if (auto zero = ParseConstant("0", instruction.type)) {
-                    return KnownValue{std::move(zero), std::nullopt};
+                    return KnownValue{zero, std::nullopt};
                 }
                 break;
             case LirOpcode::And:
@@ -296,14 +334,14 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
             case LirOpcode::CmpLe:
             case LirOpcode::CmpGe:
                 if (auto t = ParseConstant("true", TypeRef::MakeBool())) {
-                    return KnownValue{std::move(t), std::nullopt};
+                    return KnownValue{t, std::nullopt};
                 }
                 break;
             case LirOpcode::CmpNe:
             case LirOpcode::CmpLt:
             case LirOpcode::CmpGt:
                 if (auto f = ParseConstant("false", TypeRef::MakeBool())) {
-                    return KnownValue{std::move(f), std::nullopt};
+                    return KnownValue{f, std::nullopt};
                 }
                 break;
             default:
@@ -334,7 +372,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
             case LirOpcode::Mul:
                 if (rightIsZero || leftIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 if (rightIsOne)
@@ -347,14 +385,14 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                     return KnownValue{std::nullopt, leftReg};
                 if (leftIsZero && !rightIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 break;
             case LirOpcode::And:
                 if (rightIsZero || leftIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 break;
@@ -372,7 +410,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                     return KnownValue{std::nullopt, leftReg};
                 if (leftIsZero) {
                     if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{std::move(zero), std::nullopt};
+                        return KnownValue{zero, std::nullopt};
                     }
                 }
                 break;
@@ -386,7 +424,7 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const KnownValue source = Resolve(values, instruction.srcs[0]);
         if (source.constant) {
             if (auto result = CastConstant(*source.constant, instruction.type)) {
-                return KnownValue{std::move(result), std::nullopt};
+                return KnownValue{result, std::nullopt};
             }
         }
     }
@@ -401,9 +439,20 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
 Values Analyze(const LirFunc &function) {
     Values values;
     std::size_t definitions = function.params.size();
+    std::unordered_set<LirReg> floatRegisters;
+    for (const auto &parameter : function.params) {
+        if (parameter.type.IsFloat()) {
+            floatRegisters.insert(parameter.reg);
+        }
+    }
     for (const auto &block : function.blocks) {
         definitions += std::ranges::count_if(block.instrs,
                                              [](const LirInstr &instruction) { return instruction.dst != LirNoReg; });
+        for (const auto &instruction : block.instrs) {
+            if (instruction.dst != LirNoReg && instruction.type.IsFloat()) {
+                floatRegisters.insert(instruction.dst);
+            }
+        }
     }
 
     for (std::size_t iteration = 0; iteration <= definitions; ++iteration) {
@@ -414,7 +463,7 @@ Values Analyze(const LirFunc &function) {
                 if (instruction.dst == LirNoReg) {
                     continue;
                 }
-                const auto evaluated = Evaluate(instruction, values, edges, blockIndex);
+                const auto evaluated = Evaluate(instruction, values, edges, blockIndex, floatRegisters);
                 const auto previous = values.find(instruction.dst);
                 if (evaluated && (previous == values.end() || !SameValue(previous->second, *evaluated))) {
                     values[instruction.dst] = *evaluated;
@@ -490,15 +539,9 @@ std::string_view LirConstantPropagation::Name() const noexcept {
     return "lir-constant-copy-propagation";
 }
 
-PassChange LirConstantPropagation::Run(LirPackage &package, const PassContext &) {
-    bool changed = false;
-    for (auto &module : package.modules) {
-        for (auto &function : module.funcs) {
-            if (!function.isExtern && !function.isAsm) {
-                changed = RewriteFunction(function, Analyze(function)) || changed;
-            }
-        }
-    }
-    return changed ? PassChange::Changed : PassChange::None;
+PassChange LirConstantPropagation::RunFunction(LirFunc &function, const std::size_t, const PassContext &) const {
+    if (function.isExtern || function.isAsm)
+        return PassChange::None;
+    return RewriteFunction(function, Analyze(function)) ? PassChange::Changed : PassChange::None;
 }
 } // namespace Rux::Optimization

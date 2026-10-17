@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lexer/Token.h"
+#include "SourceModel/DynamicType.h"
 #include "SourceModel/SourceLocation.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
@@ -14,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeinfo>
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +39,14 @@ struct HirDropAction {
     std::string glueSymbol;
     /// Declaration site retained for cleanup diagnostics and later drop-glue lowering.
     SourceLocation origin;
+    /// Set on an assignment's overwrite action when the old value lives at the place the assignment stores to rather
+    /// than in a binding: a referent replaced whole through `&var T`, or a field or element of a value. The value at
+    /// that address is destroyed after the new value exists and before it is stored.
+    bool destroysTarget = false;
+    /// With `destroysTarget`, the binding whose value contains the place, or zero when the place is reached through a
+    /// reference or a slice and is always initialized. The place holds a value only while that binding's drop flag is
+    /// set, so the destruction is conditional on it; the store leaves the flag as it was.
+    std::uint64_t ownerBindingId = 0;
 };
 
 /// A completed subobject that must be destroyed if evaluation of a later aggregate component exits early.
@@ -69,10 +79,16 @@ struct HirBlock {
 struct HirPattern {
     SourceLocation location;
     virtual ~HirPattern() = default;
+    /// The node's dynamic type once a cast asked for it (`HirCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // _
-struct HirWildcardPattern : HirPattern {};
+struct HirWildcardPattern : HirPattern {
+    /// In a destructuring `let`, the drop glue of the part this wildcard discards, which is destroyed where it is
+    /// matched because nothing else owns it; empty when the part needs no destruction or the pattern owns nothing.
+    std::string discardGlue;
+};
 
 // 42, "str", true
 struct HirLiteralPattern : HirPattern {
@@ -114,12 +130,16 @@ struct HirEnumPattern : HirPattern {
 // Point { x: 0, y: 0 }
 struct HirStructPatternField {
     std::string name;
+    /// The field's type in the matched structure, with the subject's type arguments substituted.
+    TypeRef type;
     HirPatternPtr pattern;
 };
 
 struct HirStructPattern : HirPattern {
     std::string typeName;
     TypeRef resolvedType;
+    /// Every field of the matched structure: the ones written, in source order, then the omitted ones as wildcards, so
+    /// a pattern over a consumed subject accounts for each part it leaves unbound.
     std::vector<HirStructPatternField> fields;
 };
 
@@ -145,6 +165,8 @@ struct HirExpr {
     /// so a path that consumes a local cannot destroy the same value again at scope exit.
     std::uint64_t consumedBindingId = 0;
     virtual ~HirExpr() = default;
+    /// The node's dynamic type once a cast asked for it (`HirCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // 42, 3.14, "hello", 'A', true, null
@@ -324,6 +346,10 @@ struct HirCallExpr : HirExpr {
     std::string sourceFunction;
     std::uint32_t sourceLine = 0;
     std::uint32_t sourceColumn = 0;
+    /// The memory orders of an atomic builtin, as `MemoryOrderKind` values: the order, or the success and failure
+    /// orders of a compare-exchange.
+    std::uint8_t memoryOrder = 0;
+    std::uint8_t failureOrder = 0;
 };
 
 /// Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}.
@@ -432,6 +458,9 @@ struct HirMatchArm {
 struct HirMatchExpr : HirExpr {
     HirExprPtr subject;
     std::vector<HirMatchArm> arms;
+    /// Semantic analysis accepted the arms as covering every value of the subject's type, so a value that still
+    /// matches none of them, such as an integer converted to an enum with `as`, stops the program.
+    bool exhaustive = false;
 };
 
 struct HirEnumConstructExpr : HirExpr {
@@ -447,6 +476,8 @@ struct HirEnumConstructExpr : HirExpr {
 struct HirStmt {
     SourceLocation location;
     virtual ~HirStmt() = default;
+    /// The node's dynamic type once a cast asked for it (`HirCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // expr;
@@ -513,6 +544,9 @@ struct HirForStmt : HirStmt {
     HirBlock body;
     /// Nonzero for an owned induction value; every iteration marks this flag live before entering the body.
     std::uint64_t bindingId = 0;
+    /// How an array or slice element is copied into the induction variable, which then owns its copy: a custom `=`
+    /// for a type that declares one, a bitwise copy otherwise.
+    HirCopyPlan elementCopy;
     /// True when `variable` names a mutable variable already in scope, which the loop reuses as its induction variable
     /// rather than introducing a fresh binding. The loop then mutates that outer variable, so its final value persists
     /// after the loop (e.g. `for k in k..7` leaves k == 7).
@@ -522,6 +556,9 @@ struct HirForStmt : HirStmt {
 struct HirMatchStmt : HirStmt {
     HirExprPtr subject;
     std::vector<HirMatchArm> arms;
+    /// As for `HirMatchExpr`: set when the arms cover every value, and a value none of them matches then stops the
+    /// program instead of falling past the statement.
+    bool exhaustive = false;
 };
 
 /// A nested scope, which source has no syntax for. A desugaring that needs a binding of its own -- the iterator a `for`
@@ -571,6 +608,8 @@ struct HirParam {
 struct HirFunc {
     std::string name;
     bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact exports it.
+    bool isExported = false;
     bool isAsm = false;
     bool isNoReturn = false;
     CallingConvention callConv = CallingConvention::Default;
@@ -579,7 +618,14 @@ struct HirFunc {
     TypeRef returnType;
     std::optional<HirBlock> body;  // absent for interface/extern signatures
     std::vector<AsmInstr> asmBody; // instructions when isAsm; body is absent
+    /// A function of a module whose compiled code the build reuses: only its signature is lowered, so later stages
+    /// know how to call it, and no code is generated for it.
+    bool isDeclarationOnly = false;
     SourceLocation location;
+    /// The logical source file and the user-facing function name a compiler-inserted runtime check reports, the same
+    /// pair a `Panic` call written in this body names.
+    std::string sourceFile;
+    std::string sourceFunction;
 };
 
 // struct Name { field: Type; ... }
@@ -661,8 +707,26 @@ struct HirImplBlock {
 struct HirConst {
     std::string name;
     bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact exports it.
+    bool isExported = false;
     TypeRef type;
     HirExprPtr value;
+    SourceLocation location;
+    /// The value holds the build's time (`#build.timestamp`, `date` or `time`), so code that inlines it does too.
+    bool readsBuildTime = false;
+};
+
+// var Name: Type = expr; at module scope. `name` is the linker name every reference uses.
+struct HirGlobal {
+    std::string name;
+    bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact exports it.
+    bool isExported = false;
+    TypeRef type;
+    /// The compile-time initial value, lowered as the declared type.
+    HirExprPtr value;
+    /// Every thread has its own copy, reached through the thread's own storage rather than one address.
+    bool isThreadLocal = false;
     SourceLocation location;
 };
 
@@ -683,8 +747,13 @@ struct HirExternFunc {
 
 // extern Name: Type;
 struct HirExternVar {
+    /// The symbol imported, which is the declared name unless `#Link` gives another.
     std::string name;
+    /// The library the data is imported from.
+    std::string dll;
     bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact keeps it.
+    bool isExported = false;
     TypeRef type;
     SourceLocation location;
 };
@@ -707,9 +776,13 @@ struct HirModule {
     std::vector<HirInterface> interfaces;
     std::vector<HirImplBlock> impls;
     std::vector<HirConst> consts;
+    std::vector<HirGlobal> globals;
     std::vector<HirExternFunc> externFuncs;
     std::vector<HirExternVar> externVars;
     std::vector<HirTypeAlias> typeAliases;
+    /// Code of this module holds the build's time, which changes with every build that does not pin it, so its
+    /// compiled code is never kept for another build.
+    bool readsBuildTime = false;
 };
 
 struct HirTypeLayout {
@@ -720,6 +793,9 @@ struct HirTypeLayout {
 struct HirPackage {
     std::vector<HirModule> modules;
     std::vector<DropGluePlan> dropGlues;
+    /// Generic destructor instances drop glue calls. They belong to no module: each module that destroys such a value
+    /// lowers its own private copy next to its own glue, so what a module compiles to never depends on another one.
+    std::vector<HirFunc> dropGlueInstances;
     std::unordered_map<std::string, HirTypeLayout> typeLayouts;
 };
 
@@ -736,4 +812,12 @@ struct HirNativeSubsetPattern : HirPattern {
 
 inline HirGuardedPattern::~HirGuardedPattern() = default;
 inline HirBlockExpr::~HirBlockExpr() = default;
+
+/// `dynamic_cast` to a concrete HIR node type. As with `AstCast`, every concrete node derives directly from a node base
+/// and nothing derives from it, so comparing type identities, by address as `AstCast` does, answers the same question
+/// far more cheaply.
+template <typename T, typename Node>
+[[nodiscard]] inline T *HirCast(Node *node) noexcept {
+    return node != nullptr && DynamicTypeOf(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
+}
 } // namespace Rux

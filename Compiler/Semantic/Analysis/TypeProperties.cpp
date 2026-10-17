@@ -62,10 +62,107 @@ std::vector<const FuncDecl *> AnalysisContext::ConstructorCandidates(const TypeR
     return result;
 }
 
-std::vector<const FuncDecl *> AnalysisContext::AccessibleMethodCandidates(const TypeRef &receiverType,
-                                                                          const std::string &methodName) const {
-    const std::string typeName = NamedBaseTypeName(receiverType);
-    const auto type = methodsByType.find(typeName);
+bool AnalysisContext::ExtensionAppliesTo(const FuncDecl &method, const TypeRef &receiver) const {
+    const auto implementation = methodImpls.find(&method);
+    return implementation == methodImpls.end() || ImplementationAppliesTo(*implementation->second, receiver);
+}
+
+const ImplDecl *AnalysisContext::GenericInterfaceImplementation(const TypeRef &type,
+                                                                const InterfaceDecl &interface) const {
+    if (type->kind != TypeRef::Kind::Named) {
+        return nullptr;
+    }
+    const std::string typeName = NamedBaseTypeName(type);
+    for (const ImplDecl *implementation : implDecls) {
+        if (!implementation->interfaceName || ImplTypeParams(*implementation).empty() ||
+            BaseTypeName(*implementation->interfaceName) != interface.name) {
+            continue;
+        }
+        const auto extended = typeNodeTypes.find(implementation->extendedType.get());
+        if (extended == typeNodeTypes.end() || NamedBaseTypeName(extended->second) != typeName) {
+            continue;
+        }
+        if (ImplementationAppliesTo(*implementation, type)) {
+            return implementation;
+        }
+    }
+    return nullptr;
+}
+
+bool AnalysisContext::ExtensionsOverlap(const FuncDecl &left, const FuncDecl &right) const {
+    const auto leftImplementation = methodImpls.find(&left);
+    const auto rightImplementation = methodImpls.find(&right);
+    if (leftImplementation == methodImpls.end() || rightImplementation == methodImpls.end() ||
+        !leftImplementation->second->extendedType || !rightImplementation->second->extendedType) {
+        return true;
+    }
+    const auto leftType = typeNodeTypes.find(leftImplementation->second->extendedType.get());
+    const auto rightType = typeNodeTypes.find(rightImplementation->second->extendedType.get());
+    if (leftType == typeNodeTypes.end() || rightType == typeNodeTypes.end() ||
+        leftType->second->kind != TypeRef::Kind::Named || rightType->second->kind != TypeRef::Kind::Named) {
+        return true;
+    }
+    const std::vector<TypeRef> leftArguments = ParseTypeArgsFromTypeName(leftType->second->name);
+    const std::vector<TypeRef> rightArguments = ParseTypeArgsFromTypeName(rightType->second->name);
+    if (leftArguments.size() != rightArguments.size()) {
+        return true;
+    }
+    const std::vector<std::string> leftParameters = ImplTypeParams(*leftImplementation->second);
+    const std::vector<std::string> rightParameters = ImplTypeParams(*rightImplementation->second);
+    const auto concrete = [this](const TypeRef &argument, const std::vector<std::string> &parameters) {
+        const bool isParameter =
+            (argument->kind == TypeRef::Kind::TypeParam || argument->kind == TypeRef::Kind::Named) &&
+            std::ranges::contains(parameters, argument->name);
+        return !isParameter && !MentionsTypeParameter(argument);
+    };
+    // Two extensions that write different concrete arguments at one position never extend the same instantiation.
+    for (std::size_t index = 0; index < leftArguments.size(); ++index) {
+        if (concrete(leftArguments[index], leftParameters) && concrete(rightArguments[index], rightParameters) &&
+            !(leftArguments[index] == rightArguments[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool AnalysisContext::ImplementationAppliesTo(const ImplDecl &implementation, const TypeRef &receiver) const {
+    if (!implementation.extendedType) {
+        return true;
+    }
+    const auto extended = typeNodeTypes.find(implementation.extendedType.get());
+    const TypeRef *named = &receiver;
+    if (((*named)->kind == TypeRef::Kind::Pointer || (*named)->kind == TypeRef::Kind::Reference) &&
+        !(*named)->inner.empty()) {
+        named = &(*named)->inner[0];
+    }
+    if (extended == typeNodeTypes.end() || extended->second->kind != TypeRef::Kind::Named ||
+        (*named)->kind != TypeRef::Kind::Named) {
+        return true;
+    }
+    // Each argument the extension writes concretely has to be the receiver's; one of the extension's own parameters
+    // takes any argument.
+    const std::vector<TypeRef> written = ParseTypeArgsFromTypeName(extended->second->name);
+    const std::vector<TypeRef> actual = ParseTypeArgsFromTypeName((*named)->name);
+    if (written.empty() || written.size() != actual.size()) {
+        return true;
+    }
+    const std::vector<std::string> parameters = ImplTypeParams(implementation);
+    for (std::size_t index = 0; index < written.size(); ++index) {
+        const TypeRef &argument = written[index];
+        const bool isParameter =
+            (argument->kind == TypeRef::Kind::TypeParam || argument->kind == TypeRef::Kind::Named) &&
+            std::ranges::contains(parameters, argument->name);
+        if (!isParameter && !MentionsTypeParameter(argument) && !MentionsTypeParameter(actual[index]) &&
+            !(argument == actual[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<const FuncDecl *> AnalysisContext::ApplicableMethods(const TypeRef &receiverType,
+                                                                 const std::string &methodName) const {
+    const auto type = methodsByType.find(NamedBaseTypeName(receiverType));
     if (type == methodsByType.end()) {
         return {};
     }
@@ -75,7 +172,14 @@ std::vector<const FuncDecl *> AnalysisContext::AccessibleMethodCandidates(const 
     }
     std::vector<const FuncDecl *> result;
     std::ranges::copy_if(named->second, std::back_inserter(result),
-                         [this](const FuncDecl *method) { return IsAccessible(*method); });
+                         [&](const FuncDecl *method) { return ExtensionAppliesTo(*method, receiverType); });
+    return result;
+}
+
+std::vector<const FuncDecl *> AnalysisContext::AccessibleMethodCandidates(const TypeRef &receiverType,
+                                                                          const std::string &methodName) const {
+    std::vector<const FuncDecl *> result = ApplicableMethods(receiverType, methodName);
+    std::erase_if(result, [this](const FuncDecl *method) { return !IsAccessible(*method); });
     return result;
 }
 
@@ -105,12 +209,12 @@ void AnalysisContext::ValidateIndexOperator(const FuncDecl &method, const TypeRe
             return false;
         }
         const TypeRef receiver = ResolveType(*method.params[0].type);
-        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() ||
-            !sameValueType(receiver.inner.front(), extendedType)) {
+        if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() ||
+            !sameValueType(receiver->inner.front(), extendedType)) {
             return false;
         }
         // Writing needs a writable receiver; reading must be available on a value nobody may write.
-        if (receiver.inner.front().isMut != writes) {
+        if (receiver->inner.front().isMut != writes) {
             return false;
         }
         // A read is an expression and a write is a statement, so exactly one of them has a result.
@@ -120,7 +224,7 @@ void AnalysisContext::ValidateIndexOperator(const FuncDecl &method, const TypeRe
         return;
     }
 
-    const std::string type = extendedType.ToString();
+    const std::string &type = extendedType.ToString();
     EmitError(method.location,
               std::format("the '{}' operator on '{}' must have signature '{}'", method.name, type,
                           writes ? std::format("func []=(self: &var {}, index: I, value: E)", type)
@@ -149,12 +253,12 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
         }
         TypeRef receiver = ResolveType(*method.params[0].type);
         TypeRef expected = extendedType;
-        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut) {
+        if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() || !receiver->inner.front().isMut) {
             return false;
         }
-        receiver.inner.front().isMut = false;
+        receiver = receiver.WithWritableInner(false);
         expected.isMut = false;
-        return receiver.inner.front() == expected;
+        return receiver->inner.front() == expected;
     }();
     if (!canonical) {
         EmitError(method.location, std::format("destructor for type '{}' must have signature 'func {}(self: &var {})'",
@@ -185,25 +289,25 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
 
         const TypeRef receiver = ResolveType(*method.params[0].type);
         const TypeRef other = ResolveType(*method.params[1].type);
-        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut ||
-            !sameValueType(receiver.inner.front(), extendedType)) {
+        if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() || !receiver->inner.front().isMut ||
+            !sameValueType(receiver->inner.front(), extendedType)) {
             return false;
         }
         if (!copy) {
-            return other.kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
+            return other->kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
         }
-        if (other.kind != TypeRef::Kind::Reference || other.inner.empty() || other.inner.front().isMut) {
+        if (other->kind != TypeRef::Kind::Reference || other->inner.empty() || other->inner.front().isMut) {
             return false;
         }
         // A body-bearing copy overload may construct T from another source type. Only the exact T-from-T signature
         // has the bodyless meaning "copy prohibited".
-        return method.body || sameValueType(other.inner.front(), extendedType);
+        return method.body || sameValueType(other->inner.front(), extendedType);
     }();
     if (operationSignature) {
         return;
     }
 
-    const std::string type = extendedType.ToString();
+    const std::string &type = extendedType.ToString();
     const std::string expected = copy && method.body ? std::format("func =(self: &var {0}, other: &Source)", type)
                                : copy                ? std::format("func =(self: &var {0}, other: &{0})", type)
                                                      : std::format("func <-(self: &var {0}, other: {0})", type);
@@ -212,7 +316,7 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
 }
 
 TypeProperties AnalysisContext::ClassifyTypeProperties(const TypeRef &type) {
-    const std::string key = type.ToString();
+    const std::string &key = type.ToString();
     if (const auto known = typeProperties.find(key); known != typeProperties.end() && known->second.IsResolved()) {
         return known->second;
     }
@@ -246,20 +350,14 @@ const FuncDecl *AnalysisContext::LookupSourceSpecialOperation(const TypeRef &typ
     return nullptr;
 }
 
-void AnalysisContext::RecordResolvedTypeProperties() {
+void AnalysisContext::RecordResolvedTypeProperties(const std::vector<TypeRef> &recordedTypes) {
     const auto record = [&](const TypeRef &type) {
         const TypeProperties properties = ClassifyTypeProperties(type);
         if (!properties.IsResolved()) {
             typeProperties.insert_or_assign(type.ToString(), properties);
         }
     };
-    for (const auto &[_, type] : expressionTypes) {
-        record(type);
-    }
-    for (const auto &[_, type] : typeNodeTypes) {
-        record(type);
-    }
-    for (const auto &[_, type] : patternTypes) {
+    for (const TypeRef &type : recordedTypes) {
         record(type);
     }
     for (const auto &[name, declaration] : structDecls) {

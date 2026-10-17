@@ -1,0 +1,34 @@
+// A literal passed for a '#Format()' parameter has its placeholders counted against the variadic arguments after it.
+func Show(#Format() format: char8[..], values: int32...) {}
+
+func Label(prefix: int32, #Format() format: char8[..], values: int32...) {}
+
+func Plain(format: char8[..], values: int32...) {}
+
+func Wrong(#Format() format: int32, values: int32...) {}
+
+module Inner {
+    pub func Show(#Format() format: char8[..], values: int32...) {}
+}
+
+func Main() -> int {
+    let one: int32 = 1;
+    Show("{} {}", one);
+    Show("{}", one, one);
+    Show("{}");
+    Label(7, "{} and {:>4}", one);
+    Show("{:>4} {:x} {:.2}", one, one);
+    Inner::Show("{} {} {}", one, one);
+    // Escaped braces and specifications count as the formatter reads them.
+    Show("{{}} {:>4} }}", one);
+    Show("\u{7B}\u{7D}", one);
+    Show("no placeholders");
+    // A format that is not a literal, a spread, a malformed pattern and an unmarked parameter are not counted.
+    let text = "{}";
+    Show(text);
+    let values: int32[2] = [1, 2];
+    Show("{}", values[..]...);
+    Show("{0}", one);
+    Plain("{} {}", one);
+    return 0;
+}

@@ -1,0 +1,35 @@
+// Floats without a C ABI mapping, held by value inside an aggregate that crosses a C ABI boundary.
+//
+// A struct passed or returned by value crosses field by field, so a field the C side would read differently is as
+// much a mismatch as a parameter of that type: directly, nested in another struct, as the element of a fixed array,
+// through a generic argument, or as a union member. A pointer to such a struct crosses as an address and is accepted,
+// and so is a struct whose floats all have a C mapping.
+
+struct Half { value: float16; }
+struct Nested { count: int32; inner: Half; }
+struct Samples { count: int32; values: float80[4]; }
+struct Wide<T> { value: T; }
+union Bits { raw: uint64, wide: float128 }
+struct Plain { x: float32; y: float64; samples: float64[2]; }
+struct Indirect { half: *Half; }
+
+#Link("msvcrt.dll")
+extern {
+    func TakeHalf(value: Half) -> int32;
+    func TakeNested(value: Nested) -> Nested;
+    func TakeSamples(value: Samples);
+    func TakeWide(value: Wide<float256>);
+    func TakeBits(value: Bits);
+    func TakePlain(value: Plain, pointer: *Nested, indirect: Indirect) -> Plain;
+    func printf(format: *char8, ...) -> int32;
+}
+
+#Abi(.C)
+func Callback(value: Nested) -> Samples {
+    return Samples { count: 0i32, values: [0.0f80, 0.0f80, 0.0f80, 0.0f80] };
+}
+
+func Main() {
+    let nested = Nested { count: 1i32, inner: Half { value: 1.0f16 } };
+    printf(null, nested, Plain { x: 1.0f32, y: 2.0, samples: [3.0, 4.0] }, @nested);
+}

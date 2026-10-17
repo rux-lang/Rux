@@ -1,0 +1,6 @@
+26:20: error: cannot store an interface value made in 'Fill' where it outlives the call
+34:9: error: cannot store an interface value made in 'Keep' where it outlives the call
+38:10: error: cannot store an interface value made in 'KeepThrough' where it outlives the call
+43:11: error: cannot store an interface value made in 'KeepGlobal' where it outlives the call
+58:5: error: cannot return interface value 'held', which holds a value made in 'Optional'
+72:18: error: an interface value made in this block cannot be stored in an element of 'items', which outlives the block

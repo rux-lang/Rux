@@ -447,12 +447,12 @@ TEST_CASE("callable instantiation preserves writable slots in pointer identities
         const auto concrete = binding.Instantiate({{"T", TypeRef::MakeInt32()}});
         const std::string pointerName = writable ? "*var int32" : "*int32";
         CHECK(concrete.substitutions.at("P").ToString() == pointerName);
-        CHECK(concrete.substitutions.at("Nested").name == "Option<" + pointerName + ">");
+        CHECK(concrete.substitutions.at("Nested")->name == "Option<" + pointerName + ">");
         REQUIRE(concrete.receiverType.has_value());
         CHECK(concrete.receiverType->ToString() == (writable ? "&var int32" : "&int32"));
         CHECK(concrete.linkerName == (writable ? "Read__var_int32" : "Read__int32"));
-        CHECK(binding.substitutions.at("P").inner.front().kind == TypeRef::Kind::TypeParam);
-        CHECK(binding.substitutions.at("P").inner.front().isMut == writable);
+        CHECK(binding.substitutions.at("P")->inner.front()->kind == TypeRef::Kind::TypeParam);
+        CHECK(binding.substitutions.at("P")->inner.front().isMut == writable);
         binding.linkerNameHasOverloadSignature = true;
         binding.linkerSpecializationParameters.clear();
         CHECK(binding.LinkerNameFor({{"T", TypeRef::MakeInt32()}}) == (writable ? "Read___var_int32" : "Read___int32"));

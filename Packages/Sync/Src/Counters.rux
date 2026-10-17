@@ -1,0 +1,215 @@
+// Coordination by counting: permits a semaphore hands out, threads a barrier waits for, and work a wait group waits
+// to see finished.
+// Each keeps its count in a word threads sleep on, and registers sleepers where waking them costs a system call, so
+// a release with nobody asleep is one atomic instruction.
+
+import Core::{ AtomicCompareExchange, AtomicFetchAdd, AtomicFetchSub, AtomicLoad, AtomicStore, MemoryOrder, Panic };
+import Sync::{ AllocateBlock, DestroyBlock, ReleaseBlock, RetainBlock, WaitWhile, WakeAll, WakeOne };
+
+struct SemaphoreBlock {
+    references: uint32;
+    permits: uint32;
+    waiters: uint32;
+}
+
+/// A count of permits that threads take and give back, waiting while none is left.
+/// `Clone` gives another handle to the same permits. A handle is not copied.
+/// @see https://rux-lang.dev/docs/api/sync/counters#semaphore
+pub struct Semaphore {
+    block: *var SemaphoreBlock;
+}
+
+extend Semaphore {
+    func =(self: &var Semaphore, other: &Semaphore);
+
+    /// A semaphore holding `permits` permits. Running out of memory for it is a program error.
+    /// @param permits how many permits there are to start with
+    /// @returns the first handle to it
+    /// @see https://rux-lang.dev/docs/api/sync/counters#semaphore-new
+    pub func Semaphore(permits: uint32) -> Semaphore {
+        return Semaphore { block: AllocateBlock(SemaphoreBlock { references: 1, permits: permits, waiters: 0 }) };
+    }
+
+    /// Another handle to the same permits.
+    /// @returns the handle
+    /// @see https://rux-lang.dev/docs/api/sync/counters#clone-semaphore
+    pub func Clone(self: &Semaphore) -> Semaphore {
+        RetainBlock(@self.block.references);
+        return Semaphore { block: self.block };
+    }
+
+    /// Takes a permit, waiting while none is left.
+    /// @see https://rux-lang.dev/docs/api/sync/counters#acquire
+    pub func Acquire(self: &Semaphore) {
+        let block = self.block;
+        while !self.TryAcquire() {
+            AtomicFetchAdd(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+            WaitWhile(@block.permits, 0u32, -1);
+            AtomicFetchSub(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+        }
+    }
+
+    /// Takes a permit if one is left, without waiting.
+    /// @returns whether a permit was taken
+    /// @see https://rux-lang.dev/docs/api/sync/counters#try-acquire
+    pub func TryAcquire(self: &Semaphore) -> bool {
+        let block = self.block;
+        var permits = AtomicLoad(@block.permits, MemoryOrder::SequentiallyConsistent);
+        while permits != 0u32 {
+            let found = AtomicCompareExchange(@block.permits, permits, permits - 1u32, MemoryOrder::Acquire,
+                                              MemoryOrder::Relaxed);
+            if found == permits { return true; }
+            permits = found;
+        }
+        return false;
+    }
+
+    /// Gives back `count` permits, waking threads waiting for them.
+    /// @param count how many permits to give back
+    /// @see https://rux-lang.dev/docs/api/sync/counters#release
+    pub func Release(self: &Semaphore, count: uint32 = 1) {
+        let block = self.block;
+        AtomicFetchAdd(@block.permits, count, MemoryOrder::SequentiallyConsistent);
+        if AtomicLoad(@block.waiters, MemoryOrder::SequentiallyConsistent) == 0u32 { return; }
+        if count == 1u32 { WakeOne(@block.permits); } else { WakeAll(@block.permits); }
+    }
+
+    /// The permits left right now, which other threads may change at any moment.
+    /// @returns the number of permits
+    /// @see https://rux-lang.dev/docs/api/sync/counters#available
+    pub func Available(self: &Semaphore) -> uint32 {
+        return AtomicLoad(@self.block.permits, MemoryOrder::Relaxed);
+    }
+
+    func ~Semaphore(self: &var Semaphore) {
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<SemaphoreBlock>(self.block);
+        }
+    }
+}
+
+struct BarrierBlock {
+    references: uint32;
+    parties: uint32;
+    arrived: uint32;
+    generation: uint32;
+}
+
+/// A meeting point a fixed number of threads wait at until all of them have arrived, then pass together.
+/// The barrier is reusable: once all have passed, the next `Wait`s start a new round. `Clone` gives another handle to
+/// the same barrier. A handle is not copied.
+/// @see https://rux-lang.dev/docs/api/sync/counters#barrier
+pub struct Barrier {
+    block: *var BarrierBlock;
+}
+
+extend Barrier {
+    func =(self: &var Barrier, other: &Barrier);
+
+    /// A barrier for `parties` threads. Zero parties is a program error. Running out of memory is one too.
+    /// @param parties how many threads each round waits for
+    /// @returns the first handle to it
+    /// @see https://rux-lang.dev/docs/api/sync/counters#barrier-new
+    pub func Barrier(parties: uint32) -> Barrier {
+        if parties == 0u32 { Panic("a barrier needs at least one party"); }
+        return Barrier {
+            block: AllocateBlock(BarrierBlock { references: 1, parties: parties, arrived: 0, generation: 0 })
+        };
+    }
+
+    /// Another handle to the same barrier.
+    /// @returns the handle
+    /// @see https://rux-lang.dev/docs/api/sync/counters#clone-barrier
+    pub func Clone(self: &Barrier) -> Barrier {
+        RetainBlock(@self.block.references);
+        return Barrier { block: self.block };
+    }
+
+    /// Waits until every party of this round has arrived.
+    /// @returns true on exactly one of the round's threads, the last to arrive, for work done once per round
+    /// @see https://rux-lang.dev/docs/api/sync/counters#wait-barrier
+    pub func Wait(self: &Barrier) -> bool {
+        let block = self.block;
+        let generation = AtomicLoad(@block.generation, MemoryOrder::Acquire);
+        if AtomicFetchAdd(@block.arrived, 1u32, MemoryOrder::AcquireRelease) + 1u32 == block.parties {
+            // Nobody of the next round can arrive before the generation moves, so resetting first is safe.
+            AtomicStore(@block.arrived, 0u32, MemoryOrder::Relaxed);
+            AtomicFetchAdd(@block.generation, 1u32, MemoryOrder::Release);
+            WakeAll(@block.generation);
+            return true;
+        }
+        while AtomicLoad(@block.generation, MemoryOrder::Acquire) == generation {
+            WaitWhile(@block.generation, generation, -1);
+        }
+        return false;
+    }
+
+    func ~Barrier(self: &var Barrier) {
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<BarrierBlock>(self.block);
+        }
+    }
+}
+
+struct WaitGroupBlock {
+    references: uint32;
+    pending: uint32;
+}
+
+/// A count of unfinished work that threads add to and mark done, and that others wait to see reach zero.
+/// `Clone` gives another handle to the same count. A handle is not copied.
+/// @see https://rux-lang.dev/docs/api/sync/counters#wait-group
+pub struct WaitGroup {
+    block: *var WaitGroupBlock;
+}
+
+extend WaitGroup {
+    func =(self: &var WaitGroup, other: &WaitGroup);
+
+    /// A wait group with nothing pending. Running out of memory for it is a program error.
+    /// @returns the first handle to it
+    /// @see https://rux-lang.dev/docs/api/sync/counters#wait-group-new
+    pub func WaitGroup() -> WaitGroup {
+        return WaitGroup { block: AllocateBlock(WaitGroupBlock { references: 1, pending: 0 }) };
+    }
+
+    /// Another handle to the same count.
+    /// @returns the handle
+    /// @see https://rux-lang.dev/docs/api/sync/counters#clone-wait-group
+    pub func Clone(self: &WaitGroup) -> WaitGroup {
+        RetainBlock(@self.block.references);
+        return WaitGroup { block: self.block };
+    }
+
+    /// Adds `count` pieces of pending work, before the work is started.
+    /// @param count how many to add
+    /// @see https://rux-lang.dev/docs/api/sync/counters#add
+    pub func Add(self: &WaitGroup, count: uint32 = 1) {
+        AtomicFetchAdd(@self.block.pending, count, MemoryOrder::Relaxed);
+    }
+
+    /// Marks one piece of work done, waking the waiters when it was the last. Marking more done than were added is a
+    /// program error.
+    /// @see https://rux-lang.dev/docs/api/sync/counters#done
+    pub func Done(self: &WaitGroup) {
+        let previous = AtomicFetchSub(@self.block.pending, 1u32, MemoryOrder::AcquireRelease);
+        if previous == 0u32 { Panic("a wait group was marked done more times than work was added"); }
+        if previous == 1u32 { WakeAll(@self.block.pending); }
+    }
+
+    /// Waits until no work is pending.
+    /// @see https://rux-lang.dev/docs/api/sync/counters#wait-wait-group
+    pub func Wait(self: &WaitGroup) {
+        while true {
+            let pending = AtomicLoad(@self.block.pending, MemoryOrder::Acquire);
+            if pending == 0u32 { return; }
+            WaitWhile(@self.block.pending, pending, -1);
+        }
+    }
+
+    func ~WaitGroup(self: &var WaitGroup) {
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<WaitGroupBlock>(self.block);
+        }
+    }
+}

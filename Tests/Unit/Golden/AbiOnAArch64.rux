@@ -1,0 +1,26 @@
+// rux:target linux-aarch64
+// An x86-64 calling convention means nothing on AArch64, so naming one there is an error; '.C' is AArch64's own.
+#Abi(.Win64)
+func Callback(value: int32) -> int32 {
+    return value;
+}
+
+#Abi(.C)
+func Native(value: int32) -> int32 {
+    return value;
+}
+
+#Abi(.SysV)
+#Link("libc.so.6")
+extern {
+    func abs(value: int32) -> int32;
+    func labs(value: int64) -> int64;
+}
+
+#Abi(.Win64)
+#Link("libc.so.6")
+extern func llabs(value: int64) -> int64;
+
+func Main() -> int {
+    return (Callback(1) + Native(2) + abs(-3)) as int;
+}

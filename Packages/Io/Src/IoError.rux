@@ -1,19 +1,17 @@
 // What went wrong at the edge of the machine.
-//
 // An I/O failure is not one thing. Some report a fact about the world — the file is not there, the disk is full,
 // permission was refused — and a caller acts on which fact. Some report a moment: the operation was interrupted,
 // or would block, and the right response is to go again. And the end of a stream is not a failure at all, but it
 // arrives through the same channel, so it lives in the same type where nobody can lose it.
-//
 // The set is deliberately the meanings shared by every platform, with the raw code carried beside the meaning:
-// translation loses detail, and the detail is sometimes the diagnosis.
+// translation loses detail, and the detail is sometimes the diagnosis. Success is not in the set: an operation that
+// can fail returns a native fallible, and `IoError` is only ever its failure.
+
+import Text::{ Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
 
 /// What an I/O operation reported.
-///
-/// @see https://rux-lang.dev/docs/api/io/io-error-kind
+/// @see https://rux-lang.dev/docs/api/io/io-error#io-error-kind
 pub enum IoErrorKind: int32 {
-    /// Nothing went wrong.
-    None = 0,
     /// The stream ended: not a failure, but it arrives where failures do.
     EndOfStream = 1,
     /// The named thing does not exist.
@@ -44,15 +42,29 @@ pub enum IoErrorKind: int32 {
     InvalidText = 15,
     /// A bounded operation met its bound before its end.
     LimitExceeded = 16,
+    /// The other end refused the connection: nothing listens there.
+    ConnectionRefused = 17,
+    /// The other end reset the connection.
+    ConnectionReset = 18,
+    /// The connection was aborted on this side.
+    ConnectionAborted = 19,
+    /// The socket is not connected.
+    NotConnected = 20,
+    /// The local address is already in use.
+    AddressInUse = 21,
+    /// The address is not one this machine has, or cannot be reached from it.
+    AddressUnavailable = 22,
+    /// No route leads to the network or host.
+    Unreachable = 23,
+    /// The other end closed the connection, so nothing more can be written to it.
+    BrokenPipe = 24,
     /// Something the platform reported that has no shared meaning; the raw code is the detail.
     Other = 14
 }
 
 /// A structured I/O failure: the shared meaning, and the platform's own code beside it.
-///
 /// `Copy`. The `raw` field is `errno` on the Unix systems and the Win32 error code on Windows, kept because
 /// translation loses detail and the detail is sometimes the diagnosis.
-///
 /// @see https://rux-lang.dev/docs/api/io/io-error
 pub struct IoError {
     /// The meaning every platform shares.
@@ -62,52 +74,115 @@ pub struct IoError {
 }
 
 extend IoError {
-    /// Nothing went wrong.
-    ///
-    /// @returns the value meaning nothing went wrong
-    /// @see https://rux-lang.dev/docs/api/io/io-error/ok
-    pub func Ok() -> IoError {
-        return IoError { kind: IoErrorKind::None, raw: 0 };
-    }
-
     /// A failure of `kind` with no platform code.
-    ///
     /// @param kind which kind of failure this is
     /// @returns an error of that kind, carrying no platform value
-    /// @see https://rux-lang.dev/docs/api/io/io-error/of
+    /// @see https://rux-lang.dev/docs/api/io/io-error#of
     pub func Of(kind: IoErrorKind) -> IoError {
         return IoError { kind: kind, raw: 0 };
     }
 
-    /// Whether nothing went wrong.
-    ///
-    /// @returns whether nothing went wrong
-    /// @see https://rux-lang.dev/docs/api/io/io-error/is-ok
-    pub func IsOk(self: &IoError) -> bool {
-        return self.kind == IoErrorKind::None;
-    }
-
-    /// Whether something did.
-    ///
-    /// @returns whether something did
-    /// @see https://rux-lang.dev/docs/api/io/io-error/is-error
-    pub func IsError(self: &IoError) -> bool {
-        return self.kind != IoErrorKind::None;
-    }
-
     /// Whether the stream ended, which is the one report that is not a failure.
-    ///
     /// @returns whether the stream ended, which is not a failure
-    /// @see https://rux-lang.dev/docs/api/io/io-error/is-end
+    /// @see https://rux-lang.dev/docs/api/io/io-error#is-end
     pub func IsEnd(self: &IoError) -> bool {
         return self.kind == IoErrorKind::EndOfStream;
     }
 
     /// Whether going again is the right response: an interruption or a would-block.
-    ///
     /// @returns whether trying again could succeed
-    /// @see https://rux-lang.dev/docs/api/io/io-error/is-transient
+    /// @see https://rux-lang.dev/docs/api/io/io-error#is-transient
     pub func IsTransient(self: &IoError) -> bool {
         return self.kind == IoErrorKind::Interrupted || self.kind == IoErrorKind::WouldBlock;
+    }
+}
+
+// The words each kind reads as, lower case so they fit inside a sentence.
+func DescribeKind(kind: &IoErrorKind) -> char8[..] {
+    return match kind {
+        .EndOfStream => "end of stream",
+        .NotFound => "not found",
+        .PermissionDenied => "permission denied",
+        .AlreadyExists => "already exists",
+        .IsDirectory => "is a directory",
+        .NotDirectory => "not a directory",
+        .StorageFull => "storage full",
+        .Interrupted => "interrupted",
+        .WouldBlock => "would block",
+        .InvalidHandle => "invalid handle",
+        .InvalidInput => "invalid input",
+        .TimedOut => "timed out",
+        .WriteZero => "write returned zero",
+        .InvalidText => "invalid UTF-8 text",
+        .LimitExceeded => "limit exceeded",
+        .ConnectionRefused => "connection refused",
+        .ConnectionReset => "connection reset",
+        .ConnectionAborted => "connection aborted",
+        .NotConnected => "not connected",
+        .AddressInUse => "address in use",
+        .AddressUnavailable => "address unavailable",
+        .Unreachable => "unreachable",
+        .BrokenPipe => "broken pipe",
+        .Other => "other error"
+    };
+}
+
+extend IoErrorKind : Display {
+    /// Writes the kind as lower-case words, such as `not found`, under the placeholder's width, fill and alignment.
+    /// No style is understood. Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole text was accepted
+    /// @see https://rux-lang.dev/docs/api/io/io-error#io-error-kind-write-display
+    pub func WriteDisplay(self: &IoErrorKind, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        return WriteAligned(writer, spec, DescribeKind(self), false);
+    }
+}
+
+extend IoError : Display {
+    /// Writes the kind as lower-case words, and the platform's code after them when there is one, as
+    /// `not found (os error 2)`, under the placeholder's width, fill and alignment. No style is understood. Reports
+    /// whatever the writer reported, and `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole text was accepted
+    /// @see https://rux-lang.dev/docs/api/io/io-error#write-display
+    pub func WriteDisplay(self: &IoError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        var text: char8[64] = ['\0'; 64];
+        var length: uint = 0;
+        for c in DescribeKind(self.kind) {
+            text[length] = c;
+            length = length + 1;
+        }
+        if self.raw != 0 {
+            for c in " (os error " {
+                text[length] = c;
+                length = length + 1;
+            }
+            // The magnitude, digits last first, then reversed into place, with the sign a negative code carries.
+            var magnitude = self.raw < 0 ? (-(self.raw as int64)) as uint64 : self.raw as uint64;
+            if self.raw < 0 {
+                text[length] = '-';
+                length = length + 1;
+            }
+            var digits: char8[20] = ['0'; 20];
+            var count: uint = 0;
+            while true {
+                digits[count] = (0x30u64 + magnitude % 10u64) as uint8 as char8;
+                count = count + 1;
+                magnitude = magnitude / 10u64;
+                if magnitude == 0u64 { break; }
+            }
+            while count > 0u {
+                count = count - 1;
+                text[length] = digits[count];
+                length = length + 1;
+            }
+            text[length] = ')';
+            length = length + 1;
+        }
+        return WriteAligned(writer, spec, text[..length], false);
     }
 }

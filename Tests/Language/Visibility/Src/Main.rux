@@ -1,12 +1,10 @@
 // `pub`: what a package shows to the packages that depend on it.
-//
 // Visibility is per declaration, not per type. A public struct may hold private fields, a public type may have
 // private methods beside its public ones, and a public function may return a type that cannot be named outside the
 // package. What none of that changes is access from inside the package, which is what this executable is: every
 // declaration in Library.rux is reachable here whether or not it is `pub`, and that is the property this file can
 // actually observe. What `pub` withholds from a *dependent* package is checked where a dependent package exists —
 // under Tests/Packages — because a single-package test cannot be outside itself.
-//
 // This case previously reported failures by returning 1, 2 or 3, so a failure said which check but not what it
 // saw. It uses Assert now, like the rest of the language tests.
 

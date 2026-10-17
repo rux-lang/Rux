@@ -11,6 +11,10 @@
 #include <vector>
 
 namespace Rux::MachO {
+/// The libdyld function every thread-local descriptor starts out bound to. dyld replaces it with the real accessor when
+/// it sets the image's thread-local storage up, but the binding is what marks a descriptor as one to set up.
+constexpr std::string_view kTlvBootstrapSymbol = "_tlv_bootstrap";
+
 /// One symbol imported from another library, with the ordinal identifying which one. Mach-O encodes the library as a
 /// small index into the load commands rather than by name, so the ordinal has to be assigned before binding is written.
 struct LinkEditImport {
@@ -41,6 +45,8 @@ struct LinkEditBuildRequest {
     std::span<const LinkEditImport> imports;
     LinkEditSegmentLayout segments;
     std::string_view codeSignatureIdentifier;
+    /// The data-segment offsets of the thread-local descriptors, whose first word is bound to `kTlvBootstrapSymbol`.
+    std::span<const std::uint64_t> threadVariableDescriptors;
     bool dynamic = false;
     bool shared = false;
     bool slid = false;

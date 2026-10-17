@@ -26,11 +26,37 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return *basicType;
     }
 
-    if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
+    if (auto *e = AstCast<const IdentExpr>(&expr)) {
+        if (defaultValueParameters.contains(e->name)) {
+            EmitError(e->location, std::format("a default value cannot refer to parameter '{}'", e->name), {},
+                      "add an overload without this parameter that passes the value it should default to");
+            return TypeRef::MakeUnknown();
+        }
         Symbol *sym = currentScope->Lookup(e->name);
         if (sym) {
+            NoteSymbolUse(*sym, e->location);
             if (sym->kind == Symbol::Kind::Const && sym->declaration) {
                 constantReferences[e] = static_cast<const ConstDecl *>(sym->declaration);
+            }
+            else if (sym->kind == Symbol::Kind::Var &&
+                     (AstCast<const GlobalDecl>(sym->declaration) || AstCast<const ExternVarDecl>(sym->declaration))) {
+                globalReferences[e] = sym->declaration;
+            }
+            else if (sym->kind == Symbol::Kind::Func) {
+                if (std::optional<TypeRef> instantiated = InstantiateFunctionReference(*e, *sym)) {
+                    return *instantiated;
+                }
+                if (!sym->funcOverloads.empty() &&
+                    std::ranges::all_of(sym->funcOverloads,
+                                        [](const FuncDecl *overload) { return !overload->typeParams.empty(); })) {
+                    EmitError(e->location, std::format("generic function '{}' has no type arguments here", e->name), {},
+                              std::format("give the value a function type, as in 'let f: func(int64) -> int64 = {};'",
+                                          e->name));
+                    return TypeRef::MakeUnknown();
+                }
+                if (std::optional<TypeRef> selected = SelectOverloadedFunctionValue(*e, *sym)) {
+                    return *selected;
+                }
             }
             return ReadTrackedSymbol(*sym, e->location);
         }
@@ -38,14 +64,18 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return TypeRef::MakeUnknown();
     }
 
-    if (dynamic_cast<const SelfExpr *>(&expr)) {
+    if (AstCast<const SelfExpr>(&expr)) {
+        if (defaultValueParameters.contains("self")) {
+            EmitError(expr.location, "a default value cannot refer to parameter 'self'");
+            return TypeRef::MakeUnknown();
+        }
         if (!inImpl) {
             EmitError(expr.location, "'self' used outside of an extend block");
         }
         return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
     }
 
-    if (auto *e = dynamic_cast<const PathExpr *>(&expr)) {
+    if (auto *e = AstCast<const PathExpr>(&expr)) {
         if (e->segments.empty()) {
             return TypeRef::MakeUnknown();
         }
@@ -55,20 +85,27 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             return TypeRef::MakeUnknown();
         }
         if (e->segments.size() >= 2 && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
+            NoteSymbolUse(*first, e->location);
             if (first->kind == Symbol::Kind::Type) {
-                if (IsUnimplementedPrimitiveType(first->name)) {
-                    EmitError(
-                        e->location,
-                        std::format("primitive type '{}' is reserved but is not implemented in this compiler version",
-                                    first->name));
-                    return TypeRef::MakeUnknown();
-                }
                 if (e->segments.size() == 2) {
-                    if (const auto *constant = LookupAssociatedConstant(*first, e->segments[1])) {
+                    const AssociatedConstantLookup lookup = LookupAssociatedConstant(*first, e->segments[1]);
+                    if (!lookup.conflictingPackages.empty()) {
+                        std::string packages;
+                        for (const std::string &package : lookup.conflictingPackages) {
+                            packages += std::format("{}'{}'", packages.empty() ? "" : " and ", package);
+                        }
+                        EmitError(e->location,
+                                  std::format("associated constant '{}' of '{}' is declared by {}", e->segments[1],
+                                              first->name, packages),
+                                  {}, std::format("import the extension of '{}' from only one of them", first->name));
+                        return TypeRef::MakeUnknown();
+                    }
+                    if (const ConstDecl *constant = lookup.constant) {
                         if (!IsAccessible(*constant)) {
                             EmitPrivacyError(e->location, *constant, "associated constant", constant->name);
                             return TypeRef::MakeUnknown();
                         }
+                        NoteDeclarationUse(*constant, e->location);
                         const TypeRef type = CheckAssociatedConstant(*constant);
                         associatedConstants[e] = constant;
                         return type;
@@ -86,6 +123,22 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                     }
                     if (!variant->fields.empty() || !variant->namedFields.empty()) {
                         return EnumVariantConstructorType(*resolved->declaration, *variant);
+                    }
+                    // A unit case of a generic variant takes its type arguments from where it goes.
+                    if (auto expected = ExpectedCaseTypeArguments(*e, *resolved->declaration)) {
+                        return EnumType(*resolved->declaration, *expected);
+                    }
+                    // Without a destination naming them, nothing determines them; the bare variant is no type.
+                    if (const std::size_t count = resolved->declaration->typeParams.size(); count != 0) {
+                        EmitError(e->location,
+                                  std::format("variant case '{}::{}' requires {} type argument{}, but 0 were provided",
+                                              first->name, variantName, count, count == 1 ? "" : "s"),
+                                  {"a case without a payload takes its type arguments from the type it is assigned, "
+                                   "passed, or returned as"},
+                                  std::format("annotate the destination, as in 'let value: {0}<...> = {0}::{1};', or "
+                                              "write '{0}::{1}<...>()'",
+                                              first->name, variantName));
+                        return TypeRef::MakeUnknown();
                     }
                     return EnumType(*resolved->declaration);
                 }
@@ -105,13 +158,18 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                         }
                     }
                 }
-                EmitError(e->location, std::format("'{}' not found in extend for type '{}'", methodName, first->name));
+                EmitError(e->location, std::format("'{}' not found in extend for type '{}'", methodName, first->name),
+                          {},
+                          e->segments.size() == 2 && first->kind == Symbol::Kind::Type
+                              ? AssociatedConstantImportHelp(*first, methodName)
+                              : std::nullopt);
                 return TypeRef::MakeUnknown();
             }
             if (e->segments.size() > 2) {
                 EmitError(e->location, std::format("'{}' is a function, not a module", methodName));
                 return TypeRef::MakeUnknown();
             }
+            NoteDeclarationUse(*method, e->location);
             return AssociatedFunctionType(receiverType, *method);
         }
         Symbol *current = first;
@@ -136,17 +194,31 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             }
             current = item;
         }
+        NoteSymbolUse(*current, e->location);
         if (current->kind == Symbol::Kind::Const && current->declaration) {
             constantReferences[e] = static_cast<const ConstDecl *>(current->declaration);
+        }
+        else if (current->kind == Symbol::Kind::Var && (AstCast<const GlobalDecl>(current->declaration) ||
+                                                        AstCast<const ExternVarDecl>(current->declaration))) {
+            globalReferences[e] = current->declaration;
+        }
+        else if (current->kind == Symbol::Kind::Func) {
+            if (std::optional<TypeRef> selected = SelectOverloadedFunctionValue(*e, *current)) {
+                return *selected;
+            }
+            // A path names its function by declaration, so lowering need not find it again by its last segment.
+            if (current->funcOverloads.size() == 1 && current->funcOverloads.front()->typeParams.empty()) {
+                RecordFunctionValue(*e, *current->funcOverloads.front());
+            }
         }
         return ReadTrackedSymbol(*current, e->location);
     }
 
-    if (auto *e = dynamic_cast<const TypeQueryExpr *>(&expr)) {
+    if (auto *e = AstCast<const TypeQueryExpr>(&expr)) {
         return CheckTypeQueryExpression(*e);
     }
 
-    if (dynamic_cast<const IntrinsicExpr *>(&expr)) {
+    if (AstCast<const IntrinsicExpr>(&expr)) {
         const auto *e = static_cast<const IntrinsicExpr *>(&expr);
         using K = IntrinsicExpr::Kind;
         const bool takesArgument = e->kind == K::TargetFeature || e->kind == K::CompilerHasFeature ||
@@ -155,7 +227,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             if (e->args.size() != 1 || !e->args[0]) {
                 EmitError(e->location, "compile-time intrinsic expects exactly one argument");
             }
-            else if (e->kind == K::TargetFeature && dynamic_cast<const EnumShorthandExpr *>(e->args[0].get())) {
+            else if (e->kind == K::TargetFeature && AstCast<const EnumShorthandExpr>(e->args[0].get())) {
                 // `.AVX2` is given its meaning by #target.HasFeature.
             }
             else {
@@ -195,7 +267,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
 
     // A diverging body is checked exactly as the statement it spells, and produces no value of its own.
-    if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expr)) {
+    if (const auto *diverge = AstCast<const DivergeExpr>(&expr)) {
         switch (diverge->kind) {
         case DivergeExpr::Kind::Return:
             CheckReturn(diverge->value.get(), diverge->location);
@@ -213,7 +285,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
 
     // A native constructor names the level it builds. `.Some(v)` infers its payload from a typed operand; the channel
     // `.Success` or `.Failure` leaves open is supplied by the expected type, so its type stays incomplete until then.
-    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {
         const TypeRef operand = construct->operand ? CheckExpr(*construct->operand) : TypeRef::MakeUnknown();
         if (operand.IsUnknown()) {
             return operand;
@@ -233,39 +305,70 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
     }
 
-    if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expr)) {
+    if (const auto *mapped = AstCast<const MappedTryExpr>(&expr)) {
         return CheckMappedTry(*mapped);
     }
-    if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expr)) {
+    if (const auto *recovery = AstCast<const CatchExpr>(&expr)) {
         return CheckCatchExpression(*recovery);
     }
 
     // `none` has a placeholder type until its context completes it, so its conversion is checked like any other
     // value's.
-    if (dynamic_cast<const NoneExpr *>(&expr)) {
+    if (AstCast<const NoneExpr>(&expr)) {
         return TypeRef::MakeNoneValue();
     }
 
-    if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
+    if (const auto *e = AstCast<const EnumShorthandExpr>(&expr)) {
         // The bare `.Variant` shorthand is not part of the language; the
-        // variant must always be written out in full.
-        EmitError(e->location, std::format("'.{}' must be written in full, as in 'Enum::{}'", e->variant, e->variant));
+        // variant must always be written out in full. The message names the
+        // enums and variants in scope that declare a case of that name.
+        std::vector<std::string> owners;
+        for (const auto &[key, declaration] : enumDecls) {
+            if (!declaration || std::ranges::none_of(declaration->variants, [&](const EnumDecl::Variant &variant) {
+                    return variant.name == e->variant;
+                })) {
+                continue;
+            }
+            const Symbol *symbol = currentScope->Lookup(declaration->name);
+            if (symbol && symbol->kind == Symbol::Kind::Type) {
+                owners.push_back(declaration->name);
+            }
+        }
+        std::ranges::sort(owners);
+        owners.erase(std::ranges::unique(owners).begin(), owners.end());
+        if (owners.size() == 1) {
+            EmitError(e->location, std::format("'.{}' must be written in full, as in '{}::{}'", e->variant,
+                                               owners.front(), e->variant));
+        }
+        else if (owners.empty()) {
+            EmitError(e->location,
+                      std::format("'.{}' must be written in full, with the name of its enum or variant", e->variant));
+        }
+        else {
+            std::vector<std::string> notes;
+            for (const std::string &owner : owners) {
+                notes.push_back(std::format("'{}::{}' is in scope", owner, e->variant));
+            }
+            EmitError(e->location,
+                      std::format("'.{}' must be written in full, with the name of its enum or variant", e->variant),
+                      std::move(notes));
+        }
         return TypeRef::MakeUnknown();
     }
 
-    if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {
+    if (auto *e = AstCast<const TernaryExpr>(&expr)) {
         return CheckTernaryExpression(*e);
     }
 
-    if (auto *e = dynamic_cast<const RangeExpr *>(&expr)) {
+    if (auto *e = AstCast<const RangeExpr>(&expr)) {
         TypeRef loType = e->lo ? CheckExpr(*e->lo) : TypeRef::MakeUnknown();
         TypeRef hiType = e->hi ? CheckExpr(*e->hi) : TypeRef::MakeUnknown();
         if ((!loType.IsUnknown() && !loType.IsNumeric()) || (!hiType.IsUnknown() && !hiType.IsNumeric())) {
             EmitError(e->location, "range bounds must be numeric");
         }
         if (e->lo && e->hi) {
-            const auto start = EvalConstInt(*e->lo);
-            const auto end = EvalConstInt(*e->hi);
+            const auto start = EvalConstInteger(*e->lo);
+            const auto end = EvalConstInteger(*e->hi);
             if (start && end && *start > *end) {
                 EmitError(e->location, "range start cannot be greater than its end");
             }
@@ -277,13 +380,51 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         else if (e->lo && e->hi && loType.IsInteger() && UnsuffixedIntegerLiteralFits(*e->hi, loType)) {
             elemType = loType;
         }
+        else if (e->lo && e->hi && loType.IsInteger() && hiType.IsInteger() && loType != hiType) {
+            // Bounds of different integer types meet in one type as an operator's operands do, or in the type of the
+            // bound that holds every value of the other, so neither is converted to a type that cannot hold it.
+            const auto holdsEvery = [](const TypeRef &from, const TypeRef &to) {
+                const std::optional<std::uint64_t> fromBytes = from.SizeInBytes();
+                const std::optional<std::uint64_t> toBytes = to.SizeInBytes();
+                if (!fromBytes || !toBytes || (from.IsSigned() && !to.IsSigned())) {
+                    return false;
+                }
+                return from.IsSigned() == to.IsSigned() ? *fromBytes <= *toBytes : *fromBytes < *toBytes;
+            };
+            if (IsUnsuffixedIntegerLiteral(*e->hi) && !IsUnsuffixedIntegerLiteral(*e->lo) &&
+                IsIntegerLiteralOutOfRangeFor(*e->hi, loType)) {
+                EmitError(e->hi->location,
+                          std::format("integer literal is out of range for type '{}'", loType.ToString()));
+            }
+            else if (IsUnsuffixedIntegerLiteral(*e->lo) && !IsUnsuffixedIntegerLiteral(*e->hi) &&
+                     IsIntegerLiteralOutOfRangeFor(*e->lo, hiType)) {
+                EmitError(e->lo->location,
+                          std::format("integer literal is out of range for type '{}'", hiType.ToString()));
+            }
+            else if (const std::optional<TypeRef> common = CommonOperandType(*e->lo, loType, *e->hi, hiType)) {
+                elemType = *common;
+            }
+            else if (holdsEvery(hiType, loType)) {
+                elemType = loType;
+            }
+            else if (holdsEvery(loType, hiType)) {
+                elemType = hiType;
+            }
+            else {
+                EmitError(
+                    e->location,
+                    std::format("range bounds '{}' and '{}' have no common type", loType.ToString(), hiType.ToString()),
+                    {"neither bound's type holds every value of the other"},
+                    "convert one bound with 'as' to the type the range should use");
+            }
+        }
         if (elemType.IsUnknown()) {
             return TypeRef::MakeRangeFull();
         }
         return TypeRef::MakeRange(elemType, e->lo != nullptr, e->hi != nullptr, e->inclusive);
     }
 
-    if (const auto *e = dynamic_cast<const CallExpr *>(&expr)) {
+    if (const auto *e = AstCast<const CallExpr>(&expr)) {
         return CheckCallExpression(*e);
     }
 
@@ -291,7 +432,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return *aggregateType;
     }
 
-    if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {
+    if (auto *e = AstCast<const IsExpr>(&expr)) {
         TypeRef operandType = CheckExpr(*e->operand);
         const TypeRef testedType = ResolveType(*e->type);
         const std::string ifaceName = NamedBaseTypeName(testedType);
@@ -308,16 +449,16 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         CheckMembershipTest(*e, operandType, testedType);
         return TypeRef::MakeBool();
     }
-    if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {
+    if (auto *e = AstCast<const MatchExpr>(&expr)) {
         return CheckMatchExpression(*e);
     }
 
-    if (auto *e = dynamic_cast<const BlockExpr *>(&expr)) {
+    if (auto *e = AstCast<const BlockExpr>(&expr)) {
         CheckBlock(*e->block);
         return TypeRef::MakeUnknown();
     }
 
-    if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
+    if (auto *e = AstCast<const SpreadExpr>(&expr)) {
         return CheckExpr(*e->operand);
     }
 
@@ -343,11 +484,11 @@ TypeRef AnalysisContext::LiteralType(const Token &tok) const {
 /// Reject a constant that the target character width cannot hold.
 ///
 /// The width's own rule decides: a code unit accepts everything that fits in it, a scalar value stops at U+10FFFF
-/// AnalysisContext::and refuses the surrogates. Every character width is covered, so a width gains this check by
+/// and refuses the surrogates. Every character width is covered, so a width gains this check by
 /// joining the catalog rather than by being listed here.
 void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
                                            const TypeRef &targetType) const {
-    const auto maximum = MaxCharacterValue(targetType.kind);
+    const auto maximum = MaxCharacterValue(targetType->kind);
     if (!maximum || !(operandType.IsInteger() || operandType.IsChar())) {
         return;
     }
@@ -355,18 +496,28 @@ void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const Typ
         EmitError(expression.location, std::format("constant cast from '{}' to '{}' is outside the target type's range",
                                                    operandType.ToString(), targetType.ToString()));
     };
-    if (const auto value = EvalConstInt(*expression.operand); value && *value < 0) {
+    // A constant folds whatever its spelling: a suffixed literal, a negated or parenthesized one, or a named constant.
+    // Constant data never reaches the run-time check, so a value the target cannot hold must be refused here.
+    std::optional<std::uint64_t> charValue;
+    if (const auto value = EvalConstInteger(*expression.operand)) {
+        if (*value < 0) {
+            outOfRange();
+            return;
+        }
+        charValue = static_cast<std::uint64_t>(*value);
+    }
+    else {
+        const auto constant = EvalConstCharCastValue(*expression.operand);
+        if (!constant) {
+            return;
+        }
+        // A wide integer constant can lie beyond a machine word, and so beyond every character width's maximum too.
+        charValue = constant->ToUnsigned();
+    }
+    if (!charValue || *charValue > *maximum) {
         outOfRange();
-        return;
     }
-    const auto charValue = EvalConstCharCastValue(*expression.operand);
-    if (!charValue) {
-        return;
-    }
-    if (*charValue > *maximum) {
-        outOfRange();
-    }
-    else if (!IsValidCharacterValue(targetType.kind, *charValue)) {
+    else if (!IsValidCharacterValue(targetType->kind, *charValue)) {
         EmitError(expression.location, std::format("cast from '{}' to '{}' uses invalid surrogate code point U+{:04X}",
                                                    operandType.ToString(), targetType.ToString(), *charValue));
     }
@@ -376,7 +527,7 @@ void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const Typ
 /// measure than a well-behaved one.
 std::size_t AnalysisContext::TypeNodeCount(const TypeRef &type, const std::size_t limit) {
     std::size_t count = 1;
-    for (const TypeRef &inner : type.inner) {
+    for (const TypeRef &inner : type->inner) {
         if (count > limit) {
             return count;
         }

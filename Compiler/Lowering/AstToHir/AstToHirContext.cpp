@@ -24,7 +24,7 @@ void HirScope::Define(HirSymbol symbol) {
             it->second.funcOverloads.insert(it->second.funcOverloads.end(), symbol.funcOverloads.begin(),
                                             symbol.funcOverloads.end());
             if (it->second.type.IsUnknown() && !symbol.type.IsUnknown()) {
-                it->second.type = std::move(symbol.type);
+                it->second.type = symbol.type;
             }
         }
         return;
@@ -52,26 +52,84 @@ AstToHirContext::AstToHirContext(const SemanticModel &inputModel, const std::vec
     , globalScope(nullptr)
     , currentScope(&globalScope)
     , cleanupPlanner(inputModel)
-    , diagnostics(outputDiagnostics) {
+    , diagnostics(&outputDiagnostics) {
+}
+
+AstToHirContext::AstToHirContext(const AstToHirContext &prepared, std::vector<Diagnostic> &outputDiagnostics)
+    : model(prepared.model)
+    , modules(prepared.modules)
+    , context(prepared.context)
+    , declarationOnlyModules(prepared.declarationOnlyModules)
+    , globalScope(prepared.globalScope)
+    , currentScope(&globalScope)
+    , structDecls(prepared.structDecls)
+    , enumDecls(prepared.enumDecls)
+    , unionDecls(prepared.unionDecls)
+    , methodsByType(prepared.methodsByType)
+    , interfaceDecls(prepared.interfaceDecls)
+    , typeInterfaceVtables(prepared.typeInterfaceVtables)
+    , genericInterfaceImpls(prepared.genericInterfaceImpls)
+    , methodImpl(prepared.methodImpl)
+    , cleanupPlanner(prepared.model)
+    , functionOrigins(prepared.functionOrigins)
+    , diagnostics(&outputDiagnostics) {
 }
 
 AstToHirContext::~AstToHirContext() = default;
 
-HirPackage AstToHirContext::Run() {
+void AstToHirContext::ResetModuleState() {
+    propagationOrdinal = 0;
+    coalescingOrdinal = 0;
+    iterationOrdinal = 0;
+    checkedArithmeticOrdinal = 0;
+    zeroizationOrdinal = 0;
+    nativeOrdinal = 0;
+    returnOrdinal = 0;
+    interfaceValueOrdinal = 0;
+    cleanupPlanner.ResetBindingIds();
+}
+
+HirPackage AstToHirContext::Run(Parallel::WorkerPool *pool) {
     RegisterBuiltins();
     for (const Module *module : modules) {
         CollectModule(*module);
     }
 
     HirPackage package;
-    for (const Module *module : modules) {
-        package.modules.push_back(LowerModule(*module));
+    package.modules.resize(modules.size());
+    if (pool == nullptr || pool->Jobs() == 1) {
+        for (std::size_t index = 0; index < modules.size(); ++index) {
+            package.modules[index] = LowerModule(*modules[index]);
+        }
+    }
+    else {
+        // Once the declarations are collected a module lowers on its own: the semantic model is read-only, and each
+        // module emits the generic instances it uses itself. Every thread lowers with its own copy of the tables, and
+        // diagnostics merge in module order.
+        std::vector<std::unique_ptr<AstToHirContext>> workers(pool->Jobs());
+        std::vector<std::vector<Diagnostic>> moduleDiagnostics(modules.size());
+        pool->ForEachOnWorker(modules.size(), [&](const std::size_t index, const std::size_t worker) {
+            auto &lowering = workers[worker];
+            if (!lowering)
+                lowering = std::make_unique<AstToHirContext>(*this, moduleDiagnostics[index]);
+            lowering->diagnostics = &moduleDiagnostics[index];
+            package.modules[index] = lowering->LowerModule(*modules[index]);
+        });
+        for (auto &reported : moduleDiagnostics) {
+            diagnostics->insert(diagnostics->end(), std::make_move_iterator(reported.begin()),
+                                std::make_move_iterator(reported.end()));
+        }
     }
     package.dropGlues.reserve(model.DropGluePlans().size());
     for (const auto &[_, plan] : model.DropGluePlans()) {
         package.dropGlues.push_back(plan);
     }
     std::ranges::sort(package.dropGlues, {}, [](const DropGluePlan &plan) { return plan.type.ToString(); });
+    // Destructor instances are lowered from the state the last module starts from, however the modules themselves were
+    // lowered.
+    if (!modules.empty()) {
+        BeginModule(*modules.back());
+    }
     ResolveDropGlue(package);
     for (const auto &[name, layout] : model.TypeLayouts()) {
         package.typeLayouts.emplace(name, HirTypeLayout{layout.size, layout.alignment});
@@ -89,19 +147,10 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
     if (package.modules.empty()) {
         return;
     }
-    // Every name the package already emitted, so a destructor already instantiated by another use resolves to that
-    // body instead of lowering a second one under the same symbol.
+    // The instances form a pool of their own, independent of what the modules instantiated: a module whose glue calls
+    // one takes a private copy unless it already lowered that instance itself.
     generatedMonomorphizedFuncNames.clear();
-    for (const HirModule &module : package.modules) {
-        for (const HirFunc &function : module.funcs) {
-            generatedMonomorphizedFuncNames.insert(function.name);
-        }
-        for (const HirImplBlock &implementation : module.impls) {
-            for (const std::string &name : implementation.methodLinkerNames) {
-                generatedMonomorphizedFuncNames.insert(name);
-            }
-        }
-    }
+    monomorphizedFuncs.clear();
     // A plan for a type that still names a type parameter describes nothing that can exist: there is no value of
     // `Box<T>` until `T` is chosen, and every choice has a plan of its own. Instantiating one would lower the generic
     // body with the parameter substituted for itself, which is how a `sizeof(T)` inside it ends up with no width.
@@ -109,12 +158,9 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
     for (DropGluePlan &plan : package.dropGlues) {
         ResolveDropGlueSteps(plan.steps);
     }
-    // An instantiation requested above belongs to whichever module is lowered last: every module has already been
-    // lowered, and a function has to live in one of them to be emitted at all.
-    for (HirFunc &instance : monomorphizedFuncs) {
-        package.modules.back().funcs.push_back(std::move(instance));
-    }
+    package.dropGlueInstances = std::move(monomorphizedFuncs);
     monomorphizedFuncs.clear();
+    generatedMonomorphizedFuncNames.clear();
 }
 
 void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
@@ -143,29 +189,29 @@ void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
 /// parameters, and lowering then built a destructor for a type that cannot exist -- which asks for the size of a
 /// node whose element type is still a parameter, and stops the compiler where there is nothing left to ask.
 bool AstToHirContext::TypeIsConcrete(const TypeRef &type) {
-    if (type.IsUnknown() || type.kind == TypeRef::Kind::TypeParam) {
+    if (type.IsUnknown() || type->kind == TypeRef::Kind::TypeParam) {
         return false;
     }
-    for (const TypeRef &inner : type.inner) {
+    for (const TypeRef &inner : type->inner) {
         if (!TypeIsConcrete(inner)) {
             return false;
         }
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return true;
     }
-    if (type.name.find('<') == std::string::npos) {
+    if (type->name.find('<') == std::string::npos) {
         // A bare name that nothing declares is a parameter. Primitives and the builtin aggregates never reach here
         // as a named type -- they are recognized while the name is parsed -- so a name is either declared or a
         // parameter, with nothing in between.
-        if (structDecls.contains(type.name) || enumDecls.contains(type.name) || unionDecls.contains(type.name) ||
-            interfaceDecls.contains(type.name))
+        if (structDecls.contains(type->name) || enumDecls.contains(type->name) || unionDecls.contains(type->name) ||
+            interfaceDecls.contains(type->name))
             return true;
-        const HirSymbol *declared = globalScope.Lookup(type.name);
+        const HirSymbol *declared = globalScope.Lookup(type->name);
         return declared != nullptr &&
                (declared->kind == HirSymbol::Kind::Type || declared->kind == HirSymbol::Kind::Interface);
     }
-    for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
+    for (const TypeRef &argument : ParseTypeArgsFromTypeName(type->name)) {
         if (!TypeIsConcrete(argument)) {
             return false;
         }
@@ -233,10 +279,10 @@ void AstToHirContext::AppendCurrentScopeCleanups(HirBlock &block) const {
 
 std::uint64_t AstToHirContext::BindingId(const HirExpr &expression) const {
     std::string_view name;
-    if (const auto *variable = dynamic_cast<const HirVarExpr *>(&expression)) {
+    if (const auto *variable = HirCast<const HirVarExpr>(&expression)) {
         name = variable->name;
     }
-    else if (dynamic_cast<const HirSelfExpr *>(&expression)) {
+    else if (HirCast<const HirSelfExpr>(&expression)) {
         name = "self";
     }
     if (name.empty()) {
@@ -250,16 +296,30 @@ std::uint64_t AstToHirContext::ConsumedBindingId(const HirExpr &expression) cons
     return BindingId(expression);
 }
 
-std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const HirExpr &target, SourceLocation origin) const {
+std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const AssignExpr &assignment,
+                                                               const HirExpr &target) const {
     const std::uint64_t bindingId = BindingId(target);
     if (const std::optional<HirDropAction> action = cleanupPlanner.ActionFor(bindingId)) {
         return action;
     }
-    const DropGluePlan *glue = model.TryGetDropGlue(target.type);
+    // Any other place holds an old value only where analysis found one; a place reached through a raw pointer is
+    // initialized by the write and has nothing to destroy.
+    const PlaceReplacement *replacement = model.TryGetPlaceReplacement(assignment);
+    const DropGluePlan *glue = replacement ? model.TryGetDropGlue(target.type) : nullptr;
     if (!glue) {
         return std::nullopt;
     }
-    return HirDropAction{0, "<place>", target.type, glue->symbol, origin};
+    HirDropAction action{0, "<place>", target.type, glue->symbol, assignment.location};
+    action.destroysTarget = true;
+    if (const auto *owner = AstCast<const IdentExpr>(replacement->owner)) {
+        const HirSymbol *symbol = currentScope->Lookup(owner->name);
+        // A value with a droppable part is droppable itself, so its binding always has a drop flag to consult.
+        if (!symbol || symbol->kind != HirSymbol::Kind::Var || symbol->bindingId == 0) {
+            return std::nullopt;
+        }
+        action.ownerBindingId = symbol->bindingId;
+    }
+    return action;
 }
 
 std::optional<HirPartialDropAction> AstToHirContext::PartialCleanup(const HirPartialDropAction::Kind kind,
@@ -283,16 +343,12 @@ void AstToHirContext::RegisterBuiltins() {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Type;
         symbol.name = name;
-        symbol.type = std::move(type);
+        symbol.type = type;
         globalScope.Define(std::move(symbol));
     };
     add("opaque", TypeRef::MakeOpaque());
-    // Semantic analysis has already rejected any use of a reserved primitive, so lowering binds only the spellings
-    // that carry a representation.
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        if (primitive.implemented) {
-            add(primitive.name, TypeRef::MakePrimitive(primitive.kind));
-        }
+        add(primitive.name, TypeRef::MakePrimitive(primitive.kind));
     }
     for (const PrimitiveAlias &alias : PrimitiveAliases()) {
         add(alias.name, TypeRef::MakePrimitive(alias.kind));
@@ -301,6 +357,7 @@ void AstToHirContext::RegisterBuiltins() {
 
 void AstToHirContext::CollectModule(const Module &module) {
     currentFile = module.name;
+    declModulePath.clear();
     for (const auto &declaration : module.items) {
         CollectDecl(*declaration);
     }
@@ -320,7 +377,7 @@ TypeRef AstToHirContext::MakeFuncType(const std::vector<Param> &params, const st
     TypeRef resultType = returnType ? ResolveType(**returnType) : TypeRef::MakeOpaque();
 
     currentTypeParams = savedTypeParams;
-    return TypeRef::MakeFunc(std::move(paramTypes), std::move(resultType));
+    return TypeRef::MakeFunc(std::move(paramTypes), resultType);
 }
 
 std::string AstToHirContext::NominalName(const Decl &declaration) const {
@@ -332,10 +389,10 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         HirSymbol symbol;
         symbol.kind = kind;
         symbol.name = name;
-        symbol.type = std::move(type);
+        symbol.type = type;
         globalScope.Define(std::move(symbol));
     };
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Func;
         symbol.name = function->name;
@@ -344,35 +401,46 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.intrinsicName = function->intrinsicName;
         symbol.funcOverloads.push_back(function);
         globalScope.Define(std::move(symbol));
+        functionOrigins.emplace(function, DeclarationOrigin{currentFile, declModulePath});
     }
-    else if (const auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+    else if (const auto *structDecl = AstCast<const StructDecl>(&decl)) {
         structDecls[NominalName(*structDecl)] = structDecl;
         simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(NominalName(*structDecl)));
     }
-    else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (const auto *enumDecl = AstCast<const EnumDecl>(&decl)) {
         enumDecls[NominalName(*enumDecl)] = enumDecl;
         simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
     }
-    else if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
         unionDecls[NominalName(*unionDecl)] = unionDecl;
         simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(NominalName(*unionDecl)));
     }
-    else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    else if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
         simple(HirSymbol::Kind::Interface, interfaceDecl->name, TypeRef::MakeNamed(NominalName(*interfaceDecl)));
         interfaceDecls[NominalName(*interfaceDecl)] = interfaceDecl;
     }
-    else if (const auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
+    else if (const auto *constDecl = AstCast<const ConstDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Const;
         symbol.name = constDecl->name;
-        symbol.type = constDecl->type ? ResolveType(**constDecl->type) : TypeRef{};
+        // A reused module's constant that nothing read was never checked, so its type was never resolved either.
+        symbol.type =
+            constDecl->type && model.TryGetSymbolIdentity(*constDecl) ? ResolveType(**constDecl->type) : TypeRef{};
         symbol.intrinsicName = constDecl->intrinsicName;
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    else if (const auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Var;
+        symbol.name = globalDecl->name;
+        symbol.type = ResolveType(*globalDecl->type);
+        symbol.isMut = true;
+        globalScope.Define(std::move(symbol));
+    }
+    else if (const auto *aliasDecl = AstCast<const TypeAliasDecl>(&decl)) {
         simple(HirSymbol::Kind::Type, aliasDecl->name, ResolveType(*aliasDecl->type));
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Func;
         symbol.name = externFunction->name;
@@ -380,102 +448,55 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         symbol.isNoReturn = externFunction->isNoReturn;
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *externVariable = dynamic_cast<const ExternVarDecl *>(&decl)) {
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&decl)) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Var;
         symbol.name = externVariable->name;
         symbol.isMut = true;
         globalScope.Define(std::move(symbol));
     }
-    else if (const auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : externBlock->items) {
             CollectDecl(*item);
         }
     }
-    else if (const auto *moduleDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
+        const std::string savedDeclModulePath = declModulePath;
+        declModulePath = declModulePath.empty() ? moduleDecl->name : declModulePath + "::" + moduleDecl->name;
         for (const auto &item : moduleDecl->items) {
             CollectDecl(*item);
         }
+        declModulePath = savedDeclModulePath;
     }
-    else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (const auto *implDecl = AstCast<const ImplDecl>(&decl)) {
         const TypeRef *receiver = implDecl->extendedType ? model.TryGetType(*implDecl->extendedType) : nullptr;
         const std::string typeName = receiver ? NamedBaseTypeName(*receiver) : BaseTypeName(implDecl->typeName);
         for (const auto &method : implDecl->methods) {
             methodsByType[typeName][method->name].push_back(method.get());
             methodImpl[method.get()] = implDecl;
+            functionOrigins.emplace(method.get(), DeclarationOrigin{currentFile, declModulePath});
         }
         if (implDecl->interfaceName) {
             if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
                 typeInterfaceVtables[typeName][identity->interfaceName] = identity->linkerName;
             }
+            else if (!ImplTypeParams(*implDecl).empty()) {
+                genericInterfaceImpls[typeName].push_back(implDecl);
+            }
         }
     }
 }
 
-namespace {
-/// The module path a source file corresponds to, relative to the package root, so the identity does not depend on where
-/// the package was checked out.
-std::string FilePathToModulePath(const std::string &filePath) {
-    const std::string generic = std::filesystem::path(filePath).generic_string();
-    std::vector<std::string> parts;
-    std::string current;
-    for (const char character : generic) {
-        if (character == '/') {
-            if (!current.empty()) {
-                parts.push_back(current);
-                current.clear();
-            }
-        }
-        else {
-            current += character;
-        }
-    }
-    if (!current.empty()) {
-        parts.push_back(current);
-    }
-
-    std::size_t sourceIndex = std::string::npos;
-    for (std::size_t i = 0; i < parts.size(); ++i) {
-        if (parts[i] == "Src" || parts[i] == "src") {
-            sourceIndex = i;
-        }
-    }
-
-    std::vector<std::string> moduleParts;
-    if (sourceIndex != std::string::npos && sourceIndex + 1 < parts.size()) {
-        for (std::size_t i = sourceIndex + 1; i < parts.size(); ++i) {
-            std::string part = parts[i];
-            if (i + 1 == parts.size()) {
-                if (const auto dot = part.rfind('.'); dot != std::string::npos) {
-                    part = part.substr(0, dot);
-                }
-            }
-            moduleParts.push_back(std::move(part));
-        }
-    }
-    else {
-        std::string stem = parts.empty() ? filePath : parts.back();
-        if (const auto dot = stem.rfind('.'); dot != std::string::npos) {
-            stem = stem.substr(0, dot);
-        }
-        moduleParts.push_back(std::move(stem));
-    }
-
-    std::string result;
-    for (std::size_t i = 0; i < moduleParts.size(); ++i) {
-        if (i != 0) {
-            result += "::";
-        }
-        result += moduleParts[i];
-    }
-    return result;
+void AstToHirContext::BeginModule(const Module &module) {
+    ResetModuleState();
+    currentFile = module.name;
+    declModulePath.clear();
 }
-} // namespace
 
 HirModule AstToHirContext::LowerModule(const Module &module) {
-    currentFile = module.name;
-    currentModulePath = FilePathToModulePath(module.name);
-    declModulePath.clear();
+    BeginModule(module);
+    declarationOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
+    readsBuildTime = false;
     HirModule loweredModule;
     loweredModule.name = module.name;
     for (const auto &declaration : module.items) {
@@ -488,6 +509,12 @@ HirModule AstToHirContext::LowerModule(const Module &module) {
     }
     monomorphizedFuncs.clear();
     generatedMonomorphizedFuncNames.clear();
+    for (HirImplBlock &vtable : instanceVtables) {
+        loweredModule.impls.push_back(std::move(vtable));
+    }
+    instanceVtables.clear();
+    instanceVtableLabels.clear();
+    declarationOnly = false;
 
     // Lowering an instantiation's fields resolves types of its own, so the queue is walked by index rather than
     // iterated: entries appended along the way are lowered in the same pass.
@@ -502,11 +529,12 @@ HirModule AstToHirContext::LowerModule(const Module &module) {
     }
     pendingStructInstantiations.clear();
     seenStructInstantiations.clear();
+    loweredModule.readsBuildTime = readsBuildTime;
     return loweredModule;
 }
 
 void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+    if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         if (!function->intrinsicName.empty() && !function->body && !function->isAsm) {
             return;
         }
@@ -530,51 +558,55 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         }
         module.funcs.push_back(std::move(loweredFunction));
     }
-    else if (const auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
+    else if (const auto *structDecl = AstCast<const StructDecl>(&decl)) {
         module.structs.push_back(LowerStruct(*structDecl));
     }
-    else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (const auto *enumDecl = AstCast<const EnumDecl>(&decl)) {
         module.enums.push_back(LowerEnum(*enumDecl));
     }
-    else if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (const auto *unionDecl = AstCast<const UnionDecl>(&decl)) {
         module.unions.push_back(LowerUnion(*unionDecl));
     }
-    else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
-        module.interfaces.push_back(LowerInterface(*interfaceDecl));
+    else if (const auto *interfaceDecl = AstCast<const InterfaceDecl>(&decl)) {
+        // A generic interface only constrains type parameters, so no value of it is ever laid out or dispatched.
+        if (interfaceDecl->typeParams.empty()) {
+            module.interfaces.push_back(LowerInterface(*interfaceDecl));
+        }
     }
-    else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (const auto *implDecl = AstCast<const ImplDecl>(&decl)) {
         if (ImplTypeParams(*implDecl).empty()) {
             module.impls.push_back(LowerImpl(*implDecl));
         }
     }
-    else if (const auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-        if (constDecl->intrinsicName.empty()) {
+    else if (const auto *constDecl = AstCast<const ConstDecl>(&decl)) {
+        // A reused module's constant was checked only if something read it, and only then does anything need it.
+        if (constDecl->intrinsicName.empty() && (!declarationOnly || model.TryGetSymbolIdentity(*constDecl))) {
             module.consts.push_back(LowerConst(*constDecl));
         }
     }
-    else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+    else if (const auto *globalDecl = AstCast<const GlobalDecl>(&decl)) {
+        module.globals.push_back(LowerGlobal(*globalDecl));
+    }
+    else if (const auto *externFunction = AstCast<const ExternFuncDecl>(&decl)) {
         module.externFuncs.push_back(LowerExternFunc(*externFunction));
     }
-    else if (const auto *externVariable = dynamic_cast<const ExternVarDecl *>(&decl)) {
+    else if (const auto *externVariable = AstCast<const ExternVarDecl>(&decl)) {
         module.externVars.push_back(LowerExternVar(*externVariable));
     }
-    else if (const auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    else if (const auto *externBlock = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : externBlock->items) {
             LowerTopLevelDecl(*item, module);
         }
     }
-    else if (const auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+    else if (const auto *aliasDecl = AstCast<const TypeAliasDecl>(&decl)) {
         module.typeAliases.push_back(LowerTypeAlias(*aliasDecl));
     }
-    else if (const auto *moduleDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
-        const std::string savedModulePath = currentModulePath;
+    else if (const auto *moduleDecl = AstCast<const ModuleDecl>(&decl)) {
         const std::string savedDeclModulePath = declModulePath;
-        currentModulePath = currentModulePath.empty() ? moduleDecl->name : currentModulePath + "::" + moduleDecl->name;
         declModulePath = declModulePath.empty() ? moduleDecl->name : declModulePath + "::" + moduleDecl->name;
         for (const auto &item : moduleDecl->items) {
             LowerTopLevelDecl(*item, module);
         }
-        currentModulePath = savedModulePath;
         declModulePath = savedDeclModulePath;
     }
 }
@@ -588,14 +620,14 @@ HirCopyPlan AstToHirContext::BuildEnumCopyPlan(const TypeRef &type, const EnumDe
     }
 
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     const std::size_t count = std::min(arguments.size(), declaration.typeParams.size());
     for (std::size_t index = 0; index < count; ++index) {
         substitutions.emplace(declaration.typeParams[index].name, arguments[index]);
     }
 
     bool needsPlan = false;
-    const std::string base = BaseTypeName(type.name);
+    const std::string base = BaseTypeName(type->name);
     for (const EnumDecl::Variant &variant : declaration.variants) {
         plan.variantDiscriminants.push_back(LookupEnumVariantDiscriminant(base, variant.name).value_or("0"));
         std::vector<TypeRef> payloadTypes;
@@ -637,14 +669,14 @@ HirMovePlan AstToHirContext::BuildEnumMovePlan(const TypeRef &type, const EnumDe
     }
 
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     const std::size_t count = std::min(arguments.size(), declaration.typeParams.size());
     for (std::size_t index = 0; index < count; ++index) {
         substitutions.emplace(declaration.typeParams[index].name, arguments[index]);
     }
 
     bool needsPlan = false;
-    const std::string base = BaseTypeName(type.name);
+    const std::string base = BaseTypeName(type->name);
     for (const EnumDecl::Variant &variant : declaration.variants) {
         plan.variantDiscriminants.push_back(LookupEnumVariantDiscriminant(base, variant.name).value_or("0"));
         std::vector<TypeRef> payloadTypes;

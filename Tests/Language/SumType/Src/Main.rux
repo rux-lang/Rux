@@ -1,10 +1,8 @@
 // Sum types: `A | B` holds one value of one of a set of distinct types.
-//
 // A sum is not a named variant. Its members are types, not case names, so `int32 | bool` and `bool | int32` are the
 // same type, a member is selected by its type with a typed pattern, and a sum whose members coincide after generic
 // substitution collapses to the one type they share. A value enters a sum by exact member injection or by widening a
 // sum of fewer members, and leaves it only through a pattern: no conversion, extraction, or narrowing is implicit.
-//
 // Destruction is case-aware. Every check that holds a tracked payload counts destructions, so a value that moved into a
 // wider sum, into a binding, or out through a call is shown to be destroyed exactly once, and an inactive member never.
 
@@ -227,5 +225,13 @@ func Main() -> int {
     var counter = Counter { count: 0i32 };
     Assert(TakeMember(@counter) == 5i32, "a binding takes the member out");
     Assert(counter.count == 1, "and destroys it when the arm ends");
+
+    // An annotation gives its type to every arm of a match, so each arm is injected into the sum.
+    let n: int32 = 3;
+    let injected: int32 | bool = match n { 0 => false, else => n };
+    Assert(injected is int32, "the integer arm becomes the integer member");
+    let zero: int32 = 0;
+    let flagged: int32 | bool = match zero { 0 => false, else => zero };
+    Assert(flagged is bool, "the bool arm becomes the bool member");
     return 0;
 }

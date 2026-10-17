@@ -1,8 +1,7 @@
 #pragma once
 
 // The fenced Rux blocks of the first-party package READMEs, written out as scratch packages the real compiler can
-// check. PackageExampleTests compiles each one; LegacyProtocolAuditTests audits the same packages, so both read the
-// blocks the same way.
+// check. PackageExampleTests compiles each one.
 
 #include <cstddef>
 #include <cstdint>

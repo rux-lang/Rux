@@ -1,0 +1,23 @@
+// Floats without a C ABI mapping, at every C ABI boundary.
+//
+// float32 and float64 cross as C's float and double. The other widths are passed by the compiler's own convention,
+// which matches no C type -- not `_Float16`, `long double` or `__float128` -- so extern signatures, '#Abi' functions
+// and C-variadic calls refuse them rather than hand the other side bits it reads differently.
+
+#Link("msvcrt.dll")
+extern {
+    func Narrow(value: float8) -> float16;
+    func Extended(value: float80) -> float128;
+    func Wide(value: float256, ...) -> float512;
+    func printf(format: *char8, ...) -> int32;
+    func Native(value: float32, pointer: *float128) -> float64;
+}
+
+#Abi(.C)
+func Callback(value: float16) -> float128 {
+    return 0.0f128;
+}
+
+func Main() {
+    printf(null, 1.0f8, 2.0f16, 3.0f80, 4.0f128, 5.0f256, 6.0f512, 7.0f32, 8.0);
+}

@@ -1,0 +1,10 @@
+// A bare '.Case' is not part of the language; the message names the type that declares the case.
+enum Direction { North, South }
+
+enum Pole { North, South }
+
+enum Turn { Left, Right }
+
+func Flip(d: Direction) -> Direction {
+    return match d { Direction::North => .Left, Direction::South => .North };
+}

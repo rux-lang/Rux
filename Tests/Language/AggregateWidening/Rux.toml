@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "AggregateWidening"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: struct fields and tuple elements widen narrower values, and plain enum constants have one address"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

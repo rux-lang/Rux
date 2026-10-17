@@ -1,0 +1,127 @@
+// A rotating log file in a fresh temporary directory: records go to `app.log` until the next one would pass the
+// limit, the file is then moved aside to `app.log.1` and the older one to `app.log.2`, and no third older file is
+// ever kept. Every file holds whole records only.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Panic };
+import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle };
+import Io::{ IoErrorKind };
+import Log::{ LogFormat, Logger, RotatingFile };
+import Path::{ Join, OsString, Path, PathBuffer };
+
+func PathIn(allocator: Allocator, directory: Path, name: char8[..]) -> PathBuffer {
+    let segment = OsString::FromText(allocator, name) catch { else => Panic("the name converts") };
+    return Join(allocator, directory, segment.View()) catch { else => Panic("the path joins") };
+}
+
+func Exists(allocator: Allocator, path: Path) -> bool {
+    match MetadataOf(allocator, path, false) {
+        .Success(_) => { return true; },
+        .Failure(error) => {
+            Assert(error.kind == IoErrorKind::NotFound, "a missing file is the only failure expected");
+            return false;
+        }
+    }
+}
+
+// The file's contents, which a log of short records keeps well under the buffer.
+func Contents(allocator: Allocator, path: Path, buffer: var char8[..]) -> char8[..] {
+    var file = File::Open(allocator, path, OpenOptions::Reading()) catch { else => Panic("the file opens") };
+    var length: uint = 0;
+    while true {
+        match file.Read(buffer[length..]) {
+            .Success(read) => { length = length + read; },
+            .Failure(error) => {
+                Assert(error.IsEnd(), "the file reads to its end");
+                break;
+            }
+        }
+    }
+    file.Close() catch { else => Panic("the file closes") };
+    return buffer[..length];
+}
+
+// Whether every line of `text` is a whole record, ending in its own line break and starting with its level.
+func WholeRecords(text: char8[..]) -> bool {
+    if text.length == 0 || text[text.length - 1] != c8'\n' { return false; }
+    var start: uint = 0;
+    var index: uint = 0;
+    while index < text.length {
+        if text[index] == c8'\n' {
+            if index - start < 4 || text[start] != c8'I' { return false; }
+            start = index + 1;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Main() -> int {
+    let allocator = SystemAllocator();
+    let temporary = TemporaryDirectory(allocator) catch { else => Panic("a temporary directory exists") };
+    var directory = TemporaryDirectoryHandle::Create(allocator, temporary.AsPath(), "rux-log-rotation-")
+        catch { else => Panic("the test directory is made") };
+    let current = PathIn(allocator, directory.AsPath(), "app.log");
+    let first = PathIn(allocator, directory.AsPath(), "app.log.1");
+    let second = PathIn(allocator, directory.AsPath(), "app.log.2");
+    let third = PathIn(allocator, directory.AsPath(), "app.log.3");
+
+    match RotatingFile::Open(allocator, current.AsPath(), 0, 2) {
+        .Success(_) => Panic("a zero limit is refused"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "as invalid input")
+    }
+
+    var file = RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { else => Panic("the log opens") };
+    var logger = Logger::New(allocator, (@file).Stream(), LogFormat::Text);
+    logger.SetTimestamps(false);
+
+    // Every record is the same length, so the file holds as many whole records as fit under the limit, and the
+    // next one moves it aside.
+    logger.Info("record");
+    let record = file.Size();
+    Assert(record > 0 && record <= 50, "a record is written whole");
+    let fitting = 100 / record;
+    var number: uint64 = 1;
+    while number < fitting {
+        logger.Info("record");
+        number = number + 1;
+    }
+    Assert(file.Size() == fitting * record, "the records that fit stay in one file");
+    Assert(!Exists(allocator, first.AsPath()), "nothing is moved aside below the limit");
+    logger.Info("record");
+    number = number + 1;
+    Assert(file.Size() == record, "the record past the limit starts a fresh file");
+    Assert(Exists(allocator, first.AsPath()), "and the full one is moved aside");
+
+    while number < fitting * 4 {
+        logger.Info("record");
+        number = number + 1;
+    }
+    Assert(logger.Failure() == none, "every record was written");
+    Assert(Exists(allocator, first.AsPath()), "the first older file is kept");
+    Assert(Exists(allocator, second.AsPath()), "the second older file is kept");
+    Assert(!Exists(allocator, third.AsPath()), "no third older file is kept");
+
+    var buffer: char8[256];
+    for path in [current.AsPath(), first.AsPath(), second.AsPath()] {
+        let text = Contents(allocator, path, buffer[..]);
+        Assert(text.length <= 100, "no file passes the limit");
+        Assert(WholeRecords(text), "every file holds whole records");
+    }
+
+    // A record larger than the limit goes whole into a fresh file.
+    var long: char8[150];
+    for index in 0..150 {
+        long[index] = c8'x';
+    }
+    logger.Info(long[..]);
+    let text = Contents(allocator, current.AsPath(), buffer[..]);
+    Assert(text.length > 100 && WholeRecords(text), "an oversized record is kept whole");
+
+    file.Close() catch { else => Panic("the log closes") };
+    for path in [current.AsPath(), first.AsPath(), second.AsPath()] {
+        DeleteFile(allocator, path) catch { else => Panic("the log file is deleted") };
+    }
+    directory.Close(allocator) catch { else => Panic("the test directory is removed") };
+    return 0;
+}

@@ -1,0 +1,7 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ScalarConstantProvider"
+Version = "0.1.0"
+Type = "SourceLibrary"

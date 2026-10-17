@@ -1,0 +1,59 @@
+// A requirement without a receiver, or with 'self: &Self', only reads its
+// receiver; one that writes declares 'self: &var Self'. An implementation may not
+// write where its requirement reads, and a writing requirement needs a writable
+// view or writable storage, exactly as a concrete method does.
+
+interface Gauge {
+    func Adjust(amount: int32);
+}
+
+interface Dial {
+    func Turn(self: &var Self, amount: int32);
+    func Level(self: &Self) -> int32;
+}
+
+interface Misdeclared {
+    func Reset(self: &var Misdeclared);
+}
+
+struct Knob {
+    level: int32;
+}
+
+extend Knob : Gauge {
+    func Adjust(self: &var Knob, amount: int32) {
+        self.level += amount;
+    }
+}
+
+extend Knob : Dial {
+    func Turn(self: &var Knob, amount: int32) {
+        self.level += amount;
+    }
+
+    func Level(self: &Knob) -> int32 {
+        return self.level;
+    }
+}
+
+func Shared(dial: &Dial) {
+    dial.Turn(1i32);
+}
+
+func Bounded<T: Dial>(dial: &T) {
+    dial.Turn(1i32);
+}
+
+func Exclusive(dial: &var Dial) -> int32 {
+    dial.Turn(1i32);
+    return dial.Level();
+}
+
+func Main() -> int {
+    let knob = Knob { level: 1i32 };
+    let fixed: Dial = knob;
+    fixed.Turn(1i32);
+    var held: Dial = knob;
+    held.Turn(1i32);
+    return held.Level() as int;
+}

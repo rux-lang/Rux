@@ -2,7 +2,9 @@
 
 rux_add_component(RuxSemantic
     Analysis/Imports.cpp
-    Analysis/IntrinsicTypes.cpp
+    Analysis/ParallelAbsorb.cpp
+    Analysis/AssociatedConstants.cpp
+    Analysis/Intrinsics.cpp
     Analysis/TypeResolution.cpp
     Analysis/ConstantChecking.cpp
     Analysis/Assignments.cpp
@@ -27,12 +29,14 @@ rux_add_component(RuxSemantic
     Analysis/AggregateExpressions.cpp
     Analysis/AllocationMath.cpp
     Analysis/Zeroization.cpp
+    Analysis/Atomics.cpp
     Analysis/BasicExpressions.cpp
     Analysis/BorrowState.cpp
     Analysis/CallExpressions.cpp
     Analysis/Constraints.cpp
     Analysis/MoveState.cpp
     Analysis/DropGlue.cpp
+    Analysis/FormatArguments.cpp
     Analysis/FunctionSignatures.cpp
     Analysis/Iteration.cpp
     Analysis/Statements.cpp
@@ -44,4 +48,4 @@ rux_add_component(RuxSemantic
     Analysis/Receivers.cpp
     Analysis/TypeProperties.cpp
 )
-target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics)
+target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics RuxParallel)

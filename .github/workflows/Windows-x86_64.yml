@@ -23,7 +23,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -89,16 +89,19 @@ jobs:
     runs-on: windows-11-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Download the compiler
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: rux-windows-x86_64
           path: Bin
 
+      # Prism approximates x87 arithmetic with float64 unless an app opts out
+      # by hand, so x86-64 float80 arithmetic at run time does not give the
+      # hardware's results. ApproximateX87 compiles out the checks that pin them.
       - name: Test the translated compiler
         shell: pwsh
         run: |
@@ -107,7 +110,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./Bin/rux.exe lint
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./Bin/rux.exe test --release --jobs 4
+          ./Bin/rux.exe test --release --jobs 4 --define ApproximateX87
 
       # The translated compiler detects the native OS architecture and launches
       # its AArch64 output directly.

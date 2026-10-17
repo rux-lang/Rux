@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Generate"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for NanoId: generation from the default and custom alphabets."
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Entropy = { Path = "../../../../Packages/Entropy" }
+NanoId = { Path = "../../../../Packages/NanoId" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/NanoId"

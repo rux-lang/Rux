@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Loopback"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Net: address text, TCP echo and UDP datagrams on the loopback interface, timeouts, refused connections and name resolution."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Net = { Path = "../../../../Packages/Net" }
+Thread = { Path = "../../../../Packages/Thread" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Net"

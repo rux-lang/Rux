@@ -1,0 +1,3 @@
+// Every primitive type is built into the compiler, so a package declares none of them: it extends one instead.
+intrinsic type int8;
+pub intrinsic type bool;

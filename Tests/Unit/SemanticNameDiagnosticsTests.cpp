@@ -176,12 +176,47 @@ TEST_CASE("ambiguous module imports list candidate packages deterministically") 
     const auto diagnostics = AnalyzeWithDeps("import Shared::Value;", {{"Zulu", "module Shared { func Value() {} }"},
                                                                        {"Alpha", "module Shared { func Value() {} }"}});
 
-    REQUIRE_EQ(diagnostics.size(), 2);
+    // Reported once, although the import is bound both before and after signatures are resolved.
+    REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].message, "module 'Shared' is ambiguous");
     REQUIRE_EQ(diagnostics[0].notes.size(), 2);
     CHECK_EQ(diagnostics[0].notes[0], "module 'Shared' is available from package 'Alpha'");
     CHECK_EQ(diagnostics[0].notes[1], "module 'Shared' is available from package 'Zulu'");
     REQUIRE(diagnostics[0].help.has_value());
     CHECK_EQ(*diagnostics[0].help, "qualify the import with one of the listed package names");
-    CHECK_EQ(diagnostics[1].message, diagnostics[0].message);
+}
+
+namespace {
+// Analyzes `source` as the root package of an executable build, which holds `Main` to an entry point's forms.
+std::vector<SemanticDiagnostic> AnalyzeEntryPoint(const std::string &source) {
+    Lexer lexer(source, "main.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "main.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    CompileTimeContext context;
+    context.checksEntryPoint = true;
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", context);
+    return analyzer.Analyze().diagnostics;
+}
+} // namespace
+
+TEST_CASE("an executable's Main takes no parameters and returns nothing, an integer or a fallible of either") {
+    for (const std::string accepted :
+         {"func Main() -> int { return 0; }", "func Main() {}", "func Main() -> int32 { return 0; }",
+          "variant E { Bad }\nfunc Main() -> ! E {}", "variant E { Bad }\nfunc Main() -> int ! E { return 0; }"}) {
+        CAPTURE(accepted);
+        CHECK(AnalyzeEntryPoint(accepted).empty());
+    }
+    for (const std::string refused :
+         {"func Main(count: int) -> int { return count; }", "func Main() -> bool { return true; }",
+          "func Main() -> float64 { return 0.0; }", "func Main<T>() -> int { return 0; }"}) {
+        CAPTURE(refused);
+        const auto diagnostics = AnalyzeEntryPoint(refused);
+        REQUIRE_EQ(diagnostics.size(), 1);
+        CHECK(diagnostics.front().message.starts_with("'Main' must take no parameters and return nothing"));
+    }
+    // A Main inside a module is an ordinary function.
+    CHECK(AnalyzeEntryPoint("module Tools {\n func Main(x: int) -> bool { return true; }\n}\nfunc Main() {}").empty());
 }

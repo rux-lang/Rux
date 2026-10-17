@@ -47,12 +47,37 @@ private:
     std::vector<ParserDiagnostic> diagnostics;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
     bool structInitAllowed = true; ///< disabled inside if/while/for/match conditions
+    /// Whether a block so far held a `when` statement or a nested declaration (`Module::bodiesNeedConditionalFolding`).
+    bool bodiesNeedConditionalFolding = false;
+    /// Whether a block so far declared anything but a constant (`Module::bodiesDeclareItems`).
+    bool bodiesDeclareItems = false;
 
-    // Token helpers
-    [[nodiscard]] const Token &Peek(std::size_t ahead = 0) const noexcept;
-    const Token &Advance() noexcept;
-    [[nodiscard]] bool Check(TokenKind kind) const noexcept;
-    [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
+    // Token helpers, defined here because every level of every expression asks them, from every parser file.
+    [[nodiscard]] const Token &Peek(const std::size_t ahead = 0) const noexcept {
+        const std::size_t index = pos + ahead;
+        return index < tokens.size() ? tokens[index] : tokens.back(); // the last token is the EOF sentinel
+    }
+
+    const Token &Advance() noexcept {
+        if (!IsAtEnd()) {
+            ++pos;
+        }
+        return tokens[pos - 1];
+    }
+
+    [[nodiscard]] bool Check(const TokenKind kind) const noexcept {
+        return Peek().kind == kind;
+    }
+
+    [[nodiscard]] bool CheckAny(const std::initializer_list<TokenKind> kinds) const noexcept {
+        const TokenKind current = Peek().kind;
+        for (const auto kind : kinds) {
+            if (current == kind) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// Whether the current token closes a generic argument list. A `>>` or `>>>` written where two or three of them
     /// end at once is a run of closers rather than a shift, and only the parser knows which it is looking at.
@@ -61,15 +86,31 @@ private:
     /// Consumes one closing `>`. A longer run is narrowed in place rather than advanced past, leaving the rest for
     /// the enclosing list to close with.
     void ConsumeCloseAngle() noexcept;
-    bool Match(TokenKind kind) noexcept;
+
+    bool Match(const TokenKind kind) noexcept {
+        if (!Check(kind)) {
+            return false;
+        }
+        Advance();
+        return true;
+    }
+
     const Token &Expect(TokenKind kind, std::string_view message);
     /// Grammar-aware diagnostics name both the role of a missing token and the token that prevented it from being
     /// parsed.
     const Token &ExpectBefore(TokenKind kind, std::string_view expected, std::optional<std::string> help = {});
     bool ConsumeBodyStart(std::string_view role);
-    [[nodiscard]] bool IsAtEnd() const noexcept;
+
+    [[nodiscard]] bool IsAtEnd() const noexcept {
+        return Peek().kind == TokenKind::EndOfFile;
+    }
+
     [[nodiscard]] const Token &Previous() const noexcept;
-    [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
+
+    [[nodiscard]] SourceLocation CurrentLocation() const noexcept {
+        return Peek().location;
+    }
+
     [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
     /// Assumes the current token is '{'. True when the brace opens compile-time match arms (`pattern => ...`) rather
     /// than an ordinary `when`/block body, i.e. a top-level '=>' appears before any top-level ';' or the closing '}'.
@@ -106,9 +147,13 @@ private:
         bool usedLibrary = false;
         bool usedSymbol = false;
         bool usedNoReturn = false;
+        bool usedTest = false;
+        bool usedUnsendable = false;
         bool usedAbi = false;
         SourceLocation linkLocation;
         SourceLocation noReturnLocation;
+        SourceLocation testLocation;
+        SourceLocation unsendableLocation;
         SourceLocation abiLocation;
         SourceLocation allowLocation;
     };
@@ -117,6 +162,12 @@ private:
     ParsedAttrs ParseAttrs();
     static std::string DecodeStringLiteralText(const std::string &text);
     void ParseAttributeCall(ParsedAttrs &attrs);
+    /// Parses one `#Name()` attribute written before a parameter, with the current token on its '#'. `#Format()` is
+    /// the only parameter attribute.
+    void ParseParameterAttribute(Param &parameter);
+    /// Checks where `#Format()` was written in one parameter list: once, on a parameter that is neither the receiver
+    /// nor variadic, in a list whose last parameter is variadic.
+    void ValidateFormatParameters(const std::vector<Param> &params);
     DeclPtr ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs);
     DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs &attrs);
     DeclPtr ParseIntrinsicDecl(bool isPublic, ParsedAttrs &attrs, SourceLocation intrinsicLoc);
@@ -132,6 +183,7 @@ private:
     std::unique_ptr<ModuleDecl> ParseModuleDecl(bool isPublic);
     std::unique_ptr<UseDecl> ParseUseDecl(bool requireSemicolon = true);
     std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
+    std::unique_ptr<GlobalDecl> ParseGlobalDecl(bool isPublic);
     std::unique_ptr<WhenDecl> ParseWhenDecl();
     std::unique_ptr<WhenDecl> ParseWhenBody(SourceLocation loc);
     /// Compile-time match forms `when subject { pattern => body, ... }`. The subject has already been parsed; the

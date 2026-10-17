@@ -1,24 +1,146 @@
-// bool512 is a reserved primitive type: the catalog names it, and this compiler does not implement it.
-//
-// This directory exists so the primitive matrix under Tests/Language is complete by inspection rather than
-// by inference. Every entry in Compiler/Types/PrimitiveCatalog.cpp has a directory here, and
-// LanguageTestMatrixTests checks that the two agree, so a width cannot reach the catalog without somewhere
-// to exercise it.
-//
-// A program using bool512 cannot be that exercise, because it does not compile: the compiler reports that the
-// type is reserved but not implemented in this version. A refusal is not something an executable test can
-// assert, since one passes by exiting zero. It is asserted in Tests/Unit/Golden/ReservedPrimitiveTypes.rux
-// instead, where an expected compile failure is the whole point.
-//
-// What is left to check here is the boundary: bool64 is the widest implemented boolean, and this
-// file pins that it is the one carrying the constants. When bool512 is implemented, replace this placeholder
-// with the real case rather than adding a directory.
+// bool512: one of two values in 64 bytes, eight machine words wide.
+// The widest boolean the language has: one bit of meaning in sixty-four bytes, so it is the width where a
+// leftover word has the most room to hide.
+// Boolean logic is pinned once in `Bool`; what belongs to a width is its storage, what a cast into it stores, and
+// whether conversion to another width preserves meaning. A wide boolean holds one or zero in its low word and zero in
+// every other word, so the cases below are the ones that would notice a word left over: a source whose only set bit
+// is far from the low word, `~` flipping the value rather than every bit, and a narrow boolean widened on its way into
+// a parameter.
 
 import Core::Assert;
-import Core::bool64;
+import Core::{ bool128, bool16, bool256, bool32, bool512, bool64, bool8, int512, uint512 };
+
+const On: bool512 = true;
+const Off: bool512 = false;
+const Pattern: bool512[3] = [true, false, true];
+
+func Echo(value: bool512) -> bool512 {
+    return value;
+}
+
+func Both(left: bool512, right: bool512) -> bool512 {
+    return left && right;
+}
+
+func Narrowed(value: bool512) -> bool8 {
+    return value as bool8;
+}
+
+// Counts the turns of a loop whose condition is a bool512, clearing it after the first.
+func Turns(flag: bool512) -> int {
+    var turns = 0;
+    var remaining = flag;
+    while remaining {
+        turns += 1;
+        remaining = false;
+    }
+    return turns;
+}
+
+struct Pair {
+    first: bool512;
+    second: bool512;
+}
+
+struct Tagged {
+    tag: bool8;
+    flag: bool512;
+}
 
 func Main() -> int {
-    Assert(bool64::Bits == 64u, "bool64 is the implemented width beside reserved bool512");
-    Assert(bool64::Bytes * 8u == bool64::Bits, "its byte and bit counts agree");
+    Assert(bool512::Bits == 512u && bool512::Bytes == 64u, "bool512 is 512 bits in 64 bytes");
+    Assert(sizeof(bool512) == 64u, "sizeof agrees with Bytes");
+    Assert(sizeof(bool512) == sizeof(int512), "it is as wide as int512");
+
+    let yes: bool512 = true;
+    let no: bool512 = false;
+    Assert(yes, "a true bool512 passes an assertion");
+    Assert(!no, "and a false one negates to true");
+
+    // The operators, over both values. `!` produces a bool8; `~`, `&`, `|` and `^` keep the width.
+    Assert(yes && !(yes && no) && !(no && yes), "the conjunction");
+    Assert((yes || no) && (no || yes) && !(no || no), "the disjunction");
+    Assert(!(~yes) && (~no), "~ flips the value");
+    Assert((~yes) as int512 == 0i512 && (~no) as int512 == 1i512, "and leaves every word above the low one zero");
+    Assert((yes & yes) && !(yes & no), "bitwise and");
+    Assert((yes | no) && !(no | no), "bitwise or");
+    Assert((yes ^ no) && !(yes ^ yes), "bitwise exclusive or");
+    Assert((yes ^ no) as int512 == 1i512, "an exclusive or of the two values is exactly one");
+    Assert(yes == yes && no == no && yes != no, "equality compares values");
+    Assert(yes == true && no == false && no != true, "and a literal takes the width of the other side");
+
+    // A cast tests the whole source for non-zero, at the full width of the source.
+    let topBit: uint512 = 1u512 << 511;
+    let farWord: int512 = 1i512 << 320;
+    Assert((topBit as bool512), "a source whose only set bit is the top one is true");
+    Assert((farWord as bool512), "and so is one whose only set bit is in the sixth word");
+    Assert(((1u512 << 511) as bool512), "and so is the same value folded while compiling");
+    Assert((topBit as bool8) && (farWord as bool64), "a narrower boolean also tests every word of the source");
+    Assert((farWord as bool512) as int512 == 1i512, "what is stored is one, not the source bits");
+    Assert(!((0 as int512) as bool512), "a wide zero source is false");
+    Assert((yes as uint512) == 1u512 && (no as uint512) == 0u512, "true reads back as exactly one, false as zero");
+    Assert((yes as int8) == 1i8 && (yes as int64) == 1i64, "and so it does at a narrower integer");
+
+    // Conversion to every other width preserves meaning rather than bits.
+    Assert((yes as bool8) && (yes as bool16) && (yes as bool32) && (yes as bool64) && (yes as bool128) && (yes as bool256),
+           "true converts to every width as true");
+    Assert(!(no as bool8) && !(no as bool16) && !(no as bool32) && !(no as bool64) && !(no as bool128) && !(no as bool256),
+           "false converts to every width as false");
+    let widenedByte: bool512 = (true as bool8) as bool512;
+    Assert(widenedByte as int512 == 1i512, "a widened bool8 is one with every higher word zero");
+    Assert(((true as bool64) as bool512) as int512 == 1i512, "and so is a widened bool64");
+    Assert(((yes as bool8) as bool512) && !((no as bool8) as bool512), "a round trip through bool8 keeps both");
+
+    // Conditions read the value, wherever it sits.
+    var reached = false;
+    if yes {
+        reached = true;
+    }
+    Assert(reached, "a true bool512 enters an if");
+    if no {
+        reached = false;
+    }
+    Assert(reached, "and a false one skips it");
+    Assert(Turns(yes) == 1 && Turns(no) == 0, "a bool512 drives a while loop");
+    let matched = match yes {
+        true => 1,
+        false => 0
+    };
+    Assert(matched == 1, "a match on a bool512 takes the true arm");
+    Assert(match no { true => false, false => true }, "and the false one");
+    Assert((yes ? 7 : 9) == 7 && (no ? 7 : 9) == 9, "a bool512 chooses a ternary arm");
+    let chosen: bool512 = reached ? no : yes;
+    Assert(!chosen, "and both arms of a bool512 ternary keep their value");
+
+    // Storage: fields, padding and elements.
+    Assert(sizeof(Pair) == 128u, "two bool512 fields occupy 128 bytes");
+    Assert(sizeof(Tagged) == 80u, "a bool8 beside a bool512 is padded to its sixteen-byte alignment");
+    Assert(alignof(Tagged) == 16u && alignof(bool512) == 16u, "and the struct takes the bool512 alignment");
+    let pair = Pair { first: true, second: false };
+    Assert(pair.first && !pair.second, "each field keeps its own value");
+    let tagged = Tagged { tag: false, flag: yes };
+    Assert(!tagged.tag && tagged.flag, "and so does a field after the padding");
+    var flags: bool512[4];
+    flags[0] = true;
+    flags[1] = false;
+    flags[2] = yes;
+    flags[3] = ~yes;
+    Assert(sizeof(bool512[4]) == 256u, "an array of four is 256 bytes");
+    Assert(flags[0] && !flags[1] && flags[2] && !flags[3], "each element keeps its own value");
+
+    // Static data: a constant true is one followed by zero words.
+    Assert(On && !Off, "constants hold their values");
+    Assert((On as int512) == 1i512 && (Off as int512) == 0i512, "and their stored words are canonical");
+    Assert(Pattern[0] && !Pattern[1] && Pattern[2], "a constant array keeps each element");
+
+    // Passed and returned at its own width, from a bool512 or from a narrower boolean.
+    Assert(Echo(yes) && !Echo(no), "both values survive an argument and a return");
+    Assert(Echo(yes) as int512 == 1i512, "and the returned true is canonical");
+    Assert(Echo(true) && !Echo(false), "a literal argument takes the parameter width");
+    let narrow: bool8 = true;
+    Assert(Echo(narrow) && Echo(3 > 2) && !Echo(2 > 3), "a bool8 argument widens to the parameter");
+    Assert(Echo(narrow) as int512 == 1i512, "with every higher word zero");
+    Assert(Both(yes, yes) && !Both(yes, no) && !Both(no, yes), "two bool512 arguments arrive intact");
+    Assert(Narrowed(yes) && !Narrowed(no), "a bool512 narrows on its way out");
     return 0;
 }

@@ -1,25 +1,19 @@
 import Core::Assert;
 
-// The end of iteration is reported with an ordinary variant; nothing here is built in.
-variant Option {
-    Some(int32),
-    None
-}
-
-// An iterator: `Next` advances the receiver and reports either the next item or the end.
+// An iterator: `Next` advances the receiver and reports either the next item or, with `none`, the end.
 struct Counter {
     value: int32;
     limit: int32;
 }
 
 extend Counter {
-    func Next(self: &var Counter) -> Option {
+    func Next(self: &var Counter) -> int32? {
         if self.value >= self.limit {
-            return Option::None;
+            return none;
         }
         let current = self.value;
         self.value = self.value + 1i32;
-        return Option::Some(current);
+        return current;
     }
 }
 
@@ -105,6 +99,40 @@ func SumArray() -> int32 {
     return total;
 }
 
+// A loop over an iterator variable advances the variable itself, so a second loop resumes where the first stopped.
+func Resume() -> int32 {
+    var counter = Counter { value: 0i32, limit: 6i32 };
+    var first = 0i32;
+    for item in counter {
+        first = first + item;
+        if item == 2i32 {
+            break;
+        }
+    }
+    var rest = 0i32;
+    for item in counter {
+        rest = rest + item;
+    }
+    Assert(first == 3i32, "Expected the first loop to stop after 0, 1 and 2");
+    Assert(counter.value == 6i32, "Expected the variable to be left where the second loop ended");
+    return rest;
+}
+
+struct Holder {
+    counter: Counter;
+}
+
+// A field is advanced in place as well.
+func AdvanceField() -> int32 {
+    var holder = Holder { counter: Counter { value: 0i32, limit: 3i32 } };
+    for item in holder.counter {
+        if item == 1i32 {
+            break;
+        }
+    }
+    return holder.counter.value;
+}
+
 func Main() -> int {
     Assert(SumIterator(4i32) == 6i32, "Expected an iterator loop to visit every item once");
     Assert(SumIterator(0i32) == 0i32, "Expected an iterator that reports the end at once to run no body");
@@ -113,5 +141,7 @@ func Main() -> int {
     Assert(Selective(10i32) == 5i32, "Expected break and continue to work inside a convention-driven loop");
     Assert(Nested(3i32) == 9i32, "Expected nested loops to advance their own iterators");
     Assert(SumArray() == 16i32, "Expected arrays and ranges to keep their own iteration");
+    Assert(Resume() == 12i32, "Expected a second loop over the variable to resume with 3, 4 and 5");
+    Assert(AdvanceField() == 2i32, "Expected a loop over a field to advance the field");
     return 0;
 }

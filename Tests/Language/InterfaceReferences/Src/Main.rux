@@ -1,6 +1,6 @@
 interface CounterView {
     func Read() -> int32;
-    func Add(amount: int32);
+    func Add(self: &var Self, amount: int32);
 }
 
 struct Counter {

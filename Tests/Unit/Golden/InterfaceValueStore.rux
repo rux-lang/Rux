@@ -1,0 +1,80 @@
+// An interface value points at the value it was made from, so one a function made cannot be stored where it outlives
+// the call: through a receiver, a pointer or a reference, or in a module variable. A local keeps it, and an interface
+// value the function was given is stored anywhere.
+
+interface Named {
+    func Id(self: &Self) -> int;
+}
+
+struct Plain {
+    id: int;
+}
+
+extend Plain : Named {
+    func Id(self: &Plain) -> int {
+        return self.id;
+    }
+}
+
+struct Holder {
+    named: Named?;
+}
+
+extend Holder {
+    func Fill(self: &var Holder) {
+        let value: Named = Plain { id: 3 };
+        self.named = value;
+    }
+}
+
+var Saved: Named? = none;
+
+func Keep(out: &var Named?) {
+    let value: Named = Plain { id: 1 };
+    out = value;
+}
+
+func KeepThrough(out: *var Named) {
+    *out = Plain { id: 2 };
+}
+
+func KeepGlobal() {
+    let value: Named = Plain { id: 4 };
+    Saved = value;
+}
+
+func KeepLocal(given: Named) -> int {
+    let made: Named = Plain { id: 5 };
+    var local: Named? = none;
+    local = made;
+    var forwarded: Named? = none;
+    forwarded = given;
+    return 0;
+}
+
+func Optional() -> Named? {
+    let value: Named = Plain { id: 7 };
+    let held: Named? = value;
+    return held;
+}
+
+func ForwardGlobal(given: Named) {
+    Saved = given;
+}
+
+// An element has no place of its own, so an interface value made in an inner block cannot be stored in one; the block
+// that declares the array may store it.
+func Elements() -> int {
+    var items: Named[2] = [Plain { id: 0 }, Plain { id: 1 }];
+    items[0] = Plain { id: 2 };
+    var i: uint = 0;
+    while i < 2 {
+        items[i] = Plain { id: 3 };
+        i += 1;
+    }
+    return items[0].Id();
+}
+
+func Main() -> int {
+    return 0;
+}

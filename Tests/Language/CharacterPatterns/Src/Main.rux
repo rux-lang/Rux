@@ -41,6 +41,39 @@ func Wide(value: char64) -> int {
     };
 }
 
+func Wide128(value: char128) -> int {
+    return match value {
+        c128'\0' => 1,
+        c128'A' => 2,
+        c128'λ' => 3,
+        c128'\u{1F600}' => 4,
+        c128'\u{10FFFF}' => 5,
+        else => 9
+    };
+}
+
+func Wide256(value: char256) -> int {
+    return match value {
+        c256'\0' => 1,
+        c256'A' => 2,
+        c256'λ' => 3,
+        c256'\u{1F600}' => 4,
+        c256'\u{10FFFF}' => 5,
+        else => 9
+    };
+}
+
+func Wide512(value: char512) -> int {
+    return match value {
+        c512'\0' => 1,
+        c512'A' => 2,
+        c512'λ' => 3,
+        c512'\u{1F600}' => 4,
+        c512'\u{10FFFF}' => 5,
+        else => 9
+    };
+}
+
 func Guarded(value: char32, allowed: bool) -> int {
     return match value {
         'A' if allowed => 7,
@@ -108,5 +141,26 @@ func Main() -> int {
     Assert(Wide(c64'😀') == 4, "a wide supplementary character matches its escape");
     Assert(Wide(c64'\u{10FFFF}') == 5, "the last scalar matches without truncation");
     Assert(Wide(c64'B') == 9, "an unmatched wide character uses the default");
+    Assert(Wide128(c128'\0') == 1 && Wide256(c256'\0') == 1 && Wide512(c512'\0') == 1,
+           "a NUL wider than a register does not match another character");
+    Assert(Wide128(c128'\u{41}') == 2 && Wide256(c256'\u{41}') == 2 && Wide512(c512'\u{41}') == 2,
+           "a wider escape matches plain text");
+    Assert(Wide128(c128'λ') == 3 && Wide256(c256'λ') == 3 && Wide512(c512'λ') == 3,
+           "a wider non-ASCII character matches");
+    Assert(Wide128(c128'😀') == 4 && Wide256(c256'😀') == 4 && Wide512(c512'😀') == 4,
+           "a wider supplementary character matches its escape");
+    Assert(Wide128(c128'\u{10FFFF}') == 5 && Wide256(c256'\u{10FFFF}') == 5 && Wide512(c512'\u{10FFFF}') == 5,
+           "the last scalar matches at every wider width");
+    Assert(Wide128(c128'B') == 9 && Wide256(c256'B') == 9 && Wide512(c512'B') == 9,
+           "an unmatched wider character uses the default");
+    let narrow: char32 = '😀';
+    Assert(Wide128(narrow) == 4 && Wide256(narrow) == 4 && Wide512(narrow) == 4,
+           "a char32 subject widens and matches its code point");
+    Assert(Wide512(c128'λ') == 3 && Wide512(c256'\u{10FFFF}') == 5, "and so does a wide subject widened further");
+    var wideSelected = 0;
+    match c512'λ' {
+        c512'λ' => { wideSelected = 13; }
+    }
+    Assert(wideSelected == 13, "a sole char512 arm executes without an else");
     return 0;
 }

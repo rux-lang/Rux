@@ -1,0 +1,115 @@
+// Cutting a URL or a relative reference into its components, without judging them yet.
+// The cut follows the regular expression in appendix B of RFC 3986, which every reference matches: a scheme before the
+// first `:` that comes before any `/`, `?` or `#`; an authority after `//`; a path up to `?` or `#`; a query up to
+// `#`; and a fragment after it. The authority is then cut into user information before its last `@`, a host, which
+// is bracketed when it is an IPv6 address, and a port after the host's `:`. Judging each component — which
+// characters it may hold, whether its host and port are well formed — is left to composing the URL from them.
+
+import Url::UrlError;
+
+// The components of a reference, as pieces of text that may come from different strings.
+struct Pieces {
+    scheme: char8[..]?;
+    hasAuthority: bool;
+    userinfo: char8[..]?;
+    host: char8[..];
+    port: char8[..]?;
+    path: char8[..];
+    query: char8[..]?;
+    fragment: char8[..]?;
+}
+
+// Whether a byte is the C0 control range or a space, which surround a URL by accident and are trimmed.
+func IsTrimmed(byte: uint8) -> bool {
+    return byte <= 0x20u8;
+}
+
+// The pieces of `text`, a URL or a relative reference.
+func SplitReference(input: char8[..]) -> Pieces ! UrlError {
+    var first: uint = 0;
+    var last = input.length;
+    while first < last && IsTrimmed(input[first] as uint8) { first = first + 1; }
+    while last > first && IsTrimmed(input[last - 1] as uint8) { last = last - 1; }
+    let text = input[first..last];
+
+    var pieces = Pieces {
+        scheme: none, hasAuthority: false, userinfo: none, host: text[..0], port: none, path: text[..0], query: none,
+        fragment: none
+    };
+    var at: uint = 0;
+
+    // A scheme is everything before a `:` that comes before any `/`, `?` or `#`.
+    var colon: uint = 0;
+    while colon < text.length {
+        let c = text[colon];
+        if c == ':' || c == '/' || c == '?' || c == '#' { break; }
+        colon = colon + 1;
+    }
+    if colon < text.length && text[colon] == ':' && colon > 0 {
+        pieces.scheme = text[..colon];
+        at = colon + 1;
+    }
+
+    // An authority follows `//`, up to the next `/`, `?` or `#`.
+    if at + 1 < text.length && text[at] == '/' && text[at + 1] == '/' {
+        pieces.hasAuthority = true;
+        let start = at + 2;
+        var end = start;
+        while end < text.length {
+            let c = text[end];
+            if c == '/' || c == '?' || c == '#' { break; }
+            end = end + 1;
+        }
+        SplitAuthority(text[start..end], @pieces)?;
+        at = end;
+    }
+
+    var pathEnd = at;
+    while pathEnd < text.length && text[pathEnd] != '?' && text[pathEnd] != '#' { pathEnd = pathEnd + 1; }
+    pieces.path = text[at..pathEnd];
+    at = pathEnd;
+    if at < text.length && text[at] == '?' {
+        var queryEnd = at + 1;
+        while queryEnd < text.length && text[queryEnd] != '#' { queryEnd = queryEnd + 1; }
+        pieces.query = text[at + 1..queryEnd];
+        at = queryEnd;
+    }
+    if at < text.length && text[at] == '#' {
+        pieces.fragment = text[at + 1..];
+    }
+    return pieces;
+}
+
+// Cuts an authority into user information, host and port.
+func SplitAuthority(authority: char8[..], pieces: *var Pieces) -> ! UrlError {
+    var hostStart: uint = 0;
+    var index = authority.length;
+    while index > 0 {
+        index = index - 1;
+        if authority[index] == '@' {
+            pieces.userinfo = authority[..index];
+            hostStart = index + 1;
+            break;
+        }
+    }
+    let rest = authority[hostStart..];
+    if rest.length > 0 && rest[0] == '[' {
+        var close: uint = 1;
+        while close < rest.length && rest[close] != ']' { close = close + 1; }
+        if close == rest.length { fail UrlError::InvalidHost; }
+        pieces.host = rest[..close + 1];
+        if close + 1 < rest.length {
+            if rest[close + 1] != ':' { fail UrlError::InvalidHost; }
+            pieces.port = rest[close + 2..];
+        }
+        return;
+    }
+    var colon = rest.length;
+    var scan: uint = 0;
+    while scan < rest.length {
+        if rest[scan] == ':' { colon = scan; }
+        scan = scan + 1;
+    }
+    pieces.host = rest[..colon];
+    if colon < rest.length { pieces.port = rest[colon + 1..]; }
+}

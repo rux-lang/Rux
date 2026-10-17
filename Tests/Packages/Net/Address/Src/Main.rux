@@ -1,0 +1,69 @@
+// An IPv4-mapped IPv6 address keeps its IPv4 tail in dotted-decimal form, as RFC 5952 writes it; every address
+// family answers whether it is unspecified, private, link-local or multicast; and the address types render through
+// `{}` like any other value, padded to the placeholder's width.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::Assert;
+import Format::Render;
+import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
+
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Text(address: IpAddress, expected: char8[..]) -> bool {
+    var buffer: char8[64] = ['\0'; 64];
+    let length = address.WriteText(buffer[..]);
+    return Same(buffer[..length], expected);
+}
+
+func Ip(text: char8[..]) -> IpAddress {
+    return IpAddress::Parse(text) ?? IpAddress::FromIpv4(Ipv4Address::Unspecified());
+}
+
+func Main() -> int {
+    // IPv4-mapped addresses read and write back with their dotted tail; others keep the hexadecimal groups.
+    Assert(Text(Ip("::ffff:192.0.2.1"), "::ffff:192.0.2.1"), "a mapped address writes its IPv4 tail");
+    Assert(Text(Ip("::FFFF:c000:0201"), "::ffff:192.0.2.1"), "however it was written");
+    Assert(Text(Ip("::ffff:0.0.0.0"), "::ffff:0.0.0.0"), "the mapped unspecified address too");
+    Assert(Text(Ip("::c000:201"), "::c000:201"), "an address outside ::ffff:0:0/96 stays hexadecimal");
+    Assert(Text(Ip("64:ff9b::c000:201"), "64:ff9b::c000:201"), "and so does a translated one");
+    let mapped = Ip("::ffff:10.1.2.3").AsIpv6() ?? Ipv6Address::Unspecified();
+    let tail = mapped.AsMappedIpv4() ?? Ipv4Address::Unspecified();
+    Assert(tail.Equals(Ipv4Address::New(10u8, 1u8, 2u8, 3u8)), "the mapped IPv4 address is read back");
+    Assert(Ipv6Address::Localhost().AsMappedIpv4() == none, "::1 maps nothing");
+
+    // Classification.
+    Assert(Ip("0.0.0.0").IsUnspecified() && Ip("::").IsUnspecified(), "the unspecified addresses");
+    Assert(!Ip("0.0.0.1").IsUnspecified() && !Ip("::1").IsUnspecified(), "are only the all-zero ones");
+    Assert(Ip("10.20.30.40").IsPrivate() && Ip("172.16.0.1").IsPrivate() && Ip("172.31.255.255").IsPrivate() &&
+           Ip("192.168.1.1").IsPrivate(), "the RFC 1918 ranges are private");
+    Assert(!Ip("172.32.0.1").IsPrivate() && !Ip("172.15.255.255").IsPrivate() && !Ip("192.169.0.1").IsPrivate() &&
+           !Ip("8.8.8.8").IsPrivate(), "and their neighbours are not");
+    Assert(Ip("fc00::1").IsPrivate() && Ip("fdab::1").IsPrivate() && !Ip("fe00::1").IsPrivate(),
+           "unique local IPv6 addresses are private");
+    Assert(Ip("169.254.0.1").IsLinkLocal() && !Ip("169.255.0.1").IsLinkLocal(), "IPv4 link-local");
+    Assert(Ip("fe80::1").IsLinkLocal() && Ip("febf::1").IsLinkLocal() && !Ip("fec0::1").IsLinkLocal(),
+           "IPv6 link-local is fe80::/10");
+    Assert(Ip("224.0.0.1").IsMulticast() && Ip("239.255.255.255").IsMulticast() && !Ip("240.0.0.1").IsMulticast(),
+           "IPv4 multicast is 224.0.0.0/4");
+    Assert(Ip("ff02::1").IsMulticast() && !Ip("fe02::1").IsMulticast(), "IPv6 multicast is ff00::/8");
+
+    // Display, with the placeholder's width applied.
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let socket = SocketAddress::New(Ip("::ffff:192.0.2.1"), 8080u16);
+    let ipv4 = Ipv4Address::New(127u8, 0u8, 0u8, 1u8);
+    let ipv6 = Ipv6Address::Localhost();
+    let rendered = Render(allocator, "[{}] [{:<12}] [{:>5}] [{}]", socket, ipv4, ipv6, Ip("2001:db8::1"))
+        catch { else => return 1 };
+    Assert(Same(rendered.View().Bytes(), "[[::ffff:192.0.2.1]:8080] [127.0.0.1   ] [  ::1] [2001:db8::1]"),
+           "addresses render through {} and take the width");
+    return 0;
+}

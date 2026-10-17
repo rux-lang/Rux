@@ -162,19 +162,6 @@ TEST_CASE("TypeRef sizes agree with the catalog") {
     }
 }
 
-TEST_CASE("the implemented widths are the ones with a representation today") {
-    // One list, not two: a width is reserved exactly when it is named here, so implementing one is a single edit.
-    const std::unordered_set<std::string_view> reserved{
-        "bool128", "bool256", "bool512", "char128",  "char256",  "char512",
-        "float8",  "float16", "float80", "float128", "float256", "float512",
-    };
-
-    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        CAPTURE(primitive.name);
-        CHECK_EQ(primitive.implemented, !reserved.contains(primitive.name));
-    }
-}
-
 TEST_CASE("a character width carries either a code unit or a scalar value") {
     CHECK_EQ(CharacterDomainOf(TypeRef::Kind::Char8), CharacterDomain::CodeUnit);
     CHECK_EQ(CharacterDomainOf(TypeRef::Kind::Char16), CharacterDomain::CodeUnit);
@@ -230,6 +217,18 @@ TEST_CASE("a character widens only to a wider one carrying the same thing") {
     CHECK(scalar32.IsAssignableTo(scalar64));
     CHECK(scalar32.IsAssignableTo(scalar32));
     CHECK_FALSE(scalar64.IsAssignableTo(scalar32));
+
+    // The multiword widths carry the same scalar value, so the rule continues past a machine word in both directions.
+    const TypeRef scalar128 = TypeRef::MakePrimitive(TypeRef::Kind::Char128);
+    const TypeRef scalar256 = TypeRef::MakePrimitive(TypeRef::Kind::Char256);
+    const TypeRef scalar512 = TypeRef::MakePrimitive(TypeRef::Kind::Char512);
+    CHECK(scalar64.IsAssignableTo(scalar128));
+    CHECK(scalar32.IsAssignableTo(scalar512));
+    CHECK(scalar128.IsAssignableTo(scalar256));
+    CHECK(scalar256.IsAssignableTo(scalar512));
+    CHECK_FALSE(scalar128.IsAssignableTo(scalar64));
+    CHECK_FALSE(scalar512.IsAssignableTo(scalar256));
+    CHECK_FALSE(TypeRef::MakeChar16().IsAssignableTo(scalar128));
 
     // The two encodings do not mix: a UTF-8 byte above 0x7F is not the UTF-16 word of the same number, and a UTF-16
     // word may be half of a pair rather than a character.

@@ -1,0 +1,110 @@
+// Threads of execution, which the C library manages: their stacks, their thread-local blocks and joining them.
+// The kernel only starts and stops a thread; everything a program needs around that belongs to the C library, and a
+// thread started behind its back would have no thread-local block. That is why this module links a library, and why
+// a program that starts threads is linked dynamically.
+// The names are the platform's own, lowercase, because they are the symbols the library exports and what a reader
+// porting code will look for.
+
+// FreeBSD keeps the thread entry points in libthr, apart from the C library, where `sched_yield` and `sysconf`
+// stay.
+const ThreadLib = "libthr.so.3";
+const CLib = "libc.so.7";
+
+/// A thread as the C library names it, `pthread_t`. Every system this package family binds keeps it in one word.
+/// @see https://rux-lang.dev/docs/api/freebsd/thread#p-thread
+pub type PThread = uint64;
+
+/// Room for a `pthread_attr_t`, which each C library sizes its own way and none larger than this.
+/// Only ever passed by address to the `pthread_attr_*` calls, which initialize and read it.
+/// @see https://rux-lang.dev/docs/api/freebsd/thread#p-thread-attributes
+pub struct PThreadAttributes {
+    storage: uint64[8];
+}
+
+extend PThreadAttributes {
+    /// Zeroed storage for `pthread_attr_init` to initialize.
+    /// @returns the storage
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#p-thread-attributes-new
+    pub func PThreadAttributes() -> PThreadAttributes {
+        return PThreadAttributes { storage: [0u64; 8] };
+    }
+}
+
+/// `_SC_NPROCESSORS_ONLN`: the `sysconf` name for the number of processors currently online.
+/// @see https://rux-lang.dev/docs/api/freebsd/thread#sc-nprocessors-onln
+#Allow("naming.const")
+pub const SC_NPROCESSORS_ONLN: int32 = 58;
+
+#Link(ThreadLib)
+extern {
+    /// Starts a thread running `start(argument)`.
+    /// @param thread receives the new thread
+    /// @param attributes initialized attributes, or null for the defaults
+    /// @param start the thread's entry point, a function taking and returning one pointer
+    /// @param argument the value handed to the entry point
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#pthread-create
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=pthread_create&sektion=3
+    pub func pthread_create(thread: *var PThread, attributes: *PThreadAttributes, start: *opaque, argument: *var opaque)
+        -> int32;
+
+    /// Waits for a thread to finish and releases it.
+    /// @param thread a thread nothing has joined or detached
+    /// @param result receives the value its entry point returned, or null to ignore it
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#pthread-join
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=pthread_join&sektion=3
+    pub func pthread_join(thread: PThread, result: *var *var opaque) -> int32;
+
+    /// Lets a thread release itself when it finishes, so nothing has to join it.
+    /// @param thread a thread nothing has joined or detached
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#pthread-detach
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=pthread_detach&sektion=3
+    pub func pthread_detach(thread: PThread) -> int32;
+
+    /// Initializes thread attributes to the defaults.
+    /// @param attributes the storage to initialize
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#pthread-attr-init
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=pthread_attr_init&sektion=3
+    pub func pthread_attr_init(attributes: *var PThreadAttributes) -> int32;
+
+    /// Sets the stack size a thread started with these attributes gets.
+    /// @param attributes initialized attributes
+    /// @param size the stack size in bytes, at least the system's minimum
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#pthread-attr-setstacksize
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=pthread_attr_setstacksize&sektion=3
+    pub func pthread_attr_setstacksize(attributes: *var PThreadAttributes, size: uint) -> int32;
+
+    /// Releases what `pthread_attr_init` set up.
+    /// @param attributes initialized attributes
+    /// @returns zero, or an error number
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#pthread-attr-destroy
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=pthread_attr_destroy&sektion=3
+    pub func pthread_attr_destroy(attributes: *var PThreadAttributes) -> int32;
+
+    /// Returns the kernel's identifier for the calling thread.
+    /// @returns the calling thread's identifier
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#pthread-getthreadid-np
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=pthread_getthreadid_np&sektion=3
+    pub func pthread_getthreadid_np() -> int32;
+}
+
+#Link(CLib)
+extern {
+
+    /// Gives up the processor so another ready thread can run.
+    /// @returns zero, or -1 with the reason in errno
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#sched-yield
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=sched_yield&sektion=2
+    pub func sched_yield() -> int32;
+
+    /// Reads a system configuration value.
+    /// @param name the value to read, such as `SC_NPROCESSORS_ONLN`
+    /// @returns the value, or -1 when the system has no limit or does not know the name
+    /// @see https://rux-lang.dev/docs/api/freebsd/thread#sysconf
+    /// @see https://man.freebsd.org/cgi/man.cgi?query=sysconf&sektion=3
+    pub func sysconf(name: int32) -> int64;
+}

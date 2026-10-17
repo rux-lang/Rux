@@ -1,0 +1,106 @@
+struct Handle { code: int32; }
+
+extend Handle {
+    func ~Handle(self: &var Handle) {}
+}
+
+struct Holder { handle: Handle; extra: int32; }
+struct Outer { holder: Holder; }
+struct Plain { code: int32; }
+
+func Init(slot: *var Handle) {
+    *slot <- Handle { code: 9 };
+}
+
+func DeclaredWithoutValue() {
+    var empty: Holder;
+    empty.handle <- Handle { code: 1 };
+}
+
+func PlainFieldOfDroppable() {
+    var empty: Holder;
+    empty.extra = 1;
+}
+
+func MovedFrom(holder: Holder) {
+    var moved <- holder;
+    let taken <- moved;
+    moved.handle <- Handle { code: 2 };
+}
+
+func MaybeMoved(holder: Holder, condition: bool) {
+    var moved <- holder;
+    if condition {
+        let taken <- moved;
+    }
+    moved.handle <- Handle { code: 3 };
+}
+
+func MaybeUninitialized(holder: Holder, condition: bool) {
+    var partly: Holder;
+    if condition {
+        partly <- holder;
+    }
+    partly.extra = 4;
+}
+
+func Nested() {
+    var outer: Outer;
+    outer.holder.handle <- Handle { code: 5 };
+}
+
+func TupleElement() {
+    var pair: (Handle, int32);
+    pair.0 <- Handle { code: 6 };
+}
+
+func ArrayElement() {
+    var handles: Handle[2];
+    handles[1] <- Handle { code: 7 };
+}
+
+func AddressOfPart() {
+    var empty: Holder;
+    Init(@empty.handle);
+}
+
+func InLoop(holder: Holder) {
+    var moved <- holder;
+    let taken <- moved;
+    for i in 0..2 {
+        moved.extra = i as int32;
+    }
+}
+
+struct Box<T> { value: T; }
+
+func Generic<T>(value: T) {
+    var box: Box<T>;
+    box.value <- value;
+}
+
+func Allowed(holder: &var Holder, slot: *var Holder) {
+    var plain: Plain;
+    plain.code = 1;
+    var whole: Holder;
+    whole = Holder { handle: Handle { code: 2 }, extra: 0 };
+    whole.handle <- Handle { code: 3 };
+    holder.handle <- Handle { code: 4 };
+    slot.handle <- Handle { code: 5 };
+    let taken <- whole;
+    whole = Holder { handle: Handle { code: 6 }, extra: 0 };
+    whole.extra = 7;
+}
+
+extend Holder {
+    func Reset(self: &var Holder) {
+        self.handle <- Handle { code: 8 };
+    }
+}
+
+func FilledPlainArray() -> int32 {
+    var values: int32[2];
+    values[0] = 1;
+    values[1] = 2;
+    return values[0] + values[1];
+}

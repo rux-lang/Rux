@@ -1,0 +1,631 @@
+// Writing data as a compressed stream.
+// Data is gathered until the buffer is full, then encoded as one block, with the 32 KiB before it kept so that
+// matches can reach back into earlier blocks. Repeats are found through hash chains on three-byte prefixes, as zlib
+// finds them; the higher levels follow longer chains and look one byte ahead before taking a match, in case a longer
+// one starts there. Each block is then written whichever way is smallest: stored as it is, with the fixed codes, or
+// with codes built for that block's own frequencies.
+// Nothing is complete until `Finish` writes the final block and the container's trailer, so a writer dropped without
+// finishing leaves a stream a decompressor reports as truncated.
+
+import Allocator::{ Allocator, Layout };
+import Hash::{ Adler32, Crc32, Hasher };
+import Io::{ IoError, IoErrorKind, Writer };
+import Compress::{
+    AssignCodes, ChooseLengths, CodeLengthOrder, DistanceBase, DistanceExtra, Format, LengthBase, LengthExtra, Level,
+    WindowSize
+};
+
+const DataCapacity: uint = 98304;
+const HashBits: uint = 15;
+const HashSize: uint = 32768;
+const OutputCapacity: uint = 16384;
+const MinimumMatch: uint = 3;
+const MaximumMatch: uint = 258;
+const MatchFlag: uint32 = 0x80000000;
+
+/// A writer that compresses what is written to it into another writer, in any of the three formats.
+/// Call `Finish` when done: it writes the rest of the data and the container's trailer, and nothing written is
+/// complete before it. `Flush` writes everything so far in a form a decompressor can read up to, without ending the
+/// stream. Not copied.
+/// @see https://rux-lang.dev/docs/api/compress/deflate#compress-writer
+pub struct CompressWriter {
+    sink: Writer;
+    format: Format;
+    level: Level;
+    allocator: Allocator;
+    data: *var uint8;
+    dataLength: uint;
+    blockStart: uint;
+    head: *var int32;
+    previous: *var int32;
+    tokens: *var uint32;
+    tokenCount: uint;
+    output: *var uint8;
+    outputLength: uint;
+    bits: uint64;
+    bitCount: uint;
+    started: bool;
+    finished: bool;
+    crc: Crc32;
+    adler: Adler32;
+    size: uint32;
+}
+
+// Allocates `size` bytes or fails.
+func Take(allocator: Allocator, size: uint) -> *var opaque ! IoError {
+    var borrowed = allocator;
+    let layout = Layout::New(size, 8) ?? fail IoError::Of(IoErrorKind::LimitExceeded);
+    return borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+}
+
+func Give(allocator: Allocator, block: *var opaque, size: uint) {
+    if block == null { return; }
+    var borrowed = allocator;
+    borrowed.Deallocate(block, Layout::New(size, 8) ?? Layout::ForValue<uint64>()) catch { else => {} };
+}
+
+extend CompressWriter {
+    func =(self: &var CompressWriter, other: &CompressWriter);
+
+    /// A writer that compresses into `sink` in `format`, at `level`.
+    /// @param allocator what the writer's buffers are kept in, about 750 KiB
+    /// @param sink where the compressed stream goes, which the writer takes
+    /// @param format the container to write
+    /// @param level how hard to compress
+    /// @returns the writer, or fails when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/compress/deflate#new
+    pub func New(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
+        -> CompressWriter ! IoError {
+        let data = Take(allocator, DataCapacity)? as *var uint8;
+        let head = Take(allocator, HashSize * 4u)? as *var int32;
+        let previous = Take(allocator, WindowSize * 4u)? as *var int32;
+        let tokens = Take(allocator, DataCapacity * 4u)? as *var uint32;
+        let output = Take(allocator, OutputCapacity)? as *var uint8;
+        var index: uint = 0;
+        while index < HashSize {
+            head[index] = -1;
+            index = index + 1;
+        }
+        return CompressWriter {
+            sink: <-sink, format: format, level: level, allocator: allocator, data: data, dataLength: 0,
+            blockStart: 0, head: head, previous: previous, tokens: tokens, tokenCount: 0, output: output,
+            outputLength: 0, bits: 0, bitCount: 0, started: false, finished: false, crc: Crc32(), adler: Adler32(),
+            size: 0
+        };
+    }
+
+    /// Compresses everything written so far, writes the end of the stream and the container's trailer, and flushes
+    /// the sink. Writing after finishing fails; finishing twice does nothing.
+    /// @returns nothing, or fails with the sink's error
+    /// @see https://rux-lang.dev/docs/api/compress/deflate#finish
+    pub func Finish(self: &var CompressWriter) -> ! IoError {
+        if self.finished { return; }
+        self.Start()?;
+        self.EncodeBlock(true)?;
+        self.AlignBits()?;
+        if self.format == Format::Zlib {
+            let value = self.adler.Value();
+            self.PutByte((value >> 24) as uint8)?;
+            self.PutByte((value >> 16) as uint8)?;
+            self.PutByte((value >> 8) as uint8)?;
+            self.PutByte(value as uint8)?;
+        }
+        else if self.format == Format::Gzip {
+            self.PutWord(self.crc.Value())?;
+            self.PutWord(self.size)?;
+        }
+        self.SendOutput()?;
+        self.sink.Flush()?;
+        self.finished = true;
+    }
+
+    // Writes the container's header, once.
+    func Start(self: &var CompressWriter) -> ! IoError {
+        if self.started { return; }
+        self.started = true;
+        if self.format == Format::Zlib {
+            let levelBits: uint = self.level == Level::Store || self.level == Level::Fastest ? 0u
+                                  : (self.level == Level::Default ? 2u : 3u);
+            var flags = levelBits << 6;
+            flags = flags + 31u - ((0x78u * 256u + flags) % 31u);
+            self.PutByte(0x78u8)?;
+            self.PutByte(flags as uint8)?;
+        }
+        else if self.format == Format::Gzip {
+            let header: uint8[10] = [0x1Fu8, 0x8Bu8, 8u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0xFFu8];
+            var index: uint = 0;
+            while index < 10u {
+                self.PutByte(header[index])?;
+                index = index + 1;
+            }
+        }
+    }
+
+    // Appends whole bytes to the output, after any pending bits.
+    func PutByte(self: &var CompressWriter, value: uint8) -> ! IoError {
+        self.PutBits(value as uint64, 8)?;
+    }
+
+    func PutWord(self: &var CompressWriter, value: uint32) -> ! IoError {
+        self.PutBits(value as uint64, 32)?;
+    }
+
+    // Appends `count` bits of `value`, least significant first.
+    func PutBits(self: &var CompressWriter, value: uint64, count: uint) -> ! IoError {
+        self.bits = self.bits | ((value & ((1u64 << count as uint64) - 1u64)) << self.bitCount as uint64);
+        self.bitCount = self.bitCount + count;
+        while self.bitCount >= 8u {
+            if self.outputLength == OutputCapacity { self.SendOutput()?; }
+            self.output[self.outputLength] = self.bits as uint8;
+            self.outputLength = self.outputLength + 1;
+            self.bits = self.bits >> 8u64;
+            self.bitCount = self.bitCount - 8;
+        }
+    }
+
+    // Pads the output to a whole byte.
+    func AlignBits(self: &var CompressWriter) -> ! IoError {
+        if self.bitCount > 0u { self.PutBits(0, 8u - self.bitCount)?; }
+    }
+
+    // Hands the output gathered so far to the sink.
+    func SendOutput(self: &var CompressWriter) -> ! IoError {
+        var sent: uint = 0;
+        while sent < self.outputLength {
+            let chunk = (self.output as *var char8)[sent..self.outputLength];
+            let count = self.sink.Write(chunk)?;
+            if count == 0u { fail IoError::Of(IoErrorKind::WriteZero); }
+            sent = sent + count;
+        }
+        self.outputLength = 0;
+    }
+
+    // The hash of the three bytes at `position`.
+    func HashAt(self: &CompressWriter, position: uint) -> uint {
+        let value = (self.data[position] as uint32 << 16) | (self.data[position + 1u] as uint32 << 8) |
+                    self.data[position + 2u] as uint32;
+        return ((value * 2654435761u32) >> (32u32 - HashBits as uint32)) as uint;
+    }
+
+    // Records that the three bytes at `position` start there.
+    func Insert(self: &var CompressWriter, position: uint) {
+        if position + MinimumMatch > self.dataLength { return; }
+        let hash = self.HashAt(position);
+        self.previous[position & (WindowSize - 1u)] = self.head[hash];
+        self.head[hash] = position as int32;
+    }
+
+    // The longest match for `position` within `end`, as its length and distance.
+    func Search(self: &CompressWriter, position: uint, end: uint) -> uint64 {
+        if position + MinimumMatch > end { return 0; }
+        let chain: uint = self.level == Level::Fastest ? 4u : (self.level == Level::Default ? 32u : 256u);
+        let nice: uint = self.level == Level::Best ? MaximumMatch : 128u;
+        let limit = end - position > MaximumMatch ? MaximumMatch : end - position;
+        var candidate = self.head[self.HashAt(position)];
+        var bestLength: uint = 0;
+        var bestDistance: uint = 0;
+        var steps: uint = 0;
+        while candidate >= 0 && steps < chain {
+            let at = candidate as uint;
+            if at >= position || position - at > WindowSize { break; }
+            if self.data[at + bestLength] == self.data[position + bestLength] {
+                var length: uint = 0;
+                while length < limit && self.data[at + length] == self.data[position + length] {
+                    length = length + 1;
+                }
+                if length > bestLength {
+                    bestLength = length;
+                    bestDistance = position - at;
+                    if length >= nice || length == limit { break; }
+                }
+            }
+            let next = self.previous[at & (WindowSize - 1u)];
+            if next >= candidate { break; }
+            candidate = next;
+            steps = steps + 1;
+        }
+        if bestLength < MinimumMatch { return 0; }
+        return (bestLength as uint64 << 32) | bestDistance as uint64;
+    }
+
+    // Turns the waiting data into literals and matches.
+    func Tokenize(self: &var CompressWriter) {
+        let end = self.dataLength;
+        let lazy = self.level == Level::Default || self.level == Level::Best;
+        var position = self.blockStart;
+        self.tokenCount = 0;
+        while position < end {
+            let found = self.Search(position, end);
+            self.Insert(position);
+            var length = (found >> 32) as uint;
+            let distance = (found & 0xFFFFFFFFu64) as uint;
+            if lazy && length >= MinimumMatch && length < 32u && position + 1u < end {
+                let ahead = (self.Search(position + 1u, end) >> 32) as uint;
+                if ahead > length {
+                    length = 0;
+                }
+            }
+            if length >= MinimumMatch {
+                self.tokens[self.tokenCount] = MatchFlag | (length as uint32 << 16) | distance as uint32;
+                var step: uint = 1;
+                while step < length {
+                    self.Insert(position + step);
+                    step = step + 1;
+                }
+                position = position + length;
+            }
+            else {
+                self.tokens[self.tokenCount] = self.data[position] as uint32;
+                position = position + 1;
+            }
+            self.tokenCount = self.tokenCount + 1;
+        }
+    }
+
+    // Encodes the data waiting since the last block as one or more blocks, the last of them final when `final`.
+    func EncodeBlock(self: &var CompressWriter, final: bool) -> ! IoError {
+        let start = self.blockStart;
+        let end = self.dataLength;
+        if start == end && !final { return; }
+        if self.level == Level::Store {
+            self.WriteStored(start, end, final)?;
+            self.blockStart = end;
+            return;
+        }
+        self.Tokenize();
+
+        var literalCounts: uint32[286] = [0u32; 286];
+        var distanceCounts: uint32[30] = [0u32; 30];
+        var extraBits: uint64 = 0;
+        var token: uint = 0;
+        while token < self.tokenCount {
+            let value = self.tokens[token];
+            if (value & MatchFlag) == 0u32 {
+                literalCounts[value as uint] = literalCounts[value as uint] + 1u32;
+            }
+            else {
+                let lengthCode = LengthCode((value >> 16) as uint & 0x1FFu);
+                let distanceCode = DistanceCode(value as uint & 0xFFFFu);
+                literalCounts[257u + lengthCode] = literalCounts[257u + lengthCode] + 1u32;
+                distanceCounts[distanceCode] = distanceCounts[distanceCode] + 1u32;
+                extraBits = extraBits + LengthExtra[lengthCode] as uint64 + DistanceExtra[distanceCode] as uint64;
+            }
+            token = token + 1;
+        }
+        literalCounts[256] = 1;
+
+        // The cost of each way of writing the block, in bits.
+        var literalLengths: uint8[286] = [0u8; 286];
+        var distanceLengths: uint8[30] = [0u8; 30];
+        ChooseLengths(@literalCounts[0], 286, 15, @literalLengths[0]);
+        ChooseLengths(@distanceCounts[0], 30, 15, @distanceLengths[0]);
+        if distanceLengths[0] == 0u8 && distanceLengths[1] == 0u8 {
+            var used = false;
+            var check: uint = 0;
+            while check < 30u {
+                if distanceLengths[check] != 0u8 { used = true; }
+                check = check + 1;
+            }
+            if !used { distanceLengths[0] = 1; }
+        }
+        var literalCount: uint = 286;
+        while literalCount > 257u && literalLengths[literalCount - 1u] == 0u8 { literalCount = literalCount - 1; }
+        var distanceCount: uint = 30;
+        while distanceCount > 1u && distanceLengths[distanceCount - 1u] == 0u8 { distanceCount = distanceCount - 1; }
+
+        var all: uint8[316] = [0u8; 316];
+        var index: uint = 0;
+        while index < literalCount {
+            all[index] = literalLengths[index];
+            index = index + 1;
+        }
+        index = 0;
+        while index < distanceCount {
+            all[literalCount + index] = distanceLengths[index];
+            index = index + 1;
+        }
+        var runs: uint16[316] = [0u16; 316];
+        let runCount = RunLengths(@all[0], literalCount + distanceCount, @runs[0]);
+        var codeCounts: uint32[19] = [0u32; 19];
+        var runBits: uint64 = 0;
+        index = 0;
+        while index < runCount {
+            let symbol = (runs[index] & 0x1Fu16) as uint;
+            codeCounts[symbol] = codeCounts[symbol] + 1u32;
+            runBits = runBits + (symbol == 16u ? 2u64 : (symbol == 17u ? 3u64 : (symbol == 18u ? 7u64 : 0u64)));
+            index = index + 1;
+        }
+        var codeLengths: uint8[19] = [0u8; 19];
+        ChooseLengths(@codeCounts[0], 19, 7, @codeLengths[0]);
+        var codeLengthCount: uint = 19;
+        while codeLengthCount > 4u && codeLengths[CodeLengthOrder[codeLengthCount - 1u] as uint] == 0u8 {
+            codeLengthCount = codeLengthCount - 1;
+        }
+
+        var dynamicBits: uint64 = 3u64 + 14u64 + 3u64 * codeLengthCount as uint64 + runBits + extraBits;
+        var fixedBits: uint64 = 3u64 + extraBits;
+        index = 0;
+        while index < 19u {
+            dynamicBits = dynamicBits + codeCounts[index] as uint64 * codeLengths[index] as uint64;
+            index = index + 1;
+        }
+        index = 0;
+        while index < 286u {
+            dynamicBits = dynamicBits + literalCounts[index] as uint64 * literalLengths[index] as uint64;
+            fixedBits = fixedBits + literalCounts[index] as uint64 * FixedLength(index) as uint64;
+            index = index + 1;
+        }
+        index = 0;
+        while index < 30u {
+            dynamicBits = dynamicBits + distanceCounts[index] as uint64 * distanceLengths[index] as uint64;
+            fixedBits = fixedBits + distanceCounts[index] as uint64 * 5u64;
+            index = index + 1;
+        }
+        let storedBits = ((end - start) as uint64 + 5u64 * ((end - start) as uint64 / 65535u64 + 1u64)) * 8u64 + 10u64;
+
+        if storedBits <= fixedBits && storedBits <= dynamicBits {
+            self.WriteStored(start, end, final)?;
+        }
+        else if fixedBits <= dynamicBits {
+            self.PutBits(final ? 1u64 : 0u64, 1)?;
+            self.PutBits(1, 2)?;
+            var fixedLiterals: uint8[288] = [0u8; 288];
+            index = 0;
+            while index < 288u {
+                fixedLiterals[index] = FixedLength(index) as uint8;
+                index = index + 1;
+            }
+            var fixedDistances: uint8[30] = [5u8; 30];
+            self.WriteTokens(@fixedLiterals[0], @fixedDistances[0])?;
+        }
+        else {
+            self.PutBits(final ? 1u64 : 0u64, 1)?;
+            self.PutBits(2, 2)?;
+            self.PutBits((literalCount - 257u) as uint64, 5)?;
+            self.PutBits((distanceCount - 1u) as uint64, 5)?;
+            self.PutBits((codeLengthCount - 4u) as uint64, 4)?;
+            index = 0;
+            while index < codeLengthCount {
+                self.PutBits(codeLengths[CodeLengthOrder[index] as uint] as uint64, 3)?;
+                index = index + 1;
+            }
+            var codeCodes: uint16[19] = [0u16; 19];
+            AssignCodes(@codeLengths[0], 19, @codeCodes[0]);
+            index = 0;
+            while index < runCount {
+                let run = runs[index];
+                let symbol = (run & 0x1Fu16) as uint;
+                self.PutBits(codeCodes[symbol] as uint64, codeLengths[symbol] as uint)?;
+                let extra = (run >> 5) as uint64;
+                if symbol == 16u { self.PutBits(extra, 2)?; }
+                else if symbol == 17u { self.PutBits(extra, 3)?; }
+                else if symbol == 18u { self.PutBits(extra, 7)?; }
+                index = index + 1;
+            }
+            var literals: uint8[288] = [0u8; 288];
+            index = 0;
+            while index < 286u {
+                literals[index] = literalLengths[index];
+                index = index + 1;
+            }
+            self.WriteTokens(@literals[0], @distanceLengths[0])?;
+        }
+        self.blockStart = end;
+    }
+
+    // Writes the block's tokens with the given code lengths, and the end-of-block code.
+    func WriteTokens(self: &var CompressWriter, literalLengths: *uint8, distanceLengths: *uint8) -> ! IoError {
+        var literalCodes: uint16[288] = [0u16; 288];
+        var distanceCodes: uint16[30] = [0u16; 30];
+        AssignCodes(literalLengths, 288, @literalCodes[0]);
+        AssignCodes(distanceLengths, 30, @distanceCodes[0]);
+        var token: uint = 0;
+        while token < self.tokenCount {
+            let value = self.tokens[token];
+            if (value & MatchFlag) == 0u32 {
+                let symbol = value as uint;
+                self.PutBits(literalCodes[symbol] as uint64, literalLengths[symbol] as uint)?;
+            }
+            else {
+                let length = (value >> 16) as uint & 0x1FFu;
+                let distance = value as uint & 0xFFFFu;
+                let lengthCode = LengthCode(length);
+                let symbol = 257u + lengthCode;
+                self.PutBits(literalCodes[symbol] as uint64, literalLengths[symbol] as uint)?;
+                self.PutBits((length - LengthBase[lengthCode] as uint) as uint64, LengthExtra[lengthCode] as uint)?;
+                let distanceCode = DistanceCode(distance);
+                self.PutBits(distanceCodes[distanceCode] as uint64, distanceLengths[distanceCode] as uint)?;
+                self.PutBits((distance - DistanceBase[distanceCode] as uint) as uint64,
+                             DistanceExtra[distanceCode] as uint)?;
+            }
+            token = token + 1;
+        }
+        self.PutBits(literalCodes[256] as uint64, literalLengths[256] as uint)?;
+    }
+
+    // Writes data as stored blocks of at most 65535 bytes, the last final when `final`.
+    func WriteStored(self: &var CompressWriter, start: uint, end: uint, final: bool) -> ! IoError {
+        var at = start;
+        while true {
+            let length = end - at > 65535u ? 65535u : end - at;
+            let last = at + length == end;
+            self.PutBits(final && last ? 1u64 : 0u64, 1)?;
+            self.PutBits(0, 2)?;
+            self.AlignBits()?;
+            self.PutBits(length as uint64, 16)?;
+            self.PutBits((length ^ 0xFFFFu) as uint64, 16)?;
+            var index: uint = 0;
+            while index < length {
+                self.PutByte(self.data[at + index])?;
+                index = index + 1;
+            }
+            at = at + length;
+            if last { break; }
+        }
+    }
+
+    // Keeps only the last 32 KiB of data, the history the next block's matches may reach into.
+    func Slide(self: &var CompressWriter) {
+        if self.dataLength <= WindowSize { return; }
+        let shift = self.dataLength - WindowSize;
+        var index: uint = 0;
+        while index < WindowSize {
+            self.data[index] = self.data[shift + index];
+            index = index + 1;
+        }
+        index = 0;
+        while index < HashSize {
+            let entry = self.head[index];
+            self.head[index] = entry >= shift as int32 ? entry - shift as int32 : -1;
+            index = index + 1;
+        }
+        index = 0;
+        while index < WindowSize {
+            let entry = self.previous[index];
+            self.previous[index] = entry >= shift as int32 ? entry - shift as int32 : -1;
+            index = index + 1;
+        }
+        // The chains are indexed by position modulo the window, and the shift is a multiple of the window, since
+        // sliding happens only when the data is full, so every entry keeps its slot.
+        self.dataLength = WindowSize;
+        self.blockStart = WindowSize;
+    }
+
+    func ~CompressWriter(self: &var CompressWriter) {
+        Give(self.allocator, self.data as *var opaque, DataCapacity);
+        Give(self.allocator, self.head as *var opaque, HashSize * 4u);
+        Give(self.allocator, self.previous as *var opaque, WindowSize * 4u);
+        Give(self.allocator, self.tokens as *var opaque, DataCapacity * 4u);
+        Give(self.allocator, self.output as *var opaque, OutputCapacity);
+    }
+}
+
+extend CompressWriter : Writer {
+    /// Takes `bytes` to compress. They are encoded as enough of them gather, and all of them by `Flush` or `Finish`.
+    /// @param bytes the data
+    /// @returns how many bytes were taken, which is all of them, or fails after `Finish` or with the sink's error
+    /// @see https://rux-lang.dev/docs/api/compress/deflate#write
+    pub func Write(self: &var CompressWriter, bytes: char8[..]) -> uint ! IoError {
+        if self.finished { fail IoError::Of(IoErrorKind::InvalidHandle); }
+        self.Start()?;
+        if self.format == Format::Zlib {
+            self.adler.Write(bytes.data as *byte, bytes.length);
+        }
+        else if self.format == Format::Gzip {
+            self.crc.Write(bytes.data as *byte, bytes.length);
+            self.size = self.size + bytes.length as uint32;
+        }
+        var taken: uint = 0;
+        while taken < bytes.length {
+            if self.dataLength == DataCapacity {
+                self.EncodeBlock(false)?;
+                self.Slide();
+            }
+            let room = DataCapacity - self.dataLength;
+            let count = bytes.length - taken > room ? room : bytes.length - taken;
+            var index: uint = 0;
+            while index < count {
+                self.data[self.dataLength + index] = bytes[taken + index] as uint8;
+                index = index + 1;
+            }
+            self.dataLength = self.dataLength + count;
+            taken = taken + count;
+        }
+        return taken;
+    }
+
+    /// Encodes everything written so far and ends it with an empty stored block, so a decompressor can read all of it,
+    /// then flushes the sink. The stream continues afterwards.
+    /// @returns nothing, or fails with the sink's error
+    /// @see https://rux-lang.dev/docs/api/compress/deflate#flush
+    pub func Flush(self: &var CompressWriter) -> ! IoError {
+        if self.finished { return; }
+        self.Start()?;
+        self.EncodeBlock(false)?;
+        self.PutBits(0, 3)?;
+        self.AlignBits()?;
+        self.PutBits(0x0000u64, 16)?;
+        self.PutBits(0xFFFFu64, 16)?;
+        self.SendOutput()?;
+        self.sink.Flush()?;
+    }
+}
+
+// The fixed code's length for a literal/length symbol.
+func FixedLength(symbol: uint) -> uint {
+    if symbol < 144u { return 8; }
+    if symbol < 256u { return 9; }
+    if symbol < 280u { return 7; }
+    return 8;
+}
+
+// The length code, from 0 to 28, of a match length from 3 to 258.
+func LengthCode(length: uint) -> uint {
+    var code: uint = 28;
+    while code > 0u && LengthBase[code] as uint > length { code = code - 1; }
+    return code;
+}
+
+// The distance code, from 0 to 29, of a distance from 1 to 32768.
+func DistanceCode(distance: uint) -> uint {
+    var code: uint = 29;
+    while code > 0u && DistanceBase[code] as uint > distance { code = code - 1; }
+    return code;
+}
+
+// Encodes code lengths with the run symbols 16, 17 and 18, as `symbol | extra << 5`, and returns how many there are.
+func RunLengths(lengths: *uint8, count: uint, runs: *var uint16) -> uint {
+    var written: uint = 0;
+    var index: uint = 0;
+    while index < count {
+        let value = lengths[index];
+        var run: uint = 1;
+        while index + run < count && lengths[index + run] == value { run = run + 1; }
+        if value == 0u8 && run >= 3u {
+            var left = run;
+            while left >= 3u {
+                if left >= 11u {
+                    let take = left > 138u ? 138u : left;
+                    runs[written] = (18u | ((take - 11u) << 5)) as uint16;
+                    left = left - take;
+                }
+                else {
+                    runs[written] = (17u | ((left - 3u) << 5)) as uint16;
+                    left = 0;
+                }
+                written = written + 1;
+            }
+            while left > 0u {
+                runs[written] = 0;
+                written = written + 1;
+                left = left - 1;
+            }
+        }
+        else if value != 0u8 && run >= 4u {
+            runs[written] = value as uint16;
+            written = written + 1;
+            var left = run - 1u;
+            while left >= 3u {
+                let take = left > 6u ? 6u : left;
+                runs[written] = (16u | ((take - 3u) << 5)) as uint16;
+                written = written + 1;
+                left = left - take;
+            }
+            while left > 0u {
+                runs[written] = value as uint16;
+                written = written + 1;
+                left = left - 1;
+            }
+        }
+        else {
+            var left = run;
+            while left > 0u {
+                runs[written] = value as uint16;
+                written = written + 1;
+                left = left - 1;
+            }
+        }
+        index = index + run;
+    }
+    return written;
+}

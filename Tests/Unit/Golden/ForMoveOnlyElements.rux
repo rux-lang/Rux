@@ -1,0 +1,29 @@
+// A direct loop over an array or a slice copies each element into the loop variable, so a move-only element type is
+// refused rather than copied bit for bit and destroyed twice. Copyable and custom-copy elements loop as before.
+
+struct Handle {
+    id: int32;
+}
+
+extend Handle {
+    func =(self: &var Handle, other: &Handle);
+}
+
+struct Plain {
+    id: int32;
+}
+
+func Main() -> int {
+    let handles: Handle[2] = [Handle { id: 1 }, Handle { id: 2 }];
+    for handle in handles {
+        let id = handle.id;
+    }
+    for handle in handles[..] {
+        let id = handle.id;
+    }
+    let plains: Plain[2] = [Plain { id: 1 }, Plain { id: 2 }];
+    for plain in plains[..] {
+        let id = plain.id;
+    }
+    return 0;
+}

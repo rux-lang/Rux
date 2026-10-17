@@ -1,6 +1,11 @@
 #include "CodeGen/X86_64/FramePlan.h"
 
+#include "CodeGen/FrameSlotSharing.h"
 #include "CodeGen/LinearScan.h"
+#include "CodeGen/ScalarImmediates.h"
+#include "CodeGen/SpillWeights.h"
+#include "CodeGen/X86_64/ScalarAddress.h"
+#include "CodeGen/X86_64/ScalarMachine.h"
 #include "Target/CallingConvention.h"
 
 #include <algorithm>
@@ -9,10 +14,6 @@
 
 namespace Rux {
 using namespace Layout;
-
-namespace {
-constexpr int kCalleeSavedRegisters = 5;
-} // namespace
 
 class X86_64FramePlanner {
 public:
@@ -25,13 +26,25 @@ public:
     }
 
     [[nodiscard]] X86_64FramePlan Build() {
-        PlanCalleeSaves();
+        plan.immediateValues = ScalarImmediates(func);
+        PlanImmediateCandidates();
+        ParamTypeMap parameters;
+        for (const auto &parameter : func.params) {
+            parameters.emplace(parameter.reg, ParameterRegisterType(parameter.type));
+        }
+        const auto intervals = ComputeLiveIntervals(func, parameters);
+        priorities = ComputeSpillPriorities(func, intervals);
+        PlanTiedInputs(intervals);
+        PlanCalleeSaves(intervals);
         nextOffset = static_cast<std::int32_t>(plan.usedPhysicalRegisters.size() * 8);
+        PlanFloatRegisters(intervals);
         PlanHiddenReturn();
         PlanParameters();
         PlanInstructions();
+        PlanBranches();
         PlanWideTemporaries();
         PlanPhiTemporary();
+        PlanImmediateElision();
 
         plan.frameSize = AlignUp(nextOffset, 16);
         if (plan.frameSize == 0) {
@@ -47,6 +60,95 @@ private:
     Target::OS targetOs;
     X86_64FramePlan plan;
     std::int32_t nextOffset = 0;
+    std::unordered_map<LirReg, LirReg> tiedInputs;
+    std::unordered_map<LirReg, double> priorities;
+    std::unordered_set<LirReg> immediateCandidates;
+
+    [[nodiscard]] int AddressScale(const LirInstr &instruction) const {
+        return instruction.type->kind == TypeRef::Kind::Pointer && !instruction.type->inner.empty()
+                 ? std::max(1, RuntimeSize(instruction.type->inner[0]))
+                 : 8;
+    }
+
+    void PlanImmediateCandidates() {
+        for (const auto &[reg, value] : plan.immediateValues) {
+            static_cast<void>(value);
+            immediateCandidates.insert(reg);
+        }
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.isVolatile)
+                    immediateCandidates.erase(instruction.dst);
+                for (std::size_t index = 0; index < instruction.srcs.size(); ++index) {
+                    const auto source = instruction.srcs[index];
+                    if (immediateCandidates.contains(source) &&
+                        (index != 1 || (!ScalarMachineImmediate(instruction, plan.immediateValues.at(source)) &&
+                                        !ScalarAddressImmediate(instruction, plan.immediateValues.at(source),
+                                                                AddressScale(instruction)))))
+                        immediateCandidates.erase(source);
+                }
+                for (const auto &[source, predecessor] : instruction.phiPreds) {
+                    static_cast<void>(predecessor);
+                    immediateCandidates.erase(source);
+                }
+            }
+            if (block.term) {
+                immediateCandidates.erase(block.term->cond);
+                if (block.term->retVal)
+                    immediateCandidates.erase(*block.term->retVal);
+            }
+        }
+    }
+
+    void PlanImmediateElision() {
+        plan.elidedImmediates = immediateCandidates;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.srcs.size() != 2 || !plan.elidedImmediates.contains(instruction.srcs[1]))
+                    continue;
+                const auto selected = SelectScalarMachineInstruction(instruction, plan);
+                const auto address = SelectScalarAddressInstruction(instruction, plan, AddressScale(instruction));
+                if ((!selected || !selected->immediate) && (!address || address->index >= 0))
+                    plan.elidedImmediates.erase(instruction.srcs[1]);
+            }
+        }
+        // Unselected users retain the constant's ordinary stack materialization. Slot planning remains unchanged.
+    }
+
+    void PlanTiedInputs(const std::vector<LiveInterval> &intervals) {
+        std::unordered_map<LirReg, const LiveInterval *> spans;
+        for (const auto &interval : intervals)
+            spans.emplace(interval.reg, &interval);
+        int position = 0;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                const bool floating = instruction.type->kind == TypeRef::Kind::Float32 ||
+                                      instruction.type->kind == TypeRef::Kind::Float64;
+                const bool word =
+                    instruction.type->kind == TypeRef::Kind::UInt32 || instruction.type->kind == TypeRef::Kind::Int64 ||
+                    instruction.type->kind == TypeRef::Kind::UInt64 || instruction.type->kind == TypeRef::Kind::Int ||
+                    instruction.type->kind == TypeRef::Kind::UInt;
+                const bool arithmetic =
+                    instruction.op == LirOpcode::Add || instruction.op == LirOpcode::Sub ||
+                    instruction.op == LirOpcode::Mul || (floating && instruction.op == LirOpcode::Div) ||
+                    (word && (instruction.op == LirOpcode::And || instruction.op == LirOpcode::Or ||
+                              instruction.op == LirOpcode::Xor || instruction.op == LirOpcode::Shl ||
+                              instruction.op == LirOpcode::Shr || instruction.op == LirOpcode::Lshr ||
+                              instruction.op == LirOpcode::RotateRight));
+                const bool address =
+                    instruction.op == LirOpcode::IndexPtr && instruction.type->kind == TypeRef::Kind::Pointer;
+                if ((((floating || word) && arithmetic) || address) && !instruction.isVolatile &&
+                    instruction.srcs.size() == (instruction.op == LirOpcode::RotateRight ? 1U : 2U) &&
+                    spans.contains(instruction.dst) && spans.contains(instruction.srcs[0]) &&
+                    spans.at(instruction.dst)->start == position && spans.at(instruction.srcs[0])->end == position &&
+                    spans.at(instruction.srcs[0])->type == instruction.type) {
+                    tiedInputs.emplace(instruction.dst, instruction.srcs[0]);
+                }
+                ++position;
+            }
+            ++position;
+        }
+    }
 
     [[nodiscard]] CallingConvention EffectiveConvention() const {
         if (func.callConv == CallingConvention::Default) {
@@ -60,7 +162,7 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &type) const {
-        if (IsWideInteger(type) || (IsSoftwareFloat(type) && RuntimeSize(type) > 8)) {
+        if (IsWideValue(type)) {
             return true;
         }
         if (type.IsRange()) {
@@ -71,7 +173,7 @@ private:
         if (type.IsSlice()) {
             return true;
         }
-        switch (type.kind) {
+        switch (type->kind) {
         case TypeRef::Kind::Tuple:
         case TypeRef::Kind::Array:
         // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -80,8 +182,9 @@ private:
         case TypeRef::Kind::Fallible:
             return true;
         case TypeRef::Kind::Named: {
-            const std::string base = BaseTypeName(type.name);
-            return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+            const std::string base = BaseTypeName(type->name);
+            return interfaceNames.contains(base) || layouts.contains(base) ||
+                   (!type->inner.empty() && SizeOf(type) > 8);
         }
         default:
             return false;
@@ -120,10 +223,10 @@ private:
         if (type.IsSlice()) {
             return true;
         }
-        if (type.kind != TypeRef::Kind::Named) {
+        if (type->kind != TypeRef::Kind::Named) {
             return false;
         }
-        const std::string base = BaseTypeName(type.name);
+        const std::string base = BaseTypeName(type->name);
         return interfaceNames.contains(base);
     }
 
@@ -131,41 +234,99 @@ private:
         return IsWin64AddressParameter(type) ? TypeRef::MakePointer(type) : type;
     }
 
-    std::int32_t AllocateRegion(const int byteCount) {
-        const int alignment = byteCount > 0 ? std::min(byteCount, 8) : 1;
+    // The alignment a value of `type` needs in its frame slot. Frame offsets count down from a sixteen-byte aligned
+    // frame pointer, so an offset that is a multiple of this places the value where its `alignof` says it is.
+    [[nodiscard]] int StorageAlign(const TypeRef &type) const {
+        return std::clamp(RuntimeAlignmentOf(type, layouts, interfaceNames), 1, 16);
+    }
+
+    std::int32_t AllocateRegion(const int byteCount, const int storageAlignment = 1) {
+        const int alignment = std::max(byteCount > 0 ? std::min(byteCount, 8) : 1, storageAlignment);
         nextOffset = AlignUp(nextOffset, alignment);
         nextOffset += byteCount > 0 ? byteCount : 8;
         return nextOffset;
     }
 
-    std::int32_t AllocateSlot(const LirReg reg, const int byteCount) {
+    std::int32_t AllocateSlot(const LirReg reg, const int byteCount, const int storageAlignment = 1) {
         if (const auto found = plan.slotOffsets.find(reg); found != plan.slotOffsets.end()) {
             return found->second;
         }
-        const std::int32_t offset = AllocateRegion(byteCount);
+        const std::int32_t offset = AllocateRegion(byteCount, storageAlignment);
         plan.slotOffsets[reg] = offset;
         return offset;
     }
 
-    void PlanCalleeSaves() {
-        ParamTypeMap parameterTypes;
-        for (const auto &parameter : func.params) {
-            parameterTypes[parameter.reg] = ParameterRegisterType(parameter.type);
+    void PlanCalleeSaves(const std::vector<LiveInterval> &intervals) {
+        std::vector<LiveInterval> candidates;
+        for (const auto &interval : intervals) {
+            if (interval.type.IsFloat() || IsAggregate(interval.type) || RuntimeSize(interval.type) > 8 ||
+                immediateCandidates.contains(interval.reg)) {
+                continue;
+            }
+            candidates.push_back(interval);
         }
 
-        std::vector<LiveInterval> candidates;
-        if (func.blocks.size() == 1) {
-            for (const auto &interval : ComputeLiveIntervals(func, parameterTypes)) {
-                if (IsFloat(interval.type) || IsAggregate(interval.type) || RuntimeSize(interval.type) > 8) {
-                    continue;
+        bool extendedWin64 = EffectiveConvention() == CallingConvention::Win64;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::ThreadLocalAddr || instruction.op == LirOpcode::WriteStandardError)
+                    extendedWin64 = false;
+                if (instruction.op == LirOpcode::Call || instruction.op == LirOpcode::CallIndirect) {
+                    const auto convention =
+                        instruction.callConv == CallingConvention::Default
+                            ? PlatformDefaultConvention(targetOs, Target::Arch::X86_64)
+                            : ResolveCConvention(instruction.callConv, targetOs, Target::Arch::X86_64);
+                    extendedWin64 = extendedWin64 && convention == CallingConvention::Win64;
                 }
-                candidates.push_back(interval);
             }
         }
-
-        RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegisters);
+        RegisterAssignment assignment = AllocateRegisters(candidates, extendedWin64 ? 7 : 5, tiedInputs, priorities);
         plan.physicalRegisters = std::move(assignment.physRegs);
         plan.usedPhysicalRegisters = std::move(assignment.usedPhysRegs);
+    }
+
+    void PlanFloatRegisters(const std::vector<LiveInterval> &intervals) {
+        // Wide/software arithmetic still has memory-only operand paths. Keep this first FP allocation phase out of
+        // such functions until those paths describe all their operand constraints.
+        if (std::ranges::any_of(intervals, [](const LiveInterval &interval) {
+                return IsSoftwareFloat(interval.type) || IsWideScalar(interval.type);
+            })) {
+            return;
+        }
+        std::vector<int> clobbers;
+        int position = 0;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                const auto convention = instruction.callConv == CallingConvention::Default
+                                          ? PlatformDefaultConvention(targetOs, Target::Arch::X86_64)
+                                          : ResolveCConvention(instruction.callConv, targetOs, Target::Arch::X86_64);
+                if (((instruction.op == LirOpcode::Call || instruction.op == LirOpcode::CallIndirect) &&
+                     convention != CallingConvention::Win64) ||
+                    instruction.op == LirOpcode::ThreadLocalAddr || instruction.op == LirOpcode::WriteStandardError) {
+                    clobbers.push_back(position);
+                }
+                ++position;
+            }
+            ++position;
+        }
+        std::vector<LiveInterval> candidates;
+        for (const auto &interval : intervals) {
+            if (!IsFloat(interval.type) || std::ranges::any_of(clobbers, [&](const int clobber) {
+                    return interval.start <= clobber && interval.end >= clobber;
+                })) {
+                continue;
+            }
+            candidates.push_back(interval);
+        }
+        const auto assignment = AllocateRegisters(candidates, 8, tiedInputs, priorities);
+        for (const auto &[reg, index] : assignment.physRegs) {
+            plan.floatRegisters.emplace(reg, index + 8);
+        }
+        if (EffectiveConvention() == CallingConvention::Win64) {
+            for (const auto index : assignment.usedPhysRegs) {
+                plan.floatSaves.emplace_back(index + 8, AllocateRegion(16, 16));
+            }
+        }
     }
 
     void PlanHiddenReturn() {
@@ -176,11 +337,48 @@ private:
         }
     }
 
+    void PlanBranches() {
+        std::unordered_map<LirReg, std::size_t> uses;
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                for (const auto source : instruction.srcs)
+                    ++uses[source];
+                for (const auto &[source, predecessor] : instruction.phiPreds) {
+                    static_cast<void>(predecessor);
+                    ++uses[source];
+                }
+            }
+            if (block.term) {
+                ++uses[block.term->cond];
+                if (block.term->retVal)
+                    ++uses[*block.term->retVal];
+            }
+        }
+        for (const auto &block : func.blocks) {
+            if (!block.term || block.term->kind != LirTermKind::Branch || block.instrs.empty())
+                continue;
+            const auto &comparison = block.instrs.back();
+            if (comparison.dst != block.term->cond || comparison.srcs.size() != 2 || uses[comparison.dst] != 1 ||
+                comparison.type != TypeRef::MakeBool() || comparison.isVolatile)
+                continue;
+            const auto left = plan.registerTypes.find(comparison.srcs[0]);
+            const auto right = plan.registerTypes.find(comparison.srcs[1]);
+            if (left == plan.registerTypes.end() || right == plan.registerTypes.end() ||
+                left->second != right->second || !left->second.IsInteger() || RuntimeSize(left->second) > 8)
+                continue;
+            if (const auto condition = IntegerComparisonCondition(comparison.op, left->second.IsSigned())) {
+                plan.branchComparisons.emplace(
+                    comparison.dst,
+                    X86BranchComparison{comparison.srcs[0], comparison.srcs[1], left->second, *condition});
+            }
+        }
+    }
+
     void PlanParameters() {
         for (const auto &parameter : func.params) {
             TypeRef registerType = ParameterRegisterType(parameter.type);
             plan.registerTypes[parameter.reg] = registerType;
-            AllocateSlot(parameter.reg, std::max(8, SlotSize(registerType)));
+            AllocateSlot(parameter.reg, std::max(8, SlotSize(registerType)), StorageAlign(registerType));
         }
     }
 
@@ -195,12 +393,37 @@ private:
         if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
             count = 0;
         }
-        const TypeRef &elementType = instruction.type.inner.empty() ? instruction.type : instruction.type.inner[0];
+        const TypeRef &elementType = instruction.type->inner.empty() ? instruction.type : instruction.type->inner[0];
         const int elementSize = RuntimeSize(elementType);
         return count * (elementSize > 0 ? elementSize : 8);
     }
 
     void PlanInstructions() {
+        // Results that are never live together share a slot; its region is placed where its first member is defined.
+        const FrameSlotSharing sharing =
+            ShareFrameSlots(func, [&](const LirInstr &instruction) { return SlotSize(instruction.type); });
+        std::vector<std::int32_t> sharedOffsets(sharing.slotSizes.size(), -1);
+        // The same for the data of allocas only this function can reach.
+        const FrameSlotSharing dataSharing = ShareAllocaData(func, [&](const LirInstr &instruction) {
+            const int size = AllocaSize(instruction);
+            return size > 0 ? size : 8;
+        });
+        std::vector<std::int32_t> sharedDataOffsets(dataSharing.slotSizes.size(), -1);
+        // A shared region is aligned for the strictest of the values that take turns in it.
+        std::vector<int> sharedAlignments(sharing.slotSizes.size(), 1);
+        std::vector<int> sharedDataAlignments(dataSharing.slotSizes.size(), 1);
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (const auto shared = sharing.slotOf.find(instruction.dst); shared != sharing.slotOf.end()) {
+                    sharedAlignments[shared->second] =
+                        std::max(sharedAlignments[shared->second], StorageAlign(instruction.type));
+                }
+                if (const auto shared = dataSharing.slotOf.find(instruction.dst); shared != dataSharing.slotOf.end()) {
+                    sharedDataAlignments[shared->second] =
+                        std::max(sharedDataAlignments[shared->second], StorageAlign(instruction.type));
+                }
+            }
+        }
         for (std::uint32_t blockIndex = 0; blockIndex < func.blocks.size(); ++blockIndex) {
             for (const auto &instruction : func.blocks[blockIndex].instrs) {
                 if (instruction.op == LirOpcode::Phi) {
@@ -214,14 +437,33 @@ private:
 
                 if (instruction.op == LirOpcode::Alloca) {
                     AllocateSlot(instruction.dst, 8);
-                    const int dataSize = AllocaSize(instruction);
-                    plan.allocaDataOffsets[instruction.dst] = AllocateRegion(dataSize > 0 ? dataSize : 8);
                     plan.registerTypes[instruction.dst] = TypeRef::MakePointer(instruction.type);
+                    if (const auto shared = dataSharing.slotOf.find(instruction.dst);
+                        shared != dataSharing.slotOf.end()) {
+                        std::int32_t &offset = sharedDataOffsets[shared->second];
+                        if (offset < 0) {
+                            offset = AllocateRegion(dataSharing.slotSizes[shared->second],
+                                                    sharedDataAlignments[shared->second]);
+                        }
+                        plan.allocaDataOffsets[instruction.dst] = offset;
+                        continue;
+                    }
+                    const int dataSize = AllocaSize(instruction);
+                    plan.allocaDataOffsets[instruction.dst] =
+                        AllocateRegion(dataSize > 0 ? dataSize : 8, StorageAlign(instruction.type));
                     continue;
                 }
 
                 plan.registerTypes[instruction.dst] = instruction.type;
-                AllocateSlot(instruction.dst, SlotSize(instruction.type));
+                if (const auto shared = sharing.slotOf.find(instruction.dst); shared != sharing.slotOf.end()) {
+                    std::int32_t &offset = sharedOffsets[shared->second];
+                    if (offset < 0) {
+                        offset = AllocateRegion(sharing.slotSizes[shared->second], sharedAlignments[shared->second]);
+                    }
+                    plan.slotOffsets.try_emplace(instruction.dst, offset);
+                    continue;
+                }
+                AllocateSlot(instruction.dst, SlotSize(instruction.type), StorageAlign(instruction.type));
             }
         }
     }
@@ -230,8 +472,11 @@ private:
         int largest = 0;
         for (const LirBlock &block : func.blocks) {
             for (const LirInstr &instruction : block.instrs) {
-                if (IsWideInteger(instruction.type)) {
-                    largest = std::max(largest, RuntimeSize(instruction.type));
+                largest = std::max(largest, WideTemporarySize(instruction, plan.registerTypes));
+                // A float32 or float64 remainder runs on the x87 unit (`X87Emitter.cpp`), which loads and stores only
+                // memory: it gets the scratch slots an x87 instruction moves a register-held value through.
+                if (instruction.op == LirOpcode::Mod && IsFloat(instruction.type)) {
+                    largest = std::max(largest, 8);
                 }
             }
         }

@@ -1,18 +1,16 @@
 // The inverse cosine, over the closed interval its argument is defined on.
-//
 // Built from `ArcSin`'s kernel rather than computed separately, which is what keeps the two consistent with
 // each other near the endpoints, where a small disagreement between them is most visible. The result is in
 // `[0, Pi]`, and an argument outside `[-1, 1]` is a NaN rather than a clamped answer.
 
 import Core::float64;
 
-/**
-    Computes the inverse cosine of `x` in radians. The result lies in `[0, Pi]`: `1.0` maps to zero, either signed zero
-    maps to `Pi / 2`, and `-1.0` maps to `Pi`. An input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
-    @param x Cosine value to invert.
-    @returns The angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain.
-    @see https://rux-lang.dev/docs/api/math/arccos
-*/
+/// Computes the inverse cosine of `x` in radians.
+/// The result lies in `[0, Pi]`: `1.0` maps to zero, either signed zero maps to `Pi / 2`, and `-1.0` maps to `Pi`. An
+/// input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
+/// @param x cosine value to invert
+/// @returns the angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-cos
 pub func ArcCos(x: float64) -> float64 {
     if IsNan(x) { return x; }
     if x == 1.0 { return 0.0; }
@@ -24,13 +22,11 @@ pub func ArcCos(x: float64) -> float64 {
     return Pi - ArcTan(root / -x);
 }
 
-/**
-    Computes the inverse cosine of `x` in radians at `float32` precision. The input widens exactly to `float64`; the
-    wide result is then rounded back to `float32`.
-    @param x Cosine value to invert.
-    @returns The angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain.
-    @see https://rux-lang.dev/docs/api/math/arccos
-*/
+/// Computes the inverse cosine of `x` in radians at `float32` precision.
+/// The input widens exactly to `float64`; the wide result is then rounded back to `float32`.
+/// @param x cosine value to invert
+/// @returns the angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-cos
 pub func ArcCos(x: float32) -> float32 {
     return ArcCos(x as float64) as float32;
 }

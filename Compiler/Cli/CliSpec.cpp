@@ -6,6 +6,7 @@
 #include <array>
 #include <ranges>
 #include <string_view>
+#include <utility>
 
 using namespace Rux::CliContract;
 using namespace std::string_view_literals;
@@ -29,13 +30,23 @@ constexpr std::array add_exs = {"Rux/Io"sv, "Rux/Io@^0.1.0"sv, "Json --path ../J
 // Build
 constexpr std::array build_usage = {"[options]"sv};
 constexpr std::array build_opts = {
-    OptionDoc{.flags = "--all"sv,
-              .desc =
-                  "Build all 16 target/profile cells; incompatible with --target, --debug, --release, and --emit"sv},
+    OptionDoc{
+        .flags = "--all"sv,
+        .desc =
+            "Build all 16 target/profile cells; incompatible with --target, --debug, --release, --emit, and --disable-pass"sv},
     OptionDoc{.flags = "--debug"sv, .desc = "Build with debug symbols (unoptimized output)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
-    OptionDoc{.flags = "--emit <kind[,kind...]>"sv,
-              .desc = "Additionally emit tokens, ast, sema, hir, lir, asm, or rcu inspection output"sv},
+    OptionDoc{.flags = "--disable-pass <name>"sv,
+              .desc = "Disable an optional optimization pass for diagnosis; repeat for multiple passes"sv},
+    OptionDoc{
+        .flags = "--emit <kind[,kind...]>"sv,
+        .desc =
+            "Additionally emit tokens, ast, sema, hir, lir, passes, asm, or rcu inspection output, or image symbols"sv},
+    OptionDoc{.flags = "--jobs <N>"sv,
+              .desc =
+                  "Compile on up to N threads (default: one per logical core); the output is the same for every N"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Compile even when an earlier build of the same inputs is still up to date"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
     OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, optimization, and performance statistics"sv},
     OptionDoc{.flags = "--target <triple>"sv,
@@ -47,6 +58,7 @@ constexpr std::array build_conflicts = {
     OptionConflict{.left = "--all"sv, .right = "--debug"sv},
     OptionConflict{.left = "--all"sv, .right = "--release"sv},
     OptionConflict{.left = "--all"sv, .right = "--emit"sv},
+    OptionConflict{.left = "--all"sv, .right = "--disable-pass"sv},
     OptionConflict{.left = "--debug"sv, .right = "--release"sv},
 };
 constexpr std::array build_exs = {
@@ -57,11 +69,11 @@ constexpr std::array build_exs = {
 constexpr std::array check_usage = {"[options]"sv};
 constexpr std::array check_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
-    OptionDoc{.flags = "--deny-legacy-protocols"sv,
-              .desc = "Report each use of the legacy Result and Option protocols as an error"sv},
     OptionDoc{.flags = "--json"sv, .desc = "Output diagnostics in JSON format"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Check every package even when an earlier check found nothing and is still up to date"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Check code health for a specific target platform"sv}};
-constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x86_64"sv, "--deny-legacy-protocols"sv};
+constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x86_64"sv};
 
 // Clean
 constexpr std::array clean_usage = {"[options]"sv};
@@ -74,10 +86,15 @@ constexpr std::array doc_usage = {"[options]"sv};
 constexpr std::array doc_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--document-private-items"sv, .desc = "Include private declarations and members"sv},
+    OptionDoc{.flags = "--format <html|json>"sv,
+              .desc = "Write an HTML site (default) or one JSON API snapshot per package"sv},
     OptionDoc{.flags = "-o, --output <dir>"sv, .desc = "Write the generated site to this directory"sv},
     OptionDoc{.flags = "--open"sv, .desc = "Open the generated documentation index in a browser"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Document APIs enabled for a supported target"sv}};
-constexpr std::array doc_exs = {""sv, "--open"sv};
+constexpr std::array doc_conflicts = {
+    OptionConflict{.left = "--format"sv, .right = "--open"sv},
+};
+constexpr std::array doc_exs = {""sv, "--open"sv, "--format json --output Docs/Api"sv};
 
 // Fmt
 constexpr std::array fmt_usage = {"[options]"sv};
@@ -180,19 +197,22 @@ constexpr std::array remove_exs = {"Json"sv, "Random"sv};
 constexpr std::array run_usage = {"[options] [-- args...]"sv};
 constexpr std::array run_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Compile even when an earlier build of the same inputs is still up to date"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv}};
 constexpr std::array run_exs = {""sv, "--release"sv, "-- --port 8080"sv};
 
 // Test
-constexpr std::array test_usage = {"[options]"sv};
+constexpr std::array test_usage = {"[options] [-- <test arguments>...]"sv};
 constexpr std::array test_opts = {
-    OptionDoc{.flags = "--jobs <N>"sv, .desc = "Run up to N test packages concurrently (default: 1)"sv},
+    OptionDoc{.flags = "--jobs <N>"sv,
+              .desc = "Run up to N test packages concurrently (default: one per logical core)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
-    OptionDoc{.flags = "--deny-legacy-protocols"sv,
-              .desc = "Report each use of the legacy Result and Option protocols as an error"sv},
+    OptionDoc{.flags = "--no-cache"sv,
+              .desc = "Compile every test package even when an earlier build is still up to date"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Build and run the tests for the specified target platform"sv}};
-constexpr std::array test_exs = {""sv, "--release"sv};
+constexpr std::array test_exs = {""sv, "--release"sv, "-- Parser"sv, "-- --exact Parser::ReadsNumbers"sv};
 
 // Uninstall
 constexpr std::array uninstall_usage = {""sv, "[namespace]/[package]"sv, "[namespace]/[package]@[requirement]"sv,
@@ -244,7 +264,9 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = {} /* Fallback */,
                .usage = Data::build_usage,
                .postUsage = {},
-               .footer = "Artifacts are stored under <Output>/<Profile>/<OS>/<Arch>, defaulting below Bin/."sv,
+               .footer = "Artifacts are stored under <Output>/<Profile>/<OS>/<Arch>, defaulting below Bin/. At a "
+                         "workspace root, builds every member except source libraries, which are compiled into "
+                         "the members that depend on them."sv,
                .examples = Data::build_exs,
                .options = Data::build_opts,
                .conflicts = Data::build_conflicts},
@@ -255,7 +277,8 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                               "without emitting compilation binaries."sv,
                .usage = Data::check_usage,
                .postUsage = {},
-               .footer = {},
+               .footer = "At a workspace root, checks every member. A registry dependency in a namespace that a member "
+                         "declares resolves only from members; any other comes from the package cache."sv,
                .examples = Data::check_exs,
                .options = Data::check_opts,
                .conflicts = {}},
@@ -279,14 +302,14 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .footer = {},
                .examples = Data::doc_exs,
                .options = Data::doc_opts,
-               .conflicts = {}},
+               .conflicts = Data::doc_conflicts},
 
     CommandDoc{.name = "fmt"sv,
                .shortDesc = "Format source files and manifests"sv,
                .description = "Format all *.rux source files and *.toml manifests"sv,
                .usage = Data::fmt_usage,
                .postUsage = {},
-               .footer = {},
+               .footer = "At a workspace root, formats the root manifest and every member's manifest and sources."sv,
                .examples = Data::fmt_exs,
                .options = Data::fmt_opts,
                .conflicts = Data::fmt_conflicts},
@@ -437,7 +460,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = "Build and execute a runnable target"sv,
                .usage = Data::run_usage,
                .postUsage = "Arguments after '--' are forwarded to the executable."sv,
-               .footer = {},
+               .footer = "A workspace has nothing to run; select an executable member with '--manifest'."sv,
                .examples = Data::run_exs,
                .options = Data::run_opts,
                .conflicts = {}},
@@ -447,7 +470,11 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = "Run package unit tests"sv,
                .usage = Data::test_usage,
                .postUsage = {},
-               .footer = {},
+               .footer =
+                   "Runs every executable package under Tests/, and every package whose sources mark functions "
+                   "'#Test()', with a generated runner; arguments after '--' go to each test program, where the "
+                   "runner reads them as name filters. In a workspace, a registry dependency in a namespace that a "
+                   "member declares resolves only from members; any other comes from the package cache."sv,
                .examples = Data::test_exs,
                .options = Data::test_opts,
                .conflicts = {}},
@@ -589,25 +616,34 @@ std::string_view PreferredOptionName(const OptionSpec &option) {
 }
 
 std::string_view DocumentationUrl(const std::string_view command) {
-    static constexpr std::array dedicated = {"add"sv,  "build"sv,     "clean"sv,  "doc"sv,    "fmt"sv,    "help"sv,
-                                             "init"sv, "install"sv,   "list"sv,   "new"sv,    "remove"sv, "run"sv,
-                                             "test"sv, "uninstall"sv, "update"sv, "version"sv};
-    static constexpr auto fallback = "https://rux-lang.dev/docs/cli"sv;
-    if (std::ranges::find(dedicated, command) == dedicated.end()) {
-        return fallback;
-    }
+    // Every command has its own reference page; anything else, such as the bare `rux`, has the overview.
     static constexpr std::array routes = {
-        "https://rux-lang.dev/docs/cli/add"sv,    "https://rux-lang.dev/docs/cli/build"sv,
-        "https://rux-lang.dev/docs/cli/clean"sv,  "https://rux-lang.dev/docs/cli/doc"sv,
-        "https://rux-lang.dev/docs/cli/fmt"sv,    "https://rux-lang.dev/docs/cli/help"sv,
-        "https://rux-lang.dev/docs/cli/init"sv,   "https://rux-lang.dev/docs/cli/install"sv,
-        "https://rux-lang.dev/docs/cli/list"sv,   "https://rux-lang.dev/docs/cli/new"sv,
-        "https://rux-lang.dev/docs/cli/remove"sv, "https://rux-lang.dev/docs/cli/run"sv,
-        "https://rux-lang.dev/docs/cli/test"sv,   "https://rux-lang.dev/docs/cli/uninstall"sv,
-        "https://rux-lang.dev/docs/cli/update"sv, "https://rux-lang.dev/docs/cli/version"sv,
+        std::pair{"add"sv, "https://rux-lang.dev/docs/cli/add"sv},
+        std::pair{"build"sv, "https://rux-lang.dev/docs/cli/build"sv},
+        std::pair{"check"sv, "https://rux-lang.dev/docs/cli/check"sv},
+        std::pair{"clean"sv, "https://rux-lang.dev/docs/cli/clean"sv},
+        std::pair{"doc"sv, "https://rux-lang.dev/docs/cli/doc"sv},
+        std::pair{"fmt"sv, "https://rux-lang.dev/docs/cli/fmt"sv},
+        std::pair{"help"sv, "https://rux-lang.dev/docs/cli/help"sv},
+        std::pair{"info"sv, "https://rux-lang.dev/docs/cli/info"sv},
+        std::pair{"init"sv, "https://rux-lang.dev/docs/cli/init"sv},
+        std::pair{"install"sv, "https://rux-lang.dev/docs/cli/install"sv},
+        std::pair{"lint"sv, "https://rux-lang.dev/docs/cli/lint"sv},
+        std::pair{"list"sv, "https://rux-lang.dev/docs/cli/list"sv},
+        std::pair{"login"sv, "https://rux-lang.dev/docs/cli/login"sv},
+        std::pair{"logout"sv, "https://rux-lang.dev/docs/cli/logout"sv},
+        std::pair{"new"sv, "https://rux-lang.dev/docs/cli/new"sv},
+        std::pair{"pack"sv, "https://rux-lang.dev/docs/cli/pack"sv},
+        std::pair{"publish"sv, "https://rux-lang.dev/docs/cli/publish"sv},
+        std::pair{"remove"sv, "https://rux-lang.dev/docs/cli/remove"sv},
+        std::pair{"run"sv, "https://rux-lang.dev/docs/cli/run"sv},
+        std::pair{"test"sv, "https://rux-lang.dev/docs/cli/test"sv},
+        std::pair{"uninstall"sv, "https://rux-lang.dev/docs/cli/uninstall"sv},
+        std::pair{"update"sv, "https://rux-lang.dev/docs/cli/update"sv},
+        std::pair{"version"sv, "https://rux-lang.dev/docs/cli/version"sv},
     };
-    const auto index = static_cast<std::size_t>(std::ranges::find(dedicated, command) - dedicated.begin());
-    return routes[index];
+    const auto route = std::ranges::find(routes, command, &std::pair<std::string_view, std::string_view>::first);
+    return route != routes.end() ? route->second : "https://rux-lang.dev/docs/cli"sv;
 }
 
 const PositionalSpec &PositionalsFor(const std::string_view command) {
@@ -627,6 +663,7 @@ const PositionalSpec &PositionalsFor(const std::string_view command) {
         PositionalSpec{.command = "new", .arguments = nameArg, .minimum = 1, .maximum = 1},
         PositionalSpec{.command = "remove", .arguments = nameArg, .minimum = 1, .maximum = 1},
         PositionalSpec{.command = "run", .arguments = {}, .minimum = 0, .maximum = 0, .acceptsPassthrough = true},
+        PositionalSpec{.command = "test", .arguments = {}, .minimum = 0, .maximum = 0, .acceptsPassthrough = true},
         PositionalSpec{.command = "uninstall", .arguments = packageArg, .minimum = 0, .maximum = 1}};
     static constexpr PositionalSpec none{};
     const auto it = std::ranges::find(specs, command, &PositionalSpec::command);

@@ -1,0 +1,92 @@
+// The digit arithmetic behind the hexadecimal, Base64 and Base32 alphabets, computed without branches or tables.
+// These encodings carry keys, tokens and secrets as often as anything else. A decoder that branches on each
+// character, or indexes a table with it, takes time and touches cache lines that depend on the secret, which is
+// enough to recover it from a co-resident process. So every function here maps a value to its digit, or a digit to
+// its value, with masks built from arithmetic alone. Each range test is `((low - 1 - c) & (c - (high + 1))) >> 8`,
+// which is all ones when `low <= c <= high` and zero otherwise, because both differences are negative only inside
+// the range and the shift is arithmetic on a signed value.
+// The inputs are a single byte widened to `int32`, so none of the differences can overflow. Validity is still
+// reported to the caller, which then branches on it: whether a text is well formed is not a secret, and the caller
+// stops at the first invalid character anyway.
+
+// All ones when `low <= c <= high`, zero otherwise.
+func InRange(c: int32, low: int32, high: int32) -> int32 {
+    return ((low - 1 - c) & (c - (high + 1))) >> 8;
+}
+
+// The hexadecimal digit for a nibble, in either case.
+// Starting from the letter and subtracting the gap down to the digits when the nibble is below ten keeps the
+// mapping to one addition and one mask.
+func HexDigit(nibble: int32, upper: bool) -> char8 {
+    let below = (nibble - 10) >> 8;
+    if upper {
+        return (55 + nibble + (below & -7)) as char8;
+    }
+    return (87 + nibble + (below & -39)) as char8;
+}
+
+// The value of a hexadecimal digit of either case, or -1 for any other byte.
+func HexValue(c: int32) -> int32 {
+    let digit = c ^ 48;
+    let digitMask = (digit - 10) >> 8;
+    // Clearing bit five folds lower case onto upper case, so `A` through `F` land on ten through fifteen.
+    let letter = (c & ~32) - 55;
+    let letterMask = ((letter - 10) ^ (letter - 16)) >> 8;
+    return (digitMask & digit) | (letterMask & letter) | ~(digitMask | letterMask);
+}
+
+// The Base64 character for a six-bit value, from the standard alphabet or the URL-safe one.
+// The two alphabets agree on the first sixty-two characters and differ only in the last two: `+` and `/` against
+// `-` and `_`. The adjustments below move the value past each gap in the ASCII table it has to cross.
+func Base64Digit(value: int32, urlSafe: bool) -> char8 {
+    var shift: int32 = 65;
+    shift = shift + (((25 - value) >> 8) & 6);
+    shift = shift - (((51 - value) >> 8) & 75);
+    if urlSafe {
+        shift = shift - (((61 - value) >> 8) & 13);
+        shift = shift + (((62 - value) >> 8) & 49);
+    }
+    else {
+        shift = shift - (((61 - value) >> 8) & 15);
+        shift = shift + (((62 - value) >> 8) & 3);
+    }
+    return (value + shift) as char8;
+}
+
+// The six-bit value of a Base64 character from one alphabet, or -1 for any other byte, padding included.
+// Each range contributes its value plus one when it matches, so the -1 that starts the sum survives only when no
+// range did.
+func Base64Value(c: int32, urlSafe: bool) -> int32 {
+    var value: int32 = -1;
+    value = value + (InRange(c, 65, 90) & (c - 64));
+    value = value + (InRange(c, 97, 122) & (c - 70));
+    value = value + (InRange(c, 48, 57) & (c + 5));
+    if urlSafe {
+        value = value + (InRange(c, 45, 45) & 63);
+        value = value + (InRange(c, 95, 95) & 64);
+    }
+    else {
+        value = value + (InRange(c, 43, 43) & 63);
+        value = value + (InRange(c, 47, 47) & 64);
+    }
+    return value;
+}
+
+// The RFC 4648 Base32 character for a five-bit value: `A` through `Z`, then `2` through `7`.
+func Base32Digit(value: int32) -> char8 {
+    return (value + 65 - (((25 - value) >> 8) & 41)) as char8;
+}
+
+// The five-bit value of an RFC 4648 Base32 character of either case, or -1 for any other byte.
+func Base32Value(c: int32) -> int32 {
+    var value: int32 = -1;
+    value = value + (InRange(c, 65, 90) & (c - 64));
+    value = value + (InRange(c, 97, 122) & (c - 96));
+    value = value + (InRange(c, 50, 55) & (c - 23));
+    return value;
+}
+
+// A byte of a character slice as a signed value the masks can work on.
+func CharCode(c: char8) -> int32 {
+    return (c as uint8) as int32;
+}

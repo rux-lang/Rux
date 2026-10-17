@@ -1,5 +1,7 @@
-import Core::{ int, int128, int16, int256, int32, int512, int64, int8, uint, uint128, uint16, uint256, uint32, uint512, uint64, uint8 };
-import Core::{ AddChecked, AddSaturating, AddWrapping, Assert, MaximumOf, MinimumOf, MulChecked, MulSaturating, MulWrapping, SubChecked, SubSaturating, SubWrapping };
+import Core::{ int, int128, int16, int256, int32, int512, int64, int8, uint, uint128, uint16, uint256, uint32, uint512,
+               uint64, uint8 };
+import Core::{ AddChecked, AddSaturating, AddWrapping, Assert, MaximumOf, MinimumOf, MulChecked, MulSaturating,
+               MulWrapping, SubChecked, SubSaturating, SubWrapping };
 
 // Every check below runs at one width and is called once per width, so a helper
 // that is right for `int8` and wrong for `int512` is caught rather than averaged
@@ -34,6 +36,8 @@ func CheckUnsigned<T>(zero: T, one: T, two: T, maximum: T) -> int32 {
     if MulChecked<T>(maximum, zero, @out) { return 17; }
     if out != zero { return 18; }
     if !MulChecked<T>(maximum, two, @out) { return 19; }
+    // The wrapped product is written even when the overflow is reported.
+    if out != maximum - one { return 29; }
 
     // Wrapping says the same thing without reporting it.
     if AddWrapping<T>(maximum, one) != zero { return 20; }
@@ -87,6 +91,7 @@ func CheckSigned<T>(zero: T, one: T, two: T, minimum: T, maximum: T) -> int32 {
     if MulChecked<T>(negativeOne, maximum, @out) { return 24; }
     if out != minimum + one { return 25; }
     if !MulChecked<T>(maximum, two, @out) { return 26; }
+    if out != negativeOne + negativeOne { return 40; }
     if MulChecked<T>(zero, minimum, @out) { return 27; }
     if out != zero { return 28; }
 
@@ -109,33 +114,33 @@ func CheckSigned<T>(zero: T, one: T, two: T, minimum: T, maximum: T) -> int32 {
 
 func Main() -> int {
     // Every unsigned width, narrowest to widest, including the pointer-sized one.
-    Assert(CheckUnsigned<uint8>(0u8, 1u8, 2u8, uint8::Max) == 0, "uint8 arithmetic");
-    Assert(CheckUnsigned<uint16>(0u16, 1u16, 2u16, uint16::Max) == 0, "uint16 arithmetic");
-    Assert(CheckUnsigned<uint32>(0u32, 1u32, 2u32, uint32::Max) == 0, "uint32 arithmetic");
-    Assert(CheckUnsigned<uint64>(0u64, 1u64, 2u64, uint64::Max) == 0, "uint64 arithmetic");
-    Assert(CheckUnsigned<uint128>(0u128, 1u128, 2u128, uint128::Max) == 0, "uint128 arithmetic");
-    Assert(CheckUnsigned<uint256>(0u256, 1u256, 2u256, uint256::Max) == 0, "uint256 arithmetic");
-    Assert(CheckUnsigned<uint512>(0u512, 1u512, 2u512, uint512::Max) == 0, "uint512 arithmetic");
-    Assert(CheckUnsigned<uint>(0u, 1u, 2u, uint::Max) == 0, "uint arithmetic");
+    Assert(CheckUnsigned<uint8>(0, 1, 2, uint8::Max) == 0, "uint8 arithmetic");
+    Assert(CheckUnsigned<uint16>(0, 1, 2, uint16::Max) == 0, "uint16 arithmetic");
+    Assert(CheckUnsigned<uint32>(0, 1, 2, uint32::Max) == 0, "uint32 arithmetic");
+    Assert(CheckUnsigned<uint64>(0, 1, 2, uint64::Max) == 0, "uint64 arithmetic");
+    Assert(CheckUnsigned<uint128>(0, 1, 2, uint128::Max) == 0, "uint128 arithmetic");
+    Assert(CheckUnsigned<uint256>(0, 1, 2, uint256::Max) == 0, "uint256 arithmetic");
+    Assert(CheckUnsigned<uint512>(0, 1, 2, uint512::Max) == 0, "uint512 arithmetic");
+    Assert(CheckUnsigned<uint>(0, 1, 2, uint::Max) == 0, "uint arithmetic");
 
     // Every signed width.
-    Assert(CheckSigned<int8>(0i8, 1i8, 2i8, int8::Min, int8::Max) == 0, "int8 arithmetic");
-    Assert(CheckSigned<int16>(0i16, 1i16, 2i16, int16::Min, int16::Max) == 0, "int16 arithmetic");
-    Assert(CheckSigned<int32>(0i32, 1i32, 2i32, int32::Min, int32::Max) == 0, "int32 arithmetic");
-    Assert(CheckSigned<int64>(0i64, 1i64, 2i64, int64::Min, int64::Max) == 0, "int64 arithmetic");
-    Assert(CheckSigned<int128>(0i128, 1i128, 2i128, int128::Min, int128::Max) == 0, "int128 arithmetic");
-    Assert(CheckSigned<int256>(0i256, 1i256, 2i256, int256::Min, int256::Max) == 0, "int256 arithmetic");
-    Assert(CheckSigned<int512>(0i512, 1i512, 2i512, int512::Min, int512::Max) == 0, "int512 arithmetic");
+    Assert(CheckSigned<int8>(0, 1, 2, int8::Min, int8::Max) == 0, "int8 arithmetic");
+    Assert(CheckSigned<int16>(0, 1, 2, int16::Min, int16::Max) == 0, "int16 arithmetic");
+    Assert(CheckSigned<int32>(0, 1, 2, int32::Min, int32::Max) == 0, "int32 arithmetic");
+    Assert(CheckSigned<int64>(0, 1, 2, int64::Min, int64::Max) == 0, "int64 arithmetic");
+    Assert(CheckSigned<int128>(0, 1, 2, int128::Min, int128::Max) == 0, "int128 arithmetic");
+    Assert(CheckSigned<int256>(0, 1, 2, int256::Min, int256::Max) == 0, "int256 arithmetic");
+    Assert(CheckSigned<int512>(0, 1, 2, int512::Min, int512::Max) == 0, "int512 arithmetic");
     Assert(CheckSigned<int>(0, 1, 2, int::Min, int::Max) == 0, "int arithmetic");
 
     // The limits themselves, read from the compiler rather than derived, are the
     // ones every width's arithmetic wraps around.
-    Assert(uint8::Max + 1u8 == 0u8, "uint8 wraps at its maximum");
-    Assert(uint128::Max + 1u128 == 0u128, "uint128 wraps at its maximum");
-    Assert(uint512::Max + 1u512 == 0u512, "uint512 wraps at its maximum");
-    Assert(int128::Max + 1i128 == int128::Min, "int128 wraps from its maximum to its minimum");
-    Assert(int512::Max + 1i512 == int512::Min, "int512 wraps from its maximum to its minimum");
-    Assert(uint256::Min == 0u256, "an unsigned minimum is zero");
+    Assert(uint8::Max + 1 == 0, "uint8 wraps at its maximum");
+    Assert(uint128::Max + 1 == 0, "uint128 wraps at its maximum");
+    Assert(uint512::Max + 1 == 0, "uint512 wraps at its maximum");
+    Assert(int128::Max + 1 == int128::Min, "int128 wraps from its maximum to its minimum");
+    Assert(int512::Max + 1 == int512::Min, "int512 wraps from its maximum to its minimum");
+    Assert(uint256::Min == 0, "an unsigned minimum is zero");
     Assert(int256::Bits == 256, "a width reports its own size in bits");
     Assert(int256::Bytes == 32, "a width reports its own size in bytes");
 

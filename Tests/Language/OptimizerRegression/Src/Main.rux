@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, #target, Architecture, OperatingSystem };
 import OptimizerRegression::Support::CrossModule;
 
 interface ValueSource {
@@ -32,7 +32,79 @@ func UnusedPrivateCode(value: int) -> int {
     return value * 101;
 }
 
+func LoopRegisterValues(limit: int, seed: int) -> int {
+    var total = seed;
+    var first = 3;
+    var second = 5;
+    var floating = 1.0;
+    for i in 0..limit {
+        let old = first;
+        first = second;
+        second = old;
+        for j in 0..3 {
+            total += Apply(Increment, first + second + j);
+            floating += 0.5;
+        }
+        if i == 4 { continue; }
+        total += seed;
+    }
+    Assert(floating == 16.0, "floating values survive nested back edges and calls");
+    Assert(first == 3 && second == 5, "simultaneous loop-carried values survive calls");
+    return total;
+}
+
+func Rotate64(value: uint64) -> uint64 {
+    return (value >> 19) | (value << 45);
+}
+
+func Rotate32(value: uint32) -> uint32 {
+    return (value << 7) | (value >> 25);
+}
+
+func DynamicDivide(value: uint64, divisor: uint64) -> uint64 {
+    return value / divisor;
+}
+
+func DynamicRemainder(value: uint64, divisor: uint64) -> uint64 {
+    return value % divisor;
+}
+
+func VerifyWordOperations(limit: uint64) {
+    for bit in 0u64..64u64 {
+        let value = 1u64 << bit;
+        let expected = bit < 19 ? 1u64 << (bit + 45) : 1u64 << (bit - 19);
+        Assert(Rotate64(value) == expected, "uint64 rotation preserves every bit");
+    }
+    for bit in 0u32..32u32 {
+        let value = 1u32 << bit;
+        let expected = bit < 25 ? 1u32 << (bit + 7) : 1u32 << (bit - 25);
+        Assert(Rotate32(value) == expected, "uint32 rotation wraps at bit 32");
+    }
+    var state = 0x8000000000000000u64;
+    for i in 0u64..limit {
+        state = state * 6364136223846793005u64 + i + 1;
+        Assert(state / 8 == DynamicDivide(state, 8), "unsigned division matches hardware division");
+        Assert(state % 16 == DynamicRemainder(state, 16), "unsigned remainder matches hardware division");
+    }
+}
+
 func Main() -> int {
+    CheckMemoryOperands();
+    CheckAddressOperands();
+    CheckUnrolledLoops();
+    CheckAllocatedShifts();
+    CheckLoadFacts();
+    CheckLiteralKeys();
+    CheckPointerInduction();
+    CheckStridedVersioning();
+    CheckConstantSlices();
+    CheckAllocatedCasts();
+    CheckImmediateOperands();
+    CheckWord32();
+    VerifyBranchedInlining(30);
+    Assert(CheckFloatPreservation() == 1, "Win64 preserves all 128 bits of every allocated XMM register");
+    Assert(CheckIntegerPreservation() == 1, "Win64 preserves allocated RSI and RDI across native calls");
+    VerifyFloatRegisters(25);
     let outer = 1;
     if true {
         let inner = 2;
@@ -55,5 +127,644 @@ func Main() -> int {
     let source: ValueSource = stored;
     Assert(source.Value() == 42, "interface vtable dispatch remains reachable");
     Assert(CrossModule(41) == 42, "cross-module private dependency remains reachable");
+    Assert(LoopRegisterValues(10, 7) == 370, "nested loop values and indirect calls");
+    VerifyWordOperations(5000);
     return 0;
+}
+
+func CheckMemoryOperands() {
+    let sentinel = 0x1122334455667788u64;
+    var words: uint64[3] = [sentinel, sentinel, sentinel];
+    *(@words[1] as *var uint8) = 0x80u8;
+    Assert(words[1] == 0x1122334455667780u64, "byte store changes only one byte");
+    Assert((*(@words[1] as *int8) as int64) == -128i64, "byte load sign-extends");
+    Assert((*(@words[1] as *uint8) as uint64) == 128u64, "byte load zero-extends");
+    *(@words[1] as *var uint16) = 0x8000u16;
+    Assert(words[1] == 0x1122334455668000u64, "word store changes only two bytes");
+    Assert((*(@words[1] as *int16) as int64) == -32768i64, "word load sign-extends");
+    Assert((*(@words[1] as *uint16) as uint64) == 32768u64, "word load zero-extends");
+    *(@words[1] as *var uint32) = 0x80000000u32;
+    Assert(words[1] == 0x1122334480000000u64, "dword store changes only four bytes");
+    Assert((*(@words[1] as *int32) as int64) == -2147483648i64, "dword load sign-extends");
+    Assert((*(@words[1] as *uint32) as uint64) == 2147483648u64, "dword load zero-extends");
+    Assert(words[0] == sentinel && words[2] == sentinel, "narrow writes preserve adjacent objects");
+    for pattern in [0u64, 0x8000000000000000u64, 0x7FF0000000000000u64, 0x7FF8000000001234u64,
+        0x7FF0000000000001u64, 1u64] {
+        let bits = pattern;
+        var copied = 0u64;
+        let number = *(@bits as *float64);
+        *(@copied as *var float64) = number;
+        Assert(copied == pattern, "float64 memory moves preserve signed zero, infinity, NaN and subnormal bits");
+    }
+    for pattern in [0u32, 0x80000000u32, 0x7F800000u32, 0x7FC01234u32, 0x7F800001u32, 1u32] {
+        let bits = pattern;
+        var copied = 0u32;
+        let number = *(@bits as *float32);
+        *(@copied as *var float32) = number;
+        Assert(copied == pattern, "float32 memory moves preserve every payload bit");
+    }
+}
+
+func Immediate64(value: uint64) -> uint64 {
+    return ((value + 128u64) ^ (value - 129u64)) * ((value | 255u64) & 0xFFFFFFFFu64);
+}
+
+func Immediate32(value: uint32) -> uint64 {
+    return (((value + 128u32) ^ (value - 129u32)) * (value | 0x80000000u32)) as uint64;
+}
+
+func ImmediateSigned(value: int64) -> int64 {
+    return ((value + 128i64) ^ (value - 129i64)) * -7i64;
+}
+
+func CheckImmediateOperands() {
+    let values: uint64[8] = [0u64, 1u64, 127u64, 128u64, 0x7FFFFFFFu64, 0x80000000u64,
+        0x8000000000000000u64, 0xFFFFFFFFFFFFFFFFu64];
+    let operands: uint64[5] = [128u64, 129u64, 255u64, 0xFFFFFFFFu64, 0x80000000u64];
+    let signedOperands: int64[3] = [128i64, 129i64, -7i64];
+    for value in values {
+        let expected = ((value + operands[0]) ^ (value - operands[1])) * ((value | operands[2]) & operands[3]);
+        Assert(Immediate64(value) == expected, "64-bit immediate arithmetic matches runtime operands");
+        let narrow = value as uint32;
+        let expected32 = (((narrow + operands[0] as uint32) ^ (narrow - operands[1] as uint32))
+            * (narrow | operands[4] as uint32)) as uint64;
+        Assert(Immediate32(narrow) == expected32, "32-bit immediates wrap and zero-extend");
+        let signed = value as int64;
+        let expectedSigned = ((signed + signedOperands[0]) ^ (signed - signedOperands[1])) * signedOperands[2];
+        Assert(ImmediateSigned(signed) == expectedSigned, "signed immediate multiplication preserves wrapping");
+    }
+}
+
+func SelectInline(value: int) -> int {
+    if value < 0 { return -value; }
+    if value < 10 { return value + 3; }
+    return value - 4;
+}
+
+func WrapInline(value: int) -> int {
+    return SelectInline(value) + SelectInline(-value);
+}
+
+func VerifyBranchedInlining(limit: int) {
+    var total = 0;
+    for index in 0..limit {
+        total += WrapInline(index);
+        if index == 4 { continue; }
+        total += SelectInline(index - 15);
+    }
+    Assert(total == 1047, "branched call chains preserve return values and loop edges");
+}
+
+func ManyFloats(a: float64, b: float64, c: float64, d: float64, e: float64,
+                f: float64, g: float64, h: float64, i: float64, j: float64) -> float64 {
+    var total = a + b + c + d + e + f + g + h + i + j;
+    for index in 0..2 { total += index as float64; }
+    return total;
+}
+
+func VerifyFloatRegisters(limit: int) {
+    var first = 1.25;
+    var second = 2.5;
+    var sum = 0.0;
+    var single: float32 = 0.25f32;
+    for index in 0..limit {
+        let old = first;
+        first = second;
+        second = old;
+        let result = ManyFloats(first, second, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0);
+        Assert(result == 56.75, "floating arguments survive register and stack placement");
+        sum += first + second;
+        single += 0.5f32;
+        Assert((result % 4.0) == 0.75, "x87 remainder reads and writes allocated scalar floats");
+        Assert((single % 1.0f32) == 0.75f32 || (single % 1.0f32) == 0.25f32,
+               "float32 remainder preserves register values");
+    }
+    Assert(sum == 93.75 && single == 12.75f32, "floating recurrences survive calls and phi copies");
+    Assert(first == 2.5 && second == 1.25, "floating phi copies preserve simultaneous values");
+}
+
+when #target.os == OperatingSystem::Windows && #target.arch == Architecture::X86_64 {
+    asm func CheckIntegerPreservation() -> int {
+        sub rsp, 88
+        mov [rsp + 64], rsi
+        mov [rsp + 72], rdi
+        mov rsi, 0x0123456789abcdef
+        mov rdi, 0xfedcba9876543210
+        mov rcx, 1
+        mov rdx, 2
+        mov r8, 3
+        mov r9, 4
+        mov qword [rsp + 32], 5
+        mov qword [rsp + 40], 6
+        mov qword [rsp + 48], 7
+        mov qword [rsp + 56], 8
+        call ManyIntegers
+        cmp rax, 36
+        jne integer_preserve_failed
+        mov r10, 0x0123456789abcdef
+        cmp rsi, r10
+        jne integer_preserve_failed
+        mov r10, 0xfedcba9876543210
+        cmp rdi, r10
+        jne integer_preserve_failed
+        mov rax, 1
+        jmp integer_preserve_done
+    integer_preserve_failed:
+        xor rax, rax
+    integer_preserve_done:
+        mov rsi, [rsp + 64]
+        mov rdi, [rsp + 72]
+        add rsp, 88
+        ret
+    }
+    // The generated callee uses all eight allocated XMM registers. Check both halves of each nonvolatile register.
+    asm func CheckFloatPreservation() -> int {
+        sub rsp, 360
+        movups [rsp + 80], xmm8
+        movups [rsp + 96], xmm9
+        movups [rsp + 112], xmm10
+        movups [rsp + 128], xmm11
+        movups [rsp + 144], xmm12
+        movups [rsp + 160], xmm13
+        movups [rsp + 176], xmm14
+        movups [rsp + 192], xmm15
+        mov rax, 0x0123456789abcdef
+        mov [rsp + 208], rax
+        mov rax, 0xfedcba9876543210
+        mov [rsp + 216], rax
+        movups xmm8, [rsp + 208]
+        movups xmm9, [rsp + 208]
+        movups xmm10, [rsp + 208]
+        movups xmm11, [rsp + 208]
+        movups xmm12, [rsp + 208]
+        movups xmm13, [rsp + 208]
+        movups xmm14, [rsp + 208]
+        movups xmm15, [rsp + 208]
+        xorps xmm0, xmm0
+        xorps xmm1, xmm1
+        xorps xmm2, xmm2
+        xorps xmm3, xmm3
+        mov qword [rsp + 32], 0
+        mov qword [rsp + 40], 0
+        mov qword [rsp + 48], 0
+        mov qword [rsp + 56], 0
+        mov qword [rsp + 64], 0
+        mov qword [rsp + 72], 0
+        call ManyFloats
+        movups [rsp + 224], xmm8
+        movups [rsp + 240], xmm9
+        movups [rsp + 256], xmm10
+        movups [rsp + 272], xmm11
+        movups [rsp + 288], xmm12
+        movups [rsp + 304], xmm13
+        movups [rsp + 320], xmm14
+        movups [rsp + 336], xmm15
+        movups xmm8, [rsp + 80]
+        movups xmm9, [rsp + 96]
+        movups xmm10, [rsp + 112]
+        movups xmm11, [rsp + 128]
+        movups xmm12, [rsp + 144]
+        movups xmm13, [rsp + 160]
+        movups xmm14, [rsp + 176]
+        movups xmm15, [rsp + 192]
+        mov r10, 0x0123456789abcdef
+        mov r11, 0xfedcba9876543210
+        mov rax, [rsp + 224]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 232]
+        cmp rax, r11
+        jne preserve_failed
+        mov rax, [rsp + 240]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 248]
+        cmp rax, r11
+        jne preserve_failed
+        mov rax, [rsp + 256]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 264]
+        cmp rax, r11
+        jne preserve_failed
+        mov rax, [rsp + 272]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 280]
+        cmp rax, r11
+        jne preserve_failed
+        mov rax, [rsp + 288]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 296]
+        cmp rax, r11
+        jne preserve_failed
+        mov rax, [rsp + 304]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 312]
+        cmp rax, r11
+        jne preserve_failed
+        mov rax, [rsp + 320]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 328]
+        cmp rax, r11
+        jne preserve_failed
+        mov rax, [rsp + 336]
+        cmp rax, r10
+        jne preserve_failed
+        mov rax, [rsp + 344]
+        cmp rax, r11
+        jne preserve_failed
+        mov eax, 1
+        add rsp, 360
+        ret
+    preserve_failed:
+        xor eax, eax
+        add rsp, 360
+        ret
+    }
+} else {
+    func CheckFloatPreservation() -> int { return 1; }
+    func CheckIntegerPreservation() -> int { return 1; }
+}
+
+func ManyIntegers(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int {
+    return a + b + c + d + e + f + g + h;
+}
+
+func AddWord32(a: uint32, b: uint32) -> uint64 { return (a + b) as uint64; }
+func SubWord32(a: uint32, b: uint32) -> uint64 { return (a - b) as uint64; }
+func MulWord32(a: uint32, b: uint32) -> uint64 { return (a * b) as uint64; }
+func AndWord32(a: uint32, b: uint32) -> uint64 { return (a & b) as uint64; }
+func OrWord32(a: uint32, b: uint32) -> uint64 { return (a | b) as uint64; }
+func XorWord32(a: uint32, b: uint32) -> uint64 { return (a ^ b) as uint64; }
+
+func CheckWord32() {
+    let values: uint32[8] = [0u32, 1u32, 255u32, 65535u32, 65536u32, 0x7FFFFFFFu32, 0x80000000u32, 0xFFFFFFFFu32];
+    for a in values {
+        for b in values {
+            let wideA = a as uint64;
+            let wideB = b as uint64;
+            Assert(AddWord32(a, b) == ((wideA + wideB) & 0xFFFFFFFFu64), "uint32 add wraps and zero-extends");
+            Assert(SubWord32(a, b) == ((wideA - wideB) & 0xFFFFFFFFu64), "uint32 subtract wraps and zero-extends");
+            Assert(MulWord32(a, b) == ((wideA * wideB) & 0xFFFFFFFFu64), "uint32 multiply wraps and zero-extends");
+            Assert(AndWord32(a, b) == (wideA & wideB), "uint32 and zero-extends");
+            Assert(OrWord32(a, b) == (wideA | wideB), "uint32 or zero-extends");
+            Assert(XorWord32(a, b) == (wideA ^ wideB), "uint32 xor zero-extends");
+        }
+    }
+}
+
+func CheckAddressOperands() {
+    var bytes: uint8[8] = [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8];
+    var words: uint16[8] = [1u16, 2u16, 3u16, 4u16, 5u16, 6u16, 7u16, 8u16];
+    var dwords: uint32[8] = [1u32, 2u32, 3u32, 4u32, 5u32, 6u32, 7u32, 8u32];
+    var qwords: uint64[8] = [1u64, 2u64, 3u64, 4u64, 5u64, 6u64, 7u64, 8u64];
+    let b = @bytes[3];
+    let w = @words[3];
+    let d = @dwords[3];
+    let q = @qwords[3];
+    for offset in -3..5 {
+        let expected = (offset + 4) as uint64;
+        Assert((b + offset)[0] as uint64 == expected, "byte addressing with signed offset");
+        Assert((w + offset)[0] as uint64 == expected, "word addressing with signed offset");
+        Assert((d + offset)[0] as uint64 == expected, "dword addressing with signed offset");
+        Assert((q + offset)[0] == expected, "qword addressing with signed offset");
+        (q + offset)[0] = expected + 100u64;
+    }
+    for index in 0..8 {
+        Assert(qwords[index] == (index as uint64) + 101u64, "scaled writes reach each element exactly");
+    }
+}
+
+func UnrolledWalk(start: uint, limit: uint, output: *var uint, floating: *var float64) -> uint {
+    var i = start;
+    var a = 3u;
+    var b = 5u;
+    while i < limit {
+        let old = a;
+        a = b;
+        b = old + i;
+        *output = *output * 7u + a + b;
+        *floating = (*floating * 0.25) + 1.0;
+        i += 1u;
+    }
+    return a + b;
+}
+
+func ReferenceWalk(start: uint, limit: uint, output: *var uint, floating: *var float64) -> uint {
+    var left = limit > start ? limit - start : 0u;
+    var i = start;
+    var a = 3u;
+    var b = 5u;
+    while left != 0u {
+        let old = a;
+        a = b;
+        b = old + i;
+        *output = *output * 7u + a + b;
+        *floating = (*floating * 0.25) + 1.0;
+        i += 1u;
+        left -= 1u;
+    }
+    return a + b;
+}
+
+func CheckUnrolledLoops() {
+    let walk: func(uint, uint, *var uint, *var float64) -> uint = UnrolledWalk;
+    for start in 0u..18u {
+        for limit in 0u..18u {
+            var actual = 11u;
+            var expected = 11u;
+            var actualFloat = -0.5;
+            var expectedFloat = -0.5;
+            let a = walk(start, limit, @actual, @actualFloat);
+            let b = ReferenceWalk(start, limit, @expected, @expectedFloat);
+            Assert(a == b && actual == expected, "unrolled recurrences, empty ranges and scalar tails");
+            Assert(actualFloat == expectedFloat, "unrolling preserves floating-point execution order");
+        }
+    }
+    for count in 0u..9u {
+        var actual = 0u;
+        var expected = 0u;
+        let a = walk(0u, count, @actual, @actual as *var float64);
+        let b = ReferenceWalk(0u, count, @expected, @expected as *var float64);
+        Assert(a == b && actual == expected, "unrolling preserves legal raw-pointer alias order");
+    }
+    var untouched = 13u;
+    var untouchedFloat = -0.5;
+    Assert(walk(0xFFFFFFFFFFFFFFFFu, 0u, @untouched, @untouchedFloat) == 8u, "descending maximum range is empty");
+    Assert(untouched == 13u && untouchedFloat == -0.5, "empty unrolled range performs no memory access");
+    let maximum = 0xFFFFFFFFFFFFFFFFu;
+    for distance in 0u..9u {
+        var actual = 11u;
+        var expected = 11u;
+        var actualFloat = -0.5;
+        var expectedFloat = -0.5;
+        let a = walk(maximum - distance, maximum, @actual, @actualFloat);
+        let b = ReferenceWalk(maximum - distance, maximum, @expected, @expectedFloat);
+        Assert(a == b && actual == expected && actualFloat == expectedFloat, "unrolled endpoint does not overflow");
+    }
+}
+
+func ConstantShifts64(value: uint64) -> uint64 {
+    return (value << 7) ^ (value >> 7) ^ (value << 63) ^ (value >> 63);
+}
+func VariableShifts64(value: uint64, count: uint64) -> uint64 { return (value << count) ^ (value >> count); }
+func ConstantShifts32(value: uint32) -> uint64 {
+    return ((value << 7) ^ (value >> 7) ^ (value << 31) ^ (value >> 31)) as uint64;
+}
+func VariableShifts32(value: uint32, count: uint64) -> uint64 { return ((value << count) ^ (value >> count)) as uint64; }
+func ConstantSignedShifts(value: int64) -> int64 { return (value >> 7) ^ (value >> 63); }
+func VariableSignedShift(value: int64, count: uint64) -> int64 { return value >> count; }
+
+func CheckAllocatedShifts() {
+    let shift64: func(uint64, uint64) -> uint64 = VariableShifts64;
+    let shift32: func(uint32, uint64) -> uint64 = VariableShifts32;
+    let signedShift: func(int64, uint64) -> int64 = VariableSignedShift;
+    for value in [0u64, 1u64, 0x7FFFFFFFu64, 0xFFFFFFFFu64, 0x7FFFFFFFFFFFFFFFu64, 0x8000000000000000u64,
+        0xFFFFFFFFFFFFFFFFu64, 0x123456789ABCDEF0u64] {
+        Assert(ConstantShifts64(value) == (shift64(value, 7u64) ^ shift64(value, 63u64)), "allocated 64-bit constant shifts");
+        let word = value as uint32;
+        Assert(ConstantShifts32(word) == (shift32(word, 7u64) ^ shift32(word, 31u64)), "allocated 32-bit shifts normalize");
+        let signed = value as int64;
+        Assert(ConstantSignedShifts(signed) == (signedShift(signed, 7u64) ^ signedShift(signed, 63u64)), "allocated arithmetic right shifts");
+    }
+}
+
+func LoadBranch(pointer: *var uint, other: *var uint, first: bool, second: bool) -> uint {
+    let before = *pointer;
+    if first { *other += 3u; return before + *pointer; }
+    if second { return before + *pointer; }
+    return before - *pointer;
+}
+func LoadJoin(pointer: *var uint, other: *var uint, test: bool) -> uint {
+    let before = *pointer;
+    if test { *other += 9u; }
+    return before + *pointer;
+}
+func LoadLoop(pointer: *var uint, other: *var uint, count: uint) -> uint {
+    var result = *pointer;
+    for i in 0u..count { *other += 1u; result += *pointer; }
+    return result;
+}
+func CheckLoadFacts() {
+    let branch: func(*var uint, *var uint, bool, bool) -> uint = LoadBranch;
+    let join: func(*var uint, *var uint, bool) -> uint = LoadJoin;
+    let readLoop: func(*var uint, *var uint, uint) -> uint = LoadLoop;
+    for first in [false, true] {
+        for second in [false, true] {
+            var value = 17u;
+            var other = 21u;
+            let expected = first || second ? 34u : 0u;
+            Assert(branch(@value, @other, first, second) == expected, "load facts stay on their own branch");
+            Assert(value == 17u && other == (first ? 24u : 21u), "branch writes remain observable");
+            Assert(branch(@value, @value, first, second) == (first ? 37u : expected), "aliased writes invalidate inherited loads");
+        }
+        var separate = 17u;
+        var neighbor = 21u;
+        Assert(join(@separate, @neighbor, first) == 34u, "join with distinct addresses");
+        Assert(join(@separate, @separate, first) == (first ? 43u : 34u), "join with a conditional aliasing write");
+    }
+    for count in 0u..17u {
+        var value = 17u;
+        var other = 21u;
+        Assert(readLoop(@value, @other, count) == 17u * (count + 1u), "loop headers discard inherited load facts");
+        Assert(readLoop(@value, @value, count) == 17u * (count + 1u) + count * (count + 1u) / 2u,
+            "each loop iteration observes aliased writes");
+    }
+}
+
+func RepeatedLiteralChecks(value: uint) -> uint {
+    if value < 15u { return value; }
+    if value < 15u { return value + 1u; }
+    return value + 2u;
+}
+func RepeatedLiteralValues(value: int, test: bool) -> int {
+    let before = value + 15;
+    if test { return before; }
+    return before + (value + 15);
+}
+func CheckLiteralKeys() {
+    let checks: func(uint) -> uint = RepeatedLiteralChecks;
+    let values: func(int, bool) -> int = RepeatedLiteralValues;
+    for value in 0u..65u {
+        Assert(checks(value) == (value < 15u ? value : value + 2u), "equal typed literal bounds preserve results");
+    }
+    for value in -32..33 {
+        Assert(values(value, true) == value + 15, "literal expression branch result");
+        Assert(values(value, false) == value * 2 + 30, "literal expression dominating result");
+    }
+}
+
+func AffinePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uint, other: *uint) -> uint {
+    var result = 0u;
+    for i in start..limit {
+        *(pointer + (row + i)) += 3u;
+        result += *(other + (row + i));
+    }
+    return result;
+}
+func ReferencePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uint, other: *uint) -> uint {
+    var remaining = limit > start ? limit - start : 0u;
+    var index = start;
+    var result = 0u;
+    while remaining > 0u {
+        *(pointer + (row + index)) += 3u;
+        result += *(other + (row + index));
+        index += 1u;
+        remaining -= 1u;
+    }
+    return result;
+}
+func CheckPointerInduction() {
+    let walk: func(uint, uint, uint, *var uint, *uint) -> uint = AffinePointerWalk;
+    for start in 0u..5u {
+        for limit in 0u..6u {
+            for displacement in 0u..3u {
+                var actual: uint[12] = [7u; 12];
+                var expected: uint[12] = [7u; 12];
+                let writeOffset = displacement == 2u ? 1u : 0u;
+                let readOffset = displacement == 1u ? 1u : 0u;
+                let a = walk(start, limit, 3u, @actual[writeOffset], @actual[readOffset]);
+                let b = ReferencePointerWalk(start, limit, 3u, @expected[writeOffset], @expected[readOffset]);
+                Assert(a == b, "pointer induction preserves aliased load/store order");
+                for i in 0u..12u { Assert(actual[i] == expected[i], "pointer induction writes the same elements"); }
+            }
+        }
+    }
+    var actual: uint[12] = [11u; 12];
+    var expected: uint[12] = [11u; 12];
+    let wrappedRow = 0xFFFFFFFFFFFFFFFCu;
+    let a = walk(4u, 8u, wrappedRow, @actual[0], @actual[1]);
+    let b = ReferencePointerWalk(4u, 8u, wrappedRow, @expected[0], @expected[1]);
+    Assert(a == b, "pointer induction preserves unsigned row wrapping");
+    for i in 0u..12u { Assert(actual[i] == expected[i], "wrapped pointer induction writes"); }
+}
+
+func StridedWalk3(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += 3u;
+    }
+    return *pointer;
+}
+func StridedWalk4(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += 4u;
+    }
+    return *pointer;
+}
+func StridedWalk6(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += 6u;
+    }
+    return *pointer;
+}
+func ReferenceStridedWalk(limit: uint, row: uint, bound: uint, pointer: *var uint, stride: uint) -> uint {
+    var i = 0u;
+    while i < limit {
+        let index = row + i;
+        if index < bound { *pointer += index; }
+        else { return 123u; }
+        i += stride;
+    }
+    return *pointer;
+}
+func CheckStridedVersioning() {
+    let reference: func(uint, uint, uint, *var uint, uint) -> uint = ReferenceStridedWalk;
+    let walk3: func(uint, uint, uint, *var uint) -> uint = StridedWalk3;
+    let walk4: func(uint, uint, uint, *var uint) -> uint = StridedWalk4;
+    let walk6: func(uint, uint, uint, *var uint) -> uint = StridedWalk6;
+    for limit in 0u..18u {
+        for row in [0u, 2u, 0xFFFFFFFFFFFFFFFEu] {
+            for bound in [0u, 1u, 4u, 9u, 24u, 0xFFFFFFFFFFFFFFFFu] {
+                for stride in [3u, 4u, 6u] {
+                    var actual = 7u;
+                    var expected = 7u;
+                    let a = stride == 3u ? walk3(limit, row, bound, @actual)
+                        : stride == 4u ? walk4(limit, row, bound, @actual) : walk6(limit, row, bound, @actual);
+                    let b = reference(limit, row, bound, @expected, stride);
+                    Assert(a == b && actual == expected, "strided bounds preserve prefix writes and checked fallback");
+                }
+            }
+        }
+    }
+}
+
+const LookupAlphabet: char8[..] = "ABCDEFGHIJKLMNOP";
+const WideLookup: char16[..] = c16"A\u{1F600}";
+const ScalarLookup: char32[..] = c32"A\u{1F600}";
+var MutableLookupValue: uint = 17u;
+func LookupSymbol(index: uint32) -> uint8 { return LookupAlphabet[(index & 15) as uint] as uint8; }
+func ReadMutableLookup() -> uint { return MutableLookupValue; }
+func MutateLookup(pointer: *var uint) -> uint {
+    let before = ReadMutableLookup();
+    *pointer += 1u;
+    return before + ReadMutableLookup();
+}
+func LookupLengths() -> uint { return LookupAlphabet.length + WideLookup.length * 100u + ScalarLookup.length * 10000u; }
+func CheckConstantSlices() {
+    let symbol: func(uint32) -> uint8 = LookupSymbol;
+    let lengths: func() -> uint = LookupLengths;
+    for index in 0u32..128u32 {
+        Assert(symbol(index) == (65u32 + (index & 15u32)) as uint8, "constant lookup helper preserves data");
+        Assert(LookupSymbol(index) == symbol(index), "inlined constant lookup preserves dynamic results");
+    }
+    Assert(lengths() == 20316u, "constant lengths count UTF-16 code units and UTF-32 scalars");
+    let mutate: func(*var uint) -> uint = MutateLookup;
+    var other = 41u;
+    Assert(mutate(@other) == 34u && other == 42u, "global reads with a distinct store");
+    Assert(mutate(@MutableLookupValue) == 35u && MutableLookupValue == 18u, "inlined global reads retain aliasing writes");
+}
+
+func CastWords(value: uint64, output: *var uint64) {
+    *(output + 0u) = (value as uint8) as uint64;
+    *(output + 1u) = (value as uint16) as uint64;
+    *(output + 2u) = (value as uint32) as uint64;
+    *(output + 3u) = value as uint64;
+    *(output + 4u) = (value as int8) as uint64;
+    *(output + 5u) = (value as int16) as uint64;
+    *(output + 6u) = (value as int32) as uint64;
+    *(output + 7u) = (value as int64) as uint64;
+    *(output + 8u) = ((value as int8) as uint32) as uint64;
+    *(output + 9u) = ((value as int16) as uint32) as uint64;
+    *(output + 10u) = ((value & 127u64) as char8) as uint64;
+    *(output + 11u) = ((value & 127u64) as char16) as uint64;
+}
+func CastPointer(pointer: *uint64) -> *uint64 { return (pointer as uint64) as *uint64; }
+func CheckAllocatedCasts() {
+    let convert: func(uint64, *var uint64) = CastWords;
+    let pointer: func(*uint64) -> *uint64 = CastPointer;
+    for value in [0u64, 1u64, 127u64, 128u64, 255u64, 256u64, 32767u64, 32768u64, 65535u64,
+        0x7FFFFFFFu64, 0x80000000u64, 0xFFFFFFFFu64, 0x8000000000000000u64, 0xFFFFFFFFFFFFFFFFu64,
+        0x123456789ABCDEF0u64] {
+        var actual: uint64[12] = [0u64; 12];
+        convert(value, @actual[0]);
+        var expected: uint64[12] = [value; 12];
+        expected[0] = value & 255u64;
+        expected[1] = value & 65535u64;
+        expected[2] = value & 0xFFFFFFFFu64;
+        expected[4] = (value & 128u64) != 0u64 ? expected[0] | 0xFFFFFFFFFFFFFF00u64 : expected[0];
+        expected[5] = (value & 32768u64) != 0u64 ? expected[1] | 0xFFFFFFFFFFFF0000u64 : expected[1];
+        expected[6] = (value & 0x80000000u64) != 0u64 ? expected[2] | 0xFFFFFFFF00000000u64 : expected[2];
+        expected[8] = expected[4] & 0xFFFFFFFFu64;
+        expected[9] = expected[5] & 0xFFFFFFFFu64;
+        expected[10] = value & 127u64;
+        expected[11] = value & 127u64;
+        for i in 0u..12u { Assert(actual[i] == expected[i], "allocated cast width and signedness"); }
+        Assert(pointer(@actual[0]) == @actual[0] && *pointer(@actual[0]) == expected[0], "allocated pointer bit round trip");
+    }
 }

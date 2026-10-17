@@ -1,0 +1,27 @@
+// A method of 'extend Pair<int32>' belongs to 'Pair<int32>' alone; a generic extension belongs to every
+// instantiation. A type that shares its name with another package's is named as it was declared.
+struct Pair<T> {
+    left: T;
+    right: T;
+}
+
+extend Pair<int32> {
+    func Sum(self: &Pair<int32>) -> int32 {
+        return self.left + self.right;
+    }
+}
+
+extend Pair<T> {
+    func First(self: &Pair<T>) -> T {
+        return self.left;
+    }
+}
+
+func Main() -> int {
+    let narrow = Pair<int32> { left: 1, right: 2 };
+    let wide = Pair<int64> { left: 3, right: 4 };
+    let sum = narrow.Sum();
+    let first = wide.First();
+    let wrong = wide.Sum();
+    return 0;
+}

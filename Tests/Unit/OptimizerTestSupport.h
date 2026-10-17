@@ -104,7 +104,7 @@ inline LirTerminator ReturnValue(const std::optional<LirReg> value = std::nullop
     LirTerminator terminator;
     terminator.kind = LirTermKind::Return;
     terminator.retVal = value;
-    terminator.retType = std::move(type);
+    terminator.retType = type;
     return terminator;
 }
 

@@ -4,12 +4,17 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
+#include "Optimization/Statistics.h"
 
 #include <cstddef>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+namespace Rux::Parallel {
+class WorkerPool;
+} // namespace Rux::Parallel
 
 namespace Rux::Optimization {
 /// Whether a pass rewrote the IR it was given. This is what drives the pipeline's fixed-point loop, so a pass that
@@ -50,12 +55,23 @@ struct PassContext {
     std::size_t fixedPointLimit = 1;
     std::vector<Diagnostic> *diagnostics = nullptr;
     LirPruningStats *lirPruning = nullptr;
+    /// Functions a package-wide pass rewrote, so the pipeline knows which ones the passes after it must revisit.
+    std::vector<const LirFunc *> *changedFunctions = nullptr;
+    /// Threads a package-wide pass may spread independent work over; null means the calling thread only.
+    Parallel::WorkerPool *pool = nullptr;
 
     /// Report a compiler bug found while optimizing. Silently drops the message when no pipeline is collecting
     /// diagnostics.
     void ReportInternalError(std::string message) const {
         if (diagnostics != nullptr) {
             diagnostics->push_back(ErrorDiagnostic(std::move(message)));
+        }
+    }
+
+    /// Record that a package-wide pass rewrote `function`.
+    void NoteChanged(const LirFunc &function) const {
+        if (changedFunctions != nullptr) {
+            changedFunctions->push_back(&function);
         }
     }
 };
@@ -68,6 +84,7 @@ struct PassRunReport {
     bool reachedFixedPoint = true;
     std::vector<Diagnostic> diagnostics;
     LirPruningStats lirPruning;
+    std::vector<PassStatistics> passStatistics;
 
     [[nodiscard]] bool HasErrors() const noexcept {
         for (const auto &diagnostic : diagnostics) {
@@ -97,8 +114,50 @@ public:
 
     /// Rewrite `ir` in place, reporting whether anything changed.
     virtual PassChange Run(Ir &ir, const PassContext &context) = 0;
+
+    /// Whether `Run` reports every function body it rewrites through `PassContext::NoteChanged`. A pass that changes
+    /// the IR without reporting makes the pipeline revisit every function.
+    [[nodiscard]] virtual bool ReportsChangedFunctions() const noexcept {
+        return false;
+    }
 };
 
 using HirPass = Pass<HirPackage>;
 using LirPass = Pass<LirPackage>;
+
+/**
+ * @brief A LIR pass that rewrites each function on its own.
+ *
+ * The pipeline may run such a pass on several functions at once and skips functions that have stopped changing, so a
+ * function pass reads the package only through the tables `Prepare` built and writes nothing but the function it was
+ * handed. Its result for a function must depend only on that function's body, those tables, and whether this is the
+ * first iteration.
+ */
+class LirFunctionPass : public LirPass {
+public:
+    /// Whether the pass does anything in this iteration. A pass confined to the first iteration returns false later, so
+    /// the pipeline skips it without visiting a function.
+    [[nodiscard]] virtual bool Enabled(const PassContext &) const {
+        return true;
+    }
+
+    /// Build the read-only package tables `RunFunction` consults. Called once per sweep, before any function runs.
+    virtual void Prepare(const LirPackage &) {
+    }
+
+    /// Rewrite one function of module `moduleIndex`. Runs concurrently with other functions of the same package.
+    [[nodiscard]] virtual PassChange RunFunction(LirFunc &function, std::size_t moduleIndex,
+                                                 const PassContext &context) const = 0;
+
+    PassChange Run(LirPackage &package, const PassContext &context) final {
+        if (!Enabled(context))
+            return PassChange::None;
+        Prepare(package);
+        bool changed = false;
+        for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex)
+            for (auto &function : package.modules[moduleIndex].funcs)
+                changed = RunFunction(function, moduleIndex, context) == PassChange::Changed || changed;
+        return changed ? PassChange::Changed : PassChange::None;
+    }
+};
 } // namespace Rux::Optimization

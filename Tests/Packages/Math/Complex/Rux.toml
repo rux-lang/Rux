@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Complex"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Math: complex arithmetic, Smith division, polar form, exponential, logarithm, square roots and powers on the principal branch."
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Math = { Path = "../../../../Packages/Math" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Math"

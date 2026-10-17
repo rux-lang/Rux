@@ -288,6 +288,9 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
     decl->location = loc;
     decl->isPublic = isPublic;
     decl->name = ExpectBefore(TokenKind::Ident, "an interface name after 'interface'").text;
+    if (Check(TokenKind::Less)) {
+        decl->typeParams = ParseTypeParams();
+    }
 
     if (!ConsumeBodyStart("the interface body")) {
         return decl;
@@ -330,9 +333,16 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         decl->extendedType = std::move(firstType);
         decl->typeName = firstName;
         decl->interfaceName = ExpectBefore(TokenKind::Ident, "an interface name after ':' in the extension").text;
+        if (IsTypeArgListAhead()) {
+            decl->interfaceTypeArgs = ParseTypeArgs();
+        }
     }
     else if (Match(TokenKind::ForKeyword)) {
         decl->interfaceName = firstName;
+        if (auto *named = AstCast<NamedTypeExpr>(firstType.get()); named != nullptr && !named->typeArgs.empty()) {
+            decl->interfaceName = named->name;
+            decl->interfaceTypeArgs = std::move(named->typeArgs);
+        }
         decl->extendedType = ParseType("add the extended type after 'for'");
         decl->typeName = decl->extendedType ? ImplTypeName(*decl->extendedType) : "?";
     }
@@ -529,6 +539,12 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
                 decl->kind = UseDecl::Kind::Glob;
                 break;
             }
+            // An intrinsic value is imported by its '#'-prefixed name, which ends the path.
+            if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+                Advance(); // consume '#'
+                decl->path.push_back("#" + Advance().text);
+                break;
+            }
             decl->path.push_back(ExpectBefore(TokenKind::Ident, "a module path segment after '::'").text);
         }
         else {
@@ -565,6 +581,30 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     decl->value = ParseRequiredExpr("after '=' in the constant declaration");
 
     ExpectBefore(TokenKind::Semicolon, "';' after the constant declaration");
+    return decl;
+}
+
+// var Name: Type = expr; at module scope
+std::unique_ptr<GlobalDecl> Parser::ParseGlobalDecl(bool isPublic) {
+    const auto loc = CurrentLocation();
+    ExpectBefore(TokenKind::VarKeyword, "'var' to start the module variable declaration");
+
+    auto decl = std::make_unique<GlobalDecl>();
+    decl->location = loc;
+    decl->isPublic = isPublic;
+    decl->name = ExpectBefore(TokenKind::Ident, "a variable name after 'var'").text;
+
+    // The type is required: a module variable is storage other functions and packages address, and its layout is
+    // part of what they agree on, so it is written down rather than inferred from an initializer.
+    ExpectBefore(TokenKind::Colon, "':' and the variable type after the module variable name",
+                 "write module variables as 'var Name: Type = value;'");
+    decl->type = ParseType("add the module variable type after ':'");
+
+    ExpectBefore(TokenKind::Assign, "'=' before the module variable's initial value",
+                 "a module variable needs an initial value; write '= 0' or another constant");
+    decl->value = ParseRequiredExpr("after '=' in the module variable declaration");
+
+    ExpectBefore(TokenKind::Semicolon, "';' after the module variable declaration");
     return decl;
 }
 
@@ -654,6 +694,8 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
     Expect(TokenKind::LeftBrace, "expected '{'");
     bool sawElse = false;
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        // Where this arm started: an arm whose body does not parse consumes nothing, and the loop must not spin on it.
+        const std::size_t armStart = pos;
         WhenDecl::Branch branch;
         branch.location = CurrentLocation();
         if (Match(TokenKind::ElseKeyword)) {
@@ -677,11 +719,22 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
             const std::string name = Advance().text;
             branch.directive = name == "Error" ? WhenDecl::Directive::Error : WhenDecl::Directive::Warn;
             Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
-            if (Check(TokenKind::StringLiteral)) {
+            if (Check(TokenKind::StringLiteral) && Peek(1).Is(TokenKind::RightParen)) {
                 branch.directiveMessage = DecodeStringLiteralText(Advance().text);
             }
             else {
                 EmitError(CurrentLocation(), std::format("'#{}' message must be a string literal", name));
+                // Skip the rest of the message, nested parentheses included, so the arm ends at its ')'.
+                std::size_t depth = 0;
+                while (!IsAtEnd() && !Check(TokenKind::RightBrace) && !(depth == 0 && Check(TokenKind::RightParen))) {
+                    if (Check(TokenKind::LeftParen)) {
+                        ++depth;
+                    }
+                    else if (Check(TokenKind::RightParen)) {
+                        --depth;
+                    }
+                    Advance();
+                }
             }
             Expect(TokenKind::RightParen, "expected ')'");
         }
@@ -707,6 +760,10 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
 
         decl->branches.push_back(std::move(branch));
         Match(TokenKind::Comma); // optional separator
+        if (pos == armStart) {
+            EmitError(CurrentLocation(), "expected a 'when' match arm, or '}' to close the match");
+            break;
+        }
         if (sawElse && !Check(TokenKind::RightBrace)) {
             EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
         }
@@ -751,6 +808,9 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         block->dll = attrs.importLib;
         block->dllConst = attrs.importLibConst;
         block->callConv = attrs.callConv;
+        if (attrs.usedAbi) {
+            block->abiLocation = attrs.abiLocation;
+        }
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             Syntax::Documentation documentation = ParseDocumentation();
             if (Check(TokenKind::RightBrace)) {
@@ -798,6 +858,8 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 auto vd = std::make_unique<ExternVarDecl>();
                 vd->location = CurrentLocation();
                 vd->isPublic = isPublic || memberIsPublic;
+                vd->dll = attrs.importLib;
+                vd->dllConst = attrs.importLibConst;
                 vd->documentation = std::move(documentation);
                 vd->name = Advance().text;
                 ExpectBefore(TokenKind::Colon, "':' after the external variable name",
@@ -828,6 +890,9 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         decl->symbolName = std::move(attrs.importSymbol);
         decl->symbolNameConst = std::move(attrs.importSymbolConst);
         decl->callConv = attrs.callConv;
+        if (attrs.usedAbi) {
+            decl->abiLocation = attrs.abiLocation;
+        }
         decl->name = ExpectBefore(TokenKind::Ident, "a function name after 'extern func'").text;
 
         if (Match(TokenKind::LeftParen)) {
@@ -861,6 +926,10 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
     auto decl = std::make_unique<ExternVarDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
+    decl->dll = std::move(attrs.importLib);
+    decl->dllConst = std::move(attrs.importLibConst);
+    decl->symbolName = std::move(attrs.importSymbol);
+    decl->symbolNameConst = std::move(attrs.importSymbolConst);
     decl->name = Advance().text;
 
     ExpectBefore(TokenKind::Colon, "':' after the external variable name",

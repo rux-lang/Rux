@@ -6,16 +6,12 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend uint : Display {
     /// Writes this value's digits.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint-write-display
     pub func WriteDisplay(self: &uint, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteIntegerSpec(writer, spec, self as uint64, false);
     }
@@ -23,14 +19,11 @@ extend uint : Display {
 
 extend uint : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint-write-debug
     pub func WriteDebug(self: &uint, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }

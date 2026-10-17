@@ -8,8 +8,11 @@
 #include "System/OutputFile.h"
 
 #include <algorithm>
+#include <bit>
+#include <cstdlib>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -23,6 +26,8 @@ namespace Rux {
 [[maybe_unused]] static constexpr uint64_t kImageBase = 0x1'4000'0000ULL;
 [[maybe_unused]] static constexpr uint32_t kSecAlign = 0x1000; // 4 KB section alignment
 [[maybe_unused]] static constexpr uint32_t kFileAlign = 0x200; // 512 B file alignment
+// IMAGE_TLS_DIRECTORY64: four addresses, the zero-fill size and the characteristics.
+static constexpr uint32_t kTlsDirectorySize = 40;
 [[maybe_unused]] static constexpr uint16_t kMagicPE32P = 0x020B;
 [[maybe_unused]] static constexpr uint16_t kSubsystemCUI = 3; // console
 
@@ -562,18 +567,39 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     // call site whose DLL name is carried by another translation unit.
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
-            if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty()) {
+            if ((sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) && !sym.typeName.empty()) {
                 explicitImportDll[sym.name] = sym.typeName;
             }
         }
     }
 
+    // Every extern a source declares names its library, KERNEL32 when it wrote none. A function referenced with no
+    // library is one nothing defines and nothing declares, which the loader would refuse with no message at all.
+    std::vector<std::string> undefined;
+    // Imported data takes an IAT entry as a function does; the code reads its address from the entry.
     for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
-        if (external.kind != RcuSymKind::ExternFunc) {
+        if (external.kind != RcuSymKind::ExternFunc && external.kind != RcuSymKind::ExternData) {
             continue;
         }
         const auto explicitDll = explicitImportDll.find(external.name);
-        importDll[external.name] = explicitDll == explicitImportDll.end() ? "KERNEL32.DLL" : explicitDll->second;
+        if (explicitDll == explicitImportDll.end()) {
+            if (!importDll.contains(external.name)) {
+                undefined.push_back(external.name);
+            }
+            continue;
+        }
+        importDll[external.name] = explicitDll->second;
+    }
+    if (!undefined.empty()) {
+        std::ranges::sort(undefined);
+        std::string names;
+        for (const std::string &name : undefined) {
+            names += std::format("{}'{}'", names.empty() ? "" : ", ", name);
+        }
+        Error(std::format("undefined symbol{} {}: no object defines {} and no extern declares {}",
+                          undefined.size() == 1 ? "" : "s", names, undefined.size() == 1 ? "it" : "them",
+                          undefined.size() == 1 ? "it" : "them"));
+        return false;
     }
 
     // Sorted for determinism
@@ -744,15 +770,46 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         exportDirSize = static_cast<uint32_t>(rdataBuf.size()) - exportDirOff;
     }
 
+    // 4b. Thread-local storage. The loader gives the image a slot in every thread's block array and fills it with a
+    // copy of the template, so the image carries the template, an IMAGE_TLS_DIRECTORY64 naming it and the word the
+    // loader writes the slot's index to, and an empty callback list. The template lives in .rdata: the loader only
+    // reads it, and the relocations into it are patched in a separate buffer and copied over it afterwards.
+    Buf tlsBuf = layout.Data(RcuMergedSection::Tls);
+    const bool hasTls = !tlsBuf.empty();
+    const uint32_t tlsAlign = std::max<uint32_t>(layout.Alignment(RcuMergedSection::Tls), 1);
+    uint32_t tlsTemplateOff = 0;
+    uint32_t tlsCallbacksOff = 0;
+    uint32_t tlsDirectoryOff = 0;
+    if (hasTls) {
+        if (isDll) {
+            Error("thread-local variables are not supported in a DLL yet");
+            return false;
+        }
+        PadTo(rdataBuf, std::max<uint32_t>(tlsAlign, 8));
+        tlsTemplateOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, tlsBuf.size());
+        PadTo(rdataBuf, 8);
+        tlsCallbacksOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, 8);
+        tlsDirectoryOff = static_cast<uint32_t>(rdataBuf.size());
+        WriteZeros(rdataBuf, kTlsDirectorySize);
+    }
+
     // 5. Compute section layout (RVAs and file offsets)
     // Every Abs64 fixup becomes an IMAGE_REL_BASED_DIR64 entry, so the .reloc
     // section exists exactly when the merged objects contain one.
-    const bool hasAbsoluteFixups = std::ranges::any_of(graph->References(), [&](const RcuLinkReference &reference) {
-        const RcuReloc &relocation =
-            objects[reference.objectIndex].sections[reference.sectionIndex].relocs[reference.relocationIndex];
-        return relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
-    });
-    const uint32_t numSections = (dataBuf.empty() ? 2u : 3u) + (hasAbsoluteFixups ? 1u : 0u);
+    const bool hasAbsoluteFixups =
+        std::ranges::any_of(
+            graph->References(),
+            [&](const RcuLinkReference &reference) {
+                const RcuReloc &relocation =
+                    objects[reference.objectIndex].sections[reference.sectionIndex].relocs[reference.relocationIndex];
+                return relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
+            }) ||
+        hasTls;
+    const auto bssVirtSize = static_cast<uint32_t>(layout.BssSize());
+    const uint32_t numSections =
+        (dataBuf.empty() ? 2u : 3u) + (bssVirtSize == 0 ? 0u : 1u) + (hasAbsoluteFixups ? 1u : 0u);
     const uint32_t rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
     const uint32_t sizeOfHeaders = AlignUp(rawHdrBytes, kFileAlign);
     const uint32_t textRva = AlignUp(sizeOfHeaders, kSecAlign);
@@ -770,8 +827,12 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         dataFileSize = AlignUp(dataVirtSize, kFileAlign);
         dataFileOff = rdataFileOff + rdataFileSize;
     }
-    const uint32_t sizeOfImage =
+    const uint32_t initializedImageEnd =
         !dataBuf.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign) : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
+
+    const uint32_t bssRva =
+        AlignUp(initializedImageEnd, std::max<uint32_t>(kSecAlign, layout.Alignment(RcuMergedSection::Bss)));
+    const uint32_t sizeOfImage = bssVirtSize == 0 ? initializedImageEnd : bssRva + AlignUp(bssVirtSize, kSecAlign);
 
     // 6. Patch .rdata import table with real RVAs
     for (size_t g = 0; g < importDllNames.size(); ++g) {
@@ -798,6 +859,8 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         .text = imageBase + textRva,
         .rodata = imageBase + rdataRva,
         .data = imageBase + dataRva,
+        .bss = imageBase + bssRva,
+        .tls = imageBase + rdataRva + tlsTemplateOff,
     };
     const auto symbolAddress = [&](const RcuSymbolLocation location) -> std::optional<uint64_t> {
         const auto placement = layout.Symbol(location);
@@ -869,6 +932,9 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         case RcuMergedSection::Data:
             buffer = &dataBuf;
             break;
+        case RcuMergedSection::Tls:
+            buffer = &tlsBuf;
+            break;
         case RcuMergedSection::Bss:
             continue;
         }
@@ -877,8 +943,55 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
             baseRelocationRvas.push_back(static_cast<uint32_t>(*siteAddress - imageBase));
         }
 
+        if (relocation.type == RcuRelType::TlsOffset32 || relocation.type == RcuRelType::AArch64TlsHi12 ||
+            relocation.type == RcuRelType::AArch64TlsLo12Nc) {
+            // A thread-local variable is addressed by its offset in the thread's block, the template's own layout.
+            const auto target = reference.definition ? layout.Symbol(*reference.definition) : std::nullopt;
+            std::string relocationError;
+            if (!target || target->section != RcuMergedSection::Tls) {
+                relocationError = std::format(
+                    "thread-local relocation to '{}' names a variable that is not thread-local", symbol.name);
+            }
+            else if (relocation.type == RcuRelType::TlsOffset32) {
+                const auto offset = static_cast<int64_t>(target->offset) + relocation.addend;
+                if (offset < 0 || offset > std::numeric_limits<int32_t>::max()) {
+                    relocationError = std::format("thread-local variable '{}' is out of range", symbol.name);
+                }
+                else {
+                    Patch32(*buffer, static_cast<size_t>(sitePlacement->offset), static_cast<uint32_t>(offset));
+                }
+            }
+            else {
+                (void)ApplyAArch64Relocation(*buffer, static_cast<size_t>(sitePlacement->offset), relocation.type,
+                                             target->offset, relocation.addend, *siteAddress, symbol.name,
+                                             "PE32+ writer", relocationError);
+            }
+            if (!relocationError.empty()) {
+                auto notes = RelocationNotes(reference, relocationError);
+                Error(std::move(relocationError), std::move(notes));
+            }
+            continue;
+        }
+
         std::optional<uint64_t> targetAddress;
-        if (reference.resolution == RcuLinkResolution::External) {
+        std::uint16_t relocationType = relocation.type;
+        // A reference to an imported data symbol's slot is a reference to its IAT entry, which the loader fills
+        // with the symbol's address, and it is then applied as the plain PC-relative form its instruction uses.
+        if (const std::optional<std::uint16_t> plain = PlainImportSlotRelocation(relocation.type)) {
+            relocationType = *plain;
+            const auto imported = importIdx.find(symbol.name);
+            if (reference.resolution != RcuLinkResolution::External || imported == importIdx.end()) {
+                Error(std::format("extern variable '{}' is not imported from a library", symbol.name),
+                      {"an extern variable is data another image defines, reached through its import entry"});
+                continue;
+            }
+            targetAddress = imageBase + rdataRva + iatEntryOff[imported->second];
+        }
+        else if (reference.resolution == RcuLinkResolution::External && symbol.kind == RcuSymKind::ExternData) {
+            Error("imported data symbol '" + symbol.name + "' is read through its import slot, not addressed directly");
+            continue;
+        }
+        else if (reference.resolution == RcuLinkResolution::External) {
             const auto imported = importThunks.find(symbol.name);
             if (imported != importThunks.end()) {
                 targetAddress = imported->second;
@@ -888,7 +1001,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
             targetAddress = symbolAddress(*reference.definition);
         }
         if (!targetAddress) {
-            if (symbol.kind == RcuSymKind::ExternFunc) {
+            if (symbol.kind == RcuSymKind::ExternFunc || symbol.kind == RcuSymKind::ExternData) {
                 Error("undefined external symbol '" + symbol.name + "'");
             }
             continue;
@@ -896,7 +1009,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
         std::string relocationError;
         if (!architecture->applyRelocation(*buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
-                                           *targetAddress, relocation.addend, relocation.type, symbol.name,
+                                           *targetAddress, relocation.addend, relocationType, symbol.name,
                                            relocationError)) {
             auto notes = RelocationNotes(reference, relocationError);
             Error(std::move(relocationError), std::move(notes));
@@ -905,6 +1018,27 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
     if (!errors.empty()) {
         return false;
+    }
+
+    if (hasTls) {
+        std::ranges::copy(tlsBuf, rdataBuf.begin() + tlsTemplateOff);
+        const auto indexLocation = graph->FindDefinition(std::string(kTlsIndexSymbol));
+        const auto indexAddress = indexLocation ? symbolAddress(*indexLocation) : std::nullopt;
+        if (!indexAddress) {
+            Error("internal: the thread-local index word was not linked");
+            return false;
+        }
+        const uint64_t templateAddress = imageBase + rdataRva + tlsTemplateOff;
+        Patch64(rdataBuf, tlsDirectoryOff + 0, templateAddress);                         // StartAddressOfRawData
+        Patch64(rdataBuf, tlsDirectoryOff + 8, templateAddress + tlsBuf.size());         // EndAddressOfRawData
+        Patch64(rdataBuf, tlsDirectoryOff + 16, *indexAddress);                          // AddressOfIndex
+        Patch64(rdataBuf, tlsDirectoryOff + 24, imageBase + rdataRva + tlsCallbacksOff); // AddressOfCallBacks
+        Patch32(rdataBuf, tlsDirectoryOff + 32, 0);                                      // SizeOfZeroFill
+        // Characteristics holds the template's alignment as an IMAGE_SCN_ALIGN value.
+        Patch32(rdataBuf, tlsDirectoryOff + 36, static_cast<uint32_t>(std::bit_width(tlsAlign)) << 20U);
+        for (uint32_t field = 0; field < 4; ++field) {
+            baseRelocationRvas.push_back(rdataRva + tlsDirectoryOff + field * 8);
+        }
     }
 
     // 10. Build the base-relocation table: one block per 4 KB page holding an
@@ -979,9 +1113,20 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
     writeRaw("PE\0\0", 4); // PE signature
 
-    // COFF File Header (20 bytes)
-    wBuf(BuildPeCoffHeader(*architecture, static_cast<uint16_t>(numSections), static_cast<uint32_t>(std::time(nullptr)),
-                           isDll));
+    // COFF File Header (20 bytes). The time stamp is `SOURCE_DATE_EPOCH` when it is set, and otherwise a digest of the
+    // image's contents rather than the clock, so linking the same objects twice writes the same file.
+    uint32_t timeStamp = 0;
+    if (const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH"); epoch && !epoch->empty()) {
+        timeStamp = static_cast<uint32_t>(std::strtoull(epoch->c_str(), nullptr, 10));
+    }
+    else {
+        uint64_t hash = 0xcbf29ce484222325ULL;
+        for (const Buf *buffer : {&textBuf, &rdataBuf, &dataBuf})
+            for (const uint8_t byte : *buffer)
+                hash = (hash ^ byte) * 0x100000001b3ULL;
+        timeStamp = static_cast<uint32_t>(hash ^ (hash >> 32));
+    }
+    wBuf(BuildPeCoffHeader(*architecture, static_cast<uint16_t>(numSections), timeStamp, isDll));
 
     // Optional Header PE32+ (240 bytes)
     wU16(kMagicPE32P);
@@ -989,7 +1134,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wU8(0);                                             // Linker version 14.0
     wU32(textFileSize);                                 // SizeOfCode
     wU32(rdataFileSize + dataFileSize + relocFileSize); // SizeOfInitializedData
-    wU32(0);                                            // SizeOfUninitializedData
+    wU32(AlignUp(bssVirtSize, kFileAlign));             // SizeOfUninitializedData, rounded as link.exe rounds it
     wU32(textRva);                                      // AddressOfEntryPoint (__rux_start at start of .text)
     wU32(textRva);                                      // BaseOfCode
     wU64(imageBase);
@@ -1023,11 +1168,11 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wDir(0, 0);                                           // [2..4]
     wDir(relocBuf.empty() ? 0 : relocRva, relocVirtSize); // [5] Base relocation
     wDir(0, 0);
-    wDir(0, 0); // [6..7]
+    wDir(0, 0);                                                                    // [6..7]
+    wDir(0, 0);                                                                    // [8] Global pointer
+    wDir(hasTls ? rdataRva + tlsDirectoryOff : 0, hasTls ? kTlsDirectorySize : 0); // [9] TLS
     wDir(0, 0);
-    wDir(0, 0);
-    wDir(0, 0);
-    wDir(0, 0);                                          // [8..11]
+    wDir(0, 0);                                          // [10..11]
     wDir(iatSize == 0 ? 0 : rdataRva + iatOff, iatSize); // [12] IAT
     wDir(0, 0);
     wDir(0, 0);
@@ -1064,6 +1209,18 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         wU16(0);
         wU16(0);
         wU32(kScnData);
+    }
+    if (bssVirtSize != 0) {
+        wSec8(".bss");
+        wU32(bssVirtSize);
+        wU32(bssRva);
+        wU32(0);
+        wU32(0);
+        wU32(0);
+        wU32(0);
+        wU16(0);
+        wU16(0);
+        wU32(0xC0000080U); // uninitialized, readable and writable
     }
     if (!relocBuf.empty()) {
         wSec8(".reloc");

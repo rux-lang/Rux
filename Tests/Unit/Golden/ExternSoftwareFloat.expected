@@ -1,0 +1,14 @@
+9:35: error: the return value of extern function 'Narrow' has type 'float16', which has no C ABI mapping
+9:17: error: extern parameter 'value' has type 'float8', which has no C ABI mapping
+10:38: error: the return value of extern function 'Extended' has type 'float128', which has no C ABI mapping
+10:19: error: extern parameter 'value' has type 'float80', which has no C ABI mapping
+11:40: error: the return value of extern function 'Wide' has type 'float512', which has no C ABI mapping
+11:15: error: extern parameter 'value' has type 'float256', which has no C ABI mapping
+17:34: error: the return value of '#Abi' function 'Callback' has type 'float128', which has no C ABI mapping
+17:15: error: parameter 'value' of '#Abi' function 'Callback' has type 'float16', which has no C ABI mapping
+22:18: error: a C-variadic argument has type 'float8', which has no C ABI mapping
+22:25: error: a C-variadic argument has type 'float16', which has no C ABI mapping
+22:33: error: a C-variadic argument has type 'float80', which has no C ABI mapping
+22:41: error: a C-variadic argument has type 'float128', which has no C ABI mapping
+22:50: error: a C-variadic argument has type 'float256', which has no C ABI mapping
+22:59: error: a C-variadic argument has type 'float512', which has no C ABI mapping

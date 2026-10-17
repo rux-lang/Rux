@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lexer/Token.h"
+#include "SourceModel/DynamicType.h"
 #include "Syntax/DocumentationComment.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
@@ -8,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace Rux {
@@ -33,6 +35,8 @@ struct TypeExpr {
     /// requires it in some positions, such as an optional sum member `A | (B?)`, so the parser keeps the fact.
     bool parenthesized = false;
     virtual ~TypeExpr() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // int32, String, MyStruct
@@ -149,6 +153,8 @@ struct FallibleTypeExpr : TypeExpr {
 
 struct Block {
     SourceLocation location;
+    /// Where the token after the closing brace starts, so `location` to `end` covers the whole block.
+    SourceLocation end;
     std::vector<StmtPtr> stmts;
 };
 
@@ -157,6 +163,8 @@ struct Block {
 struct Pattern {
     SourceLocation location;
     virtual ~Pattern() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // _
@@ -191,6 +199,8 @@ struct EnumPattern : Pattern {
     std::vector<std::string> path;
     std::vector<PatternPtr> args; // bound positions
     std::vector<NamedArg> namedArgs;
+    /// The payload is written with field names, `{ ... }`, so it may leave fields out.
+    bool braced = false;
 };
 
 // Point { x: 0, y: 0 }
@@ -237,6 +247,8 @@ struct GuardedPattern : Pattern {
 struct Expr {
     SourceLocation location;
     virtual ~Expr() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // 42, 3.14, "hello", 'A', true, null
@@ -387,7 +399,18 @@ struct IndexExpr : Expr {
 struct FieldExpr : Expr {
     ExprPtr object;
     std::string field;
+    /// Where the member name starts; `location` is the '.' before it.
+    std::optional<SourceLocation> memberLocation;
 };
+
+/// Where a call is named in the source, for diagnostics about using the callee: the callee's start for `Name(...)`, the
+/// method name for `value.Method(...)`. The call's own location is the token after the callee.
+[[nodiscard]] inline SourceLocation CallSiteLocation(const CallExpr &call) {
+    if (const auto *member = dynamic_cast<const FieldExpr *>(call.callee.get())) {
+        return member->memberLocation.value_or(member->location);
+    }
+    return call.callee ? call.callee->location : call.location;
+}
 
 // Point { x: 1.0, y: 2.0 }
 struct StructInitExpr : Expr {
@@ -504,6 +527,8 @@ struct DivergeExpr : Expr {
 struct Stmt {
     SourceLocation location;
     virtual ~Stmt() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 // expr;
@@ -627,15 +652,21 @@ struct Decl {
     SourceLocation location;
     bool isPublic = false;
     Syntax::Documentation documentation;
-    /// Non-empty for declarations whose implementation/value is supplied by the compiler rather than Rux source: the
-    /// `intrinsic` keyword sets it to the registry key derived from the declaration itself (see ParseDecl).
+    /// Non-empty for a function, constant or `#` value the compiler supplies rather than Rux source: the `intrinsic`
+    /// keyword sets it to the registry key derived from the declaration itself (see ParseDecl). Types are never
+    /// intrinsic: every primitive is built in.
     std::string intrinsicName;
     std::string warnMessage;  // non-empty = emit this warning at each call site
     std::string errorMessage; // non-empty = emit this error at each call site
     /// Lint rules explicitly suppressed for this declaration. A type-level suppression also covers the fields and
     /// variants owned by that type.
     std::vector<std::string> allowedLints;
+    /// Written `#Unsendable()` before a type declaration: a value of the type, or of anything holding one, belongs to
+    /// the thread that made it and is no `Sendable` type argument.
+    bool isUnsendable = false;
     virtual ~Decl() = default;
+    /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
+    mutable const std::type_info *cachedType = nullptr;
 };
 
 struct Param {
@@ -644,6 +675,12 @@ struct Param {
     TypeExprPtr type;
     bool isVariadic = false; // for extern ...
     std::optional<ExprPtr> defaultValue;
+    /// Written `#Format()` before the name: this parameter is the format string whose placeholders the variadic
+    /// arguments after it fill. A call that passes a string literal here has its placeholders counted against those
+    /// arguments while compiling. The attribute is all the compiler knows; it recognizes no package by name.
+    bool isFormat = false;
+    /// Where the `#Format()` attribute was written, when `isFormat` is set.
+    SourceLocation formatLocation;
 
     /// The method receiver, written `self: T`, `self: *T` or `self: *var T`. A first parameter spelled this way is what
     /// makes a `func` inside an `extend` block a method rather than an associated function.
@@ -718,7 +755,11 @@ struct WhenDecl : Decl {
 struct FuncDecl : Decl {
     bool isAsm = false;
     bool isNoReturn = false;
+    /// Marked `#Test()`: a test that a test build of its package runs.
+    bool isTest = false;
     CallingConvention callConv = CallingConvention::Default;
+    /// Where the `#Abi` attribute is written, when there is one.
+    std::optional<SourceLocation> abiLocation;
     std::string name;
     std::vector<TypeParameter> typeParams;
     std::vector<Param> params;
@@ -800,9 +841,11 @@ struct UnionDecl : Decl {
     std::vector<Field> fields;
 };
 
-// interface Name { func Sig(); ... }
+// interface Name<T> { func Sig(); ... }
 struct InterfaceDecl : Decl {
     std::string name;
+    /// The parameters of a generic interface, which may only be named as a type-parameter bound, as in `I: Cursor<T>`.
+    std::vector<TypeParameter> typeParams;
     std::vector<std::unique_ptr<FuncDecl>> methods;
 };
 
@@ -816,6 +859,8 @@ struct ImplDecl : Decl {
     std::string typeName;
     TypeExprPtr extendedType;
     std::optional<std::string> interfaceName;
+    /// The type arguments of a generic interface the extension implements, as in `extend Counter : Cursor<int32>`.
+    std::vector<TypeExprPtr> interfaceTypeArgs;
     std::vector<std::unique_ptr<FuncDecl>> methods;
     std::vector<std::unique_ptr<ConstDecl>> constants;
 
@@ -851,6 +896,16 @@ struct ConstDecl : Decl {
     ExprPtr value;
 };
 
+/// var Name: Type = expr; at module scope. One storage location for the whole program, initialized from a
+/// compile-time value and writable by every function that can name it.
+struct GlobalDecl : Decl {
+    std::string name;
+    TypeExprPtr type;
+    ExprPtr value;
+    /// `thread var`: every thread has its own copy, each starting as the initial value.
+    bool isThreadLocal = false;
+};
+
 // type Name = Type;
 struct TypeAliasDecl : Decl {
     std::string name;
@@ -870,6 +925,9 @@ struct ExternFuncDecl : Decl {
     std::string symbolName;
     std::string symbolNameConst;
     CallingConvention callConv = CallingConvention::Default;
+    /// Where the declaration's own `#Abi` attribute is written; a function of an extern block inherits the block's
+    /// convention, and the block holds the attribute.
+    std::optional<SourceLocation> abiLocation;
     std::vector<Param> params;
     bool isVariadic = false;
     std::optional<TypeExprPtr> returnType;
@@ -879,6 +937,13 @@ struct ExternFuncDecl : Decl {
 struct ExternVarDecl : Decl {
     std::string name;
     TypeExprPtr type;
+    /// The library the data is imported from, as for an extern function, and the constant naming it before `when`
+    /// folding resolves it.
+    std::string dll;
+    std::string dllConst;
+    /// The name to import when it differs from `name`, from the second `#Link` argument.
+    std::string symbolName;
+    std::string symbolNameConst;
 };
 
 // #Link("...") extern { func ...; ... }
@@ -886,6 +951,7 @@ struct ExternBlockDecl : Decl {
     std::string dll;
     std::string dllConst;
     CallingConvention callConv = CallingConvention::Default;
+    std::optional<SourceLocation> abiLocation;
     std::vector<DeclPtr> items; // ExternFuncDecl or ExternVarDecl
 };
 
@@ -893,8 +959,30 @@ struct ExternBlockDecl : Decl {
 struct Module {
     std::string name; // source file name
     std::vector<DeclPtr> items;
+    /// Whether a block holds a `when` statement or a nested declaration, the only statements conditional folding acts
+    /// on inside bodies. The parser clears it for a module with neither, so folding can skip its bodies; a module built
+    /// any other way keeps the default and is always walked.
+    bool bodiesNeedConditionalFolding = true;
+    /// Whether a block declares anything but a constant: a function, type, extension or module inside a body joins the
+    /// package's declaration indexes when it is checked, so modules holding one cannot be checked independently. True
+    /// unless the parser saw none.
+    bool bodiesDeclareItems = true;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
 };
+
+/**
+ * @brief `dynamic_cast` to a concrete node type.
+ *
+ * Every concrete node type derives directly from one of the node bases (`Expr`, `Stmt`, `Decl`, `TypeExpr`, `Pattern`)
+ * and nothing derives from it, so a node is a `T` exactly when its dynamic type is `T`. Comparing type identities is
+ * far cheaper than the general hierarchy walk `dynamic_cast` performs, which had been the largest single cost of
+ * semantic analysis. The identities are compared by address: the compiler is one statically linked image, which holds
+ * exactly one `type_info` per type, so this is the same answer without comparing the types' mangled names.
+ */
+template <typename T, typename Node>
+[[nodiscard]] inline T *AstCast(Node *node) noexcept {
+    return node != nullptr && DynamicTypeOf(*node) == &typeid(T) ? static_cast<T *>(node) : nullptr;
+}
 
 inline ArrayTypeExpr::~ArrayTypeExpr() = default;
 inline BlockExpr::~BlockExpr() = default;

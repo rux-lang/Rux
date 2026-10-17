@@ -1,0 +1,188 @@
+// Why arguments did not match a command, said in the terms the person who typed them will recognize.
+// Each case carries what it needs to be described on its own: the argument as it was typed, or the name of the option
+// or positional the specification gave it, so that printing an error needs neither the specification nor the
+// arguments. The descriptions are lower case and unpunctuated, ready to follow a program's own prefix such as
+// `error: `.
+
+import Core::#target;
+import Path::{ OsStringView, OsUnit };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteBytes, WriteScalar };
+
+/// Why the arguments did not match the command.
+/// Failure-only: a parse is the success channel of `Parsed ! CommandLineError`. Copy; every view and name it carries
+/// borrows the arguments or the specification, which must outlive it.
+/// @see https://rux-lang.dev/docs/api/commandline/command-line-error
+pub variant CommandLineError {
+    /// An argument that looks like an option names none the command has. Carries the argument as typed.
+    UnknownOption(OsStringView),
+    /// An option that takes a value was the last argument, or ended a cluster of short options. Carries the option's
+    /// long name.
+    MissingValue(char8[..]),
+    /// A flag was given a value with `=`. Carries the option's long name.
+    UnexpectedValue(char8[..]),
+    /// The command has subcommands and the word naming one is not among them. Carries the word as typed.
+    UnknownCommand(OsStringView),
+    /// The command has subcommands and none was named.
+    MissingCommand,
+    /// A required positional argument was not given. Carries its name.
+    MissingPositional(char8[..]),
+    /// A positional argument beyond every one the command accepts. Carries the argument as typed.
+    UnexpectedArgument(OsStringView),
+    /// A value that could not be read as what was asked of it, such as a number. Carries the option or positional's
+    /// name, then the value as typed.
+    InvalidValue(char8[..], OsStringView)
+}
+
+// Writes native text a person can read: UTF-16 decoded on Windows, bytes passed through elsewhere, and anything that
+// is not a well-formed character written as U+FFFD, so that a malformed argument still prints.
+func WriteNative(writer: &var TextWriter, view: OsStringView) -> ! FormatError {
+    let units = view.Units();
+    var index: uint = 0;
+    while index < units.length {
+        when #target.os == .Windows {
+            var scalar = units[index] as uint32;
+            index = index + 1;
+            if scalar >= 0xD800 && scalar <= 0xDBFF && index < units.length {
+                let low = units[index] as uint32;
+                if low >= 0xDC00 && low <= 0xDFFF {
+                    scalar = 0x10000 + ((scalar - 0xD800) << 10) + (low - 0xDC00);
+                    index = index + 1;
+                }
+            }
+            if scalar >= 0xD800 && scalar <= 0xDFFF {
+                scalar = 0xFFFD;
+            }
+            WriteScalar(writer, scalar as char32)?;
+        }
+        else {
+            let first = units[index] as uint8 as uint32;
+            var count: uint = 1;
+            var scalar = first;
+            if first >= 0xF0 && first <= 0xF4 {
+                count = 4;
+                scalar = first & 0x07;
+            }
+            else if first >= 0xE0 && first <= 0xEF {
+                count = 3;
+                scalar = first & 0x0F;
+            }
+            else if first >= 0xC2 && first <= 0xDF {
+                count = 2;
+                scalar = first & 0x1F;
+            }
+            else if first >= 0x80 {
+                count = 0;
+            }
+            var valid = count > 0 && index + count <= units.length;
+            var at: uint = 1;
+            while valid && at < count {
+                let next = units[index + at] as uint8 as uint32;
+                valid = (next & 0xC0) == 0x80;
+                scalar = (scalar << 6) | (next & 0x3F);
+                at = at + 1;
+            }
+            valid = valid && scalar <= 0x10FFFF && !(scalar >= 0xD800 && scalar <= 0xDFFF);
+            valid = valid && !(count == 3 && scalar < 0x800) && !(count == 4 && scalar < 0x10000);
+            if valid {
+                WriteScalar(writer, scalar as char32)?;
+                index = index + count;
+            }
+            else {
+                WriteScalar(writer, 0xFFFD as char32)?;
+                index = index + 1;
+            }
+        }
+    }
+    return;
+}
+
+extend CommandLineError : Display {
+    /// Writes what went wrong, naming the argument, option or positional involved.
+    /// The text is lower case without a final full stop, such as `unknown option '--frob'` or
+    /// `option '--output' needs a value`. No style is understood. Reports whatever the writer reported, and
+    /// `UnsupportedRequest` for a style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-display
+    pub func WriteDisplay(self: &CommandLineError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        RejectStyle(spec)?;
+        match self {
+            .UnknownOption(argument) => {
+                WriteBytes(writer, "unknown option '")?;
+                WriteNative(writer, argument)?;
+                WriteBytes(writer, "'")?;
+            },
+            .MissingValue(name) => {
+                WriteBytes(writer, "option '--")?;
+                WriteBytes(writer, name)?;
+                WriteBytes(writer, "' needs a value")?;
+            },
+            .UnexpectedValue(name) => {
+                WriteBytes(writer, "option '--")?;
+                WriteBytes(writer, name)?;
+                WriteBytes(writer, "' takes no value")?;
+            },
+            .UnknownCommand(word) => {
+                WriteBytes(writer, "unknown command '")?;
+                WriteNative(writer, word)?;
+                WriteBytes(writer, "'")?;
+            },
+            .MissingCommand => {
+                WriteBytes(writer, "a command is required")?;
+            },
+            .MissingPositional(name) => {
+                WriteBytes(writer, "missing argument <")?;
+                WriteBytes(writer, name)?;
+                WriteBytes(writer, ">")?;
+            },
+            .UnexpectedArgument(argument) => {
+                WriteBytes(writer, "unexpected argument '")?;
+                WriteNative(writer, argument)?;
+                WriteBytes(writer, "'")?;
+            },
+            .InvalidValue(name, value) => {
+                WriteBytes(writer, "invalid value '")?;
+                WriteNative(writer, value)?;
+                WriteBytes(writer, "' for '")?;
+                WriteBytes(writer, name)?;
+                WriteBytes(writer, "'")?;
+            }
+        }
+        return;
+    }
+}
+
+extend CommandLineError : Debug {
+    /// The same text as `Display`: the description already names everything involved.
+    /// The failures `WriteDisplay` reports.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-debug
+    pub func WriteDebug(self: &CommandLineError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+// Whether native units spell exactly the ASCII `text`.
+func UnitsAre(units: OsUnit[..], text: char8[..]) -> bool {
+    if units.length != text.length { return false; }
+    var index: uint = 0;
+    while index < text.length {
+        if units[index] as uint32 != text[index] as uint8 as uint32 { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// The unit at `index` as a number, so that comparisons read the same on every system.
+func UnitAt(units: OsUnit[..], index: uint) -> uint32 {
+    return units[index] as uint32;
+}
+
+// A view of `units` from `start` to `end`, or an empty view for no units.
+func Part(units: OsUnit[..], start: uint, end: uint) -> OsStringView {
+    if start >= end { return OsStringView(); }
+    return OsStringView::FromUnits(units[start..end]);
+}

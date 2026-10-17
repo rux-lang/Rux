@@ -39,11 +39,13 @@ build)
     # publishes no macOS archive and Homebrew has no Intel bottle for macOS 26,
     # but the macOS SDK is universal, so the AArch64 toolchain emits x86-64 and
     # Rosetta runs the result on the same machine.
-    if [ -n "${RUX_OSX_ARCHITECTURE:-}" ]; then
-        sh Run.sh build --no-pch --osx-architecture "$RUX_OSX_ARCHITECTURE"
-    else
-        sh Run.sh build --no-pch
-    fi
+    #
+    # RUX_BUILD_TESTS=OFF leaves the unit tests out of a cross-build, which
+    # has no host to run them on.
+    set -- --no-pch
+    [ "${RUX_BUILD_TESTS:-ON}" != OFF ] || set -- "$@" --no-tests
+    [ -z "${RUX_OSX_ARCHITECTURE:-}" ] || set -- "$@" --osx-architecture "$RUX_OSX_ARCHITECTURE"
+    sh Run.sh build "$@"
     ;;
 test)
     sh Run.sh unit --jobs "$jobs"

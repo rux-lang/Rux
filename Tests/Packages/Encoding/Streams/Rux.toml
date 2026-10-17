@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Streams"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Encoding: hexadecimal, Base64 and Base32 written and read through streams in any chunking, matching the slice encoders."
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Encoding = { Path = "../../../../Packages/Encoding" }
+Io = { Path = "../../../../Packages/Io" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Encoding"

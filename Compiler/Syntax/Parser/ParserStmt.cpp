@@ -19,6 +19,16 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
     block->location = loc;
 
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        // Documentation attaches only to declarations, so a '///' run inside a block is reported once and skipped
+        // rather than misread as the start of an expression.
+        if (Check(TokenKind::DocComment)) {
+            EmitError(CurrentLocation(), "documentation comment inside a block is not attached to a declaration",
+                      "write an ordinary '//' comment here; '///' documents the declaration that follows it");
+            while (Check(TokenKind::DocComment)) {
+                Advance();
+            }
+            continue;
+        }
         if (auto stmt = ParseStmt()) {
             block->stmts.push_back(std::move(stmt));
         }
@@ -28,6 +38,7 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
     }
 
     ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close {}", role));
+    block->end = CurrentLocation();
     return block;
 }
 
@@ -124,7 +135,9 @@ StmtPtr Parser::ParseStmt() {
                   TokenKind::ExternKeyword})) {
         auto ds = std::make_unique<DeclStmt>();
         ds->location = loc;
+        bodiesNeedConditionalFolding = true;
         ds->decl = ParseDecl();
+        bodiesDeclareItems = bodiesDeclareItems || (ds->decl && !AstCast<const ConstDecl>(ds->decl.get()));
         return ds;
     }
 
@@ -163,7 +176,13 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     if (!s->isMut) {
         Expect(TokenKind::LetKeyword, "expected 'let' or 'var'");
     }
-    if (Check(TokenKind::Ident) && !Peek(1).Is(TokenKind::LeftBrace) && !Peek(1).Is(TokenKind::ColonColon)) {
+    // `_` names nothing: it is the wildcard pattern, which discards the value, even with a type annotation after it.
+    if (Check(TokenKind::Ident) && Peek().text == "_") {
+        auto wildcard = std::make_unique<WildcardPattern>();
+        wildcard->location = Advance().location;
+        s->pattern = std::move(wildcard);
+    }
+    else if (Check(TokenKind::Ident) && !Peek(1).Is(TokenKind::LeftBrace) && !Peek(1).Is(TokenKind::ColonColon)) {
         s->name = Advance().text;
     }
     else if (CheckAny({TokenKind::NoneKeyword, TokenKind::CatchKeyword, TokenKind::FailKeyword})) {
@@ -221,6 +240,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     auto s = std::make_unique<IfStmt>();
     s->location = loc;
     s->isCompileTime = isCompileTime;
+    bodiesNeedConditionalFolding = bodiesNeedConditionalFolding || isCompileTime;
     structInitAllowed = false;
     auto subject = ParseRequiredExpr(isCompileTime ? "after 'when'" : "after 'if'");
     structInitAllowed = true;

@@ -1,8 +1,8 @@
 // The four wide widths as values: the bits, the questions a caller asks of them, and their text.
-//
 // Each carries its bits in the narrowest integer that holds them, and answers `IsNan`, `IsInfinite`, `IsFinite`
-// and `IsNegative` from the fields directly.
-//
+// and `IsNegative` from the fields directly. `FromValue` and `Value` move the bits to and from the primitive of
+// the same width through a raw pointer, the same boundary `BitsOfFloat64` crosses, since a cast would convert the
+// number rather than keep its representation.
 // None of them implements `Display` or `Debug`, and that absence is the design. Their text is found by exact
 // big-integer arithmetic that allocates — the narrow widths convert in a fixed workspace, but these are too wide
 // for one — and the protocols offer nowhere to pass an allocator. The four used to implement them anyway by
@@ -14,35 +14,59 @@ import Allocator::Allocator;
 import Text::{ FormatError, FormatSpec, RejectStyle, TextFailureKind, TextWriter, WriteAligned };
 
 /// An x87 extended-precision value, held as its eighty bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float80
 pub struct Float80 {
     /// The bits, in the low eighty of a `uint128`; the top forty-eight are padding and stay zero.
     bits: uint128;
 }
 
+// The eighty bits of a `float80` that are its value, below the forty-eight of padding its storage carries.
+func ValueMask80() -> uint128 {
+    return 0xFFFFFFFFFFFFFFFFFFFFu128;
+}
+
 extend Float80 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
-    /// @see https://rux-lang.dev/docs/api/format/float80/from-bits
+    /// @see https://rux-lang.dev/docs/api/format/float80#from-bits
     pub func FromBits(bits: uint128) -> Float80 {
         return Float80 { bits: bits };
     }
 
+    /// The value a `float80` holds, carried as its eighty bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does, and keeps the low eighty bits:
+    /// the storage is sixteen bytes, and the six above the value are padding whose contents nothing promises.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float80#from-value
+    pub func FromValue(value: float80) -> Float80 {
+        let address = (@value) as *uint128;
+        return Float80 { bits: *address & ValueMask80() };
+    }
+
+    /// The `float80` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the low eighty bits into the primitive's storage through a raw pointer, with the padding above them
+    /// zero.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float80#value
+    pub func Value(self: &Float80) -> float80 {
+        var value: float80 = 0.0f80;
+        let address = (@value) as *var uint128;
+        *address = self.bits & ValueMask80();
+        return value;
+    }
+
     /// The bits.
-    ///
     /// @returns the value's bit pattern
-    /// @see https://rux-lang.dev/docs/api/format/float80/bits
+    /// @see https://rux-lang.dev/docs/api/format/float80#bits
     pub func Bits(self: &Float80) -> uint128 {
         return self.bits;
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
-    /// @see https://rux-lang.dev/docs/api/format/float80/layout
+    /// @see https://rux-lang.dev/docs/api/format/float80#layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Extended80();
     }
@@ -53,54 +77,46 @@ extend Float80 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float80/is-nan
+    /// @see https://rux-lang.dev/docs/api/format/float80#is-nan
     pub func IsNan(self: &Float80) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
-    /// @see https://rux-lang.dev/docs/api/format/float80/is-infinite
+    /// @see https://rux-lang.dev/docs/api/format/float80#is-infinite
     pub func IsInfinite(self: &Float80) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float80/is-finite
+    /// @see https://rux-lang.dev/docs/api/format/float80#is-finite
     pub func IsFinite(self: &Float80) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
-    /// @see https://rux-lang.dev/docs/api/format/float80/is-negative
+    /// @see https://rux-lang.dev/docs/api/format/float80#is-negative
     pub func IsNegative(self: &Float80) -> bool {
         let layout = FloatLayout::Extended80();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float80/format-with
+    /// @see https://rux-lang.dev/docs/api/format/float80#format-with
     pub func FormatWith(self: &Float80, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -110,7 +126,6 @@ extend Float80 {
 }
 
 /// An IEEE binary128 value, held as its bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float128
 pub struct Float128 {
     /// The bits, all hundred and twenty-eight of them.
@@ -119,26 +134,45 @@ pub struct Float128 {
 
 extend Float128 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
-    /// @see https://rux-lang.dev/docs/api/format/float128/from-bits
+    /// @see https://rux-lang.dev/docs/api/format/float128#from-bits
     pub func FromBits(bits: uint128) -> Float128 {
         return Float128 { bits: bits };
     }
 
+    /// The value a `float128` holds, carried as its bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does: a cast would ask for the
+    /// number, and what is wanted is its representation.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float128#from-value
+    pub func FromValue(value: float128) -> Float128 {
+        let address = (@value) as *uint128;
+        return Float128 { bits: *address };
+    }
+
+    /// The `float128` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the bits into the primitive's storage through a raw pointer.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float128#value
+    pub func Value(self: &Float128) -> float128 {
+        var value: float128 = 0.0f128;
+        let address = (@value) as *var uint128;
+        *address = self.bits;
+        return value;
+    }
+
     /// The bits.
-    ///
     /// @returns the value's bit pattern
-    /// @see https://rux-lang.dev/docs/api/format/float128/bits
+    /// @see https://rux-lang.dev/docs/api/format/float128#bits
     pub func Bits(self: &Float128) -> uint128 {
         return self.bits;
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
-    /// @see https://rux-lang.dev/docs/api/format/float128/layout
+    /// @see https://rux-lang.dev/docs/api/format/float128#layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Binary128();
     }
@@ -149,54 +183,46 @@ extend Float128 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float128/is-nan
+    /// @see https://rux-lang.dev/docs/api/format/float128#is-nan
     pub func IsNan(self: &Float128) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
-    /// @see https://rux-lang.dev/docs/api/format/float128/is-infinite
+    /// @see https://rux-lang.dev/docs/api/format/float128#is-infinite
     pub func IsInfinite(self: &Float128) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float128/is-finite
+    /// @see https://rux-lang.dev/docs/api/format/float128#is-finite
     pub func IsFinite(self: &Float128) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
-    /// @see https://rux-lang.dev/docs/api/format/float128/is-negative
+    /// @see https://rux-lang.dev/docs/api/format/float128#is-negative
     pub func IsNegative(self: &Float128) -> bool {
         let layout = FloatLayout::Binary128();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float128/format-with
+    /// @see https://rux-lang.dev/docs/api/format/float128#format-with
     pub func FormatWith(self: &Float128, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -206,7 +232,6 @@ extend Float128 {
 }
 
 /// An IEEE binary256 value, held as its bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float256
 pub struct Float256 {
     /// The bits, all two hundred and fifty-six of them.
@@ -215,26 +240,45 @@ pub struct Float256 {
 
 extend Float256 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
-    /// @see https://rux-lang.dev/docs/api/format/float256/from-bits
+    /// @see https://rux-lang.dev/docs/api/format/float256#from-bits
     pub func FromBits(bits: uint256) -> Float256 {
         return Float256 { bits: bits };
     }
 
+    /// The value a `float256` holds, carried as its bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does: a cast would ask for the
+    /// number, and what is wanted is its representation.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float256#from-value
+    pub func FromValue(value: float256) -> Float256 {
+        let address = (@value) as *uint256;
+        return Float256 { bits: *address };
+    }
+
+    /// The `float256` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the bits into the primitive's storage through a raw pointer.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float256#value
+    pub func Value(self: &Float256) -> float256 {
+        var value: float256 = 0.0f256;
+        let address = (@value) as *var uint256;
+        *address = self.bits;
+        return value;
+    }
+
     /// The bits.
-    ///
     /// @returns the value's bit pattern
-    /// @see https://rux-lang.dev/docs/api/format/float256/bits
+    /// @see https://rux-lang.dev/docs/api/format/float256#bits
     pub func Bits(self: &Float256) -> uint256 {
         return self.bits;
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
-    /// @see https://rux-lang.dev/docs/api/format/float256/layout
+    /// @see https://rux-lang.dev/docs/api/format/float256#layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Binary256();
     }
@@ -245,54 +289,46 @@ extend Float256 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float256/is-nan
+    /// @see https://rux-lang.dev/docs/api/format/float256#is-nan
     pub func IsNan(self: &Float256) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
-    /// @see https://rux-lang.dev/docs/api/format/float256/is-infinite
+    /// @see https://rux-lang.dev/docs/api/format/float256#is-infinite
     pub func IsInfinite(self: &Float256) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float256/is-finite
+    /// @see https://rux-lang.dev/docs/api/format/float256#is-finite
     pub func IsFinite(self: &Float256) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
-    /// @see https://rux-lang.dev/docs/api/format/float256/is-negative
+    /// @see https://rux-lang.dev/docs/api/format/float256#is-negative
     pub func IsNegative(self: &Float256) -> bool {
         let layout = FloatLayout::Binary256();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float256/format-with
+    /// @see https://rux-lang.dev/docs/api/format/float256#format-with
     pub func FormatWith(self: &Float256, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -302,7 +338,6 @@ extend Float256 {
 }
 
 /// An IEEE binary512 value, held as its bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float512
 pub struct Float512 {
     /// The bits, all five hundred and twelve of them.
@@ -311,26 +346,45 @@ pub struct Float512 {
 
 extend Float512 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
-    /// @see https://rux-lang.dev/docs/api/format/float512/from-bits
+    /// @see https://rux-lang.dev/docs/api/format/float512#from-bits
     pub func FromBits(bits: uint512) -> Float512 {
         return Float512 { bits: bits };
     }
 
+    /// The value a `float512` holds, carried as its bits.
+    /// Reads the primitive's storage through a raw pointer, as `BitsOfFloat64` does: a cast would ask for the
+    /// number, and what is wanted is its representation.
+    /// @param value the primitive to read
+    /// @returns the value with that primitive's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float512#from-value
+    pub func FromValue(value: float512) -> Float512 {
+        let address = (@value) as *uint512;
+        return Float512 { bits: *address };
+    }
+
+    /// The `float512` these bits encode, for arithmetic on a value that was read or built here.
+    /// Writes the bits into the primitive's storage through a raw pointer.
+    /// @returns the primitive with this value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float512#value
+    pub func Value(self: &Float512) -> float512 {
+        var value: float512 = 0.0f512;
+        let address = (@value) as *var uint512;
+        *address = self.bits;
+        return value;
+    }
+
     /// The bits.
-    ///
     /// @returns the value's bit pattern
-    /// @see https://rux-lang.dev/docs/api/format/float512/bits
+    /// @see https://rux-lang.dev/docs/api/format/float512#bits
     pub func Bits(self: &Float512) -> uint512 {
         return self.bits;
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
-    /// @see https://rux-lang.dev/docs/api/format/float512/layout
+    /// @see https://rux-lang.dev/docs/api/format/float512#layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Binary512();
     }
@@ -341,54 +395,46 @@ extend Float512 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float512/is-nan
+    /// @see https://rux-lang.dev/docs/api/format/float512#is-nan
     pub func IsNan(self: &Float512) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
-    /// @see https://rux-lang.dev/docs/api/format/float512/is-infinite
+    /// @see https://rux-lang.dev/docs/api/format/float512#is-infinite
     pub func IsInfinite(self: &Float512) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
-    /// @see https://rux-lang.dev/docs/api/format/float512/is-finite
+    /// @see https://rux-lang.dev/docs/api/format/float512#is-finite
     pub func IsFinite(self: &Float512) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
-    /// @see https://rux-lang.dev/docs/api/format/float512/is-negative
+    /// @see https://rux-lang.dev/docs/api/format/float512#is-negative
     pub func IsNegative(self: &Float512) -> bool {
         let layout = FloatLayout::Binary512();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float512/format-with
+    /// @see https://rux-lang.dev/docs/api/format/float512#format-with
     pub func FormatWith(self: &Float512, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;

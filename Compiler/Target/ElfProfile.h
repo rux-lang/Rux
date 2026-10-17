@@ -55,25 +55,14 @@ struct Elf64Profile {
     }
 
     const bool aarch64 = arch == Arch::AArch64;
-    Elf64Profile profile{"",
-                         os,
-                         arch,
-                         static_cast<std::uint8_t>(0),
-                         static_cast<std::uint16_t>(aarch64 ? 0xB7 : 0x3E),
-                         aarch64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2",
-                         "libc.so.6",
-                         aarch64 ? 0x10000U : 0x1000U,
-                         0x400000,
-                         0,
-                         aarch64 ? 93U : 60U,
-                         aarch64 ? ElfDynamicRelocations{1026, 1025, 1027} : ElfDynamicRelocations{7, 6, 8},
-                         false,
-                         false,
-                         aarch64 ? ElfPltInstructionShape::AArch64 : ElfPltInstructionShape::X86_64,
-                         aarch64 ? 32U : 16U,
-                         16,
-                         "",
-                         0};
+    Elf64Profile profile{"", os, arch, static_cast<std::uint8_t>(0), static_cast<std::uint16_t>(aarch64 ? 0xB7 : 0x3E),
+                         aarch64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2", "libc.so.6",
+                         aarch64 ? 0x10000U : 0x1000U, 0x400000, 0,
+                         // exit_group, not exit: Linux's exit ends only the calling thread.
+                         aarch64 ? 94U : 231U,
+                         aarch64 ? ElfDynamicRelocations{1026, 1025, 1027} : ElfDynamicRelocations{7, 6, 8}, false,
+                         false, aarch64 ? ElfPltInstructionShape::AArch64 : ElfPltInstructionShape::X86_64,
+                         aarch64 ? 32U : 16U, 16, "", 0};
 
     switch (os) {
     case OS::Linux:

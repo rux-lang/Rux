@@ -89,6 +89,10 @@ TEST_CASE("Asm mnemonics name the architecture they belong to") {
     CHECK(IsAsmMnemonic(Target::Arch::AArch64, "ldrsw"));
     CHECK(IsAsmMnemonic(Target::Arch::AArch64, "b.eq"));
     CHECK_FALSE(IsAsmMnemonic(Target::Arch::AArch64, "b.qq"));
+    // The undotted alias GNU as and LLVM accept.
+    CHECK(IsAsmMnemonic(Target::Arch::AArch64, "ble"));
+    CHECK(IsAsmMnemonic(Target::Arch::AArch64, "bne"));
+    CHECK_FALSE(IsAsmMnemonic(Target::Arch::AArch64, "bqq"));
     CHECK_FALSE(IsAsmMnemonic(Target::Arch::AArch64, "mov.eq"));
 
     SUBCASE("a mnemonic both architectures have belongs to neither") {
@@ -108,6 +112,7 @@ TEST_CASE("Asm mnemonics name the architecture they belong to") {
         CHECK(AsmMnemonicArch("stp") == Target::Arch::AArch64);
         CHECK(AsmMnemonicArch("svc") == Target::Arch::AArch64);
         CHECK(AsmMnemonicArch("b.eq") == Target::Arch::AArch64);
+        CHECK(AsmMnemonicArch("ble") == Target::Arch::AArch64);
     }
 
     SUBCASE("an instruction neither back end encodes is still recognized") {

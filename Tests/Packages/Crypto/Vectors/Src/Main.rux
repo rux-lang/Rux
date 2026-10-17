@@ -1,18 +1,17 @@
 
 // The checks that are the same for every algorithm, applied to every algorithm.
-//
 // Each algorithm's own test carries its known-answer vectors, because those are specific to it. What this adds
 // is the two families of check that are worth running uniformly and are easy to leave out of one algorithm by
 // accident: the boundary behaviour, where a message length lands exactly on a block, a rate or a chunk, and the
 // differential behaviour, where one flipped input bit must change about half the output bits.
-//
 // The avalanche check is the one that catches a hash which is merely *shaped* correctly. An implementation with
 // a round loop that runs one iteration too few, or a schedule that never mixes the last word, still produces
 // deterministic output of the right length that passes every structural test — and shows up here immediately,
 // because a weak diffusion changes far fewer than half the bits.
 
 import Core::{ Assert };
-import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha256, Sha256Of, Sha3, Sha3Of256, Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of, Sha224Of, Sha384Of };
+import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha224Of, Sha256, Sha256Of, Sha3, Sha384Of,
+                 Sha3Of256, Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -25,9 +24,9 @@ func BitsDiffering(left: char8[..], right: char8[..]) -> uint {
     var index: uint = 0;
     while index < left.length && index < right.length {
         var difference = (left.data[index] as uint8) ^ (right.data[index] as uint8);
-        while difference != 0u8 {
-            count = count + (difference & 1u8) as uint;
-            difference = difference >> 1u8;
+        while difference != 0 {
+            count = count + (difference & 1) as uint;
+            difference = difference >> 1;
         }
         index = index + 1;
     }
@@ -39,7 +38,7 @@ func BitsDiffering(left: char8[..], right: char8[..]) -> uint {
 func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
     var message: char8[64];
     var index: uint = 0;
-    while index < 64u {
+    while index < 64 {
         message[index] = ((index * 7u) as uint8) as char8;
         index = index + 1;
     }
@@ -72,37 +71,37 @@ func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
         Assert(differing * 4u > totalBits && differing * 4u < totalBits * 3u, what);
         position = position + 1;
     }
-    Assert(worstLow > 0u, "and no flipped bit leaves the output unchanged");
+    Assert(worstLow > 0, "and no flipped bit leaves the output unchanged");
     Assert(worstHigh < totalBits, "nor inverts it entirely");
 }
 
 // Dispatches to one of the algorithms by index, since they do not share an interface uniformly.
 func HashWith(which: uint, message: char8[..], into: var char8[..]) {
-    if which == 0u {
+    if which == 0 {
         Sha256Of(message, into);
     }
-    else if which == 1u {
+    else if which == 1 {
         Sha512Of(message, into);
     }
-    else if which == 2u {
+    else if which == 2 {
         Sha3Of256(message, into);
     }
-    else if which == 3u {
+    else if which == 3 {
         Blake3Of(message, into);
     }
-    else if which == 4u {
+    else if which == 4 {
         Shake128Of(message, into);
     }
-    else if which == 5u {
+    else if which == 5 {
         Sha224Of(message, into);
     }
-    else if which == 6u {
+    else if which == 6 {
         Sha384Of(message, into);
     }
-    else if which == 7u {
+    else if which == 7 {
         Sha3Of512(message, into);
     }
-    else if which == 8u {
+    else if which == 8 {
         LegacySha1Of(message, into);
     }
     else {
@@ -113,31 +112,31 @@ func HashWith(which: uint, message: char8[..], into: var char8[..]) {
 func Main() -> int {
     // Avalanche, on every algorithm the package offers — including the legacy pair, which are broken for
     // collisions and still diffuse properly, since that is not what broke them.
-    CheckAvalanche(32u, 0u, "SHA-256 diffuses a single flipped bit across about half its output");
-    CheckAvalanche(64u, 1u, "SHA-512 diffuses a single flipped bit");
-    CheckAvalanche(32u, 2u, "SHA3-256 diffuses a single flipped bit");
-    CheckAvalanche(32u, 3u, "BLAKE3 diffuses a single flipped bit");
-    CheckAvalanche(32u, 4u, "SHAKE128 diffuses a single flipped bit");
-    CheckAvalanche(28u, 5u, "SHA-224 diffuses a single flipped bit");
-    CheckAvalanche(48u, 6u, "SHA-384 diffuses a single flipped bit");
-    CheckAvalanche(64u, 7u, "SHA3-512 diffuses a single flipped bit");
-    CheckAvalanche(20u, 8u, "SHA-1 diffuses a single flipped bit");
-    CheckAvalanche(16u, 9u, "MD5 diffuses a single flipped bit");
+    CheckAvalanche(32, 0, "SHA-256 diffuses a single flipped bit across about half its output");
+    CheckAvalanche(64, 1, "SHA-512 diffuses a single flipped bit");
+    CheckAvalanche(32, 2, "SHA3-256 diffuses a single flipped bit");
+    CheckAvalanche(32, 3, "BLAKE3 diffuses a single flipped bit");
+    CheckAvalanche(32, 4, "SHAKE128 diffuses a single flipped bit");
+    CheckAvalanche(28, 5, "SHA-224 diffuses a single flipped bit");
+    CheckAvalanche(48, 6, "SHA-384 diffuses a single flipped bit");
+    CheckAvalanche(64, 7, "SHA3-512 diffuses a single flipped bit");
+    CheckAvalanche(20, 8, "SHA-1 diffuses a single flipped bit");
+    CheckAvalanche(16, 9, "MD5 diffuses a single flipped bit");
 
     // Boundary lengths: the exact block, rate and chunk sizes of every algorithm, and one either side of each.
     // A padding mistake shows at exactly one of these lengths and nowhere else.
     let boundaries: uint[14] = [55, 56, 63, 64, 65, 71, 72, 111, 112, 127, 128, 135, 136, 143];
     var message: char8[2100];
     var index: uint = 0;
-    while index < 2100u {
-        message[index] = ((index % 251u) as uint8) as char8;
+    while index < 2100 {
+        message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
 
     var which: uint = 0;
-    while which < 10u {
+    while which < 10 {
         var lengthIndex: uint = 0;
-        while lengthIndex < 14u {
+        while lengthIndex < 14 {
             let length = boundaries[lengthIndex];
             let whole = (@message[0])[..length];
             var oneShot: char8[64];
@@ -148,7 +147,7 @@ func Main() -> int {
             Assert(Equal((@oneShot[0])[..32],
                          (@again[0])[..32]),
                    "a boundary length hashes deterministically");
-            let shorter = (@message[0])[..length - 1u];
+            let shorter = (@message[0])[..length - 1];
             var shorterHash: char8[64];
             HashWith(which, shorter, (@shorterHash[0])[..32]);
             Assert(!Equal((@oneShot[0])[..32],
@@ -162,7 +161,7 @@ func Main() -> int {
     // The extendable outputs and BLAKE3's chunk boundary, which no other algorithm has.
     let chunkLengths: uint[6] = [1023, 1024, 1025, 2047, 2048, 2049];
     var chunkIndex: uint = 0;
-    while chunkIndex < 6u {
+    while chunkIndex < 6 {
         let length = chunkLengths[chunkIndex];
         let whole = (@message[0])[..length];
         var direct: char8[32];
@@ -170,7 +169,7 @@ func Main() -> int {
         var pieced = Blake3();
         var offset: uint = 0;
         while offset < length {
-            var step = 337u;
+            var step: uint = 337;
             if offset + step > length {
                 step = length - offset;
             }
@@ -182,7 +181,7 @@ func Main() -> int {
         Assert(Equal((@direct[0])[..32],
                      (@piecedOut[0])[..32]),
                "BLAKE3 agrees across its chunk boundary whatever the feed size");
-        let shorter = (@message[0])[..length - 1u];
+        let shorter = (@message[0])[..length - 1];
         var shorterHash: char8[32];
         Blake3Of(shorter, (@shorterHash[0])[..32]);
         Assert(!Equal((@direct[0])[..32],
@@ -195,16 +194,16 @@ func Main() -> int {
     // was wired to another.
     var digests: char8[320];
     which = 0;
-    while which < 10u {
-        HashWith(which, "the same message", (@digests[which * 32u])[..16]);
+    while which < 10 {
+        HashWith(which, "the same message", (@digests[which * 32])[..16]);
         which = which + 1;
     }
     var first: uint = 0;
-    while first < 10u {
-        var second = first + 1u;
-        while second < 10u {
-            Assert(!Equal((@digests[first * 32u])[..16],
-                          (@digests[second * 32u])[..16]),
+    while first < 10 {
+        var second = first + 1;
+        while second < 10 {
+            Assert(!Equal((@digests[first * 32])[..16],
+                          (@digests[second * 32])[..16]),
                    "no two algorithms produce the same digest for one message");
             second = second + 1;
         }

@@ -1,19 +1,16 @@
 // The inverse sine, over the closed interval its argument is defined on.
-//
 // A rational approximation on the lower half of the range and a square-root identity on the upper half, which
 // is what avoids the derivative going to infinity at the endpoints. The result is in `[-Pi/2, Pi/2]`, and an
 // argument outside `[-1, 1]` is a NaN rather than a clamped answer.
 
 import Core::float64;
 
-/**
-    Computes the inverse sine of `x` in radians. The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself,
-    either endpoint maps to the matching endpoint of the result range, an input outside `[-1, 1]` returns a NaN, and a
-    NaN remains a NaN.
-    @param x Sine value to invert.
-    @returns The angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain.
-    @see https://rux-lang.dev/docs/api/math/arcsin
-*/
+/// Computes the inverse sine of `x` in radians.
+/// The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself, either endpoint maps to the matching endpoint
+/// of the result range, an input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
+/// @param x sine value to invert
+/// @returns the angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-sin
 pub func ArcSin(x: float64) -> float64 {
     if IsNan(x) { return x; }
     if x == 1.0 { return HalfPi; }
@@ -24,12 +21,10 @@ pub func ArcSin(x: float64) -> float64 {
     return ArcTan(x / root);
 }
 
-/**
-    Computes the inverse sine of `x` in radians at `float32` precision.
-    @param x Sine value to invert.
-    @returns The angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain.
-    @see https://rux-lang.dev/docs/api/math/arcsin
-*/
+/// Computes the inverse sine of `x` in radians at `float32` precision.
+/// @param x sine value to invert
+/// @returns the angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-sin
 pub func ArcSin(x: float32) -> float32 {
     return ArcSin(x as float64) as float32;
 }

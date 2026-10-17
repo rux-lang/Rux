@@ -1,0 +1,66 @@
+name: FreeBSD image
+
+# Prepares the x86-64 guest disk both FreeBSD build jobs boot, once, before
+# either starts. vmactions caches the disk after `prepare`, keyed on the
+# prepare script, and the two build jobs used to race to save the same
+# multi-gigabyte image whenever that cache was cold: the loser uploaded a copy
+# that was thrown away and held its workspace copy-back until the wait timed
+# out. Here the image is saved by one job with nothing to copy back, and the
+# build jobs that follow only ever restore it. On a warm cache this job boots
+# the cached disk and exits. The prepare script is identical to the one in
+# FreeBSD-x86_64.yml and FreeBSD-AArch64.yml, and `sync` matches theirs,
+# because both are part of the cache key; Tests/Scripts/CI/Check.sh keeps the
+# three identical.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Prepare
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Load the toolchain manifest
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+
+      - name: Prepare the FreeBSD guest
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: ${{ env.FREEBSD_VERSION }}
+          arch: x86_64
+          mem: 8192
+          sync: rsync
+          copyback: false
+          cache-after-prepare: 'true'
+          prepare: |
+            set -eu
+            export ASSUME_ALWAYS_YES=yes IGNORE_OSVERSION=yes
+            mkdir -p /usr/local/etc/pkg/repos
+            cat >/usr/local/etc/pkg/repos/FreeBSD.conf <<'REPO'
+            FreeBSD-ports: {
+              url: "pkg+https://pkg.FreeBSD.org/${ABI}/latest",
+              mirror_type: "srv",
+              signature_type: "fingerprints",
+              fingerprints: "/usr/share/keys/pkg",
+              enabled: yes
+            }
+            REPO
+            pkg update -f
+            pkg install -y ${{ env.FREEBSD_PKG_LLVM }} cmake-core ninja ccache4 git-lite
+            fetch -q -o /tmp/base.txz "${{ env.FREEBSD_BASE_URL }}/${{ env.FREEBSD_BASE_ASSET }}"
+            [ "$(sha256 -q /tmp/base.txz)" = "${{ env.SHA256_FREEBSD_BASE_AARCH64 }}" ]
+            mkdir -p /opt/sysroot/freebsd-aarch64
+            tar -xf /tmp/base.txz -C /opt/sysroot/freebsd-aarch64 ./lib ./usr/lib ./usr/include ./usr/libdata
+            rm -f /tmp/base.txz
+          run: |
+            freebsd-version
+            clang++23 --version | head -1
+            [ -f /opt/sysroot/freebsd-aarch64/usr/lib/libc.so ]

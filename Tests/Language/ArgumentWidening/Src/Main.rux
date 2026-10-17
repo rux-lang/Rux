@@ -1,0 +1,89 @@
+// Argument widening: a scalar handed to a wider parameter arrives as the parameter's type.
+// Analysis accepts an int64 where an int128 is expected, a float32 where a float64 is, and any bool width where
+// another is. A store converts at the place it writes to, but a parameter is not a place the caller writes, so the
+// conversion has to happen on the way to the call. Without it the callee read the argument's bytes at its own width:
+// the high words of an int128 were whatever lay beside an int64, and a float64 was the bits of a float32.
+// Each callee below reads the part of its parameter that only a real conversion writes: the sign-extended high words,
+// the zero-extended high words, the exact float64 value, or the whole width of a bool as an integer.
+
+import Core::Assert;
+
+func HighWords(value: int128) -> int128 {
+    return value >> 64;
+}
+
+func Unsigned(value: uint512) -> uint512 {
+    return value >> 32;
+}
+
+func Twice(value: float64) -> float64 {
+    return value * 2.0;
+}
+
+func AsWord(flag: bool64) -> int64 {
+    return flag as int64;
+}
+
+struct Scale {
+    factor: int256;
+}
+
+extend Scale {
+    func Apply(self: &Scale, value: int256) -> int256 {
+        return self.factor * value;
+    }
+}
+
+variant Sample {
+    Empty,
+    Wide(int128, bool64)
+}
+
+func SampleHigh(sample: Sample) -> int128 {
+    return match sample {
+        .Empty => 0i128,
+        .Wide(value, _) => value >> 64
+    };
+}
+
+func SampleFlag(sample: Sample) -> int64 {
+    return match sample {
+        .Empty => 0i64,
+        .Wide(_, flag) => flag as int64
+    };
+}
+
+func Apply(callback: func(int128) -> int128, value: int64) -> int128 {
+    return callback(value);
+}
+
+func Main() -> int {
+    let negative: int64 = -5i64;
+    Assert(HighWords(negative) == -1i128, "a negative int64 reaches an int128 sign-extended");
+    let positive: int32 = 7i32;
+    Assert(HighWords(positive) == 0i128, "a positive int32 reaches an int128 with zero high words");
+
+    let count: uint32 = 4294967295u32;
+    Assert(Unsigned(count) == 0u512, "a uint32 reaches a uint512 with every word above it zero");
+    let wide: uint64 = 18446744073709551615u64;
+    Assert(Unsigned(wide) == 4294967295u512, "a uint64 reaches a uint512 zero-extended");
+
+    let half: float32 = 1.5f32;
+    Assert(Twice(half) == 3.0, "a float32 reaches a float64 as the same value");
+
+    let narrow: bool8 = true;
+    let middle: bool32 = false;
+    Assert(AsWord(narrow) == 1i64, "a true bool8 reaches a bool64 as exactly one");
+    Assert(AsWord(middle) == 0i64, "a false bool32 reaches a bool64 as exactly zero");
+
+    let scale = Scale { factor: 3i256 };
+    let step: int64 = -2i64;
+    Assert(scale.Apply(step) == -6i256, "a method argument is widened like a function argument");
+
+    let sample = Sample::Wide(negative, narrow);
+    Assert(SampleHigh(sample) == -1i128, "a variant payload is widened to the case's payload type");
+    Assert(SampleFlag(sample) == 1i64, "and a bool payload to the case's bool width");
+
+    Assert(Apply(HighWords, negative) == -1i128, "an argument through a function value is widened too");
+    return 0;
+}

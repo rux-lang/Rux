@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Dynamic"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Linux: Dynamic"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Linux = { Path = "../../../../Packages/Linux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Linux"

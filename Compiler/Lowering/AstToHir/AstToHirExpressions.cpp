@@ -52,8 +52,8 @@ std::string SubstituteTypeName(std::string name, const std::unordered_map<std::s
 /// Substitute type parameters throughout a type, recursing into pointees, elements, and type arguments so a parameter
 /// is replaced wherever it is nested.
 TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
-    if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
-        if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
+    if (type->kind == TypeRef::Kind::TypeParam || type->kind == TypeRef::Kind::Named) {
+        if (const auto substitution = substitutions.find(type->name); substitution != substitutions.end()) {
             TypeRef substituted = substitution->second;
             // `*var T` marks the pointee writable on the `T` slot, so the substitution carries that mark onto
             // whatever `T` turns out to be -- here as much as in analysis, or the two sides name the same
@@ -61,30 +61,37 @@ TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeR
             substituted.isMut = type.isMut;
             return substituted;
         }
-        if (type.kind == TypeRef::Kind::Named) {
-            type.name = SubstituteTypeName(std::move(type.name), substitutions);
-        }
     }
-    for (TypeRef &inner : type.inner) {
-        inner = SubstituteType(std::move(inner), substitutions);
+    std::vector<TypeRef> inner;
+    inner.reserve(type->inner.size());
+    for (const TypeRef &member : type->inner) {
+        inner.push_back(SubstituteType(member, substitutions));
     }
-    return TypeRef::Renormalize(std::move(type));
+    const std::string name =
+        type->kind == TypeRef::Kind::Named ? SubstituteTypeName(type->name, substitutions) : type->name;
+    return TypeRef::Renormalize(type.With(name, inner));
 }
 
 } // namespace
 
 TypeRef AstToHirContext::RestoreEnumLayoutMarkers(TypeRef type) const {
-    for (TypeRef &inner : type.inner) {
-        inner = RestoreEnumLayoutMarkers(std::move(inner));
+    if (!type->inner.empty()) {
+        std::vector<TypeRef> inner;
+        inner.reserve(type->inner.size());
+        for (const TypeRef &member : type->inner) {
+            inner.push_back(RestoreEnumLayoutMarkers(member));
+        }
+        type = type.WithInner(inner);
     }
     // Any enum, not only an instantiated one. Substitution drops what `inner` said, and `inner` is the only place a
     // type says how large it is; an enum left without it is sized as a pointer, so a write through `*var E` in a
     // generic body stored eight bytes into whatever room the real enum had.
-    if (type.kind != TypeRef::Kind::Named || !type.inner.empty() || !enumDecls.contains(BaseTypeName(type.name))) {
+    if (type->kind != TypeRef::Kind::Named || !type->inner.empty() || !enumDecls.contains(BaseTypeName(type->name))) {
         return type;
     }
     if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
-        type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+        const TypeRef marker = TypeRef::MakeStorageMarker(layout->size, layout->alignment);
+        return type.WithInner({&marker, 1});
     }
     return type;
 }
@@ -92,18 +99,18 @@ TypeRef AstToHirContext::RestoreEnumLayoutMarkers(TypeRef type) const {
 TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
     const TypeRef *type = model.TryGetType(expression);
     if (!type) {
-        assert(!dynamic_cast<const LiteralExpr *>(&expression) && "literal is missing a semantic type fact");
-        assert(!dynamic_cast<const IdentExpr *>(&expression) && "identifier is missing a semantic type fact");
-        assert(!dynamic_cast<const SelfExpr *>(&expression) && "self expression is missing a semantic type fact");
-        assert(!dynamic_cast<const UnaryExpr *>(&expression) && "unary expression is missing a semantic type fact");
-        assert(!dynamic_cast<const PostfixExpr *>(&expression) && "postfix expression is missing a semantic type fact");
-        assert(!dynamic_cast<const BinaryExpr *>(&expression) && "binary expression is missing a semantic type fact");
-        assert(!dynamic_cast<const AssignExpr *>(&expression) && "assignment is missing a semantic type fact");
-        assert(!dynamic_cast<const TernaryExpr *>(&expression) && "ternary expression is missing a semantic type fact");
-        assert(!dynamic_cast<const IndexExpr *>(&expression) && "index expression is missing a semantic type fact");
-        assert(!dynamic_cast<const FieldExpr *>(&expression) && "field expression is missing a semantic type fact");
-        assert(!dynamic_cast<const CastExpr *>(&expression) && "cast expression is missing a semantic type fact");
-        assert(!dynamic_cast<const IsExpr *>(&expression) && "type check is missing a semantic type fact");
+        assert(!AstCast<const LiteralExpr>(&expression) && "literal is missing a semantic type fact");
+        assert(!AstCast<const IdentExpr>(&expression) && "identifier is missing a semantic type fact");
+        assert(!AstCast<const SelfExpr>(&expression) && "self expression is missing a semantic type fact");
+        assert(!AstCast<const UnaryExpr>(&expression) && "unary expression is missing a semantic type fact");
+        assert(!AstCast<const PostfixExpr>(&expression) && "postfix expression is missing a semantic type fact");
+        assert(!AstCast<const BinaryExpr>(&expression) && "binary expression is missing a semantic type fact");
+        assert(!AstCast<const AssignExpr>(&expression) && "assignment is missing a semantic type fact");
+        assert(!AstCast<const TernaryExpr>(&expression) && "ternary expression is missing a semantic type fact");
+        assert(!AstCast<const IndexExpr>(&expression) && "index expression is missing a semantic type fact");
+        assert(!AstCast<const FieldExpr>(&expression) && "field expression is missing a semantic type fact");
+        assert(!AstCast<const CastExpr>(&expression) && "cast expression is missing a semantic type fact");
+        assert(!AstCast<const IsExpr>(&expression) && "type check is missing a semantic type fact");
         assert(false && "accepted expression is missing a required semantic type fact");
         std::abort();
     }
@@ -113,7 +120,7 @@ TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
 }
 
 TypeRef AstToHirContext::SubstituteCurrentType(TypeRef type) const {
-    return RestoreEnumLayoutMarkers(SubstituteType(std::move(type), currentSubstitutions));
+    return RestoreEnumLayoutMarkers(SubstituteType(type, currentSubstitutions));
 }
 
 /// The name to lower an identifier under, which for one naming a function is that function's linker name.
@@ -123,7 +130,13 @@ TypeRef AstToHirContext::SubstituteCurrentType(TypeRef type) const {
 /// among the functions it emitted, found nothing when two packages made the name ambiguous, and fell through to
 /// loading a global that does not exist: a function pointer built out of whatever the address held, which faults
 /// when it is called. A name that resolves to anything else, a local above all, is left exactly as written.
-const std::string &AstToHirContext::FunctionReferenceName(const IdentExpr &identifier) {
+std::string AstToHirContext::FunctionReferenceName(const IdentExpr &identifier) {
+    // A generic function named as a value is the instance its destination asked for, emitted here like a call's.
+    if (const ResolvedCallableBinding *binding = model.TryGetFunctionReferenceBinding(identifier)) {
+        const ResolvedCallableBinding concrete = binding->Instantiate(currentSubstitutions);
+        EnsureBoundFunctionInstance(static_cast<const FuncDecl &>(*concrete.selectedDeclaration), concrete);
+        return concrete.linkerName;
+    }
     const HirSymbol *symbol = currentScope->Lookup(identifier.name);
     if (!symbol || symbol->kind != HirSymbol::Kind::Func || symbol->funcOverloads.empty()) {
         return identifier.name;
@@ -161,10 +174,27 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->name = model.TryGetSymbolIdentity(*constant)->linkerName;
         return lowered;
     }
-    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+    // A module variable is named by its linker identity wherever it is written, so an imported name, a qualified
+    // path and the owner's own name all reach one storage location.
+    if (const GlobalDecl *global = model.TryGetGlobalReference(expression)) {
+        auto lowered = std::make_unique<HirVarExpr>();
+        lowered->location = expression.location;
+        lowered->type = ResolvedExpressionType(expression);
+        lowered->name = model.TryGetSymbolIdentity(*global)->linkerName;
+        return lowered;
+    }
+    // Foreign data is named by the symbol it is imported as.
+    if (const ExternVarDecl *external = model.TryGetExternVariableReference(expression)) {
+        auto lowered = std::make_unique<HirVarExpr>();
+        lowered->location = expression.location;
+        lowered->type = ResolvedExpressionType(expression);
+        lowered->name = external->symbolName.empty() ? external->name : external->symbolName;
+        return lowered;
+    }
+    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return LowerExpr(*move->operand);
     }
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+    if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         auto lowered = std::make_unique<HirLiteralExpr>();
         lowered->location = literal->location;
         lowered->type = ResolvedExpressionType(*literal);
@@ -172,7 +202,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         if (HirExprPtr compilerValue = LowerCompilerParamIdentifier(*identifier)) {
             return compilerValue;
         }
@@ -183,14 +213,14 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (dynamic_cast<const SelfExpr *>(&expression)) {
+    if (AstCast<const SelfExpr>(&expression)) {
         auto lowered = std::make_unique<HirSelfExpr>();
         lowered->location = expression.location;
         lowered->type = ResolvedExpressionType(expression);
         return lowered;
     }
 
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+    if (const auto *unary = AstCast<const UnaryExpr>(&expression)) {
         auto lowered = std::make_unique<HirUnaryExpr>();
         lowered->location = unary->location;
         lowered->op = unary->op;
@@ -199,11 +229,11 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+    if (const auto *tryExpression = AstCast<const TryExpr>(&expression)) {
         return LowerTryExpr(*tryExpression);
     }
 
-    if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
+    if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         auto lowered = std::make_unique<HirPostfixExpr>();
         lowered->location = postfix->location;
         lowered->op = postfix->op;
@@ -212,14 +242,29 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+    if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         if (binary->op == TokenKind::QuestionQuestion) {
             return LowerCoalesceExpr(*binary);
         }
         auto lowerOperand = [&](const Expr &operand, const Expr &other) {
             if (IsNullLiteral(operand)) {
                 const TypeRef otherType = ResolvedExpressionType(other);
-                if (otherType.kind == TypeRef::Kind::Pointer) {
+                if (otherType->kind == TypeRef::Kind::Pointer) {
+                    return LowerExprAs(operand, otherType);
+                }
+            }
+            // An unsuffixed integer operand takes the other operand's integer type, as analysis checked. Building it
+            // at that width keeps every bit of a literal wider than the default `int`; building it at `int` and
+            // widening afterwards would already have dropped them. A shift amount keeps its own type.
+            const bool shift = binary->op == TokenKind::LessLess || binary->op == TokenKind::GreaterGreater ||
+                               binary->op == TokenKind::GreaterGreaterGreater;
+            // A `null` operand carries no type fact, so the other operand's type is only looked up, not required. Only
+            // a literal analysis left at the default `int` is retyped; one it already typed keeps that type.
+            const TypeRef *ownFact = model.TryGetType(operand);
+            const bool defaultWidth = ownFact && (*ownFact)->kind == TypeRef::Kind::Int;
+            if (const TypeRef *otherFact = model.TryGetType(other); !shift && defaultWidth && otherFact) {
+                const TypeRef otherType = SubstituteCurrentType(*otherFact);
+                if (otherType.IsInteger() && UnsuffixedIntegerLiteralFits(operand, otherType)) {
                     return LowerExprAs(operand, otherType);
                 }
             }
@@ -234,10 +279,10 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
             const TypeRef rightType = rightFact ? SubstituteCurrentType(*rightFact) : TypeRef::MakeUnknown();
             if (leftFact && rightFact && (MentionsNativeType(leftType) || MentionsNativeType(rightType))) {
                 std::function<bool(const Expr &)> contextual = [&](const Expr &operand) {
-                    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&operand)) {
+                    if (const auto *construct = AstCast<const NativeConstructExpr>(&operand)) {
                         return construct->operand != nullptr && contextual(*construct->operand);
                     }
-                    const auto *literal = dynamic_cast<const LiteralExpr *>(&operand);
+                    const auto *literal = AstCast<const LiteralExpr>(&operand);
                     return literal &&
                            (literal->token.kind == TokenKind::IntLiteral ||
                             literal->token.kind == TokenKind::FloatLiteral) &&
@@ -260,6 +305,22 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
                         return lowered;
                     }
                 }
+            }
+        }
+        // A tuple literal compared with a typed tuple is built as that tuple's type, as analysis decided.
+        if (const TypeRef *operandFact = model.TryGetAggregateEqualityOperandType(*binary)) {
+            const TypeRef compared = SubstituteCurrentType(*operandFact);
+            const bool *negated = model.TryGetAggregateEquality(*binary);
+            const VariantEqualityPayload *plan = model.TryGetAggregateEqualityPlan(compared);
+            if (negated && plan) {
+                auto lowered = std::make_unique<HirAggregateEqualityExpr>();
+                lowered->location = binary->location;
+                lowered->type = TypeRef::MakeBool();
+                lowered->plan = LowerVariantEqualityPayload(*plan);
+                lowered->left = LowerExprAs(*binary->left, compared);
+                lowered->right = LowerExprAs(*binary->right, compared);
+                lowered->negated = *negated;
+                return lowered;
             }
         }
         HirExprPtr left = lowerOperand(*binary->left, *binary->right);
@@ -294,8 +355,8 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
-        if (const auto *index = dynamic_cast<const IndexExpr *>(assignment->target.get())) {
+    if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
+        if (const auto *index = AstCast<const IndexExpr>(assignment->target.get())) {
             if (const ResolvedIndexAssignment *resolved = model.TryGetIndexAssignment(*index)) {
                 return LowerIndexAssignment(*assignment, *index, *resolved);
             }
@@ -306,16 +367,18 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->target = LowerExpr(*assignment->target);
         lowered->value = LowerExprAs(*assignment->value, lowered->target->type);
         if (assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow) {
-            lowered->overwriteCleanup = OverwriteCleanup(*lowered->target, assignment->location);
+            lowered->overwriteCleanup = OverwriteCleanup(*assignment, *lowered->target);
         }
         // Assignment's semantic result is opaque because it is not a value,
         // while HIR needs the checked place type to select the store width.
         static_cast<void>(ResolvedExpressionType(*assignment));
-        lowered->type = ResolvedExpressionType(*assignment->target);
+        // A write through a reference stores its referent, which the dereferenced target already carries.
+        lowered->type = model.HasReferenceWrite(*assignment->target) ? lowered->target->type
+                                                                     : ResolvedExpressionType(*assignment->target);
         return lowered;
     }
 
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression)) {
+    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
         auto lowered = std::make_unique<HirTernaryExpr>();
         lowered->location = ternary->location;
         lowered->condition = LowerExpr(*ternary->condition);
@@ -327,7 +390,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         if (const ResolvedIndexOperator *resolved = model.TryGetIndexOperator(*index)) {
             return LowerIndexOperatorCall(*index, *resolved);
         }
@@ -339,7 +402,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         if (HirExprPtr compilerValue = LowerCompilerParamFieldExpression(*field)) {
             return compilerValue;
         }
@@ -351,7 +414,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+    if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         auto lowered = std::make_unique<HirCastExpr>();
         lowered->location = cast->location;
         lowered->targetType = ResolvedExpressionType(*cast);
@@ -361,7 +424,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
-    if (const auto *typeCheck = dynamic_cast<const IsExpr *>(&expression)) {
+    if (const auto *typeCheck = AstCast<const IsExpr>(&expression)) {
         if (HirExprPtr membership = LowerNativeMembership(*typeCheck)) {
             return membership;
         }

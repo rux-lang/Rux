@@ -1,0 +1,61 @@
+// Wide integer to float: a conversion to float32 or float64 from an integer wider than 64 bits, or from a uint64 on
+// x86-64, goes through a synthesized helper. Before, a wide integer's raw bits were copied into the float, and x86-64
+// converted a uint64 as signed, so every value at or above 2^63 came out negative.
+// Each value passes through a function, so the conversion runs rather than folds.
+
+import Core::Assert;
+
+func FromUint64(value: uint64) -> float64 {
+    return value as float64;
+}
+
+func FromUint64Single(value: uint64) -> float32 {
+    return value as float32;
+}
+
+func FromUint(value: uint) -> float64 {
+    return value as float64;
+}
+
+func FromInt128(value: int128) -> float64 {
+    return value as float64;
+}
+
+func FromUint128Single(value: uint128) -> float32 {
+    return value as float32;
+}
+
+func FromInt256(value: int256) -> float64 {
+    return value as float64;
+}
+
+func FromUint512(value: uint512) -> float64 {
+    return value as float64;
+}
+
+func Main() -> int {
+    Assert(FromUint64(18446744073709551615u64) == 18446744073709551616.0, "uint64::Max rounds up to 2^64");
+    Assert(FromUint64(9223372036854775808u64) == 9223372036854775808.0, "2^63 stays positive");
+    Assert(FromUint64(5u64) == 5.0, "a small uint64 converts exactly");
+    Assert(FromUint64Single(18446744073709551615u64) == 18446744073709551616.0f32, "and to float32 as well");
+    Assert(FromUint(18446744073709551615u64 as uint) == 18446744073709551616.0, "uint converts like uint64");
+
+    Assert(FromInt128(-170141183460469231731687303715884105728i128) == -170141183460469231731687303715884105728.0,
+           "int128::Min is exactly -2^127");
+    Assert(FromInt128(1267650600228229401496703205377i128) == 1267650600228229401496703205376.0,
+           "2^100 + 1 rounds down to 2^100");
+    Assert(FromInt128(-1i128) == -1.0, "a negative int128 keeps its sign");
+    Assert(FromInt128(9007199254740993i128) == 9007199254740992.0, "a tie rounds to the even significand");
+    Assert(FromUint128Single(16777217u128) == 16777216.0f32, "a uint128 tie rounds to even in float32");
+
+    // (2^53 + 1) * 2^70 + 1 is just above a tie, so the sticky bit rounds it up.
+    let aboveTie: int256 = (9007199254740993i256 << 70) + 1i256;
+    Assert(FromInt256(aboveTie) == 10633823966279329344413697917065363456.0, "a sticky bit decides the rounding");
+    Assert(FromInt256(0i256) == 0.0, "zero converts to zero");
+
+    let largest: uint512 = ~0u512;
+    Assert(FromUint512(largest) ==
+               13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096.0,
+           "uint512::Max rounds up to 2^512");
+    return 0;
+}

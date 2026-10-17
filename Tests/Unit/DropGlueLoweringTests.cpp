@@ -62,7 +62,7 @@ std::size_t CallCount(const LirFunc &function, const std::string &symbol) {
 /// mangling the compiler actually uses.
 std::string GlueSymbol(const LirPackage &package, const std::string &typeName) {
     for (const DropGluePlan &plan : package.dropGlues) {
-        if (plan.type.name == typeName) {
+        if (plan.type->name == typeName) {
             return plan.symbol;
         }
     }
@@ -144,9 +144,9 @@ TEST_SUITE("DropGlueLowering") {
 
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Handle"));
         REQUIRE_EQ(glue.params.size(), 1);
-        CHECK_EQ(glue.params.front().type.kind, TypeRef::Kind::Pointer);
-        REQUIRE_FALSE(glue.params.front().type.inner.empty());
-        CHECK_EQ(glue.params.front().type.inner.front().name, "Handle");
+        CHECK_EQ(glue.params.front().type->kind, TypeRef::Kind::Pointer);
+        REQUIRE_FALSE(glue.params.front().type->inner.empty());
+        CHECK_EQ(glue.params.front().type->inner.front()->name, "Handle");
         CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
     }
 
@@ -247,21 +247,20 @@ TEST_SUITE("DropGlueLowering") {
     TEST_CASE("propagation rolls back completed aggregate components") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             enum Error: uint8 { Bad }
-            variant Result<T, E> { Success(T), Error(E) }
             struct Pair {
                 first: Handle;
                 second: int32;
             }
 
-            func Read(ok: bool) -> Result<int32, Error> {
-                return Result::Success<int32, Error>(7i32);
+            func Read(ok: bool) -> int32 ! Error {
+                return 7i32;
             }
 
-            func Build(ok: bool) -> Result<Pair, Error> {
-                return Result::Success<Pair, Error>(Pair {
+            func Build(ok: bool) -> Pair ! Error {
+                return Pair {
                     first: Handle { slot: 1i32 },
                     second: Read(ok)?,
-                });
+                };
             }
         )");
 

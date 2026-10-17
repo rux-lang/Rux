@@ -3,6 +3,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <doctest.h>
 #include <string>
 #include <unordered_map>
@@ -154,6 +155,57 @@ func Do() -> int {
     CHECK(literal->value == "64");
 }
 
+TEST_CASE("a when condition cannot read a private field of another package's intrinsic value") {
+    // A field the providing package keeps private is refused in a condition exactly as it is when read as a value.
+    // The same declaration inside the reading package stays readable, since a private field is private to a package.
+    auto provider = ParseSource(R"(
+pub struct Build {
+    debugAssertions: bool;
+    pub isTest: bool;
+}
+pub intrinsic #build: Build;
+)");
+    DepPackage dependency;
+    dependency.name = "Provider";
+    dependency.modules.push_back({"Provider", &provider.module});
+
+    auto parsed = ParseSource(R"(
+import Provider::{ #build };
+
+when #build.isTest {
+    func Public() -> int { return 1; }
+} else {
+    func Public() -> int { return 0; }
+}
+
+when #build.debugAssertions {
+    func Private() -> int { return 1; }
+}
+)");
+    std::vector<Module *> modules = {&parsed.module};
+    SemanticAnalyzer analyzer(modules, {dependency}, "test", CompileTimeContext{});
+    const auto model = analyzer.Analyze();
+    const auto privateRead = std::ranges::count_if(model.diagnostics, [](const auto &diagnostic) {
+        return diagnostic.message == "struct field 'debugAssertions' is private to the package that declares 'Build'";
+    });
+    CHECK(privateRead == 1);
+    CHECK(model.diagnostics.size() == 1);
+
+    auto local = ParseSource(R"(
+struct Build {
+    debugAssertions: bool;
+}
+intrinsic #build: Build;
+
+when #build.debugAssertions {
+    func Private() -> int { return 1; }
+} else {
+    func Private() -> int { return 0; }
+}
+)");
+    CHECK_FALSE(AnalyzeNoDeps(local.module, CompileTimeContext{}).HasErrors());
+}
+
 TEST_CASE("an enum shorthand is an error; the variant must be written in full") {
     auto parsed = ParseSource(R"(
 enum Mode { Fast, Small }
@@ -164,7 +216,7 @@ func Do() -> Mode {
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Enum::Fast'");
+    CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Mode::Fast'");
 }
 
 TEST_CASE("compile-time evaluation accepts scalar enums and rejects variants") {
@@ -397,11 +449,12 @@ module Demo {
         }
     }
     CHECK(values["line"] != "0");
-    CHECK(values["column"] != "0");
+    // The column is that of the `#` that starts the reading expression, not of the `.` before the field.
+    CHECK(values["column"] == "22");
     CHECK(values["fileName"] == "test.rux");
     CHECK(values["filePath"] == "test.rux");
     CHECK(values["function"] == "Demo::Values");
-    CHECK(values["moduleName"] == "test::Demo");
+    CHECK(values["moduleName"] == "Demo");
     CHECK(values["date"] == "1970-01-01");
     CHECK(values["time"] == "00:00:00");
     CHECK(values["timestamp"] == "0");
@@ -430,6 +483,179 @@ TEST_CASE("character constants compare decoded scalars during conditional evalua
     ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
     evaluator.SetSourceContext(parsed.module.name, "test", "");
     auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[1].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
+TEST_CASE("conditional casts preserve every integer width and wide character code points") {
+    auto parsed = ParseSource(R"(
+        when (1u64 as uint128) << 100u == 1267650600228229401496703205376u128 &&
+             (-1i64 as int256) == -1i256 &&
+             (340282366920938463463374607431768211455u128 as uint64) == 18446744073709551615u64 &&
+             (65u512 as char128) == c128'A' && (0x1F600u128 as char512) == c512'😀' {
+            func Chosen() {}
+        }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[0].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
+TEST_CASE("wide character literals and casts into them fold during conditional evaluation") {
+    // A character holds a code point however wide its storage is, so a wide character cast agrees with a literal.
+    auto parsed = ParseSource(R"(
+        when c128'A' == c128'\u{41}' && c256'😀' > c256'λ' && c512'\u{10FFFF}' >= c512'😀' &&
+             (65 as char128) == c128'A' && (0x1F600u32 as char512) == c512'😀' {
+            func Chosen() {}
+        }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[0].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
+TEST_CASE("conditional character casts validate the original value before truncating") {
+    for (const std::string expression :
+         {"0x100u32 as char8", "0xD800u128 as char128", "-1i8 as char512", "18446744073709551681u128 as char8"}) {
+        auto parsed = ParseSource("const Invalid = " + expression + ";");
+        const std::vector<Module *> modules = {&parsed.module};
+        ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+        evaluator.SetSourceContext(parsed.module.name, "test", "");
+        CAPTURE(expression);
+        CHECK_FALSE(evaluator.EvaluateConstant("Invalid").value.has_value());
+    }
+}
+
+TEST_CASE("compile-time conditions answer the special values of every float width") {
+    // The evaluator answers intrinsic values from their exact declared formats.
+    auto parsed = ParseSource(R"(
+        extend float32 { pub intrinsic const Infinity: float32; }
+        extend float128 {
+            pub intrinsic const Infinity: float128;
+            pub intrinsic const NaN: float128;
+            pub intrinsic const Max: float128;
+        }
+        const Narrow = float32::Infinity;
+        const Huge = float128::Infinity;
+        const Invalid = float128::NaN;
+        const Limit = float128::Max;
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    evaluator.SetImports(parsed.module);
+    for (const std::string name : {"Narrow", "Huge"}) {
+        CAPTURE(name);
+        const auto value = evaluator.EvaluateConstant(name);
+        REQUIRE(value.value.has_value());
+        const auto &number = std::get<CompileTimeFloat>(*value.value).value;
+        CHECK(number.Classify() == FloatClass::Infinity);
+        CHECK_FALSE(number.IsNegative());
+    }
+    const auto invalid = evaluator.EvaluateConstant("Invalid");
+    REQUIRE(invalid.value.has_value());
+    CHECK(std::get<CompileTimeFloat>(*invalid.value).value.Classify() == FloatClass::QuietNaN);
+    const auto limit = evaluator.EvaluateConstant("Limit");
+    REQUIRE(limit.value.has_value());
+    CHECK(std::get<CompileTimeFloat>(*limit.value).value.Classify() == FloatClass::Normal);
+}
+
+TEST_CASE("compile-time float limits keep their declared precision and exponent range") {
+    for (const std::string width : {"80", "128", "256", "512"}) {
+        const std::string type = "float" + width;
+        const std::string suffix = "f" + width;
+        auto parsed = ParseSource(
+            "extend " + type + " { pub intrinsic const Max: " + type + "; pub intrinsic const Lowest: " + type +
+            "; pub intrinsic const MinPositive: " + type + "; pub intrinsic const Epsilon: " + type +
+            "; pub intrinsic const Infinity: " + type + "; pub intrinsic const NaN: " + type + "; } when " + type +
+            "::Max < " + type + "::Infinity && " + type + "::Max > 1.0" + suffix + " && " + type + "::Lowest == -" +
+            type + "::Max && " + type + "::MinPositive > 0.0" + suffix + " && " + type + "::Epsilon + 1.0" + suffix +
+            " > 1.0" + suffix + " && " + type + "::NaN != " + type + "::NaN { func Chosen() {} }");
+        const std::vector<Module *> modules = {&parsed.module};
+        ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+        evaluator.SetSourceContext(parsed.module.name, "test", "");
+        evaluator.SetImports(parsed.module);
+        auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items.back().get());
+        REQUIRE(declaration != nullptr);
+        const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+        CAPTURE(width);
+        REQUIRE(result.diagnostics.empty());
+        REQUIRE(result.value.has_value());
+        CHECK(std::get<bool>(*result.value));
+    }
+}
+
+TEST_CASE("compile-time float literals and arithmetic do not round through double") {
+    auto parsed = ParseSource(R"(
+        when 1.0e400f128 > 1.0e300f64 && 1.0e-400f128 > 0.0f128 &&
+             9007199254740993.0f128 > 9007199254740992.0f128 &&
+             1.5f128 * 2.0f128 == 3.0f128 && 3.0f128 / 2.0f128 == 1.5f128 &&
+             5.0f128 % 2.0f128 == 1.0f128 && 1.0f128 - 2.0f128 == -1.0f128 {
+            func Chosen() {}
+        }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[0].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
+TEST_CASE("conditional float constants read unsuffixed literals at their declared width") {
+    auto parsed = ParseSource(R"(
+        const Single: float32 = 1.5;
+        const Tenth: float32 = -0.1;
+        const Quad: float128 = 2.5;
+        const Product: float16 = (1.5 * 2.0);
+        when Single > 1.0f32 && Tenth == -0.1f32 && Quad == 2.5f128 && Product == 3.0f16 { func Chosen() {} }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    for (const auto &[name, bits] : {std::pair{"Single", 32}, {"Tenth", 32}, {"Quad", 128}, {"Product", 16}}) {
+        CAPTURE(name);
+        const auto constant = evaluator.EvaluateConstant(name);
+        REQUIRE(constant.value.has_value());
+        CHECK_EQ(std::get<CompileTimeFloat>(*constant.value).value.Format().valueBits, bits);
+    }
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items.back().get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    CAPTURE(result.diagnostics.empty() ? std::string{} : result.diagnostics.front().message);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}
+
+TEST_CASE("conditional float constants preserve their legal declared widening") {
+    auto parsed = ParseSource(R"(
+        const Wide: float64 = 16777216.0f32;
+        const Half: float16 = 0.1f16;
+        when Wide + 1.0f32 > Wide && Half == 0.1f16 { func Chosen() {} }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    const auto wide = evaluator.EvaluateConstant("Wide");
+    REQUIRE(wide.value.has_value());
+    CHECK(std::get<CompileTimeFloat>(*wide.value).value.Format().valueBits == 64);
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items.back().get());
     REQUIRE(declaration != nullptr);
     const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
     REQUIRE(result.diagnostics.empty());

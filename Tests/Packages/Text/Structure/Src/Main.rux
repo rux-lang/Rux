@@ -3,19 +3,16 @@ import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, St
                WriteBytes, WriteFallibleDebug, WriteOptionalDebug, WriteSliceDebug };
 
 // Showing an outcome or a run of elements without taking it apart.
-//
 // Three writers, and one property runs through all of them: they borrow. `??` and a match on a moved optional
 // consume it because taking a payload out is a transfer of ownership — so the question a test has to answer is
 // whether showing a value is also taking it. The tracked element below reports its own destruction, so the answer is
 // counted rather than argued: an optional holding a move-only value is written twice, nothing is destroyed, and the
 // optional still holds it.
-//
 // The other half is what the specification means. It reaches each element unchanged, because a sequence has no
 // numeric or textual form of its own for a width or a precision to apply to — so a precision truncates each element
 // and the brackets and commas are punctuation that is never padded. What an element makes of a specification is that
 // element's own business, which is why the last of these cases is an element that reports what it was handed rather
 // than one that renders a value.
-//
 // And a refused write stops the rendering. A destination that has already said no is not written to again, and what
 // came after the failing element does not appear, which is the difference between a diagnostic that reports a full
 // buffer and one that quietly loses its tail.
@@ -32,7 +29,7 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1i32;
+            *self.counter = *self.counter + 1;
         }
     }
 }
@@ -62,10 +59,10 @@ extend Spy : Debug {
 
 // A decimal count, written here because this package converts no numbers and depends on nothing that does.
 func WriteNumber(writer: &var TextWriter, value: uint) -> ! FormatError {
-    if value >= 10u {
-        WriteNumber(writer, value / 10u)?;
+    if value >= 10 {
+        WriteNumber(writer, value / 10)?;
     }
-    return WriteAscii(writer, ((value % 10u) + 0x30u) as char8);
+    return WriteAscii(writer, ((value % 10) + 0x30) as char8);
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -151,25 +148,25 @@ func Main() -> int {
     // Showing a value does not take it. The tracked element is move-only and reports its own destruction, so this
     // is the property counted rather than assumed.
     var destroyed: int32 = 0;
-    var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7u });
+    var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7 });
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "a move-only payload is shown");
-    Assert(destroyed == 0i32, "and nothing was destroyed to show it");
+    Assert(destroyed == 0, "and nothing was destroyed to show it");
     Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "so it can be shown again");
-    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(destroyed == 0, "still destroying nothing");
     Assert(held is Tracked, "and the optional still holds its value");
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
 
     // The same for a run of them: every element is reached through a borrow.
-    var elements: Tracked[3] = [Tracked { counter: @destroyed, tag: 0u }, Tracked { counter: @destroyed, tag: 12u },
-                                Tracked { counter: @destroyed, tag: 345u }];
+    var elements: Tracked[3] = [Tracked { counter: @destroyed, tag: 0 }, Tracked { counter: @destroyed, tag: 12 },
+                                Tracked { counter: @destroyed, tag: 345 }];
     var runStorage: char8[128];
     var runWriter = BufferWriter((@runStorage[0])[..128]);
     let runSink: &var TextWriter = runWriter;
     Assert(Succeeded(WriteSliceDebug<Tracked>(runSink, elements[..], plain)), "a move-only run is shown");
     Assert(Same(runWriter.Written(), "[T(0), T(12), T(345)]"), "in order, each through a borrow");
-    Assert(destroyed == 0i32, "and not one of them was destroyed");
+    Assert(destroyed == 0, "and not one of them was destroyed");
 
     // A refused write stops the rendering where it was refused. Eleven bytes holds `[T(0), T(12)` up to the point
     // the third element needs room, so what appears is the prefix that fit and nothing after it.
@@ -182,8 +179,8 @@ func Main() -> int {
         .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     Assert(overflowed, "a destination without room reports it");
-    Assert(tight.Length() <= 11u, "having written no more than it had");
-    Assert(destroyed == 0i32, "and a failed rendering destroys nothing either");
+    Assert(tight.Length() <= 11, "having written no more than it had");
+    Assert(destroyed == 0, "and a failed rendering destroys nothing either");
 
     return 0;
 }

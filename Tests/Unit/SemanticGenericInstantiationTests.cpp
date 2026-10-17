@@ -249,3 +249,57 @@ TEST_CASE("nested contextual ternaries accept wide unsigned and signed literal b
     )");
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("an error in an instantiated generic body names the call that instantiated it") {
+    const auto diagnostics = AnalyzeSource(R"(
+struct P { value: int32; }
+func Larger<T>(first: T, second: T) -> T {
+    if first > second { return first; }
+    return second;
+}
+func Main() -> int {
+    let a = P { value: 1i32 };
+    let b = P { value: 2i32 };
+    let c = Larger(a, b);
+    return 0;
+}
+)");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "operator '>' is not defined for 'P'");
+    CHECK(std::ranges::find(diagnostics[0].notes,
+                            "in 'Larger' instantiated with T = P by the call at 'instantiation.rux':10:13") !=
+          diagnostics[0].notes.end());
+}
+
+TEST_CASE("a generic function named as a value takes its type arguments from the destination") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Box<T> { value: T; }
+        func Double<T>(value: T) -> T { return value + value; }
+        func Unwrap<V>(box: *Box<V>) -> V { return box.value; }
+        func Reader<U>() -> func(*Box<U>) -> U {
+            let read: func(*Box<U>) -> U = Unwrap;
+            return read;
+        }
+        func Main() -> int {
+            let wide: func(int64) -> int64 = Double;
+            let box = Box<int64> { value: 3 };
+            return (wide(Reader<int64>()(@box))) as int;
+        }
+    )");
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+    }
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("a generic function named as a value with nothing to instantiate it is an error") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Double<T>(value: T) -> T { return value + value; }
+        func Main() -> int {
+            let f = Double;
+            return 0;
+        }
+    )");
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(diagnostics.front().message == "generic function 'Double' has no type arguments here");
+}

@@ -369,7 +369,7 @@ LirInstr ConstInstr(const LirReg dst, const std::string_view value, TypeRef type
     LirInstr instr;
     instr.op = LirOpcode::Const;
     instr.dst = dst;
-    instr.type = std::move(type);
+    instr.type = type;
     instr.strArg = value;
     return instr;
 }

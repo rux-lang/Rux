@@ -4,16 +4,13 @@ import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec, TextWriter };
 
 // Two renderings of one name, and the reason there have to be two.
-//
 // A native name is not obliged to be text. `Display` shows it to a reader anyway, replacing every unit that is not
 // text with U+FFFD, because a program reporting which file it could not open still has to name it. `Debug` shows it
 // as it is, escaping those units so that nothing is lost.
-//
 // The case that proves both at once is at the bottom of this file: two different names whose only difference is in
 // units that are not text render identically under `Display` and differently under `Debug`. That is the whole
 // contract in one assertion — the lossy form is for a message and never for identity, and the exact form is what
 // tells two names apart.
-//
 // Every case runs on both platforms with the units that platform's names are made of: bytes that are not UTF-8 on
 // the Unix systems, an unpaired surrogate on Windows. The expectations differ because the units do, and are
 // written out per platform rather than hidden behind a helper that would obscure which is being checked.
@@ -144,10 +141,10 @@ func Main() -> int {
     var hostile: OsUnit[4];
     when #target.os == .Windows {
         // An unpaired high surrogate between letters, which Windows keeps on disk without complaint.
-        hostile[0] = 0x0061u16;
-        hostile[1] = 0xD800u16;
-        hostile[2] = 0x0062u16;
-        hostile[3] = 0x0063u16;
+        hostile[0] = 0x0061;
+        hostile[1] = 0xD800;
+        hostile[2] = 0x0062;
+        hostile[3] = 0x0063;
     }
     else {
         // A lone continuation byte and a lead byte with nothing after it, between letters.
@@ -216,10 +213,10 @@ func Main() -> int {
     // and differently under Debug. This is why the lossy form is never an identity.
     var other: OsUnit[4];
     when #target.os == .Windows {
-        other[0] = 0x0061u16;
-        other[1] = 0xDBFFu16;
-        other[2] = 0x0062u16;
-        other[3] = 0x0063u16;
+        other[0] = 0x0061;
+        other[1] = 0xDBFF;
+        other[2] = 0x0062;
+        other[3] = 0x0063;
     }
     else {
         other[0] = 0x61u8 as char8;

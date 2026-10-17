@@ -1,0 +1,24 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "Regex"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Regular expressions matched in linear time, with Unicode classes, captures, splitting and replacement"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Regex", "RegularExpression", "Pattern", "Search", "Text"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/regex"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Allocator = { Namespace = "Rux", Version = "0.1.0" }
+Collections = { Namespace = "Rux", Version = "0.1.0" }
+Core = { Namespace = "Rux", Version = "0.1.0" }
+Text = { Namespace = "Rux", Version = "0.1.0" }
+Unicode = { Namespace = "Rux", Version = "0.1.0" }

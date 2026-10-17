@@ -17,6 +17,7 @@ rux add Rux/Allocator
 | `Contract` | the `Allocator` interface every allocator here implements                  |
 | `System`   | `SystemAllocator`, which asks the operating system for pages               |
 | `Box`      | `Box<T>`, one heap value with exactly one owner                             |
+| `Shared`   | `Rc<T>` and `Arc<T>`, one heap value shared by counted handles               |
 | `Arena`    | `Arena`, which advances a pointer and reclaims everything at once           |
 | `FixedBuffer` | `FixedBuffer`, which hands out storage the caller already has            |
 | `Pool`     | `Pool`, which serves small blocks from per-class free lists                 |
@@ -38,9 +39,11 @@ A zero-sized layout is legal and gives a non-null aligned address that nothing m
 
 `Arena`, `Pool`, `FixedBuffer`, and `Box<T>` prohibit copying. The first two and the box use canonical destructors; the fixed buffer owns no storage but still cannot be copied because duplicate bump state could hand out overlapping blocks. Move an owner explicitly, for example `let destination <- source`. `Box::Create` returns `Box<T> ! AllocError`, destroying the value it was given when the allocator refuses. Destroying a box destroys its value before returning the allocation, while `TryTake` moves the value to the caller and leaves the box empty.
 
+`Rc<T>` and `Arc<T>` are the opposite: copying a handle shares its value and adds to a count, and the value is destroyed when the last handle goes. `Rc` counts with plain arithmetic for one thread, so it is declared `#Unsendable()` and cannot be a thread's context; `Arc` counts atomically, so its copies can be made and dropped on any thread. Both hand out the value for reading through `Get`, and for writing through `GetMutable` only while a single handle exists. There are no weak handles, so a cycle of handles is never freed.
+
 Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and `FixedBuffer(storage, capacity)`. `Layout::New` retains its name because it validates and returns `Layout?`, so `Layout::New(size, alignment) ?? fail AllocError::Unsupported` turns an unrepresentable layout into a failure.
 
-An `Arena` hands out storage by advancing a pointer and takes it all back at once, which is the right shape whenever a program builds many small things whose lives end together. Blocks come from a backing allocator and each is twice the size of the last, so a long-lived arena stops going back to the system. `Reset` rewinds every allocation while keeping the largest block, so a second round of the same work asks the system for nothing.
+An `Arena` hands out storage by advancing a pointer and takes it all back at once, which is the right shape whenever a program builds many small things whose lives end together. Blocks come from a backing allocator and each is twice the size of the last, so a long-lived arena stops going back to the system. `Reset` rewinds every allocation while keeping the largest block, so a second round of the same work asks the system for nothing. `BytesUsed` sums what every block has handed out, alignment padding included; the tail a block is left with when a request moves on to a new block is not counted.
 
 Borrow a concrete implementation directly for a short-lived interface view, for example `let view: &var Allocator = system`. Arena, pool, and fixed-buffer handles are storable adapters for allocators whose mutable state must stay with an owner. A handle stores a raw pointer because references cannot be fields or returned; it must not outlive or survive a move of its owner.
 

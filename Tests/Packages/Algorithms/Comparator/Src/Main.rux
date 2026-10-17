@@ -1,4 +1,4 @@
-import Algorithms::{ SortBy, SortDescendingBy, NthElementBy, PartialSortBy };
+import Algorithms::{ NthElementBy, PartialSortBy, SortBy, SortDescendingBy };
 import Algorithms::{ IsSorted, IsSortedBy };
 import Core::Ordering;
 import Algorithms::{ CopyTo, Reverse, SequenceEqual };
@@ -121,11 +121,11 @@ func ReferenceSort(data: *var int32, length: uint, less: func(int32, int32) -> b
 
 func NextRandom(state: *var uint64) -> uint64 {
     var x = *state;
-    x = x ^ (x >> 12u64);
-    x = x ^ (x << 25u64);
-    x = x ^ (x >> 27u64);
+    x = x ^ (x >> 12);
+    x = x ^ (x << 25);
+    x = x ^ (x >> 27);
     *state = x;
-    return x * 2685821657736338717u64;
+    return x * 2685821657736338717;
 }
 
 // Sorts one copy with the comparator overload and another with the reference,
@@ -159,7 +159,7 @@ func CheckSort(source: *int32, length: uint) -> int {
 }
 
 func Main() -> int {
-    var state: uint64 = 88172645463325252u64;
+    var state: uint64 = 88172645463325252;
     var buffer: int32[260];
     var index: uint = 0;
     var other: uint = 0;
@@ -171,7 +171,7 @@ func Main() -> int {
     for n in sizes {
         var i: uint = 0;
         while i < n {
-            buffer[i] = (NextRandom(@state) % 60u64) as int32;
+            buffer[i] = (NextRandom(@state) % 60) as int32;
             i++;
         }
         let kind = CheckSort(@buffer[0], n);
@@ -225,7 +225,7 @@ func Main() -> int {
     var selection: int32[40];
     i = 0;
     while i < 40 {
-        selection[i] = (NextRandom(@state) % 30u64) as int32;
+        selection[i] = (NextRandom(@state) % 30) as int32;
         i++;
     }
     var sorted: int32[40];

@@ -1,27 +1,46 @@
 // What a process can ask or say about itself.
-//
 // Nothing here creates a process: a raw binding to `fork` and `execve` without signal handling, descriptor
 // inheritance and a wait protocol would be an invitation to get all three wrong.
 
-import FreeBSD::{ ProcessId, SysExit, SysGetPid, Syscall0, Syscall1 };
+import FreeBSD::{ ProcessId, SysExit, SysGetPid, SysSysctl, Syscall0, Syscall1, Syscall6 };
 
 /// Ends the calling process with `code`.
-///
 /// Only the low eight bits reach a waiting parent. Does not return, and nothing is flushed or destroyed on the way
 /// out.
-///
 /// @param code the status to report to the parent
-/// @see https://rux-lang.dev/docs/api/freebsd/exit
+/// @see https://rux-lang.dev/docs/api/freebsd/process#exit
 pub func Exit(code: int32) {
     Syscall1(SysExit, (code as int64) as uint64);
 }
 
 /// The calling process's own identifier.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @returns the calling process's identifier
-/// @see https://rux-lang.dev/docs/api/freebsd/get-pid
+/// @see https://rux-lang.dev/docs/api/freebsd/process#get-pid
 pub func GetPid() -> ProcessId {
     return Syscall0(SysGetPid) as ProcessId;
+}
+
+/// `CTL_KERN`: the sysctl branch describing the kernel and its processes.
+/// @see https://rux-lang.dev/docs/api/freebsd/process#ctl-kern
+pub const CtlKernel: int32 = 1;
+
+/// `KERN_PROC`: the leaf under `CtlKernel` describing processes.
+/// @see https://rux-lang.dev/docs/api/freebsd/process#kern-proc
+pub const KernelProcess: int32 = 14;
+
+/// `KERN_PROC_PATHNAME`: the leaf under `KernelProcess` holding a process's executable path.
+/// @see https://rux-lang.dev/docs/api/freebsd/process#kern-proc-pathname
+pub const KernelProcessPathname: int32 = 12;
+
+/// Writes the absolute path of the calling process's executable into `buffer`, NUL-terminated.
+/// This is the `kern.proc.pathname` sysctl for process `-1`, the caller. `length` holds the buffer's size on entry
+/// and, on success, the path's length including its terminator.
+/// @param buffer receives the path
+/// @param length the buffer's size in bytes, then the bytes written
+/// @returns zero, or a negative error number, `ENOMEM` when the buffer is too short
+/// @see https://rux-lang.dev/docs/api/freebsd/process#query-executable-path
+pub func QueryExecutablePath(buffer: *var char8, length: *var uint) -> int64 {
+    var name: int32[4] = [CtlKernel, KernelProcess, KernelProcessPathname, -1];
+    return Syscall6(SysSysctl, @name[0] as uint64, 4, buffer as uint64, length as uint64, 0, 0);
 }

@@ -1,0 +1,123 @@
+// Expected types reach the literals inside a compound expression.
+// An unsuffixed literal takes its type from where its value goes. That has to hold through the expressions a literal
+// can sit inside, not only for a literal written directly as an initializer: a match arm, an array element, a tuple
+// element, a range bound. Each case below writes its literals without a suffix and checks the value that arrived.
+
+import Core::Assert;
+import Core::{ char8, int128, int32, int64, uint128, uint32, uint8 };
+
+interface Shape {
+    func Area() -> int32;
+}
+
+struct Square {
+    side: int32;
+}
+
+struct Circle {
+    radius: int32;
+}
+
+extend Square : Shape {
+    func Area(self: &Square) -> int32 {
+        return self.side * self.side;
+    }
+}
+
+extend Circle : Shape {
+    func Area(self: &Circle) -> int32 {
+        return 3 * self.radius * self.radius;
+    }
+}
+
+struct Number {
+    value: int32;
+}
+
+struct Plus {}
+
+type Token = Number | Plus;
+
+struct Palette {
+    letters: char8[2];
+}
+
+func Where(point: (int32, int32)) -> int32 {
+    return point.0 * 10 + point.1;
+}
+
+func Where(flags: (bool, bool)) -> int32 {
+    return flags.0 ? 1 : 0;
+}
+
+func Pick(flag: bool) -> int32 {
+    return match flag { true => 0, false => 4 };
+}
+
+func Widest(flag: bool) -> int128 {
+    return match flag { true => 170141183460469231731687303715884105727, false => -1 };
+}
+
+func Main() -> int {
+    // Match arms take the declared or returned type.
+    let picked: int32 = match true { true => 1, false => 2 };
+    Assert(picked == 1, "an annotated match takes the annotation's width");
+    Assert(Pick(false) == 4, "a returned match takes the return type");
+    let narrow: uint8 = match picked { 1 => 255, else => 0 };
+    Assert(narrow == 255, "an arm literal may use the whole range of a narrow type");
+    Assert(Widest(true) == int128::Max, "an arm literal wider than 64 bits keeps every bit");
+
+    // Array elements take the declared element type, so they need not share a type with each other.
+    let mixed: (int32 | bool)[2] = [1i32, true];
+    Assert(mixed[0] is int32 && mixed[1] is bool, "each element is injected into the sum");
+    let tokens: Token[2] = [Number { value: 4 }, Plus {}];
+    Assert(tokens[0] is Number && tokens[1] is Plus, "struct members of a sum are injected too");
+    let square = Square { side: 2 };
+    let circle = Circle { radius: 1 };
+    let shapes: Shape[2] = [square, circle];
+    var area: int32 = 0;
+    for shape in shapes {
+        area += shape.Area();
+    }
+    Assert(area == 7, "each element is viewed through the declared interface");
+
+    // An unprefixed character literal takes a narrower character width when its character fits one code unit.
+    let letters: char8[3] = ['a', 'b', 'c'];
+    Assert(letters[0] as uint32 == 97 && letters[2] as uint32 == 99, "a character literal takes 'char8'");
+    let palette = Palette { letters: ['x', 'y'] };
+    Assert(palette.letters[1] as uint32 == 121, "a field's declared type reaches its array literal");
+
+    // A tuple literal takes the element types of the tuple it is compared with or passed as.
+    let pair: (int32, bool) = (3, true);
+    Assert(pair == (3, true), "a tuple literal compares at the typed tuple's widths");
+    let point: (int32, int32) = (3, 4);
+    Assert(point == (3, 4) && (3, 5) != point, "on either side of the comparison");
+    Assert(Where((3, 0)) == 30, "a tuple literal argument finds the tuple parameter");
+    Assert(Where((true, false)) == 1, "and overloads are still separated by element type");
+
+    // Range bounds take an annotated range's element type.
+    let half: int32..int32 = 1..5;
+    let closed: int32..=int32 = 2..=7;
+    var sum: int32 = 0;
+    for value in half {
+        sum += value;
+    }
+    for value in closed {
+        sum += value;
+    }
+    Assert(sum == 37, "both range forms take 'int32' bounds from the annotation");
+
+    // An operand literal wider than 64 bits takes the other operand's width before anything is computed.
+    let negative: int128 = -42;
+    Assert(negative * 1000000000000000000000 == -42000000000000000000000, "a wide literal multiplies at full width");
+    Assert(negative + 1000000000000000000000 == 999999999999999999958, "and adds at full width");
+    Assert(1000000000000000000000 > negative, "and compares at full width");
+
+    // Widening continues past 64 bits.
+    let narrow64: int64 = 5;
+    let widened: int128 = narrow64;
+    let folded: uint128 = 7 * 3;
+    Assert(widened == 5 && folded == 21, "an int64 widens to int128 and a folded constant fits uint128");
+
+    return 0;
+}

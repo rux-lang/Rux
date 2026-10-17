@@ -5,7 +5,6 @@ import Text::{ String, StringBuilder, StringView, TextError };
 // A builder exists so that assembling text is linear rather than quadratic, and so that the block it fills can be
 // handed over at the end instead of copied. Both are ownership questions, so that is what is checked: what happens
 // to the block when the builder is done with it, and whether the builder is still usable afterwards.
-//
 // The other half is the invariant. A builder holds well-formed UTF-8 at every moment, not only at the end, which is
 // what lets `View` cost nothing and `IntoString` skip validation. It is kept by refusing anything that is not a
 // whole character rather than by checking afterwards.
@@ -42,11 +41,10 @@ func Main() -> int {
     // What is not a whole character is refused, which is what keeps the invariant.
     Assert(Refusal(builder.AppendAscii(0xC3u8 as char8)) == TextError::InvalidUtf8,
            "a lone byte above ASCII is refused");
-    // A surrogate half cannot be written as a literal — the compiler refuses the cast — so it is reached the way
-    // a program would reach one by accident, through a value that is only known at run time.
+    // Reinterpret raw storage to test the builder's rejection independently of checked character casts.
     var surrogate: uint32 = 0xD000;
     surrogate = surrogate + 0x0800;
-    Assert(Refusal(builder.AppendScalar(surrogate as char32)) == TextError::InvalidUtf8, "and a surrogate half");
+    Assert(Refusal(builder.AppendScalar(*((@surrogate) as *char32))) == TextError::InvalidUtf8, "and a surrogate half");
     var broken: char8[2];
     broken[0] = 0xE2u8 as char8;
     broken[1] = 0x82u8 as char8;
@@ -61,6 +59,13 @@ func Main() -> int {
     }
     Assert(builder.Length() == 208, "the builder holds everything appended");
     Assert(builder.Capacity() > firstCapacity, "having taken more room to do it");
+
+    // A full builder doubles its room rather than taking only what the append needs.
+    var doubling = StringBuilder(allocator);
+    doubling.Append("0123456789abcdef") catch { else => Panic("sixteen bytes are appended") };
+    Assert(doubling.Capacity() == 16, "filling the first block exactly");
+    doubling.Append("xyz") catch { else => Panic("and three more") };
+    Assert(doubling.Capacity() == 32, "the next append doubles the room");
 
     // Clearing keeps the room, which is what makes a builder used in a loop allocate once.
     let kept = builder.Capacity();

@@ -159,7 +159,7 @@ TEST_CASE("same-spelled nominal members from different modules stay distinct") {
     const TypeRef &both = ResolvedType(analyzed->model, *main.params[0].type);
     const TypeRef &same = ResolvedType(analyzed->model, *main.params[1].type);
     REQUIRE(both.IsSum());
-    CHECK_EQ(both.inner.size(), 2);
-    CHECK_NE(both.inner[0], both.inner[1]);
+    CHECK_EQ(both->inner.size(), 2);
+    CHECK_NE(both->inner[0], both->inner[1]);
     CHECK_FALSE(same.IsSum());
 }

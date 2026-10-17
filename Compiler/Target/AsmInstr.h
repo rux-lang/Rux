@@ -124,6 +124,17 @@ struct AsmInstr {
     return conditions.contains(name);
 }
 
+/// The condition of an AArch64 conditional branch, written either `b.<cond>` or, as GNU as and LLVM also accept,
+/// `b<cond>` (`ble`). Empty for any other mnemonic: no real instruction is `b` followed by a condition name.
+[[nodiscard]] inline std::string_view AArch64BranchCondition(const std::string_view mnemonic) noexcept {
+    if (!mnemonic.starts_with('b')) {
+        return {};
+    }
+    const std::string_view rest = mnemonic.substr(1);
+    const std::string_view condition = rest.starts_with('.') ? rest.substr(1) : rest;
+    return IsAArch64ConditionName(condition) ? condition : std::string_view{};
+}
+
 /// The instruction names each architecture answers to. The set is wider than what that architecture's assembler
 /// encodes: it also names common instructions no back end implements, so an unimplemented instruction is reported by
 /// the assembler as unsupported rather than by the front end as belonging to the other architecture. clang-format off
@@ -544,12 +555,11 @@ inline const std::unordered_set<std::string_view> &AArch64Mnemonics() {
         return false;
     }
     case Target::Arch::AArch64: {
-        const std::string_view base = AsmBaseMnemonic(mnemonic);
-        if (base.size() == mnemonic.size()) {
-            return AArch64Mnemonics().contains(mnemonic);
-        }
         /// Only a conditional branch carries a condition in its name.
-        return base == "b" && IsAArch64ConditionName(mnemonic.substr(base.size() + 1));
+        if (!AArch64BranchCondition(mnemonic).empty()) {
+            return true;
+        }
+        return AsmBaseMnemonic(mnemonic).size() == mnemonic.size() && AArch64Mnemonics().contains(mnemonic);
     }
     default:
         return false;

@@ -1,5 +1,8 @@
 #include "Optimization/HirConstantFolder.h"
 
+#include "Parallel/WorkerPool.h"
+#include "Types/PrimitiveCatalog.h"
+
 #include <algorithm>
 #include <array>
 #include <memory>
@@ -24,12 +27,23 @@ std::string_view HirConstantFolder::Name() const noexcept {
     return "hir-constant-folder";
 }
 
-PassChange HirConstantFolder::Run(HirPackage &package, const PassContext &) {
+PassChange HirConstantFolder::Run(HirPackage &package, const PassContext &context) {
     changed = false;
     scopes.clear();
-    for (auto &module : package.modules) {
-        OptimizeModule(module);
+    if (context.pool == nullptr) {
+        for (auto &module : package.modules) {
+            OptimizeModule(module);
+        }
+        return changed ? PassChange::Changed : PassChange::None;
     }
+    // Facts never outlive one function or constant, so modules fold independently, each with its own folder.
+    std::vector<char> moduleChanged(package.modules.size(), 0);
+    context.pool->ForEach(package.modules.size(), [&](const std::size_t index) {
+        HirConstantFolder folder;
+        folder.OptimizeModule(package.modules[index]);
+        moduleChanged[index] = folder.changed ? 1 : 0;
+    });
+    changed = std::ranges::any_of(moduleChanged, [](const char flag) { return flag != 0; });
     return changed ? PassChange::Changed : PassChange::None;
 }
 
@@ -72,7 +86,7 @@ void HirConstantFolder::PopScope() {
 
 void HirConstantFolder::Declare(const std::string_view name, std::optional<TypedConstant> constant) {
     if (!name.empty()) {
-        scopes.back().insert_or_assign(std::string{name}, BindingFact{std::move(constant)});
+        scopes.back().insert_or_assign(std::string{name}, BindingFact{constant});
     }
 }
 
@@ -104,47 +118,47 @@ void HirConstantFolder::InvalidateAll() {
 }
 
 void HirConstantFolder::InvalidatePlace(const HirExpr &expr) {
-    if (const auto *variable = dynamic_cast<const HirVarExpr *>(&expr)) {
+    if (const auto *variable = HirCast<const HirVarExpr>(&expr)) {
         Invalidate(variable->name);
     }
-    else if (const auto *field = dynamic_cast<const HirFieldExpr *>(&expr)) {
+    else if (const auto *field = HirCast<const HirFieldExpr>(&expr)) {
         InvalidatePlace(*field->object);
     }
-    else if (const auto *index = dynamic_cast<const HirIndexExpr *>(&expr)) {
+    else if (const auto *index = HirCast<const HirIndexExpr>(&expr)) {
         InvalidatePlace(*index->object);
     }
-    else if (const auto *unary = dynamic_cast<const HirUnaryExpr *>(&expr)) {
+    else if (const auto *unary = HirCast<const HirUnaryExpr>(&expr)) {
         InvalidatePlace(*unary->operand);
     }
 }
 
 void HirConstantFolder::DeclarePatternBindings(const HirPattern &pattern) {
-    if (const auto *binding = dynamic_cast<const HirBindingPattern *>(&pattern)) {
+    if (const auto *binding = HirCast<const HirBindingPattern>(&pattern)) {
         Declare(binding->name);
     }
-    else if (const auto *range = dynamic_cast<const HirRangePattern *>(&pattern)) {
+    else if (const auto *range = HirCast<const HirRangePattern>(&pattern)) {
         DeclarePatternBindings(*range->lo);
         DeclarePatternBindings(*range->hi);
     }
-    else if (const auto *enumeration = dynamic_cast<const HirEnumPattern *>(&pattern)) {
+    else if (const auto *enumeration = HirCast<const HirEnumPattern>(&pattern)) {
         for (const auto &argument : enumeration->args) {
             DeclarePatternBindings(*argument);
         }
     }
-    else if (const auto *structure = dynamic_cast<const HirStructPattern *>(&pattern)) {
+    else if (const auto *structure = HirCast<const HirStructPattern>(&pattern)) {
         for (const auto &field : structure->fields) {
             DeclarePatternBindings(*field.pattern);
         }
     }
-    else if (const auto *tuple = dynamic_cast<const HirTuplePattern *>(&pattern)) {
+    else if (const auto *tuple = HirCast<const HirTuplePattern>(&pattern)) {
         for (const auto &element : tuple->elements) {
             DeclarePatternBindings(*element);
         }
     }
-    else if (const auto *guarded = dynamic_cast<const HirGuardedPattern *>(&pattern)) {
+    else if (const auto *guarded = HirCast<const HirGuardedPattern>(&pattern)) {
         DeclarePatternBindings(*guarded->inner);
     }
-    else if (const auto *subset = dynamic_cast<const HirNativeSubsetPattern *>(&pattern)) {
+    else if (const auto *subset = HirCast<const HirNativeSubsetPattern>(&pattern)) {
         if (subset->binding) {
             DeclarePatternBindings(*subset->binding);
         }
@@ -152,7 +166,7 @@ void HirConstantFolder::DeclarePatternBindings(const HirPattern &pattern) {
 }
 
 void HirConstantFolder::OptimizePattern(HirPattern &pattern) {
-    if (auto *guarded = dynamic_cast<HirGuardedPattern *>(&pattern)) {
+    if (auto *guarded = HirCast<HirGuardedPattern>(&pattern)) {
         OptimizeExpr(guarded->guard);
     }
 }
@@ -183,7 +197,7 @@ void HirConstantFolder::OptimizeBlock(HirBlock &block, const bool introduceScope
         }
 
         OptimizeStmt(stmt);
-        if (auto *conditional = dynamic_cast<HirIfStmt *>(stmt.get())) {
+        if (auto *conditional = HirCast<HirIfStmt>(stmt.get())) {
             const auto condition = BooleanLiteral(*conditional->condition);
             HirBlock *selected = nullptr;
             bool allConditionsConstant = condition.has_value();
@@ -211,9 +225,9 @@ void HirConstantFolder::OptimizeBlock(HirBlock &block, const bool introduceScope
                 if (selected) {
                     for (auto &nested : selected->stmts) {
                         if (nested) {
-                            const bool terminates = dynamic_cast<HirReturnStmt *>(nested.get()) ||
-                                                    dynamic_cast<HirBreakStmt *>(nested.get()) ||
-                                                    dynamic_cast<HirContinueStmt *>(nested.get());
+                            const bool terminates = HirCast<HirReturnStmt>(nested.get()) ||
+                                                    HirCast<HirBreakStmt>(nested.get()) ||
+                                                    HirCast<HirContinueStmt>(nested.get());
                             optimized.push_back(std::move(nested));
                             unreachable = unreachable || terminates;
                         }
@@ -224,8 +238,8 @@ void HirConstantFolder::OptimizeBlock(HirBlock &block, const bool introduceScope
             }
         }
 
-        unreachable = dynamic_cast<HirReturnStmt *>(stmt.get()) || dynamic_cast<HirBreakStmt *>(stmt.get()) ||
-                      dynamic_cast<HirContinueStmt *>(stmt.get());
+        unreachable = HirCast<HirReturnStmt>(stmt.get()) || HirCast<HirBreakStmt>(stmt.get()) ||
+                      HirCast<HirContinueStmt>(stmt.get());
         optimized.push_back(std::move(stmt));
     }
     block.stmts = std::move(optimized);
@@ -236,29 +250,29 @@ void HirConstantFolder::OptimizeBlock(HirBlock &block, const bool introduceScope
 }
 
 void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
-    if (auto *expression = dynamic_cast<HirExprStmt *>(stmt.get())) {
+    if (auto *expression = HirCast<HirExprStmt>(stmt.get())) {
         OptimizeExpr(expression->expr);
     }
-    else if (auto *binding = dynamic_cast<HirLetStmt *>(stmt.get())) {
+    else if (auto *binding = HirCast<HirLetStmt>(stmt.get())) {
         OptimizeExpr(binding->init);
         std::optional<TypedConstant> fact;
         if (!binding->isMut && binding->init) {
             const TypeRef &type = binding->type.IsUnknown() ? binding->init->type : binding->type;
-            if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(binding->init.get())) {
+            if (const auto *literal = HirCast<const HirLiteralExpr>(binding->init.get())) {
                 fact = ParseConstant(WithoutIntegerSuffix(literal->value), type);
             }
         }
-        Declare(binding->name, std::move(fact));
+        Declare(binding->name, fact);
         if (binding->pattern) {
             DeclarePatternBindings(*binding->pattern);
         }
     }
-    else if (auto *returned = dynamic_cast<HirReturnStmt *>(stmt.get())) {
+    else if (auto *returned = HirCast<HirReturnStmt>(stmt.get())) {
         if (returned->value) {
             OptimizeExpr(*returned->value);
         }
     }
-    else if (auto *conditional = dynamic_cast<HirIfStmt *>(stmt.get())) {
+    else if (auto *conditional = HirCast<HirIfStmt>(stmt.get())) {
         OptimizeExpr(conditional->condition);
         const auto incoming = scopes;
         OptimizeBlock(conditional->thenBlock);
@@ -274,24 +288,24 @@ void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
         scopes = incoming;
         InvalidateAll();
     }
-    else if (auto *whileStmt = dynamic_cast<HirWhileStmt *>(stmt.get())) {
+    else if (auto *whileStmt = HirCast<HirWhileStmt>(stmt.get())) {
         OptimizeExpr(whileStmt->condition);
         InvalidateAll();
         OptimizeBlock(whileStmt->body);
         InvalidateAll();
     }
-    else if (auto *doWhileStmt = dynamic_cast<HirDoWhileStmt *>(stmt.get())) {
+    else if (auto *doWhileStmt = HirCast<HirDoWhileStmt>(stmt.get())) {
         InvalidateAll();
         OptimizeBlock(doWhileStmt->body);
         OptimizeExpr(doWhileStmt->condition);
         InvalidateAll();
     }
-    else if (auto *loopStmt = dynamic_cast<HirLoopStmt *>(stmt.get())) {
+    else if (auto *loopStmt = HirCast<HirLoopStmt>(stmt.get())) {
         InvalidateAll();
         OptimizeBlock(loopStmt->body);
         InvalidateAll();
     }
-    else if (auto *forStmt = dynamic_cast<HirForStmt *>(stmt.get())) {
+    else if (auto *forStmt = HirCast<HirForStmt>(stmt.get())) {
         OptimizeExpr(forStmt->iterable);
         InvalidateAll();
         PushScope();
@@ -300,7 +314,7 @@ void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
         PopScope();
         InvalidateAll();
     }
-    else if (auto *match = dynamic_cast<HirMatchStmt *>(stmt.get())) {
+    else if (auto *match = HirCast<HirMatchStmt>(stmt.get())) {
         OptimizeExpr(match->subject);
         const auto incoming = scopes;
         for (auto &arm : match->arms) {
@@ -309,7 +323,7 @@ void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
         scopes = incoming;
         InvalidateAll();
     }
-    else if (auto *local = dynamic_cast<HirLocalDecl *>(stmt.get())) {
+    else if (auto *local = HirCast<HirLocalDecl>(stmt.get())) {
         if (local->hasConstant) {
             OptimizeExpr(local->constantValue);
         }
@@ -317,7 +331,7 @@ void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
 }
 
 std::optional<TypedConstant> HirConstantFolder::Constant(const HirExpr &expr) const {
-    const auto *literal = dynamic_cast<const HirLiteralExpr *>(&expr);
+    const auto *literal = HirCast<const HirLiteralExpr>(&expr);
     if (!literal) {
         return std::nullopt;
     }
@@ -333,7 +347,7 @@ HirExprPtr HirConstantFolder::MakeLiteral(const TypedConstant &constant, const S
 }
 
 std::optional<bool> HirConstantFolder::BooleanLiteral(const HirExpr &expr) {
-    const auto *literal = dynamic_cast<const HirLiteralExpr *>(&expr);
+    const auto *literal = HirCast<const HirLiteralExpr>(&expr);
     if (!literal || !literal->type.IsBool()) {
         return std::nullopt;
     }
@@ -350,7 +364,7 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
     if (!expr) {
         return;
     }
-    if (auto *variable = dynamic_cast<HirVarExpr *>(expr.get())) {
+    if (auto *variable = HirCast<HirVarExpr>(expr.get())) {
         if (allowSubstitution) {
             if (const TypedConstant *constant = Lookup(variable->name)) {
                 expr = MakeLiteral(*constant, variable->location);
@@ -359,40 +373,40 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         }
         return;
     }
-    if (auto *binary = dynamic_cast<HirBinaryExpr *>(expr.get())) {
+    if (auto *binary = HirCast<HirBinaryExpr>(expr.get())) {
         OptimizeExpr(binary->left, allowSubstitution);
         OptimizeExpr(binary->right, allowSubstitution);
         if (FoldBinary(expr) || SimplifyBinary(expr)) {
             changed = true;
         }
     }
-    else if (auto *unary = dynamic_cast<HirUnaryExpr *>(expr.get())) {
+    else if (auto *unary = HirCast<HirUnaryExpr>(expr.get())) {
         const bool maySubstituteOperand = allowSubstitution && unary->op != TokenKind::At;
         OptimizeExpr(unary->operand, maySubstituteOperand);
         if (FoldUnary(expr)) {
             changed = true;
         }
     }
-    else if (auto *postfix = dynamic_cast<HirPostfixExpr *>(expr.get())) {
+    else if (auto *postfix = HirCast<HirPostfixExpr>(expr.get())) {
         OptimizeExpr(postfix->operand, false);
         InvalidatePlace(*postfix->operand);
         InvalidateAll();
     }
-    else if (auto *copy = dynamic_cast<HirCopyExpr *>(expr.get())) {
+    else if (auto *copy = HirCast<HirCopyExpr>(expr.get())) {
         OptimizeExpr(copy->value, false);
         InvalidateAll();
     }
-    else if (auto *move = dynamic_cast<HirMoveExpr *>(expr.get())) {
+    else if (auto *move = HirCast<HirMoveExpr>(expr.get())) {
         OptimizeExpr(move->value, false);
         InvalidateAll();
     }
-    else if (auto *assignment = dynamic_cast<HirAssignExpr *>(expr.get())) {
+    else if (auto *assignment = HirCast<HirAssignExpr>(expr.get())) {
         OptimizeExpr(assignment->target, false);
         OptimizeExpr(assignment->value, allowSubstitution);
         InvalidatePlace(*assignment->target);
         InvalidateAll();
     }
-    else if (auto *ternary = dynamic_cast<HirTernaryExpr *>(expr.get())) {
+    else if (auto *ternary = HirCast<HirTernaryExpr>(expr.get())) {
         OptimizeExpr(ternary->condition, allowSubstitution);
         if (const auto condition = BooleanLiteral(*ternary->condition)) {
             HirExprPtr selected = *condition ? std::move(ternary->thenExpr) : std::move(ternary->elseExpr);
@@ -409,43 +423,43 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
             InvalidateAll();
         }
     }
-    else if (auto *range = dynamic_cast<HirRangeExpr *>(expr.get())) {
+    else if (auto *range = HirCast<HirRangeExpr>(expr.get())) {
         OptimizeExpr(range->lo, allowSubstitution);
         OptimizeExpr(range->hi, allowSubstitution);
     }
-    else if (auto *call = dynamic_cast<HirCallExpr *>(expr.get())) {
+    else if (auto *call = HirCast<HirCallExpr>(expr.get())) {
         OptimizeExpr(call->callee, allowSubstitution);
         for (auto &argument : call->args) {
             OptimizeExpr(argument, allowSubstitution);
         }
         InvalidateAll();
     }
-    else if (auto *coercion = dynamic_cast<HirCoerceToInterfaceExpr *>(expr.get())) {
+    else if (auto *coercion = HirCast<HirCoerceToInterfaceExpr>(expr.get())) {
         OptimizeExpr(coercion->value, allowSubstitution);
     }
-    else if (auto *view = dynamic_cast<HirArrayToSliceExpr *>(expr.get())) {
+    else if (auto *view = HirCast<HirArrayToSliceExpr>(expr.get())) {
         OptimizeExpr(view->value, allowSubstitution);
     }
-    else if (auto *interfaceCall = dynamic_cast<HirInterfaceCallExpr *>(expr.get())) {
+    else if (auto *interfaceCall = HirCast<HirInterfaceCallExpr>(expr.get())) {
         OptimizeExpr(interfaceCall->fatPtrExpr, allowSubstitution);
         for (auto &argument : interfaceCall->args) {
             OptimizeExpr(argument, allowSubstitution);
         }
         InvalidateAll();
     }
-    else if (auto *index = dynamic_cast<HirIndexExpr *>(expr.get())) {
+    else if (auto *index = HirCast<HirIndexExpr>(expr.get())) {
         OptimizeExpr(index->object, allowSubstitution);
         OptimizeExpr(index->index, allowSubstitution);
     }
-    else if (auto *field = dynamic_cast<HirFieldExpr *>(expr.get())) {
+    else if (auto *field = HirCast<HirFieldExpr>(expr.get())) {
         OptimizeExpr(field->object, allowSubstitution);
     }
-    else if (auto *structure = dynamic_cast<HirStructInitExpr *>(expr.get())) {
+    else if (auto *structure = HirCast<HirStructInitExpr>(expr.get())) {
         for (auto &initializer : structure->fields) {
             OptimizeExpr(initializer.value, allowSubstitution);
         }
     }
-    else if (auto *array = dynamic_cast<HirArrayExpr *>(expr.get())) {
+    else if (auto *array = HirCast<HirArrayExpr>(expr.get())) {
         if (array->repeatedElement) {
             OptimizeExpr(array->repeatedElement, allowSubstitution);
             if ((array->repeatCount > 0 && array->repeatCopyPlan.kind != HirCopyPlan::Kind::Trivial) ||
@@ -457,25 +471,25 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
             OptimizeExpr(element, allowSubstitution);
         }
     }
-    else if (auto *tuple = dynamic_cast<HirTupleExpr *>(expr.get())) {
+    else if (auto *tuple = HirCast<HirTupleExpr>(expr.get())) {
         for (auto &element : tuple->elements) {
             OptimizeExpr(element, allowSubstitution);
         }
     }
-    else if (auto *cast = dynamic_cast<HirCastExpr *>(expr.get())) {
+    else if (auto *cast = HirCast<HirCastExpr>(expr.get())) {
         OptimizeExpr(cast->operand, allowSubstitution);
         if (FoldCast(expr)) {
             changed = true;
         }
     }
-    else if (auto *typeTest = dynamic_cast<HirIsExpr *>(expr.get())) {
+    else if (auto *typeTest = HirCast<HirIsExpr>(expr.get())) {
         OptimizeExpr(typeTest->operand, allowSubstitution);
     }
-    else if (auto *block = dynamic_cast<HirBlockExpr *>(expr.get())) {
+    else if (auto *block = HirCast<HirBlockExpr>(expr.get())) {
         OptimizeBlock(block->block);
         InvalidateAll();
     }
-    else if (auto *match = dynamic_cast<HirMatchExpr *>(expr.get())) {
+    else if (auto *match = HirCast<HirMatchExpr>(expr.get())) {
         OptimizeExpr(match->subject, allowSubstitution);
         const auto incoming = scopes;
         for (auto &arm : match->arms) {
@@ -484,7 +498,7 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         scopes = incoming;
         InvalidateAll();
     }
-    else if (auto *enumeration = dynamic_cast<HirEnumConstructExpr *>(expr.get())) {
+    else if (auto *enumeration = HirCast<HirEnumConstructExpr>(expr.get())) {
         for (auto &payload : enumeration->payloads) {
             OptimizeExpr(payload, allowSubstitution);
         }
@@ -492,7 +506,7 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
 }
 
 bool HirConstantFolder::FoldBinary(HirExprPtr &expr) {
-    auto *binary = dynamic_cast<HirBinaryExpr *>(expr.get());
+    auto *binary = HirCast<HirBinaryExpr>(expr.get());
     if (!binary) {
         return false;
     }
@@ -516,12 +530,12 @@ bool HirConstantFolder::FoldBinary(HirExprPtr &expr) {
 }
 
 bool HirConstantFolder::FoldUnary(HirExprPtr &expr) {
-    auto *unary = dynamic_cast<HirUnaryExpr *>(expr.get());
+    auto *unary = HirCast<HirUnaryExpr>(expr.get());
     if (!unary) {
         return false;
     }
     if (unary->op == TokenKind::Bang) {
-        if (auto *inner = dynamic_cast<HirUnaryExpr *>(unary->operand.get()); inner && inner->op == TokenKind::Bang) {
+        if (auto *inner = HirCast<HirUnaryExpr>(unary->operand.get()); inner && inner->op == TokenKind::Bang) {
             expr = std::move(inner->operand);
             return true;
         }
@@ -545,13 +559,25 @@ bool HirConstantFolder::FoldUnary(HirExprPtr &expr) {
 }
 
 bool HirConstantFolder::FoldCast(HirExprPtr &expr) {
-    auto *cast = dynamic_cast<HirCastExpr *>(expr.get());
+    auto *cast = HirCast<HirCastExpr>(expr.get());
     if (!cast) {
         return false;
     }
     const auto operand = Constant(*cast->operand);
     if (!operand) {
         return false;
+    }
+    if (cast->targetType.IsChar()) {
+        if (!cast->operand->type.IsInteger() && !cast->operand->type.IsChar()) {
+            return false;
+        }
+        // Invalid casts must reach lowering's trap with the original value. Folding the conversion first could
+        // discard nonzero high words or a sign and turn an invalid value into an apparently valid code unit.
+        const auto scalar = operand->Bits().ToUnsigned();
+        if ((operand->GetKind() == TypedConstant::Kind::SignedInteger && operand->Bits().IsNegative()) || !scalar ||
+            !IsValidCharacterValue(cast->targetType->kind, *scalar)) {
+            return false;
+        }
     }
     const auto result = CastConstant(*operand, cast->targetType);
     if (!result) {
@@ -562,38 +588,38 @@ bool HirConstantFolder::FoldCast(HirExprPtr &expr) {
 }
 
 bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
-    if (dynamic_cast<const HirLiteralExpr *>(&expr) || dynamic_cast<const HirVarExpr *>(&expr) ||
-        dynamic_cast<const HirSelfExpr *>(&expr) || dynamic_cast<const HirPathExpr *>(&expr)) {
+    if (HirCast<const HirLiteralExpr>(&expr) || HirCast<const HirVarExpr>(&expr) || HirCast<const HirSelfExpr>(&expr) ||
+        HirCast<const HirPathExpr>(&expr)) {
         return true;
     }
-    if (const auto *unary = dynamic_cast<const HirUnaryExpr *>(&expr)) {
+    if (const auto *unary = HirCast<const HirUnaryExpr>(&expr)) {
         return unary->op != TokenKind::Star && IsDiscardable(*unary->operand);
     }
-    if (const auto *binary = dynamic_cast<const HirBinaryExpr *>(&expr)) {
+    if (const auto *binary = HirCast<const HirBinaryExpr>(&expr)) {
         if (binary->op == TokenKind::Slash || binary->op == TokenKind::Percent || binary->op == TokenKind::LessLess ||
             binary->op == TokenKind::GreaterGreater || binary->op == TokenKind::GreaterGreaterGreater) {
             return false;
         }
         return IsDiscardable(*binary->left) && IsDiscardable(*binary->right);
     }
-    if (const auto *ternary = dynamic_cast<const HirTernaryExpr *>(&expr)) {
+    if (const auto *ternary = HirCast<const HirTernaryExpr>(&expr)) {
         return IsDiscardable(*ternary->condition) && IsDiscardable(*ternary->thenExpr) &&
                IsDiscardable(*ternary->elseExpr);
     }
-    if (const auto *range = dynamic_cast<const HirRangeExpr *>(&expr)) {
+    if (const auto *range = HirCast<const HirRangeExpr>(&expr)) {
         return (!range->lo || IsDiscardable(*range->lo)) && (!range->hi || IsDiscardable(*range->hi));
     }
-    if (const auto *coercion = dynamic_cast<const HirCoerceToInterfaceExpr *>(&expr)) {
+    if (const auto *coercion = HirCast<const HirCoerceToInterfaceExpr>(&expr)) {
         return IsDiscardable(*coercion->value);
     }
-    if (const auto *view = dynamic_cast<const HirArrayToSliceExpr *>(&expr)) {
+    if (const auto *view = HirCast<const HirArrayToSliceExpr>(&expr)) {
         return IsDiscardable(*view->value);
     }
-    if (const auto *structure = dynamic_cast<const HirStructInitExpr *>(&expr)) {
+    if (const auto *structure = HirCast<const HirStructInitExpr>(&expr)) {
         return std::ranges::all_of(structure->fields,
                                    [](const HirStructInitField &field) { return IsDiscardable(*field.value); });
     }
-    if (const auto *array = dynamic_cast<const HirArrayExpr *>(&expr)) {
+    if (const auto *array = HirCast<const HirArrayExpr>(&expr)) {
         const bool repeatHasEffects =
             array->repeatedElement &&
             ((array->repeatCount > 0 && array->repeatCopyPlan.kind != HirCopyPlan::Kind::Trivial) ||
@@ -601,16 +627,19 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
         return !repeatHasEffects && (!array->repeatedElement || IsDiscardable(*array->repeatedElement)) &&
                std::ranges::all_of(array->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });
     }
-    if (const auto *tuple = dynamic_cast<const HirTupleExpr *>(&expr)) {
+    if (const auto *tuple = HirCast<const HirTupleExpr>(&expr)) {
         return std::ranges::all_of(tuple->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });
     }
-    if (const auto *cast = dynamic_cast<const HirCastExpr *>(&expr)) {
+    if (const auto *cast = HirCast<const HirCastExpr>(&expr)) {
+        if (cast->targetType.IsChar()) {
+            return false;
+        }
         return IsDiscardable(*cast->operand);
     }
-    if (const auto *typeTest = dynamic_cast<const HirIsExpr *>(&expr)) {
+    if (const auto *typeTest = HirCast<const HirIsExpr>(&expr)) {
         return IsDiscardable(*typeTest->operand);
     }
-    if (const auto *enumeration = dynamic_cast<const HirEnumConstructExpr *>(&expr)) {
+    if (const auto *enumeration = HirCast<const HirEnumConstructExpr>(&expr)) {
         return std::ranges::all_of(enumeration->payloads,
                                    [](const HirExprPtr &payload) { return IsDiscardable(*payload); });
     }
@@ -619,12 +648,12 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
 
 bool HirConstantFolder::CanInline(const HirBlock &block) {
     return std::ranges::none_of(block.stmts, [](const HirStmtPtr &statement) {
-        return dynamic_cast<const HirLetStmt *>(statement.get()) || dynamic_cast<const HirLocalDecl *>(statement.get());
+        return HirCast<const HirLetStmt>(statement.get()) || HirCast<const HirLocalDecl>(statement.get());
     });
 }
 
 bool HirConstantFolder::SimplifyBinary(HirExprPtr &expr) {
-    auto *binary = dynamic_cast<HirBinaryExpr *>(expr.get());
+    auto *binary = HirCast<HirBinaryExpr>(expr.get());
     if (!binary) {
         return false;
     }

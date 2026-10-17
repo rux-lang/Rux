@@ -31,6 +31,15 @@ RmEnc AssemblerContext::EncodeRmMem(const AsmOperand &op) {
         return e;
     }
 
+    // A symbol has no encoding beside a base or an index register, and alone it would be a 32-bit absolute address,
+    // which an image placed above 4 GiB cannot hold: x86-64 reaches it relative to the next instruction.
+    if (!op.memSym.empty()) {
+        Error(op.location, std::format("'{}' in a memory operand is reached relative to 'rip', so the operand must be "
+                                       "'[rip + {}]'",
+                                       op.memSym, op.memSym));
+        return e;
+    }
+
     const bool hasBase = !op.memBase.empty();
     const bool hasIndex = !op.memIndex.empty();
 

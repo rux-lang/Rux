@@ -1,2 +1,33 @@
-// float80 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// `float80`: x87 extended precision.
+// Sixty-four bits of significand with an explicit integer bit, so about nineteen decimal digits. The value is ten
+// bytes held in sixteen. On x86-64 its arithmetic runs on the x87 unit, and everywhere else in software. The compiler
+// supplies the finite limits, which are too long to be worth spelling out in decimal.
+
+/// An x87 extended-precision floating-point number.
+/// @see https://rux-lang.dev/docs/api/core/floating-point#float80
+extend float80 {
+    /// The number of bits in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-bits
+    pub const Bits: uint = 80;
+    /// The number of bytes in the representation.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-bytes
+    pub const Bytes: uint = 16;
+    /// The lowest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-lowest
+    pub intrinsic const Lowest: float80;
+    /// The highest finite value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-max
+    pub intrinsic const Max: float80;
+    /// The smallest positive normal value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-min-positive
+    pub intrinsic const MinPositive: float80;
+    /// The difference between one and the next representable value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-epsilon
+    pub intrinsic const Epsilon: float80;
+    /// Positive infinity.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-infinity
+    pub intrinsic const Infinity: float80;
+    /// A quiet not-a-number value.
+    /// @see https://rux-lang.dev/docs/api/core/floating-point#float80-nan
+    pub intrinsic const NaN: float80;
+}

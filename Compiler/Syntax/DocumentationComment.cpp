@@ -230,7 +230,27 @@ bool Documentation::Present() const noexcept {
 }
 
 std::string_view Documentation::Summary() const noexcept {
-    const std::size_t paragraphEnd = markdown.find("\n\n");
-    return std::string_view(markdown).substr(0, paragraphEnd);
+    // The summary is the first sentence: it ends at the first '.', '!' or '?' followed by whitespace or by the end of
+    // the paragraph. A sentence wrapped across source lines stays whole, and a period inside a code span or a decimal
+    // such as 0.5 does not end it. Prose with no sentence ending before its first empty line is summarized by that
+    // paragraph.
+    const std::string_view text(markdown);
+    const std::size_t paragraphEnd = std::min(text.find("\n\n"), text.size());
+    bool inCode = false;
+    for (std::size_t index = 0; index < paragraphEnd; ++index) {
+        const char value = text[index];
+        if (value == '`') {
+            inCode = !inCode;
+            continue;
+        }
+        if (inCode || (value != '.' && value != '!' && value != '?')) {
+            continue;
+        }
+        const std::size_t next = index + 1;
+        if (next == paragraphEnd || IsHorizontalWhitespace(text[next]) || text[next] == '\n') {
+            return text.substr(0, next);
+        }
+    }
+    return text.substr(0, paragraphEnd);
 }
 } // namespace Rux::Syntax

@@ -1,0 +1,74 @@
+import Core::Assert;
+
+struct Gauge {
+    level: int32;
+    flags: uint8;
+}
+
+func Bump(count: &var int) { count += 1; }
+func Scale(count: &var int, factor: int) { count = count * factor; }
+func Step(count: &var int) { count++; }
+func StepDown(count: &var int) { count--; }
+func Advance(count: &var int) -> int { return ++count; }
+func Retreat(count: &var int) -> int { return count--; }
+func Replace(count: &var int, value: &int) { count = value; }
+func Raise(level: &var int32) { level += 100i32; }
+func Wrap(flags: &var uint8) { flags += 200u8; }
+func Toggle(flag: &var bool) { flag = !flag; }
+func Next(letter: &var char32) { letter = c32'z'; }
+func Halve(value: &var float64) { value /= 2.0; }
+func Move(count: &var int, value: int) { count <- value; }
+
+extend int32 {
+    func Double(self: &var int32) { self *= 2i32; }
+}
+
+func Main() -> int {
+    var total = 4;
+    Bump(total);
+    Assert(total == 5, "a compound assignment writes the caller's scalar");
+    Scale(total, 10);
+    Assert(total == 50, "a plain assignment writes the caller's scalar");
+    Step(total);
+    StepDown(total);
+    StepDown(total);
+    Assert(total == 49, "postfix increments and decrements write the caller's scalar");
+    Assert(Advance(total) == 50 && total == 50, "a prefix increment yields the written value");
+    Assert(Retreat(total) == 50 && total == 49, "a postfix decrement yields the previous value");
+    let source = 12;
+    Replace(total, source);
+    Assert(total == 12, "a value read through another reference is stored");
+    Move(total, 13);
+    Assert(total == 13, "a moved scalar is stored through the reference");
+
+    let alias: &var int = total;
+    alias = 20;
+    alias += 2;
+    alias++;
+    Assert(total == 23, "a local 'let' alias writes through to its referent");
+
+    var gauge = Gauge { level: 1i32, flags: 100u8 };
+    Raise(gauge.level);
+    Wrap(gauge.flags);
+    Assert(gauge.level == 101i32 && gauge.flags == 44u8, "a struct field passed as '&var' is written in place");
+
+    var values = [1, 2, 3];
+    Bump(values[1]);
+    Scale(values[2], 3);
+    Assert(values[0] == 1 && values[1] == 3 && values[2] == 9, "an array element passed as '&var' is written in place");
+
+    var yes = true;
+    Toggle(yes);
+    Assert(!yes, "a boolean is written through its reference");
+    var letter = c32'a';
+    Next(letter);
+    Assert(letter == c32'z', "a character is written through its reference");
+    var ratio = 5.0;
+    Halve(ratio);
+    Assert(ratio == 2.5, "a float is written through its reference");
+
+    var number = 21i32;
+    number.Double();
+    Assert(number == 42i32, "a scalar receiver is written through 'self: &var T'");
+    return 0;
+}

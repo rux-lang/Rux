@@ -1,17 +1,13 @@
 // Overflow-checked sizing arithmetic, shared by every container in this package so the checks exist once rather than
 // once per type.
-//
 // Integer overflow wraps silently, so `count * sizeof(T)` is the single most dangerous expression a container
 // writes: a product that wraps asks the allocator for a small block and then writes far past it. Every allocation in
 // this package sizes itself through `ByteSize` rather than multiplying inline.
-//
 // The checks are written out rather than reached for from `Core`, because each of these does something beyond the
 // arithmetic — choosing a growth, falling back when a doubling does not fit — and a checked multiply is one line
 // of that. What matters is that the dangerous product is never evaluated: `ByteSize` divides instead.
-//
 // These fail with a `CollectionError` like the public operations that call them, and return their result only when
 // the arithmetic holds.
-//
 // Internal helpers; not part of the package API.
 
 // `count * elementSize`, rejecting a product that does not fit in uint. A zero
@@ -43,7 +39,6 @@ func AddLength(current: uint, additional: uint) -> uint ! CollectionError {
 // A capacity holding at least `required` elements, reached by doubling from
 // `minimum`. Doubling is what makes a run of appends cost an amortized
 // constant rather than a reallocation each time.
-//
 // A doubling that would wrap falls back to `required` itself, and so does a
 // doubled capacity too large to size in bytes: a request that fits must never
 // be rejected merely because the next power of two does not.
@@ -73,7 +68,6 @@ func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uin
 // The smallest power of two at least `required`, never below `minimum`.
 // `minimum` must itself be a power of two, which every caller in this package
 // spells as a literal.
-//
 // Deque and the hash tables need this rather than GrowCapacity because they
 // index with a mask: `& (capacity - 1)` is only the same as `% capacity` when
 // the capacity is a power of two, and that is what keeps wraparound and bucket

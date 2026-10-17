@@ -22,18 +22,20 @@ using Layout::AlignUp;
 
 TypeRef AnalysisContext::SubstituteIdentityType(TypeRef type,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) const {
-    if (type.kind == TypeRef::Kind::TypeParam) {
-        if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
+    if (type->kind == TypeRef::Kind::TypeParam) {
+        if (const auto substitution = substitutions.find(type->name); substitution != substitutions.end()) {
             TypeRef substituted = substitution->second;
             // Preserve the same pointee/referent identity used by layout substitution and callable instantiation.
             substituted.isMut = type.isMut;
             return substituted;
         }
     }
-    for (auto &inner : type.inner) {
-        inner = SubstituteIdentityType(std::move(inner), substitutions);
+    std::vector<TypeRef> inner;
+    inner.reserve(type->inner.size());
+    for (const TypeRef &member : type->inner) {
+        inner.push_back(SubstituteIdentityType(member, substitutions));
     }
-    return TypeRef::Renormalize(std::move(type));
+    return TypeRef::Renormalize(type.WithInner(inner));
 }
 
 TypeRef AnalysisContext::IdentityParameterType(const Param &parameter,
@@ -83,6 +85,20 @@ bool AnalysisContext::MethodIsOverloadedForIdentity(const std::string &typeName,
     return method != type->second.end() && method->second.size() > 1;
 }
 
+std::optional<TypeRef> AnalysisContext::SpecializedExtensionType(const FuncDecl &method) const {
+    const auto implementation = methodImpls.find(&method);
+    if (implementation == methodImpls.end() || !ImplTypeParams(*implementation->second).empty() ||
+        !implementation->second->extendedType) {
+        return std::nullopt;
+    }
+    const auto extended = typeNodeTypes.find(implementation->second->extendedType.get());
+    if (extended == typeNodeTypes.end() || extended->second->kind != TypeRef::Kind::Named ||
+        ParseTypeArgsFromTypeName(extended->second->name).empty()) {
+        return std::nullopt;
+    }
+    return extended->second;
+}
+
 std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const TypeRef &receiverType,
                                               const std::unordered_map<std::string, TypeRef> &substitutions) const {
     const std::string typeName = NamedBaseTypeName(receiverType);
@@ -90,8 +106,16 @@ std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const Type
     if (MethodIsOverloadedForIdentity(typeName, method.name)) {
         name += "__";
         bool first = true;
+        // Methods of `extend Pair<int32>` and `extend Pair<int64>` may share a name and parameters, so a specialized
+        // extension's own type leads the signature.
+        if (const std::optional<TypeRef> specialized = SpecializedExtensionType(method)) {
+            name += MangleTypeName(*specialized);
+            first = false;
+        }
+        // A variadic parameter is part of the signature like any other, as a slice of its elements, so overloads that
+        // differ only in what they collect are two symbols.
         for (const auto &parameter : method.params) {
-            if (parameter.name == "self" || parameter.isVariadic) {
+            if (parameter.name == "self") {
                 continue;
             }
             if (!first) {
@@ -122,12 +146,24 @@ std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const Type
 
 void AnalysisContext::RecordMethodIdentityRecipe(ResolvedCallableBinding &binding, const FuncDecl &method) const {
     assert(binding.receiverType && "method binding is missing its receiver type");
-    const std::string typeName = NamedBaseTypeName(*binding.receiverType);
+    std::string typeName = NamedBaseTypeName(*binding.receiverType);
+    // A concrete extension names its methods after its own type, which the receiver need not spell the same way: a
+    // writable view calls the methods of `extend int[..]`, and they are `int[..]::...` whoever calls them.
+    if (const auto implementation = methodImpls.find(&method);
+        implementation != methodImpls.end() && ImplTypeParams(*implementation->second).empty()) {
+        if (const auto extended = typeNodeTypes.find(implementation->second->extendedType.get());
+            extended != typeNodeTypes.end()) {
+            typeName = NamedBaseTypeName(extended->second);
+        }
+    }
     binding.linkerNameBase = typeName + "::" + method.name;
     binding.linkerNameHasOverloadSignature = MethodIsOverloadedForIdentity(typeName, method.name);
     if (binding.linkerNameHasOverloadSignature) {
+        if (const std::optional<TypeRef> specialized = SpecializedExtensionType(method)) {
+            binding.linkerOverloadTypes.push_back(*specialized);
+        }
         for (const auto &parameter : method.params) {
-            if (parameter.name != "self" && !parameter.isVariadic) {
+            if (parameter.name != "self") {
                 binding.linkerOverloadTypes.push_back(IdentityParameterType(parameter, binding.substitutions));
             }
         }
@@ -156,19 +192,45 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         identity += declaration->name;
         symbolIdentities.emplace(declaration, ResolvedSymbolIdentity{std::move(identity)});
     }
-    std::unordered_map<std::string, std::unordered_set<std::string>> owners;
+    for (const auto &[declaration, type] : checkedGlobalTypes) {
+        (void)type;
+        const auto &owner = declarationInfos.at(declaration);
+        // One storage location per variable across the whole program, so the name is qualified like a constant's.
+        std::string identity = owner.ownerPackage + "::";
+        if (!owner.modulePath.empty()) {
+            identity += owner.modulePath + "::";
+        }
+        identity += declaration->name;
+        symbolIdentities.emplace(declaration, ResolvedSymbolIdentity{std::move(identity)});
+    }
+    // Whether each function shares its name with another of its module, counted once per name: asking for every
+    // function apart compares it with every function of its name, which is quadratic in a name many modules use.
+    std::unordered_map<const FuncDecl *, bool> overloadedInModule;
+    for (const auto &[name, declarations] : functionsByName) {
+        (void)name;
+        std::unordered_map<std::string_view, std::size_t> perModule;
+        for (const auto *declaration : declarations) {
+            ++perModule[functionModulePaths.at(declaration)];
+        }
+        for (const auto *declaration : declarations) {
+            overloadedInModule.emplace(declaration, perModule.at(functionModulePaths.at(declaration)) > 1);
+        }
+    }
+    const auto isOverloadedInModule = [&](const FuncDecl &declaration) {
+        const auto known = overloadedInModule.find(&declaration);
+        return known != overloadedInModule.end() ? known->second : FunctionIsOverloadedInModule(declaration);
+    };
+    const auto localFunctionName = [&](const FuncDecl &declaration) {
+        return isOverloadedInModule(declaration) ? MangleFunctionWithParams(declaration) : declaration.name;
+    };
+    std::unordered_map<std::string, std::unordered_set<std::string_view>> owners;
     for (const auto &[name, declarations] : functionsByName) {
         (void)name;
         for (const auto *declaration : declarations) {
-            const std::string local =
-                FunctionIsOverloadedInModule(*declaration) ? MangleFunctionWithParams(*declaration) : declaration->name;
-            owners[local].insert(functionModulePaths.at(declaration));
+            owners[localFunctionName(*declaration)].insert(functionModulePaths.at(declaration));
         }
     }
 
-    const auto localFunctionName = [&](const FuncDecl &declaration) {
-        return FunctionIsOverloadedInModule(declaration) ? MangleFunctionWithParams(declaration) : declaration.name;
-    };
     const auto qualifyFunctionName = [&](const FuncDecl &declaration, std::string name) {
         const auto *owner = programIndex.InfoFor(declaration);
         if (declaration.name == "Main" && owner) {
@@ -176,9 +238,9 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
                 return name;
             return functionModulePaths.at(&declaration) + "::" + name;
         }
-        const std::string local = localFunctionName(declaration);
         const std::string &modulePath = functionModulePaths.at(&declaration);
-        if (owners[local].size() > 1 && !modulePath.empty()) {
+        const auto local = owners.find(localFunctionName(declaration));
+        if (local != owners.end() && local->second.size() > 1 && !modulePath.empty()) {
             return modulePath + "::" + name;
         }
         return name;
@@ -218,7 +280,9 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
                                             ? programIndex.NominalName(*symbol->declaration)
                                             : *implementation->interfaceName;
         const auto interface = interfaceDecls.find(interfaceName);
-        if (interface == interfaceDecls.end() || interface->second->methods.empty()) {
+        // A generic interface has no value form, so nothing ever dispatches through a table of its operations.
+        if (interface == interfaceDecls.end() || interface->second->methods.empty() ||
+            !interface->second->typeParams.empty()) {
             continue;
         }
         // The vtable and its entries name the receiver the way its methods do, so an extension written on a spelling
@@ -234,23 +298,55 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         vtableIdentities.insert_or_assign(implementation, std::move(identity));
     }
 
-    for (auto &[call, binding] : callableBindings) {
-        (void)call;
+    // Every binding is named on its own from what is settled above, so the bindings are spread over the workers.
+    const auto forEachBinding = [this]<typename Map>(Map &bindings, const auto &name) {
+        std::vector<typename Map::mapped_type *> pending;
+        pending.reserve(bindings.size());
+        for (auto &[_, binding] : bindings)
+            pending.push_back(&binding);
+        constexpr std::size_t chunk = 512;
+        const std::size_t chunks = (pending.size() + chunk - 1) / chunk;
+        const auto run = [&](const std::size_t index) {
+            const std::size_t end = std::min(pending.size(), (index + 1) * chunk);
+            for (std::size_t item = index * chunk; item < end; ++item)
+                name(*pending[item]);
+        };
+        if (workers != nullptr && chunks > 1) {
+            workers->ForEach(chunks, run);
+        }
+        else {
+            for (std::size_t index = 0; index < chunks; ++index)
+                run(index);
+        }
+    };
+    forEachBinding(functionReferenceBindings, [&](ResolvedCallableBinding &binding) {
+        const auto &function = static_cast<const FuncDecl &>(*binding.selectedDeclaration);
+        binding.linkerNameBase = qualifyFunctionName(function, function.name);
+        binding.linkerNameHasOverloadSignature = isOverloadedInModule(function);
+        if (binding.linkerNameHasOverloadSignature) {
+            for (const auto &parameter : function.params) {
+                binding.linkerOverloadTypes.push_back(IdentityParameterType(parameter, binding.substitutions));
+            }
+        }
+        binding.linkerSpecializationParameters = TypeParameterNames(function.typeParams);
+        binding.linkerName = binding.LinkerNameFor(binding.substitutions);
+    });
+    forEachBinding(callableBindings, [&](ResolvedCallableBinding &binding) {
         if (!binding.selectedDeclaration || binding.dispatch == ResolvedCallableBinding::DispatchKind::Interface ||
             binding.dispatch == ResolvedCallableBinding::DispatchKind::Indirect ||
             binding.dispatch == ResolvedCallableBinding::DispatchKind::EnumVariant ||
             // A constrained call has one target per instantiation; lowering names it from the witness instead.
             binding.dispatch == ResolvedCallableBinding::DispatchKind::Constrained) {
-            continue;
+            return;
         }
-        const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
+        const auto *function = AstCast<const FuncDecl>(binding.selectedDeclaration);
         if (function &&
             (binding.dispatch == ResolvedCallableBinding::DispatchKind::Method ||
              binding.dispatch == ResolvedCallableBinding::DispatchKind::Constructor) &&
             binding.receiverType) {
             binding.linkerName = MethodLinkerName(*function, *binding.receiverType, binding.substitutions);
             RecordMethodIdentityRecipe(binding, *function);
-            continue;
+            return;
         }
         if (function && !function->typeParams.empty()) {
             // A generic function's monomorphized name is its own name plus its type arguments, which two
@@ -263,7 +359,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
             // `Clamp__T_T_T`, and calls would still name an unqualified `Clamp_int_int_int` after fixing only the
             // declaration identity.
             binding.linkerNameBase = qualifyFunctionName(*function, function->name);
-            binding.linkerNameHasOverloadSignature = FunctionIsOverloadedInModule(*function);
+            binding.linkerNameHasOverloadSignature = isOverloadedInModule(*function);
             if (binding.linkerNameHasOverloadSignature) {
                 for (const auto &parameter : function->params) {
                     if (!parameter.isVariadic) {
@@ -273,20 +369,20 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
             }
             binding.linkerSpecializationParameters = TypeParameterNames(function->typeParams);
             binding.linkerName = binding.LinkerNameFor(binding.substitutions);
-            continue;
+            return;
         }
         if (const auto identity = symbolIdentities.find(binding.selectedDeclaration);
             identity != symbolIdentities.end()) {
             binding.linkerName = identity->second.linkerName;
         }
-    }
+    });
 }
 
 // Expressions
 TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
     const std::size_t diagnosticStart = diags.size();
     TypeRef type = CheckExprImpl(expr);
-    if (const auto *call = dynamic_cast<const CallExpr *>(&expr)) {
+    if (const auto *call = AstCast<const CallExpr>(&expr)) {
         const bool hasNewError =
             std::ranges::any_of(diags.begin() + static_cast<std::ptrdiff_t>(diagnosticStart), diags.end(),
                                 [](const SemanticDiagnostic &diagnostic) {

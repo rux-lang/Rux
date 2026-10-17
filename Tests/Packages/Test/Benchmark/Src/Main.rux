@@ -1,0 +1,55 @@
+// Benchmarks measured with a cap no fast work reaches the time before, with a short minimum time, and through the
+// runner with a filter. The work sums into a value it hands to `Consume`, so it cannot be optimized away.
+
+import Core::Assert;
+import Test::{ BenchmarkCase, BenchmarkOptions, BenchmarkResult, Consume, Measure, RunBenchmarksWith };
+import Time::Duration;
+
+var Runs: uint64 = 0;
+var Largest: uint64 = 0;
+
+func Sum(iterations: uint64) {
+    Runs = Runs + 1;
+    if iterations > Largest { Largest = iterations; }
+    var total: uint64 = 0;
+    var index: uint64 = 0;
+    while index < iterations {
+        total = total + index;
+        index = index + 1;
+    }
+    Consume(@total);
+}
+
+func Nothing(iterations: uint64) {}
+
+func Main() -> int {
+    // Work far too fast for an hour: the runs grow until the cap and stop there.
+    var capped = BenchmarkOptions();
+    capped.minimumTime = Duration::FromSeconds(3600);
+    capped.maximumIterations = 5000;
+    let atCap = Measure(Sum, capped);
+    Assert(atCap.iterations == 5000u64, "the last run makes the capped number of iterations");
+    Assert(Largest == 5000u64, "no run goes past the cap");
+    Assert(Runs > 1u64 && Runs < 8u64, "the count grows at least twofold, so few runs reach the cap");
+
+    // A short minimum: the measured run lasts at least that long.
+    var quick = BenchmarkOptions();
+    quick.minimumTime = Duration::FromMilliseconds(2);
+    let timed = Measure(Sum, quick);
+    Assert(timed.iterations >= 1u64, "a measurement makes at least one iteration");
+    Assert((timed.elapsed.TotalNanoseconds() ?? 0i64) >= 2000000i64, "the measured run lasts the minimum");
+    Assert(timed.NanosecondsPerIteration() > 0.0, "and every iteration takes some time");
+
+    let empty = BenchmarkResult { iterations: 0, elapsed: Duration::Zero() };
+    Assert(empty.NanosecondsPerIteration() == 0.0, "a run of no iterations reports zero");
+
+    // The runner measures only the benchmarks its filter chooses.
+    let before = Runs;
+    var filtered = BenchmarkOptions();
+    filtered.filter = "Empty";
+    filtered.minimumTime = Duration::FromMilliseconds(1);
+    let cases: BenchmarkCase[2] = [BenchmarkCase { name: "Sum", run: Sum }, BenchmarkCase { name: "Empty", run: Nothing }];
+    Assert(RunBenchmarksWith(cases[..], filtered) == 0, "the runner succeeds");
+    Assert(Runs == before, "a benchmark the filter leaves out is not run");
+    return 0;
+}

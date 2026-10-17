@@ -2,6 +2,8 @@
 // compile-time values a call site can be handed.
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Object/Rcu/Rcu.h"
+#include "Syntax/Ast/MemoryOrder.h"
 
 #include <algorithm>
 #include <cassert>
@@ -27,7 +29,7 @@ const Fact &RequireSemanticFact(const Fact *fact) {
 /// The function overload resolution chose for this call. Lowering never re-resolves: the binding analysis recorded is
 /// the answer.
 const FuncDecl &SelectedFunction(const ResolvedCallableBinding &binding) {
-    const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
+    const auto *function = AstCast<const FuncDecl>(binding.selectedDeclaration);
     assert(function != nullptr && "call binding does not select a function declaration");
     if (!function) {
         std::abort();
@@ -38,7 +40,7 @@ const FuncDecl &SelectedFunction(const ResolvedCallableBinding &binding) {
 } // namespace
 
 std::optional<std::string> AstToHirContext::CompilerParamRoot(const Expr &expression) const {
-    const auto *identifier = dynamic_cast<const IdentExpr *>(&expression);
+    const auto *identifier = AstCast<const IdentExpr>(&expression);
     if (!identifier) {
         return std::nullopt;
     }
@@ -64,11 +66,12 @@ std::string AstToHirContext::LogicalCurrentFilePath() const {
 /// receivers are passed as they stand, and a slice receiver is a value the ABI still passes by address.
 bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
     const Param *receiver = method.Receiver();
-    if (!receiver || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+    if (!receiver || AstCast<const SelfTypeExpr>(receiver->type.get())) {
         return false;
     }
     const TypeRef &declared = ResolvedType(*receiver->type);
-    return declared.kind != TypeRef::Kind::Pointer && declared.kind != TypeRef::Kind::Reference && !declared.IsSlice();
+    return declared->kind != TypeRef::Kind::Pointer && declared->kind != TypeRef::Kind::Reference &&
+           !declared.IsSlice();
 }
 
 /// The receiver as the callee actually takes it. Every call site has a value or a pointer in hand and the signature
@@ -76,7 +79,7 @@ bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
 /// can be reached from.
 HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr receiver) {
     const bool isIndirect =
-        receiver->type.kind == TypeRef::Kind::Pointer || receiver->type.kind == TypeRef::Kind::Reference;
+        receiver->type->kind == TypeRef::Kind::Pointer || receiver->type->kind == TypeRef::Kind::Reference;
     if (ReceiverIsByValue(method)) {
         if (!isIndirect) {
             return receiver;
@@ -86,7 +89,7 @@ HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr 
         auto load = std::make_unique<HirUnaryExpr>();
         load->location = receiver->location;
         load->op = TokenKind::Star;
-        load->type = receiver->type.inner.front();
+        load->type = receiver->type->inner.front();
         load->operand = std::move(receiver);
         return load;
     }
@@ -96,6 +99,12 @@ HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr 
                                : TypeRef::MakeUnknown();
     if (isIndirect) {
         receiver->type = declared.IsUnknown() ? receiver->type : declared;
+        return receiver;
+    }
+    // A view receiver is the view, which a call passes by its address as it passes any view argument, so it needs no
+    // address taken; a writable view calling a read-only view's method is weakened to the view the method takes.
+    if (receiver->type.IsSlice() && declared.IsSlice()) {
+        receiver->type = declared;
         return receiver;
     }
     auto address = std::make_unique<HirUnaryExpr>();
@@ -110,16 +119,25 @@ ResolvedCallableBinding AstToHirContext::ResolvedCall(const CallExpr &call) cons
     return RequireSemanticFact(model.TryGetCallableBinding(call)).Instantiate(currentSubstitutions);
 }
 
+/// An argument as the parameter it binds takes it. A parameter is not a place the caller stores to, so nothing later
+/// converts a scalar that analysis accepted at another width: the callee would read a bool8 as a bool64, or an int64
+/// as the low words of an int128, from storage only as wide as the argument.
+HirExprPtr AstToHirContext::LowerArgumentAs(const Expr &argument, const TypeRef &parameterType) {
+    return ConvertScalar(LowerExprAs(argument, parameterType), parameterType);
+}
+
 HirExprPtr AstToHirContext::LowerDefaultArgument(const Expr &expression, const TypeRef &targetType,
                                                  const SourceLocation &callSiteLocation) {
-    if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression);
-        intrinsic && intrinsic->args.empty()) {
+    if (const auto *intrinsic = AstCast<const IntrinsicExpr>(&expression); intrinsic && intrinsic->args.empty()) {
         IntrinsicExpr callSiteIntrinsic;
         callSiteIntrinsic.location = callSiteLocation;
         callSiteIntrinsic.kind = intrinsic->kind;
-        return LowerExprAs(callSiteIntrinsic, targetType);
+        return LowerArgumentAs(callSiteIntrinsic, targetType);
     }
-    return LowerExprAs(expression, targetType);
+    const std::optional<SourceLocation> savedSite = std::exchange(sourceSiteOverride, callSiteLocation);
+    HirExprPtr lowered = LowerArgumentAs(expression, targetType);
+    sourceSiteOverride = savedSite;
+    return lowered;
 }
 
 std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,
@@ -133,17 +151,20 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
         }
     }
 
-    // Interface requirements usually omit self, whereas concrete method signatures declare it explicitly.
-    // Only a receiver present in the signature consumes a parameter-type slot.
-    const std::size_t typeOffset =
-        hasReceiver && !declaration.params.empty() && declaration.params.front().IsReceiver() ? 1 : 0;
+    // Interface function types omit the receiver even when the requirement spells it out. Concrete method types
+    // include it, so only those signatures consume a parameter-type slot.
+    const std::size_t typeOffset = hasReceiver &&
+                                           binding.dispatch != ResolvedCallableBinding::DispatchKind::Interface &&
+                                           !declaration.params.empty() && declaration.params.front().IsReceiver()
+                                     ? 1
+                                     : 0;
     const std::size_t fixedCount = binding.variadicBoundary.value_or(parameters.size());
     std::vector<HirExprPtr> arguments;
     arguments.reserve(std::max(call.args.size(), fixedCount) + (binding.variadicBoundary ? 1 : 0));
     for (std::size_t i = 0; i < std::min(call.args.size(), fixedCount); ++i) {
         const std::size_t typeIndex = typeOffset + i;
-        arguments.push_back(typeIndex + 1 < functionType.inner.size()
-                                ? LowerExprAs(*call.args[i], functionType.inner[typeIndex])
+        arguments.push_back(typeIndex + 1 < functionType->inner.size()
+                                ? LowerArgumentAs(*call.args[i], functionType->inner[typeIndex])
                                 : LowerExpr(*call.args[i]));
     }
     for (std::size_t i = arguments.size(); i < fixedCount; ++i) {
@@ -151,8 +172,8 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
                "accepted call is missing a recorded default argument");
         const std::size_t typeIndex = typeOffset + i;
         const TypeRef parameterType =
-            typeIndex + 1 < functionType.inner.size() ? functionType.inner[typeIndex] : TypeRef::MakeUnknown();
-        arguments.push_back(LowerDefaultArgument(**parameters[i]->defaultValue, parameterType, call.location));
+            typeIndex + 1 < functionType->inner.size() ? functionType->inner[typeIndex] : TypeRef::MakeUnknown();
+        arguments.push_back(LowerDefaultArgument(**parameters[i]->defaultValue, parameterType, CallSiteLocation(call)));
     }
 
     if (!binding.variadicBoundary) {
@@ -161,11 +182,27 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
 
     assert(fixedCount < parameters.size() && parameters[fixedCount]->isVariadic &&
            "Rux variadic binding has no variadic parameter");
-    const TypeRef elementType = ResolveTypeWithSubstitution(*parameters[fixedCount]->type, binding.substitutions);
+    // A constrained call binds the concrete implementation, whose generic parameters belong to its receiver rather
+    // than to the enclosing generic function. Resolve the element with that receiver's substitutions as well.
+    auto substitutions = binding.substitutions;
+    if (binding.receiverType) {
+        auto receiver = *binding.receiverType;
+        if ((receiver->kind == TypeRef::Kind::Pointer || receiver->kind == TypeRef::Kind::Reference) &&
+            !receiver->inner.empty()) {
+            receiver = receiver->inner.front();
+        }
+        substitutions.insert_or_assign("Self", receiver);
+        for (const auto &[name, type] : MethodTypeSubstitutions(receiver)) {
+            substitutions.try_emplace(name, type);
+        }
+    }
+    const TypeRef elementType = ResolveTypeWithSubstitution(*parameters[fixedCount]->type, substitutions);
     const bool singleSpread =
-        call.args.size() == fixedCount + 1 && dynamic_cast<const SpreadExpr *>(call.args[fixedCount].get()) != nullptr;
+        call.args.size() == fixedCount + 1 && AstCast<const SpreadExpr>(call.args[fixedCount].get()) != nullptr;
     if (singleSpread) {
-        HirExprPtr slice = LowerExpr(*call.args[fixedCount]);
+        // The operand is converted to the slice the way analysis accepted it, which views an array as one.
+        const auto &spread = static_cast<const SpreadExpr &>(*call.args[fixedCount]);
+        HirExprPtr slice = LowerExprAs(*spread.operand, TypeRef::MakeSlice(elementType));
         slice->type = TypeRef::MakeSlice(elementType);
         arguments.push_back(std::move(slice));
         return arguments;
@@ -175,8 +212,10 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
     slice->location = call.location;
     slice->elementType = elementType;
     slice->type = TypeRef::MakeSlice(elementType);
+    // Each element is checked against the element type the way a fixed argument is checked against its parameter, so
+    // it reaches the slice converted the same way: an int64 element of an int128 slice is the int128 it stands for.
     for (std::size_t i = fixedCount; i < call.args.size(); ++i) {
-        slice->elements.push_back(LowerExprAs(*call.args[i], elementType));
+        slice->elements.push_back(LowerArgumentAs(*call.args[i], elementType));
     }
     arguments.push_back(std::move(slice));
     return arguments;
@@ -184,6 +223,12 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
 
 void AstToHirContext::EnsureBoundFunctionInstance(const FuncDecl &declaration, const ResolvedCallableBinding &binding) {
     if (declaration.typeParams.empty()) {
+        return;
+    }
+    // A call inside a generic body names its callee's instance in terms of the body's own parameters; only an
+    // instance whose arguments are all types has a body to emit, as for a method.
+    if (std::ranges::any_of(binding.substitutions,
+                            [this](const auto &argument) { return !TypeIsConcrete(argument.second); })) {
         return;
     }
     assert(!binding.linkerName.empty() && "generic call binding is missing its linker name");
@@ -204,8 +249,8 @@ void AstToHirContext::EnsureBoundMethodInstance(const FuncDecl &method, const Re
            "generic method binding is missing its receiver or linker name");
     if (generatedMonomorphizedFuncNames.insert(binding.linkerName).second) {
         const TypeRef savedSelfType = currentSelfType;
-        currentSelfType = binding.receiverType->kind == TypeRef::Kind::Pointer ||
-                                  binding.receiverType->kind == TypeRef::Kind::Reference
+        currentSelfType = (*binding.receiverType)->kind == TypeRef::Kind::Pointer ||
+                                  (*binding.receiverType)->kind == TypeRef::Kind::Reference
                             ? *binding.receiverType
                             : TypeRef::MakePointer(*binding.receiverType);
         monomorphizedFuncs.push_back(LowerFunc(method, true, binding.substitutions, binding.linkerName));
@@ -214,13 +259,13 @@ void AstToHirContext::EnsureBoundMethodInstance(const FuncDecl &method, const Re
 }
 
 HirExprPtr AstToHirContext::LowerBoundDirectCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-    if (const auto *external = dynamic_cast<const ExternFuncDecl *>(binding.selectedDeclaration)) {
+    if (const auto *external = AstCast<const ExternFuncDecl>(binding.selectedDeclaration)) {
         TypeRef functionType = MakeFuncType(external->params, external->returnType);
         functionType.isVariadic = external->isVariadic;
         auto lowered = std::make_unique<HirCallExpr>();
         lowered->location = call.location;
         lowered->isNoReturn = external->isNoReturn;
-        lowered->type = functionType.inner.back();
+        lowered->type = functionType->inner.back();
         auto callee = std::make_unique<HirVarExpr>();
         callee->location = call.callee->location;
         // HIR-to-LIR owns the source-name to imported-symbol mapping.
@@ -228,7 +273,7 @@ HirExprPtr AstToHirContext::LowerBoundDirectCall(const CallExpr &call, const Res
         callee->type = functionType;
         lowered->callee = std::move(callee);
         for (std::size_t i = 0; i < call.args.size(); ++i) {
-            lowered->args.push_back(i < external->params.size() ? LowerExprAs(*call.args[i], functionType.inner[i])
+            lowered->args.push_back(i < external->params.size() ? LowerArgumentAs(*call.args[i], functionType->inner[i])
                                                                 : LowerExpr(*call.args[i]));
         }
         return lowered;
@@ -240,7 +285,7 @@ HirExprPtr AstToHirContext::LowerBoundDirectCall(const CallExpr &call, const Res
     auto lowered = std::make_unique<HirCallExpr>();
     lowered->location = call.location;
     lowered->isNoReturn = function.isNoReturn;
-    lowered->type = functionType.inner.back();
+    lowered->type = functionType->inner.back();
     auto callee = std::make_unique<HirVarExpr>();
     callee->location = call.callee->location;
     callee->name = binding.linkerName;
@@ -264,7 +309,7 @@ HirExprPtr AstToHirContext::LowerBoundMethodCall(const CallExpr &call, const Res
     callee->location = call.callee->location;
     callee->name = binding.linkerName;
 
-    if (const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get())) {
+    if (const auto *field = AstCast<const FieldExpr>(call.callee.get())) {
         HirExprPtr self = LowerReceiverFor(method, LowerExpr(*field->object));
         callee->type = MethodType(self->type, method, binding.substitutions);
         lowered->args.push_back(std::move(self));
@@ -274,12 +319,12 @@ HirExprPtr AstToHirContext::LowerBoundMethodCall(const CallExpr &call, const Res
         }
     }
     else {
-        assert(dynamic_cast<const PathExpr *>(call.callee.get()) != nullptr &&
+        assert(AstCast<const PathExpr>(call.callee.get()) != nullptr &&
                "method binding has neither a receiver nor an associated path");
         callee->type = AssociatedFunctionType(*binding.receiverType, method, binding.substitutions);
         lowered->args = LowerBoundArguments(call, method, binding, callee->type, false);
     }
-    lowered->type = callee->type.inner.back();
+    lowered->type = callee->type->inner.back();
     lowered->callee = std::move(callee);
     return lowered;
 }
@@ -298,7 +343,7 @@ HirExprPtr AstToHirContext::LowerBoundConstructorCall(const CallExpr &call, cons
     callee->name = binding.linkerName;
     callee->type = AssociatedFunctionType(*binding.receiverType, constructor);
     const TypeRef functionType = callee->type;
-    lowered->type = callee->type.inner.back();
+    lowered->type = callee->type->inner.back();
     lowered->callee = std::move(callee);
     lowered->args = LowerBoundArguments(call, constructor, binding, functionType, false);
     return lowered;
@@ -306,13 +351,13 @@ HirExprPtr AstToHirContext::LowerBoundConstructorCall(const CallExpr &call, cons
 
 HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
     const FuncDecl &method = SelectedFunction(binding);
-    const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get());
+    const auto *field = AstCast<const FieldExpr>(call.callee.get());
     assert(field && binding.receiverType && "interface binding is missing its receiver");
     const TypeRef &interfaceType =
-        binding.receiverType->kind == TypeRef::Kind::Reference && !binding.receiverType->inner.empty()
-            ? binding.receiverType->inner.front()
+        (*binding.receiverType)->kind == TypeRef::Kind::Reference && !(*binding.receiverType)->inner.empty()
+            ? (*binding.receiverType)->inner.front()
             : *binding.receiverType;
-    const std::string interfaceName = BaseTypeName(interfaceType.name);
+    const std::string interfaceName = BaseTypeName(interfaceType->name);
     const auto interface = interfaceDecls.find(interfaceName);
     assert(interface != interfaceDecls.end() && "interface binding names an unknown interface");
     const auto methodIt = std::ranges::find_if(interface->second->methods,
@@ -324,7 +369,7 @@ HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const 
     auto lowered = std::make_unique<HirInterfaceCallExpr>();
     lowered->location = call.location;
     lowered->methodIdx = static_cast<int>(std::distance(interface->second->methods.begin(), methodIt));
-    lowered->type = functionType.inner.back();
+    lowered->type = functionType->inner.back();
     lowered->fatPtrExpr = LowerExpr(*field->object);
     // The fat pointer supplies self; the ordinary list contains only source-level arguments.
     lowered->args = LowerBoundArguments(call, method, binding, functionType, true);
@@ -335,7 +380,7 @@ HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const 
 /// this instance is lowered, so the witness analysis recorded for that type argument names the method to call and the
 /// call is direct: a constrained generic never reaches a vtable.
 HirExprPtr AstToHirContext::LowerBoundConstrainedCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-    const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get());
+    const auto *field = AstCast<const FieldExpr>(call.callee.get());
     assert(field && binding.receiverType && "constrained binding is missing its receiver");
     const TypeRef receiverType = *binding.receiverType;
     const ResolvedConstraintWitness &witness =
@@ -356,7 +401,7 @@ HirExprPtr AstToHirContext::LowerBoundConstrainedCall(const CallExpr &call, cons
     for (auto &argument : LowerBoundArguments(call, method, binding, callee->type, true)) {
         lowered->args.push_back(std::move(argument));
     }
-    lowered->type = callee->type.inner.back();
+    lowered->type = callee->type->inner.back();
     lowered->callee = std::move(callee);
     return lowered;
 }
@@ -365,18 +410,18 @@ HirExprPtr AstToHirContext::LowerBoundIndirectCall(const CallExpr &call, const R
     auto lowered = std::make_unique<HirCallExpr>();
     lowered->location = call.location;
     lowered->callee = LowerExpr(*call.callee);
-    lowered->type = lowered->callee->type.inner.back();
+    lowered->type = lowered->callee->type->inner.back();
     const std::size_t fixedCount = binding.variadicBoundary.value_or(call.args.size());
     for (std::size_t i = 0; i < call.args.size(); ++i) {
-        lowered->args.push_back(i < fixedCount && i + 1 < lowered->callee->type.inner.size()
-                                    ? LowerExprAs(*call.args[i], lowered->callee->type.inner[i])
+        lowered->args.push_back(i < fixedCount && i + 1 < lowered->callee->type->inner.size()
+                                    ? LowerArgumentAs(*call.args[i], lowered->callee->type->inner[i])
                                     : LowerExpr(*call.args[i]));
     }
     return lowered;
 }
 
 HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
-    const auto *declaration = dynamic_cast<const EnumDecl *>(binding.selectedDeclaration);
+    const auto *declaration = AstCast<const EnumDecl>(binding.selectedDeclaration);
     assert(declaration && binding.selectedVariant && "enum constructor binding is incomplete");
     assert(binding.caseTypeForm == declaration->form && "case constructor binding lost its declaration form");
     std::vector<TypeRef> typeArguments;
@@ -388,12 +433,12 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
     auto lowered = std::make_unique<HirEnumConstructExpr>();
     lowered->location = call.location;
     lowered->form = declaration->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
-    lowered->type = constructor.inner.back();
+    lowered->type = constructor->inner.back();
     std::vector<HirPartialDropAction> completed;
     for (std::size_t i = 0; i < call.args.size(); ++i) {
         AppendFailureCleanup(lowered->failureCleanups, completed);
-        lowered->payloads.push_back(LowerExprAs(*call.args[i], constructor.inner[i]));
-        if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, constructor.inner[i], i, {},
+        lowered->payloads.push_back(LowerArgumentAs(*call.args[i], constructor->inner[i]));
+        if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, constructor->inner[i], i, {},
                                           call.args[i]->location, CaseTypeForm::Variant)) {
             completed.push_back(std::move(*cleanup));
         }
@@ -404,7 +449,7 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
 }
 
 HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
-    if (const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get())) {
+    if (const auto *field = AstCast<const FieldExpr>(call.callee.get())) {
         if (const auto root = CompilerParamRoot(*field->object)) {
             if (HirExprPtr value = LowerCompilerParamCall(*root, field->field, call)) {
                 return value;
@@ -412,15 +457,22 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         }
     }
 
-    const auto *builtinIdentifier = dynamic_cast<const IdentExpr *>(call.callee.get());
+    const auto *builtinIdentifier = AstCast<const IdentExpr>(call.callee.get());
     HirSymbol *calleeSymbol = builtinIdentifier ? currentScope->Lookup(builtinIdentifier->name) : nullptr;
     const bool isAssertion =
         calleeSymbol && (calleeSymbol->intrinsicName == "Assert" || calleeSymbol->intrinsicName == "DebugAssert");
     const bool isPanic = calleeSymbol && calleeSymbol->intrinsicName == "Panic";
     // A checked operation is emitted where it is called, so it never becomes a call at all.
     if (calleeSymbol && !calleeSymbol->intrinsicName.empty()) {
+        if (calleeSymbol->intrinsicName.starts_with("Atomic") || calleeSymbol->intrinsicName == "Fence" ||
+            calleeSymbol->intrinsicName == "SpinHint") {
+            return LowerAtomicCall(call, calleeSymbol->intrinsicName);
+        }
         if (HirExprPtr checked = LowerCheckedArithmeticCall(calleeSymbol->intrinsicName, call)) {
             return checked;
+        }
+        if (calleeSymbol->intrinsicName == "ProcessStartFrame") {
+            return LowerProcessStartFrame(call);
         }
         if (calleeSymbol->intrinsicName == "Zeroize") {
             if (HirExprPtr cleared = LowerZeroizeCall(call)) {
@@ -434,8 +486,10 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         lowered->type = TypeRef::MakeOpaque();
         lowered->sourceFile = LogicalCurrentFilePath();
         lowered->sourceFunction = currentFunctionName;
-        lowered->sourceLine = call.location.line;
-        lowered->sourceColumn = call.location.column;
+        // The report names where the program called the check, which starts at its name rather than its '('.
+        const SourceLocation callSite = CallSiteLocation(call);
+        lowered->sourceLine = callSite.line;
+        lowered->sourceColumn = callSite.column;
 
         const TypeRef stringType = TypeRef::MakeSlice(TypeRef::MakeChar8());
         auto callee = std::make_unique<HirVarExpr>();
@@ -453,7 +507,7 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
             lowered->args.push_back(LowerExprAs(*call.args[0], stringType));
         }
         else if (!disabled && call.args.size() == 2) {
-            lowered->args.push_back(LowerExprAs(*call.args[0], TypeRef::MakeBool()));
+            lowered->args.push_back(LowerArgumentAs(*call.args[0], TypeRef::MakeBool()));
             lowered->args.push_back(LowerExprAs(*call.args[1], stringType));
         }
         return lowered;
@@ -479,4 +533,66 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
     }
     std::abort();
 }
+
+// The initial stack address is a word the ELF entry stub stores under a symbol the linker defines for every executable,
+// so the call is a load of that symbol. Elsewhere there is nothing to read: Windows and macOS supply the command line
+// through system calls, and a shared library is never started by the kernel.
+HirExprPtr AstToHirContext::LowerProcessStartFrame(const CallExpr &call) {
+    const TypeRef pointerType = TypeRef::MakePointer(TypeRef::MakeUInt());
+    const bool elf = context.target.os == Target::OS::Linux || context.target.os == Target::OS::FreeBSD;
+    if (elf && context.outputKind != OutputKind::SharedLibrary) {
+        auto frame = std::make_unique<HirVarExpr>();
+        frame->location = call.location;
+        frame->type = pointerType;
+        frame->name = std::string(kProcessStartFrameSymbol);
+        return frame;
+    }
+    auto null = std::make_unique<HirLiteralExpr>();
+    null->location = call.location;
+    null->type = pointerType;
+    null->value = "0";
+    return null;
+}
+
+// An atomic intrinsic becomes a call of a builtin the LIR lowering turns into one instruction or one exclusive-access
+// loop. The value operands are lowered as the type argument, and the memory orders, which semantic analysis held to
+// cases written at the call, travel on the call rather than as values.
+HirExprPtr AstToHirContext::LowerAtomicCall(const CallExpr &call, const std::string &operation) {
+    auto lowered = std::make_unique<HirCallExpr>();
+    lowered->location = call.location;
+    TypeRef value = TypeRef::MakeOpaque();
+    if (operation != "Fence" && operation != "SpinHint") {
+        const ResolvedCallableBinding binding = ResolvedCall(call);
+        if (const auto found = binding.substitutions.find("T"); found != binding.substitutions.end()) {
+            value = found->second;
+        }
+    }
+    const bool returnsValue = operation != "AtomicStore" && operation != "Fence" && operation != "SpinHint";
+    lowered->type = returnsValue ? value : TypeRef::MakeOpaque();
+
+    auto callee = std::make_unique<HirVarExpr>();
+    callee->location = call.callee->location;
+    callee->type = TypeRef::MakeOpaque();
+    callee->name = "__builtin_atomic_" + operation;
+    lowered->callee = std::move(callee);
+
+    // The address comes first, then the values, then the orders.
+    std::size_t orderIndex = 0;
+    for (std::size_t index = 0; index < call.args.size(); ++index) {
+        if (const auto order = MemoryOrderOf(*call.args[index])) {
+            if (orderIndex == 0) {
+                lowered->memoryOrder = static_cast<std::uint8_t>(*order);
+            }
+            else {
+                lowered->failureOrder = static_cast<std::uint8_t>(*order);
+            }
+            ++orderIndex;
+            continue;
+        }
+        const bool address = index == 0 && operation != "Fence" && operation != "SpinHint";
+        lowered->args.push_back(LowerArgumentAs(*call.args[index], address ? TypeRef::MakePointer(value) : value));
+    }
+    return lowered;
+}
+
 } // namespace Rux::AstToHirDetail

@@ -582,3 +582,132 @@ TEST_CASE("interface arguments do not require importing the nested interface nam
     CHECK_FALSE(view->vtableLabel.empty());
     CHECK_EQ(ReturnedCalleeName(RequireFunctionAnywhere(package, "Direct")), "Read");
 }
+
+// Generic interfaces: a bound names its type arguments, conformance checks the types they fix, and a type parameter
+// that appears only in a bound is deduced from the method the bounded argument provides.
+constexpr const char *kCursorPrelude = R"(
+    pub interface Cursor<T> {
+        func Next(self: &var Self) -> T?;
+    }
+    pub struct Counter { at: int32; end: int32; }
+    extend Counter {
+        pub func Next(self: &var Counter) -> int32? {
+            if self.at >= self.end { return none; }
+            self.at = self.at + 1;
+            return self.at - 1;
+        }
+    }
+    pub struct Mapped<I: Cursor<T>, T, U> { source: I; transform: func(T) -> U; }
+    extend Mapped<I, T, U> {
+        pub func Next(self: &var Mapped<I, T, U>) -> U? {
+            let item = self.source.Next() ?? return none;
+            return self.transform(item);
+        }
+    }
+    pub func Map<I: Cursor<T>, T, U>(source: I, transform: func(T) -> U) -> Mapped<I, T, U> {
+        return Mapped<I, T, U> { source: source, transform: transform };
+    }
+    pub struct Taken<I: Cursor<T>, T> { source: I; left: uint; }
+    extend Taken<I, T> {
+        pub func Next(self: &var Taken<I, T>) -> T? {
+            if self.left == 0 { return none; }
+            self.left = self.left - 1;
+            return self.source.Next();
+        }
+    }
+    pub func Take<I: Cursor<T>, T>(source: I, count: uint) -> Taken<I, T> {
+        return Taken<I, T> { source: source, left: count };
+    }
+    func Double(value: int32) -> int64 { return value as int64 * 2; }
+)";
+
+TEST_CASE("a generic interface bound deduces its type argument and chains through generic types") {
+    const auto diagnostics = AnalyzeSource(std::string(kCursorPrelude) + R"(
+        func Main() -> int {
+            var total: int64 = 0;
+            for value in Take(Map(Counter { at: 0, end: 10 }, Double), 3) { total = total + value; }
+            return total as int;
+        }
+    )");
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("a public generic interface's type parameter is no type the program declares under that name") {
+    const auto diagnostics = AnalyzeSource(std::string(kCursorPrelude) + R"(
+        struct T { tag: int32; }
+        func Main() -> int {
+            let marker = T { tag: 1 };
+            return marker.tag;
+        }
+    )");
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("a generic interface bound rejects a method whose types disagree with its arguments") {
+    const auto diagnostics = AnalyzeSource(std::string(kCursorPrelude) + R"(
+        func Main() -> int {
+            var taken = Take<Counter, int64>(Counter { at: 0, end: 3 }, 2);
+            return 0;
+        }
+    )");
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(std::ranges::any_of(diagnostics, [](const SemanticDiagnostic &diagnostic) {
+        return std::ranges::any_of(diagnostic.notes, [](const std::string &note) {
+            return note.contains("returns 'int32?', but the bound requires 'int64?'");
+        });
+    }));
+}
+
+TEST_CASE("a generic interface is refused as a value type and checks its type argument counts") {
+    const auto diagnostics = AnalyzeSource(R"(
+        interface Cursor<T> {
+            func Next(self: &var Self) -> T?;
+        }
+        interface Plain {
+            func Size() -> int;
+        }
+        struct Counter { at: int32; }
+        extend Counter : Cursor {
+            func Next(self: &var Counter) -> int32? { return none; }
+        }
+        struct Sized { at: int32; }
+        extend Sized : Plain<int32> {
+            func Size(self: &Sized) -> int { return 0; }
+        }
+        func Stored(value: Cursor<int32>) -> int { return 0; }
+        func Bare<I: Cursor>(source: I) -> int { return 0; }
+        func Many<I: Cursor<int32, int64>>(source: I) -> int { return 0; }
+    )");
+    const auto reports = [&](const std::string &message) {
+        return std::ranges::any_of(diagnostics,
+                                   [&](const SemanticDiagnostic &diagnostic) { return diagnostic.message == message; });
+    };
+    CHECK(reports("generic interface 'Cursor' can only be used as a type-parameter bound"));
+    CHECK(reports("interface bound 'Cursor' takes 1 type argument, but 0 were given"));
+    CHECK(reports("interface bound 'Cursor' takes 1 type argument, but 2 were given"));
+    CHECK(reports("interface 'Cursor' takes 1 type argument, but 0 were given"));
+    CHECK(reports("interface 'Plain' takes no type arguments"));
+}
+
+TEST_CASE("a generic interface's parameters cannot carry bounds") {
+    const auto diagnostics = AnalyzeSource(R"(
+        interface Shown { func Show() -> int; }
+        interface Cursor<T: Shown> {
+            func Next(self: &var Self) -> T?;
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "type parameter 'T' of interface 'Cursor' cannot have bounds");
+}
+
+TEST_CASE("a call through a generic interface bound lowers to each instance's own method") {
+    const HirPackage package = LowerSource(std::string(kCursorPrelude) + R"(
+        func Main() -> int {
+            var total: int64 = 0;
+            for value in Map(Counter { at: 0, end: 4 }, Double) { total = total + value; }
+            return total as int;
+        }
+    )");
+    CHECK(std::ranges::any_of(package.modules.front().funcs,
+                              [](const HirFunc &function) { return function.name.contains("Map"); }));
+}

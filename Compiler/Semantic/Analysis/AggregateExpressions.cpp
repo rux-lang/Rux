@@ -9,7 +9,7 @@
 namespace Rux::SemanticDetail {
 namespace {
 [[nodiscard]] const TypeRef &ReferencedValue(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? type.inner.front() : type;
+    return type->kind == TypeRef::Kind::Reference && !type->inner.empty() ? type->inner.front() : type;
 }
 
 template <typename Range, typename Projection>
@@ -58,7 +58,7 @@ template <typename Range, typename Projection, typename Predicate>
 } // namespace
 
 bool AnalysisContext::IsIndexOperatorCall(const Expr &expression) const {
-    const auto *index = dynamic_cast<const IndexExpr *>(&expression);
+    const auto *index = AstCast<const IndexExpr>(&expression);
     return index && (indexOperators.contains(index) || indexAssignments.contains(index));
 }
 
@@ -113,6 +113,38 @@ std::optional<TypeRef> AnalysisContext::ResolveIndexAssignment(const IndexExpr &
     return valueType;
 }
 
+std::optional<TypeRef> AnalysisContext::ResolveIndexOperator(const IndexExpr &index, const TypeRef &objectType,
+                                                             const TypeRef &indexType) {
+    const std::vector<const FuncDecl *> candidates = AccessibleMethodCandidates(objectType, "[]");
+    if (candidates.empty()) {
+        return std::nullopt;
+    }
+    std::vector<const FuncDecl *> matched;
+    for (const FuncDecl *candidate : candidates) {
+        const std::vector<TypeRef> parameterTypes = ResolveOperatorParameterTypes(objectType, *candidate);
+        if (parameterTypes.size() == 1 && candidate->returnType &&
+            (parameterTypes[0].IsUnknown() || CanAssignExprTo(*index.index, indexType, parameterTypes[0]))) {
+            matched.push_back(candidate);
+        }
+    }
+    if (matched.empty()) {
+        EmitError(index.index->location, std::format("no '[]' on '{}' accepts an index of type '{}'",
+                                                     objectType.ToString(), indexType.ToString()));
+        return TypeRef::MakeUnknown();
+    }
+    if (matched.size() > 1) {
+        EmitError(index.location,
+                  std::format("index of type '{}' matches {} '[]' overloads on '{}'", indexType.ToString(),
+                              matched.size(), objectType.ToString()),
+                  {"overloads of an index operator are separated by their index type"});
+        return TypeRef::MakeUnknown();
+    }
+    const FuncDecl *method = matched.front();
+    TypeRef returnType = ResolveOperatorReturnType(objectType, *method);
+    indexOperators.insert_or_assign(&index, ResolvedIndexOperator{method, objectType, indexType, returnType});
+    return returnType;
+}
+
 void AnalysisContext::FinishIndexedAssignment(const AssignExpr &assignment, const TypeRef &valueParameterType,
                                               const TypeRef &valueType) {
     if (valueParameterType.IsUnknown() || valueType.IsUnknown()) {
@@ -148,11 +180,11 @@ bool AnalysisContext::SameStoragePlace(const Expr &left, const Expr &right) cons
 const IndexExpr *AnalysisContext::IndexOperatorInPlace(const Expr &place) const {
     const Expr *root = &place;
     while (true) {
-        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+        if (const auto *field = AstCast<const FieldExpr>(root)) {
             root = field->object.get();
             continue;
         }
-        if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+        if (const auto *index = AstCast<const IndexExpr>(root)) {
             if (indexOperators.contains(index)) {
                 return index;
             }
@@ -165,17 +197,19 @@ const IndexExpr *AnalysisContext::IndexOperatorInPlace(const Expr &place) const 
 
 std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
     const TypeRef *named = &type;
-    if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
-        named = &type.inner[0];
+    if ((type->kind == TypeRef::Kind::Pointer || type->kind == TypeRef::Kind::Reference) && !type->inner.empty()) {
+        named = &type->inner[0];
     }
     // Slice extension methods are keyed on the full element-specific spelling (e.g. `int[..]`) so `extend
     // int[..]` stays distinct from `extend char8[..]`; named types collapse to their base name so generic
     // instantiations share one method set.
-    if (named->IsSlice()) {
+    // A fixed array is keyed the same way, by its element and its length, so `extend int[3]` is the method set of
+    // exactly `int[3]`.
+    if (named->IsSlice() || ((*named)->kind == TypeRef::Kind::Array && (*named)->arrayLength)) {
         return named->ToString();
     }
-    if (named->kind == TypeRef::Kind::Named) {
-        return BaseTypeName(named->name);
+    if ((*named)->kind == TypeRef::Kind::Named) {
+        return BaseTypeName((*named)->name);
     }
     // Every primitive names its own method set, so a width added to the catalog joins without a case here.
     if (named->IsPrimitive()) {
@@ -185,26 +219,65 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
 }
 
 std::optional<TypeRef> AnalysisContext::SliceElementType(const TypeRef &type) const {
-    if (!type.IsSlice() || type.inner.empty()) {
+    if (!type.IsSlice() || type->inner.empty()) {
         return std::nullopt;
     }
-    return type.inner[0];
+    return type->inner[0];
 }
 
 std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {
     const TypeRef &value = ReferencedValue(type);
-    if (value.kind == TypeRef::Kind::Array && !value.inner.empty()) {
-        return value.inner[0];
+    if (value->kind == TypeRef::Kind::Array && !value->inner.empty()) {
+        return value->inner[0];
     }
     if (auto elementType = SliceElementType(value)) {
         // An element read out of a view is a value; the writability the element carries describes the view.
         elementType->isMut = false;
         return elementType;
     }
-    if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
-        return value.inner[0];
+    if (value->kind == TypeRef::Kind::Pointer && !value->inner.empty()) {
+        return value->inner[0];
     }
     return std::nullopt;
+}
+
+std::optional<std::vector<TypeRef>> AnalysisContext::ExpectedCaseTypeArguments(const Expr &expression,
+                                                                               const EnumDecl &declaration) {
+    if (declaration.typeParams.empty()) {
+        return std::nullopt;
+    }
+    const auto expected = expectedExpressionTypes.find(&expression);
+    if (expected == expectedExpressionTypes.end() || expected->second->kind != TypeRef::Kind::Named ||
+        BaseTypeName(expected->second->name) != BaseTypeName(EnumType(declaration)->name)) {
+        return std::nullopt;
+    }
+    std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(expected->second->name);
+    if (arguments.size() != declaration.typeParams.size()) {
+        return std::nullopt;
+    }
+    return arguments;
+}
+
+std::optional<TypeRef> AnalysisContext::ExpectedArrayElementType(const ArrayExpr &array) const {
+    const auto expected = expectedExpressionTypes.find(&array);
+    if (expected == expectedExpressionTypes.end() || array.elements.empty()) {
+        return std::nullopt;
+    }
+    const TypeRef &type = expected->second;
+    std::optional<TypeRef> element;
+    if (type->kind == TypeRef::Kind::Array && type->arrayLength == array.elements.size() && !type->inner.empty()) {
+        element = type->inner.front();
+    }
+    else if (const auto sliceElement = SliceElementType(type)) {
+        element = *sliceElement;
+        element->isMut = false;
+    }
+    // Only a destination that can tell the elements apart from each other is worth checking against: a type
+    // parameter or an unresolved element still takes its type from the elements.
+    if (!element || element->IsUnknown() || MentionsTypeParameter(*element)) {
+        return std::nullopt;
+    }
+    return element;
 }
 
 std::string AnalysisContext::GenericStructInitName(const StructInitExpr &expression) {
@@ -274,12 +347,12 @@ TypeRef AnalysisContext::StructFieldType(const TypeRef &objectType, const std::s
     // reached through a pointer -- a pointer has no name of its own, so reading them off `objectType` would leave a
     // generic instantiation looking like a bare declaration and its fields still spelled in the type parameters.
     const TypeRef &named =
-        ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-         !objectType.inner.empty())
-            ? objectType.inner[0]
+        ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+         !objectType->inner.empty())
+            ? objectType->inner[0]
             : objectType;
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> typeArguments = ParseTypeArgsFromTypeName(named.name);
+    const std::vector<TypeRef> typeArguments = ParseTypeArgsFromTypeName(named->name);
     const auto &parameters = structure->second->typeParams;
     const std::size_t count = std::min(parameters.size(), typeArguments.size());
     for (std::size_t i = 0; i < count; ++i) {
@@ -299,9 +372,13 @@ TypeRef AnalysisContext::StructFieldType(const TypeRef &objectType, const std::s
 
 void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression) {
     const auto structure = structDecls.find(NominalTypeName(expression.typeName));
+    if (structure != structDecls.end()) {
+        NoteDeclarationUse(*structure->second, expression.location);
+    }
     if (structure == structDecls.end()) {
         if (const auto unionType = unionDecls.find(NominalTypeName(expression.typeName));
             unionType != unionDecls.end()) {
+            NoteDeclarationUse(*unionType->second, expression.location);
             if (!expression.typeArgs.empty()) {
                 EmitError(expression.location, std::format("union initializer for '{}' does not accept type arguments",
                                                            expression.typeName));
@@ -459,6 +536,12 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
                       "struct initializer for '{}' requires {} type argument{}, but {} provided", expression.typeName,
                       declaration.typeParams.size(), declaration.typeParams.size() == 1 ? "" : "s",
                       expression.typeArgs.size() == 1 ? "1 was" : std::format("{} were", expression.typeArgs.size())));
+        // Without its type arguments no field type can be resolved, so the values are only checked for their own
+        // errors rather than against field types that would each report the missing parameters again.
+        for (const auto &field : expression.fields) {
+            CheckExpr(*field.value);
+        }
+        return;
     }
 
     const auto substitutions = StructTypeSubstitutions(declaration, expression.typeArgs);
@@ -471,6 +554,15 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
 
     std::unordered_map<std::string, SourceLocation> initialized;
     for (const auto &field : expression.fields) {
+        // A field's declared type is what its value is checked against, so it is known before the value is checked.
+        std::optional<TypeRef> declaredFieldType;
+        if (const auto declared = fields.find(field.name);
+            declared != fields.end() && IsMemberAccessible(declaration, declared->second->isPublic)) {
+            declaredFieldType = ResolveTypeWithSubstitution(*declared->second->type, substitutions);
+            if (!declaredFieldType->IsUnknown()) {
+                expectedExpressionTypes.insert_or_assign(field.value.get(), *declaredFieldType);
+            }
+        }
         const TypeRef valueType = CheckExpr(*field.value);
         if (const auto [first, inserted] = initialized.emplace(field.name, field.location); !inserted) {
             EmitError(field.location,
@@ -498,7 +590,9 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
             continue;
         }
 
-        const TypeRef fieldType = ResolveTypeWithSubstitution(*expectedField->second->type, substitutions);
+        const TypeRef fieldType = declaredFieldType
+                                    ? *declaredFieldType
+                                    : ResolveTypeWithSubstitution(*expectedField->second->type, substitutions);
         if (!valueType.IsUnknown() && !fieldType.IsUnknown() && !CanAssignExprTo(*field.value, valueType, fieldType)) {
             EmitError(field.location,
                       AssignmentErrorMessage(
@@ -536,8 +630,36 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
     }
 }
 
+void AnalysisContext::CheckConstantSliceBounds(const RangeExpr &range, const std::uint64_t length) {
+    // A fixed array's extent is known here, so a constant bound past it is reported now, as a constant index is.
+    const auto signedLength = static_cast<std::int64_t>(length);
+    if (range.lo) {
+        if (const auto start = EvalConstInteger(*range.lo); start && (*start < 0 || *start > signedLength)) {
+            EmitError(range.lo->location,
+                      std::format("slice start {} is out of range for an array of {} element{}", *start, length,
+                                  length == 1 ? "" : "s"),
+                      {}, std::format("valid starts are 0 through {}", length));
+        }
+    }
+    if (range.hi) {
+        if (const auto end = EvalConstInteger(*range.hi)) {
+            const std::int64_t exclusiveEnd = range.inclusive ? *end + 1 : *end;
+            if (exclusiveEnd < 0 || exclusiveEnd > signedLength) {
+                std::string help = range.inclusive
+                                     ? (length == 0 ? std::string("an empty array has no element to include")
+                                                    : std::format("valid inclusive ends are 0 through {}", length - 1))
+                                     : std::format("valid ends are 0 through {}", length);
+                EmitError(range.hi->location,
+                          std::format("slice end {} is out of range for an array of {} element{}", *end, length,
+                                      length == 1 ? "" : "s"),
+                          {}, std::move(help));
+            }
+        }
+    }
+}
+
 std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &expression) {
-    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+    if (const auto *index = AstCast<const IndexExpr>(&expression)) {
         const bool wasProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*index->object);
@@ -556,11 +678,11 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                 // duration of one call. Writability is the same question assigning into a built-in element asks: a
                 // reference or pointer carries the permission in its own type, and anything else is as writable as
                 // the place it names.
-                if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-                    !objectType.inner.empty()) {
-                    if (!objectType.inner.front().isMut) {
+                if ((objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference) &&
+                    !objectType->inner.empty()) {
+                    if (!objectType->inner.front().isMut) {
                         EmitError(index->location,
-                                  objectType.kind == TypeRef::Kind::Reference
+                                  objectType->kind == TypeRef::Kind::Reference
                                       ? std::format("cannot modify data through immutable reference '{}'",
                                                     objectType.ToString())
                                       : std::format("cannot modify data through read-only pointer '{}'",
@@ -597,6 +719,15 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                                                 ResolvedIndexOperator{method, objectType, indexType, returnType});
                 return returnType;
             }
+            // The type-only lookup above cannot adapt an index whose type its context decides, such as the tuple
+            // literal in `grid[(1, 1)]`, so the declared operators are matched against the index expression itself,
+            // exactly as `[]=` is.
+            if (const auto resolved = ResolveIndexOperator(*index, objectType, indexType)) {
+                if (readsPlace && !resolved->IsUnknown()) {
+                    CheckBorrowedPlaceRead(*index->object, index->object->location);
+                }
+                return *resolved;
+            }
         }
 
         if (readsPlace) {
@@ -609,23 +740,36 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             // A range of an array views its elements, writably when the array is a writable place; a range of a
             // slice keeps the slice's writability; and a range of a pointer views the elements it addresses, writably
             // when the pointee is, but only with an end bound, since the pointer alone has no length to run to.
-            if (objectValueType.kind == TypeRef::Kind::Array && !objectValueType.inner.empty()) {
-                const bool writable = objectType.kind == TypeRef::Kind::Reference
-                                        ? objectType.inner.front().isMut
+            if (objectValueType->kind == TypeRef::Kind::Array && !objectValueType->inner.empty()) {
+                // A flexible tail has no length to run a slice to, so its end is written, as a pointer's is.
+                if (!objectValueType->arrayLength && !indexType.RangeHasEnd()) {
+                    EmitError(index->location,
+                              std::format("cannot slice flexible array '{}' without an end bound",
+                                          objectValueType.ToString()),
+                              {"a flexible array tail has no length; the struct records how many elements it holds"},
+                              "write 'tail[..n]' or 'tail[a..b]' with the recorded count");
+                    return TypeRef::MakeUnknown();
+                }
+                if (const auto *range = AstCast<const RangeExpr>(index->index.get());
+                    range && objectValueType->arrayLength) {
+                    CheckConstantSliceBounds(*range, *objectValueType->arrayLength);
+                }
+                const bool writable = objectType->kind == TypeRef::Kind::Reference
+                                        ? objectType->inner.front().isMut
                                         : PlaceIsWritable(*index->object, objectType);
-                return TypeRef::MakeSlice(objectValueType.inner[0], writable);
+                return TypeRef::MakeSlice(objectValueType->inner[0], writable);
             }
             if (const auto elementType = SliceElementType(objectValueType)) {
                 return TypeRef::MakeSlice(*elementType, elementType->isMut);
             }
-            if (objectValueType.kind == TypeRef::Kind::Pointer && !objectValueType.inner.empty()) {
+            if (objectValueType->kind == TypeRef::Kind::Pointer && !objectValueType->inner.empty()) {
                 if (!indexType.RangeHasEnd()) {
                     EmitError(index->location,
                               std::format("cannot slice pointer '{}' without an end bound", objectType.ToString()), {},
                               "write 'p[..n]' or 'p[a..b]' to give the slice a length");
                     return TypeRef::MakeUnknown();
                 }
-                return TypeRef::MakeSlice(objectValueType.inner[0], objectValueType.inner[0].isMut);
+                return TypeRef::MakeSlice(objectValueType->inner[0], objectValueType->inner[0].isMut);
             }
             std::optional<std::string> sliceHelp;
             if (isNamedType) {
@@ -644,6 +788,20 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
         if (builtinElementType) {
+            // A fixed array's extent is known here, so a constant index past it is reported now rather than left to
+            // the run-time check every other index of an array or slice receives.
+            if (objectValueType->kind == TypeRef::Kind::Array && objectValueType->arrayLength) {
+                const std::uint64_t length = *objectValueType->arrayLength;
+                if (const auto constant = EvalConstInt(*index->index);
+                    constant && (*constant < 0 || static_cast<std::uint64_t>(*constant) >= length)) {
+                    EmitError(index->index->location,
+                              std::format("index {} is out of range for an array of {} element{}", *constant, length,
+                                          length == 1 ? "" : "s"),
+                              {},
+                              length == 0 ? std::string("an empty array has no element to index")
+                                          : std::format("valid indexes are 0 through {}", length - 1));
+                }
+            }
             return *builtinElementType;
         }
         if (!objectType.IsUnknown()) {
@@ -654,16 +812,31 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return TypeRef::MakeUnknown();
     }
 
-    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
         const bool wasProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
+        // The outermost field of a chain that starts at a local names the part read, which may have been written on
+        // its own before the whole local was.
+        std::optional<std::string> enclosingPart = partReadPath;
+        if (!partReadPath) {
+            std::string path = field->field;
+            const Expr *object = field->object.get();
+            while (const auto *inner = AstCast<const FieldExpr>(object)) {
+                path = inner->field + "." + path;
+                object = inner->object.get();
+            }
+            if (AstCast<const IdentExpr>(object)) {
+                partReadPath = std::move(path);
+            }
+        }
         const TypeRef objectType = CheckExpr(*field->object);
+        partReadPath = std::move(enclosingPart);
         checkingBorrowProjectionRoot = wasProjectionRoot;
         if (!wasProjectionRoot && !checkingPlainAssignmentTarget) {
             CheckBorrowedPlaceRead(*field, field->location);
         }
         const TypeRef &objectValueType = ReferencedValue(objectType);
-        if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength && field->field == "length") {
+        if (objectValueType->kind == TypeRef::Kind::Array && objectValueType->arrayLength && field->field == "length") {
             return TypeRef::MakeUInt();
         }
         // A slice's two members are compiler-owned, like an array's length: its shape is fixed by the runtime rather
@@ -681,7 +854,8 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
         if (objectValueType.IsRange()) {
-            const TypeRef elementType = objectValueType.inner.empty() ? TypeRef::MakeInt64() : objectValueType.inner[0];
+            const TypeRef elementType =
+                objectValueType->inner.empty() ? TypeRef::MakeInt64() : objectValueType->inner[0];
             if (field->field == "start" && objectValueType.RangeHasStart()) {
                 return elementType;
             }
@@ -693,17 +867,18 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                       {"range members are 'start' and 'end' when that bound is present"});
             return TypeRef::MakeUnknown();
         }
-        if (objectValueType.kind == TypeRef::Kind::Tuple) {
+        if (objectValueType->kind == TypeRef::Kind::Tuple) {
             try {
                 std::size_t consumed = 0;
                 const std::size_t index = std::stoul(field->field, &consumed);
                 if (consumed == field->field.size()) {
-                    if (index < objectValueType.inner.size()) {
-                        return objectValueType.inner[index];
+                    if (index < objectValueType->inner.size()) {
+                        return objectValueType->inner[index];
                     }
                     EmitError(field->location,
                               std::format("tuple index {} is out of range for a tuple with {} element{}", index,
-                                          objectValueType.inner.size(), objectValueType.inner.size() == 1 ? "" : "s"));
+                                          objectValueType->inner.size(),
+                                          objectValueType->inner.size() == 1 ? "" : "s"));
                     return TypeRef::MakeUnknown();
                 }
             }
@@ -715,17 +890,12 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
 
-        // Interface fat-pointer fields: data -> *opaque, vtable -> *opaque.
+        // An interface value is used through its methods; its data and vtable pair is not part of the language.
         if (const std::string interfaceName = NamedBaseTypeName(objectType);
             !interfaceName.empty() && currentScope->Lookup(interfaceName) &&
             currentScope->Lookup(interfaceName)->kind == Symbol::Kind::Interface) {
-            const TypeRef opaquePointer = TypeRef::MakePointer(TypeRef::MakeOpaque());
-            if (field->field == "data" || field->field == "vtable") {
-                return opaquePointer;
-            }
             EmitError(field->location,
-                      std::format("interface type '{}' has no member '{}'", objectType.ToString(), field->field),
-                      {"available interface representation members are 'data' and 'vtable'"});
+                      std::format("interface type '{}' has no member '{}'", objectType.ToString(), field->field));
             return TypeRef::MakeUnknown();
         }
 
@@ -782,17 +952,49 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return TypeRef::MakeUnknown();
     }
 
-    if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+    if (const auto *initializer = AstCast<const StructInitExpr>(&expression)) {
         CheckStructInitExpression(*initializer);
         if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(initializer->typeName); enumDecl && variant) {
             return EnumType(*enumDecl);
+        }
+        // A generic struct written without its type arguments has no type to name; its error is already reported.
+        if (const auto structure = structDecls.find(NominalTypeName(initializer->typeName));
+            structure != structDecls.end() && initializer->typeArgs.size() != structure->second->typeParams.size()) {
+            return TypeRef::MakeUnknown();
         }
         const std::string typeName = GenericStructInitName(*initializer);
         TypeRef type = ParseTypeRefFromString(typeName);
         return type.IsRange() || type.IsSlice() ? type : TypeRef::MakeNamed(typeName);
     }
 
-    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+    if (const auto *array = AstCast<const ArrayExpr>(&expression)) {
+        // An array literal whose destination fixes the element type converts each element to it, so the elements
+        // of `let values: (int32 | bool)[2] = [1i32, true]` need not agree with each other, only with the annotation.
+        if (const std::optional<TypeRef> expectedElement = ExpectedArrayElementType(*array)) {
+            bool allAccepted = true;
+            for (std::size_t index = 0; index < array->elements.size(); ++index) {
+                const auto &element = array->elements[index];
+                const TypeRef type = ReadBorrowedScalar(*element, CheckExpr(*element));
+                if (type.IsUnknown()) {
+                    continue;
+                }
+                if (!type.IsIncompleteNative() && !CanAssignExprTo(*element, type, *expectedElement)) {
+                    EmitError(element->location,
+                              std::format("array element {} has type '{}', but the array's element type is '{}'",
+                                          index + 1, type.DisplayString(), expectedElement->ToString()));
+                    allAccepted = false;
+                    continue;
+                }
+                ConsumeValue(*element, type, ValueConsumptionKind::Aggregate, element->location);
+            }
+            // A refused element was reported against the declared type, which is the whole of the problem.
+            if (!allAccepted) {
+                return TypeRef::MakeUnknown();
+            }
+            TypeRef arrayType = TypeRef::MakeArray(*expectedElement, array->elements.size());
+            ValidateStoredType(arrayType, array->location, "array value");
+            return arrayType;
+        }
         TypeRef elementType = TypeRef::MakeUnknown();
         std::size_t inferredFrom = 0;
         const Expr *inferredExpression = nullptr;
@@ -831,7 +1033,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return arrayType;
     }
 
-    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+    if (const auto *repeat = AstCast<const ArrayRepeatExpr>(&expression)) {
         const TypeRef elementType = ReadBorrowedScalar(*repeat->value, CheckExpr(*repeat->value));
         const std::optional<std::uint64_t> count = EvalArrayLength(*repeat->count);
         if (!count) {
@@ -845,7 +1047,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         return arrayType;
     }
 
-    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+    if (const auto *tuple = AstCast<const TupleExpr>(&expression)) {
         std::vector<TypeRef> elementTypes;
         for (const auto &element : tuple->elements) {
             const TypeRef type = ReadBorrowedScalar(*element, CheckExpr(*element));

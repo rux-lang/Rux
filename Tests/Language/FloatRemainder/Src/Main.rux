@@ -1,0 +1,178 @@
+// float32 and float64 `%` is the exact remainder of truncating division, with the dividend's sign, as C's fmod
+// computes it, and the run-time result must be the one the compiler folds bit for bit. x86-64 computes it with the x87
+// `fprem` loop and AArch64 through the synthesized remainder helper. The formula `x - trunc(x / y) * y` gets neither
+// right: its quotient overflows the integer it passes through once it reaches 2^31 or 2^63, and below that the division
+// and the multiplication each round.
+// Every operand passes through a function, so the operation runs rather than folds, and each result is compared by its
+// bits against a constant the compiler folds.
+
+import Core::Assert;
+import Core::float32;
+import Core::float64;
+
+func Remainder32(left: float32, right: float32) -> float32 {
+    return left % right;
+}
+
+func Remainder64(left: float64, right: float64) -> float64 {
+    return left % right;
+}
+
+/// The compound form lowers to the same remainder.
+func CompoundRemainder64(left: float64, right: float64) -> float64 {
+    var value = left;
+    value %= right;
+    return value;
+}
+
+func Bits32(value: float32) -> uint32 {
+    let address = (@value) as *uint32;
+    return *address;
+}
+
+func Bits64(value: float64) -> uint64 {
+    let address = (@value) as *uint64;
+    return *address;
+}
+
+/// The reported repro: 30000000000 / 7 does not fit the int32 the quotient went through, and the remainder came out at
+/// 7 or more.
+func Repro(x: float32, y: float32) -> int32 {
+    let r = Remainder32(x, y);
+    if r < 0.0f32 {
+        return 2;
+    }
+    if r >= 7.0f32 {
+        return 1;
+    }
+    return 0;
+}
+
+// float32
+const Huge32: float32 = 30000000000.0f32;
+const Seven32: float32 = 7.0f32;
+const HugeBySeven32: float32 = Huge32 % Seven32;
+const Mixed32: float32 = 5.5f32 % 2.0f32;
+const NegativeDividend32: float32 = -7.5f32 % 2.0f32;
+const NegativeDivisor32: float32 = 7.5f32 % -2.0f32;
+const NegativeZero32: float32 = -6.0f32 % 3.0f32;
+const PositiveZero32: float32 = 6.0f32 % -3.0f32;
+const Tenth32: float32 = 0.1f32;
+const OneByTenth32: float32 = 1.0f32 % Tenth32;
+const Hundredth32: float32 = 0.01f32;
+const TenthByHundredth32: float32 = Tenth32 % Hundredth32;
+const BelowTwo31: float32 = 2000000000.0f32 % 0.3f32;
+const ByInfinity32: float32 = -5.25f32 % float32::Infinity;
+const MaxByThree32: float32 = float32::Max % 3.0f32;
+const MaxBySubnormal32: float32 = float32::Max % 7.0e-45f32;
+const Subnormal32: float32 = 1.0e-40f32;
+const SubnormalByNormal32: float32 = Subnormal32 % 3.0f32;
+const NormalBySubnormal32: float32 = float32::MinPositive % 7.0e-45f32;
+const SubnormalBySubnormal32: float32 = Subnormal32 % 3.0e-44f32;
+
+// float64
+const Huge64: float64 = 1.0e20;
+const HugeByThree64: float64 = Huge64 % 3.0;
+const Mixed64: float64 = 5.5 % 2.0;
+const NegativeDividend64: float64 = -7.5 % 2.0;
+const NegativeDivisor64: float64 = 7.5 % -2.0;
+const NegativeZero64: float64 = -6.0 % 3.0;
+const PositiveZero64: float64 = 6.0 % -3.0;
+const OneByTenth64: float64 = 1.0 % 0.1;
+const TenthByHundredth64: float64 = 0.1 % 0.01;
+const ByInfinity64: float64 = 5.25 % -float64::Infinity;
+const MaxByThree64: float64 = float64::Max % 3.0;
+const WideGap64: float64 = 1.0e308 % 1.0e-308;
+const MaxBySubnormal64: float64 = float64::Max % 1.5e-323;
+const Subnormal64: float64 = 1.0e-310;
+const SubnormalByNormal64: float64 = Subnormal64 % 3.0;
+const NormalBySubnormal64: float64 = float64::MinPositive % 1.5e-323;
+const SubnormalBySubnormal64: float64 = Subnormal64 % 3.0e-320;
+const LargeBySeven64: float64 = 1.0e300 % 7.0;
+
+func CheckFloat32() {
+    Assert(Repro(30000000000.0f32, 7.0f32) == 0, "30000000000 % 7 lies in [0, 7)");
+    Assert(Bits32(Remainder32(Huge32, Seven32)) == Bits32(HugeBySeven32), "a quotient past 2^31 matches folding");
+    Assert(Bits32(HugeBySeven32) == 0u32, "30000001024, a multiple of 7, leaves +0");
+    Assert(Bits32(Remainder32(5.5f32, 2.0f32)) == Bits32(Mixed32), "5.5 % 2");
+    Assert(Mixed32 == 1.5f32, "5.5 % 2 is 1.5");
+    Assert(Bits32(Remainder32(-7.5f32, 2.0f32)) == Bits32(NegativeDividend32), "the dividend's sign");
+    Assert(NegativeDividend32 == -1.5f32, "-7.5 % 2 is -1.5");
+    Assert(Bits32(Remainder32(7.5f32, -2.0f32)) == Bits32(NegativeDivisor32), "not the divisor's");
+    Assert(NegativeDivisor32 == 1.5f32, "7.5 % -2 is 1.5");
+    Assert(Bits32(Remainder32(-6.0f32, 3.0f32)) == 0x80000000u32, "-6 % 3 is -0");
+    Assert(Bits32(NegativeZero32) == 0x80000000u32, "and folds to -0");
+    Assert(Bits32(Remainder32(6.0f32, -3.0f32)) == Bits32(PositiveZero32), "6 % -3");
+    Assert(Bits32(PositiveZero32) == 0u32, "6 % -3 is +0");
+    Assert(Bits32(Remainder32(1.0f32, Tenth32)) == Bits32(OneByTenth32), "1 % 0.1 is exact");
+    Assert(Bits32(Remainder32(Tenth32, Hundredth32)) == Bits32(TenthByHundredth32), "0.1 % 0.01 is exact");
+    Assert(Bits32(Remainder32(2000000000.0f32, 0.3f32)) == Bits32(BelowTwo31), "a quotient below 2^31 is exact");
+    Assert(Bits32(Remainder32(-5.25f32, float32::Infinity)) == Bits32(ByInfinity32), "x % inf");
+    Assert(ByInfinity32 == -5.25f32, "x % inf is x");
+    Assert(Bits32(Remainder32(-0.0f32, float32::Infinity)) == 0x80000000u32, "-0 % inf is -0");
+    Assert(Bits32(Remainder32(float32::Max, 3.0f32)) == Bits32(MaxByThree32), "Max % 3");
+    Assert(Bits32(Remainder32(float32::Max, 7.0e-45f32)) == Bits32(MaxBySubnormal32), "Max % a subnormal");
+    Assert(Bits32(Remainder32(Subnormal32, 3.0f32)) == Bits32(SubnormalByNormal32), "a subnormal % 3");
+    Assert(SubnormalByNormal32 == Subnormal32, "is the subnormal");
+    Assert(Bits32(Remainder32(float32::MinPositive, 7.0e-45f32)) == Bits32(NormalBySubnormal32),
+           "the smallest normal % a subnormal");
+    Assert(Bits32(Remainder32(Subnormal32, 3.0e-44f32)) == Bits32(SubnormalBySubnormal32),
+           "a subnormal % a subnormal");
+
+    let infinity = Remainder32(float32::Infinity, 2.0f32);
+    Assert(infinity != infinity, "inf % y is NaN");
+    let zero = Remainder32(1.0f32, 0.0f32);
+    Assert(zero != zero, "x % 0 is NaN");
+    let zeros = Remainder32(0.0f32, -0.0f32);
+    Assert(zeros != zeros, "0 % 0 is NaN");
+    let left = Remainder32(float32::NaN, 1.0f32);
+    Assert(left != left, "a NaN dividend propagates");
+    let right = Remainder32(1.0f32, float32::NaN);
+    Assert(right != right, "a NaN divisor propagates");
+}
+
+func CheckFloat64() {
+    Assert(Bits64(Remainder64(Huge64, 3.0)) == Bits64(HugeByThree64), "a quotient past 2^63 matches folding");
+    Assert(HugeByThree64 == 1.0, "1e20 % 3 is 1");
+    Assert(Bits64(Remainder64(1.0e300, 7.0)) == Bits64(LargeBySeven64), "1e300 % 7");
+    Assert(Bits64(Remainder64(5.5, 2.0)) == Bits64(Mixed64), "5.5 % 2");
+    Assert(Mixed64 == 1.5, "5.5 % 2 is 1.5");
+    Assert(Bits64(Remainder64(-7.5, 2.0)) == Bits64(NegativeDividend64), "the dividend's sign");
+    Assert(NegativeDividend64 == -1.5, "-7.5 % 2 is -1.5");
+    Assert(Bits64(Remainder64(7.5, -2.0)) == Bits64(NegativeDivisor64), "not the divisor's");
+    Assert(Bits64(Remainder64(-6.0, 3.0)) == 0x8000000000000000u64, "-6 % 3 is -0");
+    Assert(Bits64(NegativeZero64) == 0x8000000000000000u64, "and folds to -0");
+    Assert(Bits64(Remainder64(6.0, -3.0)) == Bits64(PositiveZero64), "6 % -3");
+    Assert(Bits64(PositiveZero64) == 0u64, "6 % -3 is +0");
+    Assert(Bits64(Remainder64(1.0, 0.1)) == Bits64(OneByTenth64), "1 % 0.1 is exact");
+    Assert(OneByTenth64 == 0.09999999999999995, "and just below 0.1");
+    Assert(Bits64(Remainder64(0.1, 0.01)) == Bits64(TenthByHundredth64), "0.1 % 0.01 is exact");
+    Assert(TenthByHundredth64 == 3.469446951953614e-18, "and the double nearest 0.1 leaves 2^-58 over");
+    Assert(Bits64(CompoundRemainder64(0.1, 0.01)) == Bits64(TenthByHundredth64), "%= is the same remainder");
+    Assert(Bits64(Remainder64(5.25, -float64::Infinity)) == Bits64(ByInfinity64), "x % -inf");
+    Assert(ByInfinity64 == 5.25, "x % -inf is x");
+    Assert(Bits64(Remainder64(float64::Max, 3.0)) == Bits64(MaxByThree64), "Max % 3");
+    Assert(Bits64(Remainder64(1.0e308, 1.0e-308)) == Bits64(WideGap64), "1e308 % 1e-308");
+    Assert(Bits64(Remainder64(float64::Max, 1.5e-323)) == Bits64(MaxBySubnormal64), "Max % a subnormal");
+    Assert(Bits64(Remainder64(Subnormal64, 3.0)) == Bits64(SubnormalByNormal64), "a subnormal % 3");
+    Assert(SubnormalByNormal64 == Subnormal64, "is the subnormal");
+    Assert(Bits64(Remainder64(float64::MinPositive, 1.5e-323)) == Bits64(NormalBySubnormal64),
+           "the smallest normal % a subnormal");
+    Assert(Bits64(Remainder64(Subnormal64, 3.0e-320)) == Bits64(SubnormalBySubnormal64),
+           "a subnormal % a subnormal");
+
+    let infinity = Remainder64(-float64::Infinity, 2.0);
+    Assert(infinity != infinity, "inf % y is NaN");
+    let zero = Remainder64(1.0, -0.0);
+    Assert(zero != zero, "x % 0 is NaN");
+    let left = Remainder64(float64::NaN, 1.0);
+    Assert(left != left, "a NaN dividend propagates");
+    let right = Remainder64(1.0, float64::NaN);
+    Assert(right != right, "a NaN divisor propagates");
+}
+
+func Main() -> int {
+    CheckFloat32();
+    CheckFloat64();
+    return 0;
+}

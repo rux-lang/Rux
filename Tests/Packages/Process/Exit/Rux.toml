@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Exit"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Process: exit and the process identifier."
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Path = { Path = "../../../../Packages/Path" }
+Process = { Path = "../../../../Packages/Process" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Process"

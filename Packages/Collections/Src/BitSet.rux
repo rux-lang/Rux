@@ -1,0 +1,200 @@
+// A set of small non-negative integers, one bit each.
+// The bits live in 64-bit words, so membership is a shift and a mask, counting is a population count per word, and
+// the set operations work a word at a time. The set grows when a bit past its length is set; reading a bit past the
+// length answers false rather than failing, since an absent bit is an unset one.
+
+import Allocator::Allocator;
+import Core::CountOnes;
+
+/// A growable set of bits. Move-only: it owns its words.
+/// @see https://rux-lang.dev/docs/api/collections/bit-set
+pub struct BitSet {
+    /// The bits, 64 to a word, lowest index in the lowest bit.
+    words: Vector<uint64>;
+    /// How many bits the set spans.
+    length: uint;
+}
+
+extend BitSet {
+    func =(self: &var BitSet, other: &BitSet);
+
+    /// An empty set that spans no bits and has allocated nothing.
+    /// @param allocator where the storage comes from
+    /// @returns the set
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#new
+    pub func BitSet(allocator: Allocator) -> BitSet {
+        return BitSet { words: Vector<uint64>(allocator), length: 0 };
+    }
+
+    /// How many bits the set spans, set or not.
+    /// @returns the length in bits
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#length
+    pub func Length(self: &BitSet) -> uint {
+        return self.length;
+    }
+
+    /// Spans `length` bits: new bits are unset, and bits past a shorter length are dropped.
+    /// @param length the length in bits
+    /// @returns nothing, or why there was no room
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#resize
+    pub func Resize(self: &var BitSet, length: uint) -> ! CollectionError {
+        let wordsNeeded = (length + 63) / 64;
+        while self.words.Length() < wordsNeeded { self.words.Push(0u64)?; }
+        self.words.Truncate(wordsNeeded);
+        // Clear the bits past the new length in its last word, so a later growth finds them unset.
+        if length % 64 != 0 {
+            let words = self.words.AsMutableSlice();
+            words[wordsNeeded - 1] = words[wordsNeeded - 1] & ((1u64 << (length % 64) as uint64) - 1u64);
+        }
+        self.length = length;
+    }
+
+    /// Whether bit `index` is set; false for one past the length.
+    /// @param index the bit
+    /// @returns whether it is set
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#get
+    pub func Get(self: &BitSet, index: uint) -> bool {
+        if index >= self.length { return false; }
+        return (self.words.AsSlice()[index / 64] & (1u64 << (index % 64) as uint64)) != 0u64;
+    }
+
+    /// Sets bit `index`, growing the set to span it.
+    /// @param index the bit
+    /// @returns nothing, or why there was no room to grow
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#set
+    pub func Set(self: &var BitSet, index: uint) -> ! CollectionError {
+        if index >= self.length { self.Resize(index + 1)?; }
+        let words = self.words.AsMutableSlice();
+        words[index / 64] = words[index / 64] | (1u64 << (index % 64) as uint64);
+    }
+
+    /// Unsets bit `index`. A bit past the length is already unset.
+    /// @param index the bit
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#reset
+    pub func Reset(self: &var BitSet, index: uint) {
+        if index >= self.length { return; }
+        let words = self.words.AsMutableSlice();
+        words[index / 64] = words[index / 64] & ~(1u64 << (index % 64) as uint64);
+    }
+
+    /// Flips bit `index`, growing the set to span it.
+    /// @param index the bit
+    /// @returns nothing, or why there was no room to grow
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#toggle
+    pub func Toggle(self: &var BitSet, index: uint) -> ! CollectionError {
+        if index >= self.length { self.Resize(index + 1)?; }
+        let words = self.words.AsMutableSlice();
+        words[index / 64] = words[index / 64] ^ (1u64 << (index % 64) as uint64);
+    }
+
+    /// How many bits are set.
+    /// @returns the count
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#count
+    pub func Count(self: &BitSet) -> uint {
+        var total: uint = 0;
+        for word in self.words.AsSlice() { total = total + CountOnes<uint64>(word) as uint; }
+        return total;
+    }
+
+    /// Whether no bit is set.
+    /// @returns whether the set is empty
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#is-empty
+    pub func IsEmpty(self: &BitSet) -> bool {
+        for word in self.words.AsSlice() {
+            if word != 0u64 { return false; }
+        }
+        return true;
+    }
+
+    /// Unsets every bit, keeping the length.
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#clear
+    pub func Clear(self: &var BitSet) {
+        let words = self.words.AsMutableSlice();
+        var index: uint = 0;
+        while index < words.length {
+            words[index] = 0u64;
+            index++;
+        }
+    }
+
+    /// The lowest set bit at or after `from`, which walks the set in order.
+    /// @param from where to start looking
+    /// @returns the bit, or `none` when no bit there or after is set
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#next-set
+    pub func NextSet(self: &BitSet, from: uint) -> uint? {
+        if from >= self.length { return none; }
+        let words = self.words.AsSlice();
+        var wordIndex = from / 64;
+        var word = words[wordIndex] & (0xFFFFFFFFFFFFFFFFu64 << (from % 64) as uint64);
+        while true {
+            if word != 0u64 {
+                var bit: uint = 0;
+                while (word & (1u64 << bit as uint64)) == 0u64 { bit++; }
+                return wordIndex * 64 + bit;
+            }
+            wordIndex++;
+            if wordIndex >= words.length { return none; }
+            word = words[wordIndex];
+        }
+        return none;
+    }
+
+    /// Sets every bit that is set in `other`, growing to span it.
+    /// @param other the other set
+    /// @returns nothing, or why there was no room to grow
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#union-with
+    pub func UnionWith(self: &var BitSet, other: &BitSet) -> ! CollectionError {
+        if other.length > self.length { self.Resize(other.length)?; }
+        let words = self.words.AsMutableSlice();
+        let others = other.words.AsSlice();
+        var index: uint = 0;
+        while index < others.length {
+            words[index] = words[index] | others[index];
+            index++;
+        }
+    }
+
+    /// Unsets every bit that is not set in `other`.
+    /// @param other the other set
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#intersect-with
+    pub func IntersectWith(self: &var BitSet, other: &BitSet) {
+        let words = self.words.AsMutableSlice();
+        let others = other.words.AsSlice();
+        var index: uint = 0;
+        while index < words.length {
+            words[index] = index < others.length ? words[index] & others[index] : 0u64;
+            index++;
+        }
+    }
+
+    /// Unsets every bit that is set in `other`.
+    /// @param other the other set
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#difference-with
+    pub func DifferenceWith(self: &var BitSet, other: &BitSet) {
+        let words = self.words.AsMutableSlice();
+        let others = other.words.AsSlice();
+        var index: uint = 0;
+        while index < words.length && index < others.length {
+            words[index] = words[index] & ~others[index];
+            index++;
+        }
+    }
+
+    /// Whether the same bits are set in both, whatever their lengths.
+    /// @param other the other set
+    /// @returns whether they hold the same members
+    /// @see https://rux-lang.dev/docs/api/collections/bit-set#equals
+    pub func Equals(self: &BitSet, other: &BitSet) -> bool {
+        let words = self.words.AsSlice();
+        let others = other.words.AsSlice();
+        let longest = words.length > others.length ? words.length : others.length;
+        var index: uint = 0;
+        while index < longest {
+            let left = index < words.length ? words[index] : 0u64;
+            let right = index < others.length ? others[index] : 0u64;
+            if left != right { return false; }
+            index++;
+        }
+        return true;
+    }
+}

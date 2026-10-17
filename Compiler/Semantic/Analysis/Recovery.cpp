@@ -4,11 +4,12 @@
 #include "Semantic/Analysis/AnalysisContext.h"
 
 #include <format>
+#include <utility>
 
 namespace Rux::SemanticDetail {
 namespace {
 bool IsBlockArm(const Expr &body) {
-    return dynamic_cast<const BlockExpr *>(&body) != nullptr;
+    return AstCast<const BlockExpr>(&body) != nullptr;
 }
 
 /// Whether a block arm ends by leaving the enclosing loop, which leaves the arm as surely as a return does.
@@ -17,7 +18,7 @@ bool EndsWithLoopExit(const Block &block) {
         return false;
     }
     const Stmt &last = *block.stmts.back();
-    return dynamic_cast<const BreakStmt *>(&last) != nullptr || dynamic_cast<const ContinueStmt *>(&last) != nullptr;
+    return AstCast<const BreakStmt>(&last) != nullptr || AstCast<const ContinueStmt>(&last) != nullptr;
 }
 } // namespace
 
@@ -124,12 +125,10 @@ TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
     RestoreTrackedFlow(continuing);
 
     ResolvedPropagation propagation;
-    propagation.native = true;
-    propagation.isResult = true;
     propagation.payloadType = success;
     propagation.failureType = error;
     propagation.returnType = currentReturnType;
-    mappedPropagations.insert_or_assign(&expression, std::move(propagation));
+    mappedPropagations.insert_or_assign(&expression, propagation);
     return success;
 }
 
@@ -139,7 +138,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
         CheckRecoveryArmsWithoutSubject(expression.arms);
         return TypeRef::MakeUnknown();
     }
-    if (subjectType.kind == TypeRef::Kind::Reference) {
+    if (subjectType->kind == TypeRef::Kind::Reference) {
         EmitError(expression.location,
                   std::format("'catch' cannot consume the borrowed value '{}'", subjectType.ToString()),
                   {"'catch' moves the success onward or the error into its arms, and a reference owns neither"},
@@ -148,7 +147,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
         return TypeRef::MakeUnknown();
     }
     if (!subjectType.IsFallible()) {
-        const bool legacy = PropagationShapeOf(subjectType).has_value();
+        const bool legacy = LegacyOutcomeShapeOf(subjectType) != LegacyOutcomeShape::None;
         EmitError(
             expression.location,
             std::format("'catch' recovers a native fallible, but the subject has type '{}'", subjectType.ToString()),
@@ -162,6 +161,10 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
     const TypeRef &error = subjectType.FallibleError();
     // The subject is evaluated and handed over once; the success passes through it and every arm takes the error.
     ConsumeValue(*expression.subject, subjectType, ValueConsumptionKind::CatchSubject, expression.subject->location);
+    // Its arms own what they are handed, whether that is the subject itself or, for a named copyable subject, the copy.
+    if (trackedFlowReachable) {
+        ownedMatchSubjects.insert(expression.subject.get());
+    }
 
     const TrackedFlow entry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits = {entry};
@@ -170,7 +173,9 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
     for (const auto &arm : expression.arms) {
         RestoreTrackedFlow(entry);
         PushScope();
+        const bool savedTakesParts = std::exchange(currentPatternTakesParts, true);
         CheckPattern(*arm.pattern, error);
+        currentPatternTakesParts = savedTakesParts;
         if (errorProperties.IsResolved() && !errorProperties.IsMovable() && PatternBindsValue(*arm.pattern)) {
             EmitError(arm.pattern->location,
                       std::format("'catch' cannot bind error payload '{}' by value because moving it is prohibited",
@@ -216,7 +221,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
     // Recovery handles every error: coverage is checked over the error payload alone.
     ValidateMatchPatterns(patterns, error);
     if (!MatchPatternsAreExhaustive(patterns, error) && !IsNativeMatchSubject(error) &&
-        !(error.kind == TypeRef::Kind::Named && EnumNamed(BaseTypeName(error.name)))) {
+        !(error->kind == TypeRef::Kind::Named && EnumNamed(BaseTypeName(error->name)))) {
         EmitError(expression.location,
                   std::format("'catch' arms do not cover every error of type '{}'", error.ToString()), {},
                   "add an 'else' arm, or bind the whole error, as in 'e => ...'");

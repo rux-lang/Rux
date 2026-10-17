@@ -1,0 +1,11 @@
+17:18: error: cannot write field 'handle' of 'empty', which holds no value
+22:17: error: cannot write field 'extra' of 'empty', which holds no value
+28:18: error: cannot write field 'handle' of 'moved', which holds no value
+36:18: error: cannot write field 'handle' of 'moved', which may hold no value
+44:18: error: cannot write field 'extra' of 'partly', which may hold no value
+49:25: error: cannot write field 'handle' of 'outer.holder', because 'outer' holds no value
+54:12: error: cannot write field '0' of 'pair', which holds no value
+59:16: error: cannot write indexed element [1] of 'handles', which holds no value
+64:10: error: cannot take the address of field 'handle' of 'empty', which holds no value
+71:21: error: cannot write field 'extra' of 'moved', which holds no value
+79:15: error: cannot write field 'value' of 'box', which holds no value

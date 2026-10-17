@@ -39,7 +39,7 @@ TEST_CASE("a sum normalizes order, nesting, and duplicates into one identity") {
     // A nested sum flattens into its members rather than becoming one member of its own.
     const TypeRef nested = TypeRef::MakeSum({TypeRef::MakeSum({a, b}), c});
     CHECK_EQ(nested, TypeRef::MakeSum({c, b, a}));
-    CHECK_EQ(nested.inner.size(), 3);
+    CHECK_EQ(nested->inner.size(), 3);
     CHECK_EQ(nested.ToString(), "ConfigError | Defaults | Options");
 }
 
@@ -63,7 +63,7 @@ TEST_CASE("sums never flatten through an optional or fallible boundary") {
 
     const TypeRef fallibleMember = TypeRef::MakeFallible(a, b);
     const TypeRef sumWithFallible = TypeRef::MakeSum({fallibleMember, a});
-    CHECK_EQ(sumWithFallible.inner.size(), 2);
+    CHECK_EQ(sumWithFallible->inner.size(), 2);
     CHECK_EQ(sumWithFallible.ToString(), "A | (A ! B)");
 }
 
@@ -93,7 +93,7 @@ TEST_CASE("fallible channels stay distinct even for one payload type") {
     CHECK_EQ(TypeRef::MakeFallible(TypeRef::MakeSum({options, Named("Defaults")}),
                                    TypeRef::MakeSum({parse, Named("IoError")}))
                  .ToString(),
-             "Defaults | Options ! IoError | ParseError");
+             "(Defaults | Options) ! (IoError | ParseError)");
 }
 
 TEST_CASE("a unit success is the type written ! E") {

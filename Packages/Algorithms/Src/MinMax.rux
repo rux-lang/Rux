@@ -1,31 +1,24 @@
 // The smallest and largest elements of a sequence, and clamping a value into a range.
-//
 // Every search here answers with an index rather than a value, because the index is the more useful answer and the
 // value is one dereference away. An empty slice has no smallest element, so the answer is `none` rather than a
 // sentinel index or a default-constructed value that was never in the sequence.
-//
 // Ties go to the first: `MinIndex` reports the earliest of several equal smallest elements, and `MaxIndex` the
 // earliest of several equal largest ones. That is a promise rather than an accident, and it is what makes a sort
 // built on these predictable.
-//
 // The plain forms need `<` on the element type. The `By` forms take a three-way comparison instead, which is what to
 // use when the element has no ordering of its own, or when the wanted order is not its own.
 
 import Core::Ordering;
 
 /// The index of the smallest element of `items`.
-///
 /// `items` is borrowed and read. Reports `none` for an empty slice, and the earliest index when several elements
 /// tie.
-///
 /// Requires `<` on the element type.
-///
 /// Cannot fail. Runs in time proportional to the length, comparing each element once, and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns the index of the smallest element, the first when several tie, or `none` when empty
-/// @see https://rux-lang.dev/docs/api/algorithms/min-index
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#min-index
 pub func MinIndex<T>(items: T[..]) -> uint? {
     if items.length == 0 { return none; }
     var best: uint = 0;
@@ -40,18 +33,14 @@ pub func MinIndex<T>(items: T[..]) -> uint? {
 }
 
 /// The index of the largest element of `items`.
-///
 /// `items` is borrowed and read. Reports `none` for an empty slice, and the earliest index when several elements
 /// tie.
-///
 /// Requires `<` on the element type.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns the index of the largest element, the first when several tie, or `none` when empty
-/// @see https://rux-lang.dev/docs/api/algorithms/max-index
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#max-index
 pub func MaxIndex<T>(items: T[..]) -> uint? {
     if items.length == 0 { return none; }
     var best: uint = 0;
@@ -66,17 +55,14 @@ pub func MaxIndex<T>(items: T[..]) -> uint? {
 }
 
 /// The index of the smallest element of `items`, with `compare` deciding.
-///
 /// `items` is borrowed and read; `compare` is called once per element after the first. Reports `none` for an empty
 /// slice, and the earliest index when several elements tie.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @returns the index of the smallest element under `compare`, or `none` when empty
-/// @see https://rux-lang.dev/docs/api/algorithms/min-index-by
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#min-index-by
 pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
     if items.length == 0 { return none; }
     var best: uint = 0;
@@ -91,17 +77,14 @@ pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
 }
 
 /// The index of the largest element of `items`, with `compare` deciding.
-///
 /// `items` is borrowed and read; `compare` is called once per element after the first. Reports `none` for an empty
 /// slice, and the earliest index when several elements tie.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @returns the index of the largest element under `compare`, or `none` when empty
-/// @see https://rux-lang.dev/docs/api/algorithms/max-index-by
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#max-index-by
 pub func MaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
     if items.length == 0 { return none; }
     var best: uint = 0;
@@ -116,28 +99,20 @@ pub func MaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
 }
 
 /// The indices of the smallest and largest elements of `items`, in one pass.
-///
 /// `items` is borrowed and read; `smallest` and `largest` are written only when this reports true. Reports false for
 /// an empty slice and writes neither. Ties go to the earliest index on both ends, exactly as the single-ended
 /// searches promise.
-///
 /// Two separate passes would compare each element twice; this compares them in pairs and so makes about three
 /// comparisons for every two elements.
-///
 /// Requires `<` on the element type.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
-/// # Safety
-///
 /// `smallest` and `largest` must be non-null and writable.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param smallest receives the index of the smallest element
 /// @param largest receives the index of the largest element
 /// @returns whether there was anything to report, which an empty sequence is not
-/// @see https://rux-lang.dev/docs/api/algorithms/min-max-index
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#min-max-index
 pub func MinMaxIndex<T>(items: T[..], smallest: *var uint, largest: *var uint) -> bool {
     if items.length == 0 { return false; }
     var low: uint = 0;
@@ -158,23 +133,17 @@ pub func MinMaxIndex<T>(items: T[..], smallest: *var uint, largest: *var uint) -
 }
 
 /// The indices of the smallest and largest elements of `items`, in one pass, with `compare` deciding.
-///
 /// `items` is borrowed and read; `smallest` and `largest` are written only when this reports true. Reports false for
 /// an empty slice and writes neither. Ties go to the earliest index on both ends.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-///
-/// # Safety
-///
 /// `smallest` and `largest` must be non-null and writable.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @param smallest receives the index of the smallest element
 /// @param largest receives the index of the largest element
 /// @returns whether there was anything to report, which an empty sequence is not
-/// @see https://rux-lang.dev/docs/api/algorithms/min-max-index-by
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#min-max-index-by
 pub func MinMaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering, smallest: *var uint,
                       largest: *var uint) -> bool {
     if items.length == 0 { return false; }
@@ -196,52 +165,42 @@ pub func MinMaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering, smalles
 }
 
 /// The smaller of two values, or `left` when neither is smaller.
-///
 /// Both are read by value and one is returned by copy. Requires `<` on the type.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param left one of the two values
 /// @param right the other
 /// @returns the smaller of the two, or `left` when they tie
-/// @see https://rux-lang.dev/docs/api/algorithms/min
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#min
 pub func Min<T>(left: T, right: T) -> T {
     if right < left { return right; }
     return left;
 }
 
 /// The larger of two values, or `left` when neither is larger.
-///
 /// Both are read by value and one is returned by copy. Requires `<` on the type.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param left one of the two values
 /// @param right the other
 /// @returns the larger of the two, or `left` when they tie
-/// @see https://rux-lang.dev/docs/api/algorithms/max
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#max
 pub func Max<T>(left: T, right: T) -> T {
     if left < right { return right; }
     return left;
 }
 
 /// `value` brought into the range `low` to `high`, inclusive at both ends.
-///
 /// All three are read by value and one is returned by copy. A `low` above `high` is an empty range with no answer
 /// that could be right, so `low` is returned — the caller passed a range it cannot have meant.
-///
 /// Requires `<` on the type.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param value the value to bring into range
 /// @param low the lowest allowed value
 /// @param high the highest allowed value
 /// @returns `value` brought into `[low, high]`
-/// @see https://rux-lang.dev/docs/api/algorithms/clamp
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#clamp
 pub func Clamp<T>(value: T, low: T, high: T) -> T {
     if high < low { return low; }
     if value < low { return low; }
@@ -250,19 +209,16 @@ pub func Clamp<T>(value: T, low: T, high: T) -> T {
 }
 
 /// `value` brought into the range `low` to `high`, with `compare` deciding.
-///
 /// All three values are read by value and one is returned by copy; `compare` is called at most three times. A `low`
 /// above `high` returns `low`, exactly as `Clamp` does.
-///
 /// Cannot fail. Runs in constant time and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param value the value to bring into range
 /// @param low the lowest allowed value
 /// @param high the highest allowed value
 /// @param compare how two elements order against each other
 /// @returns `value` brought into `[low, high]` under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/clamp-by
+/// @see https://rux-lang.dev/docs/api/algorithms/min-max#clamp-by
 pub func ClampBy<T>(value: T, low: T, high: T, compare: func(T, T) -> Ordering) -> T {
     if compare(high, low).IsLess() { return low; }
     if compare(value, low).IsLess() { return low; }

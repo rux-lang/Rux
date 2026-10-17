@@ -23,8 +23,8 @@ func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
         element.value = element.value + 7;
     }
     Assert(*destroyed == 0, "mutable iteration destroys no move-only elements");
-    var total = 0i64;
-    var tails = 0i64;
+    var total: int64 = 0;
+    var tails: int64 = 0;
     for element in vector.References() {
         total = total + element.value;
         tails = tails + element.tail;
@@ -63,8 +63,8 @@ func Main() -> int {
     Assert(*readable == 11, "read-only iteration sees the same storage");
     var copied = MutableReferenceIterator<int32>(view);
     for element in copied { *element = *element * 2; }
-    Assert(copied.Next() is *var int32, "for walks a cursor copy");
-    Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the copied cursor still borrows original elements");
+    Assert(copied.Next() == none, "for advances the cursor variable itself");
+    Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the cursor borrows the original elements");
 
     var system = SystemAllocator();
     let allocator: Allocator = system;

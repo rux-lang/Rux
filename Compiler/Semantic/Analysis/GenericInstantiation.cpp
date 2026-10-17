@@ -22,7 +22,12 @@ namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
 void AnalysisContext::QueueGenericInstantiation(const FuncDecl &decl,
-                                                const std::unordered_map<std::string, TypeRef> &substitutions) {
+                                                const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                const std::optional<SourceLocation> site) {
+    std::optional<InstantiationSite> recordedSite;
+    if (site) {
+        recordedSite = InstantiationSite{currentFile, *site};
+    }
     if (substitutions.empty()) {
         return;
     }
@@ -39,33 +44,140 @@ void AnalysisContext::QueueGenericInstantiation(const FuncDecl &decl,
     });
     if (!isConcrete) {
         if (currentFunctionDecl) {
-            deferredGenericCalls[currentFunctionDecl].push_back({&decl, substitutions});
+            deferredGenericCalls[currentFunctionDecl].push_back({&decl, substitutions, recordedSite});
         }
         return;
     }
-    pendingGenericInstantiations.push_back({&decl, substitutions});
+    pendingGenericInstantiations.push_back({&decl, substitutions, recordedSite});
 }
 
-void AnalysisContext::QueueDropMethodInstantiations() {
-    const auto queue = [&](const TypeRef &type) {
-        if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
-            return;
-        }
-        const std::string destructorName = "~" + UnqualifiedNominalName(NamedBaseTypeName(type));
-        const FuncDecl *destructor = LookupMethod(type, destructorName, {}, false);
-        if (destructor == nullptr) {
-            return;
-        }
-        QueueGenericInstantiation(*destructor, MethodTypeSubstitutions(type));
-    };
-    for (const auto &[expression, type] : expressionTypes) {
-        queue(type);
+// A generic function has no one address until its type arguments are known, and a call learns them from its
+// arguments. A name used as a value has no arguments, so the function type it is assigned to supplies them instead:
+// `let start: func(*var Packet<T, R>) -> *var opaque = Start;` instantiates `Start` for this `T` and `R`.
+std::optional<TypeRef> AnalysisContext::InstantiateFunctionReference(const IdentExpr &identifier,
+                                                                     const Symbol &symbol) {
+    const auto expected = expectedExpressionTypes.find(&identifier);
+    if (expected == expectedExpressionTypes.end() || expected->second->kind != TypeRef::Kind::Func) {
+        return std::nullopt;
     }
-    for (const auto &[node, type] : typeNodeTypes) {
-        queue(type);
+    const TypeRef &target = expected->second;
+    for (const FuncDecl *candidate : symbol.funcOverloads) {
+        if (candidate->typeParams.empty() || candidate->params.size() + 1 != target->inner.size() ||
+            std::ranges::any_of(candidate->params, [](const Param &parameter) { return parameter.isVariadic; })) {
+            continue;
+        }
+        std::unordered_set<std::string> names;
+        for (const TypeParameter &parameter : candidate->typeParams) {
+            names.insert(parameter.name);
+        }
+        std::unordered_map<std::string, TypeRef> substitutions;
+        const TypeRef generic = FunctionType(*candidate);
+        if (!DeduceTypeArgument(generic, target, names, substitutions) ||
+            substitutions.size() != candidate->typeParams.size() ||
+            !TypeArgumentsSatisfyBounds(candidate->typeParams, substitutions)) {
+            continue;
+        }
+        const TypeRef instantiated = MakeFuncTypeWithSubstitution(
+            candidate->params, candidate->returnType, substitutions, TypeParameterNames(candidate->typeParams));
+        if (!(instantiated == target)) {
+            continue;
+        }
+        ResolvedCallableBinding binding;
+        binding.dispatch = ResolvedCallableBinding::DispatchKind::Direct;
+        binding.selectedDeclaration = candidate;
+        binding.substitutions = substitutions;
+        functionReferenceBindings.insert_or_assign(&identifier, std::move(binding));
+        QueueGenericInstantiation(*candidate, substitutions, identifier.location);
+        return instantiated;
     }
-    for (const auto &[pattern, type] : patternTypes) {
-        queue(type);
+    return std::nullopt;
+}
+
+// Overloads share a name and differ by signature, so a name used as a value, with no arguments to choose by, is the
+// overload whose type its destination expects: `let f: func(int32) -> int32 = Scale;` is `Scale(value: int32)`.
+std::optional<TypeRef> AnalysisContext::SelectOverloadedFunctionValue(const Expr &reference, const Symbol &symbol) {
+    if (symbol.funcOverloads.size() < 2) {
+        return std::nullopt;
+    }
+    std::vector<std::string> notes;
+    std::optional<TypeRef> example;
+    for (const FuncDecl *overload : symbol.funcOverloads) {
+        if (!overload->typeParams.empty()) {
+            continue;
+        }
+        const TypeRef type = FunctionType(*overload);
+        example = example ? example : type;
+        notes.push_back(std::format("overload '{}' has type '{}'", symbol.name, type.ToString()));
+    }
+    const auto expected = expectedExpressionTypes.find(&reference);
+    if (expected != expectedExpressionTypes.end() && expected->second->kind == TypeRef::Kind::Func) {
+        for (const FuncDecl *overload : symbol.funcOverloads) {
+            if (overload->typeParams.empty() && FunctionType(*overload) == expected->second) {
+                RecordFunctionValue(reference, *overload);
+                return expected->second;
+            }
+        }
+        EmitError(reference.location,
+                  std::format("no overload of '{}' has type '{}'", symbol.name, expected->second.ToString()), notes);
+        return TypeRef::MakeUnknown();
+    }
+    EmitError(reference.location,
+              std::format("overloaded function '{}' has no function type here to choose an overload by", symbol.name),
+              notes,
+              example ? std::format("give the value a function type, as in 'let f: {} = {};'", example->ToString(),
+                                    symbol.name)
+                      : std::string{});
+    return TypeRef::MakeUnknown();
+}
+
+void AnalysisContext::RecordFunctionValue(const Expr &reference, const FuncDecl &function) {
+    ResolvedCallableBinding binding;
+    binding.dispatch = ResolvedCallableBinding::DispatchKind::Direct;
+    binding.selectedDeclaration = &function;
+    functionReferenceBindings.insert_or_assign(&reference, std::move(binding));
+}
+
+std::string AnalysisContext::InstantiationNote(const FuncDecl &declaration,
+                                               const std::unordered_map<std::string, TypeRef> &substitutions) const {
+    std::vector<std::string> names;
+    for (const auto &[name, type] : substitutions) {
+        names.push_back(std::format("{} = {}", name, type.ToString()));
+    }
+    std::ranges::sort(names);
+    std::string arguments;
+    for (const std::string &name : names) {
+        arguments += (arguments.empty() ? "" : ", ") + name;
+    }
+    std::string note = std::format("in '{}' instantiated with {}", declaration.name, arguments);
+    if (activeInstantiation && activeInstantiation->decl == &declaration && activeInstantiation->site) {
+        const InstantiationSite &site = *activeInstantiation->site;
+        note += std::format(" by the call at '{}':{}:{}", site.file, site.location.line, site.location.column);
+    }
+    return note;
+}
+
+void AnalysisContext::QueueDropMethodInstantiation(const TypeRef &type) {
+    if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
+        return;
+    }
+    const std::string destructorName = "~" + UnqualifiedNominalName(NamedBaseTypeName(type));
+    const FuncDecl *destructor = LookupMethod(type, destructorName, {}, false);
+    if (destructor == nullptr) {
+        return;
+    }
+    QueueGenericInstantiation(*destructor, MethodTypeSubstitutions(type));
+}
+
+void AnalysisContext::NoteGenericBodyType(const TypeRef &type) {
+    if (currentFunctionDecl == nullptr || type.IsUnknown() || !MentionsTypeParameter(type)) {
+        return;
+    }
+    genericBodyTypes[currentFunctionDecl].try_emplace(type.ToString(), type);
+}
+
+void AnalysisContext::QueueDropMethodInstantiations(const std::vector<TypeRef> &recordedTypes) {
+    for (const TypeRef &type : recordedTypes) {
+        QueueDropMethodInstantiation(type);
     }
 }
 
@@ -154,15 +266,34 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
             }
         }
 
+        // What the body holds once its parameters are known. Only an instantiation spells these types, so this is
+        // where their drop glue and destructors are asked for.
+        if (const auto it = genericBodyTypes.find(instantiation.decl); it != genericBodyTypes.end()) {
+            for (const auto &[spelling, type] : it->second) {
+                TypeRef substituted = SubstituteTypeParameters(type, instantiation.substitutions);
+                if (MentionsTypeParameter(substituted) || !ClassifyTypeProperties(substituted).IsDroppable()) {
+                    continue;
+                }
+                LayoutOfTypeRef(substituted);
+                QueueDropMethodInstantiation(substituted);
+                instantiatedTypes.push_back(substituted);
+            }
+        }
+
+        const PendingGenericInstantiation *savedInstantiation = std::exchange(activeInstantiation, &instantiation);
         ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
+        ValidateDeferredAtomicChecks(*instantiation.decl, instantiation.substitutions);
         ValidateDeferredPatternChecks(*instantiation.decl, instantiation.substitutions);
+        activeInstantiation = savedInstantiation;
         if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
             for (const DeferredGenericCall &call : it->second) {
                 std::unordered_map<std::string, TypeRef> substitutions;
                 for (const auto &[param, type] : call.substitutions) {
                     substitutions.emplace(param, SubstituteTypeParameters(type, instantiation.substitutions));
                 }
-                QueueGenericInstantiation(*call.callee, substitutions);
+                QueueGenericInstantiation(*call.callee, substitutions,
+                                          call.site ? std::optional<SourceLocation>(call.site->location)
+                                                    : std::nullopt);
             }
         }
 
@@ -171,5 +302,7 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
         currentFile = savedFile;
         currentScope = savedScope;
     }
+    // Every entry was taken out above, so a later round validates only what is queued after this one.
+    pendingGenericInstantiations.clear();
 }
 } // namespace Rux::SemanticDetail

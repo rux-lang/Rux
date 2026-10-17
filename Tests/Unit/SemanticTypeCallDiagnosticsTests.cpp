@@ -1,6 +1,7 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/SemanticAnalyzer.h"
+#include "SemanticTestSupport.h"
 #include "Syntax/Parser/Parser.h"
 
 #include <algorithm>
@@ -21,6 +22,17 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     REQUIRE_FALSE(parsed.HasErrors());
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     return analyzer.Analyze().diagnostics;
+}
+
+/// The errors analysis reports for `source`, without the warnings an unused binding draws.
+std::vector<SemanticDiagnostic> AnalyzeErrors(const std::string &source) {
+    std::vector<SemanticDiagnostic> errors;
+    for (SemanticDiagnostic &diagnostic : AnalyzeSource(source)) {
+        if (diagnostic.severity == Diagnostic::Severity::Error) {
+            errors.push_back(std::move(diagnostic));
+        }
+    }
+    return errors;
 }
 
 HirPackage LowerSource(const std::string &source) {
@@ -190,6 +202,168 @@ TEST_CASE("call arity diagnostics distinguish required defaulted and variadic pa
     CHECK_EQ(diagnostics[2].message, "call to 'Collect' expects at least 1 argument, but 0 were provided");
     CHECK_EQ(diagnostics[3].message,
              "argument 2 to 'Collect' has type 'bool8', but variadic parameter 'values' requires 'int'");
+}
+
+TEST_CASE("a method takes variadic and defaulted arguments the way a function does") {
+    const auto accepted = AnalyzeErrors(R"(
+        struct Total { base: int128; }
+        extend Total {
+            func Sum(self: &Total, values: int128...) -> int128 { return self.base; }
+            func Add(self: &var Total, label: int32, values: int64...) {}
+            func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
+            func Pick<T>(self: &Total, index: uint, values: T...) -> T { return values[index]; }
+            func Of(values: int128...) -> Total { return Total { base: 0i128 }; }
+        }
+        extend int64 {
+            func Plus(self: int64, values: int64...) -> int64 { return self; }
+        }
+        func Main() {
+            var total = Total { base: 0i128 };
+            let word: int64 = 1i64;
+            let half: int32 = 2i32;
+            let values: int128[2] = [1i128, 2i128];
+            let empty = total.Sum();
+            let one = total.Sum(word);
+            let many = total.Sum(word, half, 3i128);
+            let spread = total.Sum(values...);
+            total.Add(1i32);
+            total.Add(1i32, word, half);
+            let scaled = total.Scale(3i64);
+            let given = total.Scale(3i64, 4i64);
+            let picked = total.Pick(0u, half, half);
+            let plus = word.Plus(half, word);
+            let built = Total::Of(word, half);
+        }
+    )");
+    CAPTURE(accepted.empty() ? std::string{} : accepted[0].message);
+    CHECK(accepted.empty());
+
+    const auto diagnostics = AnalyzeErrors(R"(
+        struct Total { base: int64; }
+        extend Total {
+            func Add(self: &Total, label: int32, values: int64...) {}
+            func Sum(self: &Total, values: int32...) -> int64 { return self.base; }
+            func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
+        }
+        func Main() {
+            let total = Total { base: 1i64 };
+            let values: int32[2] = [1i32, 2i32];
+            total.Add();
+            total.Sum(1i64);
+            total.Sum(1i32, values...);
+            total.Scale(1i64, 2i64, 3i64);
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "call to 'Add' expects at least 1 argument, but 0 were provided");
+    CHECK_EQ(diagnostics[1].message,
+             "argument 1 to 'Sum' has type 'int64', but variadic parameter 'values' requires 'int32'");
+    CHECK_EQ(diagnostics[2].message,
+             "spread argument to 'Sum' must be the only argument for variadic parameter 'values'");
+    CHECK_EQ(diagnostics[3].message, "call to 'Scale' expects between 1 and 2 arguments, but 3 were provided");
+}
+
+TEST_CASE("a method called through its type takes its receiver as the first argument") {
+    const auto accepted = AnalyzeErrors(R"(
+        struct Pair { a: int32; b: int32; }
+        extend Pair {
+            func Get(self: &Pair) -> int32 { return self.a; }
+            func Bump(self: &var Pair, by: int32 = 1i32) { self.a += by; }
+            func Same(self: Pair, other: Pair) -> bool { return self.a == other.a; }
+            func Sum(self: &Pair, values: int64...) -> int64 { return 0i64; }
+            func Of(a: int32) -> Pair { return Pair { a: a, b: 0i32 }; }
+        }
+        extend int64 {
+            func Plus(self: int64, values: int64...) -> int64 { return self; }
+        }
+        func Main() {
+            var p = Pair { a: 1i32, b: 2i32 };
+            let got = Pair::Get(p);
+            Pair::Bump(p);
+            Pair::Bump(p, 3i32);
+            let same = Pair::Same(p, p);
+            let empty = Pair::Sum(p);
+            let many = Pair::Sum(p, 1i32, 2i64);
+            let values: int64[2] = [1i64, 2i64];
+            let spread = Pair::Sum(p, values...);
+            let built = Pair::Of(4i32);
+            let plus = int64::Plus(1i64, 2i32);
+        }
+    )");
+    CAPTURE(accepted.empty() ? std::string{} : accepted[0].message);
+    CHECK(accepted.empty());
+
+    const auto diagnostics = AnalyzeErrors(R"(
+        struct Pair { a: int32; b: int32; }
+        extend Pair {
+            func Get(self: &Pair) -> int32 { return self.a; }
+            func Bump(self: &var Pair, by: int32 = 1i32) { self.a += by; }
+            func Same(self: Pair, other: Pair) -> bool { return self.a == other.a; }
+            func Sum(self: &Pair, values: int64...) -> int64 { return 0i64; }
+        }
+        func Main() {
+            let q = Pair { a: 1i32, b: 2i32 };
+            let missing = Pair::Get();
+            let one = Pair::Same(q);
+            Pair::Bump(q);
+            let wrong = Pair::Sum(1i64);
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "call to 'Pair::Get' expects 1 argument, but 0 were provided");
+    CHECK_EQ(diagnostics[1].message, "call to 'Pair::Same' expects 2 arguments, but 1 was provided");
+    CHECK_EQ(diagnostics[2].message, "argument 1 to 'Pair::Bump' cannot borrow immutable 'q' as '&var Pair'");
+    CHECK_EQ(diagnostics[3].message,
+             "argument 1 to 'Pair::Sum' has type 'int64', but parameter 'self' requires '&Pair'");
+}
+
+TEST_CASE("free overloads select by every variadic element and exact fixed arity") {
+    const auto accepted = AnalyzeErrors(R"(
+        func Pick(values: int32...) -> int32 { return 1i32; }
+        func Pick(values: float64...) -> int32 { return 2i32; }
+        func Exact(value: int32) -> int32 { return 1i32; }
+        func Exact(value: int32, extra: int32 = 0i32) -> int32 { return 2i32; }
+        func Main() {
+            let ints = Pick(1i32, 2i32);
+            let floats = Pick(1.0f64, 2.0f64);
+            let values: int32[2] = [1i32, 2i32];
+            let spread = Pick(values...);
+            let exact = Exact(1i32);
+        }
+    )");
+    CAPTURE(accepted.empty() ? std::string{} : accepted[0].message);
+    CHECK(accepted.empty());
+    const auto ambiguous = AnalyzeErrors(R"(
+        func Pick(values: int32...) -> int32 { return 1i32; }
+        func Pick(values: float64...) -> int32 { return 2i32; }
+        func Main() { let empty = Pick(); }
+    )");
+    REQUIRE_EQ(ambiguous.size(), 1);
+    CHECK(ambiguous[0].message.find("ambiguous") != std::string::npos);
+}
+
+TEST_CASE("a named array spreads only into a variadic parameter of its own element type") {
+    const auto diagnostics = AnalyzeErrors(R"(
+        func Sum(values: int64...) -> int64 { return 0i64; }
+        struct Total { base: int64; }
+        extend Total {
+            func Sum(self: &Total, values: int64...) -> int64 { return self.base; }
+        }
+        func Main() {
+            let narrow: int32[2] = [1i32, 2i32];
+            let total = Total { base: 0i64 };
+            let a = Sum(narrow...);
+            let b = total.Sum(narrow...);
+            let view: int64[..] = narrow;
+        }
+    )");
+    // Viewed in place, an `int32` array would be read as half as many `int64` values.
+    REQUIRE_EQ(diagnostics.size(), 3);
+    const std::string spread =
+        "argument 1 to 'Sum' has type 'int32[2]', but variadic parameter 'values' requires 'int64[..]'";
+    CHECK_EQ(diagnostics[0].message, spread);
+    CHECK_EQ(diagnostics[1].message, spread);
+    CHECK_EQ(diagnostics[2].message, "cannot assign 'int32[2]' to 'int64[..]'");
 }
 
 TEST_CASE("overload failures list candidate signatures with declaration context") {
@@ -477,4 +651,149 @@ TEST_CASE("a cast between two concrete types is still rejected where it is writt
 
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].message, "cannot cast value of type 'Point' to 'int32'");
+}
+
+TEST_CASE("a literal format string is counted against the variadic arguments after it") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Show(#Format() format: char8[..], values: int32...) {}
+        func Main() {
+            let one = 1i32;
+            Show("{} {}", one);
+            Show("{}", one, one);
+            Show("{} {:>4} {{}} }}", one, one);
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "format string has 2 placeholders, but 1 argument was provided");
+    CHECK_EQ(diagnostics[0].location.line, 5);
+    CHECK_EQ(diagnostics[0].location.column, 18);
+    REQUIRE_FALSE(diagnostics[0].notes.empty());
+    CHECK(diagnostics[0].notes.front().contains("format parameter 'format' of 'Show' declared at"));
+    REQUIRE(diagnostics[0].help.has_value());
+    CHECK_EQ(*diagnostics[0].help, "pass one argument for each '{}' placeholder");
+    CHECK_EQ(diagnostics[1].message, "format string has 1 placeholder, but 2 arguments were provided");
+}
+
+TEST_CASE("a format string the compiler cannot count is left to the run-time check") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Show(#Format() format: char8[..], values: int32...) {}
+        func Plain(format: char8[..], values: int32...) {}
+        func Main() {
+            let one = 1i32;
+            let pattern = "{} {}";
+            Show(pattern, one);
+            let values: int32[2] = [1i32, 2i32];
+            Show("{}", values[..]...);
+            Show("{0} {name}", one);
+            Show("{", one);
+            Plain("{} {}", one);
+            Show("\u{7B}\u{7D}", one);
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("the format check follows the attribute across packages, not a package name") {
+    const std::string dependency = R"(
+        pub func Say(#Format() format: char8[..], values: int32...) {}
+        pub func Echo(format: char8[..], values: int32...) {}
+    )";
+    const auto imported = Rux::Testing::SemanticTestSupport::AnalyzeWithDep(R"(
+        import Talk::{ Echo, Say };
+        func Main() -> int {
+            Say("{} {} {}", 1i32, 2i32);
+            Echo("{} {} {}", 1i32, 2i32);
+            return 0;
+        }
+    )",
+                                                                            "Talk", dependency);
+    REQUIRE_EQ(imported.size(), 1);
+    CHECK_EQ(imported[0].message, "format string has 3 placeholders, but 2 arguments were provided");
+}
+
+TEST_CASE("a format parameter must be a UTF-8 string slice") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Show(#Format() format: int32, values: int32...) {}
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message,
+             "'#Format' parameter 'format' has type 'int32', but a format string must be 'char8[..]'");
+}
+
+TEST_CASE("a method call whose argument the method cannot take is reported, not left untyped") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Sink { count: uint; }
+        extend Sink {
+            func Push(self: &var Sink, value: char8) -> ! int32 { self.count = self.count + 1; }
+            func Take(value: char8) -> uint { return 1; }
+        }
+        func Append(sink: &var Sink) -> ! int32 {
+            if sink.count == 0 {
+                sink.Push('z')?;
+            }
+            let taken = Sink::Take('y');
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message,
+             "no matching overload for method 'Push' on type '&var Sink' with argument types (char32)");
+    CHECK(diagnostics[1].message.find("'Sink::Take'") != std::string::npos);
+}
+
+// Overload ranking: conversions decide first, exact arity only breaks ties, and methods follow the same rule.
+TEST_CASE("an overload whose arguments convert better wins over one that only matches the arity") {
+    const auto errors = AnalyzeErrors(R"(
+        func E(x: int64) -> bool { return true; }
+        func E(x: int32, y: int32 = 0) -> int8 { return 1; }
+        func F(x: int64) -> bool { return true; }
+        func F(values: int32...) -> int8 { return 1; }
+        func D(x: int32) -> int8 { return 1; }
+        func D(x: int32, y: int32 = 1) -> bool { return true; }
+        func Main() -> int {
+            let fromDefault: int8 = E(1i32);
+            let fromVariadic: int8 = F(1i32);
+            let exact: int8 = D(2i32);
+            return 0;
+        }
+    )");
+    CHECK(errors.empty());
+}
+
+TEST_CASE("overloads tied on conversions and neither filled exactly are ambiguous") {
+    const auto errors = AnalyzeErrors(R"(
+        func Def(a: int32, b: int32 = 0) -> int { return 0; }
+        func Def(a: int32, rest: int32...) -> int { return 1; }
+        func Main() -> int { return Def(1i32); }
+    )");
+    REQUIRE_EQ(errors.size(), 1);
+    CHECK(errors[0].message.contains("call to 'Def' is ambiguous"));
+}
+
+TEST_CASE("method overloads are ranked as function overloads are, whatever their order") {
+    const auto errors = AnalyzeErrors(R"(
+        struct S { value: int32; }
+        extend S {
+            func E(self: &S, x: int64) -> bool { return true; }
+            func E(self: &S, x: int32, y: int32 = 0) -> int8 { return 1; }
+            func Wide(self: &S, x: int128) -> int { return 0; }
+            func Wide(self: &S, x: int64) -> int { return 1; }
+            func Narrow(self: &S, x: int64) -> int { return 1; }
+            func Narrow(self: &S, x: int128) -> int { return 0; }
+        }
+        func Main() -> int {
+            let s = S { value: 0 };
+            let picked: int8 = s.E(1i32);
+            let associated: int8 = S::E(s, 1i32);
+            let first = s.Wide(1i32);
+            let second = s.Narrow(1i32);
+            return 0;
+        }
+    )");
+    REQUIRE_EQ(errors.size(), 2);
+    CHECK(errors[0].message.contains("call to method 'Wide' is ambiguous"));
+    CHECK(errors[1].message.contains("call to method 'Narrow' is ambiguous"));
 }

@@ -1,27 +1,22 @@
 // The Darwin ABI: libSystem's own entry points, under the symbols it exports.
-//
 // **Apple does not support calling the kernel directly.** The trap numbers are private, they have changed between
 // releases, and a binary that issues its own `syscall` or `svc` is not a binary Apple undertakes to keep running --
 // on Apple Silicon the trap interface is not reachable from ordinary code at all. libSystem is the ABI, and this
 // package binds it. That is the difference between this package and the Linux and FreeBSD ones, which do call the
 // kernel directly because those kernels publish a stable numbering.
-//
 // Every declaration here reports failure the way C does: `-1` and a positive `errno`. The wrappers elsewhere in this
 // package fold that into one value with `Errors::Normalize`, so nothing above them has to look in two places.
 
 import Core::{ #target };
 /// The library every Darwin interface is reached through.
-///
 /// A single dynamic library re-exporting libc, libm, libpthread and the rest; there is no separate `libc.dylib` to
 /// link on Apple platforms.
-///
-/// @see https://rux-lang.dev/docs/api/macos/system-lib
+/// @see https://rux-lang.dev/docs/api/macos/dynamic#system-lib
 pub const SystemLib = "libSystem.B.dylib";
 
 #Link(SystemLib)
 extern {
     // Returns the address of the calling thread's errno
-    //
     // Darwin has no errno variable: the storage is per thread and reached only through this accessor.
     // https://keith.github.io/xcode-man-pages/intro.2.html
     func __error() -> *var int32;
@@ -39,7 +34,6 @@ extern {
     func close(fd: int32) -> int32;
 
     // Opens a path relative to a directory descriptor; returns a descriptor, or -1
-    //
     // The mode is variadic because libSystem follows the C declaration. This matters on Apple Silicon, whose ABI
     // places variadic arguments differently from fixed arguments.
     // https://keith.github.io/xcode-man-pages/open.2.html
@@ -50,7 +44,6 @@ extern {
     func lseek(fd: int32, offset: int64, whence: int32) -> int64;
 
     // Flushes a descriptor's writes toward the device; returns zero, or -1
-    //
     // On Darwin this does not guarantee the device has written the data. F_FULLFSYNC through fcntl is what does,
     // which is a difference from every other supported system and the reason a durable write needs more here.
     // https://keith.github.io/xcode-man-pages/fsync.2.html
@@ -110,7 +103,6 @@ extern {
     func utimensat(directoryFd: int32, path: *char8, times: *opaque, flags: int32) -> int32;
 
     // Reads directory entries in the 64-bit-inode layout; returns the bytes filled, zero at the end, or -1
-    //
     // The plain readdir symbol on x86-64 resolves to the 32-bit-inode variant with a different record layout, so
     // this is the one entry point whose records are the same on both architectures.
     // https://keith.github.io/xcode-man-pages/getdirentries.2.html
@@ -134,23 +126,19 @@ extern {
     func madvise(address: *opaque, length: uint, advice: int32) -> int32;
 
     // Ends the process; does not return
-    //
     // An extern block does not take a #NoReturn() attribute, so this is declared as an ordinary call that happens
     // never to come back.
     // https://keith.github.io/xcode-man-pages/exit.3.html
     func _exit(status: int32);
 
     /// Reports the system page size, in bytes.
-    ///
     /// Darwin's page size is not the same on every machine: Apple Silicon uses 16 KiB where x86-64 uses 4 KiB, which
     /// is why this is asked rather than assumed. Cannot fail — a process that could not be told its own page size
     /// could not have been started.
-    ///
     /// `Memory::QueryPageSize` is the wrapper to call; this is the raw entry point it binds, and is the only
     /// declaration in this block that is reachable from outside the package.
-    ///
     /// @returns the page size in bytes
-    /// @see https://rux-lang.dev/docs/api/macos/getpagesize
+    /// @see https://rux-lang.dev/docs/api/macos/memory#getpagesize
     pub func getpagesize() -> int32;
 
     // Returns the calling process's identifier; cannot fail
@@ -158,13 +146,11 @@ extern {
     func getpid() -> int32;
 
     // Reads a clock into a timespec; returns zero, or -1
-    //
     // Available since macOS 10.12. Earlier releases have only gettimeofday and the mach clock.
     // https://keith.github.io/xcode-man-pages/clock_gettime.3.html
     func clock_gettime(clockId: int32, time: *var Timespec) -> int32;
 
     // Reads the granularity a clock advances by into a timespec; returns zero, or -1
-    //
     // Available since macOS 10.12, alongside clock_gettime.
     // https://keith.github.io/xcode-man-pages/clock_getres.3.html
     func clock_getres(clockId: int32, resolution: *var Timespec) -> int32;
@@ -178,27 +164,82 @@ extern {
     func nanosleep(request: *Timespec, remaining: *var Timespec) -> int32;
 
     // Fills a buffer with unpredictable bytes; cannot fail
-    //
     // Darwin's generator is always seeded and this call never blocks and never reports failure, which is why it
     // returns nothing.
     // https://keith.github.io/xcode-man-pages/arc4random.3.html
     func arc4random_buf(buffer: *var opaque, length: uint);
 
-    // Loads a shared object and returns a handle, or null
-    // https://keith.github.io/xcode-man-pages/dlopen.3.html
-    func dlopen(filename: *char8, flags: int32) -> *var opaque;
+    /// The address of the process's argument count.
+    /// dyld fills it before the program starts, from the stack the kernel built. The count belongs to the process for
+    /// its whole life and must not be written.
+    /// @returns the address of the argument count, which is never null
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-argc
+    /// @see https://keith.github.io/xcode-man-pages/environ.7.html
+    pub func _NSGetArgc() -> *int32;
 
-    // Finds a symbol in a loaded object and returns its address, or null
-    // https://keith.github.io/xcode-man-pages/dlsym.3.html
-    func dlsym(handle: *var opaque, symbol: *char8) -> *var opaque;
+    /// The address of the process's argument vector.
+    /// The vector holds the argument count's worth of NUL-terminated byte strings followed by a null, all owned by the
+    /// process for its whole life.
+    /// @returns the address of the argument vector, which is never null
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-argv
+    /// @see https://keith.github.io/xcode-man-pages/environ.7.html
+    pub func _NSGetArgv() -> ***char8;
 
-    // Drops one reference to a loaded object; returns zero on success
-    // https://keith.github.io/xcode-man-pages/dlclose.3.html
-    func dlclose(handle: *var opaque) -> int32;
+    /// Copies the path of the process's executable into `buffer`, NUL-terminated.
+    /// The path is the one the executable was loaded by, which may be relative or pass through symbolic links. When
+    /// `buffer` is too short nothing is copied and `size` is set to the size needed.
+    /// @param buffer receives the path
+    /// @param size the buffer's size in bytes, or the size needed when it is too short
+    /// @returns zero on success, or -1 when the buffer is too short
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-executable-path
+    /// @see https://keith.github.io/xcode-man-pages/dyld.3.html
+    pub func _NSGetExecutablePath(buffer: *var char8, size: *var uint32) -> int32;
 
-    // Reports the most recent loader error and clears it, or returns null
-    // https://keith.github.io/xcode-man-pages/dlerror.3.html
-    func dlerror() -> *char8;
+    /// The address of the process's environment vector.
+    /// The vector holds NUL-terminated `name=value` byte strings ended by a null. It is the C library's own `environ`,
+    /// so a call that changes the environment may replace the vector it points to.
+    /// @returns the address of the environment vector, which is never null
+    /// @see https://rux-lang.dev/docs/api/macos/process#ns-get-environ
+    /// @see https://keith.github.io/xcode-man-pages/environ.7.html
+    pub func _NSGetEnviron() -> ***char8;
+
+    /// Loads a shared object and returns a handle to it, or null on failure.
+    /// A name without a slash is resolved by the loader's own search rules, and one with a slash as a path. A second
+    /// call for an object already loaded returns the same handle and raises its reference count rather than loading
+    /// it twice. Failure is reported through `dlerror`, not errno.
+    /// @param filename a NUL-terminated name or path, or null for the main program
+    /// @param flags `RTLD_LAZY` or `RTLD_NOW`, combined with the other `RTLD_*` flags
+    /// @returns a handle for `dlsym` and `dlclose`, or null with the reason in `dlerror`
+    /// @see https://rux-lang.dev/docs/api/macos/dynamic#dlopen
+    /// @see https://keith.github.io/xcode-man-pages/dlopen.3.html
+    pub func dlopen(filename: *char8, flags: int32) -> *var opaque;
+
+    /// Finds a symbol in a loaded object and returns its address, or null.
+    /// A null return is ambiguous, since a symbol whose address is legitimately zero exists. Clear `dlerror` by calling
+    /// it, then call this, then read `dlerror` again to tell the two apart.
+    /// @param handle a handle from `dlopen`
+    /// @param symbol the NUL-terminated symbol name
+    /// @returns the symbol's address, or null
+    /// @see https://rux-lang.dev/docs/api/macos/dynamic#dlsym
+    /// @see https://keith.github.io/xcode-man-pages/dlsym.3.html
+    pub func dlsym(handle: *var opaque, symbol: *char8) -> *var opaque;
+
+    /// Drops one reference to a loaded object, unloading it when the last one goes.
+    /// Every address obtained from the object through `dlsym` becomes invalid once it is actually unloaded, which this
+    /// gives no way to observe.
+    /// @param handle a handle from `dlopen`
+    /// @returns zero on success, and non-zero with the reason in `dlerror`
+    /// @see https://rux-lang.dev/docs/api/macos/dynamic#dlclose
+    /// @see https://keith.github.io/xcode-man-pages/dlclose.3.html
+    pub func dlclose(handle: *var opaque) -> int32;
+
+    /// Reports the most recent loader error and clears it, or returns null when there is none.
+    /// The message points at storage the loader owns and a later call may reuse. Reading it clears the error, so two
+    /// calls in a row report the second as no error at all.
+    /// @returns a NUL-terminated message, or null
+    /// @see https://rux-lang.dev/docs/api/macos/dynamic#dlerror
+    /// @see https://keith.github.io/xcode-man-pages/dlerror.3.html
+    pub func dlerror() -> *char8;
 }
 
 // `fstatat` is the one entry point whose symbol depends on the architecture. Darwin grew a 64-bit `ino_t` after

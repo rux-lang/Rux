@@ -1,0 +1,191 @@
+// A logger that writes records to a stream of its own.
+
+import Allocator::Allocator;
+import Io::{ IoError, WriteAll, Writer };
+import Log::{ CompiledLevel, Field, Level, LogFormat, NoFields, WriteRecord };
+import Text::StringBuilder;
+
+/// Writes records at or above a level to a stream, each as one write. Not copied.
+/// A logging call never fails: the first failure to write is kept for `Failure` to report, and the records after it
+/// are still attempted. A logger is used by one thread at a time; the process-wide functions such as `Info` are the
+/// ones to share between threads.
+/// @see https://rux-lang.dev/docs/api/log/logger#logger
+pub struct Logger {
+    sink: Writer;
+    format: LogFormat;
+    minimum: Level;
+    timestamps: bool;
+    buffer: StringBuilder;
+    context: Field[..];
+    failure: IoError?;
+}
+
+extend Logger {
+    func =(self: &var Logger, other: &Logger);
+
+    /// A logger writing records in `format` to `sink`, at level `Info` and above, with times.
+    /// @param allocator what each record is built in before it is written
+    /// @param sink where the records go
+    /// @param format how they are written
+    /// @returns the logger
+    /// @see https://rux-lang.dev/docs/api/log/logger#new
+    pub func New(allocator: Allocator, sink: Writer, format: LogFormat) -> Logger {
+        return Logger {
+            sink: sink,
+            format: format,
+            minimum: Level::Info,
+            timestamps: true,
+            buffer: StringBuilder(allocator),
+            context: NoFields(),
+            failure: none
+        };
+    }
+
+    /// Writes records at `level` and above from now on.
+    /// @param level the least severe level written
+    /// @see https://rux-lang.dev/docs/api/log/logger#set-level
+    pub func SetLevel(self: &var Logger, level: Level) {
+        self.minimum = level;
+    }
+
+    /// The least severe level written.
+    /// @returns the level
+    /// @see https://rux-lang.dev/docs/api/log/logger#minimum-level
+    pub func MinimumLevel(self: &Logger) -> Level {
+        return self.minimum;
+    }
+
+    /// Whether a record at `level` would be written, by this logger's level and the build's `CompiledLevel`. Worth
+    /// asking before working out fields that cost something to compute.
+    /// @param level the level to ask about
+    /// @returns whether it would be written
+    /// @see https://rux-lang.dev/docs/api/log/logger#enabled
+    pub func Enabled(self: &Logger, level: Level) -> bool {
+        return level as uint8 >= CompiledLevel() as uint8 && level as uint8 >= self.minimum as uint8;
+    }
+
+    /// Whether records start with the time. Leaving it out suits a destination that adds its own, such as a service
+    /// manager's journal.
+    /// @param enabled whether to write the time
+    /// @see https://rux-lang.dev/docs/api/log/logger#set-timestamps
+    pub func SetTimestamps(self: &var Logger, enabled: bool) {
+        self.timestamps = enabled;
+    }
+
+    /// Fields written with every record, before the record's own, such as a request's identifier.
+    /// @param fields the fields, borrowed until they are replaced
+    /// @see https://rux-lang.dev/docs/api/log/logger#set-context
+    pub func SetContext(self: &var Logger, fields: Field[..]) {
+        self.context = fields;
+    }
+
+    /// The first failure to write a record, or `none` when every record was written.
+    /// @returns the failure
+    /// @see https://rux-lang.dev/docs/api/log/logger#failure
+    pub func Failure(self: &Logger) -> IoError? {
+        return self.failure;
+    }
+
+    /// Writes a record at `level` with `message` and `fields`, if the level is enabled.
+    /// @param level how severe it is
+    /// @param message what happened
+    /// @param fields the values that go with it
+    /// @see https://rux-lang.dev/docs/api/log/logger#log
+    pub func Log(self: &var Logger, level: Level, message: char8[..], fields: Field[..]) {
+        if !self.Enabled(level) { return; }
+        self.buffer.Clear();
+        if !WriteRecord(self.buffer, self.format, self.timestamps, level, message, self.context, fields) { return; }
+        match WriteAll(self.sink, self.buffer.Bytes()) {
+            .Success(_) => {},
+            .Failure(error) => {
+                if self.failure == none { self.failure = error; }
+            }
+        }
+    }
+
+    /// Asks the stream to deliver what it holds.
+    /// @see https://rux-lang.dev/docs/api/log/logger#flush
+    pub func Flush(self: &var Logger) {
+        match self.sink.Flush() {
+            .Success(_) => {},
+            .Failure(error) => {
+                if self.failure == none { self.failure = error; }
+            }
+        }
+    }
+
+    /// Writes a `Trace` record.
+    /// @param message what happened
+    /// @param fields the values that go with it
+    /// @see https://rux-lang.dev/docs/api/log/logger#trace
+    pub func Trace(self: &var Logger, message: char8[..], fields: Field[..]) {
+        self.Log(Level::Trace, message, fields);
+    }
+
+    /// Writes a `Trace` record with no fields.
+    /// @param message what happened
+    /// @see https://rux-lang.dev/docs/api/log/logger#trace
+    pub func Trace(self: &var Logger, message: char8[..]) {
+        self.Log(Level::Trace, message, NoFields());
+    }
+
+    /// Writes a `Debug` record.
+    /// @param message what happened
+    /// @param fields the values that go with it
+    /// @see https://rux-lang.dev/docs/api/log/logger#debug
+    pub func Debug(self: &var Logger, message: char8[..], fields: Field[..]) {
+        self.Log(Level::Debug, message, fields);
+    }
+
+    /// Writes a `Debug` record with no fields.
+    /// @param message what happened
+    /// @see https://rux-lang.dev/docs/api/log/logger#debug
+    pub func Debug(self: &var Logger, message: char8[..]) {
+        self.Log(Level::Debug, message, NoFields());
+    }
+
+    /// Writes an `Info` record.
+    /// @param message what happened
+    /// @param fields the values that go with it
+    /// @see https://rux-lang.dev/docs/api/log/logger#info
+    pub func Info(self: &var Logger, message: char8[..], fields: Field[..]) {
+        self.Log(Level::Info, message, fields);
+    }
+
+    /// Writes an `Info` record with no fields.
+    /// @param message what happened
+    /// @see https://rux-lang.dev/docs/api/log/logger#info
+    pub func Info(self: &var Logger, message: char8[..]) {
+        self.Log(Level::Info, message, NoFields());
+    }
+
+    /// Writes a `Warn` record.
+    /// @param message what happened
+    /// @param fields the values that go with it
+    /// @see https://rux-lang.dev/docs/api/log/logger#warn
+    pub func Warn(self: &var Logger, message: char8[..], fields: Field[..]) {
+        self.Log(Level::Warn, message, fields);
+    }
+
+    /// Writes a `Warn` record with no fields.
+    /// @param message what happened
+    /// @see https://rux-lang.dev/docs/api/log/logger#warn
+    pub func Warn(self: &var Logger, message: char8[..]) {
+        self.Log(Level::Warn, message, NoFields());
+    }
+
+    /// Writes an `Error` record.
+    /// @param message what happened
+    /// @param fields the values that go with it
+    /// @see https://rux-lang.dev/docs/api/log/logger#error
+    pub func Error(self: &var Logger, message: char8[..], fields: Field[..]) {
+        self.Log(Level::Error, message, fields);
+    }
+
+    /// Writes an `Error` record with no fields.
+    /// @param message what happened
+    /// @see https://rux-lang.dev/docs/api/log/logger#error
+    pub func Error(self: &var Logger, message: char8[..]) {
+        self.Log(Level::Error, message, NoFields());
+    }
+}

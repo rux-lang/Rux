@@ -1,0 +1,35 @@
+import Core::Assert;
+
+func Scalar(value: uint128) -> char128 { return value as char128; }
+func Unit(value: uint32) -> char16 { return value as char16; }
+func Byte(value: int64) -> char8 { return value as char8; }
+func Divide(value: char128, divisor: char128) -> char128 { return value / divisor; }
+func Remainder(value: char512, divisor: char512) -> char512 { return value % divisor; }
+func DiscardCast(value: uint128) -> int { return ((value as char128) as int) * 0; }
+func FloatScalar(value: float64) -> char128 { return value as char128; }
+// Casts every source value survives carry no run-time check; they must still convert the value.
+func WidenByte(value: uint8) -> char32 { return value as char32; }
+func WidenUnit(value: char8) -> char16 { return value as char16; }
+func WidenScalar(value: char32) -> char512 { return value as char512; }
+func SameUnit(value: char16) -> char16 { return value as char16; }
+
+func Main() -> int {
+    Assert(Scalar(0) == c128'\0', "zero is a scalar");
+    Assert(Scalar(0xD7FF) == c128'\u{D7FF}', "last scalar before surrogates");
+    Assert(Scalar(0xE000) == c128'\u{E000}', "first scalar after surrogates");
+    Assert(Scalar(0x10FFFF) == c128'\u{10FFFF}', "last scalar");
+    Assert(Unit(0xD800) as uint16 == 0xD800u16, "UTF-16 units may be surrogates");
+    Assert(Unit(0xFFFF) as uint16 == 0xFFFFu16, "last UTF-16 unit");
+    Assert(Byte(255) as uint8 == 255u8, "last UTF-8 unit");
+    Assert(Divide(c128'B', c128'\u{2}') == c128'!', "character division");
+    Assert(Remainder(c512'C', c512'\u{2}') == c512'\u{1}', "character remainder");
+    Assert(DiscardCast(65u128) == 0, "a valid checked cast may have its result discarded");
+    Assert(FloatScalar(-1.0f64) == c128'\0', "negative floats saturate to zero before character validation");
+    Assert(FloatScalar(0.0f64 / 0.0f64) == c128'\0', "NaN becomes zero before character validation");
+    Assert(FloatScalar(65.9f64) == c128'A', "fractional floats truncate to the validated character");
+    Assert(WidenByte(0xFFu8) == c32'\u{FF}', "every byte is a scalar");
+    Assert(WidenUnit(c8'\u{7F}') as uint16 == 0x7Fu16, "every UTF-8 unit fits a UTF-16 unit");
+    Assert(WidenScalar(c32'\u{10FFFF}') == c512'\u{10FFFF}', "every scalar width holds every scalar");
+    Assert(SameUnit(c16'\u{FFFD}') == c16'\u{FFFD}', "an identity cast keeps the value");
+    return 0;
+}

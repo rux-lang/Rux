@@ -1,0 +1,107 @@
+import Core::Assert;
+
+// A generic interface names the types its operations work with, and a bound passes them on: `I: Source<T>` lets a
+// generic call `Next` on an `I` and get a `T?` back. A type conforms by having the method, declared outright with
+// `extend X : Source<int32>` or not, and the bound's `T` is deduced from what that method returns, so a chain of
+// generic adaptors needs no type arguments written.
+
+interface Source<T> {
+    func Next(self: &var Self) -> T?;
+}
+
+interface Sink<T> {
+    func Put(self: &var Self, value: T);
+}
+
+struct Counter {
+    at: int32;
+    end: int32;
+}
+
+extend Counter : Source<int32> {
+    func Next(self: &var Counter) -> int32? {
+        if self.at >= self.end { return none; }
+        self.at = self.at + 1;
+        return self.at - 1;
+    }
+}
+
+// Conforms without saying so.
+struct Letters {
+    at: uint;
+}
+
+extend Letters {
+    func Next(self: &var Letters) -> char8? {
+        let text = "abc";
+        if self.at >= text.length { return none; }
+        self.at = self.at + 1;
+        return text[self.at - 1];
+    }
+}
+
+struct Mapped<I: Source<T>, T, U> {
+    source: I;
+    transform: func(T) -> U;
+}
+
+extend Mapped<I, T, U> {
+    func Next(self: &var Mapped<I, T, U>) -> U? {
+        let item = self.source.Next() ?? return none;
+        return self.transform(item);
+    }
+}
+
+func Map<I: Source<T>, T, U>(source: I, transform: func(T) -> U) -> Mapped<I, T, U> {
+    return Mapped<I, T, U> { source: source, transform: transform };
+}
+
+struct Total {
+    sum: int64;
+}
+
+extend Total : Sink<int64> {
+    func Put(self: &var Total, value: int64) {
+        self.sum = self.sum + value;
+    }
+}
+
+// Two bounds sharing one type argument: what the source yields is what the sink takes.
+func Drain<I: Source<T>, S: Sink<T>, T>(source: I, sink: &var S) -> uint {
+    var cursor = source;
+    var count: uint = 0;
+    while true {
+        let item = cursor.Next() ?? break;
+        sink.Put(item);
+        count = count + 1;
+    }
+    return count;
+}
+
+func Square(value: int32) -> int64 {
+    return value as int64 * value as int64;
+}
+
+func Code(letter: char8) -> int64 {
+    return letter as int64;
+}
+
+func Main() -> int {
+    var squares: int64 = 0;
+    for value in Map(Counter { at: 1, end: 4 }, Square) { squares = squares + value; }
+    Assert(squares == 14, "1 + 4 + 9");
+
+    var total = Total { sum: 0 };
+    Assert(Drain(Map(Counter { at: 0, end: 5 }, Square), total) == 5u && total.sum == 30, "a source drained into a sink");
+    Assert(Drain(Map(Letters { at: 0 }, Code), total) == 3u && total.sum == 30 + 97 + 98 + 99,
+           "a type conforms by having the method");
+
+    var twice: int64 = 0;
+    for value in Map(Map(Counter { at: 0, end: 3 }, Square), Double) { twice = twice + value; }
+    Assert(twice == 10, "adaptors chain");
+    return 0;
+}
+
+func Double(value: int64) -> int64 {
+    return value * 2;
+}

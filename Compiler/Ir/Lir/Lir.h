@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Ir/Lir/LirPhiEdges.h"
+#include "Ir/Lir/LirRegs.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
 #include "Types/CaseTypeForm.h"
@@ -8,16 +10,13 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace Rux {
-// Virtual register
-using LirReg = std::uint32_t;
-constexpr LirReg LirNoReg = ~LirReg{};
-
 // Opcodes
 enum class LirOpcode {
     // Literals / memory
@@ -38,10 +37,14 @@ enum class LirOpcode {
     Shl,
     Shr,
     Lshr,
+    // Constant right rotation of uint32/uint64. One value operand; strArg is a decimal count in [0,width).
+    RotateRight,
     // Unary
     Neg,
     Not,
     BitNot,
+    // Native IEEE square root of float32/float64. One same-type operand; FP exceptions remain observable.
+    Sqrt,
     // Comparisons (result: bool)
     CmpEq,
     CmpNe,
@@ -62,9 +65,53 @@ enum class LirOpcode {
     // SSA join
     Phi, // %dst = phi <type> [%val, bb], ...
     // Global address
-    GlobalAddr, // %dst = globaladdr <name> — address of a named global symbol
-    StringAddr, // %dst = stringaddr <value> — address of static literal storage
+    GlobalAddr,      // %dst = globaladdr <name> — address of a named global symbol
+    ThreadLocalAddr, // %dst = threadlocaladdr <name> — this thread's copy of a thread-local variable
+    StringAddr,      // %dst = stringaddr <value> — address of static literal storage
+    // Atomic memory operations, each carrying its memory order. The value type is `type` throughout.
+    AtomicLoad,     // %dst = atomic_load <type> %ptr
+    AtomicStore,    // atomic_store <type> %val, %ptr
+    AtomicExchange, // %dst = atomic_xchg <type> %ptr, %val
+    AtomicCmpXchg,  // %dst = atomic_cmpxchg <type> %ptr, %expected, %desired — the previous value
+    AtomicFetchAdd, // %dst = atomic_add <type> %ptr, %val — the previous value
+    AtomicFetchSub, // %dst = atomic_sub <type> %ptr, %val
+    AtomicFetchAnd, // %dst = atomic_and <type> %ptr, %val
+    AtomicFetchOr,  // %dst = atomic_or <type> %ptr, %val
+    AtomicFetchXor, // %dst = atomic_xor <type> %ptr, %val
+    Fence,          // fence <order>
+    SpinHint,       // spin_hint
+    // Stack traces
+    FramePointer,       // %dst = frame_pointer *uint64 — this function's frame record: the caller's frame and return
+    WriteStandardError, // write_stderr %ptr, %length — writes bytes to standard error, ignoring any failure
+    // Two-lane vectors of `type`, which is float64 or a 64-bit integer: the elements at a pointer and the one after
+    // it. Only the Release unroller produces them, from a loop body it pairs with its next iteration, and a back end
+    // that does not select them rewrites each into the two scalar instructions it stands for (`Devectorize`).
+    VectorLoad,  // %dst = vload <type> %ptr — the elements at %ptr and %ptr + 1
+    VectorStore, // vstore <type> %vector, %ptr — writes both lanes to %ptr and %ptr + 1
+    VectorSplat, // %dst = vsplat <type> %scalar — both lanes hold the scalar
+    VectorAdd,   // %dst = vadd <type> %a, %b — lane by lane
+    VectorSub,   // %dst = vsub <type> %a, %b
+    VectorMul,   // %dst = vmul <type> %a, %b
+    VectorDiv,   // %dst = vdiv <type> %a, %b
+    // Bitwise and shifting lanes of 64-bit integers, in the forms of their scalar counterparts: a shift's count is
+    // a constant scalar operand and a rotation's is its literal, the same for both lanes. Shifts right are logical.
+    VectorAnd,         // %dst = vand <type> %a, %b
+    VectorOr,          // %dst = vor <type> %a, %b
+    VectorXor,         // %dst = vxor <type> %a, %b
+    VectorShl,         // %dst = vshl <type> %a, %count
+    VectorShr,         // %dst = vshr <type> %a, %count
+    VectorRotateRight, // %dst = vrotr <type> %a, count
 };
+
+/// The function every panic and failed assertion calls to print the frames that led to it, synthesized once for a
+/// program that can fail that way.
+inline constexpr std::string_view kBacktraceFunctionName = "__rux_backtrace";
+
+/// The name of the module lowering adds after every source module: it holds what belongs to the program as a whole
+/// rather than to any one source, the stack-trace printer and, in its object, the table of every module's function
+/// table. It is compiled on every build, so the objects of the source modules depend on nothing but their own source
+/// and the declarations they see.
+inline constexpr std::string_view kProgramModuleName = "__rux_program";
 
 /// The spelling of an opcode, as a dump writes it and as a diagnostic names it. One name serves both, so a back end
 /// reporting an opcode it cannot lower yet names the same thing the LIR dump beside it does.
@@ -100,12 +147,16 @@ enum class LirOpcode {
         return "shr";
     case LirOpcode::Lshr:
         return "lshr";
+    case LirOpcode::RotateRight:
+        return "rotr";
     case LirOpcode::Neg:
         return "neg";
     case LirOpcode::Not:
         return "not";
     case LirOpcode::BitNot:
         return "bitnot";
+    case LirOpcode::Sqrt:
+        return "sqrt";
     case LirOpcode::CmpEq:
         return "cmpeq";
     case LirOpcode::CmpNe:
@@ -136,33 +187,137 @@ enum class LirOpcode {
         return "phi";
     case LirOpcode::GlobalAddr:
         return "globaladdr";
+    case LirOpcode::ThreadLocalAddr:
+        return "threadlocaladdr";
     case LirOpcode::StringAddr:
         return "stringaddr";
+    case LirOpcode::AtomicLoad:
+        return "atomic_load";
+    case LirOpcode::AtomicStore:
+        return "atomic_store";
+    case LirOpcode::AtomicExchange:
+        return "atomic_xchg";
+    case LirOpcode::AtomicCmpXchg:
+        return "atomic_cmpxchg";
+    case LirOpcode::AtomicFetchAdd:
+        return "atomic_add";
+    case LirOpcode::AtomicFetchSub:
+        return "atomic_sub";
+    case LirOpcode::AtomicFetchAnd:
+        return "atomic_and";
+    case LirOpcode::AtomicFetchOr:
+        return "atomic_or";
+    case LirOpcode::AtomicFetchXor:
+        return "atomic_xor";
+    case LirOpcode::Fence:
+        return "fence";
+    case LirOpcode::SpinHint:
+        return "spin_hint";
+    case LirOpcode::FramePointer:
+        return "frame_pointer";
+    case LirOpcode::WriteStandardError:
+        return "write_stderr";
+    case LirOpcode::VectorLoad:
+        return "vload";
+    case LirOpcode::VectorStore:
+        return "vstore";
+    case LirOpcode::VectorSplat:
+        return "vsplat";
+    case LirOpcode::VectorAdd:
+        return "vadd";
+    case LirOpcode::VectorSub:
+        return "vsub";
+    case LirOpcode::VectorMul:
+        return "vmul";
+    case LirOpcode::VectorDiv:
+        return "vdiv";
+    case LirOpcode::VectorAnd:
+        return "vand";
+    case LirOpcode::VectorOr:
+        return "vor";
+    case LirOpcode::VectorXor:
+        return "vxor";
+    case LirOpcode::VectorShl:
+        return "vshl";
+    case LirOpcode::VectorShr:
+        return "vshr";
+    case LirOpcode::VectorRotateRight:
+        return "vrotr";
     }
     return "?";
 }
 
-// LIR Instruction
+/// A value few instructions carry, kept behind a pointer so the common instruction stays small and cheap to move. It
+/// reads as a default value until it is written, and copying it copies the value.
+template <typename T>
+class LirOutOfLine {
+public:
+    LirOutOfLine() noexcept = default;
+
+    LirOutOfLine(const LirOutOfLine &other)
+        : value(other.value ? std::make_unique<T>(*other.value) : nullptr) {
+    }
+
+    LirOutOfLine(LirOutOfLine &&other) noexcept = default;
+    ~LirOutOfLine() = default;
+
+    LirOutOfLine &operator=(const LirOutOfLine &other) {
+        if (this != &other) {
+            value = other.value ? std::make_unique<T>(*other.value) : nullptr;
+        }
+        return *this;
+    }
+
+    LirOutOfLine &operator=(LirOutOfLine &&other) noexcept = default;
+
+    [[nodiscard]] const T &Get() const noexcept {
+        static const T absent{};
+        return value ? *value : absent;
+    }
+
+    /// The value to write, created on first use.
+    [[nodiscard]] T &Edit() {
+        if (!value) {
+            value = std::make_unique<T>();
+        }
+        return *value;
+    }
+
+private:
+    std::unique_ptr<T> value;
+};
+
+/// Where an instruction that reports a runtime failure (`Assert`, `Panic`) stands in the source.
+struct LirSourceContext {
+    std::string file;
+    std::string function;
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+};
+
+// LIR Instruction. The fields are ordered so the small ones share words: every instruction is moved several times on
+// its way through lowering and the passes, so padding costs as much as a field.
 struct LirInstr {
     LirReg dst = LirNoReg; // result register (LirNoReg for Store)
-    TypeRef type;          // result type (or value type for Store)
     LirOpcode op = LirOpcode::Const;
-    std::vector<LirReg> srcs; // source registers
-    std::string strArg;       // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
-    std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
+    TypeRef type;         // result type (or value type for Store)
+    LirRegs srcs;         // source registers
+    std::string strArg;   // literal (Const), name (Load/Call), field (FieldPtr), from-type (Cast)
+    LirPhiEdges phiPreds; // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
-    bool isCVariadic = false;                                // direct call to a C-style variadic extern
+    bool isCVariadic = false;                                // call to a C-style variadic extern or function value
     /// A store whose only purpose is that it happens. Zeroizing a secret writes memory nothing reads afterwards, which
     /// is exactly the shape dead-store elimination removes, so the write says so about itself.
     bool isVolatile = false;
+    /// The memory order of an atomic instruction or fence, and the failure order of a compare-exchange, as
+    /// `MemoryOrderKind` values: 0 relaxed, 1 acquire, 2 release, 3 acquire-release, 4 sequentially consistent.
+    std::uint8_t memoryOrder = 0;
+    std::uint8_t failureOrder = 0;
     /// Present only with isCVariadic. AArch64 platform variants need the declaration boundary to promote and/or place
-    /// anonymous arguments correctly.
+    /// anonymous arguments correctly. It counts arguments only: a CallIndirect's callee in srcs[0] is not one of them.
     std::optional<std::uint32_t> cVariadicFixedParamCount;
     /// Optional source context used by instructions that report runtime failures.
-    std::string sourceFile;
-    std::string sourceFunction;
-    std::uint32_t sourceLine = 0;
-    std::uint32_t sourceColumn = 0;
+    LirOutOfLine<LirSourceContext> source;
 };
 
 // Terminators
@@ -219,12 +374,19 @@ struct LirParam {
     LirReg reg;
     TypeRef type;
     std::string name;
+    /// A slice or interface value the caller passes as the address of its own copy. The pointer is never null and the
+    /// memory it addresses stays valid for the whole call, so a load through it may be moved anywhere in the function.
+    bool byAddress = false;
 };
 
 struct LirFunc {
     std::string name;
+    /// The name a stack trace prints, as the source spells it; the linker name when the source gave none.
+    std::string displayName;
     std::string dll; // non-empty for extern declarations
     bool isPublic = false;
+    /// Public and owned by the package being compiled: a library artifact exports it and keeps it reachable.
+    bool isExported = false;
     bool isExtern = false;
     bool isNoReturn = false;
     bool isVariadic = false; // C-style variadic extern declaration
@@ -234,6 +396,9 @@ struct LirFunc {
     std::vector<LirBlock> blocks;  // empty for extern declarations
     bool isAsm = false;            // raw x86-64 assembly function
     std::vector<AsmInstr> asmBody; // instructions when isAsm
+    /// Pipeline bookkeeping: one bit per LIR verifier that checked the function since a pass last changed it, so an
+    /// unchanged function is not verified again. Passes leave it alone; the pipeline clears it on every change.
+    std::uint8_t verifiedSinceChange = 0;
 };
 
 // Type declarations (passed through from HIR)
@@ -279,9 +444,26 @@ struct LirUnionDecl {
     std::vector<LirUnionField> fields;
 };
 
+/// One step from a constant's value into a part of it: the member of `aggregate` named `member`, which is a struct
+/// field's name, or a tuple or array element's decimal index.
+struct LirConstMember {
+    TypeRef aggregate;
+    std::string member;
+};
+
+/// One scalar of a constant's value, as a literal of `type`, at the place the members of `path` reach from the start of
+/// the value. A scalar constant is one of these with an empty path.
+struct LirConstScalar {
+    std::vector<LirConstMember> path;
+    TypeRef type;
+    std::string literal;
+};
+
 struct LirConstDecl {
     std::string name;
     bool isPublic = false;
+    /// Public and owned by the package being compiled: a library artifact exports it and keeps it reachable.
+    bool isExported = false;
     TypeRef type;
     std::string value; // printed literal of the constant expression
 
@@ -292,6 +474,26 @@ struct LirConstDecl {
     std::string text;
     bool isTextSlice = false;
     bool hasSequenceData = false;
+
+    /// The contents of a constant that is not a sequence: every scalar its value folds to, which the code generators
+    /// lay out in read-only data at the constant's size and alignment, zero wherever no scalar lies. `@C` addresses
+    /// those bytes. `hasValueData` is false when some part of the value has no layout the code generators know, and the
+    /// symbol is then a placeholder that `@C` does not address.
+    std::vector<LirConstScalar> scalars;
+    bool hasValueData = false;
+};
+
+/// A module variable: writable storage under `name`, starting as the bytes its scalars lay out at the type's size and
+/// alignment, zero wherever no scalar lies. A value whose bytes are all zero is placed in zero-fill storage.
+struct LirGlobal {
+    std::string name;
+    bool isPublic = false;
+    /// Public and owned by the package being compiled: a library artifact exports it and keeps it reachable.
+    bool isExported = false;
+    TypeRef type;
+    std::vector<LirConstScalar> scalars;
+    /// One copy per thread, in the image's thread-local template rather than its ordinary data.
+    bool isThreadLocal = false;
 };
 
 struct LirTypeAlias {
@@ -304,6 +506,10 @@ struct LirExternVar {
     std::string name;
     bool isPublic = false;
     TypeRef type;
+    /// Public and owned by the package being compiled: a library artifact keeps it reachable.
+    bool isExported = false;
+    /// The library the data is imported from; code reaches it through the slot the loader fills with its address.
+    std::string dll;
 };
 
 // Module / Package
@@ -321,6 +527,7 @@ struct LirModule {
     std::vector<LirEnumDecl> enums;
     std::vector<LirUnionDecl> unions;
     std::vector<LirConstDecl> consts;
+    std::vector<LirGlobal> globals;
     std::vector<LirTypeAlias> typeAliases;
     std::vector<LirExternVar> externVars;
     std::vector<LirFunc> funcs;

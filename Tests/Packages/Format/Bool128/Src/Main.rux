@@ -1,0 +1,46 @@
+import Core::Failed;
+
+
+import Text::{ Display, FormatSpec, TextWriter };
+import Format::{ ByteCursor };
+
+// A failed check returns its numbered exit code for `rux test`.
+// Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract
+// buys: this test needs no allocator at all.
+func Check(value: bool128, expected: char8[..], code: int) -> int {
+    var storage: char8[64];
+    var cursor = ByteCursor((@storage[0])[..64]);
+    let writer: &var TextWriter = cursor;
+    let shown: Display = value;
+    if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
+        return code;
+    }
+    let actual = cursor.Written();
+    if actual.length != expected.length {
+        return code;
+    }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] {
+            return code;
+        }
+        index = index + 1;
+    }
+    return 0;
+}
+
+func Main() -> int {
+    // As the narrower widths: the same two words, in a box of several machine words.
+    let yes: bool128 = true;
+    let no: bool128 = false;
+
+    var code = Check(yes, "true", 10);
+    if code != 0 { return code; }
+    code = Check(no, "false", 11);
+    if code != 0 { return code; }
+    // A value cast from a source whose only set bit is in the top word renders as the true it is.
+    code = Check((1u128 << 127) as bool128, "true", 12);
+    if code != 0 { return code; }
+
+    return 0;
+}

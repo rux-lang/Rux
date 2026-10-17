@@ -99,7 +99,7 @@ TEST_CASE("a void function is not a unit-returning value") {
         }
     )");
     REQUIRE_EQ(errors.size(), 1);
-    CHECK(errors.front().contains("func() -> opaque"));
+    CHECK(errors.front().contains("'func()'"));
 }
 
 TEST_CASE("return converts through the native rules and refuses an ambiguous meaning") {

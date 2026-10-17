@@ -7,11 +7,10 @@
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
 /// Provides the public `WriteDecimal` operation.
-///
 /// @param cursor the buffer the digits are written into
 /// @param value the value to act on
 /// @param significant how many significant digits to write
-/// @see https://rux-lang.dev/docs/api/format/write-decimal
+/// @see https://rux-lang.dev/docs/api/format/float-text#write-decimal
 pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint) {
     var abs = value;
     if value < 0.0 {
@@ -58,7 +57,7 @@ pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint
     // too many. Dropping the zero the carry created puts it right.
     let limit = (scale * 10.0) as uint64;
     if scaled >= limit {
-        scaled /= 10u64;
+        scaled /= 10;
         exp10++;
     }
 
@@ -68,8 +67,8 @@ pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint
     var rest = scaled;
     while index > 0 {
         index--;
-        digits[index] = (rest % 10u64 + 48u64) as char8;
-        rest /= 10u64;
+        digits[index] = (rest % 10 + 48) as char8;
+        rest /= 10;
     }
 
     // Trailing zeros carry nothing: half comes out of the loop as
@@ -174,9 +173,9 @@ func WriteScientific(cursor: &var ByteCursor, digits: char8[..], count: uint, ex
     var length: uint = 0;
     var rest = exp as uint;
     while rest > 0 {
-        expDigits[length] = (rest % 10u + 48u) as char8;
+        expDigits[length] = (rest % 10 + 48) as char8;
         length++;
-        rest /= 10u;
+        rest /= 10;
     }
 
     if length < 2 {
@@ -209,7 +208,7 @@ func Pow10(exp: uint) -> float64 {
 // applied — and which, for the exponent a subnormal needs, would have
 // overflowed to infinity before it could be used at all.
 func ScaleByPow10(value: float64, exp: int) -> float64 {
-    let step = Pow10(22u);
+    let step = Pow10(22);
     var result = value;
     var rest = exp;
 

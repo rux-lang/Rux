@@ -14,7 +14,7 @@ LirReg CheckedLirBuilder::AllocateRegister() {
 
 LirReg CheckedLirBuilder::DefineParameter() {
     const LirReg reg = AllocateRegister();
-    definedRegisters.insert(reg);
+    MarkDefined(reg);
     return reg;
 }
 
@@ -56,7 +56,14 @@ std::string_view CheckedLirBuilder::FailureReason() const noexcept {
 }
 
 bool CheckedLirBuilder::IsDefined(const LirReg reg) const noexcept {
-    return reg != LirNoReg && definedRegisters.contains(reg);
+    return reg < definedRegisters.size() && definedRegisters[reg];
+}
+
+void CheckedLirBuilder::MarkDefined(const LirReg reg) {
+    if (reg >= definedRegisters.size()) {
+        definedRegisters.resize(nextRegister);
+    }
+    definedRegisters[reg] = true;
 }
 
 bool CheckedLirBuilder::HasValidSources(const LirInstr &instruction) const noexcept {
@@ -112,7 +119,7 @@ bool CheckedLirBuilder::HasValidTargets(const LirTerminator &terminator) const n
     std::unreachable();
 }
 
-bool CheckedLirBuilder::Insert(LirInstr instruction) {
+bool CheckedLirBuilder::Insert(LirInstr &&instruction) {
     if (!currentBlock) {
         failureReason = "no current block is selected";
         return false;
@@ -125,13 +132,12 @@ bool CheckedLirBuilder::Insert(LirInstr instruction) {
         failureReason = "the instruction uses an undefined register";
         return false;
     }
-    if (instruction.dst != LirNoReg &&
-        (instruction.dst >= nextRegister || definedRegisters.contains(instruction.dst))) {
+    if (instruction.dst != LirNoReg && (instruction.dst >= nextRegister || IsDefined(instruction.dst))) {
         failureReason = "the instruction defines an invalid or previously defined register";
         return false;
     }
     if (instruction.dst != LirNoReg) {
-        definedRegisters.insert(instruction.dst);
+        MarkDefined(instruction.dst);
     }
     function->blocks[*currentBlock].instrs.push_back(std::move(instruction));
     failureReason.clear();

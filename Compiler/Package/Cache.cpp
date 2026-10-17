@@ -111,13 +111,18 @@ std::vector<InstalledPackage> InstalledVersions(const IdentitySegment &ns, const
 
 std::optional<InstalledPackage> FindInstalledPackage(const IdentitySegment &ns, const IdentitySegment &name,
                                                      const VersionRange &range) {
+    return FindInstalledPackage(InstalledVersions(ns, name), range);
+}
+
+std::optional<InstalledPackage> FindInstalledPackage(const std::span<const InstalledPackage> installed,
+                                                     const VersionRange &range) {
     std::optional<InstalledPackage> best;
-    for (auto &candidate : InstalledVersions(ns, name)) {
+    for (const auto &candidate : installed) {
         if (!range.Matches(candidate.version)) {
             continue;
         }
         if (!best || SemanticVersion::ComparePrecedence(candidate.version, best->version) >= 0) {
-            best = std::move(candidate);
+            best = candidate;
         }
     }
     return best;

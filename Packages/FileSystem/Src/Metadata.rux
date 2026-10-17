@@ -1,11 +1,9 @@
 // What a file is, when it was touched, and who may do what to it.
-//
 // The three systems disagree here more than anywhere else in this package, and the disagreement is reported
 // rather than papered over. Unix permissions are nine bits of owner/group/other; Windows has access-control
 // lists that the portable surface cannot express and one read-only attribute that it can. Rather than invent a
 // lowest common denominator and lie about it, `Permissions` carries both spellings, `Capabilities` says which
 // of them the running system actually honors, and a caller who cares can ask before it acts.
-//
 // Timestamps are read on every system and written where the system allows it. Creation time is the one field
 // with no universal answer — Linux's `stat` does not carry it — so it arrives as a presence flag beside the
 // value rather than as a zero that pretends to be a date.
@@ -20,34 +18,16 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .Linux => import Linux::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .macOS => import macOS::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
-    .Windows => import Windows::{
-        CreateFileW,
-        CreationDisposition,
-        FILE_ATTRIBUTE_DIRECTORY,
-        FILE_ATTRIBUTE_NORMAL,
-        FILE_ATTRIBUTE_READONLY,
-        FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_SHARE_DELETE,
-        FILE_SHARE_READ,
-        FILE_SHARE_WRITE,
-        FileTime,
-        FileTimeToUnixEpochSeconds,
-        GetFileAttributesW,
-        CloseHandle,
-        GetFileInformationByHandle,
-        GetLastError,
-        INVALID_FILE_ATTRIBUTES,
-        InvalidHandleValue,
-        SetFileAttributesW,
-        SetFileTime
-    }
+    .Windows => import Windows::{ CloseHandle, CreateFileW, CreationDisposition, FILE_ATTRIBUTE_DIRECTORY,
+                                  FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_REPARSE_POINT,
+                                  FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
+                                  FILE_SHARE_READ, FILE_SHARE_WRITE, FileTime, FileTimeToUnixEpochSeconds,
+                                  GetFileAttributesW, GetFileInformationByHandle, GetLastError, INVALID_FILE_ATTRIBUTES,
+                                  InvalidHandleValue, SetFileAttributesW, SetFileTime }
 }
 
 /// What kind of thing a name refers to.
-///
-/// @see https://rux-lang.dev/docs/api/filesystem/file-kind
+/// @see https://rux-lang.dev/docs/api/filesystem/metadata#file-kind
 pub enum FileKind: int32 {
     /// An ordinary file of bytes.
     File = 0,
@@ -60,12 +40,10 @@ pub enum FileKind: int32 {
 }
 
 /// Who may do what to a file, in both spellings the supported systems use.
-///
 /// `mode` is the Unix permission bits, the low nine of which are the owner/group/other triple. `readOnly` is
 /// Windows' one portable attribute. Both are always filled: on Windows the mode is synthesized from the
 /// attribute (`0o444` when read-only, `0o666` otherwise) so a program that reasons in Unix terms is not blocked,
 /// and on Unix `readOnly` reports whether the owner-write bit is clear. `Capabilities` says which one is real.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/permissions
 pub struct Permissions {
     /// The Unix permission bits.
@@ -76,34 +54,30 @@ pub struct Permissions {
 
 extend Permissions {
     /// Permissions from Unix mode bits, with `readOnly` derived from the owner-write bit.
-    ///
     /// @param mode the permission bits
     /// @returns permissions carrying those bits
-    /// @see https://rux-lang.dev/docs/api/filesystem/permissions/from-mode
+    /// @see https://rux-lang.dev/docs/api/filesystem/permissions#from-mode
     pub func FromMode(mode: uint32) -> Permissions {
-        return Permissions { mode: mode & 0xFFFu32, readOnly: (mode & 0x80u32) == 0u32 };
+        return Permissions { mode: mode & 0xFFF, readOnly: (mode & 0x80) == 0 };
     }
 
     /// Permissions from the read-only flag alone, with the mode synthesized from it.
-    ///
     /// @param readOnly whether the file may only be read
     /// @returns permissions that are writable or not, which is all Windows records
-    /// @see https://rux-lang.dev/docs/api/filesystem/permissions/from-read-only
+    /// @see https://rux-lang.dev/docs/api/filesystem/permissions#from-read-only
     pub func FromReadOnly(readOnly: bool) -> Permissions {
-        return Permissions { mode: readOnly ? 0x124u32 : 0x1B6u32, readOnly: readOnly };
+        return Permissions { mode: readOnly ? 0x124 : 0x1B6, readOnly: readOnly };
     }
 
     /// Whether the owner may write.
-    ///
     /// @returns whether the owner may write the file
-    /// @see https://rux-lang.dev/docs/api/filesystem/permissions/is-writable
+    /// @see https://rux-lang.dev/docs/api/filesystem/permissions#is-writable
     pub func IsWritable(self: &Permissions) -> bool {
         return !self.readOnly;
     }
 }
 
 /// Everything a single query can say about a file.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata
 pub struct Metadata {
     /// What the name refers to.
@@ -125,7 +99,6 @@ pub struct Metadata {
 }
 
 /// What the running system can actually answer, so a caller can ask before it assumes.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/capabilities
 pub struct Capabilities {
     /// Whether `Permissions::mode` is the system's own answer rather than one synthesized from a flag.
@@ -139,9 +112,8 @@ pub struct Capabilities {
 }
 
 /// What this system can answer.
-///
 /// @returns what this system's metadata actually carries, so a caller can tell an absent value from a false one
-/// @see https://rux-lang.dev/docs/api/filesystem/capabilities-of-system
+/// @see https://rux-lang.dev/docs/api/filesystem/capabilities#capabilities-of-system
 pub func CapabilitiesOfSystem() -> Capabilities {
     when #target.os == .Windows {
         return Capabilities { unixPermissions: false, creationTime: true, hardLinkCounts: true,
@@ -166,7 +138,6 @@ when #target.os != .Windows {
     // structure as a type: the layouts differ per system and per architecture, and a wrong declaration would
     // read plausible garbage rather than fail, so the offsets are written down here where the reasoning is
     // visible and each one is named beside the field it belongs to.
-    //
     // Linux x86-64 (144 bytes): mode 24, nlink 16, size 48, atime 72, mtime 88, each time's nanoseconds eight
     // bytes past its seconds. Linux AArch64 (128 bytes) moves mode to 16 and nlink to 20 and narrows both to
     // four bytes, keeping size and the times where x86-64 has them. macOS (144 bytes, 64-bit inode) has mode at
@@ -174,27 +145,27 @@ when #target.os != .Windows {
     // bytes) has nlink at 16, mode at 24 as two bytes, the timespecs from 48, birth time at 96, size at 112.
 
     func ReadWordAt(buffer: *char8, offset: uint) -> uint64 {
-        var value = 0u64;
+        var value: uint64 = 0;
         var index: uint = 0;
-        while index < 8u {
-            value = value | ((buffer[offset + index] as uint8 as uint64) << (8u64 * index as uint64));
+        while index < 8 {
+            value = value | ((buffer[offset + index] as uint8 as uint64) << (8 * index as uint64));
             index = index + 1;
         }
         return value;
     }
 
     func ReadHalfAt(buffer: *char8, offset: uint) -> uint32 {
-        var value = 0u32;
+        var value: uint32 = 0;
         var index: uint = 0;
-        while index < 4u {
-            value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
+        while index < 4 {
+            value = value | ((buffer[offset + index] as uint8 as uint32) << (8 * index as uint32));
             index = index + 1;
         }
         return value;
     }
 
     func ReadShortAt(buffer: *char8, offset: uint) -> uint32 {
-        return (buffer[offset] as uint8 as uint32) | ((buffer[offset + 1] as uint8 as uint32) << 8u32);
+        return (buffer[offset] as uint8 as uint32) | ((buffer[offset + 1] as uint8 as uint32) << 8);
     }
 
     func StatMode(buffer: *char8) -> uint32 {
@@ -266,8 +237,8 @@ when #target.os != .Windows {
 
     func StatTimeAt(buffer: *char8, offset: uint) -> Timestamp {
         let seconds = ReadWordAt(buffer, offset) as int64;
-        var fraction = ReadWordAt(buffer, offset + 8u);
-        if fraction >= 1000000000u64 {
+        var fraction = ReadWordAt(buffer, offset + 8);
+        if fraction >= 1000000000 {
             // A filesystem that never recorded a fraction can leave the field as anything; a value outside the
             // range would break Timestamp's own invariant, so it is dropped rather than carried inward.
             fraction = 0;
@@ -276,10 +247,10 @@ when #target.os != .Windows {
     }
 
     func KindOfMode(mode: uint32) -> FileKind {
-        let masked = mode & 0xF000u32;
-        if masked == 0x8000u32 { return FileKind::File; }
-        if masked == 0x4000u32 { return FileKind::Directory; }
-        if masked == 0xA000u32 { return FileKind::SymbolicLink; }
+        let masked = mode & 0xF000;
+        if masked == 0x8000 { return FileKind::File; }
+        if masked == 0x4000 { return FileKind::Directory; }
+        if masked == 0xA000 { return FileKind::SymbolicLink; }
         return FileKind::Other;
     }
 
@@ -304,7 +275,7 @@ when #target.os != .Windows {
             linkCount: StatLinkCount(buffer),
             permissions: Permissions::FromMode(mode),
             accessed: StatTimeAt(buffer, accessOffset),
-            modified: StatTimeAt(buffer, accessOffset + 16u),
+            modified: StatTimeAt(buffer, accessOffset + 16),
             created: created,
             hasCreated: hasCreated
         };
@@ -317,10 +288,10 @@ when #target.os == .Windows {
     // link count at 40. FILETIME counts hundred-nanosecond ticks from 1601, so the epoch shift and the tick
     // width are the whole conversion — the same one `Time` performs for the clock.
     func ReadDwordAt(buffer: *char8, offset: uint) -> uint32 {
-        var value = 0u32;
+        var value: uint32 = 0;
         var index: uint = 0;
-        while index < 4u {
-            value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
+        while index < 4 {
+            value = value | ((buffer[offset + index] as uint8 as uint32) << (8 * index as uint32));
             index = index + 1;
         }
         return value;
@@ -328,26 +299,26 @@ when #target.os == .Windows {
 
     func TimestampFromFileTimeAt(buffer: *char8, offset: uint) -> Timestamp {
         let low = ReadDwordAt(buffer, offset) as uint64;
-        let high = ReadDwordAt(buffer, offset + 4u) as uint64;
-        let ticks = (high << 32u64) | low;
-        let seconds = (ticks / 10000000u64) as int64 - (FileTimeToUnixEpochSeconds as int64);
-        let rest = (ticks % 10000000u64) as uint32;
-        return Timestamp { seconds: seconds, nanoseconds: rest * 100u32 };
+        let high = ReadDwordAt(buffer, offset + 4) as uint64;
+        let ticks = (high << 32) | low;
+        let seconds = (ticks / 10000000) as int64 - (FileTimeToUnixEpochSeconds as int64);
+        let rest = (ticks % 10000000) as uint32;
+        return Timestamp { seconds: seconds, nanoseconds: rest * 100 };
     }
 
     func FileTimeFromTimestamp(moment: Timestamp) -> FileTime {
         let shifted = moment.seconds + (FileTimeToUnixEpochSeconds as int64);
-        var ticks = 0u64;
+        var ticks: uint64 = 0;
         if shifted > 0 {
-            ticks = (shifted as uint64) * 10000000u64 + (moment.nanoseconds as uint64) / 100u64;
+            ticks = (shifted as uint64) * 10000000 + (moment.nanoseconds as uint64) / 100;
         }
-        return FileTime { lowDateTime: (ticks & 0xFFFFFFFFu64) as uint32,
-                          highDateTime: (ticks >> 32u64) as uint32 };
+        return FileTime { lowDateTime: (ticks & 0xFFFFFFFF) as uint32,
+                          highDateTime: (ticks >> 32) as uint32 };
     }
 
     func KindOfAttributes(attributes: uint32) -> FileKind {
-        if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0u32 { return FileKind::SymbolicLink; }
-        if (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0u32 { return FileKind::Directory; }
+        if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 { return FileKind::SymbolicLink; }
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 { return FileKind::Directory; }
         return FileKind::File;
     }
 
@@ -357,9 +328,9 @@ when #target.os == .Windows {
         let low = ReadDwordAt(buffer, 36) as uint64;
         return Metadata {
             kind: KindOfAttributes(attributes),
-            size: (high << 32u64) | low,
+            size: (high << 32) | low,
             linkCount: ReadDwordAt(buffer, 40) as uint64,
-            permissions: Permissions::FromReadOnly((attributes & FILE_ATTRIBUTE_READONLY) != 0u32),
+            permissions: Permissions::FromReadOnly((attributes & FILE_ATTRIBUTE_READONLY) != 0),
             accessed: TimestampFromFileTimeAt(buffer, 12),
             modified: TimestampFromFileTimeAt(buffer, 20),
             created: TimestampFromFileTimeAt(buffer, 4),
@@ -381,171 +352,115 @@ when #target.os == .Windows {
 }
 
 /// Describes the file `path` names.
-///
 /// `followLinks` decides what a symbolic link at the end of the path means: following it describes the target,
 /// and not following it describes the link, which is the only way `SymbolicLink` is ever reported.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param followLinks whether a final symbolic link is followed rather than described
-/// @param error receives why the operation failed, or `None`
-/// @returns what the system knows about the path, or an empty record on failure
-/// @see https://rux-lang.dev/docs/api/filesystem/metadata-of
-pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool, error: *var IoError) -> Metadata {
-    *error = IoError::Ok();
-    var result = Metadata {
-        kind: FileKind::Other,
-        size: 0,
-        linkCount: 0,
-        permissions: Permissions::FromMode(0),
-        accessed: Timestamp::Epoch(),
-        modified: Timestamp::Epoch(),
-        created: Timestamp::Epoch(),
-        hasCreated: false
-    };
-    var native: *var OsUnit = null;
-    *error = NativePath(allocator, path, @native);
-    if (*error).IsError() { return result; }
+/// @returns what the system knows about the path
+/// @see https://rux-lang.dev/docs/api/filesystem/metadata#metadata-of
+pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Metadata ! IoError {
+    let native = NativePath(allocator, path)?;
+    defer ReleaseNativePath(allocator, native, path.name.units.length);
     var buffer: char8[256];
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
-        if (handle as uint64) == InvalidHandleValue {
-            *error = TranslateNative(GetLastError() as int32);
-        }
-        else {
-            if GetFileInformationByHandle(handle, @buffer[0] as *var opaque) == 0 {
-                *error = TranslateNative(GetLastError() as int32);
-            }
-            else {
-                result = MetadataFromHandleInformation(@buffer[0]);
-            }
+        if (handle as uint64) == InvalidHandleValue { fail TranslateNative(GetLastError() as int32); }
+        if GetFileInformationByHandle(handle, @buffer[0] as *var opaque) == 0 {
+            let raw = GetLastError() as int32;
             CloseHandle(handle);
+            fail TranslateNative(raw);
         }
+        CloseHandle(handle);
+        return MetadataFromHandleInformation(@buffer[0]);
     }
     else {
         let flags = followLinks ? 0i32 : SymlinkNoFollow;
         let outcome = FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags);
-        if outcome < 0 {
-            *error = TranslateNative((0i64 - outcome) as int32);
-        }
-        else {
-            result = MetadataFromStat(@buffer[0]);
-        }
+        if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
+        return MetadataFromStat(@buffer[0]);
     }
-    ReleaseNativePath(allocator, native, path.name.units.length);
-    return result;
 }
 
 extend File {
     /// Describes this open file.
-    ///
     /// Answers about the file the handle holds, so nothing can rename or replace the name out from under the
     /// query the way a path-based one can.
-    ///
-    /// @param error receives why the operation failed, or `None`
-    /// @returns what the system knows about the open file, or an empty record on failure
-    /// @see https://rux-lang.dev/docs/api/filesystem/file/metadata
-    pub func Metadata(self: &File, error: *var IoError) -> Metadata {
-        *error = IoError::Ok();
-        var result = Metadata {
-            kind: FileKind::Other,
-            size: 0,
-            linkCount: 0,
-            permissions: Permissions::FromMode(0),
-            accessed: Timestamp::Epoch(),
-            modified: Timestamp::Epoch(),
-            created: Timestamp::Epoch(),
-            hasCreated: false
-        };
-        if !self.open {
-            *error = IoError::Of(IoErrorKind::InvalidHandle);
-            return result;
-        }
+    /// @returns what the system knows about the open file
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#metadata
+    pub func Metadata(self: &File) -> Metadata ! IoError {
+        if !self.open { fail IoError::Of(IoErrorKind::InvalidHandle); }
         var buffer: char8[256];
         when #target.os == .Windows {
             if GetFileInformationByHandle(self.handle, @buffer[0] as *var opaque) == 0 {
-                *error = TranslateNative(GetLastError() as int32);
-                return result;
+                fail TranslateNative(GetLastError() as int32);
             }
             return MetadataFromHandleInformation(@buffer[0]);
         }
         else {
             let outcome = Fstat(self.handle, @buffer[0] as *var opaque);
-            if outcome < 0 {
-                *error = TranslateNative((0i64 - outcome) as int32);
-                return result;
-            }
+            if outcome < 0 { fail TranslateNative((0 - outcome) as int32); }
             return MetadataFromStat(@buffer[0]);
         }
     }
 }
 
 /// Sets who may do what to the file `path` names.
-///
 /// On the Unix systems the mode bits are written as given. On Windows only the read-only attribute exists, so
 /// that alone is written and the rest of `permissions` is ignored — ask `CapabilitiesOfSystem` first if the
 /// difference matters. A symbolic link is always followed: its own bits mean nothing on any supported system.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param permissions the permissions to apply
-/// @returns `None` when the permissions were applied
-/// @see https://rux-lang.dev/docs/api/filesystem/set-permissions
-pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> IoError {
-    var native: *var OsUnit = null;
-    let converted = NativePath(allocator, path, @native);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+/// @returns success when the permissions were applied
+/// @see https://rux-lang.dev/docs/api/filesystem/permissions#set-permissions
+pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> ! IoError {
+    let native = NativePath(allocator, path)?;
+    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         let attributes = GetFileAttributesW(native as *char16);
         if attributes == INVALID_FILE_ATTRIBUTES {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
         else {
             var wanted = attributes & ~FILE_ATTRIBUTE_READONLY;
             if permissions.readOnly {
                 wanted = wanted | FILE_ATTRIBUTE_READONLY;
             }
-            if wanted == 0u32 {
+            if wanted == 0 {
                 wanted = FILE_ATTRIBUTE_NORMAL;
             }
             if SetFileAttributesW(native as *char16, wanted) == 0 {
-                outcome = TranslateNative(GetLastError() as int32);
+                fail TranslateNative(GetLastError() as int32);
             }
         }
     }
     else {
-        let result = FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFFu32) as uint16, 0);
+        let result = FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFF) as uint16, 0);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
-    ReleaseNativePath(allocator, native, path.name.units.length);
-    return outcome;
 }
 
 /// Sets the access and modification times of the file `path` names.
-///
 /// Creation time is not settable here: Windows would allow it and the Unix systems would not, and an operation
 /// that silently means different things on different systems is worse than one that is not offered.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param accessed the access time to set, or `None` to leave it
 /// @param modified the modification time to set, or `None` to leave it
 /// @param followLinks whether a final symbolic link is followed rather than described
-/// @returns `None` when the times were applied
-/// @see https://rux-lang.dev/docs/api/filesystem/set-times
+/// @returns success when the times were applied
+/// @see https://rux-lang.dev/docs/api/filesystem/metadata#set-times
 pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
-              followLinks: bool) -> IoError {
-    var native: *var OsUnit = null;
-    let converted = NativePath(allocator, path, @native);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+              followLinks: bool) -> ! IoError {
+    let native = NativePath(allocator, path)?;
+    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
         if (handle as uint64) == InvalidHandleValue {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
         else {
             // A query handle carries no access rights, and writing times needs one; the handle is reopened with
@@ -559,13 +474,15 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
                                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
                                        CreationDisposition::OpenExisting as uint32, flags, null);
             if (writable as uint64) == InvalidHandleValue {
-                outcome = TranslateNative(GetLastError() as int32);
+                fail TranslateNative(GetLastError() as int32);
             }
             else {
                 var accessTime = FileTimeFromTimestamp(accessed);
                 var writeTime = FileTimeFromTimestamp(modified);
                 if SetFileTime(writable as *var opaque, null, @accessTime, @writeTime) == 0 {
-                    outcome = TranslateNative(GetLastError() as int32);
+                    let raw = GetLastError() as int32;
+                    CloseHandle(writable as *var opaque);
+                    fail TranslateNative(raw);
                 }
                 CloseHandle(writable as *var opaque);
             }
@@ -579,11 +496,9 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
         let flags = followLinks ? 0i32 : SymlinkNoFollow;
         let result = UtimensAt(AtFdCwd, native as *char8, @times[0] as *opaque, flags);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0i64 - result) as int32);
         }
     }
-    ReleaseNativePath(allocator, native, path.name.units.length);
-    return outcome;
 }
 
 when #target.os != .Windows {
@@ -591,9 +506,9 @@ when #target.os != .Windows {
         let seconds = moment.seconds as uint64;
         let fraction = moment.nanoseconds as uint64;
         var index: uint = 0;
-        while index < 8u {
-            buffer[offset + index] = ((seconds >> (8u64 * index as uint64)) & 0xFFu64) as uint8 as char8;
-            buffer[offset + 8u + index] = ((fraction >> (8u64 * index as uint64)) & 0xFFu64) as uint8 as char8;
+        while index < 8 {
+            buffer[offset + index] = ((seconds >> (8 * index as uint64)) & 0xFF) as uint8 as char8;
+            buffer[offset + 8 + index] = ((fraction >> (8 * index as uint64)) & 0xFF) as uint8 as char8;
             index = index + 1;
         }
     }

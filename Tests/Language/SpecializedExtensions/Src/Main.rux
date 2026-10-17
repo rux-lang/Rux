@@ -1,0 +1,45 @@
+// Extensions of different instantiations of one generic type may declare methods of the same name: each belongs to its
+// own instantiation, so `Pair<int32>` and `Pair<int64>` each call their own, with or without further parameters.
+import Core::Assert;
+
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+extend Pair<int32> {
+    func Sum(self: &Pair<int32>) -> int32 {
+        return self.first + self.second;
+    }
+
+    func Scaled(self: &Pair<int32>, factor: int32) -> int32 {
+        return self.Sum() * factor;
+    }
+}
+
+extend Pair<int64> {
+    func Sum(self: &Pair<int64>) -> int64 {
+        return self.first + self.second + 1;
+    }
+
+    func Scaled(self: &Pair<int64>, factor: int64) -> int64 {
+        return self.Sum() * factor;
+    }
+}
+
+extend Pair<T> {
+    func First(self: &Pair<T>) -> T {
+        return self.first;
+    }
+}
+
+func Main() -> int {
+    let narrow = Pair<int32> { first: 1i32, second: 2i32 };
+    let wide = Pair<int64> { first: 1, second: 2 };
+    Assert(narrow.Sum() == 3i32, "the int32 extension's method");
+    Assert(wide.Sum() == 4, "the int64 extension's method of the same name");
+    Assert(narrow.Scaled(2i32) == 6i32, "a method with parameters of the int32 extension");
+    Assert(wide.Scaled(2) == 8, "and the int64 one");
+    Assert(narrow.First() == 1i32 && wide.First() == 1, "a generic extension serves both");
+    return 0;
+}

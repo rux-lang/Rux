@@ -18,3 +18,41 @@ func Main() {
     let scalar: char32 = 'a';
     let narrowed: char16 = scalar;
 }
+
+func Literals() {
+    // A prefixed literal holds one code unit of its width, so a character that
+    // needs more is refused rather than truncated; a scalar width holds any.
+    let accent8 = c8'é';
+    let emoji8 = c8'😀';
+    let escaped8 = c8'\u{80}';
+    let emoji16 = c16'😀';
+    let accent16 = c16'é';
+    let ascii8 = c8'~';
+    let emoji32 = c32'😀';
+    let emoji64 = c64'\u{1F600}';
+    let matched = match ascii8 {
+        c8'é' => 1,
+        else => 0
+    };
+}
+
+func Wide() {
+    // char128 and wider hold the same scalar values as char32, so they refuse
+    // the same constants, and an integer literal too wide for a machine word
+    // is checked by its whole value rather than let through unexamined.
+    let surrogate128: char128 = 0xD800 as char128;
+    let past256: char256 = 0x110000 as char256;
+    let beyondWord: char128 = 0x1_0000_0000_0000_0041u128 as char128;
+    let beyondWide: char512 = 0x1_0000_0000_0000_0000_0000_0000_0000_0041u512 as char512;
+    let wideSurrogate: char256 = 0xD800u256 as char256;
+    let fits: char128 = 0x10FFFFu128 as char128;
+
+    // A scalar value widens into any wider scalar width and narrows only
+    // through a cast; a code unit widens into none of them.
+    let widened: char512 = c32'a';
+    let stepped: char256 = c128'a';
+    let narrowed: char64 = c128'a';
+    let unit: char128 = c16'a';
+    let emoji128 = c128'😀';
+    let last512 = c512'\u{10FFFF}';
+}

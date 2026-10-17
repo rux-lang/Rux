@@ -8,6 +8,8 @@
 
 #include "Target/Target.h"
 
+#include <cstddef>
+
 namespace Rux::System {
 /// Architectures relevant to child-process execution. `processArch` describes this compiler binary; `nativeArch`
 /// describes the operating system's native machine, which can differ when the compiler runs under translation.
@@ -30,4 +32,8 @@ struct HostArchitectureInfo {
 
 /// True if the executing CPU supports every feature in `feature_mask`.
 [[nodiscard]] bool HostSupports(Target::CpuFeatures feature_mask) noexcept;
+
+/// The logical cores this process may run on, or 0 when the platform cannot tell. A process started under a restricted
+/// affinity (`start /affinity`, `taskset`, `cpuset`) reports the cores it was given rather than the machine's.
+[[nodiscard]] std::size_t AffinityCoreCount() noexcept;
 } // namespace Rux::System

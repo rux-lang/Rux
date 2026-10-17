@@ -1,0 +1,20 @@
+// A flexible array tail has no length of its own: it is indexed as a pointer is, sliced only with an end bound, and
+// never iterated directly.
+struct Packet {
+    length: uint32;
+    bytes: uint8[];
+}
+
+func Use(packet: *var Packet) -> uint8 {
+    packet.bytes[0] = 1;
+    let bounded = packet.bytes[..2];
+    let open = packet.bytes[1..];
+    for byte in packet.bytes {
+        packet.length = 0;
+    }
+    return bounded[0];
+}
+
+func Main() -> int {
+    return 0;
+}

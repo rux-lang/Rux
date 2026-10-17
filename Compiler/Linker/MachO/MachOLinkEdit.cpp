@@ -128,6 +128,7 @@ std::uint8_t SectionOrdinal(const RcuMergedSection section) {
     case RcuMergedSection::Data:
         return 5;
     case RcuMergedSection::Bss:
+    case RcuMergedSection::Tls:
         return 0;
     }
     return 0;
@@ -163,6 +164,28 @@ LinkEditLayout LinkEditBuilder::Build(const LinkEditBuildRequest &request) {
             WriteU8(result.bindOpcodes, 0x40); // SET_SYMBOL_TRAILING_FLAGS_IMM
             AddNativeString(result.bindOpcodes, import.name);
             WriteU8(result.bindOpcodes, 0x90); // DO_BIND
+        }
+        // The descriptors bind the same symbol at scattered places, so each moves to its slot and binds there.
+        const auto bootstrap = std::ranges::find(request.imports, kTlvBootstrapSymbol, &LinkEditImport::name);
+        if (!request.threadVariableDescriptors.empty() && bootstrap == request.imports.end()) {
+            result.diagnostics.emplace_back("internal: Mach-O thread-local descriptors have no bootstrap import");
+            return result;
+        }
+        if (!request.threadVariableDescriptors.empty()) {
+            if (bootstrap->libraryOrdinal <= 15) {
+                WriteU8(result.bindOpcodes, static_cast<std::uint8_t>(0x10 | bootstrap->libraryOrdinal));
+            }
+            else {
+                WriteU8(result.bindOpcodes, 0x20);
+                WriteUleb128(result.bindOpcodes, bootstrap->libraryOrdinal);
+            }
+            WriteU8(result.bindOpcodes, 0x40);
+            AddNativeString(result.bindOpcodes, bootstrap->name);
+            for (const std::uint64_t descriptor : request.threadVariableDescriptors) {
+                WriteU8(result.bindOpcodes, static_cast<std::uint8_t>(0x70 | segments.dataSegmentIndex));
+                WriteUleb128(result.bindOpcodes, descriptor);
+                WriteU8(result.bindOpcodes, 0x90); // DO_BIND
+            }
         }
         WriteU8(result.bindOpcodes, 0); // DONE
     }

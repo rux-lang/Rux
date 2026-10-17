@@ -1,0 +1,6 @@
+// Another file converts the same instantiation; each file has its own table, so the two link side by side.
+func OtherId() -> int {
+    let box = Box<int32> { value: 1, id: 11 };
+    let named: Named = box;
+    return named.Id();
+}

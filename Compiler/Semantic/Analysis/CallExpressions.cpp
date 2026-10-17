@@ -18,7 +18,7 @@ using ParserDumpDetail::DeclarationPrinter;
         if (index != 0) {
             result += ", ";
         }
-        result += types[index].ToString();
+        result += types[index].DisplayString();
     }
     return result;
 }
@@ -110,9 +110,43 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (parameter && declaration) {
             notes.push_back(parameterNote(*parameter, *declaration));
         }
-        EmitError(e->args[argumentIndex]->location,
+        // A value of the right type in storage the call may not write is refused for its binding, not its type.
+        const Expr &argument = *e->args[argumentIndex];
+        if (parameterType->kind == TypeRef::Kind::Reference && !parameterType->inner.empty() &&
+            parameterType->inner.front().isMut && argumentType->kind != TypeRef::Kind::Reference &&
+            argumentType->kind != TypeRef::Kind::Pointer) {
+            TypeRef shared = parameterType;
+            shared = shared.WithWritableInner(false);
+            if (CanAssignExprTo(argument, argumentType, shared) && PlaceIsImmutable(argument)) {
+                const Expr *root = &argument;
+                while (const auto *field = AstCast<const FieldExpr>(root)) {
+                    root = field->object.get();
+                }
+                const auto *identifier = AstCast<const IdentExpr>(root);
+                const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+                const std::string subject = !identifier ? std::string("an immutable value")
+                                          : root == &argument
+                                              ? std::format("immutable '{}'", identifier->name)
+                                              : std::format("a part of immutable '{}'", identifier->name);
+                EmitError(argument.location,
+                          std::format("argument {} to '{}' cannot borrow {} as '{}'", argumentIndex + 1, callable,
+                                      subject, parameterType.ToString()),
+                          std::move(notes),
+                          binding && binding->kind == Symbol::Kind::Var ? ImmutableBindingHelp(*binding)
+                                                                        : std::optional<std::string>{});
+                return;
+            }
+        }
+        if (std::optional<std::string> message = UnfitCharacterLiteralMessage(argument, parameterType)) {
+            notes.push_back(std::format("argument {} to '{}' is passed to {}{} of type '{}'", argumentIndex + 1,
+                                        callable, variadic ? "variadic " : "", parameterName,
+                                        parameterType.ToString()));
+            EmitError(argument.location, std::move(*message), std::move(notes));
+            return;
+        }
+        EmitError(argument.location,
                   std::format("argument {} to '{}' has type '{}', but {}{} requires '{}'", argumentIndex + 1, callable,
-                              argumentType.ToString(), variadic ? "variadic " : "", parameterName,
+                              argumentType.DisplayString(), variadic ? "variadic " : "", parameterName,
                               parameterType.ToString()),
                   std::move(notes));
     };
@@ -137,12 +171,85 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (parameterType.IsUnknown()) {
             return true;
         }
-        if (parameterType.kind == TypeRef::Kind::Reference && IsNullLiteral(*e->args[index])) {
+        if (parameterType->kind == TypeRef::Kind::Reference && IsNullLiteral(*e->args[index])) {
             return false;
         }
         return argumentType.IsUnknown() || CanAssignExprTo(*e->args[index], argumentType, parameterType);
     };
-    if (auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
+    // Whether the arguments fit `declaration` without a diagnostic, as overload selection asks.
+    const auto argumentsFit = [&](const std::vector<TypeRef> &argTypes, const FuncDecl &declaration,
+                                  const bool isMethod, const std::vector<TypeRef> &fixedTypes,
+                                  const std::optional<TypeRef> &variadicElement) {
+        const auto bound = BoundParameterTypes(declaration, isMethod, fixedTypes, variadicElement, argTypes.size(), e);
+        if (!bound) {
+            return false;
+        }
+        for (std::size_t index = 0; index < argTypes.size(); ++index) {
+            if (!canPassArgument(index, argTypes[index], (*bound)[index])) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // Checks a call's arguments against the callable it selected, which every kind of callable takes alike: enough of
+    // them for the parameters without a default value and, unless the last parameter is variadic, no more than the
+    // fixed ones; each fixed argument against its parameter; then each remaining argument against the variadic
+    // element, or one spread argument against the variadic slice. Every problem is reported, and the result says
+    // whether there was none.
+    const auto checkBoundArguments = [&](const std::string_view callable, const std::vector<TypeRef> &argTypes,
+                                         const FuncDecl &declaration, const bool isMethod,
+                                         const std::vector<TypeRef> &fixedTypes,
+                                         const std::optional<TypeRef> &variadicElement) {
+        const auto parameters = VisibleParameters(declaration, isMethod);
+        const auto requiredCount = static_cast<std::size_t>(std::ranges::count_if(
+            parameters, [](const Param *parameter) { return !parameter->isVariadic && !parameter->defaultValue; }));
+        const bool variadic = variadicElement.has_value();
+        const std::size_t fixedCount = fixedTypes.size();
+        if (argTypes.size() < requiredCount || (!variadic && argTypes.size() > fixedCount)) {
+            emitArityError(callable, requiredCount, fixedCount, variadic, argTypes.size(), &declaration, isMethod);
+            return false;
+        }
+        bool accepted = true;
+        for (std::size_t index = 0; index < std::min(argTypes.size(), fixedCount); ++index) {
+            if (!canPassArgument(index, argTypes[index], fixedTypes[index])) {
+                accepted = false;
+                emitArgumentTypeError(callable, index, argTypes[index], fixedTypes[index],
+                                      index < parameters.size() ? parameters[index] : nullptr, &declaration);
+            }
+        }
+        if (!variadic || parameters.empty()) {
+            return accepted;
+        }
+        const Param &variadicParameter = *parameters.back();
+        if (argTypes.size() == fixedCount + 1 && AstCast<const SpreadExpr>(e->args[fixedCount].get())) {
+            // The spread operand converts to the variadic slice by the ordinary argument rules, so an array or a
+            // writable slice of the element type is spread as the read-only slice.
+            const TypeRef sliceType = TypeRef::MakeSlice(*variadicElement);
+            if (!argTypes[fixedCount].IsUnknown() && !sliceType.IsUnknown() &&
+                !canPassArgument(fixedCount, argTypes[fixedCount], sliceType)) {
+                accepted = false;
+                emitArgumentTypeError(callable, fixedCount, argTypes[fixedCount], sliceType, &variadicParameter,
+                                      &declaration, true);
+            }
+            return accepted;
+        }
+        for (std::size_t index = fixedCount; index < argTypes.size(); ++index) {
+            if (AstCast<const SpreadExpr>(e->args[index].get())) {
+                accepted = false;
+                EmitError(e->args[index]->location,
+                          std::format("spread argument to '{}' must be the only argument for variadic parameter '{}'",
+                                      callable, variadicParameter.name),
+                          {parameterNote(variadicParameter, declaration)});
+            }
+            else if (!canPassArgument(index, argTypes[index], *variadicElement)) {
+                accepted = false;
+                emitArgumentTypeError(callable, index, argTypes[index], *variadicElement, &variadicParameter,
+                                      &declaration, true);
+            }
+        }
+        return accepted;
+    };
+    if (auto *ident = AstCast<const IdentExpr>(e->callee.get())) {
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
         // `#Error`/`#Warn` emit a diagnostic here rather than resolving as
@@ -155,7 +262,20 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
         if (Symbol *sym = currentScope->Lookup(ident->name);
             sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
-            const FuncDecl *decl = LookupFunctionOverload(*sym, argTypes, e->typeArgs);
+            const FuncDecl *decl = LookupFunctionOverload(*sym, argTypes, e->typeArgs, e);
+            if (!decl && !ambiguousOverloads.empty()) {
+                std::vector<std::string> notes;
+                for (const FuncDecl *candidate : ambiguousOverloads) {
+                    notes.push_back(declarationNote(*candidate, false));
+                }
+                EmitError(e->location,
+                          std::format("call to '{}' is ambiguous: {} overloads accept argument types ({})", ident->name,
+                                      ambiguousOverloads.size(), ArgumentTypes(argTypes)),
+                          std::move(notes),
+                          AmbiguousCallHelp(
+                              "rename one of the overloads, or remove a default value that makes them overlap"));
+                return TypeRef::MakeUnknown();
+            }
             if (!decl) {
                 if (sym->funcOverloads.size() != 1) {
                     emitOverloadError(ident->name, argTypes, sym->funcOverloads);
@@ -168,11 +288,16 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 for (std::size_t index = 0; index < substitutionCount; ++index) {
                     candidateSubstitutions.emplace(candidate.typeParams[index].name, ResolveType(*e->typeArgs[index]));
                 }
+                // The arguments supply the rest, as they did when the call was matched, so the argument reported is
+                // the one that does not fit rather than the first one whose parameter is still a type parameter.
+                if (candidateSubstitutions.size() < candidate.typeParams.size()) {
+                    DeduceTypeArguments(candidate, argTypes, candidateSubstitutions, e);
+                }
                 const TypeRef candidateType =
                     MakeFuncTypeWithSubstitution(candidate.params, candidate.returnType, candidateSubstitutions,
                                                  TypeParameterNames(candidate.typeParams));
                 const std::size_t candidateParamCount =
-                    candidateType.inner.empty() ? 0 : candidateType.inner.size() - 1;
+                    candidateType->inner.empty() ? 0 : candidateType->inner.size() - 1;
                 std::size_t candidateRequiredCount = 0;
                 for (const Param &parameter : candidate.params) {
                     if (!parameter.isVariadic && !parameter.defaultValue) {
@@ -191,7 +316,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
                 const auto parameters = VisibleParameters(candidate, false);
                 for (std::size_t index = 0; index < std::min(argTypes.size(), candidateParamCount); ++index) {
-                    const TypeRef &parameterType = candidateType.inner[index];
+                    const TypeRef &parameterType = candidateType->inner[index];
                     if (!canPassArgument(index, argTypes[index], parameterType)) {
                         emitArgumentTypeError(ident->name, index, argTypes[index], parameterType,
                                               index < parameters.size() ? parameters[index] : nullptr, &candidate);
@@ -206,7 +331,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             bool callAccepted = true;
             if (e->typeArgs.empty()) {
                 if (!decl->typeParams.empty()) {
-                    DeduceTypeArguments(*decl, argTypes, substitutions);
+                    DeduceTypeArguments(*decl, argTypes, substitutions, e);
+                    // An argument whose type is unknown has been reported already, and could not have determined a
+                    // type argument, so the call is unknown too rather than a second error.
+                    if (substitutions.size() != decl->typeParams.size() &&
+                        std::ranges::any_of(argTypes, &TypeRef::IsUnknown)) {
+                        return TypeRef::MakeUnknown();
+                    }
                     if (substitutions.size() != decl->typeParams.size()) {
                         callAccepted = false;
                         EmitError(e->location,
@@ -231,80 +362,30 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
                 }
             }
-            if (!decl->warnMessage.empty()) {
-                EmitWarning(e->location, decl->warnMessage);
-            }
-            if (!decl->errorMessage.empty()) {
-                EmitError(e->location, decl->errorMessage);
-            }
+            NoteDeclarationUse(*decl, CallSiteLocation(*e));
             CheckTypeArgumentConstraints(decl->typeParams, substitutions, e->location,
                                          std::format("function '{}'", ident->name));
-            QueueGenericInstantiation(*decl, substitutions);
+            QueueGenericInstantiation(*decl, substitutions,
+                                      expression.callee ? expression.callee->location : expression.location);
             TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                             TypeParameterNames(decl->typeParams));
             const std::size_t paramCount =
-                funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty() ? funcType.inner.size() - 1 : 0;
-            const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-            std::size_t requiredCount = 0;
-            for (const auto &p : decl->params) {
-                if (!p.isVariadic && !p.defaultValue) {
-                    ++requiredCount;
-                }
-            }
-            const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
-                                            : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-            if (!arityOk) {
-                callAccepted = false;
-                emitArityError(ident->name, requiredCount, paramCount, isVariadic, argTypes.size(), decl);
-            }
-            else {
-                const auto parameters = VisibleParameters(*decl, false);
-                for (std::size_t i = 0; i < argTypes.size() && i < paramCount; ++i) {
-                    const TypeRef &paramType = funcType.inner[i];
-                    if (!canPassArgument(i, argTypes[i], paramType)) {
-                        callAccepted = false;
-                        emitArgumentTypeError(ident->name, i, argTypes[i], paramType,
-                                              i < parameters.size() ? parameters[i] : nullptr, decl);
-                    }
-                }
-                if (isVariadic) {
-                    const TypeRef varElemType = ResolveType(*decl->params.back().type);
-                    const TypeRef sliceType = TypeRef::MakeSlice(varElemType);
-                    const bool isSingleSpread = (argTypes.size() == paramCount + 1 &&
-                                                 dynamic_cast<const SpreadExpr *>(e->args[paramCount].get()));
-                    if (isSingleSpread) {
-                        if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
-                            argTypes[paramCount] != sliceType) {
-                            callAccepted = false;
-                            emitArgumentTypeError(ident->name, paramCount, argTypes[paramCount], sliceType,
-                                                  &decl->params.back(), decl, true);
-                        }
-                    }
-                    else {
-                        for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
-                            if (dynamic_cast<const SpreadExpr *>(e->args[i].get())) {
-                                callAccepted = false;
-                                EmitError(e->args[i]->location,
-                                          std::format("spread argument to '{}' must be the only argument for variadic "
-                                                      "parameter '{}'",
-                                                      ident->name, decl->params.back().name),
-                                          {parameterNote(decl->params.back(), *decl)});
-                            }
-                            else if (!canPassArgument(i, argTypes[i], varElemType)) {
-                                callAccepted = false;
-                                emitArgumentTypeError(ident->name, i, argTypes[i], varElemType, &decl->params.back(),
-                                                      decl, true);
-                            }
-                        }
-                    }
-                }
-            }
+                funcType->kind == TypeRef::Kind::Func && !funcType->inner.empty() ? funcType->inner.size() - 1 : 0;
+            const std::vector<TypeRef> fixedTypes(funcType->inner.begin(), funcType->inner.begin() + paramCount);
+            callAccepted = checkBoundArguments(ident->name, argTypes, *decl, false, fixedTypes,
+                                               ResolveVariadicElementType(*decl, substitutions)) &&
+                           callAccepted;
             if (callAccepted) {
-                const std::vector<TypeRef> parameterTypes(funcType.inner.begin(), funcType.inner.begin() + paramCount);
+                const std::vector<TypeRef> parameterTypes(funcType->inner.begin(),
+                                                          funcType->inner.begin() + paramCount);
                 ConsumeCallArguments(*e, argTypes, &parameterTypes);
+                CheckFormatArguments(*e, *decl, false);
             }
             RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct, substitutions);
-            return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
+            if (callAccepted && IsAtomicIntrinsic(decl->intrinsicName)) {
+                CheckAtomicCall(*e, *decl, substitutions);
+            }
+            return funcType->inner.empty() ? TypeRef::MakeUnknown() : funcType->inner.back();
         }
 
         if (Symbol *sym = currentScope->Lookup(ident->name); sym && sym->kind == Symbol::Kind::Type) {
@@ -322,7 +403,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 CheckWrittenTypeArgumentConstraints(*typeParameters, e->typeArgs, e->location,
                                                     std::format("type '{}'", ident->name));
             }
-            constructedType = InstantiateAssociatedReceiver(std::move(constructedType), e->typeArgs);
+            constructedType = InstantiateAssociatedReceiver(constructedType, e->typeArgs);
             const std::vector<const FuncDecl *> candidates = ConstructorCandidates(constructedType);
             if (candidates.empty()) {
                 const std::string typeName = NamedBaseTypeName(constructedType);
@@ -346,39 +427,16 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 return constructedType;
             }
 
-            const auto candidateMatches = [&](const FuncDecl &candidate) {
+            const auto constructorFixedTypes = [&](const FuncDecl &candidate) {
                 const TypeRef functionType = AssociatedFunctionType(constructedType, candidate);
-                const std::size_t parameterCount = functionType.inner.empty() ? 0 : functionType.inner.size() - 1;
-                const bool variadic = !candidate.params.empty() && candidate.params.back().isVariadic;
-                std::size_t requiredCount = 0;
-                for (const Param &parameter : candidate.params) {
-                    if (!parameter.isVariadic && !parameter.defaultValue) {
-                        ++requiredCount;
-                    }
-                }
-                if (argTypes.size() < requiredCount || (!variadic && argTypes.size() > parameterCount)) {
-                    return false;
-                }
-                for (std::size_t index = 0; index < std::min(argTypes.size(), parameterCount); ++index) {
-                    if (!canPassArgument(index, argTypes[index], functionType.inner[index])) {
-                        return false;
-                    }
-                }
-                if (variadic && argTypes.size() > parameterCount) {
-                    const TypeRef elementType = ResolveTypeWithSubstitution(*candidate.params.back().type,
-                                                                            MethodTypeSubstitutions(constructedType));
-                    for (std::size_t index = parameterCount; index < argTypes.size(); ++index) {
-                        if (!canPassArgument(index, argTypes[index], elementType)) {
-                            return false;
-                        }
-                    }
-                }
-                return true;
+                return functionType->inner.empty()
+                         ? std::vector<TypeRef>{}
+                         : std::vector<TypeRef>(functionType->inner.begin(), functionType->inner.end() - 1);
             };
-
             const FuncDecl *constructor = nullptr;
             for (const FuncDecl *candidate : candidates) {
-                if (candidateMatches(*candidate)) {
+                if (argumentsFit(argTypes, *candidate, false, constructorFixedTypes(*candidate),
+                                 ResolveMethodVariadicType(constructedType, *candidate))) {
                     constructor = candidate;
                     break;
                 }
@@ -389,40 +447,21 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 }
                 else {
                     const FuncDecl &candidate = *candidates.front();
-                    const TypeRef functionType = AssociatedFunctionType(constructedType, candidate);
-                    const std::size_t parameterCount = functionType.inner.size() - 1;
-                    const bool variadic = !candidate.params.empty() && candidate.params.back().isVariadic;
-                    std::size_t requiredCount = 0;
-                    for (const Param &parameter : candidate.params) {
-                        if (!parameter.isVariadic && !parameter.defaultValue) {
-                            ++requiredCount;
-                        }
-                    }
-                    if (argTypes.size() < requiredCount || (!variadic && argTypes.size() > parameterCount)) {
-                        emitArityError(ident->name, requiredCount, parameterCount, variadic, argTypes.size(),
-                                       &candidate);
-                    }
-                    else {
-                        const auto parameters = VisibleParameters(candidate, false);
-                        for (std::size_t index = 0; index < std::min(argTypes.size(), parameterCount); ++index) {
-                            if (!canPassArgument(index, argTypes[index], functionType.inner[index])) {
-                                emitArgumentTypeError(ident->name, index, argTypes[index], functionType.inner[index],
-                                                      index < parameters.size() ? parameters[index] : nullptr,
-                                                      &candidate);
-                                break;
-                            }
-                        }
-                    }
+                    static_cast<void>(checkBoundArguments(ident->name, argTypes, candidate, false,
+                                                          constructorFixedTypes(candidate),
+                                                          ResolveMethodVariadicType(constructedType, candidate)));
                 }
                 return constructedType;
             }
 
+            NoteDeclarationUse(*constructor, CallSiteLocation(*e));
             const auto substitutions = MethodTypeSubstitutions(constructedType);
-            QueueGenericInstantiation(*constructor, substitutions);
+            QueueGenericInstantiation(*constructor, substitutions,
+                                      expression.callee ? expression.callee->location : expression.location);
             const TypeRef functionType = AssociatedFunctionType(constructedType, *constructor);
-            const std::size_t parameterCount = functionType.inner.size() - 1;
-            const std::vector<TypeRef> parameterTypes(functionType.inner.begin(),
-                                                      functionType.inner.begin() + parameterCount);
+            const std::size_t parameterCount = functionType->inner.size() - 1;
+            const std::vector<TypeRef> parameterTypes(functionType->inner.begin(),
+                                                      functionType->inner.begin() + parameterCount);
             ConsumeCallArguments(*e, argTypes, &parameterTypes);
             RecordFunctionBinding(*e, *constructor, ResolvedCallableBinding::DispatchKind::Constructor, substitutions,
                                   constructedType);
@@ -430,7 +469,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
     }
 
-    if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
+    if (auto *field = AstCast<const FieldExpr>(e->callee.get())) {
         TypeRef receiverType = CheckExpr(*field->object);
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
@@ -438,50 +477,49 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         // method is chosen per instantiation, so the call is checked against the interface's signature here and the
         // witness recorded for each type argument is what lowering calls.
         const TypeRef &receiverBase =
-            (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
-                    !receiverType.inner.empty()
-                ? receiverType.inner.front()
+            (receiverType->kind == TypeRef::Kind::Pointer || receiverType->kind == TypeRef::Kind::Reference) &&
+                    !receiverType->inner.empty()
+                ? receiverType->inner.front()
                 : receiverType;
-        if (receiverBase.kind == TypeRef::Kind::TypeParam) {
+        if (receiverBase->kind == TypeRef::Kind::TypeParam) {
             const auto constrained = LookupConstrainedOperation(receiverType, field->field);
             if (!constrained) {
                 EmitMissingConstrainedOperation(field->location, receiverType, field->field);
                 return TypeRef::MakeUnknown();
             }
             const FuncDecl &operation = *constrained->operation;
-            const std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(operation, receiverBase);
-            bool callAccepted = argTypes.size() == paramTypes.size();
+            const std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(
+                operation, receiverBase, constrained->interface, constrained->interfaceArguments);
+            const std::optional<TypeRef> variadicElement = ResolveInterfaceMethodVariadicType(
+                operation, receiverBase, constrained->interface, constrained->interfaceArguments);
+            // The call is lowered against the witness's own parameters rather than the requirement's, so no default
+            // value is filled in here and every fixed parameter takes an argument; a variadic one collects any number,
+            // as it does on any other call.
+            bool callAccepted = argTypes.size() >= paramTypes.size();
             if (!callAccepted) {
-                emitArityError(field->field, paramTypes.size(), paramTypes.size(), false, argTypes.size(), &operation,
-                               true);
+                emitArityError(field->field, paramTypes.size(), paramTypes.size(), variadicElement.has_value(),
+                               argTypes.size(), &operation, true);
             }
             else {
-                const auto parameters = VisibleParameters(operation, true);
-                for (std::size_t i = 0; i < paramTypes.size(); ++i) {
-                    if (!canPassArgument(i, argTypes[i], paramTypes[i])) {
-                        callAccepted = false;
-                        emitArgumentTypeError(field->field, i, argTypes[i], paramTypes[i],
-                                              i < parameters.size() ? parameters[i] : nullptr, &operation);
-                    }
-                }
+                callAccepted =
+                    checkBoundArguments(field->field, argTypes, operation, true, paramTypes, variadicElement);
             }
+            callAccepted =
+                CheckRequirementReceiverMutability(*e, *field->object, receiverType, operation) && callAccepted;
             if (callAccepted) {
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
             }
             RecordConstrainedBinding(*e, *constrained, receiverType);
-            return ResolveInterfaceMethodReturnType(operation, receiverBase);
+            return ResolveInterfaceMethodReturnType(operation, receiverBase, constrained->interface,
+                                                    constrained->interfaceArguments);
         }
 
         std::unordered_map<std::string, TypeRef> methodSubstitutions;
+        const std::size_t diagnosticsBeforeLookup = diags.size();
         if (const FuncDecl *method =
                 LookupMethodCall(receiverType, field->field, *e, argTypes, 0, methodSubstitutions)) {
             bool callAccepted = true;
-            if (!method->warnMessage.empty()) {
-                EmitWarning(e->location, method->warnMessage);
-            }
-            if (!method->errorMessage.empty()) {
-                EmitError(e->location, method->errorMessage);
-            }
+            NoteDeclarationUse(*method, CallSiteLocation(*e));
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);
             // A method of a generic type is an instantiation like any other: its body was checked with the type's
             // parameters standing for nothing in particular, and the questions that could not be answered then --
@@ -489,30 +527,38 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             // the parameters stand for.
             CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
                                          std::format("method '{}'", method->name));
-            QueueGenericInstantiation(*method, methodSubstitutions);
+            QueueGenericInstantiation(*method, methodSubstitutions,
+                                      expression.callee ? expression.callee->location : expression.location);
 
-            if (argTypes.size() != paramTypes.size()) {
-                callAccepted = false;
-                emitArityError(field->field, paramTypes.size(), paramTypes.size(), false, argTypes.size(), method,
-                               true);
-            }
-            else {
-                const auto parameters = VisibleParameters(*method, true);
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    const TypeRef &argType = argTypes[i];
-                    const TypeRef &paramType = paramTypes[i];
-                    if (!canPassArgument(i, argType, paramType)) {
-                        callAccepted = false;
-                        emitArgumentTypeError(field->field, i, argType, paramType,
-                                              i < parameters.size() ? parameters[i] : nullptr, method);
-                    }
+            callAccepted = checkBoundArguments(field->field, argTypes, *method, true, paramTypes,
+                                               ResolveMethodVariadicType(receiverType, *method, methodSubstitutions));
+
+            // A compiler-parameter method such as `#config.Has(name)` is answered while compiling, so its argument
+            // must be written in the source; a value computed at run time has nothing to be looked up by.
+            if (!method->intrinsicName.empty() && e->args.size() == 1 && e->args[0]) {
+                const std::string root = NamedBaseTypeName(receiverType);
+                const Expr &argument = *e->args[0];
+                const auto *literal = AstCast<const LiteralExpr>(&argument);
+                const auto *path = AstCast<const PathExpr>(&argument);
+                const bool stringLiteral = literal && literal->token.kind == TokenKind::StringLiteral;
+                const bool caseName =
+                    AstCast<const EnumShorthandExpr>(&argument) || (path && path->segments.size() == 2);
+                const bool targetFeature = root == "Target";
+                if ((root == "Target" || root == "Compiler" || root == "Config") &&
+                    !(targetFeature ? caseName : stringLiteral)) {
+                    callAccepted = false;
+                    EmitError(argument.location,
+                              std::format("the argument to '{}' must be {} written in the source", field->field,
+                                          targetFeature ? "a feature case such as 'TargetFeature::AVX2'"
+                                                        : "a string literal"),
+                              {}, "the value is looked up while compiling, so it cannot come from a variable");
                 }
             }
-
             callAccepted = CheckReceiverMutability(*e, *field->object, receiverType, *method) && callAccepted;
             if (callAccepted) {
                 ConsumeMethodReceiver(*e, *field->object, receiverType, *method);
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
+                CheckFormatArguments(*e, *method, true);
             }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method, methodSubstitutions,
                                   receiverType);
@@ -524,30 +570,48 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (const auto namedMethods = typeMethods->second.find(field->field);
                 namedMethods != typeMethods->second.end() && !namedMethods->second.empty()) {
                 const std::vector<const FuncDecl *> candidates = AccessibleMethodCandidates(receiverType, field->field);
+                const std::vector<const FuncDecl *> applicable = ApplicableMethods(receiverType, field->field);
+                if (applicable.empty()) {
+                    // Every method of the name extends another instantiation of the type.
+                    std::vector<std::string> notes;
+                    for (const FuncDecl *method : namedMethods->second) {
+                        if (const auto implementation = methodImpls.find(method); implementation != methodImpls.end()) {
+                            notes.push_back(std::format("'{}' is declared in 'extend {}'", field->field,
+                                                        implementation->second->typeName));
+                        }
+                    }
+                    EmitError(field->location,
+                              std::format("type '{}' has no method '{}'", receiverType.ToString(), field->field),
+                              std::move(notes), "call it on the instantiation its extension names");
+                    return TypeRef::MakeUnknown();
+                }
                 if (candidates.empty()) {
                     EmitPrivacyError(field->location, *namedMethods->second.front(), "method", field->field);
                     return TypeRef::MakeUnknown();
                 }
-                if (candidates.size() == 1) {
-                    const FuncDecl &candidate = *candidates.front();
-                    const std::vector<TypeRef> parameterTypes = ResolveMethodParamTypes(receiverType, candidate);
-                    if (argTypes.size() != parameterTypes.size()) {
-                        emitArityError(field->field, parameterTypes.size(), parameterTypes.size(), false,
-                                       argTypes.size(), &candidate, true);
-                    }
-                    else {
-                        const auto parameters = VisibleParameters(candidate, true);
-                        for (std::size_t index = 0; index < argTypes.size(); ++index) {
-                            if (!canPassArgument(index, argTypes[index], parameterTypes[index])) {
-                                emitArgumentTypeError(field->field, index, argTypes[index], parameterTypes[index],
-                                                      index < parameters.size() ? parameters[index] : nullptr,
-                                                      &candidate);
-                                break;
-                            }
-                        }
-                    }
+                // One candidate the arguments do not fit is reported for what does not fit it. The bound-argument
+                // check accepts some arguments the lookup refused, such as a character literal of another width;
+                // the call is still unresolved, so it is reported as an overload mismatch rather than left with no
+                // type and no diagnostic, which lowering would later fault on.
+                if (candidates.size() == 1 &&
+                    !checkBoundArguments(field->field, argTypes, *candidates.front(), true,
+                                         ResolveMethodParamTypes(receiverType, *candidates.front()),
+                                         ResolveMethodVariadicType(receiverType, *candidates.front()))) {
+                    return TypeRef::MakeUnknown();
                 }
-                else {
+                if (!ambiguousOverloads.empty()) {
+                    std::vector<std::string> notes;
+                    for (const FuncDecl *candidate : ambiguousOverloads) {
+                        notes.push_back(declarationNote(*candidate, true));
+                    }
+                    EmitError(e->location,
+                              std::format("call to method '{}' is ambiguous: {} overloads accept argument types ({})",
+                                          field->field, ambiguousOverloads.size(), ArgumentTypes(argTypes)),
+                              std::move(notes),
+                              AmbiguousCallHelp("rename one of the overloads, or convert an argument explicitly"));
+                    return TypeRef::MakeUnknown();
+                }
+                if (diags.size() == diagnosticsBeforeLookup) {
                     emitOverloadError(field->field, argTypes, candidates, true, receiverType);
                 }
                 return TypeRef::MakeUnknown();
@@ -566,50 +630,21 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 return TypeRef::MakeUnknown();
             }
             std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method, receiverType);
-            const bool isVariadic = !method->params.empty() && method->params.back().isVariadic;
-            const auto parameters = VisibleParameters(*method, true);
-            const std::size_t requiredCount = std::ranges::count_if(
-                parameters, [](const Param *parameter) { return !parameter->isVariadic && !parameter->defaultValue; });
-            const bool arityOk =
-                argTypes.size() >= requiredCount && (isVariadic || argTypes.size() <= paramTypes.size());
-            bool callAccepted = arityOk;
+            bool callAccepted = checkBoundArguments(field->field, argTypes, *method, true, paramTypes,
+                                                    ResolveInterfaceMethodVariadicType(*method, receiverType));
 
-            if (!arityOk) {
-                emitArityError(field->field, requiredCount, paramTypes.size(), isVariadic, argTypes.size(), method,
-                               true);
-            }
-            else {
-                for (std::size_t i = 0; i < std::min(argTypes.size(), paramTypes.size()); ++i) {
-                    const TypeRef &argType = argTypes[i];
-                    const TypeRef &paramType = paramTypes[i];
-                    if (!canPassArgument(i, argType, paramType)) {
-                        callAccepted = false;
-                        emitArgumentTypeError(field->field, i, argType, paramType,
-                                              i < parameters.size() ? parameters[i] : nullptr, method);
-                    }
-                }
-
-                if (isVariadic) {
-                    const TypeRef varElemType = ResolveType(*method->params.back().type);
-                    for (std::size_t i = paramTypes.size(); i < argTypes.size(); ++i) {
-                        if (!canPassArgument(i, argTypes[i], varElemType)) {
-                            callAccepted = false;
-                            emitArgumentTypeError(field->field, i, argTypes[i], varElemType, &method->params.back(),
-                                                  method, true);
-                        }
-                    }
-                }
-            }
-
+            callAccepted =
+                CheckRequirementReceiverMutability(*e, *field->object, receiverType, *method) && callAccepted;
             if (callAccepted) {
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
+                CheckFormatArguments(*e, *method, true);
             }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Interface, {}, receiverType);
             return ResolveInterfaceMethodReturnType(*method, receiverType);
         }
     }
 
-    if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get())) {
+    if (auto *path = AstCast<const PathExpr>(e->callee.get())) {
         if (path->segments.size() == 2) {
             Symbol *first = currentScope->Lookup(path->segments[0]);
             if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
@@ -622,6 +657,14 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         typeArgs.reserve(e->typeArgs.size());
                         for (const auto &typeArg : e->typeArgs) {
                             typeArgs.push_back(ResolveType(*typeArg));
+                        }
+                        // With no type arguments written, an annotation or return type naming an instantiation of this
+                        // variant supplies them, so `let b: Reading<int32> = Reading::Exact(7)` gives `7` the type
+                        // `int32` instead of deducing `Reading<int>` from it.
+                        if (typeArgs.empty()) {
+                            if (auto expected = ExpectedCaseTypeArguments(*e, decl)) {
+                                typeArgs = std::move(*expected);
+                            }
                         }
                         if (typeArgs.size() < decl.typeParams.size()) {
                             std::unordered_map<std::string, TypeRef> substitutions;
@@ -658,8 +701,12 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                                                    ? "1 was"
                                                                    : std::format("{} were", e->typeArgs.size())));
                         }
+                        if (!variant->namedFields.empty()) {
+                            EmitNamedCaseCalled(e->location, path->segments[0], *variant);
+                            return EnumType(decl, typeArgs);
+                        }
                         const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
-                        const std::size_t paramCount = constructor.inner.empty() ? 0 : constructor.inner.size() - 1;
+                        const std::size_t paramCount = constructor->inner.empty() ? 0 : constructor->inner.size() - 1;
                         bool callAccepted = argTypes.size() == paramCount;
                         if (argTypes.size() != paramCount) {
                             emitArityError(std::format("{}::{}", path->segments[0], path->segments[1]), paramCount,
@@ -667,7 +714,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         }
                         else {
                             for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                                const TypeRef &paramType = constructor.inner[i];
+                                const TypeRef &paramType = constructor->inner[i];
                                 if (!canPassArgument(i, argTypes[i], paramType)) {
                                     callAccepted = false;
                                     EmitError(e->args[i]->location,
@@ -682,8 +729,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                             }
                         }
                         if (callAccepted) {
-                            const std::vector<TypeRef> parameterTypes(constructor.inner.begin(),
-                                                                      constructor.inner.begin() + paramCount);
+                            const std::vector<TypeRef> parameterTypes(constructor->inner.begin(),
+                                                                      constructor->inner.begin() + paramCount);
                             ConsumeCallArguments(*e, argTypes, &parameterTypes);
                         }
                         ResolvedCallableBinding binding;
@@ -698,7 +745,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         CheckTypeArgumentConstraints(decl.typeParams, binding.substitutions, e->location,
                                                      std::format("enum '{}'", decl.name));
                         callableBindings.insert_or_assign(e, std::move(binding));
-                        return constructor.inner.empty() ? TypeRef::MakeUnknown() : constructor.inner.back();
+                        return constructor->inner.empty() ? TypeRef::MakeUnknown() : constructor->inner.back();
                     }
                 }
                 TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
@@ -712,7 +759,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                     e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())));
                     return TypeRef::MakeUnknown();
                 }
-                receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
+                receiverType = InstantiateAssociatedReceiver(receiverType, e->typeArgs);
                 if (receiverParameters) {
                     CheckTypeArgumentConstraints(
                         *receiverParameters, MethodTypeSubstitutions(receiverType), e->location,
@@ -722,35 +769,26 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 const std::string &methodName = path->segments[1];
                 const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
                 std::unordered_map<std::string, TypeRef> methodSubstitutions;
+                const std::size_t diagnosticsBeforeLookup = diags.size();
+                // Written through its type, a method is the function its declaration spells out: the receiver is an
+                // ordinary first parameter, so `Pair::Get(pair)` passes `pair` as `self` and checks it like any other
+                // argument, borrowing and moving included.
                 if (const FuncDecl *method = LookupMethodCall(receiverType, methodName, *e, argTypes,
-                                                              receiverArgumentCount, methodSubstitutions)) {
+                                                              receiverArgumentCount, methodSubstitutions, true)) {
                     std::vector<TypeRef> paramTypes =
-                        ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);
+                        ResolveMethodParamTypes(receiverType, *method, methodSubstitutions, true);
                     // An associated function on a generic type is instantiated by the type arguments written at the
                     // call, exactly as a method is by its receiver's.
                     CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
                                                  std::format("method '{}'", method->name));
-                    QueueGenericInstantiation(*method, methodSubstitutions);
-                    bool callAccepted = argTypes.size() == paramTypes.size();
-                    if (argTypes.size() != paramTypes.size()) {
-                        emitArityError(std::format("{}::{}", path->segments[0], methodName), paramTypes.size(),
-                                       paramTypes.size(), false, argTypes.size(), method, true);
-                    }
-                    else {
-                        const auto parameters = VisibleParameters(*method, true);
-                        for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                            const TypeRef &argType = argTypes[i];
-                            const TypeRef &paramType = paramTypes[i];
-                            if (!canPassArgument(i, argType, paramType)) {
-                                callAccepted = false;
-                                emitArgumentTypeError(std::format("{}::{}", path->segments[0], methodName), i, argType,
-                                                      paramType, i < parameters.size() ? parameters[i] : nullptr,
-                                                      method);
-                            }
-                        }
-                    }
+                    QueueGenericInstantiation(*method, methodSubstitutions,
+                                              expression.callee ? expression.callee->location : expression.location);
+                    const bool callAccepted = checkBoundArguments(
+                        std::format("{}::{}", path->segments[0], methodName), argTypes, *method, false, paramTypes,
+                        ResolveMethodVariadicType(receiverType, *method, methodSubstitutions));
                     if (callAccepted) {
                         ConsumeCallArguments(*e, argTypes, &paramTypes);
+                        CheckFormatArguments(*e, *method, false);
                     }
                     RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
                                           methodSubstitutions, receiverType);
@@ -769,27 +807,27 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                              methodName);
                             return TypeRef::MakeUnknown();
                         }
-                        if (candidates.size() == 1) {
-                            const FuncDecl &candidate = *candidates.front();
-                            const auto parameterTypes = ResolveMethodParamTypes(receiverType, candidate);
-                            if (argTypes.size() != parameterTypes.size()) {
-                                emitArityError(callable, parameterTypes.size(), parameterTypes.size(), false,
-                                               argTypes.size(), &candidate, true);
-                            }
-                            else {
-                                const auto parameters = VisibleParameters(candidate, true);
-                                for (std::size_t index = 0; index < argTypes.size(); ++index) {
-                                    if (!canPassArgument(index, argTypes[index], parameterTypes[index])) {
-                                        emitArgumentTypeError(callable, index, argTypes[index], parameterTypes[index],
-                                                              index < parameters.size() ? parameters[index] : nullptr,
-                                                              &candidate);
-                                        break;
-                                    }
-                                }
-                            }
+                        if (candidates.size() == 1 &&
+                            !checkBoundArguments(callable, argTypes, *candidates.front(), false,
+                                                 ResolveMethodParamTypes(receiverType, *candidates.front(), {}, true),
+                                                 ResolveMethodVariadicType(receiverType, *candidates.front()))) {
+                            return TypeRef::MakeUnknown();
                         }
-                        else {
-                            emitOverloadError(callable, argTypes, candidates, true, receiverType);
+                        if (!ambiguousOverloads.empty()) {
+                            std::vector<std::string> notes;
+                            for (const FuncDecl *candidate : ambiguousOverloads) {
+                                notes.push_back(declarationNote(*candidate, true));
+                            }
+                            EmitError(
+                                e->location,
+                                std::format("call to '{}' is ambiguous: {} overloads accept argument types ({})",
+                                            callable, ambiguousOverloads.size(), ArgumentTypes(argTypes)),
+                                std::move(notes),
+                                AmbiguousCallHelp("rename one of the overloads, or convert an argument explicitly"));
+                            return TypeRef::MakeUnknown();
+                        }
+                        if (diags.size() == diagnosticsBeforeLookup) {
+                            emitOverloadError(callable, argTypes, candidates, false, receiverType);
                         }
                         return TypeRef::MakeUnknown();
                     }
@@ -800,20 +838,20 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
     Symbol *calleeSymbol = LookupCalleeSymbol(*e->callee);
     if (calleeSymbol && calleeSymbol->externDecl) {
-        EmitCallSiteDiagnostics(*calleeSymbol->externDecl, e->location);
+        NoteDeclarationUse(*calleeSymbol->externDecl, CallSiteLocation(*e));
     }
 
     TypeRef calleeType = CheckExpr(*e->callee);
     const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
-    if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
-        const std::size_t paramCount = calleeType.inner.size() - 1;
+    if (calleeType->kind == TypeRef::Kind::Func && !calleeType->inner.empty()) {
+        const std::size_t paramCount = calleeType->inner.size() - 1;
         const bool arityOk = calleeType.isVariadic ? argTypes.size() >= paramCount : argTypes.size() == paramCount;
         std::string callableName = "function value";
-        if (const auto *identifier = dynamic_cast<const IdentExpr *>(e->callee.get())) {
+        if (const auto *identifier = AstCast<const IdentExpr>(e->callee.get())) {
             callableName = identifier->name;
         }
-        else if (const auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && !path->segments.empty()) {
+        else if (const auto *path = AstCast<const PathExpr>(e->callee.get()); path && !path->segments.empty()) {
             callableName = path->segments.back();
         }
         if (!arityOk) {
@@ -825,7 +863,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             // C-variadic arguments accept any type.
             for (std::size_t i = 0; i < paramCount; ++i) {
                 const TypeRef &argType = argTypes[i];
-                const TypeRef &paramType = calleeType.inner[i];
+                const TypeRef &paramType = calleeType->inner[i];
                 if (!canPassArgument(i, argType, paramType)) {
                     callAccepted = false;
                     const Param *parameter = nullptr;
@@ -835,9 +873,15 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     emitArgumentTypeError(callableName, i, argType, paramType, parameter);
                 }
             }
+            // A C-variadic argument is passed as C passes it; a Rux variadic overload is resolved elsewhere.
+            if (calleeType.isVariadic && !(calleeSymbol && !calleeSymbol->funcOverloads.empty())) {
+                for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
+                    ValidateCAbiType(argTypes[i], e->args[i]->location, "a C-variadic argument");
+                }
+            }
             if (callAccepted) {
-                const std::vector<TypeRef> parameterTypes(calleeType.inner.begin(),
-                                                          calleeType.inner.begin() + paramCount);
+                const std::vector<TypeRef> parameterTypes(calleeType->inner.begin(),
+                                                          calleeType->inner.begin() + paramCount);
                 ConsumeCallArguments(*e, argTypes, &parameterTypes);
             }
         }
@@ -845,10 +889,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             RecordExternBinding(*e, *calleeSymbol->externDecl);
         }
         else if (calleeSymbol && !calleeSymbol->funcOverloads.empty()) {
-            if (const FuncDecl *decl = LookupFunctionOverload(*calleeSymbol, argTypes, e->typeArgs)) {
+            if (const FuncDecl *decl = LookupFunctionOverload(*calleeSymbol, argTypes, e->typeArgs, e)) {
                 std::unordered_map<std::string, TypeRef> substitutions;
                 if (e->typeArgs.empty()) {
-                    DeduceTypeArguments(*decl, argTypes, substitutions);
+                    DeduceTypeArguments(*decl, argTypes, substitutions, e);
                 }
                 else {
                     const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
@@ -856,6 +900,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
                     }
                 }
+                if (arityOk) {
+                    CheckFormatArguments(*e, *decl, false);
+                }
+                NoteDeclarationUse(*decl, CallSiteLocation(*e));
                 RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct,
                                       std::move(substitutions));
             }
@@ -868,7 +916,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             }
             callableBindings.insert_or_assign(e, std::move(binding));
         }
-        return calleeType.inner.back();
+        return calleeType->inner.back();
     }
     return TypeRef::MakeUnknown();
 }
@@ -876,11 +924,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 /// Resolves a direct or module-qualified callee without emitting diagnostics. Expression checking remains responsible
 /// for invalid names and paths; this lookup only recovers declaration metadata absent from a function TypeRef.
 Symbol *AnalysisContext::LookupCalleeSymbol(const Expr &callee) const {
-    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&callee)) {
+    if (const auto *identifier = AstCast<const IdentExpr>(&callee)) {
         return currentScope->Lookup(identifier->name);
     }
 
-    const auto *path = dynamic_cast<const PathExpr *>(&callee);
+    const auto *path = AstCast<const PathExpr>(&callee);
     if (!path || path->segments.empty()) {
         return nullptr;
     }
@@ -893,6 +941,78 @@ Symbol *AnalysisContext::LookupCalleeSymbol(const Expr &callee) const {
         current = current->moduleScope->Lookup(path->segments[i]);
     }
     return current;
+}
+
+void AnalysisContext::NoteDeclarationUse(const Decl &declaration, const SourceLocation location) {
+    if (declaration.warnMessage.empty() && declaration.errorMessage.empty()) {
+        return;
+    }
+    // Indexing and resolving signatures resolve types that checking the declaration resolves again; only checking
+    // reports. A declaration's own body, fields and extensions name it without using it the way the attribute warns
+    // about.
+    if (!currentFunctionDecl && declarationsBeingChecked.empty()) {
+        return;
+    }
+    if (&declaration == currentFunctionDecl || &declaration == resolvingTypeOwner ||
+        std::ranges::contains(declarationsBeingChecked, &declaration)) {
+        return;
+    }
+    std::string_view typeName;
+    if (const auto *structure = AstCast<const StructDecl>(&declaration)) {
+        typeName = structure->name;
+    }
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&declaration)) {
+        typeName = enumeration->name;
+    }
+    else if (const auto *unionDeclaration = AstCast<const UnionDecl>(&declaration)) {
+        typeName = unionDeclaration->name;
+    }
+    if (!typeName.empty()) {
+        if (inImpl && NamedBaseTypeName(currentSelfType) == typeName) {
+            return;
+        }
+        if (std::ranges::any_of(declarationsBeingChecked, [&](const Decl *checking) {
+                const auto *extension = AstCast<const ImplDecl>(checking);
+                return extension && BaseTypeName(extension->typeName) == typeName;
+            })) {
+            return;
+        }
+        // A field or method signature of the type, resolved while checking something that uses it.
+        if (resolvingTypeOwner) {
+            const ImplDecl *extension = AstCast<const ImplDecl>(resolvingTypeOwner);
+            if (const auto *method = AstCast<const FuncDecl>(resolvingTypeOwner)) {
+                const auto impl = methodImpls.find(method);
+                extension = impl != methodImpls.end() ? impl->second : nullptr;
+            }
+            if (extension && BaseTypeName(extension->typeName) == typeName) {
+                return;
+            }
+        }
+        if (currentFunctionDecl) {
+            if (const auto impl = methodImpls.find(currentFunctionDecl);
+                impl != methodImpls.end() && impl->second->typeName == typeName) {
+                return;
+            }
+        }
+    }
+    if (!reportedDeclarationUses.emplace(&declaration, currentFile, location.offset).second) {
+        return;
+    }
+    EmitCallSiteDiagnostics(declaration, location);
+}
+
+void AnalysisContext::NoteSymbolUse(const Symbol &symbol, const SourceLocation location) {
+    if (symbol.externDecl) {
+        NoteDeclarationUse(*symbol.externDecl, location);
+    }
+    else if (symbol.kind == Symbol::Kind::Func) {
+        if (symbol.funcOverloads.size() == 1) {
+            NoteDeclarationUse(*symbol.funcOverloads.front(), location);
+        }
+    }
+    else if (symbol.declaration) {
+        NoteDeclarationUse(*symbol.declaration, location);
+    }
 }
 
 void AnalysisContext::EmitCallSiteDiagnostics(const Decl &declaration, const SourceLocation location) const {
@@ -912,15 +1032,23 @@ void AnalysisContext::RecordFunctionBinding(const CallExpr &call, const FuncDecl
     binding.dispatch = dispatch;
     binding.selectedDeclaration = &declaration;
     binding.substitutions = std::move(substitutions);
-    binding.receiverType = std::move(receiverType);
+    binding.receiverType = receiverType;
     binding.callingConvention = declaration.callConv;
     if (!declaration.params.empty() && declaration.params.back().isVariadic) {
+        // The boundary counts the written arguments before the variadic ones. A receiver is written among them only in
+        // a call through the type, `Pair::Sum(pair, ...)`: a method call passes it before the argument list, and an
+        // interface or constrained call passes the value the operation is called on, whether or not the requirement
+        // spells out `self`.
+        const bool throughType = AstCast<const PathExpr>(call.callee.get()) != nullptr;
+        const bool passesReceiver = (dispatch == ResolvedCallableBinding::DispatchKind::Method && !throughType) ||
+                                    dispatch == ResolvedCallableBinding::DispatchKind::Interface ||
+                                    dispatch == ResolvedCallableBinding::DispatchKind::Constrained;
         std::size_t boundary = 0;
         for (const auto &parameter : declaration.params) {
             if (parameter.isVariadic) {
                 break;
             }
-            if (dispatch != ResolvedCallableBinding::DispatchKind::Method || parameter.name != "self") {
+            if (!passesReceiver || !parameter.IsReceiver()) {
                 ++boundary;
             }
         }

@@ -1,19 +1,17 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Failed, Panic, Succeeded, int32, int64, uint8 };
 import Format::{ Render, WriteFormat };
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView,
-               TextWriter, WriteDebugValue, WriteValue };
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter,
+               WriteDebugValue, WriteValue };
 
 // The arrangement the whole formatting design rests on: the type is declared in Core, the interface it implements is
 // declared in Text, and the implementation joining them lives in Format. Three packages, none of which contains
 // both halves of the conformance.
-//
 // Nothing about that is exotic — a language either allows an implementation to name a type and an interface from
 // elsewhere or it does not — but everything downstream assumes it, and the assumption was checked by reading the
 // compiler's declaration indexing rather than by running a program. This runs the program. If the arrangement ever
 // stops working, it should fail here, in a case whose whole subject is the arrangement, rather than as a puzzling
 // diagnostic in whichever package next adds a renderer.
-//
 // A conformance also has to survive being reached in each of the ways a caller reaches one, because they lower
 // differently: a direct call on the concrete type, a call through an interface value, a borrowed writer passed on to
 // another package's helper, and a variadic argument list that erases the type entirely.
@@ -98,7 +96,7 @@ func Main() -> int {
     writer.Clear();
     let styled: &var TextWriter = writer;
     Assert(Failed(Render(asDisplay, Spec("iso8601"), styled)), "an unsupported style is refused");
-    Assert(writer.Length() == 0u, "and nothing was written first");
+    Assert(writer.Length() == 0, "and nothing was written first");
 
     // Variadically, which erases the type entirely: what arrives is a list of interface values, and every one of
     // them has to find its implementation with nothing left of where it came from.

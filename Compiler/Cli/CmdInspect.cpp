@@ -465,6 +465,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
     if (jsonOutput) {
         std::print("{}\n", "{");
         std::print("  \"success\": true,\n");
+        std::print("  \"manifestVersion\": {},\n", manifest->header.schemaVersion);
         if (manifest->package.ns) {
             std::print("  \"namespace\": \"{}\",\n", EscapeJson(manifest->package.ns->Text()));
         }
@@ -520,6 +521,13 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
                 std::print(", \"namespace\": \"{}\", \"package\": \"{}\", \"version\": \"{}\"",
                            EscapeJson(registry->ns.Text()), EscapeJson(dep.package.Text()),
                            EscapeJson(registry->version.Text()));
+            }
+            if (!dep.targetOS.empty()) {
+                std::print(", \"targetOS\": [");
+                for (std::size_t i = 0; i < dep.targetOS.size(); ++i) {
+                    std::print("{}\"{}\"", i == 0 ? "" : ", ", EscapeJson(ManifestTargetOSName(dep.targetOS[i])));
+                }
+                std::print("]");
             }
             // Only add a comma if this isn't the last element in the vector
             if (i + 1 < manifest->dependencies.size()) {

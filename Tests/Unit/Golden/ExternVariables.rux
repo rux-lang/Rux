@@ -1,0 +1,17 @@
+// An extern variable is imported data, so it must say which library holds it, and its type must be one C can share.
+extern Unlinked: int32;
+
+extern {
+    AlsoUnlinked: int32;
+}
+
+#Link("libc.so.6")
+extern Half: float16;
+
+#Link("libc.so.6")
+extern opterr: int32;
+
+func Main() -> int {
+    opterr = 0;
+    return opterr as int;
+}

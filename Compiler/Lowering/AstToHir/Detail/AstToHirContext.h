@@ -2,6 +2,7 @@
 
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/AstToHir/Detail/CleanupPlanner.h"
+#include "Parallel/WorkerPool.h"
 #include "Types/NativeConversion.h"
 
 #include <cstdint>
@@ -57,21 +58,46 @@ public:
                     const CompileTimeContext &inputCompileTimeContext, std::vector<Diagnostic> &outputDiagnostics);
     ~AstToHirContext();
 
+    /// A context for lowering modules on another thread: the declaration tables `prepared` collected, with fresh
+    /// lowering state of its own.
+    AstToHirContext(const AstToHirContext &prepared, std::vector<Diagnostic> &outputDiagnostics);
+
     AstToHirContext(const AstToHirContext &) = delete;
     AstToHirContext &operator=(const AstToHirContext &) = delete;
 
-    [[nodiscard]] HirPackage Run();
+    /// Lower every module, on `pool`'s threads when one is given; the package never depends on it.
+    [[nodiscard]] HirPackage Run(Parallel::WorkerPool *pool = nullptr);
+
+    /// Modules lowered without the bodies of their non-generic functions (`AstToHirLowering`).
+    void SetDeclarationOnlyModules(const std::unordered_set<const Module *> *inputModules) noexcept {
+        declarationOnlyModules = inputModules;
+    }
 
 protected:
     const SemanticModel &model;
     const std::vector<const Module *> &modules;
     const CompileTimeContext &context;
+    const std::unordered_set<const Module *> *declarationOnlyModules = nullptr;
+    /// Whether the module being lowered is one of `declarationOnlyModules`.
+    bool declarationOnly = false;
+    /// Whether the module, or the constant, being lowered has read the build's time. Reading it is bookkeeping, not a
+    /// change to what lowering does, so reading from a const member records it too.
+    mutable bool readsBuildTime = false;
+
+    /// The build's time, noting that the code being lowered depends on it.
+    [[nodiscard]] std::int64_t BuildTimestamp() const {
+        readsBuildTime = true;
+        return context.buildInfo.Timestamp();
+    }
+
     HirScope globalScope;
     HirScope *currentScope;
     std::vector<std::unique_ptr<HirScope>> ownedScopes;
     std::string currentFile;
     std::string currentFunctionName;
-    std::string currentModulePath;
+    /// Where a default argument being lowered is called from: a `#source` read in the default reports the call, not
+    /// the declaration it is written in.
+    std::optional<SourceLocation> sourceSiteOverride;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     /// Distinguishes the bindings two propagations in one expression introduce; only their uniqueness matters.
     std::size_t propagationOrdinal = 0;
@@ -100,13 +126,45 @@ protected:
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
+    /// The generic extensions that implement an interface, by the base name of the type they extend: each
+    /// instantiation a module converts to the interface gets a vtable of that module's own.
+    std::unordered_map<std::string, std::vector<const ImplDecl *>> genericInterfaceImpls;
+    /// The instance vtables the module being lowered has made, by type and interface, and the blocks that emit them.
+    std::unordered_map<std::string, std::string> instanceVtableLabels;
+    std::vector<HirImplBlock> instanceVtables;
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
     std::vector<std::vector<const DeferStmt *>> deferStack;
+    /// For each loop being lowered, innermost last: its label and how many defer scopes were open around it, so a
+    /// `break` or `continue` runs the defers registered inside the loop before it jumps.
+    std::vector<std::pair<std::string, std::size_t>> loopDeferBases;
     std::size_t returnOrdinal = 0;
+    /// Names the value an interface value owns, which a scope destroys like a local of its own.
+    std::size_t interfaceValueOrdinal = 0;
+    /// The holders of the function being lowered, by `InterfaceHolderKey`: each one's hidden name and binding.
+    std::unordered_map<std::string, std::pair<std::string, std::uint64_t>> interfaceHolderBindings;
+    /// Declarations a statement needs ahead of it in its block: the holders a local keeps its interface values in.
+    std::vector<HirStmtPtr> statementPrelude;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
-    std::vector<Diagnostic> &diagnostics;
+
+    /// Where a function or method was declared: its source file and the path of any `module` blocks around it, which
+    /// `Source.module` reads. A generic instance is lowered into the module that uses it, but its panics, assertions
+    /// and compile-time source values still name the place its body was written.
+    struct DeclarationOrigin {
+        std::string file;
+        std::string declModulePath;
+    };
+
+    std::unordered_map<const FuncDecl *, DeclarationOrigin> functionOrigins;
+    /// Where lowering reports; a worker lowering one module points it at that module's own list.
+    std::vector<Diagnostic> *diagnostics;
+
+    /// Start every counter that names a module's temporaries and bindings from zero, so what a module lowers to does
+    /// not depend on the modules lowered before it on the same context.
+    void ResetModuleState();
+    /// Make `module` the one being lowered: its file and path, with its counters reset.
+    void BeginModule(const Module &module);
 
     void PushScope();
     void PopScope();
@@ -118,7 +176,10 @@ protected:
     void AppendCurrentScopeCleanups(HirBlock &block) const;
     [[nodiscard]] std::uint64_t BindingId(const HirExpr &expression) const;
     [[nodiscard]] std::uint64_t ConsumedBindingId(const HirExpr &expression) const;
-    [[nodiscard]] std::optional<HirDropAction> OverwriteCleanup(const HirExpr &target, SourceLocation origin) const;
+    /// What a `=` or `<-` `assignment` to the lowered `target` destroys before it stores: the binding it writes whole,
+    /// or the value semantic analysis recorded at the place it writes. Null when it replaces nothing.
+    [[nodiscard]] std::optional<HirDropAction> OverwriteCleanup(const AssignExpr &assignment,
+                                                                const HirExpr &target) const;
     [[nodiscard]] std::optional<HirPartialDropAction>
     PartialCleanup(HirPartialDropAction::Kind kind, const TypeRef &type, std::size_t ordinal, std::string name,
                    SourceLocation origin, CaseTypeForm form = CaseTypeForm::Enumeration) const;
@@ -130,24 +191,33 @@ protected:
 
     [[nodiscard]] HirBlock LowerBlock(const Block &block);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
+    /// Lowers `stmt` into `block`, after the declarations it needs ahead of it.
+    void LowerStmtInto(HirBlock &block, const Stmt &stmt);
+    /// Identifies one holder of the function being lowered, with the holder's type as this instance spells it.
+    [[nodiscard]] std::string InterfaceHolderKey(const InterfaceHolderSite &site) const;
+    /// Declares, ahead of `local`, the holders its interface values keep their values in.
+    void DeclareInterfaceHolders(const LetStmt &local);
+    CleanupPlanner::LoopToken BeginLoop(const std::string &label);
+    void EndLoop(CleanupPlanner::LoopToken token);
+    /// A `break` or `continue` that first runs the defers registered inside the loop it leaves.
+    [[nodiscard]] HirStmtPtr LowerLoopExit(HirStmtPtr jump, const std::string &label, SourceLocation location);
     [[nodiscard]] HirStmtPtr LowerFunctionReturn(HirExprPtr value, SourceLocation location);
-    [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
+    /// A binding pattern of `type`. A destructuring `let` passes `discardsParts`: it owns the whole initializer, so a
+    /// part it binds to `_`, or a structure field it leaves out, is destroyed where it is discarded.
+    [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable,
+                                                bool discardsParts = false);
 
     /// Whether a binding a pattern makes owns what it binds, and so is destroyed when its scope ends.
     ///
-    /// A `let` always owns: the initializer was handed over. A match arm owns only when the subject was handed over
-    /// too -- matching a borrowed subject copies the payload out of something that still owns it, and destroying
-    /// both copies is exactly the double destruction this exists to avoid.
+    /// A `let` always owns: the initializer was handed over. A match arm owns only when its match owns the subject —
+    /// one handed over, a temporary, or the copy a by-value match makes. Matching a borrowed subject reads the payload
+    /// out of something that still owns it, and destroying both is exactly the double destruction this avoids.
     bool patternBindingsOwnPayload = true;
     [[nodiscard]] HirPatternPtr LowerPattern(const Pattern &pattern,
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerTryExpr(const TryExpr &expression);
     [[nodiscard]] HirExprPtr LowerCoalesceExpr(const BinaryExpr &expression);
-    [[nodiscard]] std::unique_ptr<HirEnumPattern>
-    LowerOutcomeVariantPattern(SourceLocation location, const std::string &variantName, const std::string &caseName,
-                               const TypeRef &operandType, const std::string &bindingName, const TypeRef &bindingType,
-                               bool hasPayload);
     // Native construction and conversion (AstToHirNative.cpp).
     /// Distinguishes the hidden payload bindings native widening introduces.
     std::size_t nativeOrdinal = 0;
@@ -226,9 +296,12 @@ protected:
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
     [[nodiscard]] HirExprPtr LowerConventionCall(const FuncDecl &method, HirExprPtr receiver, SourceLocation location);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
-    [[nodiscard]] HirExprPtr LowerMatchSubject(const Expr &expression);
+    [[nodiscard]] HirExprPtr LowerMatchSubject(const Expr &expression,
+                                               ValueConsumptionKind kind = ValueConsumptionKind::MatchSubject);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
+    /// `value` at `targetType`, when both are scalars and analysis accepted one where the other was expected.
+    [[nodiscard]] static HirExprPtr ConvertScalar(HirExprPtr value, const TypeRef &targetType);
     [[nodiscard]] std::unique_ptr<HirArrayExpr>
     LowerArrayRepeatAs(const ArrayRepeatExpr &expression, const TypeRef &elementType, const TypeRef &arrayType);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
@@ -245,6 +318,7 @@ private:
     void LowerTopLevelDecl(const Decl &decl, HirModule &module);
     [[nodiscard]] bool IsDiagnosticIntrinsicCall(const Expr &expression) const;
     [[nodiscard]] ResolvedCallableBinding ResolvedCall(const CallExpr &call) const;
+    [[nodiscard]] HirExprPtr LowerArgumentAs(const Expr &argument, const TypeRef &parameterType);
     [[nodiscard]] HirExprPtr LowerDefaultArgument(const Expr &expression, const TypeRef &targetType,
                                                   const SourceLocation &callSiteLocation);
     [[nodiscard]] std::vector<HirExprPtr> LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,
@@ -273,6 +347,9 @@ private:
     [[nodiscard]] HirExprPtr LowerCompilerParamFieldExpression(const FieldExpr &expression);
     [[nodiscard]] HirExprPtr LowerIntrinsicExpr(const IntrinsicExpr &expression) const;
     [[nodiscard]] TypeRef StructInitFieldType(const StructInitExpr &expression, const std::string &fieldName);
+    /// The vtable label of `type`'s implementation of `interfaceName`, made for the module being lowered when the
+    /// implementation is a generic extension; empty when there is none.
+    [[nodiscard]] std::string InterfaceVtableLabel(const TypeRef &type, const std::string &interfaceName);
     [[nodiscard]] std::optional<TypeRef> InterfaceImplementationType(const TypeRef &expressionType,
                                                                      const TypeRef &targetType) const;
 
@@ -302,7 +379,7 @@ private:
                                          const TypeRef &receiverType, const FuncDecl &declaration);
     [[nodiscard]] bool MethodIsFromConcreteImpl(const FuncDecl &method) const;
     [[nodiscard]] const std::string &FunctionCalleeName(const FuncDecl &decl) const;
-    [[nodiscard]] const std::string &FunctionReferenceName(const IdentExpr &identifier);
+    [[nodiscard]] std::string FunctionReferenceName(const IdentExpr &identifier);
     [[nodiscard]] HirFunc LowerFunc(const FuncDecl &decl, bool isMethod = false,
                                     const std::unordered_map<std::string, TypeRef> &substitutions = {},
                                     const std::string &overrideName = "");
@@ -318,7 +395,11 @@ private:
     [[nodiscard]] HirInterface LowerInterface(const InterfaceDecl &decl);
     [[nodiscard]] HirImplBlock LowerImpl(const ImplDecl &decl);
     [[nodiscard]] HirConst LowerConst(const ConstDecl &decl);
+    [[nodiscard]] HirConst LowerConstValue(const ConstDecl &decl);
     [[nodiscard]] HirExternFunc LowerExternFunc(const ExternFuncDecl &decl);
+    [[nodiscard]] HirGlobal LowerGlobal(const GlobalDecl &decl);
+    [[nodiscard]] HirExprPtr LowerProcessStartFrame(const CallExpr &call);
+    [[nodiscard]] HirExprPtr LowerAtomicCall(const CallExpr &call, const std::string &operation);
     [[nodiscard]] HirExternVar LowerExternVar(const ExternVarDecl &decl);
     [[nodiscard]] HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl);
     [[nodiscard]] HirExprPtr LowerExpr(const Expr &expression);

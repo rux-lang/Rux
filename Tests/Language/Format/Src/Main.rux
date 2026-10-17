@@ -5,7 +5,6 @@ import Text::{ FormatError, String, StringView };
 
 // A format call reached the way a program reaches one: literal text, two placeholders, two values of different
 // types, and the result checked as text rather than byte by byte.
-//
 // The float is written to every digit it needs to read back as itself, which for pi is sixteen. It used to stop at
 // fifteen, which was one short of a round trip.
 

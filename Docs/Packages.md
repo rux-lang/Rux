@@ -2,20 +2,24 @@
 
 First-party Rux packages live under `Packages/` in the repository root. Return to the [main README](../README.md) for the complete documentation index.
 
-Core is an optional declaration provider. Import primitive APIs explicitly, for example `import Core::int8;` before using `int8::Min`. A dependency's imports do not expose those APIs to its consumers. Replacement providers can declare the same intrinsic types and context values without using Core's package name or registry identity.
+Core is an optional declaration provider. Every primitive type is built into the compiler; Core extends them with associated constants. Import those explicitly, for example `import Core::int8;` before using `int8::Min`. A dependency's imports do not expose those APIs to its consumers. Replacement providers can declare the same primitive extensions and context values without using Core's package name or registry identity.
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **25 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **39 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
 | `Algorithms`  | Generic algorithms over caller-owned slices                          | Core                                                     |
 | `Allocator`   | Allocation policies, validated layouts and allocation owners         | Core, Memory                                             |
+| `Atomic`      | Values threads share without a lock, and their memory orders         | Core                                                     |
 | `C`           | Explicit interoperability with C runtime APIs                        | Core                                                     |
 | `Collections` | Owning containers and their traversal/storage invariants             | Core, Memory, Allocator, Algorithms, Hash, Entropy, Text |
+| `CommandLine` | Declarative argument parsing, subcommands and generated help         | Core, Path, Process, Text                                |
+| `Compress`    | Deflate compression in the raw, zlib and gzip formats                | Core, Memory, Allocator, Hash, Io, Collections           |
 | `Core`        | Optional intrinsic declarations and fundamental value protocols      | None                                                     |
 | `Crypto`      | Cryptographic digest, MAC, KDF and secret-buffer operations          | Core                                                     |
+| `Encoding`    | Byte-to-text encodings: hexadecimal, Base64, Base32, Base58, percent | Text, Io                                                 |
 | `Entropy`     | OS entropy acquisition and failure handling                          | Core, Memory, OS                                         |
 | `FileSystem`  | Files, directories, metadata and filesystem transactions             | Core, Allocator, Text, Path, Io, Time, Entropy, OS       |
 | `Format`      | Placeholder rendering and primitive text conversion                  | Core, Allocator, Text                                    |
@@ -24,15 +28,25 @@ The v0.1.0 release ships **25 packages**. This table is the target catalog: it i
 | `Io`          | Stream contracts, buffering and console I/O                          | Core, Memory, Allocator, Text, Format, OS                |
 | `Json`        | JSON grammar, values and serialization                               | Core, Allocator, Collections, Text, Format, Io           |
 | `Linux`       | Linux ABI declarations and thin binding helpers                      | Core                                                     |
+| `Log`         | Leveled, structured records in text or JSON lines, the process-wide log, and rotating files | Core, Allocator, Format, Io, Sync, Text, Time, Path, FileSystem |
 | `macOS`       | Darwin/libSystem ABI declarations and thin binding helpers           | Core                                                     |
 | `Math`        | Mathematical operations and numerical classification                 | Core                                                     |
 | `Memory`      | Untyped blocks, page mappings and byte-level operations              | Core, OS                                                 |
+| `NanoId`      | Nano ID generation, validation and textual form                      | Core, Entropy, Memory, Text                              |
+| `Net`         | IP and socket addresses, TCP and UDP sockets, polling, and name resolution | Core, Allocator, Collections, Text, Time, Io, OS          |
 | `Path`        | Lossless native strings and lexical path operations                  | Core, Memory, Allocator, Text                            |
+| `Process`     | The running process and the child processes it starts                | Core, Memory, Allocator, Path, Io, Thread, OS            |
 | `Random`      | Seeded generators, distributions and sampling                        | Core, Math, Entropy                                      |
-| `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator                                  |
+| `Regex`       | Regular expressions matched in linear time                           | Core, Allocator, Collections, Text, Unicode              |
+| `Sync`        | Locks, conditions, once-only setup, counters and channels for threads | Core, Memory, Time, OS                                   |
+| `Test`        | Unit-test checks, failures and the runner `#Test()` functions use    | Core, Allocator, Collections, Format, Io, Process, Text, Time |
+| `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator, Unicode                         |
+| `Thread`      | Starting, joining and detaching threads, and the current thread      | Core, Memory, OS                                         |
 | `Time`        | Clock, duration, calendar and temporal text semantics                | Core, OS, Text                                           |
+| `TimeZone`    | Time zones from the tz database and POSIX rules, and local resolution | Core, Allocator, Collections, Time, Path, Io, FileSystem, Process, OS |
 | `Toml`        | TOML grammar, values and serialization                               | Core, Allocator, Collections, Text, Format, Math, Time   |
 | `Unicode`     | Unicode database properties and Unicode algorithms                   | Core                                                     |
+| `Url`         | URL parsing, normalization, resolution and queries                   | Core, Memory, Allocator, Text                            |
 | `Uuid`        | UUID representation, generation and textual forms                    | Core, Entropy, Time, Text                                |
 | `Windows`     | Windows ABI declarations and thin binding helpers                    | None                                                     |
 
@@ -43,19 +57,21 @@ The v0.1.0 release ships **25 packages**. This table is the target catalog: it i
 Arrows point toward dependencies. This is a dependency ordering, not a requirement that every package depend on every lower layer.
 
 ```text
-Layer 7  FileSystem, Json, Toml
+Layer 8  CommandLine, TimeZone, Test, Log
              |
-Layer 6  Io, Uuid
+Layer 7  FileSystem, Json, Toml, Process, Compress, Net, Encoding
              |
-Layer 5  Format, Time, Path, Collections
+Layer 6  Io, Uuid, Sync, Regex
+             |
+Layer 5  Format, Time, Path, Collections, NanoId, Url
              |
 Layer 4  Text, Random
              |
-Layer 3  Allocator, Entropy
+Layer 3  Allocator, Entropy, Thread
              |
 Layer 2  Memory
              |
-Layer 1  Linux, macOS, FreeBSD, C,
+Layer 1  Linux, macOS, FreeBSD, C, Atomic,
          Algorithms, Hash, Crypto, Math, Unicode
              |
 Layer 0  Core, Windows
@@ -65,13 +81,11 @@ Layer 0  Core, Windows
 
 ## Retired Identities
 
-The workspace matches the catalog above: 25 packages, and none of the five identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
+The workspace matches the catalog above: 39 packages, and none of the three identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
 | Former identity | What happened               | Status                                  |
 | --------------- | --------------------------- | --------------------------------------- |
 | `Rux/Storage`   | Renamed to `Rux/FileSystem` | Migrated; the identity no longer exists |
-| `Rux/Sync`      | Withdrawn from the release  | Deleted; the identity no longer exists  |
-| `Rux/Thread`    | Withdrawn from the release  | Deleted; the identity no longer exists  |
 | `Rux/Benchmark` | Withdrawn from the release  | Deleted; the identity no longer exists  |
 | `Rux/Simd`      | Withdrawn from the release  | Deleted; the identity no longer exists  |
 
@@ -83,14 +97,12 @@ The `Storage` rename covered the registry identity and dependency names, the `Pa
 
 These packages are deliberately absent from the release set. Their sources and executable tests were deleted rather than excluded: keeping an unreleased but compiling subset would be a maintenance commitment this release does not make. Git history retains every implementation.
 
-| Package     | Why it is not shipping                                                                                                                                                     |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package     | Why it is not shipping                                                                                                                                                      |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Benchmark` | Configuration and result arithmetic with no measurement loop, and a `BlackBox` that is an ordinary local store and load. Measurement methodology is not a `Time` concern.   |
 | `Simd`      | Four scalar records performing field-by-field arithmetic. Scalar records do not establish the accelerated SIMD contract the package advertised.                             |
-| `Sync`      | AArch64 updates use ordinary loads and stores, guards expose raw fields and permit copying, and `Once` cannot initialize. The whole package goes, including x86-64 atomics. |
-| `Thread`    | Non-Windows sleep and yield share one spin hint, and `CurrentId` always returns 1.                                                                                          |
 
-Removing `Sync` is not a claim that the inspected x86-64 atomics are incorrect; it is a decision not to release a partial concurrency package. A future concurrency package must be complete and independently validated. `Time::SleepFor` is the supported waiting API for v0.1.0. No thread creation, thread identifier, yield, lock or channel is promised.
+`Sync` and `Thread` were withdrawn from an earlier cut because they were partial: `Sync`'s AArch64 updates used ordinary loads and stores, its guards exposed raw fields and could be copied, and its `Once` could not initialize; `Thread`'s non-Windows sleep and yield shared one spin hint and its `CurrentId` always returned 1. Both return rebuilt on the compiler's atomic intrinsics and thread-local storage: `Thread` on the C library's threads and `CreateThread`, `Sync` on each system's wait-on-address primitive, with guards that own their lock and cannot be copied.
 
 ## Naming and Ownership Decisions
 
@@ -103,6 +115,9 @@ These are settled for v0.1.0. Revisit the decision before changing anything that
 - **`Memory` and `Allocator` stay separate.** Memory owns addresses and page and block operations; Allocator owns layouts, policies and lifetimes.
 - **`FileSystem` owns `File`** and implements Io's interfaces. `Io` does not acquire filesystem resources.
 - **`Entropy` has no presentation dependency.** `EntropyError` implements neither `Display` nor `Debug` in v0.1.0; callers handle its cases or wrap it in their own diagnostic type. `Format` must not acquire an `Entropy` dependency in either direction, and neither must `Text`. The edge is what makes the decision reversible by accident — adding the implementation would look local to whoever added it — so `Tests/Unit/ManifestTests.cpp` checks the transitive dependency closure in both directions rather than the implementation. `Text` presents the low-level `AllocError` and `PageError` it already depends on, since they surface through `TextError`.
+- **Fallible operations return native forms.** An operation that can fail returns `T ! E`, absence is `T?`, and iterators return `Item?`; status enums lost their success member and their `IsOk`/`IsError` questions, and an output slot beside a status became the success payload. Core declares no `Option`, `Result`, or `Unit`. The [native outcome guide](NativeOutcomes.md) has the design and the migration table.
+- **Printing reports an optional failure.** `Print`, `PrintLine`, `PrintValue`, and `PrintValueLine` return `IoError?` — `none` when everything was written — rather than `! IoError`, because a bare printing statement must stay valid and a discarded fallible is an error. Stream operations (`Read`, `Write`, `Flush`, `WriteAll`, `ReadLine`, and the rest) are fallible.
+- **Single-failure helpers keep `bool` and output slots.** APIs with exactly one way to fail that are not status enums stay as they are: `AddChecked`, `AlignUpChecked`, the Math `*Checked` family, the Json/Toml `AsX(result)` accessors, `Box.TryTake`, the Unicode `written` slots, Algorithms `MinMaxIndex`, the Collections `Try*` methods, `HashMap.GetOrInsert`'s `existing`/`inserted` out-parameters (it returns `! CollectionError`), and Json/Toml `Push`/`Insert`, which return `bool`.
 - **`Entropy`, `Uuid` and `Hash` stay separate identities.** Unpredictable OS input with its retries and zeroization, UUID layout and version semantics, and named non-cryptographic hash engines are each a coherent domain.
 
 A new concern belongs with the package that owns its invariants. Shared implementation detail moves downward only when it has an independent contract and introduces no upward dependency. Add a package dependency only for actual use.
@@ -126,13 +141,13 @@ All four agree with their sources at the current commit. Do not add a `Windows` 
 
 The rule applies to what the three actually have in common. `Brk` is absent on Darwin, `Dup2` on Linux and `Pipe2` on Darwin, and those absences are real; an emulating wrapper that papers over one would be a worse answer than the branch it saved.
 
-| Aspect                     | Rule                                                                                                      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Aspect                     | Rule                                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Wrapper names              | Identical for an equivalent call. Linux's `FstatAt` keeps the kernel's `newfstatat` numbering under `SysNewFstatAt`, but the wrapper is spelled as the BSDs spell theirs. |
-| Parameter names and shapes | Identical, including the pointer qualifiers. Kernel records pass by address on all three, never by reference. |
-| ABI type names             | `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `GroupId` and `Timespec` are declared by all three; each width is that system's own. |
-| Errno names                | The shared POSIX set is declared by all three, in the kernel's own spelling. Each number is that system's own. |
-| Constants and flags        | Never shared. A value carried between two of these packages compiles and means something else.               |
+| Parameter names and shapes | Identical, including the pointer qualifiers. Kernel records pass by address on all three, never by reference.                                                             |
+| ABI type names             | `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `GroupId` and `Timespec` are declared by all three; each width is that system's own.                   |
+| Errno names                | The shared POSIX set is declared by all three, in the kernel's own spelling. Each number is that system's own.                                                            |
+| Constants and flags        | Never shared. A value carried between two of these packages compiles and means something else.                                                                            |
 
 `Tests/Unit/PlatformBindingContractTests.cpp` enforces every row of that table over the parsed sources, and also asserts that the values a reader might carry across really do differ. The executable tests under `Tests/Packages/{Linux,macOS,FreeBSD}/Syscall` carry a block that is byte-identical across the three, which is the same claim made from the other direction: if the contract diverges, only one of the three still compiles.
 
@@ -140,7 +155,7 @@ The rule applies to what the three actually have in common. `Brk` is absent on D
 
 No first-party package is published, and none is marked publishable. A package becomes publishable only when every documentation check, archive check and applicable review gate is complete; the rule was applied, and the answer today is that one criterion blocks all of them. What has actually been measured, at which commit and on which host, is recorded in [package acceptance evidence](PackageAcceptance.md).
 
-**What passes for all 25 packages.** Canonical `SourceLibrary` manifests with no path dependency, package tests on local paths only, `rux check` clean on all eight target cells, `rux doc` generating with no missing declaration, no duplicate route and no unsafe link, and `rux publish --dry-run` validating a deterministic archive — two packs of the same tree agree byte for byte, which the CLI tests assert. Every fenced `rux` block in every README is compiled by `Tests/Unit/PackageExampleTests.cpp`, which exists because five of them were broken and nothing else looked.
+**What passes for all 30 packages.** Canonical `SourceLibrary` manifests with no path dependency, package tests on local paths only, `rux check` clean on all eight target cells, `rux doc` generating with no missing declaration, no duplicate route and no unsafe link, and `rux publish --dry-run` validating a deterministic archive — two packs of the same tree agree byte for byte, which the CLI tests assert. Every fenced `rux` block in every README is compiled by `Tests/Unit/PackageExampleTests.cpp`, which exists because five of them were broken and nothing else looked.
 
 **What blocks all of them.** Native behavior must be executed on Windows, Linux, macOS and FreeBSD across both architectures. Only the host cell runs locally: the compiler refuses to run a foreign target's test programs by design, reporting that the host can build and check the target but not execute it. The other seven cells are compiled and never run, so the syscall numbers, flag values, errno constants and `struct stat` offsets of the four platform binding packages rest on published documentation rather than on a passing test. Closing this needs the [CI matrix](CI-CD.md) or VMs; marking anything publishable before then would treat "it compiles for that target" as the same claim as "it works on that target".
 
@@ -159,6 +174,8 @@ rux check --target linux-aarch64
 rux doc --target linux-aarch64 --output Temp/Docs
 rux --manifest Tests/Language/Arithmetic/Rux.toml build --release --target linux-aarch64
 ```
+
+The API reference on `rux-lang.dev` is rendered from JSON snapshots rather than from the HTML site. `rux doc --format json --output Temp/ApiJson` at the workspace root writes one `<Package>.json` per member, and each package's `@see` URLs decide which page of that reference an item or member lands on.
 
 ## Package Layout and Tests
 
@@ -185,5 +202,3 @@ rux test
 ```
 
 Run these commands from the repository root. Package tests are centralized below `Tests/Packages/`; running `rux test` from an individual `Packages/<Name>/` directory does not discover them.
-
-`rux check --deny-legacy-protocols` and `rux test --deny-legacy-protocols` report each remaining use of the legacy Result and Option protocols, a `?` or `??` on a variant recognized by its case names or an iterator whose `Next` returns one, as an error in the package that writes it. `Tests/Unit/LegacyProtocolAuditTests.cpp` runs the same audit over every workspace package, README block, and test package and holds the remaining sites per file in `Tests/Unit/LegacyProtocolAuditBaseline.txt`, which may only shrink as packages migrate to the native forms.

@@ -1,0 +1,44 @@
+// A structure pattern in `let` must match every value, and it takes the value apart, so a refutable field pattern and
+// a split of a structure whose type declares its own destructor are refused.
+
+struct Point { x: int32; y: int32; }
+
+struct Handle { code: int32; }
+
+extend Handle {
+    func =(self: &var Handle, other: &Handle) { self.code = other.code; }
+    func ~Handle(self: &var Handle) {}
+}
+
+func Refutable(point: Point) -> int32 {
+    let Point { x: 0i32, y: y } = point;
+    let Point { x: 0..5, y: other } = point;
+    let (Point { x: 1i32, y: _ }, count) = (point, 2i32);
+    return y + other + count;
+}
+
+func SplitMoving(handle: Handle) -> int32 {
+    let Handle { code: code } <- handle;
+    return code;
+}
+
+func SplitCopy(handle: Handle) -> int32 {
+    let Handle { code: code } = handle;
+    return code;
+}
+
+func SplitNested(pair: (Handle, int32)) -> int32 {
+    let (Handle { code: code }, extra) <- pair;
+    return code + extra;
+}
+
+// Binding none of the fields takes nothing apart, so the value is only discarded whole.
+func DiscardWhole(handle: Handle) {
+    let Handle { code: _ } <- handle;
+}
+
+func Shape(point: Point) -> int32 {
+    let Point { z: z } = point;
+    let Handle { code: code } = point;
+    return 0;
+}

@@ -1,10 +1,8 @@
 // `break`: leaving a loop early, and choosing which loop to leave.
-//
 // Unlabelled `break` leaves the innermost loop, which is the easy half. The labelled form is what needs a test: a
 // `break` naming an outer loop has to leave every loop between it and the one it names, and getting that wrong is
 // not a crash but a program that quietly does the inner loop's remaining work first. Every case below therefore
 // counts iterations rather than only checking the value that survived, so an extra pass is visible.
-//
 // `break` also has to interact correctly with the four loop forms, since each ends differently: `loop` has no
 // condition to fall out of, `while` re-tests before the body, `do`-`while` re-tests after it, and `for` advances an
 // iterator.

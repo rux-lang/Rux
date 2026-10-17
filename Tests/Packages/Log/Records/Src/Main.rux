@@ -1,0 +1,134 @@
+// Records come out as one line of text or JSON each, with their fields typed, quoted and escaped; levels filter
+// them; context fields come first; times are RFC 3339 in UTC; a failing destination is reported without stopping the
+// program; and the process-wide settings answer as set.
+
+import Allocator::SystemAllocator;
+import Core::Assert;
+import Io::{ IoError, IoErrorKind, Writer };
+import Log::{ Enabled, Field, Info, Level, LogFormat, Logger, SetLevel };
+
+// Room for what a test logger writes. A logger keeps its own copy of its sink, so the sink writes through pointers.
+struct Memory {
+    bytes: char8[1024];
+    length: uint;
+}
+
+struct MemorySink {
+    memory: *var Memory;
+    broken: bool;
+}
+
+extend MemorySink : Writer {
+    pub func Write(self: &var MemorySink, bytes: char8[..]) -> uint ! IoError {
+        if self.broken { fail IoError::Of(IoErrorKind::BrokenPipe); }
+        var index: uint = 0;
+        while index < bytes.length {
+            self.memory.bytes[self.memory.length] = bytes[index];
+            self.memory.length = self.memory.length + 1;
+            index = index + 1;
+        }
+        return bytes.length;
+    }
+
+    pub func Flush(self: &var MemorySink) -> ! IoError {}
+}
+
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Whether anything was written since the last check.
+func Taken(memory: *var Memory) -> bool {
+    return memory.length != 0u;
+}
+
+func Holds(memory: *var Memory, expected: char8[..]) -> bool {
+    let same = Same(memory.bytes[..memory.length], expected);
+    memory.length = 0;
+    return same;
+}
+
+func IsDigit(byte: char8) -> bool {
+    return byte >= c8'0' && byte <= c8'9';
+}
+
+func Main() -> int {
+    var memory = Memory { bytes: [c8' '; 1024], length: 0 };
+
+    // Text records.
+    var text = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::Text);
+    text.SetTimestamps(false);
+    text.Info("started", [
+        Field::Text("user", "ann"), Field::Integer("n", -3), Field::Unsigned("u", 7), Field::Boolean("ok", true),
+        Field::Text("note", "two words"), Field::Text("empty", "")
+    ]);
+    Assert(Holds(@memory, "INFO  started user=ann n=-3 u=7 ok=true note=\"two words\" empty=\"\"\n"),
+           "a text record with every kind of field");
+    text.Warn("line one\nline two", [Field::Text("said", "say \"hi\"\t=")]);
+    Assert(Holds(@memory, "WARN  line one\\nline two said=\"say \\\"hi\\\"\\t=\"\n"), "escapes keep a record on one line");
+    text.Error("bare");
+    Assert(Holds(@memory, "ERROR bare\n"), "a record with no fields");
+
+    // Levels.
+    text.Debug("hidden");
+    Assert(!Taken(@memory) && text.MinimumLevel() == Level::Info, "debug records are below the default level");
+    text.SetLevel(Level::Trace);
+    text.Trace("shown");
+    Assert(Holds(@memory, "TRACE shown\n") && text.Enabled(Level::Debug), "a lower level lets them through");
+    text.SetLevel(Level::Error);
+    text.Warn("dropped");
+    Assert(!Taken(@memory) && !text.Enabled(Level::Warn), "a higher level drops warnings");
+
+    // Context fields come before a record's own.
+    text.SetLevel(Level::Info);
+    let context = [Field::Text("request", "r1")];
+    text.SetContext(context[..]);
+    text.Info("handled", [Field::Integer("status", 200)]);
+    Assert(Holds(@memory, "INFO  handled request=r1 status=200\n"), "context fields");
+
+    // JSON lines.
+    var json = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::JsonLines);
+    json.SetTimestamps(false);
+    var zero = 0.0;
+    json.Warn("disk \"full\"", [
+        Field::Float("ratio", 0.5), Field::Float("bad", zero / zero), Field::Boolean("retry", false),
+        Field::Text("path", "C:\\temp")
+    ]);
+    Assert(Holds(@memory, "{\"level\":\"warn\",\"message\":\"disk \\\"full\\\"\",\"ratio\":0.5,\"bad\":null,\"retry\":false,\"path\":\"C:\\\\temp\"}\n"),
+           "a JSON record, with a number that is not finite as null");
+
+    // Times.
+    var timed = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::Text);
+    timed.Info("now");
+    let line = memory.bytes[..memory.length];
+    Assert(line.length == 35u && IsDigit(line[0]) && IsDigit(line[3]) && line[4] == c8'-' && line[7] == c8'-' &&
+           line[10] == c8'T' && line[13] == c8':' && line[16] == c8':' && line[19] == c8'.' && IsDigit(line[22]) &&
+           line[23] == c8'Z' && line[24] == c8' ', "an RFC 3339 time in UTC to the millisecond");
+    memory.length = 0;
+
+    // A destination that fails.
+    var broken = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: true }, LogFormat::Text);
+    broken.Info("lost");
+    broken.Info("lost too");
+    match broken.Failure() {
+        .Some(error) => Assert(error.kind == IoErrorKind::BrokenPipe, "the first failure is kept"),
+        none => Assert(false, "the failure is reported")
+    }
+    Assert(timed.Failure() == none, "a logger that wrote everything reports nothing");
+
+    // Level names.
+    Assert((Level::Parse("WARNING") ?? Level::Trace) == Level::Warn &&
+           (Level::Parse("debug") ?? Level::Trace) == Level::Debug && Level::Parse("loud") == none && Same(Level::Error.Name(), "error"), "level names");
+
+    // The process-wide log, kept quiet.
+    SetLevel(Level::Error);
+    Assert(!Enabled(Level::Warn) && Enabled(Level::Error), "the process-wide level");
+    Info("not written");
+    return 0;
+}

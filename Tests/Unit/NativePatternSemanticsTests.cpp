@@ -51,6 +51,29 @@ std::vector<std::string> ErrorsIn(const std::string_view body) {
 }
 } // namespace
 
+TEST_CASE("character ranges match every character storage width") {
+    for (const auto &width : {8, 16, 32, 64, 128, 256, 512}) {
+        const std::string type = "char" + std::to_string(width);
+        const std::string prefix = "c" + std::to_string(width);
+        const auto errors = Errors("func Pick(value: " + type + ") -> int { return match value { " + prefix +
+                                   "'a'..=" + prefix + "'z' => 1, else => 0 }; }");
+        CAPTURE(type);
+        CAPTURE(errors.empty() ? std::string{} : errors[0]);
+        CHECK(errors.empty());
+    }
+}
+
+TEST_CASE("constant arrays accept inline constant casts") {
+    const auto errors = Errors(R"(
+        const Letters: char128[2] = [c128'a', 0x41u32 as char128];
+        const Copies: char256[3] = [0x1F600u128 as char256; 3];
+        const Numbers: int128[2] = [1i64 as int128, -2i32 as int128];
+        func First() -> char128 { return Letters[1]; }
+    )");
+    CAPTURE(errors.empty() ? std::string{} : errors[0]);
+    CHECK(errors.empty());
+}
+
 TEST_CASE("fallible matches cover both channels at every level") {
     CHECK(ErrorsIn(R"(
         func Channels(outcome: Options ! ParseError) -> int32 {
@@ -388,7 +411,9 @@ TEST_CASE("arms that collapse together are reported where they are instantiated"
     REQUIRE_EQ(errors.size(), 1);
     CHECK(errors.front().message.contains("match arm is unreachable"));
     REQUIRE_EQ(errors.front().notes.size(), 1);
-    CHECK_EQ(errors.front().notes.front(), "in 'Pair' instantiated with T = int32, U = int32");
+    // The note names the instantiation and the call that made it.
+    CHECK(errors.front().notes.front().starts_with("in 'Pair' instantiated with T = int32, U = int32 by the call at "));
+    CHECK(errors.front().notes.front().ends_with(":10:24"));
 
     // An annotation that is no member of the written subject can become one after substitution, and the reverse.
     CHECK(Errors(R"(
@@ -534,6 +559,12 @@ TEST_CASE("a binding pattern must introduce a free name") {
                 Helper => 1i32
             };
         }
+        func RangeEnd(value: int32) -> int32 {
+            return match value {
+                Limit..=9 => 1i32,
+                else => 2i32
+            };
+        }
         func Parameter<T>(value: int32) -> int32 {
             return match value {
                 T => 1i32
@@ -561,7 +592,7 @@ TEST_CASE("a binding pattern must introduce a free name") {
     };
     CHECK_EQ(messageCount("pattern 'Options' cannot bind a new variable because 'Options' already names a type"), 1);
     CHECK_EQ(messageCount("pattern 'Settings' cannot bind a new variable because 'Settings' already names a type"), 1);
-    CHECK_EQ(messageCount("pattern 'Limit' cannot bind a new variable because 'Limit' already names a constant"), 1);
+    CHECK_EQ(messageCount("pattern 'Limit' cannot bind a new variable because 'Limit' already names a constant"), 2);
     CHECK_EQ(messageCount("pattern 'Helper' cannot bind a new variable because 'Helper' already names a function"), 1);
     CHECK_EQ(messageCount("pattern 'T' cannot bind a new variable because 'T' already names a"), 1);
     CHECK_EQ(messageCount("pattern 'Missing' cannot bind a new variable because 'Missing' is a case of variant "
@@ -576,6 +607,19 @@ TEST_CASE("a binding pattern must introduce a free name") {
                              "'Type::Case' to select a case");
     REQUIRE_EQ(options->notes.size(), 1);
     CHECK(options->notes.front().contains("'Options' was declared as a type"));
+
+    // A constant, alone or as the end of a range, is neither a field to select nor a type to destructure.
+    for (const auto &error : errors) {
+        if (error.message.starts_with("pattern 'Limit'")) {
+            REQUIRE(error.help.has_value());
+            CHECK_EQ(*error.help, "a pattern compares with literal values; write the value of 'Limit', or bind the "
+                                  "value and compare it with 'Limit' in a guard such as 'value if value >= Limit'");
+        }
+        if (error.message.starts_with("pattern 'Helper'")) {
+            REQUIRE(error.help.has_value());
+            CHECK_EQ(*error.help, "choose a binding name that does not already name a function");
+        }
+    }
 
     // Shadowing a variable or a parameter stays legal, and so does a free lowercase binding.
     CHECK(Errors(declarations + R"(
@@ -751,5 +795,16 @@ TEST_CASE("an ungrouped sum after is or as names the grouping") {
     REQUIRE_EQ(errors.size(), 1);
     CHECK_EQ(errors.front().message, "a sum type after 'is' must be grouped");
     REQUIRE(errors.front().help.has_value());
-    CHECK_EQ(*errors.front().help, "write 'value is (A | Defaults)'");
+    CHECK_EQ(*errors.front().help, "write 'value is (Options | Defaults)'");
+}
+
+TEST_CASE("the grouping help names a primitive first member as written") {
+    const auto errors = ErrorDiagnostics(R"(
+        func Test(value: int32 | bool) -> bool {
+            return value is int32 | bool;
+        }
+    )");
+    REQUIRE_EQ(errors.size(), 1);
+    REQUIRE(errors.front().help.has_value());
+    CHECK_EQ(*errors.front().help, "write 'value is (int32 | bool)'");
 }

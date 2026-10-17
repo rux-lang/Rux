@@ -17,16 +17,6 @@
 
 namespace Rux::HirToLirDetail {
 
-/// The whole package's glue, in the order the plans were sorted, so a build produces the same symbols every time.
-std::vector<LirFunc> HirToLirContext::SynthesizeDropGlue(const std::vector<DropGluePlan> &plans) {
-    std::vector<LirFunc> functions;
-    functions.reserve(plans.size());
-    for (const DropGluePlan &plan : plans) {
-        functions.push_back(SynthesizeDropGlueFunc(plan));
-    }
-    return functions;
-}
-
 /// One `void (*T)` function that destroys the value at its argument.
 ///
 /// The parameter is the address rather than the value: destruction reads storage that is about to go away, and a
@@ -35,6 +25,8 @@ std::vector<LirFunc> HirToLirContext::SynthesizeDropGlue(const std::vector<DropG
 LirFunc HirToLirContext::SynthesizeDropGlueFunc(const DropGluePlan &plan) {
     currentFunction = plan.symbol;
     locals.clear();
+    hiddenLocals.clear();
+    bindingSlots.clear();
     localConsts.clear();
     enumPayloadSlots.clear();
     dropFlags.clear();
@@ -47,7 +39,7 @@ LirFunc HirToLirContext::SynthesizeDropGlueFunc(const DropGluePlan &plan) {
     builder = &functionBuilder;
     SetBlock(NewBlock("entry"));
 
-    const LirReg address = builder->DefineParameter();
+    const LirReg address = DefineParameter(TypeRef::MakePointer(plan.type));
     function.params.push_back({address, TypeRef::MakePointer(plan.type), "value"});
     EmitDropGlueSteps(plan.steps, address);
     if (!IsTerminated()) {
@@ -300,7 +292,10 @@ void HirToLirContext::EmitCleanup(const HirDropAction &action) {
         return;
     }
     LirReg address = LirNoReg;
-    if (const auto local = locals.find(action.name); local != locals.end()) {
+    if (const auto bound = bindingSlots.find(action.bindingId); action.bindingId != 0 && bound != bindingSlots.end()) {
+        address = bound->second;
+    }
+    else if (const auto local = locals.find(action.name); local != locals.end()) {
         address = local->second;
     }
     if (address == LirNoReg) {
@@ -318,6 +313,29 @@ void HirToLirContext::EmitCleanup(const HirDropAction &action) {
     SetBlock(dropBlock);
     EmitDropGlueCall(action.glueSymbol, address);
     MarkBindingLive(action.bindingId, false);
+    Jump(afterBlock);
+    SetBlock(afterBlock);
+}
+
+/// The destruction of the value an assignment replaces at `address`, a place no binding names.
+///
+/// A place reached through a reference or a slice always holds a value. A part of a binding's value holds one only
+/// while that binding owns its value, so the owner's drop flag guards the destruction; the flag itself is left alone,
+/// because replacing one part neither gives the binding its value nor takes it away.
+void HirToLirContext::EmitPlaceCleanup(const HirDropAction &action, const LirReg address) {
+    if (action.glueSymbol.empty() || IsTerminated()) {
+        return;
+    }
+    if (action.ownerBindingId == 0) {
+        EmitDropGlueCall(action.glueSymbol, address);
+        return;
+    }
+    const LirReg slot = DropFlagSlot(action.ownerBindingId);
+    const std::uint32_t dropBlock = NewBlock("replace.live");
+    const std::uint32_t afterBlock = NewBlock("replace.done");
+    Branch(EmitLoad(slot, TypeRef::MakeBool()), dropBlock, afterBlock);
+    SetBlock(dropBlock);
+    EmitDropGlueCall(action.glueSymbol, address);
     Jump(afterBlock);
     SetBlock(afterBlock);
 }

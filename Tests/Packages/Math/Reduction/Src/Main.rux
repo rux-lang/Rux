@@ -3,7 +3,6 @@
 // so somewhere past 2^50 it has nothing left and returns a different number rather than a poor approximation.
 // Both tests here would pass trivially against a wrong reduction if they were written the obvious way, so
 // neither is.
-//
 // `sin^2 + cos^2 == 1` is the obvious way, and it is useless: a reduction that produces the wrong remainder
 // produces it for both functions, and the identity holds anyway. What does not survive a wrong reduction is an
 // identity relating *different* arguments, each reduced independently — so the double-angle formulas are used
@@ -38,7 +37,7 @@ func Main() -> int {
     // one. Computing that difference in double-double arithmetic gives the answer independently, and the
     // reduction has to match it.
     var multiple: uint = 1;
-    while multiple <= 400u {
+    while multiple <= 400 {
         let count = multiple as float64;
         var leadRemainder = 0.0;
         let head = ExactProduct(count, Pi, @leadRemainder);
@@ -51,12 +50,12 @@ func Main() -> int {
         let argument = head;
         // sin(count*Pi - tail) is -cos(count*Pi) * sin(tail), and sin(tail) is tail to well within a ulp for
         // something this small. So the answer is -tail for an even multiple and +tail for an odd one.
-        let evenMultiple = (multiple % 2u) == 0u;
+        let evenMultiple = (multiple % 2) == 0;
         let expected = evenMultiple ? 0.0 - tail : tail;
         let got = Sin(argument);
         // A few ulps, because the reference itself is a double-double product and the sine has its own bound.
         // A reduction that had dropped the low part would be wrong by a relative amount, not by a few ulps.
-        Assert(UlpDistance(got, expected) <= 32u64,
+        Assert(UlpDistance(got, expected) <= 32,
                "the sine near a multiple of Pi is made of the bits a rounded reduction discards");
         multiple = multiple + 1;
     }
@@ -64,7 +63,7 @@ func Main() -> int {
     // The double-angle identities relate two arguments reduced independently, so a reduction that drifts breaks
     // them. Walking the powers of two from small to enormous takes every path the reduction has.
     var power: int64 = 0;
-    while power <= 1020i64 {
+    while power <= 1020 {
         let x = ScaleByPowerOfTwo(1.0, power);
         let sine = Sin(x);
         let cosine = Cos(x);
@@ -74,12 +73,12 @@ func Main() -> int {
         let doubledCosine = Cos(x + x);
         Assert(Abs(doubledCosine - (1.0 - 2.0 * sine * sine)) < 1.0e-13,
                "and the cosine of twice an argument matches the half-angle form");
-        power = power + 1i64;
+        power = power + 1;
     }
 
     // The same across arguments that are not powers of two, including some enormous ones.
     var step: uint = 1;
-    while step <= 300u {
+    while step <= 300 {
         let x = (step as float64) * 1.0e15;
         let sine = Sin(x);
         let cosine = Cos(x);
@@ -92,7 +91,7 @@ func Main() -> int {
 
     // Tangent agrees with the ratio it is defined as, which is a third independent path through the reduction.
     var angle: uint = 1;
-    while angle <= 200u {
+    while angle <= 200 {
         let x = (angle as float64) * 7.0e12;
         let cosine = Cos(x);
         if Abs(cosine) > 1.0e-3 {
@@ -103,7 +102,7 @@ func Main() -> int {
     }
 
     // The bounds hold however large the argument: a reduction that overflowed its window would leave them.
-    let enormous = ScaleByPowerOfTwo(1.0, 1023i64);
+    let enormous = ScaleByPowerOfTwo(1.0, 1023);
     Assert(Sin(enormous) >= -1.0 && Sin(enormous) <= 1.0, "the sine of the largest power of two is in range");
     Assert(Cos(enormous) >= -1.0 && Cos(enormous) <= 1.0, "and so is the cosine");
     Assert(!IsNan(Sin(enormous)) && !IsNan(Cos(enormous)), "and neither is a NaN");

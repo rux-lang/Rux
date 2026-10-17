@@ -1,0 +1,193 @@
+import Core::Assert;
+import Memory::{ Alloc, Free };
+
+// Where a field wider than a doubleword lands. Every primitive of 128 bits or more is sixteen-byte aligned, as the C
+// ABIs align `__int128` and `long double`, and `sizeof`, `alignof`, a `when` condition, a field's address, an array's
+// stride and a by-value copy all have to agree on it. They used to disagree: `sizeof` capped field alignment at eight
+// while the generated code placed the field at sixteen, so a struct allocated from its own `sizeof` was too small for
+// the fields the code then wrote into it.
+
+struct Int128Field {
+    a: uint8;
+    b: int128;
+}
+
+struct Uint256Field {
+    a: uint16;
+    b: uint256;
+    c: uint8;
+}
+
+struct Bool128Field {
+    a: bool8;
+    b: bool128;
+}
+
+struct Float80Field {
+    a: uint32;
+    b: float80;
+}
+
+struct Float128Field {
+    a: uint8;
+    b: float128;
+    c: uint8;
+}
+
+struct Char128Field {
+    a: char8;
+    b: char128;
+}
+
+struct WideArrayField {
+    a: uint8;
+    b: int128[2];
+}
+
+struct Nested {
+    a: uint8;
+    inner: Int128Field;
+    c: uint32;
+}
+
+struct Narrow {
+    a: uint8;
+    b: uint64;
+}
+
+variant WideMaybe {
+    None,
+    Some(int128)
+}
+
+struct VariantField {
+    a: uint8;
+    b: WideMaybe;
+    c: uint8;
+}
+
+func Offset(base: uint, field: uint) -> uint {
+    return field - base;
+}
+
+func Echo(value: Uint256Field) -> Uint256Field {
+    return value;
+}
+
+func Bump(value: Nested) -> Nested {
+    return Nested { a: value.a + 1u8, inner: Int128Field { a: value.inner.a + 1u8, b: value.inner.b + 1i128 }, c: value.c + 1u32 };
+}
+
+func Unwrap(value: WideMaybe) -> int128 {
+    return match value {
+        .None => 0i128,
+        .Some(number) => number
+    };
+}
+
+func Main() -> int {
+    // Every primitive of 128 bits or more states sixteen, and a `when` condition reads the same answer.
+    Assert(alignof(int128) == 16u && alignof(uint256) == 16u && alignof(int512) == 16u, "wide integers align at 16");
+    Assert(alignof(bool128) == 16u && alignof(char128) == 16u, "wide booleans and characters align at 16");
+    Assert(alignof(float80) == 16u && alignof(float128) == 16u && alignof(float512) == 16u, "wide floats align at 16");
+    Assert(alignof(uint64) == 8u && alignof(Narrow) == 8u && sizeof(Narrow) == 16u, "narrow layouts are unchanged");
+    var whenAlignment = 0u;
+    when alignof(int128) == 16 {
+        whenAlignment = 16u;
+    }
+    Assert(whenAlignment == alignof(int128), "a when condition agrees with alignof");
+
+    // sizeof and alignof of each mixed struct.
+    Assert(sizeof(Int128Field) == 32u && alignof(Int128Field) == 16u, "{ uint8, int128 } is 32 bytes at 16");
+    Assert(sizeof(Uint256Field) == 64u && alignof(Uint256Field) == 16u, "{ uint16, uint256, uint8 } is 64 bytes");
+    Assert(sizeof(Bool128Field) == 32u && alignof(Bool128Field) == 16u, "{ bool8, bool128 } is 32 bytes");
+    Assert(sizeof(Float80Field) == 32u && alignof(Float80Field) == 16u, "{ uint32, float80 } is 32 bytes");
+    Assert(sizeof(Float128Field) == 48u && alignof(Float128Field) == 16u, "{ uint8, float128, uint8 } is 48 bytes");
+    Assert(sizeof(Char128Field) == 32u && alignof(Char128Field) == 16u, "{ char8, char128 } is 32 bytes");
+    Assert(sizeof(WideArrayField) == 48u && alignof(WideArrayField) == 16u, "{ uint8, int128[2] } is 48 bytes");
+    Assert(sizeof(Nested) == 64u && alignof(Nested) == 16u, "a nested wide struct keeps its alignment");
+    Assert(sizeof((uint8, int128)) == 32u && alignof((uint8, int128)) == 16u, "a tuple follows the same rule");
+    Assert(sizeof(Int128Field[3]) == 96u && alignof(Int128Field[3]) == 16u, "an array of them strides by 32");
+    Assert(sizeof(WideMaybe) == 32u && alignof(WideMaybe) == 16u, "a variant payload is aligned past its tag");
+    Assert(sizeof(VariantField) == 64u && alignof(VariantField) == 16u, "and a struct holding it follows");
+
+    // The generated code puts each field where sizeof says it is.
+    var int128Field = Int128Field { a: 1u8, b: 2i128 };
+    let int128Base = @int128Field as uint;
+    Assert(Offset(int128Base, @int128Field.b as uint) == 16u, "the int128 field is at 16");
+    Assert(int128Base % alignof(Int128Field) == 0u, "and the local holding it is sixteen-byte aligned");
+
+    var uint256Field = Uint256Field { a: 1u16, b: 2u256, c: 3u8 };
+    let uint256Base = @uint256Field as uint;
+    Assert(Offset(uint256Base, @uint256Field.b as uint) == 16u, "the uint256 field is at 16");
+    Assert(Offset(uint256Base, @uint256Field.c as uint) == 48u, "and the byte after it at 48");
+    Assert(Offset(uint256Base, @uint256Field.c as uint) + sizeof(uint8) <= sizeof(Uint256Field), "inside sizeof");
+
+    var bool128Field = Bool128Field { a: true, b: true };
+    Assert(Offset(@bool128Field as uint, @bool128Field.b as uint) == 16u, "the bool128 field is at 16");
+
+    var float80Field = Float80Field { a: 7u32, b: 1.5f80 };
+    Assert(Offset(@float80Field as uint, @float80Field.b as uint) == 16u, "the float80 field is at 16");
+
+    var float128Field = Float128Field { a: 1u8, b: 2.5f128, c: 3u8 };
+    let float128Base = @float128Field as uint;
+    Assert(Offset(float128Base, @float128Field.b as uint) == 16u, "the float128 field is at 16");
+    Assert(Offset(float128Base, @float128Field.c as uint) == 32u, "and the byte after it at 32");
+
+    var char128Field = Char128Field { a: c8'x', b: c128'λ' };
+    Assert(Offset(@char128Field as uint, @char128Field.b as uint) == 16u, "the char128 field is at 16");
+
+    var wideArrayField = WideArrayField { a: 1u8, b: [3i128, 4i128] };
+    let wideArrayBase = @wideArrayField as uint;
+    Assert(Offset(wideArrayBase, @wideArrayField.b[0] as uint) == 16u, "an int128 array field is at 16");
+    Assert(Offset(wideArrayBase, @wideArrayField.b[1] as uint) == 32u, "and its elements stride by 16");
+
+    var nested = Nested { a: 1u8, inner: Int128Field { a: 2u8, b: 3i128 }, c: 4u32 };
+    let nestedBase = @nested as uint;
+    Assert(Offset(nestedBase, @nested.inner as uint) == 16u, "a nested wide struct is at 16");
+    Assert(Offset(nestedBase, @nested.inner.b as uint) == 32u, "and its own wide field 16 further");
+    Assert(Offset(nestedBase, @nested.c as uint) == 48u, "and the field after it at 48");
+
+    var tuple = (5u8, 6i128);
+    Assert(Offset(@tuple as uint, @tuple.1 as uint) == 16u, "a tuple's int128 element is at 16");
+
+    var holder = VariantField { a: 1u8, b: WideMaybe::Some(9i128), c: 2u8 };
+    // The variant field itself sits at 16, so the byte after its 32 bytes is at 48.
+    Assert(Offset(@holder as uint, @holder.c as uint) == 48u, "a wide variant field is at 16");
+
+    // An array strides by sizeof.
+    var many: Int128Field[3];
+    many[0] = Int128Field { a: 10u8, b: 100i128 };
+    many[1] = Int128Field { a: 11u8, b: -101i128 };
+    many[2] = Int128Field { a: 12u8, b: 102i128 };
+    let manyBase = @many as uint;
+    Assert(Offset(manyBase, @many[1] as uint) == sizeof(Int128Field), "array elements stride by sizeof");
+    Assert(Offset(manyBase, @many[2].b as uint) == 2u * sizeof(Int128Field) + 16u, "and each field lands inside");
+    Assert(many[0].a == 10u8 && many[0].b == 100i128, "the first element keeps its fields");
+    Assert(many[1].a == 11u8 && many[1].b == -101i128, "the second element keeps its fields");
+    Assert(many[2].a == 12u8 && many[2].b == 102i128, "the third element keeps its fields");
+
+    // A block of exactly sizeof bytes holds the whole value, the last field included.
+    let block = Alloc(sizeof(Uint256Field)) as *var Uint256Field;
+    Assert(block != null, "the allocation succeeds");
+    *block = Uint256Field { a: 0x1234u16, b: ~0u256, c: 0xA5u8 };
+    Assert((*block).a == 0x1234u16 && (*block).b == ~0u256 && (*block).c == 0xA5u8, "a heap value round-trips");
+    Free(block as *var opaque);
+
+    // Passed, returned and stored by value.
+    let echoed = Echo(Uint256Field { a: 9u16, b: 1u256 << 200, c: 8u8 });
+    Assert(echoed.a == 9u16 && echoed.b == 1u256 << 200 && echoed.c == 8u8, "a wide struct survives a call");
+    let bumped = Bump(nested);
+    Assert(bumped.a == 2u8 && bumped.inner.a == 3u8 && bumped.inner.b == 4i128 && bumped.c == 5u32,
+           "a nested wide struct survives an argument and a return");
+    var stored: Nested[2];
+    stored[1] = bumped;
+    stored[0] = nested;
+    Assert(stored[1].inner.b == 4i128 && stored[1].c == 5u32 && stored[0].inner.b == 3i128, "and an array slot");
+    Assert(Unwrap(holder.b) == 9i128 && Unwrap(WideMaybe::None) == 0i128, "a wide variant payload survives a call");
+    Assert(float80Field.b == 1.5f80 && float128Field.b == 2.5f128 && char128Field.b == c128'λ',
+           "wide float and character fields keep their values");
+    Assert(int128Field.b == 2i128 && uint256Field.c == 3u8 && bool128Field.b && wideArrayField.b[1] == 4i128,
+           "and so do the others");
+    return 0;
+}

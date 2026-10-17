@@ -1,0 +1,211 @@
+// TCP: a listener that accepts connections, and the connected streams it and `Connect` give.
+// A stream is an ordinary `Io` reader and writer. Reading past what the peer sent, once it has closed its side, fails
+// with `EndOfStream`; writing after the peer has gone fails with `BrokenPipe` or `ConnectionReset` rather than ending
+// the process with a signal. Every socket is closed when its value is dropped.
+
+import Io::{ IoError, IoErrorKind, Reader, Writer };
+import Net::{
+    AcceptSocket, BindSocket, CloseSocket, ConnectSocket, IpAddress, Ipv4Address, ListenSocket, NoSocket, OpenSocket,
+    PollSource, ReceiveSocket, SendSocket, SetIntegerOption, SetSocketNonBlocking, SetTimeout, ShutdownSocket,
+    SocketAddress, SocketName
+};
+import Time::Duration;
+
+/// A socket listening for TCP connections. Not copied.
+/// @see https://rux-lang.dev/docs/api/net/tcp#tcp-listener
+pub struct TcpListener {
+    handle: uint64;
+}
+
+/// A connected TCP stream: an `Io::Reader` of what the peer sends and an `Io::Writer` to it. Not copied.
+/// @see https://rux-lang.dev/docs/api/net/tcp#tcp-stream
+pub struct TcpStream {
+    handle: uint64;
+}
+
+/// Which directions of a connection `Shutdown` ends. `Copy`.
+/// @see https://rux-lang.dev/docs/api/net/tcp#shutdown-direction
+pub enum ShutdownDirection: int32 {
+    /// Nothing more will be read.
+    Read = 0,
+    /// Nothing more will be written; the peer reads the end of the stream.
+    Write = 1,
+    /// Both.
+    Both = 2
+}
+
+extend TcpListener {
+    func =(self: &var TcpListener, other: &TcpListener);
+
+    /// Listens at `address`. Port zero lets the system choose a free port, which `LocalAddress` then gives.
+    /// @param address the address to listen at, such as `127.0.0.1:8080`, or `0.0.0.0:8080` for every address
+    /// @returns the listener, or fails with `AddressInUse`, `AddressUnavailable` or `PermissionDenied`
+    /// @see https://rux-lang.dev/docs/api/net/tcp#bind
+    pub func Bind(address: SocketAddress) -> TcpListener ! IoError {
+        let handle = OpenSocket(address, true)?;
+        var listener = TcpListener { handle: handle };
+        BindSocket(handle, address, true)?;
+        ListenSocket(handle)?;
+        return <-listener;
+    }
+
+    /// Waits for a connection and accepts it.
+    /// @returns the connected stream, whose `PeerAddress` says who connected
+    /// @see https://rux-lang.dev/docs/api/net/tcp#accept
+    pub func Accept(self: &TcpListener) -> TcpStream ! IoError {
+        var peer = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Unspecified()), port: 0 };
+        let handle = AcceptSocket(self.handle, @peer)?;
+        return TcpStream { handle: handle };
+    }
+
+    /// The address the listener is bound to, with the port the system chose for port zero.
+    /// @returns the address
+    /// @see https://rux-lang.dev/docs/api/net/tcp#listener-local-address
+    pub func LocalAddress(self: &TcpListener) -> SocketAddress ! IoError {
+        return SocketName(self.handle, false)?;
+    }
+
+    /// Makes calls on the listener fail with `WouldBlock` when they would wait, or wait again.
+    /// A non-blocking socket is meant for a `Poller`, which says when a call would not wait. `Accept` then fails with
+    /// `WouldBlock` when no connection is waiting; the streams it gives start blocking all the same.
+    /// @param enabled whether calls fail rather than wait
+    /// @returns success when the mode is set
+    /// @see https://rux-lang.dev/docs/api/net/tcp#listener-set-non-blocking
+    pub func SetNonBlocking(self: &TcpListener, enabled: bool) -> ! IoError {
+        SetSocketNonBlocking(self.handle, enabled)?;
+    }
+
+    /// The listener as a `Poller` watches it, valid while the listener is open.
+    /// @returns the source to register
+    /// @see https://rux-lang.dev/docs/api/net/tcp#listener-poll-source
+    pub func PollSource(self: &TcpListener) -> PollSource {
+        return PollSource { handle: self.handle };
+    }
+
+    func ~TcpListener(self: &var TcpListener) {
+        CloseSocket(self.handle);
+        self.handle = NoSocket;
+    }
+}
+
+extend TcpStream {
+    func =(self: &var TcpStream, other: &TcpStream);
+
+    /// Connects to `address`, waiting until the connection is made or refused.
+    /// @param address where to connect
+    /// @returns the stream, or fails with `ConnectionRefused`, `Unreachable` or `TimedOut`
+    /// @see https://rux-lang.dev/docs/api/net/tcp#connect
+    pub func Connect(address: SocketAddress) -> TcpStream ! IoError {
+        let handle = OpenSocket(address, true)?;
+        var stream = TcpStream { handle: handle };
+        ConnectSocket(handle, address)?;
+        return <-stream;
+    }
+
+    /// The address of this end of the connection.
+    /// @returns the address
+    /// @see https://rux-lang.dev/docs/api/net/tcp#local-address
+    pub func LocalAddress(self: &TcpStream) -> SocketAddress ! IoError {
+        return SocketName(self.handle, false)?;
+    }
+
+    /// The address of the other end.
+    /// @returns the address
+    /// @see https://rux-lang.dev/docs/api/net/tcp#peer-address
+    pub func PeerAddress(self: &TcpStream) -> SocketAddress ! IoError {
+        return SocketName(self.handle, true)?;
+    }
+
+    /// Ends one or both directions of the connection while the socket stays open.
+    /// @param direction what to end
+    /// @returns nothing, or fails when the connection is already gone
+    /// @see https://rux-lang.dev/docs/api/net/tcp#shutdown
+    pub func Shutdown(self: &TcpStream, direction: ShutdownDirection) -> ! IoError {
+        ShutdownSocket(self.handle, direction as int32)?;
+    }
+
+    /// Sends small writes at once rather than gathering them, which suits request and response exchanges.
+    /// @param enabled whether to
+    /// @returns nothing, or fails when the system refused
+    /// @see https://rux-lang.dev/docs/api/net/tcp#set-no-delay
+    pub func SetNoDelay(self: &TcpStream, enabled: bool) -> ! IoError {
+        SetIntegerOption(self.handle, 6, 1, enabled ? 1 : 0)?;
+    }
+
+    /// How long a read may wait before failing with `TimedOut`, or none to wait without a limit.
+    /// @param timeout the limit
+    /// @returns nothing, or fails when the system refused
+    /// @see https://rux-lang.dev/docs/api/net/tcp#set-read-timeout
+    pub func SetReadTimeout(self: &TcpStream, timeout: Duration?) -> ! IoError {
+        SetTimeout(self.handle, true, Nanoseconds(timeout))?;
+    }
+
+    /// How long a write may wait before failing with `TimedOut`, or none to wait without a limit.
+    /// @param timeout the limit
+    /// @returns nothing, or fails when the system refused
+    /// @see https://rux-lang.dev/docs/api/net/tcp#set-write-timeout
+    pub func SetWriteTimeout(self: &TcpStream, timeout: Duration?) -> ! IoError {
+        SetTimeout(self.handle, false, Nanoseconds(timeout))?;
+    }
+
+    /// Makes calls on the stream fail with `WouldBlock` when they would wait, or wait again.
+    /// A non-blocking socket is meant for a `Poller`, which says when a call would not wait.
+    /// @param enabled whether calls fail rather than wait
+    /// @returns success when the mode is set
+    /// @see https://rux-lang.dev/docs/api/net/tcp#set-non-blocking
+    pub func SetNonBlocking(self: &TcpStream, enabled: bool) -> ! IoError {
+        SetSocketNonBlocking(self.handle, enabled)?;
+    }
+
+    /// The stream as a `Poller` watches it, valid while the stream is open.
+    /// @returns the source to register
+    /// @see https://rux-lang.dev/docs/api/net/tcp#poll-source
+    pub func PollSource(self: &TcpStream) -> PollSource {
+        return PollSource { handle: self.handle };
+    }
+
+    func ~TcpStream(self: &var TcpStream) {
+        CloseSocket(self.handle);
+        self.handle = NoSocket;
+    }
+}
+
+// A timeout as nanoseconds, zero for none; a timeout of zero or less is the shortest the system takes.
+func Nanoseconds(timeout: Duration?) -> int64 {
+    match timeout {
+        .Some(span) => {
+            let nanoseconds = span.TotalNanoseconds() ?? 0x7FFFFFFFFFFFFFFFi64;
+            return nanoseconds < 1i64 ? 1i64 : nanoseconds;
+        },
+        none => return 0
+    }
+}
+
+extend TcpStream : Reader {
+    /// Reads what the peer has sent, waiting while it has sent nothing.
+    /// @param into where to put the bytes
+    /// @returns how many were read, or fails with `EndOfStream` once the peer closed its side
+    /// @see https://rux-lang.dev/docs/api/net/tcp#read
+    pub func Read(self: &var TcpStream, into: var char8[..]) -> uint ! IoError {
+        if into.length == 0u { return 0; }
+        let count = ReceiveSocket(self.handle, into, null)?;
+        if count == 0u { fail IoError::Of(IoErrorKind::EndOfStream); }
+        return count;
+    }
+}
+
+extend TcpStream : Writer {
+    /// Sends some of `bytes`, waiting while the connection's buffer is full.
+    /// @param bytes the bytes
+    /// @returns how many were sent
+    /// @see https://rux-lang.dev/docs/api/net/tcp#write
+    pub func Write(self: &var TcpStream, bytes: char8[..]) -> uint ! IoError {
+        if bytes.length == 0u { return 0; }
+        return SendSocket(self.handle, bytes, none)?;
+    }
+
+    /// Does nothing: a stream sends what is written to it without holding any back.
+    /// @returns nothing
+    /// @see https://rux-lang.dev/docs/api/net/tcp#flush
+    pub func Flush(self: &var TcpStream) -> ! IoError {}
+}

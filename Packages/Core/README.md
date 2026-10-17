@@ -1,8 +1,8 @@
 # Core
 
-Core declares primitive associated APIs, diagnostics, value protocols, and compile-time context.
+Core declares primitive associated constants, diagnostics, value protocols, and compile-time context.
 
-Core is optional. Scalar types, arithmetic, arrays, inferred string literals, and range syntax work without it. Import a declaration to use its associated constants. Slice and range fields are compiler-owned. A replacement package can provide the same intrinsic declarations; the compiler assigns no privilege to the name or manifest identity of Core.
+Core is optional. Scalar types, arithmetic, arrays, inferred string literals, and range syntax work without it. Every primitive type is built into the compiler; Core extends them, and importing a primitive from Core imports its associated constants. Slice and range fields are compiler-owned. A replacement package can provide the same extensions and intrinsic declarations; the compiler assigns no privilege to the name or manifest identity of Core.
 
 ## Installation
 
@@ -13,18 +13,21 @@ rux add Rux/Core
 ## What it provides
 
 - **Compile-time context** — `#target` (os, arch, abi, endian, pointer width, data model, object format, triple, `HasFeature`), `#build`, `#compiler`, `#source`, and `#config`, together with the enums they are typed by: `OperatingSystem`, `Architecture`, `ApplicationBinaryInterface`, `Endianness`, `DataModel`, `ObjectFormat`, `BuildMode`, `OptimizationMode`, `OutputKind`, `TargetFeature`.
-- **Diagnostics** — `Assert`, `DebugAssert`, and `Panic` report and terminate; `#Error` and `#Warn` reject or flag an unsupported configuration while compiling and produce no runtime code. A release build removes `DebugAssert` checks without evaluating their arguments. Neither `Assert` nor `Panic` unwinds, so no destructor runs on the way out — anything that must be released on a failing path belongs to a caller that saw the failure, which is what `Result<T, E>` is for.
+- **Atomic** — `AtomicLoad`, `AtomicStore`, `AtomicExchange`, `AtomicCompareExchange` and `AtomicFetchAdd`/`Sub`/`And`/`Or`/`Xor` act on one integer of 8 to 64 bits, `bool` or pointer so that no other thread sees them half done, and `Fence` and `SpinHint` order and pace a thread without touching memory. Each takes a `MemoryOrder` written at the call as a case such as `MemoryOrder::Acquire`, and the compiler refuses the orders an operation cannot have. On x86-64 they are plain moves, `xchg` and `lock`-prefixed instructions; on AArch64, `ldar`/`stlr` and exclusive-access loops. `Rux/Atomic` wraps them in a type.
+- **Startup** — `ProcessStartFrame` is the address the kernel started an ELF program at, where its argument count, argument and environment pointers and auxiliary vector are; it is null on Windows and macOS, which supply the command line through system calls, and in a shared library. `Rux/Process` reads arguments and the environment through it.
+- **Diagnostics** — `Assert`, `DebugAssert`, and `Panic` report and terminate; `#Error` and `#Warn` reject or flag an unsupported configuration while compiling and produce no runtime code. A release build removes `DebugAssert` checks without evaluating their arguments. After the location, the report names the functions that led to the failure, one `  from Name` line each, read from the stack's frame records; a release build that inlined a function names its caller instead. Neither `Assert` nor `Panic` unwinds, so no destructor runs on the way out — anything that must be released on a failing path belongs to a caller that saw the failure, which is what a native fallible `T ! E` is for.
 - **Native outcome questions** — `Succeeded` and `Failed` answer which channel a native fallible `T ! E` holds without unwrapping it. Native forms have no methods of their own, so these are ordinary generic functions; each takes the outcome by value, so a call's result is asked directly and a named outcome with a move-only payload is passed as `<-outcome`.
-- **Value outcomes** — `Option<T>` for an absence that needs no explanation, `Result<T, E>` for a failure that does, `Unit` for an operation with nothing to report, and `Ordering` for a three-way comparison. Asking which case an outcome holds borrows it (`IsSome`, `IsNone`, `IsSuccess`, `IsError`); reaching a payload consumes it (`ValueOr`, `TryIntoValue`, `TryIntoError`), so pass a named outcome as `<-outcome`. A `Try*` extraction deliberately retains a nullable raw output pointer and leaves it unwritten on failure.
-- **Interfaces for generic code** — `Equatable` and `Comparable` borrow their `Self`-typed operands through non-null references, `Hashable` gives the 64-bit summary a table keys on, and `Iterator`/`Iterable` name the iteration protocol the compiler drives by shape. Resource types prohibit copying with a bodyless canonical `=` and release themselves with `~Type`. Bounds such as `func Sort<T: Comparable>(...)` resolve `Self` to each type argument without dynamic dispatch.
+- **Ordering** — the result of a three-way comparison, with `IsLess`, `IsEqual`, `IsGreater`, the derived `IsLessOrEqual` and `IsGreaterOrEqual`, and `Reverse`. Absence and failure are not library types: they are the native optional `T?` and fallible `T ! E`, with the native unit `()` for an operation with nothing to report.
+- **Interfaces for generic code** — `Equatable` and `Comparable` borrow their `Self`-typed operands through non-null references, `Hashable` gives the 64-bit summary a table keys on, and `Iterator`/`Iterable` name the iteration protocol the compiler drives by shape. `Sendable` is the marker the compiler decides for a value that may move to another thread: every type satisfies it except a reference and one holding a type declared `#Unsendable()`. Resource types prohibit copying with a bodyless canonical `=` and release themselves with `~Type`. Bounds such as `func Sort<T: Comparable>(...)` resolve `Self` to each type argument without dynamic dispatch.
+- **Lazy adaptors** — `Map`, `Filter`, `Take`, `Skip`, `Enumerate`, `Zip` and `Chain` wrap any `Cursor<T>` — a type whose `Next` returns `T?`, such as a container's iterator, `Walk` over a slice, or another adaptor — and compute each item only when it is asked for. Their item types are deduced from the wrapped cursor, so `Take(Filter(Map(Walk(items), Square), IsEven), 3)` needs no type arguments.
 - **Integer arithmetic** — `AddChecked`, `SubChecked`, and `MulChecked` report whether the true answer was representable and write the machine's answer either way; `AddWrapping`, `SubWrapping`, and `MulWrapping` name the wrapping that `+`, `-`, and `*` already do; `AddSaturating`, `SubSaturating`, and `MulSaturating` clamp to whichever limit the true answer ran past. `MaximumOf` and `MinimumOf` report a type's limits. All are generic over the integer type and work at every width, signed and unsigned, deriving a type's zero, signedness, and limits from one operand rather than being written out per width. The operation comes first in each name because `CheckedAdd`, `CheckedSub`, and `CheckedMul` already name the compiler's `uint64` intrinsics, which are emitted inline and are what allocation-size arithmetic is written with.
 - **Bit operations** — `CountOnes`, `CountZeros`, `LeadingZeros`, `TrailingZeros`, `LeadingOnes`, `TrailingOnes`, `RotateLeft`, `RotateRight`, `ReverseBits`, `ReverseBytes`, `BitAt`, `BitWidthOf`, `IsPowerOfTwo`, and `ShiftRightLogical`. All are generic over the integer type and right at every width, signed and unsigned: `>>` copies the sign bit down on a signed type, so everything that reads a value's bits as bits goes through `ShiftRightLogical`, which brings zeros in either way.
 - **Byte order** — `ToLittleEndian`, `FromLittleEndian`, `ToBigEndian`, and `FromBigEndian` convert a value already in a register; `StoreLittleEndian`, `StoreBigEndian`, `LoadLittleEndian`, and `LoadBigEndian` move one through raw bytes at any alignment, which is what a file or wire format needs. `TargetIsLittleEndian` reports this target's own order, established from its storage rather than from a list of known targets.
 - **Checked conversion** — `ConvertChecked` reports whether a primitive value survived the conversion and writes the machine's answer either way; `ConvertWrapping` names the wrapping `as` already does, and `ConvertSaturating` clamps to the destination's range. Every check is a round trip in the source type, plus one test for the pair a round trip cannot see — a value and its conversion that disagree in sign, which is how `-1` reaches `uint64`. `IsSignedType` reports whether a type has values below zero.
 - **Float classification** — `IsNaN`, `IsZero`, `IsInfinite`, `IsFinite`, `IsNegativeZero`, `IsSignNegative`, `IsSignPositive`, and `SignOf`. All are arithmetic rather than bit inspection, so one implementation serves every float width including the software-lowered ones, whose storage carries padding no generic function could locate a sign bit inside of. The sign of a zero, which comparison cannot see, is read from the infinity it divides into.
-- **Primitive associated constants** — `Bits`, `Bytes`, `Min`, `Max` and the floating-point set (`Lowest`, `MinPositive`, `Epsilon`, `Infinity`, `NaN`) for the supported integer and character widths, width metadata for supported booleans, and the finite/special constant set for `float32` and `float64`. Reserved widths remain unimplemented. The string widths expose none: a string is a view over code units rather than a value with a width, so a width or a limit would describe neither it nor the units.
+- **Primitive associated constants** — `Bits`, `Bytes`, `Min`, `Max` and the floating-point set (`Lowest`, `MinPositive`, `Epsilon`, `Infinity`, `NaN`) for every integer width and every character width from `char8` to `char512`, width metadata for every boolean width from `bool8` to `bool512`, and the finite and special constant set for every float width from `float8` to `float512`. The scalar widths from `char32` to `char512` share one range, U+0000 to U+10FFFF, however many bytes they occupy. The string widths expose none: a string is a view over code units rather than a value with a width, so a width or a limit would describe neither it nor the units.
 
-## Primitive declarations and imports
+## Primitive constants and imports
 
 ```rux
 import Core::int8;
@@ -36,9 +39,9 @@ func Main() -> int {
 }
 ```
 
-Without the `int8` import, `int8` still names the scalar type, but `int8::Min` is unavailable. Loading a dependency that imports it does not import its APIs into the caller. The same rule applies between source files.
+`int8` is built into the compiler, so it names the scalar type without an import; `import Core::int8;` imports Core's `extend int8` block, which is what makes `int8::Min` available. The built-in aliases import their canonical widths: `import Core::byte;` gives `byte::Max`, the same constant as `uint8::Max`, and `import Core::bool;` gives `bool::Bits`. Loading a dependency that imports it does not import its APIs into the caller. The same rule applies between source files.
 
-Core defines integer and character limits, width metadata, and finite floating constants using ordinary constant expressions. Native integer metadata uses `sizeof`, so it follows the compilation target. Only floating-point `Infinity` and `NaN` use bodyless `intrinsic const` declarations inside extensions.
+Core declares no primitive type: each primitive file holds one documented `extend` block. Core defines integer and character limits, width metadata, and finite floating constants using ordinary constant expressions. Native integer metadata uses `sizeof`, so it follows the compilation target. The float limits of `float8` and `float16` are literals — `float8`, the E4M3 format, tops out at 240 and `float16` at 65504 — while `Infinity` and `NaN` at every width, and every limit of `float80`, `float128`, `float256` and `float512`, are bodyless `intrinsic const` declarations whose values the compiler supplies from the format itself.
 
 ## Sequence views and ranges
 
@@ -73,7 +76,7 @@ Core diagnostic messages and compile-time context text use `char8[..]`. External
 
 ## Ownership and borrowing
 
-Core methods borrow ordinary values with `&T` and mutable receivers with `&var T`; callers pass the value directly and the compiler creates the short-lived borrow. Named move-only values require `<-` when ownership crosses a binding, call, assignment, return, or consuming receiver. Copyable Core values use generated structural copying. Canonical constructors are type calls such as `Unit()` and `SemanticVersion(1, 2, 3)`. Fallible or descriptive factories retain names such as `Option::Some` and `Result::Success`.
+Core methods borrow ordinary values with `&T` and mutable receivers with `&var T`; callers pass the value directly and the compiler creates the short-lived borrow. Named move-only values require `<-` when ownership crosses a binding, call, assignment, return, or consuming receiver. Copyable Core values use generated structural copying. Canonical constructors are type calls such as `SemanticVersion(1, 2, 3)`, and descriptive factories retain their names.
 
 Raw pointers remain where absence, storage, or address arithmetic is part of the contract: slice fields, nullable `TryInto*` outputs, unchecked checked-arithmetic/conversion destinations, byte-order buffers, and zeroization.
 
@@ -98,7 +101,7 @@ when #target.os {
 ```
 
 ```rux
-import Core::{ Assert, Option, SemanticVersion };
+import Core::{ Assert, SemanticVersion };
 
 func Major(version: &SemanticVersion) -> uint {
     return version.major;
@@ -106,16 +109,16 @@ func Major(version: &SemanticVersion) -> uint {
 
 func Main() -> int {
     let version = SemanticVersion(1, 2, 3);
-    let answer = Option::Some<int32>(42i32);
+    let answer: int32? = .Some(42i32);
     Assert(Major(version) == 1u, "borrowed version");
-    Assert((<-answer).ValueOr(0i32) == 42i32, "explicit outcome move");
+    Assert((answer ?? 0i32) == 42i32, "present optional value");
     return 0;
 }
 ```
 
 ## Documentation
 
-<https://rux-lang.dev/docs/api/rux>
+<https://rux-lang.dev/docs/api/core>
 
 ## License
 

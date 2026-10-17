@@ -1,0 +1,181 @@
+// Base 16: two digits per byte, the high nibble first, as RFC 4648 section 8 defines it.
+// Encoding writes one case, lower unless asked otherwise, and decoding reads both, because the two mean the same
+// thing and hexadecimal arrives in whichever case its producer liked. Nothing else is accepted: no `0x` prefix, no
+// separators and no whitespace, since a decoder that skips characters is one whose input two systems can read
+// differently.
+// Both directions run in time that depends only on the length, through the arithmetic in `Digits.rux`, so a key or
+// a token can pass through them without its value showing in the timing. Every function checks the room it needs
+// before it writes a byte, so a refusal leaves the destination exactly as it was.
+
+import Text::{ Display, FormatBase, FormatError, FormatSpec, PaddingAround, TextWriter, WriteBytes, WriteFill };
+
+/// Which case hexadecimal digits above nine are written in.
+/// Copy, carrying no payload. Decoding accepts both regardless.
+/// @see https://rux-lang.dev/docs/api/encoding/hex#hex-case
+pub enum HexCase {
+    /// `a` through `f`, the form most text formats and every cryptographic test vector use.
+    Lower,
+    /// `A` through `F`, the form RFC 4648 prints its alphabet in.
+    Upper
+}
+
+/// How many characters the hexadecimal form of `length` bytes occupies: exactly twice as many.
+/// Cannot fail for any length a slice in memory can have. Runs in constant time and allocates nothing.
+/// @param length the number of bytes to encode
+/// @returns the number of characters `HexEncode` writes
+/// @see https://rux-lang.dev/docs/api/encoding/hex#hex-encoded-length
+pub func HexEncodedLength(length: uint) -> uint {
+    return length * 2;
+}
+
+/// Writes `bytes` as hexadecimal digits into `into`, two per byte, high nibble first.
+/// Runs in time that depends only on the length of `bytes`. Reports `InsufficientCapacity` when `into` is shorter
+/// than `HexEncodedLength(bytes.length)`, leaving it exactly as it was; room past the encoded form is not touched.
+/// @param bytes the bytes to encode
+/// @param into the destination, at least `HexEncodedLength(bytes.length)` characters
+/// @param letterCase which case the digits above nine are written in
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/hex#hex-encode
+pub func HexEncode(bytes: byte[..], into: var char8[..], letterCase: HexCase = HexCase::Lower) -> uint ! FormatError {
+    let needed = HexEncodedLength(bytes.length);
+    if into.length < needed { fail FormatError::InsufficientCapacity; }
+    let upper = letterCase == HexCase::Upper;
+    var index: uint = 0;
+    while index < bytes.length {
+        let value = bytes[index] as int32;
+        into[2 * index] = HexDigit(value >> 4, upper);
+        into[2 * index + 1] = HexDigit(value & 15, upper);
+        index = index + 1;
+    }
+    return needed;
+}
+
+/// Writes the bytes of `text` as hexadecimal digits into `into`, two per byte.
+/// The byte form, reached without the caller reinterpreting the text first: each UTF-8 code unit is one byte.
+/// The failure the byte form reports, with the same guarantee.
+/// @param text the text whose bytes to encode
+/// @param into the destination, at least `HexEncodedLength(text.length)` characters
+/// @param letterCase which case the digits above nine are written in
+/// @returns the number of characters written
+/// @see https://rux-lang.dev/docs/api/encoding/hex#hex-encode
+pub func HexEncode(text: char8[..], into: var char8[..], letterCase: HexCase = HexCase::Lower) -> uint ! FormatError {
+    return HexEncode(BytesOf(text), into, letterCase);
+}
+
+/// How many bytes the hexadecimal text decodes to, after checking that its length is even.
+/// Only the length is checked; the digits themselves are checked by `HexDecode`. Reports `InvalidLength` at the
+/// end of the text when it has an odd number of characters. Runs in constant time and allocates nothing.
+/// @param text the hexadecimal text
+/// @returns the number of bytes `HexDecode` writes for it
+/// @see https://rux-lang.dev/docs/api/encoding/hex#hex-decoded-length
+pub func HexDecodedLength(text: char8[..]) -> uint ! DecodeError {
+    if text.length % 2 != 0 { fail DecodeError::InvalidLength(text.length); }
+    return text.length / 2;
+}
+
+/// Reads hexadecimal digits of either case from `text` into `into`, one byte per pair.
+/// Runs in time that depends only on the length of `text` when the text is valid. Reports `InvalidLength` for an
+/// odd number of characters and `InvalidCharacter` at the first character that is not a hexadecimal digit, leaving
+/// `into` untouched in both cases, because the whole text is checked before anything is written. Reports
+/// `InsufficientCapacity` with the length needed when `into` is too short, also leaving it untouched.
+/// @param text the hexadecimal text to decode
+/// @param into the destination, at least `HexDecodedLength(text)` bytes
+/// @returns the number of bytes written
+/// @see https://rux-lang.dev/docs/api/encoding/hex#hex-decode
+pub func HexDecode(text: char8[..], into: var byte[..]) -> uint ! DecodeError {
+    let needed = HexDecodedLength(text)?;
+    var invalid: int32 = 0;
+    var index: uint = 0;
+    while index < text.length {
+        invalid = invalid | HexValue(CharCode(text[index]));
+        index = index + 1;
+    }
+    // A valid text never sets the sign bit, so one test after the loop keeps the loop free of branches on the
+    // digits. Only a text that is already known to be bad is searched for where it went wrong.
+    if invalid < 0 {
+        index = 0;
+        while HexValue(CharCode(text[index])) >= 0 {
+            index = index + 1;
+        }
+        fail DecodeError::InvalidCharacter(index);
+    }
+    if into.length < needed { fail DecodeError::InsufficientCapacity(needed); }
+    index = 0;
+    while index < needed {
+        let high = HexValue(CharCode(text[2 * index]));
+        let low = HexValue(CharCode(text[2 * index + 1]));
+        into[index] = ((high << 4) | low) as byte;
+        index = index + 1;
+    }
+    return needed;
+}
+
+// The bytes of a character slice, viewed without copying. A UTF-8 code unit is a byte, so the view has the same
+// length and reads the same storage.
+func BytesOf(text: char8[..]) -> byte[..] {
+    if text.length == 0 { return []; }
+    return (text.data as *byte)[..text.length];
+}
+
+/// A borrowed byte sequence that renders as hexadecimal under a format placeholder.
+/// Lets a caller write `Render("{}", ViewHex(digest))` instead of sizing a buffer first. The view borrows the bytes
+/// and must not outlive them. Copy, owning nothing.
+/// @see https://rux-lang.dev/docs/api/encoding/hex#hex-view
+pub struct HexView {
+    bytes: byte[..];
+    letterCase: HexCase;
+}
+
+/// Borrows `bytes` for rendering as hexadecimal.
+/// Cannot fail and allocates nothing; the view reads `bytes` each time it is rendered, so it must not outlive them.
+/// @param bytes the bytes to render
+/// @param letterCase the case used when the placeholder does not name one
+/// @returns a view that renders `bytes` as hexadecimal
+/// @see https://rux-lang.dev/docs/api/encoding/hex#view-hex
+pub func ViewHex(bytes: byte[..], letterCase: HexCase = HexCase::Lower) -> HexView {
+    return HexView { bytes: bytes, letterCase: letterCase };
+}
+
+extend HexView : Display {
+    /// Writes the bytes as hexadecimal digits, padded to the placeholder's width.
+    /// The style `x` selects lower case and `X` upper case; with neither, the view's own case is used. The digits
+    /// are produced in blocks, so rendering allocates nothing however long the bytes are. Reports whatever the writer
+    /// reported, and `UnsupportedRequest` for a precision or any other style.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-view-write-display
+    pub func WriteDisplay(self: &HexView, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        if spec.HasPrecision() { fail FormatError::UnsupportedRequest; }
+        var upper = self.letterCase == HexCase::Upper;
+        if spec.HasStyle() {
+            if spec.Base() == FormatBase::LowerHex {
+                upper = false;
+            }
+            else if spec.Base() == FormatBase::UpperHex {
+                upper = true;
+            }
+            else {
+                fail FormatError::UnsupportedRequest;
+            }
+        }
+        var before: uint = 0;
+        var after: uint = 0;
+        PaddingAround(spec, HexEncodedLength(self.bytes.length), false, @before, @after);
+        WriteFill(writer, spec, before)?;
+        var block: char8[128];
+        var index: uint = 0;
+        while index < self.bytes.length {
+            var count: uint = 0;
+            while count < 128 && index < self.bytes.length {
+                let value = self.bytes[index] as int32;
+                block[count] = HexDigit(value >> 4, upper);
+                block[count + 1] = HexDigit(value & 15, upper);
+                count = count + 2;
+                index = index + 1;
+            }
+            WriteBytes(writer, block[..count])?;
+        }
+        return WriteFill(writer, spec, after);
+    }
+}

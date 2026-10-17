@@ -59,7 +59,7 @@ TEST_CASE("RCU link graph keeps local data object-relative and diagnoses only du
     first.sections.push_back(Text({{0, 0, RcuRelType::Abs64, 0}}));
     first.symbols = {{"local", "", 0, 8, RCU_TEXT_IDX, RcuSymKind::Data, RcuSymVis::Local},
                      Function("Weak", RCU_TEXT_IDX, RcuSymVis::Weak),
-                     Function("Duplicate")};
+                     Function("Duplicate", RCU_TEXT_IDX, RcuSymVis::Exported)};
     RcuFile second = first;
 
     const std::array objects = {first, second};
@@ -77,7 +77,7 @@ TEST_CASE("RCU link graph keeps local data object-relative and diagnoses only du
             return location.objectIndex == objectIndex && location.symbolIndex == symbolIndex;
         };
     };
-    CHECK(std::ranges::any_of(graph.ExportRoots(), isLocation(0, 1)));
+    CHECK_FALSE(std::ranges::any_of(graph.ExportRoots(), isLocation(0, 1)));
     CHECK(std::ranges::any_of(graph.ExportRoots(), isLocation(0, 2)));
     CHECK_FALSE(graph.FindDefinition("local").has_value());
     CHECK(graph.FindDefinition("Weak") == (RcuSymbolLocation{0, 1}));
@@ -111,7 +111,9 @@ TEST_CASE("RCU link graph finds a private declaration in a sibling object but no
 TEST_CASE("RCU link graph applies executable and library root policy deterministically") {
     RcuFile object;
     object.sections.push_back(Text());
-    object.symbols = {Function("Zulu"), Function("Main"), Function("Alpha")};
+    object.symbols = {Function("Zulu", RCU_TEXT_IDX, RcuSymVis::Exported),
+                      Function("Main", RCU_TEXT_IDX, RcuSymVis::Exported),
+                      Function("Alpha", RCU_TEXT_IDX, RcuSymVis::Exported), Function("Linked")};
     const std::array objects = {object};
 
     const RcuLinkGraph executable =
@@ -127,6 +129,29 @@ TEST_CASE("RCU link graph applies executable and library root policy determinist
     CHECK(library.ExportRoots()[0] == (RcuSymbolLocation{0, 2}));
     CHECK(library.ExportRoots()[1] == (RcuSymbolLocation{0, 1}));
     CHECK(library.ExportRoots()[2] == (RcuSymbolLocation{0, 0}));
+}
+
+TEST_CASE("RCU link graph exports only a library's own interface, not its dependencies' public definitions") {
+    // A dependency is compiled into the library's objects: its public functions are Global, so the library's own
+    // objects can call them, but only the library's Exported definitions form its interface.
+    RcuFile library;
+    library.sections.push_back(Text({{0, 1, RcuRelType::Rel32, 0}}));
+    library.symbols = {Function("Api", RCU_TEXT_IDX, RcuSymVis::Exported),
+                       Function("Dependency::Helper", RCU_SEC_EXTERNAL)};
+    RcuFile dependency;
+    dependency.sections.push_back(Text());
+    dependency.symbols = {Function("Dependency::Helper"), Function("Dependency::Other")};
+
+    const std::array objects = {library, dependency};
+    for (const ArtifactKind kind : {ArtifactKind::SharedLibrary, ArtifactKind::StaticLibrary}) {
+        const RcuLinkGraph graph = RcuLinkGraph::Build(objects, "GraphTest", kind, Target::Arch::X86_64);
+        CHECK_FALSE(graph.HasErrors());
+        REQUIRE(graph.ExportRoots().size() == 1);
+        CHECK(graph.ExportRoots()[0] == (RcuSymbolLocation{0, 0}));
+        REQUIRE(graph.References().size() == 1);
+        CHECK(graph.References()[0].resolution == RcuLinkResolution::CrossObjectDefinition);
+        CHECK(graph.References()[0].definition == (RcuSymbolLocation{1, 0}));
+    }
 }
 
 TEST_CASE("RCU link graph returns architecture and missing-entry diagnostics as values") {

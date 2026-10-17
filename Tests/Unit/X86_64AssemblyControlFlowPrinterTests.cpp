@@ -1,7 +1,9 @@
 #include "CodeGen/X86_64/AssemblyControlFlowPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 #include "CodeGen/X86_64/FramePlan.h"
+#include "Target/AsmInstr.h"
 
+#include <cstdint>
 #include <doctest.h>
 #include <format>
 #include <string>
@@ -101,12 +103,13 @@ TEST_CASE("x86-64 assembly control-flow printing owns calls phi edges and termin
     printer.EmitFunction(function);
 
     const std::string output = modulePrinter.Finalize();
-    CHECK(output.find("mov     rdi, rax\n    call    Direct") != std::string::npos);
+    // System V sets AL to the vector-register count before every call, as the object code does.
+    CHECK(output.find("mov     rdi, rax\n    mov     eax, 0\n    call    Direct") != std::string::npos);
     CHECK(output.find("call    r10") != std::string::npos);
-    CHECK(output.find("jz      .Control_false") != std::string::npos);
+    CHECK(output.find("je      .Control_false") != std::string::npos);
     CHECK(output.find("jmp     .Control_join") != std::string::npos);
     CHECK(output.find("cmp     rax, 10\n    je      .Control_return") != std::string::npos);
-    CHECK(output.find("leave\n    ret") != std::string::npos);
+    CHECK(output.find("pop     rbp\n    ret") != std::string::npos);
     CHECK(output.find(".Control_unreachable:\n    ud2") != std::string::npos);
     CHECK(output.find("unsupported LIR opcode") == std::string::npos);
 }
@@ -119,15 +122,9 @@ TEST_CASE("x86-64 assembly control-flow printing owns runtime failure paths") {
                        {1, TypeRef::MakePointer(TypeRef::MakeSlice(TypeRef::MakeChar8())), "message"}};
 
     LirInstr assertion = Instruction(LirOpcode::Assert, LirNoReg, TypeRef::MakeOpaque(), {0, 1});
-    assertion.sourceFunction = "Failures";
-    assertion.sourceFile = "failure.rux";
-    assertion.sourceLine = 4;
-    assertion.sourceColumn = 8;
+    assertion.source.Edit() = {.file = "failure.rux", .function = "Failures", .line = 4, .column = 8};
     LirInstr panic = Instruction(LirOpcode::Panic, LirNoReg, TypeRef::MakeOpaque(), {1});
-    panic.sourceFunction = assertion.sourceFunction;
-    panic.sourceFile = assertion.sourceFile;
-    panic.sourceLine = 5;
-    panic.sourceColumn = 12;
+    panic.source.Edit() = {.file = "failure.rux", .function = "Failures", .line = 5, .column = 12};
 
     LirBlock block;
     block.instrs = {std::move(assertion), std::move(panic)};
@@ -169,6 +166,51 @@ TEST_CASE("x86-64 assembly control-flow printing comments invalid LIR explicitly
     CHECK(output.find("nop    ; missing terminator") != std::string::npos);
 }
 
+TEST_CASE("x86-64 assembly text spells an asm func as its body, with no frame") {
+    // The object emitter encodes an `asm func` as a raw blob; the text must not invent a prologue around it.
+    const auto operand = [](const AsmOperand::Kind kind, std::string name = {}, const std::int64_t imm = 0) {
+        AsmOperand result;
+        result.kind = kind;
+        result.name = std::move(name);
+        result.imm = imm;
+        return result;
+    };
+    AsmOperand memory = operand(AsmOperand::Kind::Mem, {}, -8);
+    memory.memBase = "rdi";
+    memory.memIndex = "rcx";
+    memory.memScale = 4;
+    memory.memSize = 4;
+    AsmInstr load;
+    load.mnemonic = "mov";
+    load.operands = {operand(AsmOperand::Kind::Reg, "eax"), memory};
+    AsmInstr loop;
+    loop.labelDef = ".again";
+    AsmInstr add;
+    add.mnemonic = "add";
+    add.operands = {operand(AsmOperand::Kind::Reg, "eax"), operand(AsmOperand::Kind::Imm, {}, 1)};
+    AsmInstr jump;
+    jump.mnemonic = "jnz";
+    jump.operands = {operand(AsmOperand::Kind::Sym, ".again")};
+    AsmInstr ret;
+    ret.mnemonic = "ret";
+
+    LirFunc function;
+    function.name = "Raw";
+    function.isAsm = true;
+    function.asmBody = {load, loop, add, jump, ret};
+
+    AssemblyModulePrinter modulePrinter(Target::OS::Linux);
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaceNames;
+    AssemblyControlFlowPrinter printer(modulePrinter, layouts, interfaceNames, Target::OS::Linux);
+    printer.EmitFunction(function);
+
+    const std::string output = modulePrinter.Finalize();
+    CHECK(output.contains("Raw:\n    mov     eax, dword [rdi + rcx*4 - 8]\n.again:\n    add     eax, 1\n    jnz     "
+                          ".again\n    ret\n"));
+    CHECK_FALSE(output.contains("push    rbp"));
+}
+
 TEST_CASE("a Win64 float argument on the stack is placed without disturbing the register arguments") {
     // The first four arguments live in xmm0-xmm3 by the time the fifth is placed, so the fifth cannot be routed
     // through xmm0 on its way to the stack: doing that overwrote the first argument, and the callee saw one value
@@ -199,14 +241,14 @@ TEST_CASE("a Win64 float argument on the stack is placed without disturbing the 
     REQUIRE(callSite != std::string::npos);
     // Once the last register argument is in place, nothing before the call may touch a vector register: the four of
     // them are the call's first four arguments and are already loaded.
-    const std::size_t lastRegisterArgument = output.rfind("movss   xmm3,", callSite);
+    const std::size_t lastRegisterArgument = output.rfind("movaps  xmm3,", callSite);
     REQUIRE(lastRegisterArgument != std::string::npos);
     const std::string placement = output.substr(lastRegisterArgument, callSite - lastRegisterArgument);
-    CHECK_EQ(placement.find("xmm0"), std::string::npos);
-    CHECK_EQ(placement.find("xmm1"), std::string::npos);
-    CHECK_EQ(placement.find("xmm2"), std::string::npos);
+    CHECK_EQ(placement.find(" xmm0,"), std::string::npos);
+    CHECK_EQ(placement.find(" xmm1,"), std::string::npos);
+    CHECK_EQ(placement.find(" xmm2,"), std::string::npos);
     // The fifth argument reaches its slot as raw bits instead.
-    CHECK(placement.find("mov     eax, dword") != std::string::npos);
+    CHECK(placement.find("movd    eax, xmm") != std::string::npos);
     CHECK(placement.find("mov     qword [rsp + 32], rax") != std::string::npos);
 }
 
@@ -251,8 +293,8 @@ TEST_CASE("System V partial-word aggregates use both words in direct and indirec
             if (leading <= 4) {
                 CHECK(output.contains(
                     std::format("mov     qword [rbp - {}], {}", home - 8, Layout::kIntArgRegs[leading + 1])));
-                CHECK(output.contains(
-                    std::format("mov     {}, qword [rbp - {}]", Layout::kIntArgRegs[leading + 1], home - 8)));
+                CHECK(output.contains(std::format("mov     rax, qword [rbp - {}]\n    mov     {}, rax", home - 8,
+                                                  Layout::kIntArgRegs[leading + 1])));
             }
             else {
                 CHECK(output.contains("mov     rax, qword [rbp + 24]"));
@@ -268,7 +310,8 @@ TEST_CASE("System V partial-word aggregates use both words in direct and indirec
                 }
             }
             CHECK(output.contains(std::format("mov     qword [rbp - {}], rdx", plan.SlotOffsets().at(13) - 8)));
-            CHECK(output.contains(std::format("mov     rdx, qword [rbp - {}]", plan.SlotOffsets().at(14) - 8)));
+            CHECK(output.contains(
+                std::format("mov     r10, qword [rbp - {}]\n    mov     rdx, r10", plan.SlotOffsets().at(14) - 8)));
             CHECK(output.contains("call    TakePacket"));
             CHECK(output.contains("call    r10"));
         }

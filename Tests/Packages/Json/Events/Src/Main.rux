@@ -2,7 +2,7 @@
 // document far larger than the buffer must stream through it without the buffer growing.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed };
+import Core::{ Assert, Failed, Panic };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
@@ -24,13 +24,10 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(self: &var SliceHandle, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
+    func Read(self: &var SliceHandle, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
-        if remaining == 0 {
-            return IoError::Of(IoErrorKind::EndOfStream);
-        }
+        if remaining == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
         var give = remaining < state.step ? remaining : state.step;
         if into.length < give {
             give = into.length;
@@ -41,8 +38,31 @@ extend SliceHandle : Reader {
             index = index + 1;
         }
         state.offset = state.offset + give;
-        *filled = give;
-        return IoError::Ok();
+        return give;
+    }
+}
+
+// A reader that serves its slice four bytes at a time and then, instead of ending, fails as a broken stream does.
+struct BrokenHandle {
+    state: *var SliceState;
+}
+
+extend BrokenHandle : Reader {
+    func Read(self: &var BrokenHandle, into: var char8[..]) -> uint ! IoError {
+        let state = self.state;
+        let remaining = state.bytes.length - state.offset;
+        if remaining == 0 { fail IoError { kind: IoErrorKind::PermissionDenied, raw: 13 }; }
+        var give = remaining < state.step ? remaining : state.step;
+        if into.length < give {
+            give = into.length;
+        }
+        var index: uint = 0;
+        while index < give {
+            into.data[index] = state.bytes.data[state.offset + index];
+            index = index + 1;
+        }
+        state.offset = state.offset + give;
+        return give;
     }
 }
 
@@ -70,28 +90,28 @@ func StoppedAt(failure: JsonParseError?, expected: char8[..]) -> bool {
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = IoError::Ok();
 
     // A small document, event by event, served three bytes at a time so every token straddles a read.
     var state = SliceState { bytes: TextBytes("{\"name\":42,\"list\":[true,null,\"x\"]}"), offset: 0, step: 3 };
     let handle: Reader = SliceHandle { state: @state };
-    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default(), @error);
-    Assert(error.IsOk(), "the reader starts");
+    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
     Assert(reader.Next() == JsonEvent::ObjectStart, "the object opens");
-    Assert(reader.Depth() == 1u, "and the depth follows");
+    Assert(reader.Depth() == 1, "and the depth follows");
     Assert(reader.Next() == JsonEvent::Name, "a member name arrives");
-    Assert(reader.Text().length == 4u, "with its text");
+    Assert(reader.Text().length == 4, "with its text");
     Assert(reader.Next() == JsonEvent::Number, "then its value");
-    Assert(reader.Text().length == 2u, "as a number, text intact across the reads");
+    Assert(reader.Text().length == 2, "as a number, text intact across the reads");
     Assert(reader.Next() == JsonEvent::Name, "a second name");
     Assert(reader.Next() == JsonEvent::ArrayStart, "opening an array");
-    Assert(reader.Depth() == 2u, "nested one deeper");
+    Assert(reader.Depth() == 2, "nested one deeper");
     Assert(reader.Next() == JsonEvent::True, "a literal");
     Assert(reader.Next() == JsonEvent::Null, "another");
     Assert(reader.Next() == JsonEvent::Text, "and a string");
     Assert(reader.Next() == JsonEvent::ArrayEnd, "the array closes");
     Assert(reader.Next() == JsonEvent::ObjectEnd, "the object closes");
-    Assert(reader.Depth() == 0u, "back to the top");
+    Assert(reader.Depth() == 0, "back to the top");
     Assert(reader.Next() == JsonEvent::End, "and the document ends");
     Assert(!(reader.Failure() is JsonParseError), "with nothing wrong");
     reader.Release();
@@ -101,47 +121,48 @@ func Main() -> int {
     var big: char8[120000];
     var written: uint = 0;
     big[written] = 0x5Bu8 as char8;
-    written = written + 1u;
+    written = written + 1;
     var record: uint = 0;
-    while record < 10000u {
-        if record > 0u {
+    while record < 10000 {
+        if record > 0 {
             big[written] = 0x2Cu8 as char8;
-            written = written + 1u;
+            written = written + 1;
         }
         var digits = record;
         var scratch: char8[8];
         var count: uint = 0;
-        if digits == 0u {
+        if digits == 0 {
             scratch[0] = 0x30u8 as char8;
             count = 1;
         }
-        while digits > 0u {
-            scratch[count] = ((0x30u8 + (digits % 10u) as uint8)) as char8;
-            count = count + 1u;
-            digits = digits / 10u;
+        while digits > 0 {
+            scratch[count] = ((0x30 + (digits % 10) as uint8)) as char8;
+            count = count + 1;
+            digits = digits / 10;
         }
-        while count > 0u {
-            count = count - 1u;
+        while count > 0 {
+            count = count - 1;
             big[written] = scratch[count];
-            written = written + 1u;
+            written = written + 1;
         }
-        record = record + 1u;
+        record = record + 1;
     }
     big[written] = 0x5Du8 as char8;
-    written = written + 1u;
+    written = written + 1;
 
     var bigState = SliceState { bytes: (@big[0])[..written], offset: 0, step: 4 };
     let bigHandle: Reader = SliceHandle { state: @bigState };
-    var bigReader = JsonEventReader::New(allocator, bigHandle, JsonLimits::Default(), @error);
-    Assert(error.IsOk(), "the streaming reader starts");
+    var bigReader = JsonEventReader::New(allocator, bigHandle, JsonLimits::Default()) catch {
+        else => Panic("the streaming reader starts")
+    };
     Assert(bigReader.Next() == JsonEvent::ArrayStart, "the array opens");
     var seen: uint = 0;
     var event = bigReader.Next();
     while event == JsonEvent::Number {
-        seen = seen + 1u;
+        seen = seen + 1;
         event = bigReader.Next();
     }
-    Assert(seen == 10000u, "every record arrives as an event");
+    Assert(seen == 10000, "every record arrives as an event");
     Assert(event == JsonEvent::ArrayEnd, "and the array closes");
     Assert(bigReader.Next() == JsonEvent::End, "leaving the document finished");
     Assert(!(bigReader.Failure() is JsonParseError), "with nothing wrong");
@@ -150,7 +171,9 @@ func Main() -> int {
     // Structural mistakes are still caught, which a reader that only emitted tokens would leave to the caller.
     var mismatchedState = SliceState { bytes: TextBytes("{\"a\":1]"), offset: 0, step: 16 };
     let mismatchedHandle: Reader = SliceHandle { state: @mismatchedState };
-    var mismatched = JsonEventReader::New(allocator, mismatchedHandle, JsonLimits::Default(), @error);
+    var mismatched = JsonEventReader::New(allocator, mismatchedHandle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
     Assert(mismatched.Next() == JsonEvent::ObjectStart, "the object opens");
     Assert(mismatched.Next() == JsonEvent::Name, "a name arrives");
     Assert(mismatched.Next() == JsonEvent::Number, "and a value");
@@ -163,12 +186,60 @@ func Main() -> int {
     shallow.maximumDepth = 2;
     var deepState = SliceState { bytes: TextBytes("[[[1]]]"), offset: 0, step: 16 };
     let deepHandle: Reader = SliceHandle { state: @deepState };
-    var deep = JsonEventReader::New(allocator, deepHandle, shallow, @error);
+    var deep = JsonEventReader::New(allocator, deepHandle, shallow) catch { else => Panic("the reader starts") };
     Assert(deep.Next() == JsonEvent::ArrayStart, "the first level opens");
     Assert(deep.Next() == JsonEvent::ArrayStart, "and the second");
     Assert(deep.Next() == JsonEvent::Error, "and the third is refused");
     Assert(StoppedAt(deep.Failure(), "JsonParseError::TooDeep"), "for being too deep");
     deep.Release();
+
+    // A failure is positioned in the document rather than in the buffer, however many refills dropped the bytes
+    // before it: the brace is byte 14 of the document, though only byte 2 of the last read.
+    var offsetState = SliceState { bytes: TextBytes("[1, 2, 3, 4, 5}"), offset: 0, step: 4 };
+    let offsetHandle: Reader = SliceHandle { state: @offsetState };
+    var offsets = JsonEventReader::New(allocator, offsetHandle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
+    Assert(offsets.Next() == JsonEvent::ArrayStart, "the array opens");
+    var numbers: uint = 0;
+    var afterNumbers = offsets.Next();
+    while afterNumbers == JsonEvent::Number {
+        numbers = numbers + 1;
+        afterNumbers = offsets.Next();
+    }
+    Assert(numbers == 5 && afterNumbers == JsonEvent::Error, "five numbers arrive before the brace is refused");
+    Assert(StoppedAt(offsets.Failure(), "JsonParseError::Unexpected"), "as a structural mistake");
+    let misplaced = offsets.Failure() ?? Panic("the reader reports why it stopped");
+    Assert(misplaced.Offset() == 14, "at the brace's offset in the document");
+    Assert(!(offsets.SourceError() is IoError), "and the source did not fail");
+    offsets.Release();
+
+    // A source that breaks is reported as itself, not as a byte the lexer did not expect.
+    var brokenState = SliceState { bytes: TextBytes("[1, 2"), offset: 0, step: 4 };
+    let brokenHandle: Reader = BrokenHandle { state: @brokenState };
+    var broken = JsonEventReader::New(allocator, brokenHandle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
+    Assert(broken.Next() == JsonEvent::ArrayStart, "the array opens");
+    Assert(broken.Next() == JsonEvent::Number, "and its first number arrives");
+    Assert(broken.Next() == JsonEvent::Error, "then the broken source stops the reader");
+    Assert(StoppedAt(broken.Failure(), "JsonParseError::Source"), "as a source failure");
+    let stopped = broken.Failure() ?? Panic("the reader reports why it stopped");
+    Assert(stopped.Offset() == 4, "positioned where the unfinished token starts");
+    let reported = broken.SourceError() ?? Panic("the source's own failure is kept");
+    Assert(reported.kind == IoErrorKind::PermissionDenied && reported.raw == 13, "exactly as the source reported it");
+    Assert(broken.Next() == JsonEvent::Error, "and the reader stays stopped");
+    broken.Release();
+
+    // One that breaks before the first byte is an error too, not an empty document.
+    var silentState = SliceState { bytes: TextBytes(""), offset: 0, step: 4 };
+    let silentHandle: Reader = BrokenHandle { state: @silentState };
+    var silent = JsonEventReader::New(allocator, silentHandle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
+    Assert(silent.Next() == JsonEvent::Error, "a source broken from the start is not an empty document");
+    Assert(StoppedAt(silent.Failure(), "JsonParseError::Source"), "and is reported as the source failing");
+    silent.Release();
 
     return 0;
 }

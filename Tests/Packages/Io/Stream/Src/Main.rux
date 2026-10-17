@@ -1,5 +1,5 @@
 
-import Core::{ Assert };
+import Core::{ Assert, Panic, Succeeded };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
@@ -23,15 +23,14 @@ struct ScriptedReader {
 }
 
 extend ScriptedReader : Reader {
-    func Read(self: &var ScriptedReader, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
+    func Read(self: &var ScriptedReader, into: var char8[..]) -> uint ! IoError {
         if self.pendingInterruption && self.interruptions > 0 {
             self.interruptions = self.interruptions - 1;
-            return IoError::Of(IoErrorKind::Interrupted);
+            fail IoError::Of(IoErrorKind::Interrupted);
         }
         self.pendingInterruption = true;
         if self.cursor >= self.bytes.length {
-            return IoError::Of(IoErrorKind::EndOfStream);
+            fail IoError::Of(IoErrorKind::EndOfStream);
         }
         var give = self.bytes.length - self.cursor;
         if give > self.chunk {
@@ -46,8 +45,7 @@ extend ScriptedReader : Reader {
             index = index + 1;
         }
         self.cursor = self.cursor + give;
-        *filled = give;
-        return IoError::Ok();
+        return give;
     }
 }
 
@@ -61,10 +59,9 @@ struct ScriptedWriter {
 }
 
 extend ScriptedWriter : Writer {
-    func Write(self: &var ScriptedWriter, bytes: char8[..], taken: *var uint) -> IoError {
-        *taken = 0;
+    func Write(self: &var ScriptedWriter, bytes: char8[..]) -> uint ! IoError {
         if self.stalling {
-            return IoError::Ok();
+            return 0;
         }
         var take = bytes.length;
         if take > self.chunk {
@@ -79,13 +76,20 @@ extend ScriptedWriter : Writer {
             index = index + 1;
         }
         self.written = self.written + take;
-        *taken = take;
-        return IoError::Ok();
+        return take;
     }
 
-    func Flush(self: &var ScriptedWriter) -> IoError {
-        return IoError::Ok();
+    func Flush(self: &var ScriptedWriter) -> ! IoError {
+        return;
     }
+}
+
+// The failure an operation expected to fail reported.
+func Refusal<T>(outcome: T ! IoError) -> IoError {
+    return match outcome {
+        .Success(_) => Panic("expected a failure"),
+        .Failure(error) => error
+    };
 }
 
 func Main() -> int {
@@ -99,8 +103,7 @@ func Main() -> int {
     };
     var storage: char8[8];
     let into = (@storage[0])[..8];
-    let outcome = ReadExact(source, into);
-    Assert(outcome.IsOk(), "the exact read assembles from partial, interrupted reads");
+    Assert(Succeeded(ReadExact(source, into)), "the exact read assembles from partial, interrupted reads");
     Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
 
     // A stream that ends early says so, rather than succeeding by silence.
@@ -113,8 +116,7 @@ func Main() -> int {
     };
     var bigStorage: char8[8];
     let big = (@bigStorage[0])[..8];
-    let ended = ReadExact(short, big);
-    Assert(ended.IsEnd(), "a stream that ends mid-buffer reports the end");
+    Assert(Refusal(ReadExact(short, big)).IsEnd(), "a stream that ends mid-buffer reports the end");
 
     // WriteAll pushes everything through three-byte writes.
     var sinkStorage: char8[16];
@@ -124,8 +126,7 @@ func Main() -> int {
         chunk: 3,
         stalling: false
     };
-    let sent = WriteAll(sink, TextBytes("hello world"));
-    Assert(sent.IsOk(), "the whole write goes through partial writes");
+    Assert(Succeeded(WriteAll(sink, TextBytes("hello world"))), "the whole write goes through partial writes");
 
     // A writer that takes nothing while claiming success is refused rather than spun on.
     var stallStorage: char8[4];
@@ -135,12 +136,10 @@ func Main() -> int {
         chunk: 4,
         stalling: true
     };
-    let refused = WriteAll(stalled, TextBytes("data"));
-    Assert(refused.IsError() && refused.kind == IoErrorKind::WriteZero,
+    Assert(Refusal(WriteAll(stalled, TextBytes("data"))).kind == IoErrorKind::WriteZero,
            "a stream making no progress is refused, not spun on");
 
     // The error type's own small contracts.
-    Assert(IoError::Ok().IsOk(), "nothing wrong is nothing wrong");
     Assert(IoError::Of(IoErrorKind::Interrupted).IsTransient(), "an interruption is worth retrying");
     Assert(IoError::Of(IoErrorKind::WouldBlock).IsTransient(), "and so is a would-block");
     Assert(!IoError::Of(IoErrorKind::NotFound).IsTransient(), "a missing file is not");

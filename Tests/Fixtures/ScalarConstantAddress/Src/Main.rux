@@ -1,0 +1,2 @@
+pub const Shared: uint512 = (1u512 << 500u32) + 37u512;
+pub func SharedAddress() -> *uint512 { return @Shared; }

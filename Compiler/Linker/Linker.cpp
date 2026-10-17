@@ -5,6 +5,7 @@
 
 #include "Linker/ArchiveWriter.h"
 #include "Linker/NativeObjectWriter.h"
+#include "Linker/RcuGarbageCollection.h"
 
 #include <algorithm>
 #include <format>
@@ -61,15 +62,72 @@ namespace {
     case RcuRelType::AArch64TstBr14:
         return "supported range: -32768 to 32764 bytes, aligned to 4 bytes";
     case RcuRelType::AArch64AdrPrelPgHi21:
+    case RcuRelType::AArch64ImportSlotPage21:
         return "supported range: -4294967296 to 4294963200 bytes, aligned to 4096 bytes";
     case RcuRelType::AArch64Prel32:
     case RcuRelType::Rel32:
+    case RcuRelType::ImportSlotRel32:
         return "supported range: -2147483648 to 2147483647 bytes";
     case RcuRelType::Abs32:
         return "supported range: 0 to 4294967295";
     default:
         return {};
     }
+}
+} // namespace
+
+namespace {
+/// An object holding nothing but one zeroed data word the linker supplies, such as the word an ELF entry stub stores
+/// the kernel's initial stack pointer in or the index the Windows loader gives the image's thread-local block. It is an
+/// ordinary data definition, so code that reads the word reaches it through the usual symbol resolution.
+[[nodiscard]] RcuFile DataWordObject(const Target::Arch arch, std::string sourcePath, const std::string_view name,
+                                     std::string typeName, const std::uint16_t size) {
+    RcuFile object;
+    object.arch = arch == Target::Arch::AArch64 ? RcuArch::AArch64 : RcuArch::X86_64;
+    object.sourcePath = std::move(sourcePath);
+    const auto section = [](std::string sectionName, const std::uint32_t type, const std::uint32_t flags,
+                            const std::uint16_t alignment, std::size_t bytes) {
+        RcuSection result;
+        result.name = std::move(sectionName);
+        result.type = type;
+        result.flags = flags;
+        result.alignment = alignment;
+        result.data.assign(bytes, 0);
+        return result;
+    };
+    object.sections.push_back(
+        section(".text", RcuSecType::Text, RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read, 16, 0));
+    object.sections.push_back(section(".rodata", RcuSecType::RoData, RcuSecFlag::Alloc | RcuSecFlag::Read, 8, 0));
+    object.sections.push_back(
+        section(".data", RcuSecType::Data, RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, size, size));
+    RcuSymbol word;
+    word.name = std::string(name);
+    word.typeName = std::move(typeName);
+    word.value = 0;
+    word.size = size;
+    word.sectionIdx = RCU_DATA_IDX;
+    word.kind = RcuSymKind::Data;
+    word.visibility = RcuSymVis::Global;
+    object.symbols.push_back(std::move(word));
+    return object;
+}
+
+/// Whether any object refers to `name` without defining it, which is how code asks for a word the linker supplies.
+[[nodiscard]] bool ReferencesExternal(const std::vector<RcuFile> &objects, const std::string_view name) {
+    return std::ranges::any_of(objects, [&](const RcuFile &object) {
+        return std::ranges::any_of(object.symbols, [&](const RcuSymbol &symbol) {
+            return symbol.sectionIdx == RCU_SEC_EXTERNAL && symbol.name == name;
+        });
+    });
+}
+
+/// Whether any object defines a thread-local variable.
+[[nodiscard]] bool HasThreadLocals(const std::vector<RcuFile> &objects) {
+    return std::ranges::any_of(objects, [](const RcuFile &object) {
+        return std::ranges::any_of(object.sections, [](const RcuSection &section) {
+            return section.type == RcuSecType::Tls && !section.data.empty();
+        });
+    });
 }
 } // namespace
 
@@ -96,7 +154,7 @@ std::vector<std::string> Linker::RelocationNotes(const RcuLinkReference &referen
 }
 
 bool Linker::BuildGraph() {
-    graph = RcuLinkGraph::Build(objects, packageName, artifactKind, targetArch);
+    graph = RcuLinkGraph::Build(objects, packageName, artifactKind, targetArch, pool);
     for (const RcuLinkDiagnostic &diagnostic : graph->Diagnostics()) {
         switch (diagnostic.kind) {
         case RcuLinkDiagnosticKind::UnsupportedArchitecture:
@@ -154,11 +212,34 @@ bool Linker::Link(const std::filesystem::path &outputPath) {
     if (targetOs == Target::OS::Unknown) {
         return LinkElf64(outputPath);
     }
+    // An ELF executable that reads its start frame gets the word its entry stub keeps the initial stack pointer in.
+    // Only a program that refers to the word pays for it, so every other image is laid out exactly as before.
+    if (artifactKind == ArtifactKind::Executable &&
+        (targetOs == Target::OS::Linux || targetOs == Target::OS::FreeBSD) &&
+        ReferencesExternal(objects, kProcessStartFrameSymbol)) {
+        objects.push_back(DataWordObject(targetArch, "<process start frame>", kProcessStartFrameSymbol, "*uint",
+                                         sizeof(std::uint64_t)));
+    }
+    // A Windows image with thread-local variables gets the word the loader stores the image's thread-local index in,
+    // which code reads to find this thread's block.
+    if (targetOs == Target::OS::Windows && ReferencesExternal(objects, kTlsIndexSymbol)) {
+        objects.push_back(
+            DataWordObject(targetArch, "<thread-local index>", kTlsIndexSymbol, "uint32", sizeof(std::uint32_t)));
+    }
+    if (artifactKind == ArtifactKind::StaticLibrary && HasThreadLocals(objects)) {
+        Error("thread-local variables are not supported in a static library yet");
+        return false;
+    }
     if (!BuildGraph()) {
         return false;
     }
     if (artifactKind == ArtifactKind::StaticLibrary) {
         return WriteStaticLibrary(outputPath);
+    }
+    // An image may keep only the code and data its roots reach; a static library keeps everything for whoever links it.
+    const std::uint8_t padding = targetArch == Target::Arch::X86_64 ? 0xCC : 0x00;
+    if (collectGarbage && CollectUnreachable(objects, *graph, padding) && !BuildGraph()) {
+        return false;
     }
     switch (targetOs) {
     case Target::OS::Windows: {

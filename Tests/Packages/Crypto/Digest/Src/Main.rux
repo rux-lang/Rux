@@ -9,7 +9,7 @@ func Main() -> int {
     var left: char8[8];
     var right: char8[8];
     var index: uint = 0;
-    while index < 8u {
+    while index < 8 {
         left[index] = (index as uint8) as char8;
         right[index] = (index as uint8) as char8;
         index = index + 1;
@@ -22,7 +22,7 @@ func Main() -> int {
     // A difference anywhere is found, including at the very last byte — which the early-return comparison also
     // manages, but only after telling an observer how long the matching prefix was.
     index = 0;
-    while index < 8u {
+    while index < 8 {
         let held = right[index];
         right[index] = (0xFFu8) as char8;
         Assert(!Equal(leftBytes, rightBytes), "a difference at any position is found");
@@ -50,22 +50,22 @@ func Main() -> int {
     // The wipe clears every byte and nothing beyond the slice it was given.
     var secret: char8[16];
     index = 0;
-    while index < 16u {
+    while index < 16 {
         secret[index] = 0xABu8 as char8;
         index = index + 1;
     }
     let middle = (@secret[4])[..8];
     Wipe(middle);
     index = 0;
-    while index < 4u {
+    while index < 4 {
         Assert(secret[index] == (0xABu8 as char8), "the bytes before the wiped range are untouched");
         index = index + 1;
     }
-    while index < 12u {
+    while index < 12 {
         Assert(secret[index] == (0u8 as char8), "the wiped range is zero");
         index = index + 1;
     }
-    while index < 16u {
+    while index < 16 {
         Assert(secret[index] == (0xABu8 as char8), "and the bytes after it are untouched");
         index = index + 1;
     }
@@ -78,14 +78,14 @@ func Main() -> int {
     // The wipe survives being the last thing to touch a buffer, which is the case an optimizer would remove.
     var doomed: char8[32];
     index = 0;
-    while index < 32u {
+    while index < 32 {
         doomed[index] = 0x5Au8 as char8;
         index = index + 1;
     }
     let whole = (@doomed[0])[..32];
     Wipe(whole);
     index = 0;
-    while index < 32u {
+    while index < 32 {
         Assert(doomed[index] == (0u8 as char8), "a buffer nothing reads afterwards is still actually cleared");
         index = index + 1;
     }

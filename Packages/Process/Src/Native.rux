@@ -1,0 +1,133 @@
+// Where each system keeps the arguments and environment a process was started with, read once and kept.
+// Linux and FreeBSD leave them on the stack the kernel built: the argument count, the argument pointers and a null,
+// then the environment pointers and a null. The entry stub keeps that address, and `Core::ProcessStartFrame` hands it
+// over. macOS has dyld record the same vectors and publishes them through libSystem. Windows hands over one command
+// line and one environment block instead; the command line is split once, the way the C runtime splits it, and both
+// results are kept for the life of the process, so every view this package gives out stays valid as long as the
+// process does.
+// Nothing here is written after the first read, and the first read happens before any caller could share the results,
+// so a program with one thread needs nothing more. A program that starts threads should read its arguments before it
+// does.
+
+import Core::{ #Error, #target };
+import Path::{ OsStringView, OsUnit };
+
+when #target.os {
+    .Linux => import Core::ProcessStartFrame,
+    .FreeBSD => import Core::ProcessStartFrame,
+    .macOS => import macOS::{ _NSGetArgc, _NSGetArgv, _NSGetEnviron },
+    .Windows => import Windows::{ CommandLineToArgvW, GetCommandLineW, GetEnvironmentStringsW },
+    else => #Error("Unsupported operating system")
+}
+
+when #target.os == .Windows {
+    // The split command line and its count, kept from the first read on.
+    var SplitArguments: **uint16 = null;
+    var SplitArgumentCount: uint = 0;
+    var ArgumentsRead: bool = false;
+    // The environment block as it stood at the first read.
+    var EnvironmentBlock: *uint16 = null;
+    var EnvironmentRead: bool = false;
+
+    // Splits the command line on first use. A split the system refuses leaves no arguments rather than a guess.
+    func LoadArguments() {
+        if ArgumentsRead { return; }
+        ArgumentsRead = true;
+        var count: int32 = 0;
+        let split = CommandLineToArgvW(GetCommandLineW(), @count);
+        if split != null && count > 0 {
+            SplitArguments = split;
+            SplitArgumentCount = count as uint;
+        }
+    }
+}
+
+// How many units a NUL-terminated native string has before its terminator.
+func TerminatedLength(units: *OsUnit) -> uint {
+    var length: uint = 0;
+    while units[length] != (0 as OsUnit) {
+        length = length + 1;
+    }
+    return length;
+}
+
+// A view of a NUL-terminated native string, without its terminator.
+func ViewTerminated(units: *OsUnit) -> OsStringView {
+    let length = TerminatedLength(units);
+    if length == 0 { return OsStringView(); }
+    return OsStringView::FromUnits(units[..length]);
+}
+
+// The number of arguments the process was started with, the program's own name included.
+func NativeArgumentCount() -> uint {
+    when #target.os == .Windows {
+        LoadArguments();
+        return SplitArgumentCount;
+    }
+    else when #target.os == .macOS {
+        return *_NSGetArgc() as uint;
+    }
+    else {
+        let frame = ProcessStartFrame();
+        if frame == null { return 0; }
+        return *frame;
+    }
+}
+
+// The argument at `index`, which the caller has checked is below the count.
+func NativeArgument(index: uint) -> OsStringView {
+    when #target.os == .Windows {
+        LoadArguments();
+        return ViewTerminated(SplitArguments[index]);
+    }
+    else when #target.os == .macOS {
+        let vector = *_NSGetArgv();
+        return ViewTerminated(vector[index]);
+    }
+    else {
+        let frame = ProcessStartFrame();
+        let vector = (frame as uint + 8) as **char8;
+        return ViewTerminated(vector[index]);
+    }
+}
+
+// The environment entry at `index` as `name=value`, or none past the last one. Windows entries whose name starts with
+// `=` are the shell's per-drive directories rather than variables, and are skipped here so that no caller sees them.
+func NativeEnvironmentEntry(index: uint) -> OsStringView? {
+    when #target.os == .Windows {
+        if !EnvironmentRead {
+            EnvironmentRead = true;
+            EnvironmentBlock = GetEnvironmentStringsW();
+        }
+        if EnvironmentBlock == null { return none; }
+        var at = EnvironmentBlock;
+        var seen: uint = 0;
+        while *at != 0 {
+            let entry = ViewTerminated(at);
+            if at[0] != 0x3D {
+                if seen == index { return entry; }
+                seen = seen + 1;
+            }
+            at = (at as uint + (entry.Length() + 1) * 2) as *uint16;
+        }
+        return none;
+    }
+    else {
+        var vector: **char8 = null;
+        when #target.os == .macOS {
+            vector = *_NSGetEnviron();
+        }
+        else {
+            let frame = ProcessStartFrame();
+            if frame == null { return none; }
+            vector = (frame as uint + 8 * (*frame + 2)) as **char8;
+        }
+        if vector == null { return none; }
+        var position: uint = 0;
+        while position <= index {
+            if vector[position] == null { return none; }
+            position = position + 1;
+        }
+        return ViewTerminated(vector[index]);
+    }
+}

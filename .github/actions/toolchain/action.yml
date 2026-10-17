@@ -13,6 +13,12 @@ inputs:
   target:
     description: linux-x86_64, linux-aarch64, macos-aarch64, windows-x86_64 or windows-aarch64
     required: true
+  warm:
+    description: >-
+      Only make sure the cache holds the prefix: look the key up without
+      downloading it, and pack and save on a miss. Nothing is installed for
+      the calling job when the key is already there.
+    default: 'false'
 
 outputs:
   cache-hit:
@@ -34,12 +40,13 @@ runs:
       with:
         path: ${{ runner.temp }}/rux-toolchain
         key: toolchain-${{ inputs.target }}-${{ hashFiles('.github/Toolchains.env', '.github/Scripts/Toolchain/**') }}
+        lookup-only: ${{ inputs.warm == 'true' }}
 
     # Packs on a miss, verifies the host's CMake and Ninja, and exports the
     # compiler and ccache settings through GITHUB_ENV and GITHUB_PATH, which
     # reach every later step of the calling job.
     - name: Install the toolchain
-      if: runner.os != 'Windows'
+      if: runner.os != 'Windows' && (inputs.warm != 'true' || steps.restore.outputs.cache-hit != 'true')
       shell: sh
       env:
         RUX_TARGET: ${{ inputs.target }}
@@ -48,7 +55,7 @@ runs:
     # The same step imports the Visual Studio environment once, so no later
     # step has to re-run vcvarsall.
     - name: Install the toolchain and Visual Studio environment
-      if: runner.os == 'Windows'
+      if: runner.os == 'Windows' && (inputs.warm != 'true' || steps.restore.outputs.cache-hit != 'true')
       shell: pwsh
       env:
         RUX_TARGET: ${{ inputs.target }}

@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Shared"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Allocator: Rc and Arc counting their copies, sharing one value, and destroying it once when the last copy goes, across threads for Arc."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Thread = { Path = "../../../../Packages/Thread" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Allocator"

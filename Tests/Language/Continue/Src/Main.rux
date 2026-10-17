@@ -1,12 +1,10 @@
 // `continue`: skipping the rest of one pass without leaving the loop.
-//
 // The keyword appeared in exactly one language test before this, so whatever that file happened to assert was the
 // entire language-level contract for it. What makes `continue` worth its own case is that it is not "go to the top
 // of the body": it goes to whatever each loop form does between passes, and those differ. A `while` re-tests its
 // condition, a `do`-`while` re-tests its condition too but at the bottom, a `for` advances its iterator, and a
 // `loop` does nothing at all — which is why a `continue` in a `loop` whose counter is incremented after it never
 // terminates. Every loop here therefore advances its counter before continuing.
-//
 // The labelled form is the other half: it resumes the loop it names, abandoning the rest of every loop inside it.
 
 import Core::Assert;

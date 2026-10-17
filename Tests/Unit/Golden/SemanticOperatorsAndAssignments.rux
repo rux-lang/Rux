@@ -11,4 +11,7 @@ func Main() {
     *pointer = 2;
     Limit = 11;
     (1 + 2) = 3;
+    var first: int32 = 1;
+    var second: int32 = 2;
+    first = second = 7;
 }

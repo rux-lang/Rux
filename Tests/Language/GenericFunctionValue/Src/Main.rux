@@ -1,0 +1,56 @@
+// A generic function has no address until its type arguments are known. A call learns them from its arguments; a name
+// used as a value learns them from the function type it is assigned, returned or stored as, and refers to that one
+// instance. The value's own type parameters need not be spelled like the function's, and inside a generic function
+// the instance follows that function's own type arguments.
+
+import Core::Assert;
+
+struct Box<T> {
+    value: T;
+}
+
+struct Table {
+    double: func(int64) -> int64;
+}
+
+func Double<T>(value: T) -> T {
+    return value + value;
+}
+
+func Unwrap<V>(box: *Box<V>) -> V {
+    return box.value;
+}
+
+func Pick<A, B>(first: A, second: B) -> B {
+    return second;
+}
+
+// The instance is chosen by the enclosing function's own type argument.
+func Reader<U>() -> func(*Box<U>) -> U {
+    let read: func(*Box<U>) -> U = Unwrap;
+    return read;
+}
+
+func Doubler() -> func(int32) -> int32 {
+    return Double;
+}
+
+func Main() -> int {
+    let doubleWide: func(int64) -> int64 = Double;
+    let doubleNarrow: func(uint8) -> uint8 = Double;
+    Assert(doubleWide(21) == 42, "an instance for int64");
+    Assert(doubleNarrow(7u8) == 14u8, "a separate instance for uint8");
+    Assert(Doubler()(5) == 10, "a returned function value takes the return type's arguments");
+
+    let table = Table { double: Double };
+    Assert(table.double(4) == 8, "a field's function type instantiates the value stored in it");
+
+    let pick: func(bool, float64) -> float64 = Pick;
+    Assert(pick(true, 2.5) == 2.5, "every type argument is taken from the destination");
+
+    let box = Box<int32> { value: 9 };
+    let wide = Box<uint64> { value: 77u64 };
+    Assert(Reader<int32>()(@box) == 9, "a generic function's instance follows its own type argument");
+    Assert(Reader<uint64>()(@wide) == 77u64, "and a second one gets a second instance");
+    return 0;
+}

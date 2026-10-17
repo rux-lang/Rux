@@ -6,7 +6,8 @@ union Bits { value: uint32 }
 extend Record { func Record(value: int32) -> Record { return Record { value: value }; } func Sum(self: &Record) -> int32 { return self.value; } }
 extend Holder<T> { func Value(self: &Holder<T>) -> T { return self.value; } }
 
-import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, MakeRecord, ReadBound, ReadProvider, RoundTrip };
+import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, MakeRecord, ReadBound, ReadProvider,
+                          RoundTrip };
 
 struct Tracked { counter: *var int; }
 extend Tracked { func ~Tracked(self: &var Tracked) { *self.counter += 10; } }

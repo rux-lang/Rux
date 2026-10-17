@@ -7,10 +7,10 @@
 namespace Rux::HirToLirDetail {
 
 void HirToLirContext::LowerStmt(const HirStmt &stmt) {
-    if (auto *s = dynamic_cast<const HirLetStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirLetStmt>(&stmt)) {
         LirReg slot = EmitAlloca(s->type);
         if (!s->pattern) {
-            locals[s->name] = slot;
+            BindLocal(s->name, slot, s->bindingId);
         }
         // A declaration with no initializer owns nothing yet. Marking it live would have the scope destroy whatever
         // its storage happened to hold, which for a droppable type means calling a destructor on garbage. It becomes
@@ -26,23 +26,24 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         else {
             MarkBindingLive(s->bindingId, false);
         }
-        if (s->pattern) {
+        // An initializer that left the function, such as a call to `Panic`, leaves nothing to take apart.
+        if (s->pattern && !IsTerminated()) {
             BindLetPattern(*s->pattern, slot, s->type);
         }
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirDropStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirDropStmt>(&stmt)) {
         EmitCleanup(s->action);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirExprStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirExprStmt>(&stmt)) {
         LowerExpr(*s->expr);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirReturnStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirReturnStmt>(&stmt)) {
         if (s->value) {
             LirReg val = LowerExpr(**s->value);
             // The returned value is in hand and its binding is already released, so every cleanup below leaves it
@@ -50,28 +51,29 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
             EmitActivePartialCleanups();
             EmitCleanups(s->cleanups);
             TypeRef retType = builder->Function().returnType;
+            // Through the language's conversion rules, so a returned float reaching an integer or a bool result
+            // converts exactly as the same `as` would.
             if (val != LirNoReg && !retType.IsUnknown() && (*s->value)->type != retType) {
-                LirReg casted = NewReg();
-                LirInstr cast;
-                cast.dst = casted;
-                cast.op = LirOpcode::Cast;
-                cast.type = retType;
-                cast.srcs = {val};
-                cast.strArg = (*s->value)->type.ToString();
-                Emit(std::move(cast));
-                val = casted;
+                val = EmitCast(val, (*s->value)->type, retType);
             }
-            Return({val}, retType);
+            // A generic instantiated for a void function, such as a `Join` whose result type is a function's missing
+            // return type, returns that "value" as nothing.
+            if (val == LirNoReg && retType.IsOpaque()) {
+                Return(std::nullopt, retType);
+            }
+            else {
+                Return({val}, retType);
+            }
         }
         else {
             EmitActivePartialCleanups();
             EmitCleanups(s->cleanups);
-            Return(std::nullopt, TypeRef::MakeOpaque());
+            ReturnNothing();
         }
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirBreakStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirBreakStmt>(&stmt)) {
         EmitCleanups(s->cleanups);
         if (!s->label.empty()) {
             Jump(labelTargets.at(s->label).breakTarget);
@@ -82,7 +84,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirContinueStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirContinueStmt>(&stmt)) {
         EmitCleanups(s->cleanups);
         if (!s->label.empty()) {
             Jump(labelTargets.at(s->label).continueTarget);
@@ -93,41 +95,50 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirIfStmt *>(&stmt)) {
+    // A name a condition, a pattern or a loop variable binds is scoped to the statement, like one bound in its body.
+    if (auto *s = HirCast<const HirIfStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerIf(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirWhileStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirWhileStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerWhile(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirDoWhileStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirDoWhileStmt>(&stmt)) {
         LowerDoWhile(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirLoopStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirLoopStmt>(&stmt)) {
         LowerLoop(*s);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirForStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirForStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerFor(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirScopeStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirScopeStmt>(&stmt)) {
         LowerBlock(s->block);
         return;
     }
-    if (auto *s = dynamic_cast<const HirMatchStmt *>(&stmt)) {
+    if (auto *s = HirCast<const HirMatchStmt>(&stmt)) {
+        const std::size_t scope = EnterLocalScope();
         LowerMatch(*s);
+        LeaveLocalScope(scope);
         return;
     }
 
-    if (auto *s = dynamic_cast<const HirLocalDecl *>(&stmt)) {
+    if (auto *s = HirCast<const HirLocalDecl>(&stmt)) {
         if (s->hasConstant) {
             localConsts[s->constantName] = {s->constantValue.get(), s->constantType};
         }
@@ -269,7 +280,7 @@ void HirToLirContext::LowerLoop(const HirLoopStmt &s) {
 
 void HirToLirContext::LowerFor(const HirForStmt &s) {
     const bool isRange = s.iterable->type.IsIterableRange();
-    const TypeRef elemType = (isRange && !s.iterable->type.inner.empty()) ? s.iterable->type.inner[0] : s.varType;
+    const TypeRef elemType = (isRange && !s.iterable->type->inner.empty()) ? s.iterable->type->inner[0] : s.varType;
 
     // When the loop reuses a variable already in scope, its storage is the
     // outer variable's slot, so the loop's mutations persist afterwards.
@@ -282,7 +293,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
     if (isRange) {
         // Get a slot holding the range struct
         LirReg iterSlot;
-        if (auto *re = dynamic_cast<const HirRangeExpr *>(s.iterable.get())) {
+        if (auto *re = HirCast<const HirRangeExpr>(s.iterable.get())) {
             iterSlot = LowerRange(*re);
         }
         else {
@@ -291,7 +302,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         // The iterable has been lowered in the enclosing scope; now bind the
         // loop variable name to its induction slot for the loop body.
-        locals[s.variable] = slot;
+        BindLocal(s.variable, slot, s.bindingId);
 
         // i = range.start
         LirReg loPtr = EmitFieldPtr(iterSlot, "start", elemType);
@@ -342,6 +353,15 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         }
         SetBlock(stepBlock);
         LirReg iCur = EmitLoad(slot, elemType);
+        if (s.iterable->type.IsInclusiveRange()) {
+            // An inclusive range may end at its type's maximum, where stepping past the end would wrap around to the
+            // minimum and pass the condition again. The step therefore leaves once the variable has reached the end,
+            // before incrementing it, and the condition above is only ever asked of a variable that did not wrap.
+            const std::uint32_t advanceBlock = NewBlock("for.advance");
+            const LirReg hiStepVal = EmitLoad(hiPtr, elemType);
+            Branch(EmitBinary(LirOpcode::CmpLt, iCur, hiStepVal, TypeRef::MakeBool()), advanceBlock, afterBlock);
+            SetBlock(advanceBlock);
+        }
         LirReg one = EmitConst("1", elemType);
         LirReg iNext = EmitBinary(LirOpcode::Add, iCur, one, elemType);
         EmitStore(iNext, slot, elemType);
@@ -358,9 +378,9 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         return;
     }
 
-    const bool borrowedSlice = s.iterable->type.kind == TypeRef::Kind::Reference && !s.iterable->type.inner.empty() &&
-                               IsSliceType(s.iterable->type.inner.front());
-    const TypeRef &sequenceType = borrowedSlice ? s.iterable->type.inner.front() : s.iterable->type;
+    const bool borrowedSlice = s.iterable->type->kind == TypeRef::Kind::Reference && !s.iterable->type->inner.empty() &&
+                               IsSliceType(s.iterable->type->inner.front());
+    const TypeRef &sequenceType = borrowedSlice ? s.iterable->type->inner.front() : s.iterable->type;
     if (IsSliceType(sequenceType) || IsArrayType(sequenceType)) {
         const TypeRef dataType = TypeRef::MakePointer(elemType);
         // A borrowed slice parameter already points to the descriptor. Reading its local slot would add another
@@ -369,7 +389,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         // The iterable has been lowered in the enclosing scope; now bind the
         // loop variable name to its induction slot for the loop body.
-        locals[s.variable] = slot;
+        BindLocal(s.variable, slot, s.bindingId);
 
         LirReg dataPtr = iterSlot;
         LirReg length = LirNoReg;
@@ -380,7 +400,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
             length = EmitLoad(lenFieldPtr, TypeRef::MakeUInt64());
         }
         else {
-            length = EmitConst(std::to_string(sequenceType.arrayLength.value_or(0)), TypeRef::MakeUInt64());
+            length = EmitConst(std::to_string(sequenceType->arrayLength.value_or(0)), TypeRef::MakeUInt64());
         }
 
         LirReg idxSlot = EmitAlloca(TypeRef::MakeUInt64());
@@ -410,8 +430,18 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         SetBlock(bodyBlock);
         LirReg elemPtr = EmitIndexPtr(dataPtr, idx, elemType);
-        LirReg elemVal = EmitLoad(elemPtr, elemType);
-        EmitStore(elemVal, slot, elemType);
+        // The loop variable owns a copy of the element, which the end of each pass destroys; a bitwise copy of an
+        // element with its own `=` would have that pass destroy what the sequence still holds.
+        if (s.elementCopy.kind != HirCopyPlan::Kind::Trivial) {
+            EmitCopyPlan(s.elementCopy, elemPtr, slot);
+        }
+        else {
+            LirReg elemVal = EmitLoad(elemPtr, elemType);
+            EmitStore(elemVal, slot, elemType);
+        }
+        if (s.bindingId != 0) {
+            MarkBindingLive(s.bindingId, true);
+        }
         LowerBlock(s.body);
 
         if (!IsTerminated()) {

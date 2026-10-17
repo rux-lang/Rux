@@ -191,6 +191,15 @@ TypeRef AstToHirContext::CharLiteralType(const Token &tok) {
     if (tok.text.starts_with("c64'")) {
         return TypeRef::MakePrimitive(TypeRef::Kind::Char64);
     }
+    if (tok.text.starts_with("c128'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char128);
+    }
+    if (tok.text.starts_with("c256'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char256);
+    }
+    if (tok.text.starts_with("c512'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char512);
+    }
     return TypeRef::MakeChar();
 }
 
@@ -232,6 +241,29 @@ std::vector<HirParam> AstToHirContext::LowerParams(const std::vector<Param> &par
 HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
                                    const std::unordered_map<std::string, TypeRef> &substitutions,
                                    const std::string &overrideName) {
+    // A non-generic function of a module whose code is reused keeps only what calling it needs: its name and calling
+    // convention. Analysis did not check it, and nothing is generated for it.
+    if (declarationOnly && substitutions.empty() && d.typeParams.empty() && d.body && !d.isAsm) {
+        HirFunc hf;
+        hf.name = overrideName.empty() ? d.name : overrideName;
+        hf.isPublic = model.IsEffectivelyPublic(d);
+        hf.isExported = hf.isPublic && model.IsExported(d);
+        hf.isNoReturn = d.isNoReturn;
+        hf.callConv = d.callConv;
+        hf.isDeclarationOnly = true;
+        hf.location = d.location;
+        return hf;
+    }
+    // An instance is lowered into whichever module uses it, but its body is read where it was written: a panic in
+    // `Channel<uint64>` names the package's file, not the caller's.
+    const std::string savedFile = currentFile;
+    const std::string savedDeclModulePath = declModulePath;
+    // An instance lowered while another body is half done names its own holders, even for the same declarations.
+    auto savedHolders = std::exchange(interfaceHolderBindings, {});
+    if (const auto origin = functionOrigins.find(&d); origin != functionOrigins.end()) {
+        currentFile = origin->second.file;
+        declModulePath = origin->second.declModulePath;
+    }
     auto savedTypeParams = currentTypeParams;
     currentTypeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     auto savedSubstitutions = currentSubstitutions;
@@ -239,7 +271,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     // The receiver's declared type is what `self` is throughout the body, so it has to be in place before the name, the
     // return type or any parameter is resolved. A bare `self` carries no type and keeps the extend block's.
     const TypeRef savedSelfType = currentSelfType;
-    if (const Param *receiver = d.Receiver(); receiver && !dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+    if (const Param *receiver = d.Receiver(); receiver && !AstCast<const SelfTypeExpr>(receiver->type.get())) {
         currentSelfType = ResolveType(*receiver->type);
     }
     TypeRef retType = d.returnType ? ResolveType(**d.returnType) : TypeRef::MakeOpaque();
@@ -300,15 +332,30 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     // A generic source declaration is public API, but each concrete instantiation is emitted into the object that
     // needs it. Keeping those copies local avoids exporting the same monomorphized symbol from several objects.
     hf.isPublic = model.IsEffectivelyPublic(d) && substitutions.empty();
+    hf.isExported = hf.isPublic && model.IsExported(d);
     hf.isAsm = d.isAsm;
     hf.isNoReturn = d.isNoReturn;
     hf.asmBody = d.asmBody;
+    // A name in the body reaches a function or module variable through the name the linker knows it by.
+    for (std::size_t instruction = 0; instruction < d.asmBody.size(); ++instruction) {
+        for (std::size_t index = 0; index < d.asmBody[instruction].operands.size(); ++index) {
+            const Decl *named = model.TryGetAsmSymbolDeclaration(d.asmBody[instruction].operands[index]);
+            const ResolvedSymbolIdentity *identity = named ? model.TryGetSymbolIdentity(*named) : nullptr;
+            if (!identity || identity->linkerName.empty()) {
+                continue;
+            }
+            AsmOperand &operand = hf.asmBody[instruction].operands[index];
+            (operand.kind == AsmOperand::Kind::Mem ? operand.memSym : operand.name) = identity->linkerName;
+        }
+    }
     hf.callConv = d.callConv;
     hf.typeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     hf.params = LowerParams(d.params);
     hf.returnType = retType;
     hf.body = std::move(body);
     hf.location = d.location;
+    hf.sourceFile = LogicalCurrentFilePath();
+    hf.sourceFunction = currentFunctionName;
 
     cleanupPlanner.EndFunction(cleanupFunction);
     PopScope();
@@ -318,6 +365,9 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     currentTypeParams = savedTypeParams;
     currentSubstitutions = savedSubstitutions;
     currentFunctionName = savedFuncName;
+    currentFile = savedFile;
+    interfaceHolderBindings = std::move(savedHolders);
+    declModulePath = savedDeclModulePath;
     return hf;
 }
 
@@ -350,35 +400,35 @@ HirStruct AstToHirContext::LowerStruct(const StructDecl &d) {
 }
 
 void AstToHirContext::NoteStructInstantiation(const TypeRef &type) const {
-    for (const auto &inner : type.inner) {
+    for (const auto &inner : type->inner) {
         NoteStructInstantiation(inner);
     }
-    if (type.kind != TypeRef::Kind::Named || type.name.find('<') == std::string::npos) {
+    if (type->kind != TypeRef::Kind::Named || type->name.find('<') == std::string::npos) {
         return;
     }
-    const std::string base = BaseTypeNameImpl(type.name);
+    const std::string base = BaseTypeNameImpl(type->name);
     const auto declaration = structDecls.find(base);
     if (declaration == structDecls.end() || declaration->second->typeParams.empty()) {
         return;
     }
-    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(type->name);
     if (args.size() != declaration->second->typeParams.size()) {
         return;
     }
     // A type argument naming a type parameter still in scope is the generic declaration itself, not an instantiation of
     // it; its layout is only knowable once that parameter has been substituted.
     for (const auto &arg : args) {
-        if (arg.kind == TypeRef::Kind::TypeParam) {
+        if (arg->kind == TypeRef::Kind::TypeParam) {
             return;
         }
-        if (arg.kind == TypeRef::Kind::Named &&
-            std::find(currentTypeParams.begin(), currentTypeParams.end(), arg.name) != currentTypeParams.end()) {
+        if (arg->kind == TypeRef::Kind::Named &&
+            std::find(currentTypeParams.begin(), currentTypeParams.end(), arg->name) != currentTypeParams.end()) {
             return;
         }
         NoteStructInstantiation(arg);
     }
-    if (seenStructInstantiations.insert(type.name).second) {
-        pendingStructInstantiations.push_back(type.name);
+    if (seenStructInstantiations.insert(type->name).second) {
+        pendingStructInstantiations.push_back(type->name);
     }
 }
 
@@ -469,7 +519,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     TypeRef savedSelfType = currentSelfType;
     inImpl = true;
     TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
-    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || extendedType.IsSlice();
+    const bool isSliceReceiver = extendedType->kind == TypeRef::Kind::Array || extendedType.IsSlice();
     if (isSliceReceiver) {
         // `self` is the slice value; the slice ABI passes its address, so
         // slice indexing and iteration inside the method work as usual.
@@ -517,12 +567,22 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
 }
 
 HirConst AstToHirContext::LowerConst(const ConstDecl &d) {
+    // The constant reads the build's time when its own value does; the module it is lowered in reads it too.
+    const bool moduleReadsBuildTime = std::exchange(readsBuildTime, false);
+    HirConst hc = LowerConstValue(d);
+    hc.readsBuildTime = readsBuildTime;
+    readsBuildTime = moduleReadsBuildTime || readsBuildTime;
+    return hc;
+}
+
+HirConst AstToHirContext::LowerConstValue(const ConstDecl &d) {
     HirConst hc;
     hc.name = d.name;
     if (const auto *identity = model.TryGetSymbolIdentity(d)) {
         hc.name = identity->linkerName;
     }
     hc.isPublic = model.IsEffectivelyPublic(d);
+    hc.isExported = hc.isPublic && model.IsExported(d);
     const std::optional<TypeRef> explicitType =
         d.type ? std::optional<TypeRef>(ResolveType(*d.type->get())) : std::nullopt;
     hc.value = explicitType ? LowerExprAs(*d.value, *explicitType) : LowerExpr(*d.value);
@@ -533,6 +593,21 @@ HirConst AstToHirContext::LowerConst(const ConstDecl &d) {
     hc.location = d.location;
     RegisterConstInteger(hc.name, *hc.value);
     return hc;
+}
+
+HirGlobal AstToHirContext::LowerGlobal(const GlobalDecl &d) {
+    HirGlobal global;
+    global.name = d.name;
+    if (const auto *identity = model.TryGetSymbolIdentity(d)) {
+        global.name = identity->linkerName;
+    }
+    global.isPublic = model.IsEffectivelyPublic(d);
+    global.isExported = global.isPublic && model.IsExported(d);
+    global.type = ResolveType(*d.type);
+    global.value = LowerExprAs(*d.value, global.type);
+    global.isThreadLocal = d.isThreadLocal;
+    global.location = d.location;
+    return global;
 }
 
 HirExternFunc AstToHirContext::LowerExternFunc(const ExternFuncDecl &d) {
@@ -554,8 +629,10 @@ HirExternFunc AstToHirContext::LowerExternFunc(const ExternFuncDecl &d) {
 
 HirExternVar AstToHirContext::LowerExternVar(const ExternVarDecl &d) {
     HirExternVar hev;
-    hev.name = d.name;
+    hev.name = d.symbolName.empty() ? d.name : d.symbolName;
+    hev.dll = d.dll;
     hev.isPublic = model.IsEffectivelyPublic(d);
+    hev.isExported = hev.isPublic && model.IsExported(d);
     hev.type = ResolveType(*d.type);
     hev.location = d.location;
     return hev;

@@ -2,20 +2,19 @@
 # including skipped cases, so a renamed file or a wildcard overlap cannot silently lose or duplicate coverage.
 set(rux_unit_groups Numeric Frontend Lowering Backends Driver Cli Optimization)
 foreach (source IN LISTS RUX_TEST_SOURCES)
-    # Named before the prefix rules below. All five suites read the source tree rather than compiling a fixture
+    # Named before the prefix rules below. All four suites read the source tree rather than compiling a fixture
     # string, so they belong with the other filesystem-touching cases under the RuxUnitArtifacts lock, and no
     # assignment may depend on a prefix rule that happens to catch it today.
     if (source STREQUAL "PackageDocumentationStyleTests.cpp" OR source STREQUAL "LanguageTestMatrixTests.cpp"
-        OR source STREQUAL "PlatformBindingContractTests.cpp" OR source STREQUAL "PackageExampleTests.cpp"
-        OR source STREQUAL "LegacyProtocolAuditTests.cpp")
+        OR source STREQUAL "PlatformBindingContractTests.cpp" OR source STREQUAL "PackageExampleTests.cpp")
         set(group Driver)
-    elseif (source MATCHES "^(SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
+    elseif (source MATCHES "^(Allocator|SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
         set(group Numeric)
     elseif (source MATCHES "^(Cli|Cmd|UserMessage|InspectionOutput|Reporter|Reporting|BuildReport)")
         set(group Cli)
     elseif (source MATCHES "^(CompilerDriver|CompilerPipeline|BuildPlan|Package|Manifest|Credentials|Registry|Process|Os|OutputFile|SourceLoader|Artifact)")
         set(group Driver)
-    elseif (source MATCHES "^(Optimizer|LirOptimization|LirReachability)")
+    elseif (source MATCHES "^(Optimizer|LirOptimization|LirReachability|LirRegs)")
         set(group Optimization)
     elseif (source MATCHES "(Lowering|DropGlue|Consumption|Lifecycle|Cleanup)")
         set(group Lowering)

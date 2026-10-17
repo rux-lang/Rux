@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "CharacterChecks"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Character casts preserve valid code units and Unicode scalar boundaries, and character arithmetic checks its divisor."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

@@ -1,18 +1,14 @@
 // What the active build is doing, as ordinary values available while compiling.
-//
 // `#build` answers questions about the build rather than about the machine it targets, which is `#target`'s job: the
 // profile chosen, what the profile implies, what artifact is coming out, and when it was made. Reading one costs
 // nothing at run time, because the value is folded where it is written.
-//
 // The timestamp is fixed once per build rather than read per expression, so every use of it in one build agrees. That
 // makes it usable as a build identity and unusable as a clock.
 
 /// The high-level mode of the active build profile.
-///
 /// A profile is a name, and more than one profile may share a mode; this is the part a package can branch on without
 /// knowing which profiles a project defined.
-///
-/// @see https://rux-lang.dev/docs/api/core/build-mode
+/// @see https://rux-lang.dev/docs/api/core/build#build-mode
 pub enum BuildMode: uint8 {
     /// Unoptimized, with debug assertions and debug information on by default.
     Debug = 0,
@@ -21,8 +17,7 @@ pub enum BuildMode: uint8 {
 }
 
 /// What the active build asked the optimizer to favor.
-///
-/// @see https://rux-lang.dev/docs/api/core/optimization-mode
+/// @see https://rux-lang.dev/docs/api/core/build#optimization-mode
 pub enum OptimizationMode: uint8 {
     /// No optimization: the output follows the source as closely as it can.
     None = 0,
@@ -33,8 +28,7 @@ pub enum OptimizationMode: uint8 {
 }
 
 /// The kind of artifact the active build produces.
-///
-/// @see https://rux-lang.dev/docs/api/core/output-kind
+/// @see https://rux-lang.dev/docs/api/core/build#output-kind
 pub enum OutputKind: uint8 {
     /// A program with an entry point.
     Executable = 0,
@@ -47,10 +41,8 @@ pub enum OutputKind: uint8 {
 }
 
 /// Properties of the active build profile and its output.
-///
 /// Every field is fixed when compiling begins and is the same everywhere in one build. Reading one produces no
 /// runtime code, so a branch on a field is decided while compiling and the untaken side is not emitted.
-///
 /// @see https://rux-lang.dev/docs/api/core/build
 pub struct Build {
     /// The profile's name as the project spelled it, which may be a project-defined profile rather than one of the
@@ -61,9 +53,9 @@ pub struct Build {
     /// What the profile asked the optimizer to favor.
     pub optimization: OptimizationMode;
     /// Whether `DebugAssert` checks are kept. False means they are removed without their arguments being evaluated.
-    debugAssertions: bool;
+    pub debugAssertions: bool;
     /// Whether debug information is emitted alongside the output.
-    debugInfo: bool;
+    pub debugInfo: bool;
     /// Whether this build is a test build, which is how a package tells a test-only path from a shipped one.
     pub isTest: bool;
     /// The artifact being produced.
@@ -78,9 +70,7 @@ pub struct Build {
 }
 
 /// The active build, as a compile-time value.
-///
 /// Reading a field produces no runtime code. A `when` on one keeps only the branch that applies, so the untaken side
 /// is never resolved or type-checked and may name things this build does not have.
-///
-/// @see https://rux-lang.dev/docs/api/core/build
+/// @see https://rux-lang.dev/docs/api/core/build#build-constant
 pub intrinsic #build: Build;

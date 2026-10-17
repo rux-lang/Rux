@@ -183,34 +183,21 @@ struct ResolvedIndexAssignment {
     TypeRef valueType;
 };
 
-/// What one accepted `expr?` propagates. Analysis identifies `Result` and `Option` by their variant cases and checks
-/// the enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
+/// What one accepted `expr?` propagates. Analysis checks a native fallible or optional against the enclosing return
+/// type: a fallible's success continues and its error leaves as the enclosing outer failure, injected or widened into
+/// that error channel, and an optional's payload continues while its absence leaves.
 struct ResolvedPropagation {
-    bool isResult = false;
-    /// A native fallible operand: its success continues and its error leaves as the enclosing function's outer failure,
-    /// injected or widened into that error channel. The variant names are unused.
-    bool native = false;
-    /// The operand's variant declaration and the cases to test, and the declaration the early return constructs.
-    std::string variantName;
-    std::string successVariant;
-    std::string failureVariant;
-    std::string returnVariantName;
-    /// Payload of the success variant, which is what the expression evaluates to, and of the failure variant, which the
-    /// early return carries unchanged. A failure with no payload, such as `Option::None`, leaves the second unset.
+    /// What the expression evaluates to, and the error a fallible's early return carries. Absence carries no payload,
+    /// so an optional leaves the second unset.
     TypeRef payloadType;
     std::optional<TypeRef> failureType;
     TypeRef returnType;
 };
 
-/// What one accepted `option ?? fallback` coalesces. Analysis identifies the Option protocol structurally and fixes
-/// the payload type, so lowering only has to build the lazy match it describes.
+/// What one accepted `option ?? fallback` coalesces. Analysis checks the native optional and fixes the payload type,
+/// so lowering only has to build the lazy match it describes.
 struct ResolvedCoalescing {
-    std::string variantName;
-    std::string someVariant;
-    std::string noneVariant;
     TypeRef payloadType;
-    /// A native optional operand: its presence is tested by its native tag and the variant names are unused.
-    bool native = false;
 };
 
 /// How one accepted `for` loop reads its subject. Analysis decides whether the subject is driven directly or through
@@ -231,14 +218,11 @@ struct ResolvedIteration {
     TypeRef iteratorType;
     const FuncDecl *advance = nullptr;
     const FuncDecl *entry = nullptr;
-    /// What `Next` reports, and the variant type it reports it with: the loop matches the item case to continue and the
-    /// end case to leave.
+    /// The native optional `Next` reports: presence continues the loop and outer absence ends it.
     TypeRef reportedType;
-    std::string optionVariantName;
-    std::string someVariant;
-    std::string noneVariant;
-    /// `Next` reports a native optional: presence continues the loop and outer absence ends it.
-    bool native = false;
+    /// An iterator the source names as a place -- a variable, a field, an element -- is advanced where it is, so the
+    /// loop leaves it where the walk stopped. Any other iterator is a temporary the loop advances.
+    bool advancesInPlace = false;
 };
 
 /// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation
@@ -294,14 +278,43 @@ struct EvaluatedAssociatedConstant {
     std::string literal;
 };
 
+/// Where the old value an assignment replaces lives, and so whether it is certain to be there.
+struct PlaceReplacement {
+    /// The name of the local whose storage contains the place, when the place is part of a value a binding owns: the
+    /// old value exists exactly while that binding owns its value. Null when the place is reached through a reference
+    /// or a slice, whose referent is always initialized.
+    const Expr *owner = nullptr;
+};
+
+/// Storage for a value an interface value is made from, kept with the local that holds the interface value: one per
+/// place of that local -- the local itself, or a field path such as `holder.named` -- and per concrete type, so a
+/// value stored there again replaces the one it held, and outlives a block that made it as long as the local does.
+struct InterfaceHolderSite {
+    const LetStmt *owner = nullptr;
+    std::string place;
+    TypeRef type;
+
+    friend bool operator==(const InterfaceHolderSite &, const InterfaceHolderSite &) = default;
+};
+
 struct SemanticFacts {
-    std::unordered_map<const TypeExpr *, const Decl *> intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> constantReferences;
+    /// The module variable or extern variable an identifier or path names, keyed by that expression.
+    std::unordered_map<const Expr *, const Decl *> globalReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> evaluatedAssociatedConstants;
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     /// Accepted implicit loads of Copy primitive scalars. The expression's type still describes its reference.
     std::unordered_set<const Expr *> borrowedScalarReads;
+    /// Names of references written through rather than rebound: an assignment, compound assignment, `++`, or `--` of a
+    /// reference to a Copy primitive scalar, and a `=` or `<-` that replaces any other referent whole. The store
+    /// reaches the referent rather than the binding. The name's type still describes its reference.
+    std::unordered_set<const Expr *> referenceWrites;
+    /// Accepted `=` and `<-` assignments that replace a value already living at a place no binding names, keyed by the
+    /// assignment: a referent written whole through `&var T`, and a field, tuple element, or built-in array or slice
+    /// element reached from a local, a reference, or a slice. A write whose place is reached through a raw pointer is
+    /// absent, because the storage it addresses may not hold a value yet.
+    std::unordered_map<const Expr *, PlaceReplacement> placeReplacements;
     /// The one accepted route of each implicit conversion into a native type, outermost level first, keyed by the
     /// converted expression. Lowering builds the destination value from it instead of choosing a route again.
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> nativeConversions;
@@ -320,12 +333,25 @@ struct SemanticFacts {
     std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
     // An expression records only whether to negate; each concrete instantiation owns its element recipe.
     std::unordered_map<const BinaryExpr *, bool> aggregateEqualities;
+    /// The one type both operands of a structural tuple comparison are built as, when one operand is a literal that
+    /// takes the other's type, as in `pair == (3, true)`.
+    std::unordered_map<const BinaryExpr *, TypeRef> aggregateEqualityOperandTypes;
     std::unordered_map<std::string, VariantEqualityPayload> aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
+    /// A function named as a value: a generic one with the type arguments the destination's function type gave it,
+    /// the overload an overloaded name's destination chose, or the function a module path names.
+    std::unordered_map<const Expr *, ResolvedCallableBinding> functionReferenceBindings;
+    /// The function or module variable each name in an asm body stands for, which lowering spells by linker name.
+    std::unordered_map<const AsmOperand *, const Decl *> asmSymbolDeclarations;
+    /// The holder each value made into an interface value is kept in, and the holders each local declares.
+    std::unordered_map<const Expr *, InterfaceHolderSite> interfaceHolderSites;
+    std::unordered_map<const LetStmt *, std::vector<InterfaceHolderSite>> interfaceHolders;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, bool> effectiveVisibilities;
+    /// Effectively public declarations owned by the package being compiled, rather than by one of its dependencies.
+    std::unordered_set<const Decl *> exportedDeclarations;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
@@ -335,6 +361,12 @@ struct SemanticFacts {
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
+    /// Every accepted `match` whose arms cover each value of its subject's type, so no value can leave it unmatched.
+    std::unordered_set<const MatchExpr *> exhaustiveMatchExpressions;
+    std::unordered_set<const MatchStmt *> exhaustiveMatchStatements;
+    /// Every accepted `match` or `catch` subject whose arms own it: one handed over with `<-`, a temporary, or the
+    /// copy a by-value match makes of a named copyable value. An arm owns what it binds and destroys what it leaves.
+    std::unordered_set<const Expr *> ownedMatchSubjects;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;
@@ -352,9 +384,10 @@ struct SemanticFacts {
  * detaches everything analysis recorded about it.
  */
 struct SemanticModel {
-    [[nodiscard]] const Decl *TryGetIntrinsicTypeBinding(const TypeExpr &type) const noexcept;
     [[nodiscard]] const ConstDecl *TryGetAssociatedConstant(const Expr &expression) const noexcept;
     [[nodiscard]] const ConstDecl *TryGetConstantReference(const Expr &expression) const noexcept;
+    [[nodiscard]] const GlobalDecl *TryGetGlobalReference(const Expr &expression) const noexcept;
+    [[nodiscard]] const ExternVarDecl *TryGetExternVariableReference(const Expr &expression) const noexcept;
     [[nodiscard]] const EvaluatedAssociatedConstant *TryGetConstantValue(const ConstDecl &declaration) const noexcept;
     std::vector<SemanticDiagnostic> diagnostics;
     std::vector<SemanticSymbol> symbols;
@@ -371,6 +404,10 @@ struct SemanticModel {
     /// lifetime of this model.
     [[nodiscard]] const TypeRef *TryGetType(const Expr &expression) const noexcept;
     [[nodiscard]] bool HasBorrowedScalarRead(const Expr &expression) const noexcept;
+    [[nodiscard]] bool HasReferenceWrite(const Expr &expression) const noexcept;
+    /// Returns null when `assignment` replaces no value at a place, either because it writes a binding, whose own
+    /// cleanup covers it, or because it initializes storage reached through a raw pointer.
+    [[nodiscard]] const PlaceReplacement *TryGetPlaceReplacement(const Expr &assignment) const noexcept;
     /// Returns null when `expression` reaches its destination without a native conversion.
     [[nodiscard]] const std::vector<NativeConversionStep> *
     TryGetNativeConversion(const Expr &expression) const noexcept;
@@ -389,6 +426,7 @@ struct SemanticModel {
     [[nodiscard]] const ResolvedVariantEquality *TryGetVariantEquality(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPlan *TryGetVariantEqualityPlan(const TypeRef &type) const noexcept;
     [[nodiscard]] const bool *TryGetAggregateEquality(const BinaryExpr &expression) const noexcept;
+    [[nodiscard]] const TypeRef *TryGetAggregateEqualityOperandType(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPayload *TryGetAggregateEqualityPlan(const TypeRef &type) const noexcept;
 
     /// Returns null for Copy expressions and expressions that are only borrowed or observed.
@@ -401,11 +439,28 @@ struct SemanticModel {
     /// lifetime of this model.
     [[nodiscard]] const ResolvedCallableBinding *TryGetCallableBinding(const CallExpr &call) const noexcept;
 
+    /// The function a name or module path used as a value stands for -- the instantiation of a generic function, the
+    /// overload an overloaded name's destination chose, or the function a module path names -- or null for any other
+    /// expression.
+    [[nodiscard]] const ResolvedCallableBinding *TryGetFunctionReferenceBinding(const Expr &reference) const noexcept;
+    /// The function or module variable an asm operand's symbol names, or null for a label or an extern.
+    [[nodiscard]] const Decl *TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept;
+    /// The holder a value made into an interface value is kept in, or null for one its scope keeps.
+    [[nodiscard]] const InterfaceHolderSite *TryGetInterfaceHolderSite(const Expr &value) const noexcept;
+    /// The holders a local declares beside itself, or null when it holds no interface value made from a value with a
+    /// destructor.
+    [[nodiscard]] const std::vector<InterfaceHolderSite> *TryGetInterfaceHolders(const LetStmt &local) const noexcept;
+
     /// Returns null for initialized declarations and declarations whose type has no eligible default constructor.
     [[nodiscard]] const ResolvedDefaultConstructor *TryGetDefaultConstructor(const LetStmt &statement) const noexcept;
 
     /// Whether a declaration is public after every containing module and owning type has capped its visibility.
     [[nodiscard]] bool IsEffectivelyPublic(const Decl &declaration) const noexcept;
+
+    /// Whether a library artifact exports the declaration: it is effectively public and owned by the package being
+    /// compiled. A dependency's public declaration is compiled into the same artifact and stays linkable across its
+    /// objects, but is not part of the artifact's interface.
+    [[nodiscard]] bool IsExported(const Decl &declaration) const noexcept;
 
     /// Returns null for declarations that do not emit/import a symbol and for nodes outside the analyzed modules.
     [[nodiscard]] const ResolvedSymbolIdentity *TryGetSymbolIdentity(const Decl &declaration) const noexcept;
@@ -434,6 +489,14 @@ struct SemanticModel {
 
     /// Returns null for a `for` loop whose subject analysis rejected as not iterable.
     [[nodiscard]] const ResolvedIteration *TryGetIteration(const ForStmt &statement) const noexcept;
+
+    /// Whether analysis accepted this `match` as covering every value of its subject's type. A value outside those
+    /// the type declares, such as an integer converted to an enum with `as`, then has no arm to fall to.
+    [[nodiscard]] bool IsExhaustiveMatch(const MatchExpr &expression) const noexcept;
+    [[nodiscard]] bool IsExhaustiveMatch(const MatchStmt &statement) const noexcept;
+    /// Whether the arms of the `match` or `catch` that reads `subject` own it, so lowering gives each binding its
+    /// cleanup and destroys whatever the selected arm leaves; a subject left with its owner or borrowed answers false.
+    [[nodiscard]] bool IsOwnedMatchSubject(const Expr &subject) const noexcept;
 
     /// Returns null when the type is unresolved, unsized, recursive, or was not validated in this analysis.
     /// Type-expression queries first use the resolved type fact for that AST node.

@@ -14,6 +14,8 @@ struct GenerateOptions {
     std::filesystem::path packageRoot;
     std::filesystem::path outputDirectory;
     bool includePrivate = false;
+    /// The canonical name of the target the package was compiled for, recorded in a JSON snapshot.
+    std::string target = {};
 };
 
 /// The outcome of generating a site: whether it was written, and what was wrong with it.

@@ -47,7 +47,7 @@ jobs:
     outputs:
       scope: ${{ steps.resolve.outputs.scope }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Resolve the verification scope
@@ -63,14 +63,41 @@ jobs:
           echo "scope=$scope" >> "$GITHUB_OUTPUT"
           echo "Verification scope: **$scope**" >> "$GITHUB_STEP_SUMMARY"
 
+  # The jobs below share two toolchains and one FreeBSD guest disk. Each is put
+  # in the cache by one job before its users start, so a cold cache is filled
+  # once rather than by every user at the same time; warm, each takes seconds.
+  toolchain-linux-x86_64:
+    name: Linux x86-64 toolchain
+    needs: scope
+    if: needs.scope.outputs.scope != 'docs'
+    uses: ./.github/workflows/Toolchain.yml
+    with:
+      target: linux-x86_64
+      runner: ubuntu-26.04
+
+  toolchain-macos-aarch64:
+    name: macOS toolchain
+    needs: scope
+    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
+    uses: ./.github/workflows/Toolchain.yml
+    with:
+      target: macos-aarch64
+      runner: macos-26
+
+  freebsd-image:
+    name: FreeBSD image
+    needs: scope
+    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
+    uses: ./.github/workflows/FreeBSD-Image.yml
+
   quality:
     name: Policy and formatting
-    needs: scope
+    needs: [scope, toolchain-linux-x86_64]
     if: needs.scope.outputs.scope != 'docs'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install the toolchain
@@ -86,7 +113,7 @@ jobs:
 
   tidy:
     name: clang-tidy (shard ${{ matrix.shard }})
-    needs: scope
+    needs: [scope, toolchain-linux-x86_64]
     # clang-tidy is slow, so it waits for something that can reach dev.
     if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
     strategy:
@@ -96,7 +123,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install the toolchain
@@ -132,7 +159,7 @@ jobs:
   # host that checks every cross target.
   linux-x86_64:
     name: Linux x86-64
-    needs: scope
+    needs: [scope, toolchain-linux-x86_64]
     if: needs.scope.outputs.scope != 'docs'
     uses: ./.github/workflows/Linux-x86_64.yml
     with:
@@ -149,7 +176,7 @@ jobs:
 
   macos-aarch64:
     name: macOS AArch64
-    needs: scope
+    needs: [scope, toolchain-macos-aarch64]
     if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
     uses: ./.github/workflows/macOS-AArch64.yml
     with:
@@ -157,7 +184,7 @@ jobs:
 
   macos-x86_64:
     name: macOS x86-64
-    needs: scope
+    needs: [scope, toolchain-macos-aarch64]
     if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
     uses: ./.github/workflows/macOS-x86_64.yml
     with:
@@ -181,7 +208,7 @@ jobs:
 
   freebsd-x86_64:
     name: FreeBSD x86-64
-    needs: scope
+    needs: [scope, freebsd-image]
     if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
     uses: ./.github/workflows/FreeBSD-x86_64.yml
     with:
@@ -189,7 +216,7 @@ jobs:
 
   freebsd-aarch64:
     name: FreeBSD AArch64
-    needs: scope
+    needs: [scope, freebsd-image]
     if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
     uses: ./.github/workflows/FreeBSD-AArch64.yml
     with:
@@ -204,6 +231,9 @@ jobs:
     if: ${{ !cancelled() }}
     needs:
       - scope
+      - toolchain-linux-x86_64
+      - toolchain-macos-aarch64
+      - freebsd-image
       - quality
       - tidy
       - branch-policy

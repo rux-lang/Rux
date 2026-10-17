@@ -1,0 +1,182 @@
+// URLs are read and normalized, resolved as RFC 3986 section 5.4 resolves its examples, and their queries are walked,
+// decoded and built.
+
+import Allocator::SystemAllocator;
+import Core::Assert;
+import Url::{ Decode, HostKind, Pairs, QueryBuilder, Url, UrlError };
+
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Present(value: char8[..]?, expected: char8[..]) -> bool {
+    match value {
+        .Some(text) => return Same(text, expected),
+        none => return false
+    }
+}
+
+func Absent(value: char8[..]?) -> bool {
+    match value {
+        .Some(_) => return false,
+        none => return true
+    }
+}
+
+// Parses `text` and checks its normalized form.
+func Normalizes(text: char8[..], expected: char8[..]) -> bool {
+    match Url::Parse(SystemAllocator(), text) {
+        .Success(url) => return Same(url.Text(), expected),
+        .Failure(_) => return false
+    }
+}
+
+// Checks that `text` is refused with `error`.
+func Refuses(text: char8[..], error: UrlError) -> bool {
+    match Url::Parse(SystemAllocator(), text) {
+        .Success(_) => return false,
+        .Failure(found) => return found == error
+    }
+}
+
+// Resolves `reference` against `base` and checks the result.
+func Resolves(base: &Url, reference: char8[..], expected: char8[..]) -> bool {
+    match base.Resolve(reference) {
+        .Success(url) => return Same(url.Text(), expected),
+        .Failure(_) => return false
+    }
+}
+
+func Main() -> int {
+    let allocator = SystemAllocator();
+
+    // Normalization: case, escapes, dot segments and default ports.
+    Assert(Normalizes("HTTP://User@Example.COM:80/%7efoo/./bar/../baz?Q=%3d#F",
+                      "http://User@example.com/~foo/baz?Q=%3D#F"), "a URL is put in normal form");
+    Assert(Normalizes("https://example.com", "https://example.com/"), "an empty http path is a slash");
+    Assert(Normalizes("  http://a/b c\t", "http://a/b%20c"), "surrounding space is trimmed and inner space escaped");
+    Assert(Normalizes("mailto:Joe@Example.COM", "mailto:Joe@Example.COM"), "a URL without an authority keeps its path");
+    Assert(Normalizes("file:///C:/x/../y", "file:///C:/y"), "a file URL may have an empty host");
+    Assert(Normalizes("http://[2001:DB8:0:0:0:0:0:1]:8080/", "http://[2001:db8::1]:8080/"),
+           "an IPv6 host is written canonically");
+    Assert(Normalizes("http://[1:0:0:2:0:0:0:3]/", "http://[1:0:0:2::3]/"), "the longest zero run is compressed");
+    Assert(Normalizes("http://[::ffff:192.0.2.1]/", "http://[::ffff:c000:201]/"), "an embedded IPv4 address is read");
+
+    // Components.
+    let url = Url::Parse(allocator, "ftp://user:pa%73s@Host.Example:2121/a/b/?x=1&y=two%20words&&z#top")
+        catch { else => return 10 };
+    Assert(Same(url.Scheme(), "ftp"), "the scheme");
+    Assert(url.HasAuthority(), "an authority");
+    Assert(Same(url.Username(), "user"), "the user name");
+    Assert(Present(url.Password(), "pass"), "the password, with its needless escape decoded");
+    Assert(Present(url.Host(), "host.example"), "the host, lower-cased");
+    Assert(url.HostKind() == HostKind::Domain, "a named host");
+    Assert((url.Port() ?? 0u16) == 2121u16 && (url.PortOrDefault() ?? 0u16) == 2121u16, "an explicit port");
+    Assert(Same(url.Path(), "/a/b/"), "the path");
+    Assert(Present(url.Fragment(), "top"), "the fragment");
+    var segments: uint = 0;
+    for segment in url.PathSegments() {
+        if segments == 0u { Assert(Same(segment, "a"), "the first segment"); }
+        if segments == 2u { Assert(segment.length == 0u, "a trailing slash leaves an empty last segment"); }
+        segments = segments + 1;
+    }
+    Assert(segments == 3u, "three segments");
+    let web = Url::Parse(allocator, "http://192.168.0.1/") catch { else => return 11 };
+    Assert(web.HostKind() == HostKind::Ipv4 && web.Port() == none && (web.PortOrDefault() ?? 0u16) == 80u16,
+           "an IPv4 host and the default port");
+    Assert(Absent(web.Query()) && Absent(web.Fragment()) && Absent(web.Password()), "absent components are none");
+
+    // Queries.
+    var pairs: uint = 0;
+    for pair in Pairs(url.Query() ?? "") {
+        if pairs == 0u { Assert(Same(pair.name, "x") && Same(pair.value, "1"), "the first pair"); }
+        if pairs == 1u { Assert(Same(pair.name, "y") && Same(pair.value, "two%20words"), "a pair stays encoded"); }
+        if pairs == 2u { Assert(Same(pair.name, "z") && pair.value.length == 0u, "a name without a value"); }
+        pairs = pairs + 1;
+    }
+    Assert(pairs == 3u, "an empty pair is skipped");
+    let decoded = Decode(allocator, "two%20words") catch { else => return 12 };
+    Assert(Same(decoded.Bytes(), "two words"), "a value decodes");
+    let form = Decode(allocator, "a+b%2Bc", true) catch { else => return 13 };
+    Assert(Same(form.Bytes(), "a b+c"), "a form value reads plus as a space");
+    var query = QueryBuilder(allocator);
+    query.Append("q", "rux lang") catch { else => return 14 };
+    query.Append("lang", "c++") catch { else => return 14 };
+    Assert(Same(query.Text(), "q=rux+lang&lang=c%2B%2B"), "a query is built with the form encoding");
+    var edited = Url::Parse(allocator, "http://a/b") catch { else => return 15 };
+    edited.SetQuery(query.Text()) catch { else => return 16 };
+    edited.SetFragment("part") catch { else => return 17 };
+    Assert(Same(edited.Text(), "http://a/b?q=rux+lang&lang=c%2B%2B#part"), "a query and a fragment are set");
+    edited.SetPath("x/../y z") catch { else => return 18 };
+    edited.SetQuery(none) catch { else => return 19 };
+    edited.SetFragment(none) catch { else => return 20 };
+    Assert(Same(edited.Text(), "http://a/y%20z"), "a path is set and normalized, and the rest removed");
+
+    // Errors.
+    Assert(Refuses("//a/b", UrlError::MissingScheme), "a reference without a scheme is not a URL");
+    Assert(Refuses("1http://a/", UrlError::InvalidScheme), "a scheme starts with a letter");
+    Assert(Refuses("http://a:99999/", UrlError::InvalidPort), "a port fits in sixteen bits");
+    Assert(Refuses("http://a:8x/", UrlError::InvalidPort), "a port is digits");
+    Assert(Refuses("http://a b/", UrlError::InvalidHost), "a host cannot hold a space");
+    Assert(Refuses("http://[::1/", UrlError::InvalidHost), "an IPv6 host is closed");
+    Assert(Refuses("http://[1::2::3]/", UrlError::InvalidHost), "an IPv6 host has one gap");
+    Assert(Refuses("http:///x", UrlError::InvalidHost), "an http URL needs a host");
+    Assert(Refuses("http://a/%zz", UrlError::InvalidPercentEncoding), "an escape has two hexadecimal digits");
+
+    // RFC 3986 section 5.4.1, the normal examples. An empty http path is written `/`, so `//g` gives `http://g/`.
+    let base = Url::Parse(allocator, "http://a/b/c/d;p?q") catch { else => return 21 };
+    Assert(Resolves(base, "g:h", "g:h"), "g:h");
+    Assert(Resolves(base, "g", "http://a/b/c/g"), "g");
+    Assert(Resolves(base, "./g", "http://a/b/c/g"), "./g");
+    Assert(Resolves(base, "g/", "http://a/b/c/g/"), "g/");
+    Assert(Resolves(base, "/g", "http://a/g"), "/g");
+    Assert(Resolves(base, "//g", "http://g/"), "//g");
+    Assert(Resolves(base, "?y", "http://a/b/c/d;p?y"), "?y");
+    Assert(Resolves(base, "g?y", "http://a/b/c/g?y"), "g?y");
+    Assert(Resolves(base, "#s", "http://a/b/c/d;p?q#s"), "#s");
+    Assert(Resolves(base, "g#s", "http://a/b/c/g#s"), "g#s");
+    Assert(Resolves(base, "g?y#s", "http://a/b/c/g?y#s"), "g?y#s");
+    Assert(Resolves(base, ";x", "http://a/b/c/;x"), ";x");
+    Assert(Resolves(base, "g;x", "http://a/b/c/g;x"), "g;x");
+    Assert(Resolves(base, "g;x?y#s", "http://a/b/c/g;x?y#s"), "g;x?y#s");
+    Assert(Resolves(base, "", "http://a/b/c/d;p?q"), "the empty reference");
+    Assert(Resolves(base, ".", "http://a/b/c/"), ".");
+    Assert(Resolves(base, "./", "http://a/b/c/"), "./");
+    Assert(Resolves(base, "..", "http://a/b/"), "..");
+    Assert(Resolves(base, "../", "http://a/b/"), "../");
+    Assert(Resolves(base, "../g", "http://a/b/g"), "../g");
+    Assert(Resolves(base, "../..", "http://a/"), "../..");
+    Assert(Resolves(base, "../../", "http://a/"), "../../");
+    Assert(Resolves(base, "../../g", "http://a/g"), "../../g");
+
+    // Section 5.4.2, the abnormal examples.
+    Assert(Resolves(base, "../../../g", "http://a/g"), "../../../g");
+    Assert(Resolves(base, "../../../../g", "http://a/g"), "../../../../g");
+    Assert(Resolves(base, "/./g", "http://a/g"), "/./g");
+    Assert(Resolves(base, "/../g", "http://a/g"), "/../g");
+    Assert(Resolves(base, "g.", "http://a/b/c/g."), "g.");
+    Assert(Resolves(base, ".g", "http://a/b/c/.g"), ".g");
+    Assert(Resolves(base, "g..", "http://a/b/c/g.."), "g..");
+    Assert(Resolves(base, "..g", "http://a/b/c/..g"), "..g");
+    Assert(Resolves(base, "./../g", "http://a/b/g"), "./../g");
+    Assert(Resolves(base, "./g/.", "http://a/b/c/g/"), "./g/.");
+    Assert(Resolves(base, "g/./h", "http://a/b/c/g/h"), "g/./h");
+    Assert(Resolves(base, "g/../h", "http://a/b/c/h"), "g/../h");
+    Assert(Resolves(base, "g;x=1/./y", "http://a/b/c/g;x=1/y"), "g;x=1/./y");
+    Assert(Resolves(base, "g;x=1/../y", "http://a/b/c/y"), "g;x=1/../y");
+    Assert(Resolves(base, "g?y/./x", "http://a/b/c/g?y/./x"), "g?y/./x");
+    Assert(Resolves(base, "g?y/../x", "http://a/b/c/g?y/../x"), "g?y/../x");
+    Assert(Resolves(base, "g#s/./x", "http://a/b/c/g#s/./x"), "g#s/./x");
+    Assert(Resolves(base, "g#s/../x", "http://a/b/c/g#s/../x"), "g#s/../x");
+    Assert(Resolves(base, "http:g", "http:g"), "http:g");
+
+    let copy = base;
+    Assert(copy.Equals(base), "a copy is equal");
+    return 0;
+}

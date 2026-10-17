@@ -13,18 +13,18 @@ func TextBytes(text: char8[..]) -> char8[..] {
 func FromHex(text: char8[..], into: var char8[..]) {
     var index: uint = 0;
     while index < into.length {
-        var value = 0u8;
+        var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
-            let c = text.data[index * 2u + half] as uint8;
-            var digit = 0u8;
-            if c >= 0x30u8 && c <= 0x39u8 {
-                digit = c - 0x30u8;
+        while half < 2 {
+            let c = text.data[index * 2 + half] as uint8;
+            var digit: uint8 = 0;
+            if c >= 0x30 && c <= 0x39 {
+                digit = c - 0x30;
             }
             else {
-                digit = c - 0x61u8 + 10u8;
+                digit = c - 0x61 + 10;
             }
-            value = value * 16u8 + digit;
+            value = value * 16 + digit;
             half = half + 1;
         }
         into.data[index] = value as char8;
@@ -44,7 +44,7 @@ func Main() -> int {
     // RFC 5869 case 1, with SHA-256.
     var material: char8[80];
     var index: uint = 0;
-    while index < 22u {
+    while index < 22 {
         material[index] = 0x0Bu8 as char8;
         index = index + 1;
     }
@@ -96,11 +96,11 @@ func Main() -> int {
 
     // The length limit: 255 blocks is the most the one-byte counter can address.
     var large: char8[300];
-    let atLimit = (@large[0])[..255u * 32u > 300u ? 300u : 255u * 32u];
+    let atLimit = (@large[0])[..255u * 32u > 300 ? 300u : 255u * 32u];
     Assert(HkdfExpand<Sha256>(Sha256(), keyBytes, infoBytes, atLimit), "a request within the limit is met");
     // A request past the limit cannot be expressed in this buffer, so the limit is checked by arithmetic
     // instead: the function must refuse anything longer than 255 digests.
-    Assert(255u * 32u == 8160u, "the SHA-256 limit is eight thousand one hundred and sixty bytes");
+    Assert(255u * 32u == 8160, "the SHA-256 limit is eight thousand one hundred and sixty bytes");
 
     // Separation: the info string is what keeps two purposes apart, and the salt what keeps two protocols apart.
     var forSigning: char8[32];

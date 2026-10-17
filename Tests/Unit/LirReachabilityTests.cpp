@@ -67,20 +67,82 @@ TEST_CASE("executable LIR reachability follows package-wide code and data edges 
     CHECK(result.ReachableDeclarations().size() == 7);
 }
 
-TEST_CASE("library LIR reachability roots public code and data for both artifact kinds") {
+TEST_CASE("pruning each module from its roots keeps what pruning the whole package keeps") {
+    const auto function = [](std::string name, std::vector<std::string> calls) {
+        LirFunc result;
+        result.name = std::move(name);
+        result.blocks.resize(1);
+        for (auto &call : calls) {
+            LirInstr instruction;
+            instruction.op = LirOpcode::Call;
+            instruction.strArg = std::move(call);
+            result.blocks[0].instrs.push_back(std::move(instruction));
+        }
+        return result;
+    };
+    LirModule entry;
+    entry.name = "Entry";
+    entry.funcs.push_back(function("Main", {"Support::Shared", "Local"}));
+    entry.funcs.push_back(function("Local", {}));
+    entry.funcs.push_back(function("Unused", {"Support::OnlyFromUnused"}));
+    LirModule support;
+    support.name = "Support";
+    support.funcs.push_back(function("Shared", {"Inner"}));
+    support.funcs.push_back(function("Inner", {"Entry::Local"}));
+    support.funcs.push_back(function("OnlyFromUnused", {}));
+    support.funcs.push_back(function("Widget::Display", {}));
+    support.vtables.push_back({"__vtable__Widget__Display", {"Widget::Display"}});
+    LirPackage package;
+    package.modules.push_back(std::move(entry));
+    package.modules.push_back(std::move(support));
+
+    std::vector<Optimization::LirModuleReferences> references;
+    for (const auto &module : package.modules)
+        references.push_back(Optimization::CollectModuleReferences(module));
+    for (const ArtifactKind kind : {ArtifactKind::Executable, ArtifactKind::SharedLibrary}) {
+        CAPTURE(static_cast<int>(kind));
+        const auto roots = Optimization::ModuleRoots(references, kind);
+        REQUIRE(roots.size() == 2);
+        const auto whole = Optimization::LirReachabilityAnalysis::Run(package, kind);
+        std::vector<Optimization::LirDeclarationId> combined;
+        for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
+            const auto own = Optimization::LirReachabilityAnalysis::RunModule(package, moduleIndex, roots[moduleIndex]);
+            for (const auto &declaration : own.ReachableDeclarations()) {
+                CHECK(declaration.moduleIndex == moduleIndex);
+                combined.push_back(declaration);
+            }
+        }
+        std::ranges::sort(combined);
+        CHECK(combined == whole.ReachableDeclarations());
+    }
+    // `Local` is entered from Main in its own module and from Support, so it is a root of Entry only through Support.
+    const auto executableRoots = Optimization::ModuleRoots(references, ArtifactKind::Executable);
+    using Root = Optimization::LirModuleRoot;
+    using Kind = Optimization::LirDeclarationKind;
+    CHECK(executableRoots[0] == std::vector<Root>{{Kind::Function, "Local"}, {Kind::Function, "Main"}});
+    CHECK(executableRoots[1] == std::vector<Root>{{Kind::Function, "Shared"}});
+}
+
+TEST_CASE("library LIR reachability roots exported code and data for both artifact kinds") {
     LirModule module;
     module.name = "Library";
-    module.funcs.resize(5);
+    module.funcs.resize(6);
     module.funcs[0].name = "PublicApi";
     module.funcs[0].isPublic = true;
+    module.funcs[0].isExported = true;
     module.funcs[0].blocks.resize(1);
     module.funcs[1].name = "PrivateHelper";
     module.funcs[2].name = "DeadFunction";
     module.funcs[3].name = "PublicExtern";
     module.funcs[3].isPublic = true;
+    module.funcs[3].isExported = true;
     module.funcs[3].isExtern = true;
     module.funcs[3].blocks.resize(1);
     module.funcs[4].name = "Widget::Render";
+    // A dependency's public function is compiled into the library but is not part of its interface.
+    module.funcs[5].name = "Dependency::Api";
+    module.funcs[5].isPublic = true;
+    module.funcs[5].blocks.resize(1);
 
     LirInstr helperCall;
     helperCall.op = LirOpcode::Call;
@@ -99,13 +161,14 @@ TEST_CASE("library LIR reachability roots public code and data for both artifact
     module.consts.resize(3);
     module.consts[0].name = "PublicData";
     module.consts[0].isPublic = true;
+    module.consts[0].isExported = true;
     module.consts[0].value = "PrivateData";
     module.consts[1].name = "PrivateData";
     module.consts[2].name = "DeadData";
     module.vtables.push_back({"__vtable__Widget__Render", {"Widget::Render"}});
-    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32()},
-                         {"PrivateVariable", false, TypeRef::MakeInt32()},
-                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true, {}},
+                         {"PrivateVariable", false, TypeRef::MakeInt32(), false, {}},
+                         {"UnusedVariable", false, TypeRef::MakeInt32(), false, {}}};
 
     LirPackage package;
     package.modules.push_back(std::move(module));
@@ -120,6 +183,7 @@ TEST_CASE("library LIR reachability roots public code and data for both artifact
     CHECK_FALSE(shared.IsReachable(Id{Kind::Function, 0, 2}));
     CHECK(shared.IsReachable(Id{Kind::Function, 0, 3}));
     CHECK(shared.IsReachable(Id{Kind::Function, 0, 4}));
+    CHECK_FALSE(shared.IsReachable(Id{Kind::Function, 0, 5}));
     CHECK(shared.IsReachable(Id{Kind::Constant, 0, 0}));
     CHECK(shared.IsReachable(Id{Kind::Constant, 0, 1}));
     CHECK_FALSE(shared.IsReachable(Id{Kind::Constant, 0, 2}));
@@ -153,8 +217,8 @@ TEST_CASE("Release prunes unreachable declarations deterministically while Debug
 
     module.consts = {Constant("LiveData"), Constant("DeadData", false, {"1", "2"})};
     module.vtables = {{"LiveVtable", {"Live"}}, {"DeadVtable", {"Dead"}}};
-    module.externVars = {{"LiveVariable", false, TypeRef::MakeInt32()},
-                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+    module.externVars = {{"LiveVariable", false, TypeRef::MakeInt32(), false, {}},
+                         {"UnusedVariable", false, TypeRef::MakeInt32(), false, {}}};
 
     LirPackage original;
     original.modules.push_back(std::move(module));
@@ -215,21 +279,24 @@ TEST_CASE("Release prunes unreachable declarations deterministically while Debug
     CHECK(declarationNames(secondReleasePackage) == declarationNames(firstReleasePackage));
 }
 
-TEST_CASE("Release library pruning preserves public APIs and their private dependencies") {
+TEST_CASE("Release library pruning preserves exported APIs and their private dependencies") {
     LirModule module;
     module.name = "Library";
     module.funcs.push_back(ReturningFunction("PublicApi"));
     module.funcs.back().isPublic = true;
+    module.funcs.back().isExported = true;
     module.funcs.push_back(ReturningFunction("PrivateHelper"));
     module.funcs.push_back(ReturningFunction("DeadPrivate"));
     module.funcs.push_back(ExternFunction("PublicExtern", true));
+    module.funcs.back().isExported = true;
     LirInstr call;
     call.op = LirOpcode::Call;
     call.strArg = "PrivateHelper";
     module.funcs[0].blocks[0].instrs.push_back(std::move(call));
     module.consts = {Constant("PublicData", true), Constant("DeadData")};
-    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32()},
-                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+    module.consts.front().isExported = true;
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true, {}},
+                         {"UnusedVariable", false, TypeRef::MakeInt32(), false, {}}};
 
     LirPackage package;
     package.modules.push_back(std::move(module));

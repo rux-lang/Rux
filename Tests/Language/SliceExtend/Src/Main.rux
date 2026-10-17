@@ -36,6 +36,13 @@ extend char8[..] {
     }
 }
 
+// A fixed array has its own method set, keyed by its element and its length.
+extend int[3] {
+    func Product(self: &int[3]) -> int {
+        return self[0] * self[1] * self[2];
+    }
+}
+
 func Main() -> int {
     var nums: int[..] = [1, 2, 3, 4, 5];
     Assert(nums.Sum() == 15, "Expected sum of 15");
@@ -45,6 +52,15 @@ func Main() -> int {
     let greeting = "Hello";
     var text: char8[..] = (greeting.data)[..greeting.length];
     Assert(text.Count() == 5, "Expected count of 5");
+
+    let triple: int[3] = [2, 3, 4];
+    Assert(triple.Product() == 24, "Expected an 'extend int[3]' method on an 'int[3]'");
+
+    // A writable view can call what a read-only view of the same elements can.
+    var storage: int[3] = [4, 5, 6];
+    let writable: var int[..] = storage[..];
+    Assert(writable.Sum() == 15, "Expected a writable view to call an 'extend int[..]' method");
+    Assert(writable.Contains(5), "Expected a writable view to call 'Contains'");
 
     return 0;
 }

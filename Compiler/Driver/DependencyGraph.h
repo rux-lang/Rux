@@ -1,12 +1,14 @@
 #pragma once
 
 #include "Diagnostics/Diagnostics.h"
+#include "Package/Cache.h"
 #include "Package/Manifest.h"
 #include "Target/TargetTriple.h"
 
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -25,13 +27,18 @@ struct SourcePackage {
 };
 
 /// Resolves only requested imports, without source parsing, network access, or terminal output. Node identities
-/// deduplicate packages; each owner's bindings retain the aliases declared by that owner's manifest.
+/// deduplicate packages; each owner's bindings retain the aliases declared by that owner's manifest. A registry
+/// dependency resolves from a local root of the same identity, else from the package cache, unless its normalized
+/// namespace is one of `localNamespaces`: a workspace owns the namespaces its members declare, so a package in one of
+/// them that is not a member is an error rather than a cache lookup.
 class DependencyGraph {
 public:
     DependencyGraph(Manifest rootManifest, std::filesystem::path manifestPath, Target::TargetTriple target,
-                    std::span<const std::filesystem::path> localRoots = {}, bool localOnly = false);
+                    std::span<const std::filesystem::path> localRoots = {}, std::set<std::string> localNamespaces = {});
 
     [[nodiscard]] const SourcePackage &Root() const;
+    /// The resolved package with identity `id`, or null when nothing resolved to it.
+    [[nodiscard]] const SourcePackage *Find(const std::string &id) const;
     [[nodiscard]] const SourcePackage *Resolve(const SourcePackage &owner, std::string_view importName);
 
     [[nodiscard]] const auto &Bindings() const {
@@ -42,19 +49,38 @@ public:
         return diagnostics;
     }
 
+    /// Every package that resolved, by identity.
+    [[nodiscard]] const auto &Packages() const {
+        return packages;
+    }
+
+    /// Every manifest read while resolving, which together decided what resolved where.
+    [[nodiscard]] std::vector<std::filesystem::path> ManifestPaths() const {
+        std::vector<std::filesystem::path> paths;
+        paths.reserve(manifests.size());
+        for (const auto &[path, manifest] : manifests)
+            paths.push_back(path);
+        return paths;
+    }
+
 private:
     [[nodiscard]] const Manifest *ReadManifest(const std::filesystem::path &path, bool reportErrors);
+    [[nodiscard]] const std::filesystem::path &CanonicalManifest(const std::filesystem::path &path);
     void AddLocal(const std::filesystem::path &path);
     void Fail(const SourcePackage &owner, std::string message, std::vector<std::string> notes = {},
               std::optional<std::string> help = {});
 
     Target::TargetTriple target;
-    bool localOnly;
+    std::set<std::string> localNamespaces;
     std::string rootId;
     std::map<std::string, SourcePackage> packages;
     std::map<std::filesystem::path, Manifest> manifests;
     std::map<std::string, std::vector<std::filesystem::path>> localSources;
     std::map<std::string, std::map<std::string, std::string>> bindings;
+    // Every package and manifest path is looked up for each owner that names it, so the cache listing and the
+    // canonical spelling are kept for the build rather than read from the filesystem again.
+    std::map<std::string, std::vector<Packages::InstalledPackage>> installedVersions;
+    std::map<std::filesystem::path, std::filesystem::path> canonicalManifests;
     std::vector<Diagnostic> diagnostics;
 };
 } // namespace Rux::Driver

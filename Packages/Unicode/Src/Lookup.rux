@@ -1,5 +1,4 @@
 // Binary search over the generated tables.
-//
 // Every table is a flat, sorted `uint32` array: pairs of (first, last) for a boolean property, triples of
 // (first, last, value) where a range carries one, and (key, offset, length) index triples over an element pool
 // where a code point maps to a sequence. Three searches serve all of them, and everything else in the package is

@@ -1,0 +1,15 @@
+// Where a program's arguments and environment are when the kernel starts it.
+// An ELF kernel starts a program with its stack pointer at the argument count, followed by the argument pointers, a
+// null, the environment pointers, a null and the auxiliary vector. The entry stub keeps that address before it aligns
+// the stack and calls `Main`, and this is how a package reaches it. Windows and macOS hand a program its command line
+// through system calls instead, so there it is null.
+
+/// The address the kernel started the program at, on targets where that is where the arguments are.
+/// On Linux and FreeBSD it points at the argument count, followed by the argument pointers, a null, the environment
+/// pointers, a null and the auxiliary vector, all one word wide. It is null on Windows and macOS, whose command line
+/// and environment are read through system calls, and in a shared library, which the kernel never starts. The words
+/// belong to the process for its whole life and must not be written.
+/// Cannot fail; runs in constant time and allocates nothing.
+/// @returns the initial stack address, or null where the platform supplies the arguments another way
+/// @see https://rux-lang.dev/docs/api/core/startup#process-start-frame
+pub intrinsic func ProcessStartFrame() -> *uint;

@@ -4,7 +4,6 @@ import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf
 // UTF-8 is easy to decode wrongly in three specific ways, and every one of them has been a hole in something real:
 // an overlong form spells a character a second way, a surrogate half is not a character at all, and four bytes can
 // express values past the last one Unicode defines. So most of what is checked here is what must be refused.
-//
 // The round trip is checked at every boundary where the encoded width changes and one either side of it, since an
 // off-by-one in the width table shows nowhere else.
 

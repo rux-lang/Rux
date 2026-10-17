@@ -1,6 +1,8 @@
 #include "CodeGen/AArch64/FramePlan.h"
 
+#include "CodeGen/FrameSlotSharing.h"
 #include "CodeGen/LinearScan.h"
+#include "CodeGen/ScalarImmediates.h"
 
 #include <algorithm>
 #include <charconv>
@@ -40,6 +42,7 @@ public:
         PlanWideTemporaries();
         PlanPhiTemporary();
         plan.frameSize = AlignUp(nextOffset, 16);
+        plan.immediateValues = ScalarImmediates(func);
         return std::move(plan);
     }
 
@@ -56,7 +59,7 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &type) const {
-        if (IsWideInteger(type) || (IsSoftwareFloat(type) && RuntimeSize(type) > 8)) {
+        if (IsWideValue(type)) {
             return true;
         }
         if (type.IsRange()) {
@@ -67,7 +70,7 @@ private:
         if (type.IsSlice()) {
             return true;
         }
-        switch (type.kind) {
+        switch (type->kind) {
         case TypeRef::Kind::Tuple:
         case TypeRef::Kind::Array:
         // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -76,8 +79,9 @@ private:
         case TypeRef::Kind::Fallible:
             return true;
         case TypeRef::Kind::Named: {
-            const std::string base = BaseTypeName(type.name);
-            return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
+            const std::string base = BaseTypeName(type->name);
+            return interfaceNames.contains(base) || layouts.contains(base) ||
+                   (!type->inner.empty() && SizeOf(type) > 8);
         }
         default:
             return false;
@@ -102,34 +106,34 @@ private:
         }
         if (IsFloat(type)) {
             if (count == 0) {
-                memberKind = type.kind;
+                memberKind = type->kind;
             }
-            else if (type.kind != memberKind) {
+            else if (type->kind != memberKind) {
                 return false;
             }
             ++count;
             return true;
         }
-        switch (type.kind) {
+        switch (type->kind) {
         case TypeRef::Kind::Tuple:
-            for (const auto &element : type.inner) {
+            for (const auto &element : type->inner) {
                 if (!CollectFloatMembers(element, memberKind, count)) {
                     return false;
                 }
             }
-            return !type.inner.empty();
+            return !type->inner.empty();
         case TypeRef::Kind::Array:
-            if (type.inner.empty() || !type.arrayLength || *type.arrayLength == 0) {
+            if (type->inner.empty() || !type->arrayLength || *type->arrayLength == 0) {
                 return false;
             }
-            for (std::uint64_t index = 0; index < *type.arrayLength; ++index) {
-                if (!CollectFloatMembers(type.inner[0], memberKind, count)) {
+            for (std::uint64_t index = 0; index < *type->arrayLength; ++index) {
+                if (!CollectFloatMembers(type->inner[0], memberKind, count)) {
                     return false;
                 }
             }
             return true;
         case TypeRef::Kind::Named: {
-            const std::string base = BaseTypeName(type.name);
+            const std::string base = BaseTypeName(type->name);
             if (interfaceNames.contains(base)) {
                 return false;
             }
@@ -157,19 +161,25 @@ private:
         return IsAggregate(type) && RuntimeSize(type) > 16 && !homogeneous;
     }
 
-    std::int32_t AllocateRegion(const int byteCount) {
-        const int alignment = byteCount > 0 ? std::min(byteCount, 8) : 1;
+    // The alignment a value of `type` needs in its frame slot. Frame offsets count up from the sixteen-byte aligned
+    // stack pointer, so an offset that is a multiple of this places the value where its `alignof` says it is.
+    [[nodiscard]] int StorageAlign(const TypeRef &type) const {
+        return std::clamp(RuntimeAlignmentOf(type, layouts, interfaceNames), 1, 16);
+    }
+
+    std::int32_t AllocateRegion(const int byteCount, const int storageAlignment = 1) {
+        const int alignment = std::max(byteCount > 0 ? std::min(byteCount, 8) : 1, storageAlignment);
         nextOffset = AlignUp(nextOffset, alignment);
         const std::int32_t offset = nextOffset;
         nextOffset += byteCount > 0 ? byteCount : 8;
         return offset;
     }
 
-    std::int32_t AllocateSlot(const LirReg reg, const int byteCount) {
+    std::int32_t AllocateSlot(const LirReg reg, const int byteCount, const int storageAlignment = 1) {
         if (const auto found = plan.slotOffsets.find(reg); found != plan.slotOffsets.end()) {
             return found->second;
         }
-        const std::int32_t offset = AllocateRegion(byteCount);
+        const std::int32_t offset = AllocateRegion(byteCount, storageAlignment);
         plan.slotOffsets[reg] = offset;
         return offset;
     }
@@ -182,17 +192,13 @@ private:
         int count = 0;
         const char *first = instruction.strArg.data();
         std::from_chars(first, first + instruction.strArg.size(), count);
-        const TypeRef &elementType = instruction.type.inner.empty() ? instruction.type : instruction.type.inner[0];
+        const TypeRef &elementType = instruction.type->inner.empty() ? instruction.type : instruction.type->inner[0];
         const int elementSize = RuntimeSize(elementType);
         const int bytes = count * (elementSize > 0 ? elementSize : 8);
         return bytes > 0 ? bytes : 8;
     }
 
     void PlanRegisterHomes() {
-        if (func.blocks.size() != 1) {
-            return;
-        }
-
         ParamTypeMap parameterTypes;
         for (const auto &parameter : func.params) {
             parameterTypes[parameter.reg] = parameter.type;
@@ -205,7 +211,7 @@ private:
             if (IsFloat(interval.type)) {
                 vector.push_back(interval);
             }
-            else if (IsRegisterValue(interval.type) && size > 0 && size <= 8) {
+            else if (!interval.type.IsFloat() && IsRegisterValue(interval.type) && size > 0 && size <= 8) {
                 general.push_back(interval);
             }
         }
@@ -242,11 +248,36 @@ private:
     void PlanParameters() {
         for (const auto &parameter : func.params) {
             plan.registerTypes[parameter.reg] = parameter.type;
-            AllocateSlot(parameter.reg, std::max(8, SlotSize(parameter.type)));
+            AllocateSlot(parameter.reg, std::max(8, SlotSize(parameter.type)), StorageAlign(parameter.type));
         }
     }
 
     void PlanInstructions() {
+        // Results that are never live together share a slot; its region is placed where its first member is defined.
+        const FrameSlotSharing sharing =
+            ShareFrameSlots(func, [&](const LirInstr &instruction) { return SlotSize(instruction.type); });
+        std::vector<std::int32_t> sharedOffsets(sharing.slotSizes.size(), -1);
+        // The same for the data of allocas only this function can reach.
+        const FrameSlotSharing dataSharing = ShareAllocaData(func, [&](const LirInstr &instruction) {
+            const int size = AllocaSize(instruction);
+            return size > 0 ? size : 8;
+        });
+        std::vector<std::int32_t> sharedDataOffsets(dataSharing.slotSizes.size(), -1);
+        // A shared region is aligned for the strictest of the values that take turns in it.
+        std::vector<int> sharedAlignments(sharing.slotSizes.size(), 1);
+        std::vector<int> sharedDataAlignments(dataSharing.slotSizes.size(), 1);
+        for (const auto &block : func.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (const auto shared = sharing.slotOf.find(instruction.dst); shared != sharing.slotOf.end()) {
+                    sharedAlignments[shared->second] =
+                        std::max(sharedAlignments[shared->second], StorageAlign(instruction.type));
+                }
+                if (const auto shared = dataSharing.slotOf.find(instruction.dst); shared != dataSharing.slotOf.end()) {
+                    sharedDataAlignments[shared->second] =
+                        std::max(sharedDataAlignments[shared->second], StorageAlign(instruction.type));
+                }
+            }
+        }
         for (std::uint32_t blockIndex = 0; blockIndex < func.blocks.size(); ++blockIndex) {
             for (const auto &instruction : func.blocks[blockIndex].instrs) {
                 if (instruction.op == LirOpcode::Phi) {
@@ -261,11 +292,30 @@ private:
                 if (instruction.op == LirOpcode::Alloca) {
                     plan.registerTypes[instruction.dst] = TypeRef::MakePointer(instruction.type);
                     AllocateSlot(instruction.dst, 8);
-                    plan.allocaDataOffsets[instruction.dst] = AllocateRegion(AllocaSize(instruction));
+                    if (const auto shared = dataSharing.slotOf.find(instruction.dst);
+                        shared != dataSharing.slotOf.end()) {
+                        std::int32_t &offset = sharedDataOffsets[shared->second];
+                        if (offset < 0) {
+                            offset = AllocateRegion(dataSharing.slotSizes[shared->second],
+                                                    sharedDataAlignments[shared->second]);
+                        }
+                        plan.allocaDataOffsets[instruction.dst] = offset;
+                        continue;
+                    }
+                    plan.allocaDataOffsets[instruction.dst] =
+                        AllocateRegion(AllocaSize(instruction), StorageAlign(instruction.type));
                     continue;
                 }
                 plan.registerTypes[instruction.dst] = instruction.type;
-                AllocateSlot(instruction.dst, SlotSize(instruction.type));
+                if (const auto shared = sharing.slotOf.find(instruction.dst); shared != sharing.slotOf.end()) {
+                    std::int32_t &offset = sharedOffsets[shared->second];
+                    if (offset < 0) {
+                        offset = AllocateRegion(sharing.slotSizes[shared->second], sharedAlignments[shared->second]);
+                    }
+                    plan.slotOffsets.try_emplace(instruction.dst, offset);
+                    continue;
+                }
+                AllocateSlot(instruction.dst, SlotSize(instruction.type), StorageAlign(instruction.type));
             }
         }
     }
@@ -274,9 +324,7 @@ private:
         int largest = 0;
         for (const LirBlock &block : func.blocks) {
             for (const LirInstr &instruction : block.instrs) {
-                if (IsWideInteger(instruction.type)) {
-                    largest = std::max(largest, RuntimeSize(instruction.type));
-                }
+                largest = std::max(largest, WideTemporarySize(instruction, plan.registerTypes));
             }
         }
         if (largest == 0) {

@@ -1,36 +1,32 @@
 // Three failure domains that look alike from a distance, and the ways a binding confuses them.
-//
 // Win32 has no single "it failed" value. A handle-returning call reports `InvalidHandleValue`, which is `-1` cast to
 // a pointer and is emphatically not null. A memory-returning call reports null, which is emphatically not
 // `InvalidHandleValue`. Both then leave the reason in a thread-local Win32 code that `GetLastError` reads. And
 // `BCryptGenRandom`, which is not a kernel call at all, reports an `NTSTATUS` and never touches that code.
-//
 // Every one of those pairings is a real mistake someone writes: testing a handle against null, testing an
 // allocation against `InvalidHandleValue`, reading `GetLastError` after a call that never set it. This file asserts
 // that the values stay apart, which is a property of the bindings rather than of any caller.
-//
 // This is the one platform-binding test that runs where it was written, so unlike its POSIX counterparts every
 // number in it was read out of a probe rather than out of documentation. Two of them were surprises and are called
 // out where they appear.
 
-import Core::{ Assert, OperatingSystem, #target };
+import Core::{ #target, Assert, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
     import Windows::{ CloseHandle, CreateFileW, CreationDisposition, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND,
-                      ERROR_INVALID_ADDRESS, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER,
-                      ERROR_NOT_ENOUGH_MEMORY, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, FILE_ATTRIBUTE_NORMAL,
-                      FILE_SHARE_READ, GENERIC_READ, GetFileAttributesW, GetLastError, GetProcessHeap, GetRandom,
-                      HeapAlloc, INVALID_FILE_ATTRIBUTES, InvalidHandleValue, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
-                      PAGE_READWRITE, STATUS_SUCCESS, VirtualAlloc, VirtualFree };
+                      ERROR_INVALID_ADDRESS, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER, ERROR_NOT_ENOUGH_MEMORY,
+                      ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, GENERIC_READ,
+                      GetFileAttributesW, GetLastError, GetProcessHeap, GetRandom, HeapAlloc, INVALID_FILE_ATTRIBUTES,
+                      InvalidHandleValue, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, STATUS_SUCCESS,
+                      VirtualAlloc, VirtualFree };
 
     /// Writes `name` as UTF-16 code units, NUL-terminated.
-    ///
     /// Rux has no UTF-16 string literal — a literal is a `char8[..]` — so handing a literal's bytes to a `W` entry
     /// point would pass UTF-8 to a call that reads pairs of bytes as code units. That is the mistake the `W` forms
     /// exist to prevent, so this file does not quietly make it. Every name below is ASCII, which is why widening a
     /// byte at a time is enough here and is not a general conversion.
     func WriteWide(units: *var char16, name: char8[..]) {
-        var index = 0u;
+        var index: uint = 0;
         while index < name.length {
             units[index] = name[index] as uint8 as uint32 as char16;
             index = index + 1;
@@ -46,7 +42,7 @@ when #target.os == OperatingSystem::Windows {
         // forward.
         Assert(InvalidHandleValue != 0, "the invalid-handle sentinel is not null");
         Assert(InvalidHandleValue == 0xFFFFFFFFFFFFFFFF, "the invalid-handle sentinel is all ones");
-        Assert(InvalidHandleValue > 0xFFFFFFFFu64, "and it is wider than a Win32 code, which cannot collide with it");
+        Assert(InvalidHandleValue > 0xFFFFFFFF, "and it is wider than a Win32 code, which cannot collide with it");
         Assert((INVALID_FILE_ATTRIBUTES as uint64) != InvalidHandleValue,
                "the attribute sentinel is a third value again, all ones in thirty-two bits");
 
@@ -148,7 +144,7 @@ when #target.os == OperatingSystem::Windows {
         let beforeSuccess = GetLastError();
         Assert(beforeSuccess == ERROR_INVALID_HANDLE, "the standing Win32 code is INVALID_HANDLE");
 
-        var seed: uint64[4] = [0, 0, 0, 0];
+        var seed: uint64[4] = [0; 4];
         Assert(GetRandom(@seed[0] as *var opaque, 32), "the generator succeeds while that code stands");
         Assert(GetLastError() == beforeSuccess,
                "and a SUCCESSFUL draw leaves the stale Win32 code untouched, so GetLastError says nothing about it");

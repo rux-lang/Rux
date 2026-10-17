@@ -1,0 +1,368 @@
+// Putting each component in the one form two equivalent URLs share, following section 6.2.2 of RFC 3986.
+// Percent-encoded octets are written with upper-case hexadecimal, and those that encode an unreserved character are
+// written as the character itself. A character a component cannot hold as itself — a space, a non-ASCII byte — is
+// percent-encoded rather than refused, as browsers do. The scheme and a registered host name are lower-cased, an IPv4
+// host keeps its dotted form, an IPv6 host is written in the canonical form of RFC 5952, and dot segments are removed
+// from the path.
+
+import Allocator::{ Allocator, Layout };
+import Memory::Copy;
+import Url::UrlError;
+
+// A growable run of bytes, which the path is assembled in before it joins the URL.
+struct Bytes {
+    data: *var char8;
+    length: uint;
+    capacity: uint;
+    allocator: Allocator;
+}
+
+extend Bytes {
+    func =(self: &var Bytes, other: &Bytes);
+
+    func Bytes(allocator: Allocator) -> Bytes {
+        return Bytes { data: null, length: 0, capacity: 0, allocator: allocator };
+    }
+
+    func Push(self: &var Bytes, value: char8) -> ! UrlError {
+        if self.length == self.capacity {
+            let capacity = self.capacity == 0 ? 64u : self.capacity * 2u;
+            var allocator = self.allocator;
+            let layout = Layout::New(capacity, 1) ?? fail UrlError::OutOfMemory;
+            let block = allocator.Allocate(layout) catch { else => fail UrlError::OutOfMemory };
+            if self.data != null {
+                Copy(block, self.data as *opaque, self.length);
+                allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? layout)
+                    catch { else => {} };
+            }
+            self.data = block as *var char8;
+            self.capacity = capacity;
+        }
+        self.data[self.length] = value;
+        self.length = self.length + 1;
+    }
+
+    func PushAll(self: &var Bytes, values: char8[..]) -> ! UrlError {
+        var index: uint = 0;
+        while index < values.length {
+            self.Push(values[index])?;
+            index = index + 1;
+        }
+    }
+
+    func Truncate(self: &var Bytes, length: uint) {
+        if length < self.length { self.length = length; }
+    }
+
+    func View(self: &Bytes) -> char8[..] {
+        if self.data == null { return ""; }
+        return self.data[..self.length];
+    }
+
+    func ~Bytes(self: &var Bytes) {
+        if self.data == null { return; }
+        var allocator = self.allocator;
+        allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? Layout::ForValue<char8>())
+            catch { else => {} };
+    }
+}
+
+// Which characters a component may hold as themselves.
+enum Component: uint8 {
+    Userinfo = 0,
+    Host = 1,
+    Path = 2,
+    Query = 3
+}
+
+func IsAlpha(c: uint8) -> bool {
+    return (c >= 0x41u8 && c <= 0x5Au8) || (c >= 0x61u8 && c <= 0x7Au8);
+}
+
+func IsDigit(c: uint8) -> bool {
+    return c >= 0x30u8 && c <= 0x39u8;
+}
+
+func IsUnreserved(c: uint8) -> bool {
+    return IsAlpha(c) || IsDigit(c) || c == 0x2Du8 || c == 0x2Eu8 || c == 0x5Fu8 || c == 0x7Eu8;
+}
+
+func IsSubDelimiter(c: uint8) -> bool {
+    return c == 0x21u8 || c == 0x24u8 || (c >= 0x26u8 && c <= 0x2Cu8) || c == 0x3Bu8 || c == 0x3Du8;
+}
+
+// Whether `c` may appear as itself in `component`.
+func IsAllowed(c: uint8, component: Component) -> bool {
+    if IsUnreserved(c) || IsSubDelimiter(c) { return true; }
+    return match component {
+        .Userinfo => c == 0x3Au8,
+        .Host => false,
+        .Path => c == 0x3Au8 || c == 0x40u8 || c == 0x2Fu8,
+        .Query => c == 0x3Au8 || c == 0x40u8 || c == 0x2Fu8 || c == 0x3Fu8
+    };
+}
+
+func HexValue(c: uint8) -> uint8? {
+    if IsDigit(c) { return c - 0x30u8; }
+    if c >= 0x41u8 && c <= 0x46u8 { return c - 0x37u8; }
+    if c >= 0x61u8 && c <= 0x66u8 { return c - 0x57u8; }
+    return none;
+}
+
+func HexDigit(value: uint8) -> char8 {
+    return (value < 10u8 ? 0x30u8 + value : 0x37u8 + value) as char8;
+}
+
+func Lower(c: uint8) -> char8 {
+    return (c >= 0x41u8 && c <= 0x5Au8 ? c + 0x20u8 : c) as char8;
+}
+
+// Appends `text` to `out` in the normalized form of `component`. A host refuses characters it cannot hold rather than
+// escaping them, since an escaped host would name a different machine.
+func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) -> ! UrlError {
+    let lower = component == Component::Host;
+    var index: uint = 0;
+    while index < text.length {
+        let c = text[index] as uint8;
+        if c == 0x25u8 {
+            if index + 2 >= text.length { fail UrlError::InvalidPercentEncoding; }
+            let high = HexValue(text[index + 1] as uint8) ?? fail UrlError::InvalidPercentEncoding;
+            let low = HexValue(text[index + 2] as uint8) ?? fail UrlError::InvalidPercentEncoding;
+            let value = (high << 4) | low;
+            if IsUnreserved(value) {
+                out.Push(lower ? Lower(value) : value as char8)?;
+            }
+            else {
+                out.Push(c8'%')?;
+                out.Push(HexDigit(value >> 4))?;
+                out.Push(HexDigit(value & 0x0Fu8))?;
+            }
+            index = index + 3;
+            continue;
+        }
+        if IsAllowed(c, component) {
+            out.Push(lower ? Lower(c) : c as char8)?;
+        }
+        else {
+            if lower { fail UrlError::InvalidHost; }
+            out.Push(c8'%')?;
+            out.Push(HexDigit(c >> 4))?;
+            out.Push(HexDigit(c & 0x0Fu8))?;
+        }
+        index = index + 1;
+    }
+}
+
+// The four octets of a dotted-decimal IPv4 address, or none when `text` is not one.
+func ParseIpv4(text: char8[..]) -> uint8[4]? {
+    var octets: uint8[4] = [0, 0, 0, 0];
+    var count: uint = 0;
+    var index: uint = 0;
+    while count < 4u {
+        if index >= text.length || !IsDigit(text[index] as uint8) { return none; }
+        var value: uint = 0;
+        let start = index;
+        while index < text.length && IsDigit(text[index] as uint8) {
+            value = value * 10u + (text[index] as uint8 - 0x30u8) as uint;
+            if value > 255u { return none; }
+            index = index + 1;
+        }
+        // A leading zero makes the octet something other than plain decimal; such a host is a name.
+        if index - start > 1u && text[start] == '0' { return none; }
+        octets[count] = value as uint8;
+        count = count + 1;
+        if count < 4u {
+            if index >= text.length || text[index] != '.' { return none; }
+            index = index + 1;
+        }
+    }
+    if index != text.length { return none; }
+    return octets;
+}
+
+// The eight groups of an IPv6 address, or none when `text`, without its brackets, is not one.
+func ParseIpv6(text: char8[..]) -> uint16[8]? {
+    var groups: uint16[8] = [0, 0, 0, 0, 0, 0, 0, 0];
+    var count: uint = 0;
+    var compress: uint? = none;
+    var index: uint = 0;
+    if text.length >= 2u && text[0] == ':' {
+        if text[1] != ':' { return none; }
+        index = 2;
+        compress = 0u;
+    }
+    while index < text.length {
+        if count == 8u { return none; }
+        if text[index] == ':' {
+            if compress != none { return none; }
+            index = index + 1;
+            compress = count;
+            continue;
+        }
+        // An embedded IPv4 address takes the last two groups.
+        var dot = index;
+        while dot < text.length && text[dot] != ':' && text[dot] != '.' { dot = dot + 1; }
+        if dot < text.length && text[dot] == '.' {
+            if count > 6u { return none; }
+            let parsed = ParseIpv4(text[index..]);
+            if parsed == none { return none; }
+            let octets = parsed ?? [0u8, 0u8, 0u8, 0u8];
+            groups[count] = (octets[0] as uint16 << 8) | octets[1] as uint16;
+            groups[count + 1] = (octets[2] as uint16 << 8) | octets[3] as uint16;
+            count = count + 2;
+            index = text.length;
+            break;
+        }
+        var value: uint = 0;
+        var digits: uint = 0;
+        while index < text.length && text[index] != ':' {
+            let hex = HexValue(text[index] as uint8);
+            if hex == none { return none; }
+            let digit = hex ?? 0u8;
+            value = value * 16u + digit as uint;
+            digits = digits + 1;
+            if digits > 4u { return none; }
+            index = index + 1;
+        }
+        if digits == 0u { return none; }
+        groups[count] = value as uint16;
+        count = count + 1;
+        if index < text.length {
+            index = index + 1;
+            if index == text.length { return none; }
+        }
+    }
+    match compress {
+        .Some(at) => {
+            if count == 8u { return none; }
+            // Move the groups after the gap to the end and fill the gap with zeros.
+            let moved = count - at;
+            var step: uint = 0;
+            while step < moved {
+                groups[7u - step] = groups[count - 1u - step];
+                step = step + 1;
+            }
+            var fill = at;
+            while fill < 8u - moved {
+                groups[fill] = 0;
+                fill = fill + 1;
+            }
+        },
+        none => {
+            if count != 8u { return none; }
+        }
+    }
+    return groups;
+}
+
+// Writes an IPv6 address the way RFC 5952 says: lower-case hexadecimal without leading zeros, and the longest run of
+// two or more zero groups, the first if two are as long, replaced by `::`.
+func AppendIpv6(out: &var Bytes, groups: uint16[8]) -> ! UrlError {
+    var bestStart: uint = 8;
+    var bestLength: uint = 0;
+    var index: uint = 0;
+    while index < 8u {
+        if groups[index] == 0u16 {
+            var end = index;
+            while end < 8u && groups[end] == 0u16 { end = end + 1; }
+            if end - index > bestLength && end - index >= 2u {
+                bestStart = index;
+                bestLength = end - index;
+            }
+            index = end;
+        }
+        else {
+            index = index + 1;
+        }
+    }
+    index = 0;
+    while index < 8u {
+        if index == bestStart {
+            out.PushAll("::")?;
+            index = index + bestLength;
+            continue;
+        }
+        if index != 0u && index != bestStart + bestLength { out.Push(c8':')?; }
+        let group = groups[index];
+        var shift: int32 = 12;
+        var started = false;
+        while shift >= 0 {
+            let nibble = ((group >> (shift as uint16)) & 0xFu16) as uint8;
+            if nibble != 0u8 || started || shift == 0 {
+                out.Push(Lower(HexDigit(nibble) as uint8))?;
+                started = true;
+            }
+            shift = shift - 4;
+        }
+        index = index + 1;
+    }
+}
+
+// Removes `.` and `..` segments from a path, following section 5.2.4 of RFC 3986.
+func RemoveDotSegments(out: &var Bytes, path: char8[..]) -> ! UrlError {
+    let start = out.length;
+    var index: uint = 0;
+    while index < path.length {
+        let rest = path[index..];
+        if StartsWith(rest, "../") { index = index + 3; continue; }
+        if StartsWith(rest, "./") { index = index + 2; continue; }
+        if StartsWith(rest, "/./") { index = index + 2; continue; }
+        if Same(rest, "/.") { out.Push(c8'/')?; break; }
+        if StartsWith(rest, "/../") {
+            index = index + 3;
+            DropLastSegment(out, start);
+            continue;
+        }
+        if Same(rest, "/..") {
+            DropLastSegment(out, start);
+            out.Push(c8'/')?;
+            break;
+        }
+        if Same(rest, ".") || Same(rest, "..") { break; }
+        // Move the first segment, with its leading `/`, to the output.
+        if path[index] == '/' {
+            out.Push(c8'/')?;
+            index = index + 1;
+        }
+        while index < path.length && path[index] != '/' {
+            out.Push(path[index])?;
+            index = index + 1;
+        }
+    }
+}
+
+// Removes the output's last segment and the `/` before it.
+func DropLastSegment(out: &var Bytes, start: uint) {
+    var end = out.length;
+    while end > start {
+        end = end - 1;
+        if out.data[end] == '/' { break; }
+    }
+    out.Truncate(end);
+}
+
+func StartsWith(text: char8[..], prefix: char8[..]) -> bool {
+    if text.length < prefix.length { return false; }
+    return Same(text[..prefix.length], prefix);
+}
+
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Whether two pieces of text are equal ignoring ASCII case, as schemes are compared.
+func SameIgnoringCase(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index: uint = 0;
+    while index < left.length {
+        if Lower(left[index] as uint8) != Lower(right[index] as uint8) { return false; }
+        index = index + 1;
+    }
+    return true;
+}

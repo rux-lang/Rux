@@ -1,0 +1,33 @@
+// A type cannot hold a value of itself in place, directly or through another type, a tuple, an array or an optional;
+// it may through a pointer.
+struct Node {
+    value: int32;
+    next: Node;
+}
+
+struct Outer {
+    inner: Inner;
+}
+
+struct Inner {
+    back: Outer;
+}
+
+struct Maybe {
+    next: Maybe?;
+}
+
+variant Expr {
+    Number(int64),
+    Negate(Expr)
+}
+
+struct Linked {
+    value: int32;
+    next: *Linked;
+    later: (*Linked)?;
+}
+
+func Main() -> int {
+    return 0;
+}

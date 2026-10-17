@@ -4,6 +4,8 @@
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
 #include "Lowering/HirToLir/CheckedLirBuilder.h"
+#include "Lowering/HirToLir/HirToLirSoftFloat.h"
+#include "Parallel/WorkerPool.h"
 #include "Target/Target.h"
 
 #include <functional>
@@ -16,13 +18,21 @@
 
 namespace Rux::HirToLirDetail {
 
+/// The stack-trace printer every panic and failed assertion calls, built once for a program that has any.
+[[nodiscard]] LirFunc SynthesizeBacktrace(std::vector<Diagnostic> &diagnostics);
+
 /// Private state for lowering one HIR package. Function-local state is reset by LowerFunc and is shared only by the
 /// focused statement, expression, and aggregate lowering implementations.
 class HirToLirContext {
 public:
     HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics);
 
-    [[nodiscard]] LirPackage Run(const HirPackage &hir);
+    /// Lower `hir`, lowering modules on `pool`'s threads when one is given; the result never depends on it.
+    /// `externalFailures` says that code lowered elsewhere can fail, and `moduleFailures`, when given, receives per
+    /// module whether its code can.
+    [[nodiscard]] LirPackage Run(const HirPackage &hir, Parallel::WorkerPool *pool = nullptr,
+                                 bool programModule = false, bool externalFailures = false,
+                                 std::vector<char> *moduleFailures = nullptr);
 
 private:
     struct LocalConstValue {
@@ -35,9 +45,24 @@ private:
         std::uint32_t continueTarget;
     };
 
+    /// Where the elements of an indexed collection start and how many there are. A raw pointer has no length.
+    struct IndexedStorage {
+        LirReg data = LirNoReg;
+        LirReg length = LirNoReg;
+        /// The extent of a fixed array, which its type states.
+        std::optional<std::uint64_t> constantLength;
+    };
+
     struct PendingPartialCleanup {
         std::string glueSymbol;
         LirReg address = LirNoReg;
+    };
+
+    /// A binding inside a tuple or structure pattern, set only once every refutable part of the pattern has matched.
+    struct PendingPatternBinding {
+        const HirBindingPattern *pattern = nullptr;
+        LirReg address = LirNoReg;
+        TypeRef type;
     };
 
     std::unordered_map<std::string, const HirInterface *> interfacesByName;
@@ -48,11 +73,27 @@ private:
     std::unordered_map<std::string, std::vector<std::string>> genericPayloadEnums;
     CheckedLirBuilder *builder = nullptr;
     std::unordered_map<std::string, LirReg> locals;
+    /// What each binding of a name in `locals` hid, innermost last, so leaving a scope gives the hidden names back.
+    std::vector<std::pair<std::string, std::optional<LirReg>>> hiddenLocals;
+    /// The slot of every binding with a drop flag, by its identity: a cleanup finds its binding even where a nested
+    /// binding of the same name hides it.
+    std::unordered_map<std::uint64_t, LirReg> bindingSlots;
     std::unordered_map<std::string, const HirConst *> globalConsts;
+    /// Module variables of every module, by linker name: each is one storage location reached through its address.
+    std::unordered_map<std::string, const HirGlobal *> globalVars;
+    /// Extern variables of every module, by the symbol they import, and those the module being lowered reaches:
+    /// each module that reaches one declares it, so its back end loads the address from the import slot.
+    std::unordered_map<std::string, const HirExternVar *> externVars;
+    std::vector<const HirExternVar *> reachedExternVars;
+    /// The address of an extern variable's data, which the loader fills into the import slot the name stands for.
+    LirReg ExternVarAddr(const HirExternVar &variable);
     std::unordered_map<std::string, LocalConstValue> localConsts;
     std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
     /// The drop glue of every droppable type, keyed by its spelling.
     std::unordered_map<std::string, std::string> dropGlueSymbols;
+    /// Every plan and destructor instance by the symbol a call reaches it under.
+    std::unordered_map<std::string, const DropGluePlan *> dropGluePlans;
+    std::unordered_map<std::string, const HirFunc *> dropGlueInstances;
     /// While the pattern of an arm over a consumed subject is lowered: the payloads it matches without binding, which
     /// that arm destroys before its body because nothing else owns them once the subject was handed over.
     std::vector<std::pair<LirReg, TypeRef>> *residualPayloads = nullptr;
@@ -70,36 +111,73 @@ private:
     std::unordered_set<std::string> funcNames;
     std::unordered_map<std::string, std::uint32_t> cVariadicFixedParamCounts;
     std::unordered_map<std::string, std::string> externSymbols;
-    std::vector<Diagnostic> &diagnostics;
+    /// Where lowering reports; a worker lowering one module points it at that module's own list.
+    std::vector<Diagnostic> *diagnostics;
     std::string currentFunction;
+    /// Whether the function being lowered is the entry point `Main` declared without a result.
+    bool voidEntryPoint = false;
+    /// The logical file and user-facing function name a compiler-inserted runtime check in the current function
+    /// reports.
+    std::string currentSourceFile;
+    std::string currentSourceFunction;
+    /// Helpers the rewritten software-float operations call, synthesized once every module is lowered.
+    SoftFloatHelperRegistry softFloatHelpers;
+    /// Whether any function lowered so far can panic or fail an assertion, which is what calls for the stack-trace
+    /// printer.
+    bool emittedRuntimeFailure = false;
+    SoftFloatPolicy softFloatPolicy;
+    /// The kind of value each register of the function being lowered holds, which tells a comparison what it compares.
+    std::vector<TypeRef::Kind> registerKinds;
 
     [[nodiscard]] const std::string &SymbolFor(const std::string &name) const;
     [[nodiscard]] static std::optional<TypeRef> CVariadicPromotion(const TypeRef &type);
     void SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr);
+    /// Marks `call` as C-variadic with `fixedCount` declared parameters and converts the arguments past them to what a
+    /// C-variadic callee reads.
+    void PassCVariadicArguments(LirInstr &call, std::size_t fixedCount, const HirCallExpr &expr);
 
     [[nodiscard]] LirReg NewReg();
+    /// A register the calling convention fills with a value of `type` before the body runs.
+    [[nodiscard]] LirReg DefineParameter(const TypeRef &type);
     [[nodiscard]] HirTypeLayout TypeLayoutOf(const TypeRef &type) const;
     void BuilderFailure(std::string detail) const;
     [[nodiscard]] LirOpcode RequireOpcode(std::optional<LirOpcode> opcode);
     [[nodiscard]] std::uint32_t NewBlock(std::string label = "") const;
     void SetBlock(std::uint32_t idx);
     [[nodiscard]] bool IsTerminated() const;
-    void Emit(LirInstr instruction) const;
+    void Emit(LirInstr &&instruction);
+    /// Replaces an instruction on a float the target computes in software with a helper call, emitting the call and
+    /// what reads its result. Returns false, leaving the instruction to be emitted as it is, when nothing replaces it.
+    [[nodiscard]] bool EmitSoftFloatReplacement(LirInstr &instruction);
+    void EmitSoftFloatComparison(const LirInstr &instruction, const std::string &symbol, TypeRef::Kind operandKind);
+    void EmitSoftFloatConversion(const LirInstr &instruction, const std::string &symbol,
+                                 const SoftFloatHelperSignature &signature, TypeRef::Kind operandKind);
+    void RecordRegisterKind(const LirInstr &instruction);
     void Terminate(LirTerminator terminator) const;
     void Jump(std::uint32_t target) const;
     void Branch(LirReg cond, std::uint32_t trueTarget, std::uint32_t falseTarget) const;
+    /// Returns from a function without a result, which for a `Main` without one is the exit status 0.
+    void ReturnNothing();
     void Return(std::optional<LirReg> value, TypeRef type) const;
     void Unreachable() const;
+    /// Stops the program with `Panic: <message>` and the current function's source location at `location`, exactly as
+    /// a lowered `Core::Panic` call does, and closes the current block.
+    void EmitRuntimeTrap(std::string_view message, const SourceLocation &location);
+    /// Continues in a fresh block when `condition` holds and traps with `message` when it does not.
+    void EmitTrapUnless(LirReg condition, std::string_view message, const SourceLocation &location);
 
     [[nodiscard]] LirReg EmitConst(std::string value, TypeRef type);
     [[nodiscard]] LirReg EmitAlloca(TypeRef type);
     [[nodiscard]] LirReg EmitAlloca(TypeRef type, std::uint64_t count);
     [[nodiscard]] LirReg EmitLoad(LirReg ptr, TypeRef type);
     [[nodiscard]] LirReg EmitNamedLoad(std::string name, TypeRef type);
-    void EmitStore(LirReg value, LirReg ptr, TypeRef type, bool isVolatile = false) const;
+    void EmitStore(LirReg value, LirReg ptr, TypeRef type, bool isVolatile = false);
     [[nodiscard]] LirReg EmitBinary(LirOpcode op, LirReg left, LirReg right, TypeRef type);
     [[nodiscard]] LirReg EmitUnary(LirOpcode op, LirReg source, const TypeRef &type);
     [[nodiscard]] LirReg EmitCast(LirReg source, const TypeRef &fromType, TypeRef toType);
+    /// One `cast` instruction, with none of the language rules `EmitCast` applies on top of it.
+    [[nodiscard]] LirReg EmitConversion(LirReg source, const TypeRef &fromType, TypeRef toType);
+    [[nodiscard]] LirReg EmitFloatToInteger(LirReg value, const TypeRef &fromType, const TypeRef &toType);
     [[nodiscard]] LirReg EmitWidenBool(LirReg source, const TypeRef &toType);
     [[nodiscard]] static bool IsScalar(const TypeRef &type);
     [[nodiscard]] static bool IsComparison(TokenKind op);
@@ -109,7 +187,8 @@ private:
     [[nodiscard]] static bool IsPointerArithmetic(const TypeRef &type);
     [[nodiscard]] LirReg EmitPointerOffset(LirReg base, LirReg index, const TypeRef &pointerType);
     [[nodiscard]] LirReg EmitPointerStep(LirReg base, const TypeRef &pointerType, bool forward);
-    [[nodiscard]] LirReg EmitGlobalAddr(std::string label, TypeRef pointee = TypeRef::MakeOpaque());
+    [[nodiscard]] LirReg EmitThreadLocalAddr(std::string label, TypeRef pointee);
+    LirReg EmitGlobalAddr(std::string label, TypeRef pointee = TypeRef::MakeOpaque());
     [[nodiscard]] LirReg EmitStringAddr(std::string value, const TypeRef &elementType);
 
     [[nodiscard]] bool IsInterfaceType(const TypeRef &type) const;
@@ -126,12 +205,18 @@ private:
     [[nodiscard]] static std::uint64_t StringLiteralLength(const std::string &value, const TypeRef &elementType);
 
     [[nodiscard]] LirModule LowerModule(const HirModule &module);
+    /// Lower `module` and everything it calls that belongs to no module: the drop glue and destructor instances its
+    /// cleanups reach and the software-float helpers its operations need, each as a private copy of its own.
+    [[nodiscard]] LirModule LowerSelfContainedModule(const HirModule &module);
     [[nodiscard]] static std::string PrintConstExpr(const HirExpr &expression);
     [[nodiscard]] std::optional<std::string> PrintConstElement(const HirExpr &expression) const;
     void CollectConstContents(const HirConst &constant, LirConstDecl &declaration) const;
+    [[nodiscard]] std::optional<std::vector<LirConstScalar>> ConstValueScalars(const HirConst &constant) const;
+    [[nodiscard]] bool CollectConstValueScalars(const HirExpr &value, const TypeRef &type,
+                                                std::vector<LirConstMember> &path,
+                                                std::vector<LirConstScalar> &scalars) const;
     [[nodiscard]] LirFunc LowerFunc(const HirFunc &function, std::string_view nameOverride = "");
 
-    [[nodiscard]] std::vector<LirFunc> SynthesizeDropGlue(const std::vector<DropGluePlan> &plans);
     [[nodiscard]] LirFunc SynthesizeDropGlueFunc(const DropGluePlan &plan);
     void EmitDropGlueSteps(const std::vector<DropGlueStep> &steps, LirReg base);
     void EmitDropGlueStep(const DropGlueStep &step, LirReg base);
@@ -142,13 +227,25 @@ private:
     void MarkBindingLive(std::uint64_t bindingId, bool live);
     void ClearConsumedBinding(const HirExpr &expression);
     void EmitCleanup(const HirDropAction &action);
+    void EmitPlaceCleanup(const HirDropAction &action, LirReg address);
     void EmitCleanups(const std::vector<HirDropAction> &actions);
     void PushPartialCleanupFrame(const std::vector<HirFailureCleanup> &cleanups, std::size_t component,
                                  LirReg aggregateSlot);
     void PopPartialCleanupFrame();
     void EmitActivePartialCleanups();
 
+    /// Lowers a block's statements in a scope of their own: the names they bind are gone once the block ends.
     void LowerBlock(const HirBlock &block);
+    void LowerBlockStatements(const HirBlock &block);
+    /// Binds a name to its slot, hiding until the enclosing scope ends any binding the name already had.
+    void BindLocal(const std::string &name, LirReg slot, std::uint64_t bindingId = 0);
+
+    /// Where the bindings of a scope starting now begin; `LeaveLocalScope` with it unbinds them again.
+    [[nodiscard]] std::size_t EnterLocalScope() const noexcept {
+        return hiddenLocals.size();
+    }
+
+    void LeaveLocalScope(std::size_t mark);
     void LowerStmt(const HirStmt &statement);
     void LowerIf(const HirIfStmt &statement);
     void LowerWhile(const HirWhileStmt &statement);
@@ -156,12 +253,17 @@ private:
     void LowerLoop(const HirLoopStmt &statement);
     void LowerFor(const HirForStmt &statement);
     void LowerMatch(const HirMatchStmt &statement);
+    [[nodiscard]] std::optional<std::uint32_t> UnmatchedBlock(bool exhaustive, const std::vector<HirMatchArm> &arms);
+    /// Fills the block `UnmatchedBlock` opened, if any, with the trap for a value no arm of the match took.
+    void EmitUnmatchedTrap(std::optional<std::uint32_t> block, const HirExpr &subject, const SourceLocation &location);
 
     void StoreEnumConstructIntoSlot(const HirEnumConstructExpr &expression, LirReg slot);
     void BindLetPattern(const HirPattern &pattern, LirReg subjectPtr, const TypeRef &subjectType);
 
     LirReg LowerPattern(const HirPattern &pattern, LirReg subjectValue, const TypeRef &subjectType,
                         const std::vector<LirReg> *enumPayload = nullptr, LirReg subjectSlot = LirNoReg);
+    LirReg LowerStringPattern(const HirLiteralPattern &pattern, LirReg subjectValue, const TypeRef &subjectType,
+                              LirReg subjectSlot);
     /// The referenced storage of a native match subject read through a reference, or no register for any other
     /// subject.
     LirReg BorrowedNativeSubjectSlot(const HirExpr &subject);
@@ -171,12 +273,41 @@ private:
                            const std::vector<LirReg> *enumPayload, LirReg subjectSlot, bool consumed,
                            std::vector<std::pair<LirReg, TypeRef>> &residual);
     void EmitResidualDrops(const std::vector<std::pair<LirReg, TypeRef>> &residual);
+    /// Whether a match owns a subject that has to be destroyed. Such a subject is matched in storage of its own, so an
+    /// arm that binds nothing, or a value no arm takes, can be destroyed whole.
+    [[nodiscard]] bool OwnsDroppableSubject(const HirExpr &subject) const;
+    /// The block a match's last arm falls to when it can leave its owned, droppable subject untaken, or nothing.
+    [[nodiscard]] std::optional<std::uint32_t>
+    UntakenSubjectBlock(const HirExpr &subject, const std::vector<HirMatchArm> &arms, LirReg subjectSlot);
+    /// Whether a pattern matches every value of its subject: a wildcard, a binding, or a tuple or structure of those.
+    [[nodiscard]] static bool PatternTakesEveryValue(const HirPattern &pattern);
+    /// Destroys a subject no arm took, then continues at the match's merge.
+    void EmitUntakenSubjectDrop(std::optional<std::uint32_t> block, const HirExpr &subject, LirReg subjectSlot,
+                                std::uint32_t mergeBlock);
     LirReg LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, LirReg subjectValue, LirReg subjectSlot);
+    /// Whether some arm takes its subject apart with a tuple or structure pattern, which reads the parts in place.
+    [[nodiscard]] static bool ArmsDestructure(const std::vector<HirMatchArm> &arms);
+    /// The value a match over storage at `slot` compares against: the tag of an addressable variant, else the value.
+    [[nodiscard]] LirReg MatchSubjectValue(LirReg slot, const TypeRef &type);
+    /// A tuple or structure pattern: every refutable part is tested first, leaving on the first mismatch, and the
+    /// bindings are set only once all of them matched.
+    LirReg LowerDestructuringPattern(const HirPattern &pattern, LirReg subjectValue, const TypeRef &subjectType,
+                                     LirReg subjectSlot);
+    /// Tests the parts of the tuple or structure at `address`, branching to `mismatch` (created on first use) when
+    /// one fails, and collects the bindings to set afterwards.
+    void EmitDestructuringChecks(const HirPattern &pattern, LirReg address, const TypeRef &type,
+                                 std::optional<std::uint32_t> &mismatch, std::vector<PendingPatternBinding> &bindings);
     LirReg LowerExpr(const HirExpr &expression);
     LirReg LowerExprValue(const HirExpr &expression);
     LirReg LowerPostfix(const HirPostfixExpr &expression);
     LirReg LowerUnary(const HirUnaryExpr &expression);
     LirReg LowerBinary(const HirBinaryExpr &expression);
+    /// Traps before an integer `/` or `%` whose divisor is zero, or whose signed quotient does not fit its type.
+    void EmitDivisionChecks(LirReg dividend, LirReg divisor, const HirExpr &divisorExpr, const TypeRef &type,
+                            const SourceLocation &location);
+    /// Traps before a shift whose count, known only when it runs, is negative or at least the shifted type's width.
+    void EmitShiftCheck(LirReg count, const HirExpr &countExpr, const TypeRef &shiftedType,
+                        const SourceLocation &location);
     LirReg LowerVariantEquality(const HirVariantEqualityExpr &expression);
     LirReg LowerAggregateEquality(const HirAggregateEqualityExpr &expression);
     LirReg EqualityOperandStorage(const HirExpr &operand, const TypeRef &type);
@@ -190,9 +321,15 @@ private:
     LirReg LowerCopy(const HirCopyExpr &expression);
     LirReg LowerMove(const HirMoveExpr &expression);
     LirReg LowerInterfaceCall(const HirInterfaceCallExpr &expression);
+    LirReg GlobalStorageAddr(const HirGlobal &global);
+    LirReg LowerAtomicBuiltin(const HirCallExpr &e, std::string_view operation);
     LirReg LowerCall(const HirCallExpr &expression);
     LirReg LowerArgument(const HirExpr &argument);
-    LirReg LowerSliceDataPtr(const HirExpr &object, const TypeRef &elementType);
+    IndexedStorage LowerIndexedStorage(const HirExpr &object, const TypeRef &elementType);
+    /// Traps unless `index` names an element of `storage`; a raw pointer is not checked.
+    void EmitIndexCheck(LirReg index, const HirExpr &indexExpr, const IndexedStorage &storage,
+                        const SourceLocation &location);
+    LirReg LowerElementPtr(const HirIndexExpr &expression);
     LirReg LowerRangeIndex(const HirIndexExpr &expression);
     LirReg LowerLValue(const HirExpr &expression);
 

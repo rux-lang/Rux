@@ -1,15 +1,12 @@
 // The raw system-call entry points, and the numbers that select a call.
-//
 // Every wrapper elsewhere in this package is one of these seven functions with the arguments named. A caller may use
 // them directly for a call this package does not wrap, which is what they are public for.
-//
 // Unlike Linux, both supported architectures share one numbering: FreeBSD assigns a call its number once, in
 // `syscalls.master`, and every architecture uses it. What differs is only where the number and the arguments go.
-//
 // A raw result from these wrappers is already normalized to Linux's convention — a value, or a small negative error
 // number — which is what `Errors::IsError` and `Errors::Errno` read.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 // The call numbers, which both architectures share. FreeBSD assigns a call its number once, in `syscalls.master`,
 // and every architecture uses it — unlike Linux, where the two tables agree on nothing.
@@ -19,15 +16,13 @@ const SysWrite: uint64 = 4;
 const SysClose: uint64 = 6;
 const SysBrk: uint64 = 17;
 /// `getpid(2)`'s system-call number.
-///
-/// @see https://rux-lang.dev/docs/api/freebsd/sys-get-pid
+/// @see https://rux-lang.dev/docs/api/freebsd/syscalls#sys-get-pid
 pub const SysGetPid: uint64 = 20;
 
 // FreeBSD 15.1's native syscall table. AArch64 and x86-64 share these numbers;
 // only the register/trap sequence below is architecture-owned.
 /// `mmap(2)`'s system-call number.
-///
-/// @see https://rux-lang.dev/docs/api/freebsd/sys-mmap
+/// @see https://rux-lang.dev/docs/api/freebsd/syscalls#sys-mmap
 pub const SysMmap: uint64 = 477;
 const SysMunmap: uint64 = 73;
 const SysClockGetTime: uint64 = 232;
@@ -62,12 +57,10 @@ const SysSysctl: uint64 = 202;
 // result register. These wrappers return Linux-style -errno values for parity.
 // Where the call number and the arguments go differs, so each architecture
 // writes the whole wrapper.
-//
 // x86-64: Rux functions use the System V ABI, whose first three argument
 // registers the `syscall` instruction keeps. The fourth argument moves from rcx
 // to r10, and a seventh function argument arrives at [rsp + 8], after the
 // return address.
-//
 // AArch64: Rux functions use AAPCS64, whose first eight argument registers
 // cover even the widest wrapper. `svc #0` takes the call number in x8 and the
 // arguments in x0 through x5, so each wrapper moves the number aside and then
@@ -76,10 +69,9 @@ const SysSysctl: uint64 = 202;
 when #target.arch {
     .X86_64 => {
         /// Executes a raw FreeBSD system call without arguments.
-        ///
         /// @param number the system call to make
         /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/freebsd/syscall-0
+        /// @see https://rux-lang.dev/docs/api/freebsd/syscalls#syscall-0
         #Abi(.SysV)
         pub asm func Syscall0(number: uint64) -> int64 {
             mov rax, rdi
@@ -161,7 +153,6 @@ when #target.arch {
         }
 
         /// Executes a raw FreeBSD system call with six arguments.
-        ///
         /// @param number the system call to make
         /// @param arg0 the call's first argument
         /// @param arg1 the call's second argument
@@ -170,7 +161,7 @@ when #target.arch {
         /// @param arg4 the call's fifth argument
         /// @param arg5 the call's sixth argument
         /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/freebsd/syscall-6
+        /// @see https://rux-lang.dev/docs/api/freebsd/syscalls#syscall-6
         #Abi(.SysV)
         pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
             mov rax, rdi
@@ -189,10 +180,9 @@ when #target.arch {
     },
     .AArch64 => {
         /// Executes a raw FreeBSD system call without arguments.
-        ///
         /// @param number the system call to make
         /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/freebsd/syscall-0
+        /// @see https://rux-lang.dev/docs/api/freebsd/syscalls#syscall-0
         pub asm func Syscall0(number: uint64) -> int64 {
             mov x8, x0
             svc #0
@@ -256,7 +246,6 @@ when #target.arch {
         }
 
         /// Executes a raw FreeBSD system call with six arguments.
-        ///
         /// @param number the system call to make
         /// @param arg0 the call's first argument
         /// @param arg1 the call's second argument
@@ -265,7 +254,7 @@ when #target.arch {
         /// @param arg4 the call's fifth argument
         /// @param arg5 the call's sixth argument
         /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/freebsd/syscall-6
+        /// @see https://rux-lang.dev/docs/api/freebsd/syscalls#syscall-6
         pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
@@ -283,15 +272,12 @@ when #target.arch {
 }
 
 /// Widens a file descriptor to the register width a system call takes it in.
-///
 /// `fd` is read by value; the widened value is returned by copy. Sign extension is what matters: `-1` has to arrive
 /// as all ones rather than as a small positive number.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param fd the descriptor to widen
 /// @returns it sign-extended, so a negative one stays negative
-/// @see https://rux-lang.dev/docs/api/freebsd/sign-extend-fd
+/// @see https://rux-lang.dev/docs/api/freebsd/syscalls#sign-extend-fd
 pub func SignExtendFd(fd: int32) -> uint64 {
     return (fd as int64) as uint64;
 }

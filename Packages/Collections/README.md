@@ -19,6 +19,10 @@ rux add Rux/Collections
 | `HashSet<T>`    | Open-addressed set of distinct values     |               |
 | `TreeMap<K, V>` | Ordered red-black-tree map                |               |
 | `TreeSet<T>`    | Ordered red-black-tree set                |               |
+| `PriorityQueue<T>` | Max-heap that hands out the largest first | the heap   |
+| `BitSet`        | Growable set of small integers, a bit each |              |
+| `SmallVector<T>` | Vector holding 64 bytes of elements inline |             |
+| `LruCache<K, V>` | Bounded map evicting the least recently used |           |
 
 There is no `Stack` or `Queue` type. `Vector` already is the stack — `Push` and `TryPop` work at the end that costs nothing to reach — and `Deque` already is the queue, with `PushBack` and `TryPopFront`. Wrapper types would duplicate them to add no safety Rux can enforce. There is no `Dictionary` either: `HashMap` is the one associative name.
 
@@ -108,7 +112,7 @@ All three borrow their storage. The storage must outlive the iterator and every 
 
 `IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as `(<-values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
 
-A `for` loop over an iterator _value_ walks a copy of it, so the iterator the caller holds is left where it was. A loop is not a way to advance an iterator someone else is also reading.
+A `for` loop over an iterator _variable_ advances that variable, so a loop that stops early leaves it where the walk stopped and a later loop or `Next` call resumes there. Iterate over a fresh iterator, or over the container, to walk from the start without touching the caller's.
 
 For example, `for element in numbers.MutableReferences() { *element = *element * 2; }` doubles the stored numbers.
 
@@ -116,7 +120,7 @@ Construct `MutableReferenceIterator<T>(items)` directly to walk a `var T[..]`. R
 
 ## Hashing
 
-`HashMap` and `HashSet` are one kernel — Robin Hood open addressing over a power-of-two table — with the set storing nothing alongside its keys. A fix to the probing or the deletion is a fix to both.
+`HashMap` and `HashSet` are one kernel — Robin Hood open addressing over a power-of-two table — with the set storing nothing alongside its keys. A fix to the probing or the deletion is a fix to both. Each slot also keeps the top byte of its key's hash, so a lookup passing other keys compares one byte for each and calls the equality function only on a likely match: for text keys that saves reading each passed key's bytes from wherever they live, at one byte per slot.
 
 Every entry records how far it sits from the slot its hash names. An insertion that meets an entry closer to home than itself takes the slot and carries that entry onward, so the distances along a chain never decrease and the worst one stays near the average. That also makes a miss cheap: a search reaching a slot whose occupant is closer to home than the search has travelled can stop, because the key would have taken that slot on the way past.
 
@@ -163,7 +167,7 @@ A borrow from a `TreeMap` outlives more than a `HashMap`'s: each entry is its ow
 
 `TreeSet` is to `HashSet` what `TreeMap` is to `HashMap`: order, at the price of a pointer chase per level. It walks smallest first, answers `Floor` and `Ceiling`, and hands back what lies between two bounds through `Range`.
 
-Its elements are the keys of a tree whose values are `Unit`, which occupies no bytes — a set is a map with the values compiled away rather than a second copy of the same balancing.
+Its elements are the keys of a tree whose values are the unit `()`, which occupies no bytes — a set is a map with the values compiled away rather than a second copy of the same balancing.
 
 An element must be copyable, exactly as a `HashSet`'s must: the comparison takes its two elements by value and every descent compares against elements the set holds, so an element that owned something would be destroyed by the first comparison it took part in. Owning values belong in a `TreeMap` under copyable keys.
 
@@ -225,7 +229,7 @@ func Show() -> ! FormatError {
     numbers.Push(1) catch { else => {} };
     numbers.Push(2) catch { else => {} };
 
-    var failure = IoError::Ok();
+    var failure: IoError? = none;
     var console = ConsoleWriter(@failure);
     let sink: &var TextWriter = console;
     return WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain());

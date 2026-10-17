@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Base32"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Encoding: RFC 4648 and Crockford Base32."
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Encoding = { Path = "../../../../Packages/Encoding" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Encoding"

@@ -135,7 +135,7 @@ TEST_CASE("interface argument conversion requires the declared bound") {
 
 TEST_CASE("concrete methods accept concrete interface arguments through shared overload conversion") {
     const auto diagnostics = AnalyzeInterfaceReferences(R"(
-        interface Writer { func Put(value: int); }
+        interface Writer { func Put(self: &var Self, value: int); }
         struct Buffer { count: int; }
         extend Buffer : Writer {
             func Put(self: &var Buffer, value: int) { self.count += value; }
@@ -160,7 +160,7 @@ TEST_CASE("concrete methods accept concrete interface arguments through shared o
 
 TEST_CASE("concrete method interface arguments still require writable storage") {
     const auto diagnostics = AnalyzeInterfaceReferences(R"(
-        interface Writer { func Put(value: int); }
+        interface Writer { func Put(self: &var Self, value: int); }
         struct Buffer { count: int; }
         extend Buffer : Writer {
             func Put(self: &var Buffer, value: int) { self.count += value; }
@@ -172,6 +172,38 @@ TEST_CASE("concrete method interface arguments still require writable storage") 
         func Test(number: Number, buffer: &Buffer) { number.Render(buffer); }
     )");
     CHECK(HasErrorContaining(diagnostics, "requires '&var Writer'"));
+}
+
+TEST_CASE("a requirement's receiver decides whether an interface call may write") {
+    const auto diagnostics = AnalyzeInterfaceReferences(R"(
+        interface Gauge { func Adjust(amount: int32); }
+        interface Dial { func Turn(self: &var Self, amount: int32); }
+        struct Knob { level: int32; }
+        extend Knob : Gauge {
+            func Adjust(self: &var Knob, amount: int32) { self.level += amount; }
+        }
+        extend Knob : Dial {
+            func Turn(self: &var Knob, amount: int32) { self.level += amount; }
+        }
+        func Shared(dial: &Dial) { dial.Turn(1i32); }
+        func Exclusive(dial: &var Dial) { dial.Turn(1i32); }
+    )");
+    std::vector<Diagnostic> errors;
+    for (const auto &diagnostic : diagnostics) {
+        if (diagnostic.severity == Diagnostic::Severity::Error) {
+            errors.push_back(diagnostic);
+        }
+    }
+    REQUIRE_EQ(errors.size(), 2);
+    CHECK_EQ(errors[0].message,
+             "method 'Adjust' of 'Knob' writes through its receiver, but requirement 'Adjust' of interface 'Gauge' "
+             "only reads it");
+    CHECK_EQ(errors[0].help, "declare 'self: &var Self' on requirement 'Adjust' in interface 'Gauge', or take "
+                             "'self: &Knob'");
+    CHECK_EQ(errors[1].message, "cannot call 'Turn' through immutable reference '&Dial'");
+    REQUIRE_EQ(errors[1].notes.size(), 1);
+    CHECK_EQ(errors[1].notes[0], "'Turn' declares a writable receiver '&var Self'");
+    CHECK_EQ(errors[1].help, "declare the reference as '&var Dial'");
 }
 
 TEST_CASE("interface requirements validate their defaults before call lowering") {
@@ -207,7 +239,7 @@ TEST_CASE("interface references are borrowed fat views through HIR and LIR") {
     Lexer lexer(R"(
         interface CounterView {
             func Read() -> int32;
-            func Add(amount: int32);
+            func Add(self: &var Self, amount: int32);
         }
         interface Marker {}
         struct Counter { value: int32; }
@@ -372,7 +404,7 @@ TEST_CASE("interface-typed fields borrow their existing fat pointer") {
 TEST_CASE("interface dispatch excludes explicit self from lowered arguments") {
     Lexer lexer(R"(
         interface CounterView {
-            func Read(self: &CounterView) -> int32;
+            func Read(self: &Self) -> int32;
         }
         struct Counter { value: int32; }
         extend Counter : CounterView {

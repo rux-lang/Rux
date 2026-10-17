@@ -15,13 +15,18 @@ rux add Rux/macOS
 | ----------- | ------------------------------------------------------------------------------------- |
 | `Types`     | the Darwin ABI's own types: `ProcessId`, `FileDescriptor`, `FileMode`, `UserId`, `Timespec`, `Timeval` |
 | `Errors`    | the errno numbers, `CurrentErrno`, and the `Normalize` / `IsError` / `Errno` fold      |
-| `LibSystem` | every libSystem entry point this package binds, under the symbol it exports            |
+| `LibSystem` | every libSystem entry point this package binds, under the symbol it exports, including `_NSGetArgc`, `_NSGetArgv` and `_NSGetEnviron` |
 | `File`      | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Dup2`, `Pipe`, the open flags, and the three standard descriptors |
 | `Memory`    | `Mmap`, `Munmap`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags |
 | `Clock`     | `ClockGetTime`, `ClockGetResolution`, `GetTimeOfDay`, `Nanosleep`, and the clock identifiers |
 | `Entropy`   | `GetRandom`, which cannot fail and has no short count                                   |
 | `Process`   | `Exit` and `GetPid`                                                                     |
-| `Dynamic`   | the `RTLD_*` flags; the loader calls themselves are in `LibSystem`                      |
+| `Dynamic`   | the `RTLD_*` flags; `dlopen`, `dlsym`, `dlclose` and `dlerror` are in `LibSystem`        |
+| `Thread`    | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `pthread_threadid_np`, linked from libSystem |
+| `Ulock`     | `__ulock_wait`, `__ulock_wake` and their flags, the word operations every lock in `Rux/Sync` sleeps on |
+| `Spawn`     | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill` and `fcntl` |
+| `Socket`    | the BSD socket calls behind the same wrappers as Linux and FreeBSD, `SO_NOSIGPIPE`, and `getaddrinfo`, `freeaddrinfo` and `AddressInfo` |
+| `Poll`      | `Kqueue` and `KeventCall` over libSystem's `kqueue` and `kevent`, `Kevent`, the `EVFILT_*` and `EV_*` flags, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK` |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

@@ -1,26 +1,22 @@
 #include "Documentation/Generator.h"
 
 #include "Diagnostics/Diagnostics.h"
+#include "Documentation/Install.h"
+#include "Documentation/Signatures.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <cerrno>
-#include <chrono>
 #include <format>
-#include <fstream>
 #include <map>
 #include <sstream>
 #include <string_view>
-#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace Rux::Documentation {
 namespace {
-constexpr std::string_view MarkerName = ".rux-docs";
-
 struct SearchEntry {
     std::string name;
     std::string kind;
@@ -313,268 +309,6 @@ std::string RenderDocumentation(const Syntax::Documentation &documentation, Find
     return output.str();
 }
 
-std::string UngroupedTypeText(const TypeExpr *type);
-
-/// Spell a type the way it was written in source, since documentation should show the reader the syntax they would type
-/// rather than an internal normal form. That includes its grouping, which some positions require.
-std::string TypeText(const TypeExpr *type) {
-    if (type && type->parenthesized) {
-        return "(" + UngroupedTypeText(type) + ")";
-    }
-    return UngroupedTypeText(type);
-}
-
-std::string UngroupedTypeText(const TypeExpr *type) {
-    if (!type)
-        return "?";
-    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(type)) {
-        std::string text = named->name;
-        if (!named->typeArgs.empty()) {
-            text += '<';
-            for (std::size_t i = 0; i < named->typeArgs.size(); ++i) {
-                if (i != 0)
-                    text += ", ";
-                text += TypeText(named->typeArgs[i].get());
-            }
-            text += '>';
-        }
-        return text;
-    }
-    if (const auto *path = dynamic_cast<const PathTypeExpr *>(type)) {
-        std::string text;
-        for (std::size_t i = 0; i < path->segments.size(); ++i) {
-            if (i != 0)
-                text += "::";
-            text += path->segments[i];
-        }
-        return text;
-    }
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
-        return TypeText(array->element.get()) + (array->size ? "[N]" : "[]");
-    }
-    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(type)) {
-        return std::string(slice->elementMut ? "var " : "") + TypeText(slice->element.get()) + "[..]";
-    }
-    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(type)) {
-        return (range->start ? TypeText(range->start.get()) : std::string()) + (range->inclusive ? "..=" : "..") +
-               (range->end ? TypeText(range->end.get()) : std::string());
-    }
-    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
-        return std::string("*") + (pointer->pointeeMut ? "var " : "") + TypeText(pointer->pointee.get());
-    }
-    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
-        return std::string("&") + (reference->pointeeMut ? "var " : "") + TypeText(reference->pointee.get());
-    }
-    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(type)) {
-        std::string text = "(";
-        for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
-            if (i != 0)
-                text += ", ";
-            text += TypeText(tuple->elements[i].get());
-        }
-        return text + ")";
-    }
-    if (dynamic_cast<const SelfTypeExpr *>(type))
-        return "self";
-    if (const auto *function = dynamic_cast<const FunctionTypeExpr *>(type)) {
-        std::string text = "func(";
-        for (std::size_t i = 0; i < function->params.size(); ++i) {
-            if (i != 0)
-                text += ", ";
-            text += TypeText(function->params[i].get());
-        }
-        text += ')';
-        if (function->returnType)
-            text += " -> " + TypeText(function->returnType->get());
-        return text;
-    }
-    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(type)) {
-        std::string text;
-        for (std::size_t index = 0; index < sum->members.size(); ++index) {
-            if (index != 0) {
-                text += " | ";
-            }
-            text += TypeText(sum->members[index].get());
-        }
-        return text;
-    }
-    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(type)) {
-        return TypeText(optional->payload.get()) + "?";
-    }
-    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(type)) {
-        return (fallible->success ? TypeText(fallible->success.get()) + " ! " : std::string("! ")) +
-               TypeText(fallible->error.get());
-    }
-    return "?";
-}
-
-std::string TypeParams(const std::vector<TypeParameter> &parameters) {
-    if (parameters.empty())
-        return {};
-    std::string text = "<";
-    for (std::size_t i = 0; i < parameters.size(); ++i) {
-        if (i != 0)
-            text += ", ";
-        text += parameters[i].name;
-        if (!parameters[i].bounds.empty()) {
-            text += ": ";
-            for (std::size_t bound = 0; bound < parameters[i].bounds.size(); ++bound) {
-                if (bound != 0)
-                    text += " + ";
-                text += TypeText(parameters[i].bounds[bound].get());
-            }
-        }
-    }
-    return text + ">";
-}
-
-std::string FunctionSignature(const FuncDecl &function) {
-    std::string text = function.isPublic ? "pub " : "";
-    text += "func " + function.name + TypeParams(function.typeParams) + "(";
-    for (std::size_t i = 0; i < function.params.size(); ++i) {
-        if (i != 0)
-            text += ", ";
-        const auto &parameter = function.params[i];
-        if (parameter.isVariadic)
-            text += "...";
-        else
-            text += parameter.name + ": " + TypeText(parameter.type.get());
-    }
-    text += ')';
-    if (function.returnType)
-        text += " -> " + TypeText(function.returnType->get());
-    return text;
-}
-
-std::string ExternFunctionSignature(const ExternFuncDecl &function) {
-    std::string text = function.isPublic ? "pub extern func " : "extern func ";
-    text += function.name + "(";
-    for (std::size_t i = 0; i < function.params.size(); ++i) {
-        if (i != 0)
-            text += ", ";
-        const auto &parameter = function.params[i];
-        text += parameter.name + ": " + TypeText(parameter.type.get());
-    }
-    if (function.isVariadic) {
-        if (!function.params.empty())
-            text += ", ";
-        text += "...";
-    }
-    text += ')';
-    if (function.returnType)
-        text += " -> " + TypeText(function.returnType->get());
-    return text;
-}
-
-std::string DeclName(const Decl &decl) {
-    if (const auto *value = dynamic_cast<const FuncDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const StructDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const UnionDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const InterfaceDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const ModuleDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const ConstDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const ExternVarDecl *>(&decl))
-        return value->name;
-    if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))
-        return "extend-" + value->typeName;
-    return {};
-}
-
-std::string DeclKind(const Decl &decl) {
-    if (dynamic_cast<const FuncDecl *>(&decl))
-        return "function";
-    if (dynamic_cast<const StructDecl *>(&decl))
-        return "struct";
-    if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
-        return value->IsVariant() ? "variant" : "enum";
-    if (dynamic_cast<const UnionDecl *>(&decl))
-        return "union";
-    if (dynamic_cast<const InterfaceDecl *>(&decl))
-        return "interface";
-    if (dynamic_cast<const ModuleDecl *>(&decl))
-        return "module";
-    if (dynamic_cast<const ConstDecl *>(&decl))
-        return "constant";
-    if (dynamic_cast<const TypeAliasDecl *>(&decl))
-        return "type alias";
-    if (dynamic_cast<const ExternFuncDecl *>(&decl) || dynamic_cast<const ExternVarDecl *>(&decl))
-        return "extern";
-    if (dynamic_cast<const ImplDecl *>(&decl))
-        return "extension";
-    return "declaration";
-}
-
-std::string DeclSignature(const Decl &decl) {
-    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl))
-        return FunctionSignature(*function);
-    if (const auto *value = dynamic_cast<const StructDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + (value->intrinsicName.empty() ? "" : "intrinsic ") +
-               "struct " + value->name + TypeParams(value->typeParams);
-    if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + (value->IsVariant() ? "variant " : "enum ") + value->name +
-               TypeParams(value->typeParams);
-    if (const auto *value = dynamic_cast<const UnionDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "union " + value->name;
-    if (const auto *value = dynamic_cast<const InterfaceDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "interface " + value->name;
-    if (const auto *value = dynamic_cast<const ModuleDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "module " + value->name;
-    if (const auto *value = dynamic_cast<const ConstDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "const " + value->name +
-               (value->type ? ": " + TypeText(value->type->get()) : "");
-    if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + (value->intrinsicName.empty() ? "" : "intrinsic ") +
-               "type " + value->name + (value->intrinsicName.empty() ? " = " + TypeText(value->type.get()) : ";");
-    if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))
-        return "extend " + value->typeName;
-    if (const auto *value = dynamic_cast<const ExternVarDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "extern " + value->name + ": " +
-               TypeText(value->type.get());
-    if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl))
-        return ExternFunctionSignature(*value);
-    return DeclName(decl);
-}
-
-std::string CaseSignature(const EnumDecl &declaration, const EnumDecl::Variant &variant) {
-    std::string text = variant.name;
-    if (!declaration.IsVariant()) {
-        if (variant.discriminant) {
-            text += " = " + *variant.discriminant;
-        }
-        return text;
-    }
-    if (!variant.fields.empty()) {
-        text += '(';
-        for (std::size_t index = 0; index < variant.fields.size(); ++index) {
-            if (index != 0) {
-                text += ", ";
-            }
-            text += TypeText(variant.fields[index].get());
-        }
-        text += ')';
-    }
-    else if (!variant.namedFields.empty()) {
-        text += " { ";
-        for (const EnumDecl::Variant::NamedField &field : variant.namedFields) {
-            text += field.name + ": " + TypeText(field.type.get()) + "; ";
-        }
-        text += '}';
-    }
-    return text;
-}
-
 /// A stable URL fragment for a declaration, so a link into the generated page keeps working across rebuilds.
 std::string Anchor(std::string value) {
     for (char &c : value) {
@@ -584,48 +318,6 @@ std::string Anchor(std::string value) {
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return value;
-}
-
-/// Whether a declaration belongs in the generated output, which by default is the package's public surface only.
-///
-/// A public item is externally visible only while every module containing it is public.
-bool Visible(const Decl &decl, const bool includePrivate, const bool containingModulesPublic,
-             const std::unordered_set<std::string> &publicTypes) {
-    if (includePrivate)
-        return true;
-    if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
-        const std::string typeName = extension->typeName.substr(0, extension->typeName.find('<'));
-        return containingModulesPublic && publicTypes.contains(typeName) &&
-               (std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; }) ||
-                std::ranges::any_of(extension->constants, [](const auto &constant) { return constant->isPublic; }));
-    }
-    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-        return containingModulesPublic &&
-               std::ranges::any_of(block->items, [](const auto &item) { return item->isPublic; });
-    }
-    return containingModulesPublic && decl.isPublic;
-}
-
-void CollectPublicTypes(const Decl &decl, const bool containingModulesPublic,
-                        std::unordered_set<std::string> &publicTypes, const std::string &prefix = {}) {
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
-        const bool modulePublic = containingModulesPublic && module->isPublic;
-        const std::string qualified = prefix.empty() ? module->name : prefix + "::" + module->name;
-        for (const auto &item : module->items) {
-            CollectPublicTypes(*item, modulePublic, publicTypes, qualified);
-        }
-        return;
-    }
-    if (!containingModulesPublic || !decl.isPublic ||
-        !(dynamic_cast<const StructDecl *>(&decl) || dynamic_cast<const EnumDecl *>(&decl) ||
-          dynamic_cast<const UnionDecl *>(&decl) || dynamic_cast<const InterfaceDecl *>(&decl))) {
-        return;
-    }
-    const std::string name = DeclName(decl);
-    publicTypes.insert(name);
-    if (!prefix.empty()) {
-        publicTypes.insert(prefix + "::" + name);
-    }
 }
 
 void AddReference(Findings &findings, const std::string &name, const std::string &href) {
@@ -641,7 +333,7 @@ void PlanRoutes(const Decl &decl, const std::string &moduleName, const std::stri
     if (!Visible(decl, includePrivate, containingModulesPublic, publicTypes)) {
         return;
     }
-    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    if (const auto *block = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : block->items) {
             PlanRoutes(*item, moduleName, source, includePrivate, findings, publicTypes, prefix,
                        containingModulesPublic);
@@ -682,7 +374,7 @@ void PlanRoutes(const Decl &decl, const std::string &moduleName, const std::stri
     AddReference(findings, qualified, href);
     AddReference(findings, moduleName + "::" + qualified, href);
 
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         for (const auto &item : module->items) {
             PlanRoutes(*item, moduleName, source, includePrivate, findings, publicTypes, qualified,
                        containingModulesPublic && module->isPublic);
@@ -696,7 +388,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 const bool containingModulesPublic = true) {
     if (!Visible(decl, includePrivate, containingModulesPublic, publicTypes))
         return;
-    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+    if (const auto *block = AstCast<const ExternBlockDecl>(&decl)) {
         for (const auto &item : block->items) {
             RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, publicTypes, prefix,
                        containingModulesPublic);
@@ -718,7 +410,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
          << "</code></pre><div class=\"location\">" << EscapeHtml(source) << ':' << decl.location.line << "</div>"
          << RenderDocumentation(decl.documentation, findings);
 
-    if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+    if (const auto *structure = AstCast<const StructDecl>(&decl)) {
         for (const auto &field : structure->fields) {
             if (!includePrivate && !field.isPublic)
                 continue;
@@ -727,7 +419,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                  << "</code>" << RenderDocumentation(field.documentation, findings) << "</section>";
         }
     }
-    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&decl)) {
+    else if (const auto *unionType = AstCast<const UnionDecl>(&decl)) {
         for (const auto &field : unionType->fields) {
             if (!includePrivate && !field.isPublic)
                 continue;
@@ -736,7 +428,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                  << "</code>" << RenderDocumentation(field.documentation, findings) << "</section>";
         }
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+    else if (const auto *enumeration = AstCast<const EnumDecl>(&decl)) {
         for (const auto &variant : enumeration->variants) {
             const std::string_view kind = enumeration->IsVariant() ? "variant case" : "enum member";
             html << "<section class=\"member\"><div class=\"member-kind\">" << kind << "</div><h4>"
@@ -751,14 +443,14 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
             html << "</section>";
         }
     }
-    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
+    else if (const auto *interface = AstCast<const InterfaceDecl>(&decl)) {
         for (const auto &method : interface->methods) {
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
                  << EscapeHtml(FunctionSignature(*method)) << "</code>"
                  << RenderDocumentation(method->documentation, findings) << "</section>";
         }
     }
-    else if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+    else if (const auto *extension = AstCast<const ImplDecl>(&decl)) {
         for (const auto &constant : extension->constants) {
             if (!includePrivate && !constant->isPublic) {
                 continue;
@@ -776,7 +468,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
         }
     }
     html << "</article>";
-    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+    if (const auto *module = AstCast<const ModuleDecl>(&decl)) {
         for (const auto &item : module->items) {
             RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, publicTypes, qualified,
                        containingModulesPublic && module->isPublic);
@@ -784,28 +476,6 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     }
 }
 
-/// Build an operational diagnostic that carries the system error, so a permission or disk-full failure says what
-/// actually went wrong rather than only that generation failed.
-Diagnostic FilesystemFailure(std::string message, const std::error_code error, std::optional<std::string> help = {}) {
-    return ErrorDiagnostic(std::move(message), {std::format("filesystem error {}: {}", error.value(), error.message())},
-                           std::move(help));
-}
-
-bool WriteFile(const std::filesystem::path &path, const std::string_view value, Diagnostic &error) {
-    errno = 0;
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-    output << value;
-    if (!output) {
-        std::error_code writeError(errno, std::generic_category());
-        if (!writeError) {
-            writeError = std::make_error_code(std::errc::io_error);
-        }
-        error = FilesystemFailure(std::format("could not write generated documentation file '{}'", path.string()),
-                                  writeError, "check that the output path is writable and has enough free space");
-        return false;
-    }
-    return true;
-}
 } // namespace
 
 bool GenerateResult::HasErrors() const {
@@ -816,50 +486,6 @@ bool GenerateResult::HasErrors() const {
 GenerateResult Generate(const Manifest &manifest, const std::span<const ParseResult> modules,
                         const GenerateOptions &options) {
     GenerateResult result;
-    Diagnostic error;
-    auto Fail = [&](Diagnostic diagnostic) {
-        result.diagnostics.push_back(std::move(diagnostic));
-        return result;
-    };
-    std::error_code ec;
-    const auto output = std::filesystem::absolute(options.outputDirectory, ec).lexically_normal();
-    if (ec) {
-        return Fail(FilesystemFailure(
-            std::format("could not resolve documentation output directory '{}'", options.outputDirectory.string()), ec,
-            "choose a valid path with '--output <dir>'"));
-    }
-    const bool outputExists = std::filesystem::exists(output, ec);
-    if (ec) {
-        return Fail(FilesystemFailure(
-            std::format("could not inspect documentation output directory '{}'", output.string()), ec));
-    }
-    if (outputExists) {
-        const bool outputEmpty = std::filesystem::is_empty(output, ec);
-        if (ec) {
-            return Fail(FilesystemFailure(
-                std::format("could not inspect documentation output directory '{}'", output.string()), ec));
-        }
-        const bool managed = outputEmpty || std::filesystem::exists(output / MarkerName, ec);
-        if (ec) {
-            return Fail(FilesystemFailure(
-                std::format("could not inspect documentation marker '{}'", (output / MarkerName).string()), ec));
-        }
-        if (!managed) {
-            return Fail(
-                ErrorDiagnostic(std::format("refusing to replace non-empty unmarked directory '{}'", output.string()),
-                                {}, "choose an empty output directory or remove its contents"));
-        }
-    }
-
-    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto temporary = output.parent_path() / std::format(".rux-docs-tmp-{}", nonce);
-    std::filesystem::create_directories(temporary, ec);
-    if (ec) {
-        return Fail(FilesystemFailure(
-            std::format("could not create temporary documentation directory '{}'", temporary.string()), ec,
-            "check that the output directory's parent is writable"));
-    }
-
     std::ostringstream content;
     std::vector<SearchEntry> search;
     Findings findings;
@@ -869,20 +495,9 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
             CollectPublicTypes(*declaration, true, publicTypes);
         }
     }
-    auto SourceDisplayName = [&](const std::filesystem::path &sourcePath) {
-        if (!sourcePath.is_absolute()) {
-            return sourcePath.generic_string();
-        }
-        const auto relative = std::filesystem::relative(sourcePath, options.packageRoot, ec);
-        if (!ec && !relative.empty() && *relative.begin() != "..") {
-            return relative.generic_string();
-        }
-        ec.clear();
-        return sourcePath.filename().generic_string();
-    };
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
-        const std::string source = SourceDisplayName(sourcePath);
+        const std::string source = SourceDisplayName(sourcePath, options.packageRoot);
         const std::string moduleName = sourcePath.stem().string();
         for (const auto &declaration : module.module.items) {
             PlanRoutes(*declaration, moduleName, source, options.includePrivate, findings, publicTypes);
@@ -890,10 +505,7 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     }
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
-        // A name that is already relative is shown as written: measuring it against the root would drag the working
-        // directory into the result. An absolute path is shown relative to the package root, and one the root does
-        // not contain keeps only its file name rather than a chain of parent steps.
-        const std::string source = SourceDisplayName(sourcePath);
+        const std::string source = SourceDisplayName(sourcePath, options.packageRoot);
         const std::string moduleName = sourcePath.stem().string();
         content << "<section class=\"module\"><h2>Module " << EscapeHtml(moduleName) << "</h2>";
         for (const auto &declaration : module.module.items) {
@@ -905,7 +517,6 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     std::ranges::sort(search, {}, &SearchEntry::name);
     result.diagnostics.insert(result.diagnostics.end(), findings.diagnostics.begin(), findings.diagnostics.end());
     if (result.HasErrors()) {
-        std::filesystem::remove_all(temporary, ec);
         return result;
     }
 
@@ -953,28 +564,9 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     }
     searchJson << "]\n";
 
-    bool written = WriteFile(temporary / MarkerName, "rux-docs-v1\n", error) &&
-                   WriteFile(temporary / "index.html", html, error) && WriteFile(temporary / "style.css", css, error) &&
-                   WriteFile(temporary / "search.js", script, error) &&
-                   WriteFile(temporary / "search-index.json", searchJson.str(), error);
-    if (!written) {
-        std::filesystem::remove_all(temporary, ec);
-        return Fail(std::move(error));
-    }
-    if (std::filesystem::exists(output, ec)) {
-        std::filesystem::remove_all(output, ec);
-    }
-    if (ec) {
-        return Fail(
-            FilesystemFailure(std::format("could not replace managed documentation directory '{}'", output.string()),
-                              ec, "close programs using the generated documentation and try again"));
-    }
-    std::filesystem::rename(temporary, output, ec);
-    if (ec) {
-        return Fail(FilesystemFailure(std::format("could not install generated documentation at '{}'", output.string()),
-                                      ec, "check that the output directory's parent is writable"));
-    }
-    result.ok = true;
-    return result;
+    const std::array files{OutputFile{"index.html", html}, OutputFile{"style.css", std::string(css)},
+                           OutputFile{"search.js", std::string(script)},
+                           OutputFile{"search-index.json", searchJson.str()}};
+    return InstallManagedDirectory(options.outputDirectory, files);
 }
 } // namespace Rux::Documentation

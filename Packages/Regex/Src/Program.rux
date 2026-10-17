@@ -1,0 +1,233 @@
+// A compiled pattern: the instructions the matcher runs, and the character classes they test.
+// The instructions are those of Thompson's construction as Pike's matcher runs them. Each one either tests the
+// character at the current position (`Char`, `CharFold`, `Class`, `Any`, `AnyNotNewline`), or moves without
+// consuming anything: to another instruction (`Jump`), to two at once with the first preferred (`Split`), by recording
+// the position in a capture slot (`Save`), or by checking where in the text it is (`Assert`). `Match` ends a match.
+
+import Unicode::{
+    CategoryOf, Fold, IsAlphabetic, IsNumeric, IsWhiteSpace, NextInCaseOrbit, ScriptOf, ToLowerSimple, ToUpperSimple
+};
+
+// What an instruction does.
+enum Op: uint8 {
+    // The pattern matched.
+    Match = 0,
+    // One character, `a`.
+    Char = 1,
+    // One character whose case-folded form is `a`.
+    CharFold = 2,
+    // One character of the class whose items are `a` to `a + b`; `flags` holds `ClassNegated` and `ClassFold`.
+    Class = 3,
+    // Any character.
+    Any = 4,
+    // Any character but `\n`.
+    AnyNotNewline = 5,
+    // Continue at `a`, and failing that at `b`.
+    Split = 6,
+    // Continue at `a`.
+    Jump = 7,
+    // Record the position in capture slot `a`.
+    Save = 8,
+    // Continue only where assertion `a` holds.
+    Assert = 9
+}
+
+// The class matches what its items do not.
+const ClassNegated: uint8 = 1;
+// The class also matches the other cases of what it holds.
+const ClassFold: uint8 = 2;
+
+// The reversed pattern was too large to compile alongside the forward one.
+const NoReverse: uint32 = 0xFFFFFFFF;
+
+// The places an `Assert` checks for.
+const StartText: uint32 = 0;
+const EndText: uint32 = 1;
+const StartLine: uint32 = 2;
+const EndLine: uint32 = 3;
+const WordBoundary: uint32 = 4;
+const NotWordBoundary: uint32 = 5;
+
+// One step of a compiled pattern. A `Class` keeps the ASCII characters it matches as a bitmap at pair `c` of the
+// program's `ascii`, so most characters need no look at its items.
+struct Instruction {
+    op: Op;
+    flags: uint8;
+    a: uint32;
+    b: uint32;
+    c: uint32;
+}
+
+// What one item of a class holds.
+enum ItemKind: uint8 {
+    // The characters from `low` to `high`.
+    Range = 0,
+    // The characters whose general category is one of the bits of `low`.
+    Categories = 1,
+    // The characters with property `low`.
+    Property = 2,
+    // The characters of the script numbered `low`.
+    Script = 3
+}
+
+// One part of a character class; the class holds what any of its items holds.
+struct ClassItem {
+    kind: ItemKind;
+    // The item holds what it otherwise would not, as `\D` does.
+    negated: bool;
+    low: uint32;
+    high: uint32;
+}
+
+// The properties an item can name.
+const PropertyAny: uint32 = 0;
+const PropertyAscii: uint32 = 1;
+const PropertyAlphabetic: uint32 = 2;
+const PropertyWhiteSpace: uint32 = 3;
+const PropertyWord: uint32 = 4;
+const PropertyNumeric: uint32 = 5;
+const PosixAlnum: uint32 = 6;
+const PosixAlpha: uint32 = 7;
+const PosixBlank: uint32 = 8;
+const PosixCntrl: uint32 = 9;
+const PosixDigit: uint32 = 10;
+const PosixGraph: uint32 = 11;
+const PosixLower: uint32 = 12;
+const PosixPrint: uint32 = 13;
+const PosixPunct: uint32 = 14;
+const PosixSpace: uint32 = 15;
+const PosixUpper: uint32 = 16;
+const PosixWord: uint32 = 17;
+const PosixXdigit: uint32 = 18;
+
+// The categories `\d` holds: decimal digits.
+const DigitCategories: uint32 = 0x200;
+
+// A compiled pattern as the matcher reads it: views of the storage a `Regex` owns. `Copy`.
+struct Program {
+    // The forward program, which the Pike matcher runs.
+    instructions: Instruction[..];
+    // Every instruction: the forward program, then the reversed pattern when there is one.
+    all: Instruction[..];
+    // Where the reversed pattern starts in `all`, or `NoReverse`.
+    reverseStart: uint32;
+    items: ClassItem[..];
+    // Two words of bitmap per class: the ASCII characters it matches.
+    ascii: uint64[..];
+    // Two capture slots for every group, the whole match first.
+    slotCount: uint;
+    // Text every match starts with, which a search can look for before it starts the matcher.
+    literal: char8[..];
+    // The bytes a match can start with, as a bitmap, when `skips` says a match cannot be empty.
+    firstBytes: uint64[4];
+    skips: bool;
+    // Every match starts where the search does, as a pattern starting with `\A` does.
+    anchored: bool;
+}
+
+// Whether `c` is a word character, as `\w` and `\b` count them: a letter, a mark, a decimal digit, a connector such
+// as `_`, or a joiner.
+func IsWordCharacter(c: uint32) -> bool {
+    if c < 0x80u32 {
+        return (c >= 0x61u32 && c <= 0x7Au32) || (c >= 0x41u32 && c <= 0x5Au32) || (c >= 0x30u32 && c <= 0x39u32) ||
+               c == 0x5Fu32;
+    }
+    if c == 0x200Cu32 || c == 0x200Du32 { return true; }
+    if IsAlphabetic(c as char32) { return true; }
+    let category = CategoryOf(c as char32) as uint32;
+    return category == 6u32 || category == 7u32 || category == 8u32 || category == 9u32 || category == 12u32;
+}
+
+// The form of `c` that case-insensitive matching compares: its simple case folding.
+func FoldKey(c: uint32) -> uint32 {
+    if c < 0x80u32 {
+        if c >= 0x41u32 && c <= 0x5Au32 { return c + 32u32; }
+        return c;
+    }
+    var folded: char32[3] = [0u32 as char32; 3];
+    var written: uint = 0;
+    if Fold(c as char32, folded[..], @written) && written == 1u { return folded[0] as uint32; }
+    return ToLowerSimple(c as char32) as uint32;
+}
+
+// Whether `c`, below 0x80, has POSIX class `property`.
+func HasPosix(property: uint32, c: uint32) -> bool {
+    let lower = c >= 0x61u32 && c <= 0x7Au32;
+    let upper = c >= 0x41u32 && c <= 0x5Au32;
+    let digit = c >= 0x30u32 && c <= 0x39u32;
+    let graph = c >= 0x21u32 && c <= 0x7Eu32;
+    if property == PosixAlnum { return lower || upper || digit; }
+    if property == PosixAlpha { return lower || upper; }
+    if property == PosixBlank { return c == 0x20u32 || c == 0x09u32; }
+    if property == PosixCntrl { return c < 0x20u32 || c == 0x7Fu32; }
+    if property == PosixDigit { return digit; }
+    if property == PosixGraph { return graph; }
+    if property == PosixLower { return lower; }
+    if property == PosixPrint { return graph || c == 0x20u32; }
+    if property == PosixPunct { return graph && !lower && !upper && !digit; }
+    if property == PosixSpace { return c == 0x20u32 || (c >= 0x09u32 && c <= 0x0Du32); }
+    if property == PosixUpper { return upper; }
+    if property == PosixWord { return lower || upper || digit || c == 0x5Fu32; }
+    if property == PosixXdigit {
+        return digit || (c >= 0x61u32 && c <= 0x66u32) || (c >= 0x41u32 && c <= 0x46u32);
+    }
+    return false;
+}
+
+// Whether `item` holds `c`.
+func ItemHolds(item: ClassItem, c: uint32) -> bool {
+    var holds = false;
+    match item.kind {
+        ItemKind::Range => holds = c >= item.low && c <= item.high,
+        ItemKind::Categories => holds = (item.low & (1u32 << (CategoryOf(c as char32) as uint32))) != 0u32,
+        ItemKind::Script => holds = ScriptOf(c as char32).Number() == item.low,
+        ItemKind::Property => {
+            let property = item.low;
+            if property == PropertyAny { holds = true; }
+            else if property == PropertyAscii { holds = c < 0x80u32; }
+            else if property == PropertyAlphabetic { holds = IsAlphabetic(c as char32); }
+            else if property == PropertyWhiteSpace {
+                holds = c == 0x20u32 || (c >= 0x09u32 && c <= 0x0Du32) || (c >= 0x80u32 && IsWhiteSpace(c as char32));
+            }
+            else if property == PropertyWord { holds = IsWordCharacter(c); }
+            else if property == PropertyNumeric { holds = IsNumeric(c as char32); }
+            else { holds = c < 0x80u32 && HasPosix(property, c); }
+        }
+    }
+    return holds != item.negated;
+}
+
+// Whether any of `items` holds `c`.
+func AnyHolds(items: ClassItem[..], c: uint32) -> bool {
+    for item in items {
+        if ItemHolds(item, c) { return true; }
+    }
+    return false;
+}
+
+// Whether the class of `items`, with `flags`, matches `c`.
+func ClassMatches(items: ClassItem[..], flags: uint8, c: uint32) -> bool {
+    var found = AnyHolds(items, c);
+    if !found && (flags & ClassFold) != 0u8 {
+        let folded = FoldKey(c);
+        found = (folded != c && AnyHolds(items, folded));
+        if !found {
+            let upper = ToUpperSimple(c as char32) as uint32;
+            found = upper != c && upper != folded && AnyHolds(items, upper);
+        }
+        if !found {
+            let lower = ToLowerSimple(c as char32) as uint32;
+            found = lower != c && lower != folded && AnyHolds(items, lower);
+        }
+        // The other members of the character's case orbit, such as the Kelvin sign for `k` or `ς` for `σ`, which no
+        // simple mapping of `c` reaches. An orbit has at most four members, so the walk is bounded.
+        var other = NextInCaseOrbit(c as char32) as uint32;
+        var steps: uint = 0;
+        while !found && other != c && steps < 4u {
+            found = AnyHolds(items, other);
+            other = NextInCaseOrbit(other as char32) as uint32;
+            steps = steps + 1;
+        }
+    }
+    return found != ((flags & ClassNegated) != 0u8);
+}

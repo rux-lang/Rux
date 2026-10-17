@@ -1,0 +1,49 @@
+import Core::Assert;
+
+struct Pair {
+    small: int8;
+    large: int64;
+}
+
+func Snapshot(input: int64) -> int64 {
+    var first = Pair { small: 3i8, large: input };
+    var second = first;
+    first.large = 99;
+    second.small = 7i8;
+    var pair = (second.large, first.large);
+    let copy = pair;
+    pair.0 = 11;
+    return copy.0 + copy.1 + (second.small as int64);
+}
+
+func Rotate(limit: int) -> int64 {
+    var first = Pair { small: 1i8, large: 7i64 };
+    var second = Pair { small: 3i8, large: 11i64 };
+    var sum = 0i64;
+    for index in 0..limit {
+        let saved = first;
+        first = second;
+        second = saved;
+        sum += first.large * (second.small as int64);
+    }
+    return sum;
+}
+
+func Inspect(value: *Pair) -> int8 {
+    return *(value as *int8);
+}
+
+func Escaped(input: int64) -> int64 {
+    let first = Pair { small: 3i8, large: input };
+    let second = first;
+    return second.large + (Inspect(@second) as int64);
+}
+
+func Main() -> int {
+    for input in -30i64..30i64 {
+        Assert(Snapshot(input) == input + 106, "whole-object copies retain values from the load point");
+        Assert(Escaped(input) == input + 3, "raw-byte access retains the original object representation");
+    }
+    Assert(Rotate(20) == 320, "aggregate swaps preserve both values across loop edges");
+    return 0;
+}

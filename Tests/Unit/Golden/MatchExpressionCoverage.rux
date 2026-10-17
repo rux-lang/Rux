@@ -1,0 +1,38 @@
+// A match expression must produce a value for every value of its subject; a statement need not. A character, a float,
+// a string or a structure has more values than arms can list, so only an 'else', a binding or an irrefutable pattern
+// covers it.
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+func Main() -> int {
+    let flag = false;
+    let n: int32 = 2;
+    let missingFalse = match flag { true => 10i32 };
+    let missingTrue = match flag { false => 10i32 };
+    let guarded = match flag { true => 1i32, false if n > 0 => 2i32 };
+    let both = match flag { true => 1i32, false => 2i32 };
+    let partial = match n { 1 => 10i32, 3 => 30i32 };
+    let ranged = match n { 0..=9 => 1i32 };
+    let covered = match n { 1 => 10i32, else => 0i32 };
+    let bound = match n { value => value };
+    let letter = 'b';
+    let ratio = 0.5;
+    let point = Point { x: 1, y: 2 };
+    let text = "on";
+    let character = match letter { 'a' => 1i32, 'b' => 2i32 };
+    let fraction = match ratio { 0.5 => 1i32 };
+    let origin = match point { Point { x: 0, y: 0 } => 1i32 };
+    let word = match text { "on" => 1i32, "off" => 0i32 };
+    let split = match point { Point { x, y } => x + y };
+    let other = match letter { 'a' => 1i32, else => 0i32 };
+    match n {
+        1 => {}
+    }
+    match flag {
+        true => {}
+    }
+    return (missingFalse + missingTrue + guarded + both + partial + ranged + covered + bound + character + fraction +
+            origin + word + split + other) as int;
+}

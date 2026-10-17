@@ -7,4 +7,4 @@ pub func Nested<T>() -> float64 {
     return Read<T>() + (Numbers::Offset as float64);
 }
 
-import Provider::{ Untyped, Typed, Units, Numbers };
+import Provider::{ Numbers, Typed, Units, Untyped };

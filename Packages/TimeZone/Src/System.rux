@@ -1,0 +1,239 @@
+// The zones the system knows: those in its time-zone directory, and the one it is set to.
+// A zone is loaded by its tz database name, such as `America/New_York`, from the directory `TZDIR` names, or else from
+// the directories the Unix systems keep the database in. Windows keeps no such directory, so there a zone loads only
+// from a `TZDIR` a program provides. The local zone is the one `TZ` names, or `/etc/localtime`, on the Unix systems,
+// and on Windows the zone the system is set to, as rules for its standard and daylight time.
+
+import Allocator::Allocator;
+import Collections::Vector;
+import Core::{ #Error, #target };
+import FileSystem::{ File, OpenOptions };
+import Io::{ IoErrorKind, Reader };
+import Path::{ OsString, OsStringView, Path };
+import Process::Variable;
+import TimeZone::{ NoRule, Rule, RuleDate, TimeZone, TimeZoneError, ZoneType };
+
+when #target.os == .Windows {
+    import Windows::{ GetTimeZoneInformation, TimeZoneInformation, TimeZoneRuleDate };
+}
+
+// Where the Unix systems keep the tz database, in the order they are tried.
+func SystemDirectory(index: uint) -> char8[..] {
+    if index == 0u { return "/usr/share/zoneinfo"; }
+    if index == 1u { return "/usr/lib/zoneinfo"; }
+    if index == 2u { return "/usr/share/lib/zoneinfo"; }
+    return "/etc/zoneinfo";
+}
+
+// Whether `name` is a zone name that stays inside the directory it is looked up in.
+func IsZoneName(name: char8[..]) -> bool {
+    if name.length == 0u || name[0] == '/' { return false; }
+    var start: uint = 0;
+    var index: uint = 0;
+    while index <= name.length {
+        if index == name.length || name[index] == '/' {
+            let segment = name[start..index];
+            if segment.length == 0u || (segment.length == 2u && segment[0] == '.' && segment[1] == '.') { return false; }
+            start = index + 1;
+        }
+        else {
+            let c = name[index] as uint8;
+            let allowed = (c >= 0x41u8 && c <= 0x5Au8) || (c >= 0x61u8 && c <= 0x7Au8) || (c >= 0x30u8 && c <= 0x39u8) ||
+                          c == 0x2Bu8 || c == 0x2Du8 || c == 0x2Eu8 || c == 0x5Fu8;
+            if !allowed { return false; }
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+// The whole file at `path`, or fails with `NotFound` when it is not there.
+func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneError {
+    let native = OsString::FromText(allocator, path) catch { else => fail TimeZoneError::InvalidName };
+    var file = File::Open(allocator, Path { name: native.View() }, OpenOptions::Reading()) catch {
+        error => {
+            if error.kind == IoErrorKind::NotFound || error.kind == IoErrorKind::NotDirectory {
+                fail TimeZoneError::NotFound;
+            }
+            fail TimeZoneError::Unreadable;
+        }
+    };
+    var bytes = Vector<byte>(allocator);
+    var chunk: char8[4096] = ['\0'; 4096];
+    while true {
+        match file.Read(chunk[..]) {
+            .Success(count) => {
+                bytes.PushSlice((chunk[..count].data as *byte)[..count]) catch { else => fail TimeZoneError::OutOfMemory };
+            },
+            .Failure(error) => {
+                if error.kind == IoErrorKind::EndOfStream { break; }
+                fail TimeZoneError::Unreadable;
+            }
+        }
+    }
+    return <-bytes;
+}
+
+// A native string as text: its bytes on the Unix systems, its UTF-16 narrowed when every unit is ASCII on Windows.
+func AsciiText(view: OsStringView, into: &var Vector<char8>) -> bool {
+    let units = view.Units();
+    var index: uint = 0;
+    while index < units.length {
+        let unit = units[index] as uint32;
+        when #target.os == .Windows {
+            if unit > 0x7Fu32 { return false; }
+        }
+        into.Push(unit as uint8 as char8) catch { else => return false };
+        index = index + 1;
+    }
+    return true;
+}
+
+extend TimeZone {
+    /// Loads the zone named `name` from the tz database: from the directory `TZDIR` names, or else, on the Unix
+    /// systems, from the directories the database is kept in.
+    /// @param allocator what the zone is kept in
+    /// @param name the zone's name, such as `Europe/Paris`
+    /// @returns the zone, or fails with `NotFound`, `InvalidName` or `InvalidData`
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#load
+    pub func Load(allocator: Allocator, name: char8[..]) -> TimeZone ! TimeZoneError {
+        if !IsZoneName(name) { fail TimeZoneError::InvalidName; }
+        var directory = Vector<char8>(allocator);
+        match Variable("TZDIR") {
+            .Some(value) => {
+                if AsciiText(value, directory) && directory.Length() > 0u {
+                    return TimeZone::LoadFrom(allocator, directory.AsSlice(), name)?;
+                }
+            },
+            none => {}
+        }
+        when #target.os == .Windows {
+            fail TimeZoneError::NotFound;
+        }
+        else {
+            var index: uint = 0;
+            while index < 4u {
+                match TimeZone::LoadFrom(allocator, SystemDirectory(index), name) {
+                    .Success(zone) => return <-zone,
+                    .Failure(error) => {
+                        if error != TimeZoneError::NotFound { fail error; }
+                    }
+                }
+                index = index + 1;
+            }
+            fail TimeZoneError::NotFound;
+        }
+    }
+
+    // Loads `name` from `directory`.
+    func LoadFrom(allocator: Allocator, directory: char8[..], name: char8[..]) -> TimeZone ! TimeZoneError {
+        var path = Vector<char8>(allocator);
+        path.PushSlice(directory) catch { else => fail TimeZoneError::OutOfMemory };
+        path.Push(c8'/') catch { else => fail TimeZoneError::OutOfMemory };
+        path.PushSlice(name) catch { else => fail TimeZoneError::OutOfMemory };
+        let data = ReadFile(allocator, path.AsSlice())?;
+        return TimeZone::FromTzif(allocator, name, data.AsSlice())?;
+    }
+
+    /// The zone the system is set to.
+    /// On the Unix systems that is the one `TZ` gives, as a zone name, a file path after `:` or a POSIX rule, or else
+    /// the one in `/etc/localtime`. On Windows it is the system's zone, as rules for its standard and daylight time,
+    /// which describe the current year's practice and so not the zone's history.
+    /// @param allocator what the zone is kept in
+    /// @returns the zone, or fails when the system's setting cannot be read
+    /// @see https://rux-lang.dev/docs/api/timezone/zone#local
+    pub func Local(allocator: Allocator) -> TimeZone ! TimeZoneError {
+        when #target.os == .Windows {
+            return TimeZone::WindowsLocal(allocator)?;
+        }
+        else {
+            var setting = Vector<char8>(allocator);
+            match Variable("TZ") {
+                .Some(value) => {
+                    AsciiText(value, setting);
+                },
+                none => {}
+            }
+            var text = setting.AsSlice();
+            if text.length == 0u {
+                let data = ReadFile(allocator, "/etc/localtime")?;
+                return TimeZone::FromTzif(allocator, "Local", data.AsSlice())?;
+            }
+            if text[0] == ':' { text = text[1..]; }
+            if text.length > 0u && text[0] == '/' {
+                let data = ReadFile(allocator, text)?;
+                return TimeZone::FromTzif(allocator, text, data.AsSlice())?;
+            }
+            match TimeZone::Load(allocator, text) {
+                .Success(zone) => return <-zone,
+                .Failure(_) => {}
+            }
+            return TimeZone::FromRule(allocator, text, text)?;
+        }
+    }
+
+    // The Windows zone, from the system's rules.
+    func WindowsLocal(allocator: Allocator) -> TimeZone ! TimeZoneError {
+        when #target.os == .Windows {
+            var information = TimeZoneInformation {
+                bias: 0, standardName: [0u16; 32], standardDate: EmptyRuleDate(), standardBias: 0,
+                daylightName: [0u16; 32], daylightDate: EmptyRuleDate(), daylightBias: 0
+            };
+            if GetTimeZoneInformation(@information) == 0xFFFFFFFFu32 { fail TimeZoneError::Unreadable; }
+            var zone = TimeZone::Empty(allocator, "Local")?;
+            var rule = NoRule();
+            rule.present = true;
+            rule.standard = ZoneType {
+                offset: -(information.bias + information.standardBias) * 60, daylight: false,
+                abbreviation: zone.names.Length(), abbreviationLength: 0
+            };
+            rule.standard.abbreviationLength = AppendName(zone.names, @information.standardName[0]);
+            if information.daylightDate.month != 0u16 {
+                rule.hasDaylight = true;
+                rule.daylight = ZoneType {
+                    offset: -(information.bias + information.daylightBias) * 60, daylight: true,
+                    abbreviation: zone.names.Length(), abbreviationLength: 0
+                };
+                rule.daylight.abbreviationLength = AppendName(zone.names, @information.daylightName[0]);
+                rule.start = WindowsDate(information.daylightDate);
+                rule.end = WindowsDate(information.standardDate);
+            }
+            zone.rule = rule;
+            return <-zone;
+        }
+        else {
+            fail TimeZoneError::NotFound;
+        }
+    }
+}
+
+when #target.os == .Windows {
+    func EmptyRuleDate() -> TimeZoneRuleDate {
+        return TimeZoneRuleDate {
+            year: 0, month: 0, dayOfWeek: 0, day: 0, hour: 0, minute: 0, second: 0, milliseconds: 0
+        };
+    }
+
+    // A Windows rule date as a POSIX `Mm.w.d/time` date.
+    func WindowsDate(date: TimeZoneRuleDate) -> RuleDate {
+        return RuleDate {
+            kind: 2, day: 0, month: date.month as uint8, week: date.day as uint8, weekday: date.dayOfWeek as uint8,
+            time: date.hour as int32 * 3600 + date.minute as int32 * 60 + date.second as int32
+        };
+    }
+
+    // Appends a NUL-terminated UTF-16 name to the pool, keeping its ASCII, and returns its length.
+    func AppendName(names: &var Vector<char8>, name: *uint16) -> uint {
+        var length: uint = 0;
+        var index: uint = 0;
+        while index < 32u && name[index] != 0u16 {
+            if name[index] < 0x80u16 {
+                names.Push(name[index] as uint8 as char8) catch { else => return length };
+                length = length + 1;
+            }
+            index = index + 1;
+        }
+        names.Push(c8'\0') catch { else => {} };
+        return length;
+    }
+}

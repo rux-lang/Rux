@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Diagnostics/Diagnostics.h"
+#include "Parallel/WorkerPool.h"
 #include "SourceModel/SourceFile.h"
 
 #include <filesystem>
@@ -27,8 +28,11 @@ public:
      * the manifest may still be worth reporting on.
      *
      * @param manifestDir The directory that contains `Rux.toml`
+     * @param pool Threads the files may be read on; null reads them on the calling thread. The result never depends
+     * on it.
      */
-    [[nodiscard]] static SourceLoadResult Load(const std::filesystem::path &manifestDir);
+    [[nodiscard]] static SourceLoadResult Load(const std::filesystem::path &manifestDir,
+                                               Parallel::WorkerPool *pool = nullptr);
 
     /**
      * @brief Load a single `*.rux` file by explicit path.

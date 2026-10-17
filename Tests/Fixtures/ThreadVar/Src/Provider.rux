@@ -1,0 +1,20 @@
+// Thread-local variables another package reads and writes, and functions of this package that observe the same
+// thread's copy.
+
+pub thread var Depth: int64 = 0;
+pub thread var Marker: uint32 = 0xC0FFEE;
+thread var Hidden: int64 = 40;
+
+pub func Enter() -> int64 {
+    Depth = Depth + 1;
+    return Depth;
+}
+
+pub func DepthAddress() -> *var int64 {
+    return @Depth;
+}
+
+pub func NextHidden() -> int64 {
+    Hidden = Hidden + 2;
+    return Hidden;
+}

@@ -3,6 +3,7 @@
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "Ir/Lir/Lir.h"
+#include "Target/Target.h"
 
 #include <cstdint>
 #include <string>
@@ -28,7 +29,13 @@ public:
     [[nodiscard]] virtual std::uint32_t InternFloatSignMask(bool float32) = 0;
     [[nodiscard]] virtual std::uint32_t ResolveNamedDataSymbol(const std::string &name) = 0;
     [[nodiscard]] virtual std::uint32_t ResolveGlobalSymbol(const std::string &name) = 0;
+    /// Whether `name` is data imported from a library, whose address the code reads from the slot the loader fills.
+    [[nodiscard]] virtual bool IsImportedData(const std::string &name) const = 0;
     virtual void AddTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol) = 0;
+    /// A text relocation of a kind other than the RIP-relative one `AddTextRelocation` adds.
+    virtual void AddTypedTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol, std::uint16_t type) = 0;
+    /// The operating system the module is built for, which decides how a thread reaches its thread-local block.
+    [[nodiscard]] virtual Target::OS TargetOs() const = 0;
     virtual void EmitCallArguments(const std::vector<LirReg> &arguments) = 0;
 };
 
@@ -47,6 +54,13 @@ public:
     /// address and was emitted here.
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
+    /// Returns true exactly when the instruction is an atomic memory operation, a fence or a spin hint and was emitted
+    /// here.
+    [[nodiscard]] bool EmitAtomic(const LirInstr &instruction);
+
+    /// Returns true exactly when the instruction is the address of a thread-local variable and was emitted here.
+    [[nodiscard]] bool EmitThreadLocal(const LirInstr &instruction);
+
 private:
     X64Enc &encoder;
     const X86_64FramePlan &framePlan;
@@ -60,6 +74,10 @@ private:
     [[nodiscard]] bool IsRegPointerTo(LirReg reg, const TypeRef &pointee) const;
     [[nodiscard]] int FieldOffset(LirReg base, const std::string &fieldName) const;
     [[nodiscard]] bool EmitWideArithmetic(const LirInstr &instruction);
+    /// Emits a float80 operation the x87 unit computes, or a float32 or float64 remainder, which always runs on the
+    /// x87 `fprem` loop. Returns false for anything else, including every float80 operation while
+    /// `Target::X87Float80` is off.
+    [[nodiscard]] bool EmitX87(const LirInstr &instruction);
     [[nodiscard]] bool EmitWideSoftwareFloatNegation(const LirInstr &instruction);
     void EmitSoftwareFloatConstant(const LirInstr &instruction);
     void ZeroWide(std::int32_t destination, int size) const;
@@ -72,5 +90,7 @@ private:
     void StoreChunkToR11(std::int32_t offset, int size) const;
     void CopyAggregateFromR10ToStack(std::int32_t destinationDisp, int size) const;
     void CopyAggregateFromR10ToR11(int size) const;
+    void LoadAddressIntoR11(LirReg pointer) const;
+    void ExtendRax(const TypeRef &type, int size) const;
 };
 } // namespace Rux

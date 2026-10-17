@@ -20,23 +20,14 @@ namespace Rux::AArch64Detail {
 // can only derive an alignment from a size, so a named type answers from
 // its computed layout wherever the package declared one.
 [[nodiscard]] int AArch64ModuleEmitter::RuntimeAlign(const TypeRef &t) const {
-    if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
-        const std::string base = BaseTypeName(t.name);
-        if (interfaceNames.contains(base)) {
-            return 8;
-        }
-        if (const auto it = layouts.find(base); it != layouts.end()) {
-            return it->second.alignment;
-        }
-    }
-    return AlignOf(t);
+    return RuntimeAlignmentOf(t, layouts, interfaceNames);
 }
 
 // Whether a value of this type moves as a block of bytes rather than in one
 // register. What counts as an aggregate is a property of the LIR type
 // rather than of the machine, so this is the x86-64 rule unchanged.
 [[nodiscard]] bool AArch64ModuleEmitter::IsAggregate(const TypeRef &t) const {
-    if (IsWideInteger(t) || (IsSoftwareFloat(t) && RuntimeSize(t) > 8)) {
+    if (IsWideValue(t)) {
         return true;
     }
     if (t.IsRange()) {
@@ -46,7 +37,7 @@ namespace Rux::AArch64Detail {
     if (t.IsSlice()) {
         return true;
     }
-    switch (t.kind) {
+    switch (t->kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
     // A native sum, optional, or fallible is a tag followed by its widest payload.
@@ -55,8 +46,8 @@ namespace Rux::AArch64Detail {
     case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
-        const std::string base = BaseTypeName(t.name);
-        return interfaceNames.contains(base) || layouts.contains(base) || (!t.inner.empty() && SizeOf(t) > 8);
+        const std::string base = BaseTypeName(t->name);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!t->inner.empty() && SizeOf(t) > 8);
     }
     default:
         return false;
@@ -348,7 +339,7 @@ void AArch64ModuleEmitter::CopyFrameValue(const std::int32_t dstOff, const std::
         return;
     }
     if (IsFloat(type)) {
-        const A64Reg value = type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
+        const A64Reg value = type->kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
         LoadScalar(value, A64::Fp, srcOff, value.bits / 8U, false);
         StoreScalar(value, A64::Fp, dstOff, value.bits / 8U);
         return;
@@ -388,7 +379,7 @@ void AArch64ModuleEmitter::CopyFrameValue(const std::int32_t dstOff, const std::
 // reached in two instructions rather than the four or five a MOVZ chain
 // through a general-purpose register would take.
 void AArch64ModuleEmitter::LoadFloatConstant(const A64Reg dst, const TypeRef &type, const std::string &literal) {
-    const bool single = type.kind == TypeRef::Kind::Float32;
+    const bool single = type->kind == TypeRef::Kind::Float32;
     const double value = single ? ParseFloatLiteral<float>(literal) : ParseFloatLiteral<double>(literal);
     if (TryEncodeFpImm8(value)) {
         Must(enc.FmovImm(dst, value), "a floating-point constant");

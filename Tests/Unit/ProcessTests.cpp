@@ -1,6 +1,7 @@
 #include "System/Http.h"
 #include "System/Process.h"
 #include "Target/Platform.h"
+#include "TemporaryDirectory.h"
 
 #include <array>
 #include <doctest.h>
@@ -53,7 +54,7 @@ TEST_CASE("BuildMultipartBody frames every part with the same boundary") {
 
 #if RUX_OS_WINDOWS
 TEST_CASE("failed Windows subprocess launch preserves the system error") {
-    const auto missing = std::filesystem::temp_directory_path() / "rux-missing-subprocess-for-launch-error.exe";
+    const auto missing = Rux::Testing::TestTemporaryDirectory() / "rux-missing-subprocess-for-launch-error.exe";
     std::error_code filesystemError;
     std::filesystem::remove(missing, filesystemError);
 

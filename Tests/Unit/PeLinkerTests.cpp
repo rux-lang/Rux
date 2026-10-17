@@ -1,4 +1,5 @@
 #include "Linker/Linker.h"
+#include "TemporaryDirectory.h"
 
 #include <algorithm>
 #include <chrono>
@@ -65,7 +66,7 @@ std::string ReadString(const std::vector<uint8_t> &image, size_t offset) {
 
 std::filesystem::path PeTestPath(const std::string_view extension = ".exe") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    return std::filesystem::temp_directory_path() /
+    return Rux::Testing::TestTemporaryDirectory() /
            ("rux-pe-baseline-" + std::to_string(nonce) + std::string(extension));
 }
 
@@ -150,7 +151,7 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     first.symbols.push_back({"Main", "int", 0, 21, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     first.symbols.push_back({"Helper", "", 21, 1, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     first.symbols.push_back(
-        {"GetCurrentProcessId", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+        {"GetCurrentProcessId", "KERNEL32.DLL", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     first.symbols.push_back({"Second", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
 
     RcuFile second;
@@ -435,6 +436,39 @@ TEST_CASE("PE linker preserves the missing x86-64 entry diagnostic") {
     CHECK_FALSE(std::filesystem::exists(output));
 }
 
+TEST_CASE("PE linker refuses a call that nothing defines and no extern declares") {
+    // An extern a source declares names its library; a reference with none is to a function that does not exist,
+    // which used to be imported from KERNEL32 and leave an image the loader refused without a word.
+    RcuFile object;
+    object.sourcePath = "Main.rux";
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    text.data = {0xE8, 0, 0, 0, 0, 0xE8, 0, 0, 0, 0, 0xC3};
+    text.relocs.push_back({1, 1, RcuRelType::Rel32, 0});
+    text.relocs.push_back({6, 2, RcuRelType::Rel32, 0});
+    object.sections.push_back(std::move(text));
+    object.symbols.push_back({"Main", "int", 0, 11, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    object.symbols.push_back(
+        {"GetCurrentProcessId", "KERNEL32.DLL", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+    object.symbols.push_back(
+        {"Vector_Length_int32_2", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+    const auto output = PeTestPath();
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    Linker linker({std::move(object)}, "Undefined", {}, ArtifactKind::Executable, Target::OS::Windows,
+                  Target::Arch::X86_64);
+    CHECK_FALSE(linker.Link(output));
+    REQUIRE_FALSE(linker.Errors().empty());
+    CAPTURE(linker.Errors().front().message);
+    CHECK(linker.Errors().front().message.contains("undefined symbol 'Vector_Length_int32_2'"));
+    CHECK_FALSE(linker.Errors().front().message.contains("GetCurrentProcessId"));
+    CHECK_FALSE(std::filesystem::exists(output));
+}
+
 namespace {
 int64_t SignExtend(const uint64_t value, const unsigned bits) {
     const uint64_t sign = uint64_t{1} << (bits - 1);
@@ -502,7 +536,7 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     first.symbols.push_back({"Main", "int", 0, 36, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
     first.symbols.push_back({"Helper", "", 36, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local});
     first.symbols.push_back(
-        {"GetCurrentProcessId", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+        {"GetCurrentProcessId", "KERNEL32.DLL", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     first.symbols.push_back({"Second", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     first.symbols.push_back({"Constant", "", 0, 8, RCU_RODATA_IDX, RcuSymKind::Const, RcuSymVis::Local});
 
@@ -680,7 +714,7 @@ TEST_CASE("PE linker eight-byte aligns Windows AArch64 thunk tables across DLL g
     libraryText.alignment = 4;
     AppendWord(libraryText.data, 0xD65F03C0); // ret
     library.sections.push_back(std::move(libraryText));
-    library.symbols.push_back({"Imported", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    library.symbols.push_back({"Imported", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
     Linker libraryLinker({std::move(library)}, importedLibrary.stem().string(), {}, ArtifactKind::SharedLibrary,
                          Target::OS::Windows, Target::Arch::AArch64);
@@ -758,7 +792,7 @@ TEST_CASE("PE linker emits Windows AArch64 DLL entries exports and import librar
         AppendWord(text.data, 0x52800540); // Exported: mov w0, #42
         AppendWord(text.data, 0xD65F03C0); // ret
         library.symbols.push_back(
-            {"Exported", "int", exportedOffset, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+            {"Exported", "int", exportedOffset, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
         library.sections.push_back(std::move(text));
 
         const auto output = PeTestPath(".dll");
@@ -918,4 +952,79 @@ TEST_CASE("PE linker diagnoses invalid Windows AArch64 relocations") {
               "PE32+ writer");
     }
     CHECK_FALSE(std::filesystem::exists(output));
+}
+
+TEST_CASE("PE linker reads imported data through its IAT entry") {
+    // Main: mov rax, [rip + slot]; mov eax, [rax]; ret. The slot is `_fmode`'s IAT entry, which the loader fills with
+    // the address of msvcrt's variable.
+    RcuFile program;
+    RcuSection text;
+    text.name = ".text";
+    text.type = RcuSecType::Text;
+    text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
+    text.alignment = 16;
+    text.data = {0x48, 0x8B, 0x05, 0, 0, 0, 0, 0x8B, 0x00, 0xC3};
+    text.relocs.push_back({3, 1, RcuRelType::ImportSlotRel32, 0});
+    program.sections.push_back(std::move(text));
+    program.symbols.push_back({"Main", "int", 0, 10, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    program.symbols.push_back(
+        {"_fmode", "msvcrt.dll", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
+
+    const auto output = PeTestPath();
+    std::error_code error;
+    std::filesystem::remove(output, error);
+    Linker linker({std::move(program)}, "PeDataImport", {}, ArtifactKind::Executable, Target::OS::Windows,
+                  Target::Arch::X86_64);
+    REQUIRE(linker.Link(output));
+    std::ifstream stream(output, std::ios::binary);
+    REQUIRE(stream.is_open());
+    const std::vector<uint8_t> image((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    stream.close();
+    std::filesystem::remove(output, error);
+
+    const size_t peOffset = Read32(image, 0x3C);
+    const size_t optional = peOffset + 24;
+    const uint32_t entryRva = Read32(image, optional + 16);
+    const uint32_t importRva = Read32(image, optional + 112 + 8);
+    std::vector<PeSection> sections;
+    for (uint16_t i = 0; i < Read16(image, peOffset + 6); ++i) {
+        const size_t offset = optional + 240 + static_cast<size_t>(i) * 40;
+        sections.push_back({{},
+                            Read32(image, offset + 8),
+                            Read32(image, offset + 12),
+                            Read32(image, offset + 16),
+                            Read32(image, offset + 20)});
+    }
+    const auto rvaToOffset = [&](const uint32_t rva) -> size_t {
+        for (const auto &section : sections) {
+            if (rva >= section.rva && rva < section.rva + std::max(section.virtualSize, section.rawSize)) {
+                return section.rawOffset + rva - section.rva;
+            }
+        }
+        return image.size();
+    };
+    const auto rel32Target = [&](const uint32_t fieldRva) {
+        const int32_t displacement = static_cast<int32_t>(Read32(image, rvaToOffset(fieldRva)));
+        return static_cast<uint32_t>(fieldRva + 4 + displacement);
+    };
+
+    // The IAT entry of each import, by library and name.
+    std::unordered_map<std::string, uint32_t> iatEntries;
+    for (size_t descriptor = rvaToOffset(importRva); Read32(image, descriptor + 12) != 0; descriptor += 20) {
+        const std::string library = ReadString(image, rvaToOffset(Read32(image, descriptor + 12)));
+        const uint32_t lookupRva = Read32(image, descriptor);
+        const uint32_t firstThunkRva = Read32(image, descriptor + 16);
+        for (uint32_t index = 0;; ++index) {
+            const uint64_t nameRva = Read64(image, rvaToOffset(lookupRva) + index * 8);
+            if (nameRva == 0) {
+                break;
+            }
+            iatEntries[library + "!" + ReadString(image, rvaToOffset(static_cast<uint32_t>(nameRva)) + 2)] =
+                firstThunkRva + index * 8;
+        }
+    }
+    REQUIRE(iatEntries.contains("msvcrt.dll!_fmode"));
+    const uint32_t mainRva = rel32Target(entryRva + 5);
+    CHECK(image[rvaToOffset(mainRva) + 1] == 0x8B); // a load of the slot, not a `lea` of the datum
+    CHECK(rel32Target(mainRva + 3) == iatEntries["msvcrt.dll!_fmode"]);
 }

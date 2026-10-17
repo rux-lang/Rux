@@ -1,0 +1,210 @@
+// Hexadecimal is checked against RFC 4648's vectors, then exhaustively: every byte value encodes to the digits a
+// plain table gives, and every one of the 256 possible characters decodes the way a plain table says it should. The
+// exhaustive half is what checks the branchless arithmetic, whose masks are easy to get wrong at the edges of a range.
+// The refusals check two things together: the reason and offset reported, and that the destination still holds the
+// sentinel it was filled with beforehand, which is what "left exactly as it was" means.
+
+import Core::{ Failed, Panic };
+import Encoding::{ DecodeError, HexCase, HexDecode, HexDecodedLength, HexEncode, HexEncodedLength, ViewHex };
+import Text::{ BufferWriter, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Encoded(bytes: byte[..], letterCase: HexCase, expected: char8[..]) -> bool {
+    var room: char8[64];
+    let written = HexEncode(bytes, room[..], letterCase) catch { else => return false };
+    return written == expected.length && Same(room[..written], expected);
+}
+
+// Whether `text` decodes to exactly the bytes of `expected`.
+func Decoded(text: char8[..], expected: char8[..]) -> bool {
+    var room: byte[64];
+    let written = HexDecode(text, room[..]) catch { else => return false };
+    if written != expected.length { return false; }
+    var index: uint = 0;
+    while index < written {
+        if room[index] != (expected[index] as uint8) { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// The reason a decode was refused, as a small code: 1 character, 2 length, 6 capacity, 0 anything else.
+func Refusal(text: char8[..], room: uint, at: uint) -> int {
+    var storage: byte[64] = [0x3F; 64];
+    let reported = match HexDecode(text, storage[..room]) {
+        .Failure(error) => error,
+        .Success(_) => return -1
+    };
+    var index: uint = 0;
+    while index < 64 {
+        if storage[index] != 0x3F { return -2; }
+        index = index + 1;
+    }
+    return match reported {
+        .InvalidCharacter(offset) => offset == at ? 1 : -3,
+        .InvalidLength(offset) => offset == at ? 2 : -3,
+        .InsufficientCapacity(needed) => needed == at ? 6 : -3,
+        else => 0
+    };
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
+    return spec;
+}
+
+// Whether the view renders exactly `expected` under the spec.
+func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char8[..]) -> bool {
+    var storage: char8[600];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = ViewHex(bytes, letterCase);
+    if Failed(shown.WriteDisplay(sink, Spec(spec))) { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func RefusedBySpec(bytes: byte[..], spec: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter(storage[..]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = ViewHex(bytes);
+    let reported = match shown.WriteDisplay(sink, Spec(spec)) {
+        .Failure(error) => error,
+        .Success(_) => return false
+    };
+    return match reported {
+        .UnsupportedRequest => writer.Length() == 0,
+        else => false
+    };
+}
+
+// What a plain table says a character is worth as a hexadecimal digit, or -1.
+func Reference(c: uint) -> int {
+    if c >= 48 && c <= 57 { return (c - 48) as int; }
+    if c >= 65 && c <= 70 { return (c - 55) as int; }
+    if c >= 97 && c <= 102 { return (c - 87) as int; }
+    return -1;
+}
+
+func Main() -> int {
+    let foobar: byte[6] = [0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72];
+    // RFC 4648 section 10.
+    if !Encoded(foobar[..0], HexCase::Lower, "") { return 1; }
+    if !Encoded(foobar[..1], HexCase::Upper, "66") { return 2; }
+    if !Encoded(foobar[..3], HexCase::Upper, "666F6F") { return 3; }
+    if !Encoded(foobar[..], HexCase::Upper, "666F6F626172") { return 4; }
+    if !Encoded(foobar[..], HexCase::Lower, "666f6f626172") { return 5; }
+    if !Decoded("666F6F626172", "foobar") || !Decoded("666f6f626172", "foobar") || !Decoded("", "") { return 6; }
+    if HexEncodedLength(6) != 12 { return 7; }
+
+    // Every byte value, in both cases, against the digits a table gives.
+    let lower = "0123456789abcdef";
+    let upper = "0123456789ABCDEF";
+    var value: uint = 0;
+    while value < 256 {
+        let one: byte[1] = [value as byte];
+        var room: char8[2];
+        HexEncode(one[..], room[..]) catch { else => return 8 };
+        if room[0] != lower[value >> 4] || room[1] != lower[value & 15] { return 9; }
+        HexEncode(one[..], room[..], HexCase::Upper) catch { else => return 10 };
+        if room[0] != upper[value >> 4] || room[1] != upper[value & 15] { return 11; }
+        var back: byte[1];
+        let read = HexDecode(room[..], back[..]) catch { else => return 12 };
+        if read != 1 || back[0] != (value as byte) { return 13; }
+        value = value + 1;
+    }
+
+    // Every possible character, in the high and the low position, against a table.
+    var c: uint = 0;
+    while c < 256 {
+        var pair: char8[2] = ['0', '0'];
+        pair[0] = c as uint8 as char8;
+        var high: byte[1];
+        let expected = Reference(c);
+        match HexDecode(pair[..], high[..]) {
+            .Success(_) => {
+                if expected < 0 || high[0] != ((expected as uint) << 4) as byte { return 14; }
+            },
+            .Failure(error) => {
+                if expected >= 0 { return 15; }
+                match error {
+                    .InvalidCharacter(at) => {
+                        if at != 0 { return 16; }
+                    },
+                    else => return 17
+                }
+            }
+        }
+        pair[0] = '0';
+        pair[1] = c as uint8 as char8;
+        match HexDecode(pair[..], high[..]) {
+            .Success(_) => {
+                if expected < 0 || high[0] != expected as byte { return 18; }
+            },
+            .Failure(_) => {
+                if expected >= 0 { return 19; }
+            }
+        }
+        c = c + 1;
+    }
+
+    // Refusals say why and where, and leave the destination alone.
+    if Refusal("abc", 64, 3) != 2 { return 20; }
+    if Refusal("0x12", 64, 1) != 1 { return 21; }
+    if Refusal("12 4", 64, 2) != 1 || Refusal("12 34", 64, 5) != 2 { return 22; }
+    if Refusal("12g4", 64, 2) != 1 { return 23; }
+    if Refusal("123456", 2, 3) != 6 { return 24; }
+    match HexDecodedLength("12345") {
+        .Failure(_) => {},
+        .Success(_) => return 25
+    }
+
+    // An encode into a short destination is refused before anything is written.
+    var short: char8[11] = ['?'; 11];
+    match HexEncode(foobar[..], short[..]) {
+        .Failure(error) => {
+            match error {
+                .InsufficientCapacity => {},
+                else => return 26
+            }
+        },
+        .Success(_) => return 27
+    }
+    for character in short {
+        if character != '?' { return 28; }
+    }
+
+    // The text overload encodes the UTF-8 bytes.
+    var room: char8[8];
+    let written = HexEncode("é!", room[..]) catch { else => return 29 };
+    if !Same(room[..written], "c3a921") { return 30; }
+
+    // The view renders through a placeholder, takes its case from the spec, and pads to a width.
+    if !Shown(foobar[..2], HexCase::Lower, "", "666f") { return 31; }
+    if !Shown(foobar[..2], HexCase::Lower, "X", "666F") { return 32; }
+    if !Shown(foobar[..2], HexCase::Upper, "x", "666f") { return 33; }
+    if !Shown(foobar[..2], HexCase::Upper, "", "666F") { return 34; }
+    if !Shown(foobar[..2], HexCase::Lower, ">6", "  666f") { return 35; }
+    if !Shown(foobar[..2], HexCase::Lower, "*<6", "666f**") { return 36; }
+    if !RefusedBySpec(foobar[..], ".2") || !RefusedBySpec(foobar[..], "q") { return 37; }
+    // A view longer than one internal block renders whole.
+    var many: byte[200] = [0xAB; 200];
+    var expected: char8[400] = ['a'; 400];
+    var index: uint = 1;
+    while index < 400 {
+        expected[index] = 'b';
+        index = index + 2;
+    }
+    if !Shown(many[..], HexCase::Lower, "", expected[..]) { return 38; }
+    return 0;
+}

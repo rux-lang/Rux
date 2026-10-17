@@ -99,6 +99,75 @@ TEST_CASE("RCU serialization round-trips the architecture byte and every relocat
     }
 }
 
+TEST_CASE("RCU deserialization restores every field serialization writes") {
+    auto file = AArch64Object();
+    file.flags = RcuFileFlag::HasMetadata;
+    file.hasMetadata = true;
+    file.buildTimestamp = 1'760'000'000;
+    file.ruxVersion = 0x0004'0000;
+    file.compilerFlags = 7;
+    for (std::size_t i = 0; i < file.sourceHash.size(); ++i)
+        file.sourceHash[i] = static_cast<std::uint8_t>(i * 3);
+    RcuSection data;
+    data.name = ".rodata";
+    data.type = RcuSecType::RoData;
+    data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
+    data.alignment = 8;
+    data.data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    data.relocs.push_back({0, 1, RcuRelType::Abs64, -16});
+    file.sections.push_back(std::move(data));
+    file.symbols.push_back({"__table", "", 0, 9, 1, RcuSymKind::Const, RcuSymVis::Local});
+    file.symbols.push_back({"Extern", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
+
+    const auto bytes = SerializeRcuFile(file);
+    const auto read = DeserializeRcuFile(bytes);
+    REQUIRE(read.has_value());
+    CHECK(SerializeRcuFile(*read) == bytes);
+    CHECK(read->arch == file.arch);
+    CHECK(read->flags == file.flags);
+    CHECK(read->hasMetadata);
+    CHECK(read->sourcePath == file.sourcePath);
+    CHECK(read->packageName == file.packageName);
+    CHECK(read->buildTimestamp == file.buildTimestamp);
+    CHECK(read->ruxVersion == file.ruxVersion);
+    CHECK(read->compilerFlags == file.compilerFlags);
+    CHECK(read->sourceHash == file.sourceHash);
+    REQUIRE(read->sections.size() == file.sections.size());
+    for (std::size_t i = 0; i < file.sections.size(); ++i) {
+        const auto &expected = file.sections[i];
+        const auto &actual = read->sections[i];
+        CHECK(actual.name == expected.name);
+        CHECK(actual.type == expected.type);
+        CHECK(actual.flags == expected.flags);
+        CHECK(actual.alignment == expected.alignment);
+        CHECK(actual.data == expected.data);
+        REQUIRE(actual.relocs.size() == expected.relocs.size());
+        for (std::size_t r = 0; r < expected.relocs.size(); ++r) {
+            CHECK(actual.relocs[r].sectionOffset == expected.relocs[r].sectionOffset);
+            CHECK(actual.relocs[r].symbolIndex == expected.relocs[r].symbolIndex);
+            CHECK(actual.relocs[r].type == expected.relocs[r].type);
+            CHECK(actual.relocs[r].addend == expected.relocs[r].addend);
+        }
+    }
+    REQUIRE(read->symbols.size() == file.symbols.size());
+    for (std::size_t i = 0; i < file.symbols.size(); ++i) {
+        CHECK(read->symbols[i].name == file.symbols[i].name);
+        CHECK(read->symbols[i].typeName == file.symbols[i].typeName);
+        CHECK(read->symbols[i].value == file.symbols[i].value);
+        CHECK(read->symbols[i].size == file.symbols[i].size);
+        CHECK(read->symbols[i].sectionIdx == file.symbols[i].sectionIdx);
+        CHECK(read->symbols[i].kind == file.symbols[i].kind);
+        CHECK(read->symbols[i].visibility == file.symbols[i].visibility);
+    }
+
+    // A changed byte, a truncated object or a foreign file is refused rather than misread.
+    auto damaged = bytes;
+    damaged[damaged.size() / 2] ^= 0x40;
+    CHECK_FALSE(DeserializeRcuFile(damaged).has_value());
+    CHECK_FALSE(DeserializeRcuFile(std::span(bytes).first(40)).has_value());
+    CHECK_FALSE(DeserializeRcuFile(std::vector<std::uint8_t>(64, 0)).has_value());
+}
+
 TEST_CASE("RCU dump names the architecture and every relocation kind") {
     const auto text = DumpRcuFileText(AArch64Object());
     CHECK(text.find("; Architecture: AArch64\n") != std::string::npos);

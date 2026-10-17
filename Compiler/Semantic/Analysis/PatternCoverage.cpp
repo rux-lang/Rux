@@ -206,7 +206,7 @@ public:
     }
 
     const std::optional<std::vector<std::vector<TypeRef>>> &ConstructorsOf(const TypeRef &type) {
-        const std::string key = type.ToString();
+        const std::string &key = type.ToString();
         auto found = constructorCache.find(key);
         if (found == constructorCache.end()) {
             found = constructorCache.emplace(key, constructorSource(type)).first;
@@ -270,11 +270,11 @@ private:
 
 /// Whether a pattern is an `else` arm: the parser writes `else` as the only top-level wildcard a match arm can have.
 bool IsElseArm(const Pattern &pattern) {
-    return dynamic_cast<const WildcardPattern *>(&pattern) != nullptr;
+    return AstCast<const WildcardPattern>(&pattern) != nullptr;
 }
 
 const Pattern &UnguardedPattern(const Pattern &pattern) {
-    const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern);
+    const auto *guarded = AstCast<const GuardedPattern>(&pattern);
     return guarded && guarded->inner ? *guarded->inner : pattern;
 }
 
@@ -284,14 +284,14 @@ std::string MemberList(const TypeRef &sum) {
 } // namespace
 
 bool AnalysisContext::IsStoredAggregate(const TypeRef &type) noexcept {
-    return type.kind == TypeRef::Kind::Named || type.kind == TypeRef::Kind::Array ||
-           type.kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() || type.IsFallible();
+    return type->kind == TypeRef::Kind::Named || type->kind == TypeRef::Kind::Array ||
+           type->kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() || type.IsFallible();
 }
 
 AnalysisContext::PatternBorrow AnalysisContext::MatchSubjectBorrow(const Expr &subject,
                                                                    const TypeRef &expressionType) const {
-    if (expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()) {
-        return expressionType.inner.front().isMut ? PatternBorrow::Exclusive : PatternBorrow::Shared;
+    if (expressionType->kind == TypeRef::Kind::Reference && !expressionType->inner.empty()) {
+        return expressionType->inner.front().isMut ? PatternBorrow::Exclusive : PatternBorrow::Shared;
     }
     return AnalyzeMovePlace(subject).IsBorrowedStorage() ? PatternBorrow::Shared : PatternBorrow::Owned;
 }
@@ -311,10 +311,10 @@ void AnalysisContext::RecordPatternBinding(const Pattern &pattern, Symbol &symbo
 bool AnalysisContext::RejectSubsetViewUse(const Expr &expression, const SourceLocation location,
                                           const std::string_view use) {
     const Expr *named = &expression;
-    if (const auto *move = dynamic_cast<const MoveExpr *>(named)) {
+    if (const auto *move = AstCast<const MoveExpr>(named)) {
         named = move->operand.get();
     }
-    const auto *identifier = dynamic_cast<const IdentExpr *>(named);
+    const auto *identifier = AstCast<const IdentExpr>(named);
     const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
     if (!symbol || !symbol->isSubsetView) {
         return false;
@@ -335,27 +335,27 @@ void AnalysisContext::CheckGuardKeepsBindings(const GuardedPattern &pattern) {
                 self(*child);
             }
         };
-        if (const auto *identifier = dynamic_cast<const IdentPattern *>(&candidate)) {
+        if (const auto *identifier = AstCast<const IdentPattern>(&candidate)) {
             names.emplace_back(identifier->name, identifier->location);
         }
-        else if (const auto *typed = dynamic_cast<const TypedPattern *>(&candidate)) {
+        else if (const auto *typed = AstCast<const TypedPattern>(&candidate)) {
             if (!typed->name.empty()) {
                 names.emplace_back(typed->name, typed->location);
             }
         }
-        else if (const auto *presence = dynamic_cast<const PresencePattern *>(&candidate)) {
+        else if (const auto *presence = AstCast<const PresencePattern>(&candidate)) {
             visit(presence->inner);
         }
-        else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&candidate)) {
+        else if (const auto *enumeration = AstCast<const EnumPattern>(&candidate)) {
             std::ranges::for_each(enumeration->args, visit);
             for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
                 visit(argument.pattern);
             }
         }
-        else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&candidate)) {
+        else if (const auto *tuple = AstCast<const TuplePattern>(&candidate)) {
             std::ranges::for_each(tuple->elements, visit);
         }
-        else if (const auto *structure = dynamic_cast<const StructPattern *>(&candidate)) {
+        else if (const auto *structure = AstCast<const StructPattern>(&candidate)) {
             for (const StructPattern::Field &field : structure->fields) {
                 visit(field.pattern);
             }
@@ -393,16 +393,16 @@ bool AnalysisContext::CheckFreeBindingName(const std::string &name, const Source
     // meant to select; a binding would silently match everything instead.
     std::vector<TypeRef> nominalSubjects;
     if (subjectType.IsSum()) {
-        nominalSubjects = subjectType.inner;
+        nominalSubjects = subjectType->inner;
     }
-    else if (subjectType.kind == TypeRef::Kind::Named) {
+    else if (subjectType->kind == TypeRef::Kind::Named) {
         nominalSubjects.push_back(subjectType);
     }
     for (const TypeRef &candidate : nominalSubjects) {
-        if (candidate.kind != TypeRef::Kind::Named) {
+        if (candidate->kind != TypeRef::Kind::Named) {
             continue;
         }
-        const std::string enumName = BaseTypeName(candidate.name);
+        const std::string enumName = BaseTypeName(candidate->name);
         if (const std::optional<ResolvedCase> resolved = LookupCase(enumName, name)) {
             const std::string_view kind = resolved->form == EnumDecl::Form::Variant ? "variant" : "enum";
             EmitError(location,
@@ -417,21 +417,29 @@ bool AnalysisContext::CheckFreeBindingName(const std::string &name, const Source
         return true;
     }
     std::string_view kind = SymbolKindName(symbol->kind);
-    if (symbol->kind == Symbol::Kind::Type && symbol->type.kind == TypeRef::Kind::TypeParam) {
+    if (symbol->kind == Symbol::Kind::Type && symbol->type->kind == TypeRef::Kind::TypeParam) {
         kind = "generic parameter";
+    }
+    std::string help;
+    if (symbol->kind == Symbol::Kind::Const) {
+        // A pattern compares only with values written in it, so a named constant is neither a test nor a binding.
+        help = std::format("a pattern compares with literal values; write the value of '{0}', or bind the value and "
+                           "compare it with '{0}' in a guard such as 'value if value >= {0}'",
+                           name);
+    }
+    else if (symbol->kind == Symbol::Kind::Type) {
+        std::string lowered = name;
+        lowered.front() = static_cast<char>(std::tolower(static_cast<unsigned char>(name.front())));
+        help = std::format("write '{0}: {1}' to select the member, '{1} {{ ... }}' to destructure it, or 'Type::Case' "
+                           "to select a case",
+                           lowered == name ? lowered + "Value" : lowered, name);
+    }
+    else {
+        help = std::format("choose a binding name that does not already name a {}", kind);
     }
     EmitError(location,
               std::format("pattern '{}' cannot bind a new variable because '{}' already names a {}", name, name, kind),
-              {DeclarationNote(*symbol)},
-              std::format(
-                  "write '{0}: {1}' to select the member, '{1} {{ ... }}' to destructure it, or 'Type::Case' "
-                  "to select a case",
-                  [&] {
-                      std::string lowered = name;
-                      lowered.front() = static_cast<char>(std::tolower(static_cast<unsigned char>(name.front())));
-                      return lowered == name ? lowered + "Value" : lowered;
-                  }(),
-                  name));
+              {DeclarationNote(*symbol)}, std::move(help));
     return false;
 }
 
@@ -440,10 +448,10 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
     const auto membersNamed = [&](const std::string &written) {
         std::vector<std::size_t> found;
         const std::string nominal = NominalTypeName(written);
-        for (std::size_t index = 0; index < sum.inner.size(); ++index) {
-            const TypeRef &member = sum.inner[index];
-            if (member.kind == TypeRef::Kind::Named &&
-                (BaseTypeName(member.name) == nominal || BaseTypeName(member.name) == written)) {
+        for (std::size_t index = 0; index < sum->inner.size(); ++index) {
+            const TypeRef &member = sum->inner[index];
+            if (member->kind == TypeRef::Kind::Named &&
+                (BaseTypeName(member->name) == nominal || BaseTypeName(member->name) == written)) {
                 found.push_back(index);
             }
         }
@@ -461,19 +469,19 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
             *issue = std::format("case pattern on '{}' is ambiguous in {}: more than one member is that {}", written,
                                  MemberList(sum), what);
             *help = std::format("select one instantiation with a typed pattern, as in 'v: {}', and match it separately",
-                                sum.inner[found.front()].ToString());
+                                sum->inner[found.front()].ToString());
         }
         return std::nullopt;
     };
 
-    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         if (enumeration->path.size() < 2) {
             // An unqualified case on a sum names no member; offer the qualified spelling when one member has the case.
             const std::string &caseName = enumeration->path.empty() ? std::string() : enumeration->path.front();
             std::vector<std::string> owners;
-            for (const TypeRef &member : sum.inner) {
-                if (member.kind == TypeRef::Kind::Named && LookupCase(BaseTypeName(member.name), caseName)) {
-                    owners.push_back(BaseTypeName(member.name));
+            for (const TypeRef &member : sum->inner) {
+                if (member->kind == TypeRef::Kind::Named && LookupCase(BaseTypeName(member->name), caseName)) {
+                    owners.push_back(BaseTypeName(member->name));
                 }
             }
             *issue = std::format("case pattern '.{}' cannot select from sum {}", caseName, MemberList(sum));
@@ -488,10 +496,10 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
         }
         return single(membersNamed(enumeration->path.front()), variantName, "variant");
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         return single(membersNamed(structure->typeName), structure->typeName, "type");
     }
-    if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+    if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
         const Token &token = literal->value;
         const bool unsuffixedInteger =
             token.kind == TokenKind::IntLiteral && NumericLiteralSuffix(std::string_view(token.text)).empty();
@@ -499,16 +507,16 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
             token.kind == TokenKind::FloatLiteral && NumericLiteralSuffix(std::string_view(token.text)).empty();
         std::vector<std::size_t> found;
         if (unsuffixedInteger || unsuffixedFloat) {
-            for (std::size_t index = 0; index < sum.inner.size(); ++index) {
-                if (unsuffixedFloat ? sum.inner[index].IsFloat() : sum.inner[index].IsInteger()) {
+            for (std::size_t index = 0; index < sum->inner.size(); ++index) {
+                if (unsuffixedFloat ? sum->inner[index].IsFloat() : sum->inner[index].IsInteger()) {
                     found.push_back(index);
                 }
             }
         }
         else {
             const TypeRef literalType = LiteralType(token);
-            if (const auto member = std::ranges::find(sum.inner, literalType); member != sum.inner.end()) {
-                found.push_back(static_cast<std::size_t>(member - sum.inner.begin()));
+            if (const auto member = std::ranges::find(sum->inner, literalType); member != sum->inner.end()) {
+                found.push_back(static_cast<std::size_t>(member - sum->inner.begin()));
             }
         }
         if (found.size() == 1) {
@@ -521,11 +529,11 @@ std::optional<std::size_t> AnalysisContext::SumMemberOfPattern(const Pattern &pa
         *help = "add a literal suffix, or select the member with a typed pattern first";
         return std::nullopt;
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         std::vector<std::size_t> found;
-        for (std::size_t index = 0; index < sum.inner.size(); ++index) {
-            const TypeRef &member = sum.inner[index];
-            if (member.kind == TypeRef::Kind::Tuple && member.inner.size() == tuple->elements.size()) {
+        for (std::size_t index = 0; index < sum->inner.size(); ++index) {
+            const TypeRef &member = sum->inner[index];
+            if (member->kind == TypeRef::Kind::Tuple && member->inner.size() == tuple->elements.size()) {
                 found.push_back(index);
             }
         }
@@ -584,10 +592,10 @@ void AnalysisContext::CheckNativeCasePattern(const EnumPattern &pattern, const T
         payload = name == "Success" ? subjectType.FallibleSuccess() : subjectType.FallibleError();
     }
     else if (!fallible && name == "Some") {
-        payload = subjectType.inner.front();
+        payload = subjectType->inner.front();
     }
     else {
-        const std::string subject = subjectType.ToString();
+        const std::string &subject = subjectType.ToString();
         if (!fallible && name == "None") {
             EmitError(pattern.location,
                       std::format("'.None' matches a variant case; use 'none' for native optional '{}'", subject), {},
@@ -633,28 +641,28 @@ void AnalysisContext::DefinePatternBindings(const Pattern &pattern) {
             DefinePatternBindings(*child);
         }
     };
-    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
         define(identifier->name, identifier->location);
     }
-    else if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+    else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         define(typed->name, typed->location);
     }
-    else if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         visit(guarded->inner);
     }
-    else if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         visit(presence->inner);
     }
-    else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         std::ranges::for_each(enumeration->args, visit);
         for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
             visit(argument.pattern);
         }
     }
-    else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         std::ranges::for_each(tuple->elements, visit);
     }
-    else if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         for (const StructPattern::Field &field : structure->fields) {
             visit(field.pattern);
         }
@@ -667,8 +675,8 @@ std::optional<AnalysisContext::PatternIssue> AnalysisContext::TypedSelectionIssu
     if (ClassifyNativeSelection(subjectType, annotation).kind != NativeSelection::Kind::Invalid) {
         return std::nullopt;
     }
-    const std::string written = annotation.ToString();
-    const std::string subject = subjectType.ToString();
+    const std::string &written = annotation.ToString();
+    const std::string &subject = subjectType.ToString();
     if (subjectType.IsFallible()) {
         return PatternIssue{
             pattern.location, std::format("typed pattern '{}' cannot select from fallible '{}'", written, subject),
@@ -685,7 +693,7 @@ std::optional<AnalysisContext::PatternIssue> AnalysisContext::TypedSelectionIssu
                             std::format("typed pattern '{}' cannot select from optional '{}'", written, subject),
                             std::format("a typed pattern selects one presence level by its payload '{}', or a "
                                         "member of it; use '.Some(...)' to match deeper levels",
-                                        subjectType.inner.front().ToString())};
+                                        subjectType->inner.front().ToString())};
     }
     return PatternIssue{pattern.location,
                         std::format("typed pattern '{}' cannot match a value of type '{}'", written, subject),
@@ -694,8 +702,8 @@ std::optional<AnalysisContext::PatternIssue> AnalysisContext::TypedSelectionIssu
 
 void AnalysisContext::CheckMembershipTest(const IsExpr &expression, const TypeRef &operandType,
                                           const TypeRef &testedType) {
-    const TypeRef subject = operandType.kind == TypeRef::Kind::Reference && !operandType.inner.empty()
-                              ? operandType.inner.front()
+    const TypeRef subject = operandType->kind == TypeRef::Kind::Reference && !operandType->inner.empty()
+                              ? operandType->inner.front()
                               : operandType;
     if (subject.IsUnknown() || testedType.IsUnknown()) {
         return;
@@ -742,32 +750,32 @@ std::optional<std::vector<std::vector<TypeRef>>> AnalysisContext::CoverageConstr
     using Constructors = std::vector<std::vector<TypeRef>>;
     if (type.IsSum()) {
         Constructors constructors;
-        for (const TypeRef &member : type.inner) {
+        for (const TypeRef &member : type->inner) {
             constructors.push_back({member});
         }
         return constructors;
     }
-    if (type.IsOptional() && !type.inner.empty()) {
-        return Constructors{{}, {type.inner.front()}};
+    if (type.IsOptional() && !type->inner.empty()) {
+        return Constructors{{}, {type->inner.front()}};
     }
     if (type.IsFallible()) {
         return Constructors{{type.FallibleSuccess()}, {type.FallibleError()}};
     }
-    if (type.kind == TypeRef::Kind::Tuple) {
-        return Constructors{type.inner};
+    if (type->kind == TypeRef::Kind::Tuple) {
+        return Constructors{type->inner};
     }
     if (type.IsBool()) {
         return Constructors{{}, {}};
     }
-    if (type.kind != TypeRef::Kind::Named) {
+    if (type->kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }
-    const EnumDecl *declaration = EnumNamed(BaseTypeName(type.name));
+    const EnumDecl *declaration = EnumNamed(BaseTypeName(type->name));
     if (!declaration) {
         return std::nullopt;
     }
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type->name);
     for (std::size_t index = 0; index < std::min(arguments.size(), declaration->typeParams.size()); ++index) {
         substitutions.emplace(declaration->typeParams[index].name, arguments[index]);
     }
@@ -800,30 +808,30 @@ public:
         if (type.IsUnknown()) {
             return {};
         }
-        if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+        if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
             return guarded->inner ? Translate(*guarded->inner, type) : Space{};
         }
-        if (dynamic_cast<const WildcardPattern *>(&pattern) || dynamic_cast<const IdentPattern *>(&pattern)) {
+        if (AstCast<const WildcardPattern>(&pattern) || AstCast<const IdentPattern>(&pattern)) {
             return {};
         }
-        if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+        if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
             return TranslateTyped(*typed, type);
         }
-        if (dynamic_cast<const NonePattern *>(&pattern)) {
+        if (AstCast<const NonePattern>(&pattern)) {
             return type.IsOptional() ? Space::Of(0, {}) : Space{};
         }
-        if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+        if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
             if (!type.IsOptional() || !presence->inner) {
                 return {};
             }
-            return Space::Of(1, {Translate(*presence->inner, type.inner.front())});
+            return Space::Of(1, {Translate(*presence->inner, type->inner.front())});
         }
-        if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+        if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
             if (const std::optional<Space> native = TranslateNativeCase(*enumeration, type)) {
                 return *native;
             }
         }
-        if (type.IsSum() && !dynamic_cast<const RangePattern *>(&pattern)) {
+        if (type.IsSum() && !AstCast<const RangePattern>(&pattern)) {
             std::string issue;
             std::optional<std::string> help;
             const std::optional<std::size_t> member = analysis.SumMemberOfPattern(pattern, type, &issue, &help);
@@ -831,36 +839,36 @@ public:
                 sawInvalidSelection = true;
                 return Space::Choice({});
             }
-            return Space::Of(*member, {Translate(pattern, type.inner[*member])});
+            return Space::Of(*member, {Translate(pattern, type->inner[*member])});
         }
-        if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+        if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
             return TranslateNominalCase(*enumeration, type);
         }
-        if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+        if (const auto *literal = AstCast<const LiteralPattern>(&pattern)) {
             if (type.IsBool() && literal->value.kind == TokenKind::BoolLiteral) {
                 return Space::Of(literal->value.text == "true" ? 1 : 0, {});
             }
             return Space::Value("literal:" + literal->value.text);
         }
-        if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+        if (const auto *range = AstCast<const RangePattern>(&pattern)) {
             return Space::Value(std::format("range:{}", static_cast<const void *>(range)));
         }
-        if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
-            if (type.kind != TypeRef::Kind::Tuple || type.inner.size() != tuple->elements.size()) {
+        if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
+            if (type->kind != TypeRef::Kind::Tuple || type->inner.size() != tuple->elements.size()) {
                 return {};
             }
             std::vector<Space> fields;
             for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
-                fields.push_back(tuple->elements[index] ? Translate(*tuple->elements[index], type.inner[index])
+                fields.push_back(tuple->elements[index] ? Translate(*tuple->elements[index], type->inner[index])
                                                         : Space{});
             }
             return Space::Of(0, std::move(fields));
         }
-        if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+        if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
             // A struct is open to coverage: it completes its position only when every field pattern matches anything.
             const bool irrefutable = std::ranges::all_of(structure->fields, [](const StructPattern::Field &field) {
-                return !field.pattern || dynamic_cast<const WildcardPattern *>(field.pattern.get()) ||
-                       dynamic_cast<const IdentPattern *>(field.pattern.get());
+                return !field.pattern || AstCast<const WildcardPattern>(field.pattern.get()) ||
+                       AstCast<const IdentPattern>(field.pattern.get());
             });
             return irrefutable ? Space{} : Space::Value(std::format("struct:{}", static_cast<const void *>(structure)));
         }
@@ -926,16 +934,16 @@ private:
                              {Translate(argument, failure ? type.FallibleError() : type.FallibleSuccess())});
         }
         if (type.IsOptional() && name == "Some") {
-            return Space::Of(1, {Translate(argument, type.inner.front())});
+            return Space::Of(1, {Translate(argument, type->inner.front())});
         }
         return Space{};
     }
 
     Space TranslateNominalCase(const EnumPattern &pattern, const TypeRef &type) {
-        if (type.kind != TypeRef::Kind::Named || pattern.path.empty()) {
+        if (type->kind != TypeRef::Kind::Named || pattern.path.empty()) {
             return {};
         }
-        const EnumDecl *declaration = analysis.EnumNamed(analysis.BaseTypeName(type.name));
+        const EnumDecl *declaration = analysis.EnumNamed(analysis.BaseTypeName(type->name));
         if (!declaration) {
             return {};
         }
@@ -950,9 +958,10 @@ private:
             return {};
         }
         const std::vector<TypeRef> &fieldTypes = (*constructors)[index];
-        if (pattern.args.size() + pattern.namedArgs.size() != fieldTypes.size()) {
+        if (!pattern.braced && pattern.args.size() != fieldTypes.size()) {
             return {};
         }
+        // A field a named payload pattern leaves out stays a wildcard.
         std::vector<Space> fields(fieldTypes.size());
         for (std::size_t field = 0; field < pattern.args.size(); ++field) {
             if (pattern.args[field]) {
@@ -988,29 +997,29 @@ std::string NativePatternTranslator::Describe(const Witness &witness, const Type
         return index < witness.fields.size() ? Describe(witness.fields[index], fieldType) : std::string("_");
     };
     if (type.IsOptional()) {
-        return witness.constructor == 0 ? std::string("none") : ".Some(" + field(0, type.inner.front()) + ")";
+        return witness.constructor == 0 ? std::string("none") : ".Some(" + field(0, type->inner.front()) + ")";
     }
     if (type.IsFallible()) {
         return witness.constructor == 0 ? ".Success(" + field(0, type.FallibleSuccess()) + ")"
                                         : ".Failure(" + field(0, type.FallibleError()) + ")";
     }
     if (type.IsSum()) {
-        const TypeRef &member = type.inner[witness.constructor];
+        const TypeRef &member = type->inner[witness.constructor];
         const std::string inner = field(0, member);
         return inner == "_" ? "_: " + member.ToString() : inner;
     }
-    if (type.kind == TypeRef::Kind::Tuple) {
+    if (type->kind == TypeRef::Kind::Tuple) {
         std::string text = "(";
-        for (std::size_t index = 0; index < type.inner.size(); ++index) {
-            text += (index == 0 ? "" : ", ") + field(index, type.inner[index]);
+        for (std::size_t index = 0; index < type->inner.size(); ++index) {
+            text += (index == 0 ? "" : ", ") + field(index, type->inner[index]);
         }
         return text + ")";
     }
     if (type.IsBool()) {
         return witness.constructor == 1 ? "true" : "false";
     }
-    if (type.kind == TypeRef::Kind::Named) {
-        const std::string enumName = analysis.BaseTypeName(type.name);
+    if (type->kind == TypeRef::Kind::Named) {
+        const std::string enumName = analysis.BaseTypeName(type->name);
         const EnumDecl *declaration = analysis.EnumNamed(enumName);
         if (declaration && witness.constructor < declaration->variants.size()) {
             const auto constructors = analysis.CoverageConstructors(type);
@@ -1040,7 +1049,7 @@ bool AnalysisContext::NativeMatchCoverage(const std::vector<const Pattern *> &pa
         if (!pattern) {
             continue;
         }
-        const bool guarded = dynamic_cast<const GuardedPattern *>(pattern) != nullptr;
+        const bool guarded = AstCast<const GuardedPattern>(pattern) != nullptr;
         const bool invalidBefore = translator.sawInvalidSelection;
         translator.sawInvalidSelection = false;
         const Space space = translator.Translate(UnguardedPattern(*pattern), subjectType);
@@ -1073,6 +1082,29 @@ bool AnalysisContext::NativeMatchCoverage(const std::vector<const Pattern *> &pa
             std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), names), std::nullopt});
     }
     return missing.empty();
+}
+
+std::optional<std::string> AnalysisContext::MissingMatchValues(const std::vector<const Pattern *> &patterns,
+                                                               const TypeRef &subjectType) {
+    CoverageSolver solver([this](const TypeRef &type) { return CoverageConstructors(type); });
+    const std::unordered_map<std::string, TypeRef> noSubstitutions;
+    NativePatternTranslator translator(*this, noSubstitutions, nullptr);
+    std::vector<Row> rows;
+    for (const Pattern *pattern : patterns) {
+        // A guarded arm may refuse any value it matches, so it covers nothing.
+        if (pattern && !AstCast<const GuardedPattern>(pattern)) {
+            rows.push_back(Row{translator.Translate(*pattern, subjectType)});
+        }
+    }
+    const std::vector<WitnessRow> missing = solver.Useful(rows, Row{Space{}}, {subjectType}, 8);
+    if (missing.empty()) {
+        return std::nullopt;
+    }
+    std::string names;
+    for (const WitnessRow &witness : missing) {
+        names += (names.empty() ? "" : ", ") + translator.Describe(witness.front(), subjectType);
+    }
+    return names;
 }
 
 void AnalysisContext::ValidateNativeMatch(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType) {
@@ -1108,25 +1140,25 @@ bool AnalysisContext::PatternContains(const Pattern &pattern, const Pattern &tar
         return true;
     }
     const auto contains = [&](const PatternPtr &child) { return child && PatternContains(*child, target); };
-    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+    if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         return contains(guarded->inner);
     }
-    if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+    if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
         return contains(presence->inner);
     }
-    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+    if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         return std::ranges::any_of(enumeration->args, contains) ||
                std::ranges::any_of(enumeration->namedArgs,
                                    [&](const EnumPattern::NamedArg &argument) { return contains(argument.pattern); });
     }
-    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         return std::ranges::any_of(tuple->elements, contains);
     }
-    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
         return std::ranges::any_of(structure->fields,
                                    [&](const StructPattern::Field &field) { return contains(field.pattern); });
     }
-    if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+    if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         return contains(range->lo) || contains(range->hi);
     }
     return false;
@@ -1134,16 +1166,7 @@ bool AnalysisContext::PatternContains(const Pattern &pattern, const Pattern &tar
 
 void AnalysisContext::ValidateDeferredPatternChecks(const FuncDecl &declaration,
                                                     const std::unordered_map<std::string, TypeRef> &substitutions) {
-    std::vector<std::string> names;
-    for (const auto &[name, type] : substitutions) {
-        names.push_back(std::format("{} = {}", name, type.ToString()));
-    }
-    std::ranges::sort(names);
-    std::string arguments;
-    for (const std::string &name : names) {
-        arguments += (arguments.empty() ? "" : ", ") + name;
-    }
-    const std::string note = std::format("in '{}' instantiated with {}", declaration.name, arguments);
+    const std::string note = InstantiationNote(declaration, substitutions);
     const auto emit = [&](PatternIssue issue) {
         EmitError(issue.location, std::move(issue.message), {note}, std::move(issue.help));
     };
@@ -1152,7 +1175,7 @@ void AnalysisContext::ValidateDeferredPatternChecks(const FuncDecl &declaration,
         for (const TypeRef &type : it->second) {
             TypeRef instantiated = SubstituteTypeParameters(type, substitutions);
             LayoutOfTypeRef(instantiated);
-            instantiatedTypes.push_back(std::move(instantiated));
+            instantiatedTypes.push_back(instantiated);
         }
     }
     if (const auto it = deferredMatchChecks.find(&declaration); it != deferredMatchChecks.end()) {

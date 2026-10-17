@@ -1,0 +1,156 @@
+// Checks that fail a test with a message saying what was expected and what was found.
+// Each check returns `! TestFailure`, so a test passes it on with `?` and stops at the first check that does not hold.
+
+import Format::WriteFormat;
+import Test::TestFailure;
+import Text::Display;
+
+/// Fails unless `condition` holds.
+/// @param condition what must be true
+/// @param message what it means, for the failure
+/// @returns nothing, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect
+pub func Expect(condition: bool, message: char8[..]) -> ! TestFailure {
+    if !condition { fail TestFailure::Of(message); }
+}
+
+/// Fails unless `actual` equals `expected`, saying both.
+/// @typeParam T a type with `==` that can be displayed
+/// @param actual what the code gave
+/// @param expected what it should have given
+/// @returns nothing, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-equal
+pub func ExpectEqual<T: Display>(actual: T, expected: T) -> ! TestFailure {
+    if actual == expected { return; }
+    var failure = TestFailure::Of("expected ");
+    var writer = failure.Rest();
+    WriteFormat(writer, "{}, but got {}", expected, actual) catch { else => {} };
+    failure.Grow(writer);
+    fail failure;
+}
+
+/// Fails if `actual` equals `unexpected`.
+/// @typeParam T a type with `==` that can be displayed
+/// @param actual what the code gave
+/// @param unexpected what it should not have given
+/// @returns nothing, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-not-equal
+pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) -> ! TestFailure {
+    if actual != unexpected { return; }
+    var failure = TestFailure::Of("expected anything but ");
+    var writer = failure.Rest();
+    WriteFormat(writer, "{}", unexpected) catch { else => {} };
+    failure.Grow(writer);
+    fail failure;
+}
+
+/// Fails unless `actual` is within `tolerance` of `expected`.
+/// @param actual what the code gave
+/// @param expected what it should have given
+/// @param tolerance how far apart they may be
+/// @returns nothing, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-near
+pub func ExpectNear(actual: float64, expected: float64, tolerance: float64) -> ! TestFailure {
+    let difference = actual > expected ? actual - expected : expected - actual;
+    if difference <= tolerance { return; }
+    var failure = TestFailure::Of("expected ");
+    var writer = failure.Rest();
+    WriteFormat(writer, "{} within {}, but got {}", expected, tolerance, actual) catch { else => {} };
+    failure.Grow(writer);
+    fail failure;
+}
+
+// Appends `text` from `start` for at most `count` bytes, quoted, with line breaks, tabs and other controls escaped.
+func AppendExcerpt(failure: &var TestFailure, text: char8[..], start: uint, count: uint) {
+    failure.Append("\"");
+    if start > 0u { failure.Append("..."); }
+    let end = start + count < text.length ? start + count : text.length;
+    var at = start;
+    while at < end {
+        let byte = text[at] as uint8;
+        if byte == 0x0Au8 { failure.Append("\\n"); }
+        else if byte == 0x0Du8 { failure.Append("\\r"); }
+        else if byte == 0x09u8 { failure.Append("\\t"); }
+        else if byte == 0x22u8 { failure.Append("\\\""); }
+        else if byte < 0x20u8 { failure.Append("?"); }
+        else { failure.Append(text[at..at + 1]); }
+        at = at + 1;
+    }
+    if end < text.length { failure.Append("..."); }
+    failure.Append("\"");
+}
+
+/// Fails unless `actual` is the same text as `expected`, saying at which byte they part and showing each around it.
+/// @param actual what the code gave
+/// @param expected what it should have given
+/// @returns nothing, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-text
+pub func ExpectText(actual: char8[..], expected: char8[..]) -> ! TestFailure {
+    var at: uint = 0;
+    while at < actual.length && at < expected.length && actual[at] == expected[at] { at = at + 1; }
+    if at == actual.length && at == expected.length { return; }
+    var failure = TestFailure::Of("texts differ at byte ");
+    var writer = failure.Rest();
+    WriteFormat(writer, "{} (expected {} bytes, got {})", at, expected.length, actual.length) catch { else => {} };
+    failure.Grow(writer);
+    let start = at > 24u ? at - 24u : 0u;
+    failure.Append("\n  expected ");
+    AppendExcerpt(failure, expected, start, 48);
+    failure.Append("\n  but got  ");
+    AppendExcerpt(failure, actual, start, 48);
+    fail failure;
+}
+
+/// The value of `value`, failing when there is none.
+/// @typeParam T the value's type
+/// @param value the optional value
+/// @param message what its absence means, for the failure
+/// @returns the value, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-some
+pub func ExpectSome<T>(value: T?, message: char8[..]) -> T ! TestFailure {
+    match value {
+        .Some(present) => return present,
+        none => fail TestFailure::Of(message)
+    }
+}
+
+/// Fails when `value` is present.
+/// @typeParam T the value's type
+/// @param value the optional value
+/// @param message what its presence means, for the failure
+/// @returns nothing, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-none
+pub func ExpectNone<T>(value: T?, message: char8[..]) -> ! TestFailure {
+    match value {
+        .Some(_) => fail TestFailure::Of(message),
+        none => {}
+    }
+}
+
+/// The success of `outcome`, failing when it failed.
+/// @typeParam T the success's type
+/// @typeParam E the failure's type
+/// @param outcome what the code gave
+/// @param message what its failure means, for the test's failure
+/// @returns the success, or the failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-success
+pub func ExpectSuccess<T, E>(outcome: T ! E, message: char8[..]) -> T ! TestFailure {
+    match outcome {
+        .Success(value) => return value,
+        .Failure(_) => fail TestFailure::Of(message)
+    }
+}
+
+/// The failure of `outcome`, failing the test when it succeeded.
+/// @typeParam T the success's type
+/// @typeParam E the failure's type
+/// @param outcome what the code gave
+/// @param message what its success means, for the test's failure
+/// @returns the failure the code gave, or the test's failure
+/// @see https://rux-lang.dev/docs/api/test/expect#expect-failure
+pub func ExpectFailure<T, E>(outcome: T ! E, message: char8[..]) -> E ! TestFailure {
+    match outcome {
+        .Success(_) => fail TestFailure::Of(message),
+        .Failure(error) => return error
+    }
+}

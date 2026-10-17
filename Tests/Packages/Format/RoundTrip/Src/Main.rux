@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Format::{ IsNan, ParseFloat64, ParseInt64, ParseInt128, ParseUint64, ParseUint512, Render };
+import Format::{ IsNan, ParseFloat64, ParseInt128, ParseInt64, ParseUint512, ParseUint64, Render };
 import Text::{ FormatError, String };
 
 // The round trip is the contract the two halves owe each other: what formatting writes, parsing reads back to the
@@ -72,7 +72,7 @@ func Main() -> int {
     let widest = Rendered(allocator, Render(allocator, "{}", 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512));
     match ParseUint512(widest.View()) {
         .Success(parsed) => {
-            if parsed % 10u512 != 5u512 { return 34; }
+            if parsed % 10u512 != 5 { return 34; }
         },
         .Failure(_) => { return 35; }
     }

@@ -3,6 +3,7 @@
 #include "CodeGen/BackendDiagnostics.h"
 #include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
+#include "CodeGen/GlobalData.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/RcuModuleBuilder.h"
@@ -12,6 +13,7 @@
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/FunctionEmitter.h"
+#include "CodeGen/X86_64/MachineInstructions.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Object/Rcu/RcuMetadata.h"
 #include "Unicode/Utf.h"
@@ -29,13 +31,12 @@ using namespace Layout;
 
 class X86_64ModuleEmitter final : private X86_64FunctionEmitterHooks, private X86_64CallAndTerminatorHooks {
 public:
-    explicit X86_64ModuleEmitter(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
-                                 const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName,
+    explicit X86_64ModuleEmitter(const LirModule &module, const PackageLayouts &packageLayouts, std::string packageName,
                                  const Target::OS inputTargetOs, const BuildInfo &inputBuildInfo,
                                  std::vector<Diagnostic> &inputDiagnostics)
         : mod(module)
-        , structDecls(inputStructDecls)
-        , packageInterfaceNames(inputPackageInterfaceNames)
+        , layouts(packageLayouts.layouts)
+        , interfaceNames(packageLayouts.interfaceNames)
         , pkgName(std::move(packageName))
         , targetOs(inputTargetOs)
         , buildInfo(inputBuildInfo)
@@ -52,8 +53,9 @@ public:
 
 private:
     const LirModule &mod;
-    const std::vector<LirStructDecl> &structDecls;
-    const std::vector<std::string> &packageInterfaceNames;
+    // Struct field layouts
+    const LayoutMap &layouts;
+    const std::unordered_set<std::string> &interfaceNames;
     std::string pkgName;
     Target::OS targetOs;
     const BuildInfo &buildInfo;
@@ -79,10 +81,9 @@ private:
     std::unordered_map<std::string, uint32_t> externSyms;
     std::unordered_map<std::string, uint32_t> funcSyms;
     std::unordered_map<std::string, uint32_t> dataSyms;
+    /// The extern variables the module reaches, whose addresses come from import slots.
+    std::unordered_set<std::string> importedData;
 
-    // Struct field layouts
-    LayoutMap layouts;
-    std::unordered_set<std::string> interfaceNames;
     std::unordered_set<std::string> reportedDiagnostics;
     std::string currentFunc;
 
@@ -155,18 +156,18 @@ private:
         if (t.IsSlice()) {
             return true;
         }
-        if (t.kind != TypeRef::Kind::Named) {
+        if (t->kind != TypeRef::Kind::Named) {
             return false;
         }
-        const std::string base = BaseTypeName(t.name);
+        const std::string base = BaseTypeName(t->name);
         return interfaceNames.count(base) > 0;
     }
 
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const override {
         const auto &registerTypes = FramePlan().RegisterTypes();
         const auto it = registerTypes.find(reg);
-        return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
-               it->second.inner[0] == pointee;
+        return it != registerTypes.end() && it->second->kind == TypeRef::Kind::Pointer && !it->second->inner.empty() &&
+               it->second->inner[0] == pointee;
     }
 
     uint32_t GetOrAddExtern(const std::string &name, uint8_t kind, const std::string &dll = {}) {
@@ -179,13 +180,25 @@ private:
         return idx;
     }
 
+    // The library a source extern comes from. One without `#Link` on Windows comes from KERNEL32, and saying so here
+    // is what lets the linker tell it from a call that nothing defines and nothing declares.
+    [[nodiscard]] std::string ExternLibrary(const LirFunc &func) const {
+        return func.dll.empty() && targetOs == Target::OS::Windows ? std::string("KERNEL32.DLL") : func.dll;
+    }
+
     void PredeclareFunctions() {
         for (const auto &func : mod.funcs) {
-            if (func.isExtern || funcSyms.contains(func.name)) {
+            // An extern is declared up front with its library: a call reached before its declaration would otherwise
+            // declare the symbol without one.
+            if (func.isExtern) {
+                GetOrAddExtern(func.name, RcuSymKind::ExternFunc, ExternLibrary(func));
+                continue;
+            }
+            if (funcSyms.contains(func.name)) {
                 continue;
             }
             funcSyms[func.name] = DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                                func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                                RcuSymVis::ForDefinition(func.isPublic, func.isExported));
         }
     }
 
@@ -224,6 +237,22 @@ private:
         return GetOrAddExtern(name, RcuSymKind::ExternData);
     }
 
+    [[nodiscard]] bool IsImportedData(const std::string &name) const override {
+        return importedData.contains(name);
+    }
+
+    /// Whether a function reaches imported data, which only the established emitter loads through its slot.
+    [[nodiscard]] bool ReachesImportedData(const LirFunc &function) const {
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::GlobalAddr && importedData.contains(instruction.strArg)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     [[nodiscard]] std::uint32_t ResolveGlobalSymbol(const std::string &name) override {
         if (const auto data = dataSyms.find(name); data != dataSyms.end()) {
             return data->second;
@@ -242,9 +271,50 @@ private:
         AddTextReloc(sectionOffset, symbol);
     }
 
+    void AddTypedTextRelocation(const std::uint32_t sectionOffset, const std::uint32_t symbol,
+                                const std::uint16_t type) override {
+        (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, sectionOffset, symbol, type);
+    }
+
+    [[nodiscard]] Target::OS TargetOs() const override {
+        return targetOs;
+    }
+
     void EmitCallArguments(const std::vector<LirReg> &arguments) override {
         activeCallEmitter->EmitArguments(arguments);
     }
+
+public:
+    /// Makes this module contribute to the program's stack traces.
+    void SetBacktrace(const BacktraceTables &tables) {
+        backtrace = tables;
+    }
+
+    /// Routes every function the machine selector supports through it (`MachineSelection.h`).
+    void SetMachineSelection(const bool enabled) noexcept {
+        machineSelection = enabled;
+    }
+
+private:
+    bool machineSelection = false;
+
+    /// Emits `func` through machine selection and register allocation; false when it has to use the direct emitter.
+    [[nodiscard]] bool GenMachineFunc(const LirFunc &func);
+    [[nodiscard]] std::uint32_t ResolveMachineSymbol(const X86_64Machine::SymbolRef &symbol);
+
+    // One function this module emitted, for its stack-trace table.
+    struct FunctionRange {
+        std::uint32_t symbol = 0;
+        std::uint32_t size = 0;
+        std::string name;
+    };
+
+    BacktraceTables backtrace;
+    std::vector<FunctionRange> functionRanges;
+    void PredeclareFunctionTables();
+    void EmitFunctionTables();
+    void EmitBacktraceCall();
+    void EmitWriteStandardError(const LirInstr &instr);
 
     [[nodiscard]] std::uint32_t ResolveCallSymbol(const std::string &name) override {
         if (const auto function = funcSyms.find(name); function != funcSyms.end()) {
@@ -265,6 +335,10 @@ private:
     void StoreStack(LirReg dst, const TypeRef &t) const;
 
     void StoreA(LirReg dst, const TypeRef &t) const override {
+        if (const auto found = FramePlan().FloatRegisters().find(dst); found != FramePlan().FloatRegisters().end()) {
+            enc.MovXmm(found->second, 0);
+            return;
+        }
         const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         auto it = physicalRegisters.find(dst);
         if (it != physicalRegisters.end()) {
@@ -293,14 +367,6 @@ private:
     void CopyAggregateFromR10ToStack(const int32_t dstDisp, const int size) const;
 
     void StoreHiddenReturnValue(const LirReg src, const TypeRef &t) const override;
-
-    // Build struct layouts
-    void BuildLayouts() {
-        for (const auto &name : packageInterfaceNames) {
-            interfaceNames.insert(name);
-        }
-        BuildStructLayouts(structDecls, layouts, interfaceNames);
-    }
 
     void EmitStackAlloc(int32_t bytes) const;
 
@@ -334,6 +400,10 @@ private:
     void EmitConstSlice(const LirConstDecl &c);
 
     void EmitConstArray(const LirConstDecl &c);
+
+    void EmitConstValue(const LirConstDecl &c);
+
+    void EmitGlobal(const LirGlobal &global);
 
     void GenModule();
 };

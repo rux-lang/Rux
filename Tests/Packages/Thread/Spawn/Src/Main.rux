@@ -1,0 +1,107 @@
+// Threads run their function on the context moved to them and hand back its result when joined; every thread has its
+// own copy of a thread-local variable, starting at its initializer; a detached thread finishes on its own; and work
+// spread over several threads adds up to the same answer as the work done on one.
+
+import Core::{ Assert, AtomicFetchAdd, AtomicLoad, MemoryOrder };
+import Thread::{ AvailableParallelism, CurrentId, JoinHandle, Spawn, SpawnWith, ThreadOptions, Yield };
+
+thread var Visits: int64 = 100;
+
+struct Range {
+    first: uint64;
+    last: uint64;
+    shared: *var uint64;
+}
+
+// Sums a range, counts the numbers it saw in the shared counter, and reports this thread's own copy of `Visits`.
+func SumRange(range: Range) -> uint64 {
+    var total: uint64 = 0;
+    var value = range.first;
+    while value <= range.last {
+        total = total + value;
+        AtomicFetchAdd(range.shared, 1u64, MemoryOrder::Relaxed);
+        value = value + 1u64;
+    }
+    Visits = Visits + 1;
+    Assert(Visits == 101, "each thread starts with its own copy of a thread-local variable");
+    return total;
+}
+
+func Identify(unused: uint8) -> uint64 {
+    return CurrentId();
+}
+
+// Written without a return type, which is a function returning the unit, so its threads join to `()`.
+func Bump(counter: *var uint64) {
+    AtomicFetchAdd(counter, 1u64, MemoryOrder::Release);
+}
+
+func BumpTwice(counter: *var uint64) -> () {
+    AtomicFetchAdd(counter, 2u64, MemoryOrder::Release);
+}
+
+// Starts a thread and lets its handle go out of scope, which detaches it.
+func SpawnAndDrop(counter: *var uint64) -> bool {
+    let dropped = Spawn(Bump, counter) catch { else => return false };
+    return true;
+}
+
+func Deep(depth: uint64) -> uint64 {
+    var buffer: uint8[4096] = [0; 4096];
+    buffer[depth % 4096u64] = 1;
+    if depth == 0u64 { return buffer[0] as uint64; }
+    return Deep(depth - 1u64) + buffer[depth % 4096u64] as uint64;
+}
+
+func Main() -> int {
+    Assert(AvailableParallelism() >= 1u, "at least one thread can run");
+    Yield();
+
+    // Four threads each sum a quarter of 1..4000 and share one counter.
+    var counter: uint64 = 0;
+    var handles: JoinHandle<uint64>[4] = [
+        Spawn(SumRange, Range { first: 1u64, last: 1000u64, shared: @counter }) catch { else => return 10 },
+        Spawn(SumRange, Range { first: 1001u64, last: 2000u64, shared: @counter }) catch { else => return 11 },
+        Spawn(SumRange, Range { first: 2001u64, last: 3000u64, shared: @counter }) catch { else => return 12 },
+        Spawn(SumRange, Range { first: 3001u64, last: 4000u64, shared: @counter }) catch { else => return 13 }
+    ];
+    var total: uint64 = 0;
+    for index in 0..4 {
+        Assert(handles[index].IsJoinable(), "a started thread can be joined");
+        total = total + handles[index].Join();
+        Assert(!handles[index].IsJoinable(), "a joined thread cannot be joined again");
+    }
+    Assert(total == 8002000u64, "the joined results add up to the whole sum");
+    Assert(AtomicLoad(@counter, MemoryOrder::SequentiallyConsistent) == 4000u64, "every thread's atomic increments are counted");
+    Assert(Visits == 100, "the other threads' writes did not touch this thread's copy");
+
+    // Another thread has another identifier.
+    var other = Spawn(Identify, 0u8) catch { else => return 20 };
+    Assert(other.Join() != CurrentId(), "another thread has its own identifier");
+
+    // A detached thread finishes on its own; a dropped handle detaches.
+    var finished: uint64 = 0;
+    var detached = Spawn(Bump, @finished) catch { else => return 30 };
+    detached.Detach();
+    Assert(!detached.IsJoinable(), "a detached thread cannot be joined");
+    Assert(SpawnAndDrop(@finished), "a thread can be started and its handle dropped");
+    var spins: uint64 = 0;
+    while AtomicLoad(@finished, MemoryOrder::Acquire) != 2u64 {
+        Yield();
+        spins = spins + 1u64;
+    }
+
+    // A thread without a result and one returning the unit join the same way.
+    var unitless = Spawn(Bump, @finished) catch { else => return 31 };
+    var unit = Spawn(BumpTwice, @finished) catch { else => return 32 };
+    unitless.Join();
+    unit.Join();
+    Assert(AtomicLoad(@finished, MemoryOrder::Acquire) == 5u64, "joined threads without a result ran");
+
+    // A larger stack holds a deeper recursion.
+    let options = ThreadOptions().WithStackSize(16u * 1024u * 1024u);
+    Assert(options.StackSize() == 16u * 1024u * 1024u, "the options keep the stack size");
+    var deep = SpawnWith(options, Deep, 1000u64) catch { else => return 40 };
+    Assert(deep.Join() == 1001u64, "a thread with a larger stack runs a deep recursion");
+    return 0;
+}

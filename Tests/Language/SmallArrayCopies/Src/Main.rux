@@ -1,0 +1,38 @@
+// Arrays of at most a word copied out of static data into locals. The copy reads through the address of the source,
+// so a back end that stored the address as if it were the value, or wrote a whole word for an odd width, fails here.
+
+import Core::Assert;
+
+const Bytes3: uint8[3] = [0x11u8, 0x22u8, 0x33u8];
+const Bytes4: uint8[4] = [0x38u8, 0x80u8, 0x77u8, 0x01u8];
+const Bytes5: uint8[5] = [0x38u8, 0x80u8, 0x77u8, 0x01u8, 0xC2u8];
+const Bytes8: uint8[8] = [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8];
+const Words: uint16[2] = [0x1234u16, 0x5678u16];
+const Halves: uint16[3] = [0x1238u16, 0x3480u16, 0x5677u16];
+
+func Main() -> int {
+    var three: uint8[3] = Bytes3;
+    Assert(three[0] == 0x11u8 && three[1] == 0x22u8 && three[2] == 0x33u8, "a three-byte array copies");
+
+    var four: uint8[4] = Bytes4;
+    Assert(four[0] == 0x38u8 && four[3] == 0x01u8, "a four-byte array copies its bytes, not its address");
+
+    var eight: uint8[8] = Bytes8;
+    Assert(eight[0] == 1u8 && eight[7] == 8u8, "and so does an eight-byte one");
+
+    var words: uint16[2] = Words;
+    Assert(words[0] == 0x1234u16 && words[1] == 0x5678u16, "a word of halfwords copies");
+
+    var halves: uint16[3] = Halves;
+    Assert(halves[0] == 0x1238u16 && halves[2] == 0x5677u16, "an odd number of halfwords copies");
+
+    // A five-byte copy followed by a neighbour: an eight-byte store would overwrite it.
+    var guard: uint8[3] = Bytes3;
+    var five: uint8[5] = Bytes5;
+    Assert(five[0] == 0x38u8 && five[4] == 0xC2u8, "a five-byte array copies");
+    Assert(guard[0] == 0x11u8 && guard[1] == 0x22u8 && guard[2] == 0x33u8, "without touching what lies beside it");
+
+    five[1] = 0x55u8;
+    Assert(five[1] == 0x55u8 && Bytes5[1] == 0x80u8, "and the copy is assignable apart from its source");
+    return 0;
+}

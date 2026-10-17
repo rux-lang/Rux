@@ -1,5 +1,4 @@
 // The coverage that is about the package as a whole rather than about one part of it.
-//
 // The differential check is the valuable one. The tree parser and the streaming reader are two independent
 // implementations of the same grammar, written separately, and requiring them to agree on every document is a
 // far stronger statement than either passing its own tests — a misreading would have to be made twice, the
@@ -7,11 +6,10 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Failed, Panic, Succeeded };
-import Format::{ TextWriter };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ DuplicateKeyPolicy, JsonEvent, JsonEventReader, JsonKind, JsonLimits, JsonParseError, JsonStyle,
                JsonValue, Parse, ParseWith, WriteValue };
-import Text::{ BufferWriter, FormatSpec, String, StringBuilder, StringView, TextError };
+import Text::{ BufferWriter, FormatSpec, String, StringBuilder, StringView, TextError, TextWriter };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -28,14 +26,11 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(self: &var SliceHandle, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
+    func Read(self: &var SliceHandle, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
-        if remaining == 0 {
-            return IoError::Of(IoErrorKind::EndOfStream);
-        }
-        var give = remaining < 7u ? remaining : 7u;
+        if remaining == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+        var give = remaining < 7 ? remaining : 7;
         if into.length < give {
             give = into.length;
         }
@@ -45,31 +40,29 @@ extend SliceHandle : Reader {
             index = index + 1;
         }
         state.offset = state.offset + give;
-        *filled = give;
-        return IoError::Ok();
+        return give;
     }
 }
 
 // Counts the values a streaming read reports, which is a shape the tree can also be asked for.
 func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, opens: *var uint,
                   names: *var uint) -> bool {
-    var error = IoError::Ok();
     var state = SliceState { bytes: text, offset: 0 };
     let handle: Reader = SliceHandle { state: @state };
-    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default(), @error);
+    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default()) catch { else => return false };
     *scalars = 0;
     *opens = 0;
     *names = 0;
     var event = reader.Next();
     while event != JsonEvent::End && event != JsonEvent::Error {
         if event == JsonEvent::ObjectStart || event == JsonEvent::ArrayStart {
-            *opens = *opens + 1u;
+            *opens = *opens + 1;
         }
         else if event == JsonEvent::Name {
-            *names = *names + 1u;
+            *names = *names + 1;
         }
         else if event != JsonEvent::ObjectEnd && event != JsonEvent::ArrayEnd {
-            *scalars = *scalars + 1u;
+            *scalars = *scalars + 1;
         }
         event = reader.Next();
     }
@@ -82,7 +75,7 @@ func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, ope
 func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: *var uint) {
     let kind = value.Kind();
     if kind == JsonKind::Array {
-        *opens = *opens + 1u;
+        *opens = *opens + 1;
         var index: uint = 0;
         while index < value.Length() {
             TreeCounts(*value.At(index), scalars, opens, names);
@@ -91,17 +84,17 @@ func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: 
         return;
     }
     if kind == JsonKind::Object {
-        *opens = *opens + 1u;
+        *opens = *opens + 1;
         var index: uint = 0;
         while index < value.Length() {
-            *names = *names + 1u;
+            *names = *names + 1;
             let member = value.MemberAt(index);
             TreeCounts((*member).value, scalars, opens, names);
             index = index + 1;
         }
         return;
     }
-    *scalars = *scalars + 1u;
+    *scalars = *scalars + 1;
 }
 
 func Main() -> int {
@@ -191,11 +184,11 @@ func Main() -> int {
     // reason the depth check happens before the descent.
     var nest: char8[600];
     var index: uint = 0;
-    while index < 300u {
+    while index < 300 {
         nest[index] = 0x5Bu8 as char8;
         index = index + 1;
     }
-    while index < 600u {
+    while index < 600 {
         nest[index] = 0x5Du8 as char8;
         index = index + 1;
     }
@@ -241,7 +234,6 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
 }
 
 // Requires a document to be refused, and nothing at all to come back with the refusal.
-//
 // That second half is the shape rather than a check: the outcome carries either a document or a failure, so a
 // refused parse cannot hand over a partial tree the way the old outcome-beside-a-value form could. What is left to
 // check is that whatever the parser built before it stopped was released rather than leaked, and the allocator

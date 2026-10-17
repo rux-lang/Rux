@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Records"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Log: text and JSON-lines records, field quoting and escaping, levels, context fields, times, write failures and the process-wide settings."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Log = { Path = "../../../../Packages/Log" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Log"

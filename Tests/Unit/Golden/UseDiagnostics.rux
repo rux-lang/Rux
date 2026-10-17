@@ -1,0 +1,61 @@
+// '#Warn' and '#Error' report every use of what they mark: a type, a constant, an alias, an enum, a constructor and a
+// function used as a value, not only a direct call. A declaration naming itself, as in its own fields and methods, is
+// not a use.
+#Warn("use Point2")
+struct Point {
+    x: int32;
+    y: int32;
+    next: *Point;
+}
+
+extend Point {
+    func Sum(self: &Point) -> int32 {
+        let origin = Point { x: 0, y: 0, next: null };
+        return self.x + self.y + origin.x;
+    }
+}
+
+#Error("Limit is gone; use Bound")
+const Limit = 10;
+
+#Warn("Count is an alias for int64")
+type Count = int64;
+
+#Warn("Mode is replaced by Style")
+enum Mode {
+    Fast,
+    Slow
+}
+
+struct Meter {
+    value: int32;
+}
+
+extend Meter {
+    #Warn("build a Meter with a literal")
+    func Meter(value: int32) -> Meter {
+        return Meter { value: value };
+    }
+}
+
+#Warn("use Twice")
+func Double(value: int32) -> int32 {
+    return value * 2;
+}
+
+struct Segment {
+    start: Point;
+}
+
+func Length(from: &Point) -> int32 {
+    return from.x;
+}
+
+func Main() -> int {
+    let point = Point { x: 1, y: 2, next: null };
+    let total: Count = Limit;
+    let mode = Mode::Fast;
+    let meter = Meter(3);
+    let twice: func(int32) -> int32 = Double;
+    return (point.Sum() + meter.value + twice(1)) as int + total as int;
+}

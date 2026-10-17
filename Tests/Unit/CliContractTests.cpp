@@ -33,6 +33,7 @@ TEST_CASE("CLI contract owns positional limits and value-taking options") {
     CHECK(PositionalsFor(add->name).maximum == 1);
     CHECK(PositionalsFor(build->name).maximum == 0);
     CHECK(PositionalsFor(run->name).acceptsPassthrough);
+    CHECK(PositionalsFor("test").acceptsPassthrough);
 
     const auto *target = FindOption(*build, "--target");
     const auto *release = FindOption(*build, "--release");
@@ -53,10 +54,24 @@ TEST_CASE("CLI contract is the source of build option conflicts") {
         REQUIRE(FindOption(*build, right) != nullptr);
         if (left == "--all") {
             ++allConflicts;
-            CHECK((right == "--target" || right == "--debug" || right == "--release" || right == "--emit"));
+            CHECK((right == "--target" || right == "--debug" || right == "--release" || right == "--emit" ||
+                   right == "--disable-pass"));
         }
     }
-    CHECK(allConflicts == 4);
+    CHECK(allConflicts == 5);
+}
+
+TEST_CASE("CLI contract lists the documentation format and refuses to open a JSON snapshot") {
+    const auto *doc = FindCommand("doc");
+    REQUIRE(doc != nullptr);
+    const auto *format = FindOption(*doc, "--format");
+    REQUIRE(format != nullptr);
+    CHECK(OptionTakesValue(*format));
+    CHECK(format->flags == "--format <html|json>");
+    REQUIRE(doc->conflicts.size() == 1);
+    CHECK(doc->conflicts.front().left == "--format");
+    CHECK(doc->conflicts.front().right == "--open");
+    CHECK(FindOption(*doc, doc->conflicts.front().right) != nullptr);
 }
 
 TEST_CASE("CLI help rendering independently controls wrapping color and examples") {
@@ -96,27 +111,16 @@ TEST_CASE("CLI JSON rendering consumes the same command and option data") {
     CHECK(json.contains("\"takesValue\":true"));
 }
 
-TEST_CASE("CLI help uses only verified documentation routes") {
-    constexpr std::array dedicated = {"add",  "build", "clean",  "doc", "fmt",  "help",      "init",   "install",
-                                      "list", "new",   "remove", "run", "test", "uninstall", "update", "version"};
-    constexpr std::array fallback = {"check", "info", "lint", "login", "logout", "pack", "publish"};
-
-    for (const std::string_view command : dedicated) {
-        const auto expected = std::format("https://rux-lang.dev/docs/cli/{}", command);
-        CHECK(DocumentationUrl(command) == expected);
-        const auto *spec = FindCommand(command);
-        REQUIRE(spec != nullptr);
-        CHECK(CliHelp::RenderCommand(*spec, 48, false).contains("Documentation:\n    " + expected + "\n"));
-        CHECK(CliHelp::RenderJson("test-version", command).contains("\"documentationUrl\":\"" + expected + "\""));
+TEST_CASE("CLI help links every command to its own reference page") {
+    for (const CommandSpec &spec : Commands()) {
+        const std::string expected = std::format("https://rux-lang.dev/docs/cli/{}", spec.name);
+        CAPTURE(spec.name);
+        CHECK(DocumentationUrl(spec.name) == expected);
+        CHECK(CliHelp::RenderCommand(spec, 48, false).contains("Documentation:\n    " + expected + "\n"));
+        CHECK(CliHelp::RenderJson("test-version", spec.name).contains("\"documentationUrl\":\"" + expected + "\""));
     }
-    for (const std::string_view command : fallback) {
-        CHECK(DocumentationUrl(command) == "https://rux-lang.dev/docs/cli");
-        const auto *spec = FindCommand(command);
-        REQUIRE(spec != nullptr);
-        CHECK(CliHelp::RenderCommand(*spec, 48, false).contains("Documentation:\n    https://rux-lang.dev/docs/cli\n"));
-        CHECK(CliHelp::RenderJson("test-version", command)
-                  .contains("\"documentationUrl\":\"https://rux-lang.dev/docs/cli\""));
-    }
+    CHECK(DocumentationUrl("") == "https://rux-lang.dev/docs/cli");
+    CHECK(DocumentationUrl("no-such-command") == "https://rux-lang.dev/docs/cli");
 }
 
 TEST_CASE("CLI help JSON preserves its exact field sets") {
@@ -161,19 +165,5 @@ TEST_CASE("CLI help JSON preserves its exact field sets") {
     REQUIRE(options->Elements().front().Members().size() == optionKeys.size());
     for (std::size_t i = 0; i < optionKeys.size(); ++i) {
         CHECK(options->Elements().front().Members()[i].first == optionKeys[i]);
-    }
-}
-
-TEST_CASE("CLI contract offers the legacy protocol audit on check and test") {
-    for (const std::string_view name : {"check", "test"}) {
-        const auto *command = FindCommand(name);
-        REQUIRE(command != nullptr);
-        const auto *audit = FindOption(*command, "--deny-legacy-protocols");
-        REQUIRE(audit != nullptr);
-        CHECK_FALSE(OptionTakesValue(*audit));
-        CHECK(CliHelp::RenderCommand(*command, 120, false).contains("--deny-legacy-protocols"));
-        CHECK(CliHelp::RenderJson("test-version", name)
-                  .contains("\"flags\":\"--deny-legacy-protocols\",\"description\":\"Report each use of the legacy "
-                            "Result and Option protocols as an error\""));
     }
 }

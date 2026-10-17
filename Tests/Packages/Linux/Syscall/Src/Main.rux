@@ -1,5 +1,9 @@
-import Core::{ OperatingSystem, #target };
-import Linux::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS, Errno, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, FstatAt, GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, ProtectionRead, ProtectionWrite, Read, Syscall0, Syscall6, SysGetPid, SysMmap, Timespec, Write };
+import Core::{ #target, OperatingSystem };
+import Linux::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT,
+                EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO,
+                EOVERFLOW, EPERM, EPIPE, EROFS, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, Errno, FstatAt, GetPid, IsError,
+                MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, ProtectionRead, ProtectionWrite, Read, SysGetPid,
+                SysMmap, Syscall0, Syscall6, Timespec, Write };
 
 when #target.os == OperatingSystem::Linux {
 func Main() -> int {
@@ -63,7 +67,6 @@ func Main() -> int {
     }
 
     // --- The shared POSIX contract ------------------------------------------------------------------------
-    //
     // Everything below is spelled identically in the Linux, macOS and FreeBSD copies of this test. That is
     // the contract task 38 aligned: one wrapper name, one parameter shape, one call site. The numbers differ
     // per system and are asserted per system, which is the part that must not be shared.

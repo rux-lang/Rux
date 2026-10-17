@@ -1,4 +1,5 @@
-import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere, LastIndexOf, LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
+import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere, LastIndexOf,
+                     LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
 import Core::{ Assert, Ordering, Panic };
 
 // The linear queries. What is worth checking is not that a search finds a match — it is the boundaries: an empty
@@ -44,7 +45,7 @@ func Ints(data: *int32, length: uint) -> int32[..] {
 }
 
 func Main() -> int {
-    let original = Record { key: 7i32, origin: 11i32 };
+    let original = Record { key: 7, origin: 11 };
     let copied = original;
     Assert(copied == original, "plain algorithm elements copy structurally");
 

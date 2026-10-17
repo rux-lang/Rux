@@ -1,0 +1,58 @@
+import Allocator::SystemAllocator;
+import Core::{ Assert, Panic };
+import Text::{ FoldCase, Join, StringView, ToLower, ToUpper };
+
+// Joining puts the separator only between parts; a walk over lines drops each break, `\r\n` included, and adds no
+// empty line after a final break; and case conversion follows Unicode's full mappings, lengths changing included.
+
+func View(bytes: char8[..]) -> StringView {
+    return StringView::FromBytes(bytes) ?? StringView();
+}
+
+func Ended(line: StringView?) -> bool {
+    match line {
+        .Some(_) => return false,
+        none => return true
+    }
+}
+
+func Same(view: StringView, expected: char8[..]) -> bool {
+    let other = View(expected);
+    return view.Equals(other);
+}
+
+func Main() -> int {
+    let parts = [View("a"), View("bc"), View(""), View("d")];
+    let joined = Join(SystemAllocator(), parts[..], View(", ")) catch { else => Panic("joins") };
+    Assert(Same(joined.View(), "a, bc, , d"), "a separator between each two parts");
+    let one = [View("alone")];
+    let single = Join(SystemAllocator(), one[..], View("-")) catch { else => Panic("joins one") };
+    Assert(Same(single.View(), "alone"), "one part needs no separator");
+    let nothing = Join(SystemAllocator(), parts[0..0], View("-")) catch { else => Panic("joins none") };
+    Assert(nothing.IsEmpty(), "no parts give empty text");
+
+    let text = View("first\nsecond\r\n\nfourth\r\n");
+    var lines = text.Lines();
+    Assert(Same(lines.Next() ?? View("x"), "first") && Same(lines.Next() ?? View("x"), "second"), "lines split");
+    Assert(Same(lines.Next() ?? View("x"), "") && Same(lines.Next() ?? View("x"), "fourth"), "an empty line is kept");
+    Assert(Ended(lines.Next()), "no empty line after the final break");
+    var unterminated = View("a\rb\nc").Lines();
+    Assert(Same(unterminated.Next() ?? View("x"), "a\rb") && Same(unterminated.Next() ?? View("x"), "c") &&
+           Ended(unterminated.Next()), "a lone \\r stays and the last line needs no break");
+    var empty = View("").Lines();
+    Assert(Ended(empty.Next()), "empty text has no lines");
+    var blank = View("\n").Lines();
+    Assert(Same(blank.Next() ?? View("x"), "") && Ended(blank.Next()), "a single break is one empty line");
+
+    let upper = ToUpper(SystemAllocator(), View("Straße ﬁx ǆ é")) catch { else => Panic("upper") };
+    Assert(Same(upper.View(), "STRASSE FIX Ǆ É"), "full upper-case mappings change the length");
+    let lower = ToLower(SystemAllocator(), View("ÀÉÎ ΣΑΣ İ")) catch { else => Panic("lower") };
+    Assert(Same(lower.View(), "àéî σασ i̇"), "lower case is unconditional");
+    let folded = FoldCase(SystemAllocator(), View("Straße")) catch { else => Panic("fold") };
+    let foldedUpper = FoldCase(SystemAllocator(), View("STRASSE")) catch { else => Panic("fold upper") };
+    let foldedView = foldedUpper.View();
+    Assert(folded.View().Equals(foldedView) && Same(folded.View(), "strasse"), "folding ignores case");
+    let ascii = ToUpper(SystemAllocator(), View("plain 123")) catch { else => Panic("ascii") };
+    Assert(Same(ascii.View(), "PLAIN 123"), "ASCII text maps as ASCII");
+    return 0;
+}

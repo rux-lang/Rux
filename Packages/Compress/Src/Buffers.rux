@@ -1,0 +1,166 @@
+// Compressing and decompressing whole buffers, for data already in memory.
+// Both run the streaming reader and writer over a source that reads a slice and a sink that appends to storage this
+// function owns. An interface value holds its own copy of what it was made from, so the sink writes through the
+// storage's address, and the function collects the bytes from there when the stream is done.
+
+import Allocator::{ Allocator, Layout };
+import Collections::Vector;
+import Io::{ IoError, IoErrorKind, Reader, Writer };
+import Memory::Copy;
+import Compress::{ CompressWriter, DecompressReader, Format, Level };
+
+// A reader over a slice of bytes.
+struct SliceSource {
+    data: char8[..];
+    at: uint;
+}
+
+extend SliceSource : Reader {
+    func Read(self: &var SliceSource, into: var char8[..]) -> uint ! IoError {
+        if self.at == self.data.length { fail IoError::Of(IoErrorKind::EndOfStream); }
+        var count = self.data.length - self.at;
+        if count > into.length { count = into.length; }
+        var index: uint = 0;
+        while index < count {
+            into[index] = self.data[self.at + index];
+            index = index + 1;
+        }
+        self.at = self.at + count;
+        return count;
+    }
+}
+
+// Storage the sink appends to, owned by the function that made the sink.
+struct Gathered {
+    data: *var uint8;
+    length: uint;
+    capacity: uint;
+    allocator: Allocator;
+}
+
+// A writer that appends to gathered storage.
+struct GatherSink {
+    target: *var Gathered;
+}
+
+extend GatherSink : Writer {
+    func Write(self: &var GatherSink, bytes: char8[..]) -> uint ! IoError {
+        AppendGathered(self.target, bytes.data as *uint8, bytes.length)?;
+        return bytes.length;
+    }
+
+    func Flush(self: &var GatherSink) -> ! IoError {}
+}
+
+// Appends `count` bytes to the storage, growing it as needed.
+func AppendGathered(target: *var Gathered, bytes: *uint8, count: uint) -> ! IoError {
+    if target.length + count > target.capacity {
+        var capacity = target.capacity == 0u ? 4096u : target.capacity * 2u;
+        while capacity < target.length + count { capacity = capacity * 2u; }
+        var allocator = target.allocator;
+        let block = allocator.Allocate(Layout::New(capacity, 1) ?? fail IoError::Of(IoErrorKind::LimitExceeded))
+            catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        if target.data != null {
+            Copy(block, target.data as *opaque, target.length);
+            allocator.Deallocate(target.data as *var opaque, Layout::New(target.capacity, 1) ?? Layout::ForValue<uint8>())
+                catch { else => {} };
+        }
+        target.data = block as *var uint8;
+        target.capacity = capacity;
+    }
+    Copy((target.data + target.length) as *var opaque, bytes as *opaque, count);
+    target.length = target.length + count;
+}
+
+// Moves gathered bytes into a vector and releases the storage.
+func Collect(allocator: Allocator, gathered: *var Gathered) -> Vector<byte> ! IoError {
+    var result = Vector<byte>(allocator);
+    if gathered.length > 0u {
+        result.PushSlice((gathered.data as *byte)[..gathered.length]) catch {
+            else => fail IoError::Of(IoErrorKind::LimitExceeded)
+        };
+    }
+    Release(gathered);
+    return <-result;
+}
+
+func Release(gathered: *var Gathered) {
+    if gathered.data == null { return; }
+    var allocator = gathered.allocator;
+    allocator.Deallocate(gathered.data as *var opaque, Layout::New(gathered.capacity, 1) ?? Layout::ForValue<uint8>())
+        catch { else => {} };
+    gathered.data = null;
+}
+
+/// Compresses `data` in `format` at `level`.
+/// @param allocator what the result and the compressor's buffers are kept in
+/// @param data the data
+/// @param format the container to write
+/// @param level how hard to compress
+/// @returns the compressed bytes, or fails when the allocator refused
+/// @see https://rux-lang.dev/docs/api/compress/buffers#compress
+pub func Compress(allocator: Allocator, data: byte[..], format: Format, level: Level = Level::Default)
+    -> Vector<byte> ! IoError {
+    var gathered = Gathered { data: null, length: 0, capacity: 0, allocator: allocator };
+    var writer = CompressWriter::New(allocator, GatherSink { target: @gathered }, format, level)?;
+    var written: uint = 0;
+    let text = (data.data as *char8)[..data.length];
+    while written < text.length {
+        written = written + writer.Write(text[written..])?;
+    }
+    writer.Finish()?;
+    return Collect(allocator, @gathered)?;
+}
+
+/// Compresses text in `format` at `level`: its UTF-8 bytes, as the Io streams carry them, so text needs no cast to
+/// bytes first.
+/// @param allocator what the result and the compressor's buffers are kept in
+/// @param data the text
+/// @param format the container to write
+/// @param level how hard to compress
+/// @returns the compressed bytes, or fails when the allocator refused
+/// @see https://rux-lang.dev/docs/api/compress/buffers#compress
+pub func Compress(allocator: Allocator, data: char8[..], format: Format, level: Level = Level::Default)
+    -> Vector<byte> ! IoError {
+    return Compress(allocator, (data.data as *byte)[..data.length], format, level)?;
+}
+
+/// Decompresses `data`, a whole stream in `format`.
+/// @param allocator what the result and the decompressor's buffers are kept in
+/// @param data the compressed stream
+/// @param format the container it is in
+/// @returns the data, or fails with `InvalidInput` for damaged or truncated input
+/// @see https://rux-lang.dev/docs/api/compress/buffers#decompress
+pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vector<byte> ! IoError {
+    var gathered = Gathered { data: null, length: 0, capacity: 0, allocator: allocator };
+    var reader = DecompressReader::New(allocator, SliceSource { data: (data.data as *char8)[..data.length], at: 0 }, format)?;
+    var chunk: char8[4096] = ['\0'; 4096];
+    while true {
+        match reader.Read(chunk[..]) {
+            .Success(count) => {
+                AppendGathered(@gathered, chunk[..count].data as *uint8, count) catch {
+                    error => {
+                        Release(@gathered);
+                        fail error;
+                    }
+                };
+            },
+            .Failure(error) => {
+                if error.kind == IoErrorKind::EndOfStream { break; }
+                Release(@gathered);
+                fail error;
+            }
+        }
+    }
+    return Collect(allocator, @gathered)?;
+}
+
+/// Decompresses `data`, a whole stream in `format` held as `char8` units, such as bytes read from an Io stream.
+/// @param allocator what the result and the decompressor's buffers are kept in
+/// @param data the compressed stream
+/// @param format the container it is in
+/// @returns the data, or fails with `InvalidInput` for damaged or truncated input
+/// @see https://rux-lang.dev/docs/api/compress/buffers#decompress
+pub func Decompress(allocator: Allocator, data: char8[..], format: Format) -> Vector<byte> ! IoError {
+    return Decompress(allocator, (data.data as *byte)[..data.length], format)?;
+}

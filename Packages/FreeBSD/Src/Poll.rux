@@ -1,0 +1,128 @@
+// Waiting on many descriptors at once, and descriptors that never wait: `kqueue(2)` and the `O_NONBLOCK` flag.
+// A kqueue is itself a descriptor. A `Kevent` both registers interest, as a change, and reports readiness, as an
+// event; reading and writing are separate filters, so a descriptor wanted for both is registered twice. The
+// registrations here are level-triggered: a descriptor is reported for as long as it is ready.
+
+import FreeBSD::{ FileDescriptor, SignExtendFd, Syscall6, Timespec };
+
+const SysFcntl: uint64 = 92;
+const SysKqueue: uint64 = 362;
+const SysKevent: uint64 = 560;
+
+/// `F_SETFD`'s companion `F_GETFL`: the `fcntl` command that reads a descriptor's status flags.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#f-getfl
+#Allow("naming.const")
+pub const F_GETFL: int32 = 3;
+
+/// `F_SETFL`: the `fcntl` command that sets a descriptor's status flags.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#f-setfl
+#Allow("naming.const")
+pub const F_SETFL: int32 = 4;
+
+/// `O_NONBLOCK`: the status flag that makes a call fail with `EAGAIN` rather than wait.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#o-nonblock
+#Allow("naming.const")
+pub const O_NONBLOCK: int32 = 0x4;
+
+/// `EVFILT_READ`: the filter that reports a descriptor with something to read, or a connection to accept.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#evfilt-read
+#Allow("naming.const")
+pub const EVFILT_READ: int16 = -1;
+
+/// `EVFILT_WRITE`: the filter that reports a descriptor a write would not wait on.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#evfilt-write
+#Allow("naming.const")
+pub const EVFILT_WRITE: int16 = -2;
+
+/// `EV_ADD`: add the change's filter, or update it.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#ev-add
+#Allow("naming.const")
+pub const EV_ADD: uint16 = 0x1;
+
+/// `EV_DELETE`: remove the change's filter.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#ev-delete
+#Allow("naming.const")
+pub const EV_DELETE: uint16 = 0x2;
+
+/// `EV_RECEIPT`: report each change as an event, with its outcome in `data`, rather than waiting.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#ev-receipt
+#Allow("naming.const")
+pub const EV_RECEIPT: uint16 = 0x40;
+
+/// `EV_ERROR`: set on an event that reports a failed change, with the error number in `data`.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#ev-error
+#Allow("naming.const")
+pub const EV_ERROR: uint16 = 0x4000;
+
+/// `EV_EOF`: the peer has closed its side.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#ev-eof
+#Allow("naming.const")
+pub const EV_EOF: uint16 = 0x8000;
+
+/// One `struct kevent` as FreeBSD 12 and later lay it out: a change to register or an event to report.
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#kevent
+pub struct Kevent {
+    /// The descriptor.
+    pub ident: uint64;
+    /// `EVFILT_READ` or `EVFILT_WRITE`.
+    pub filter: int16;
+    /// `EV_ADD`, `EV_DELETE` and the flags reported back, such as `EV_EOF` and `EV_ERROR`.
+    pub flags: uint16;
+    /// Filter-specific flags.
+    pub filterFlags: uint32;
+    /// Filter-specific data: bytes ready, or an error number.
+    pub data: int64;
+    /// The word the caller chose, reported back with every event.
+    pub userData: uint64;
+    /// Extensions the kernel uses and returns; zero in a change.
+    pub extension: uint64[4];
+}
+
+extend Kevent {
+    /// A change or an empty event: `filter` on `ident` with `flags`, reporting `userData`.
+    /// @param ident the descriptor
+    /// @param filter the filter
+    /// @param flags such as `EV_ADD`
+    /// @param userData the word to report
+    /// @returns the kevent
+    /// @see https://rux-lang.dev/docs/api/freebsd/poll#kevent-new
+    pub func Of(ident: uint64, filter: int16, flags: uint16, userData: uint64) -> Kevent {
+        return Kevent { ident: ident, filter: filter, flags: flags, filterFlags: 0, data: 0, userData: userData,
+                        extension: [0u64; 4] };
+    }
+}
+
+/// Performs `command` on a descriptor with an integer argument.
+/// @param fd the descriptor
+/// @param command such as `F_GETFL` or `F_SETFL`
+/// @param argument the command's argument, or zero
+/// @returns the command's result, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#fcntl-int
+/// @see https://man.freebsd.org/cgi/man.cgi?query=fcntl&sektion=2
+pub func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) -> int64 {
+    return Syscall6(SysFcntl, SignExtendFd(fd), command as int64 as uint64, argument as uint64, 0, 0, 0);
+}
+
+/// Opens a kqueue.
+/// @returns the kqueue's descriptor, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#kqueue
+/// @see https://man.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+pub func Kqueue() -> int64 {
+    return Syscall6(SysKqueue, 0, 0, 0, 0, 0, 0);
+}
+
+/// Applies `changeCount` changes, then waits until an event is ready or `timeout` passes, filling `events`.
+/// @param queue the kqueue
+/// @param changes the changes to apply, or null
+/// @param changeCount how many changes there are
+/// @param events room for `eventCount` events, or null
+/// @param eventCount how many events fit
+/// @param timeout how long to wait, or null to wait without end
+/// @returns how many events were filled, or a negative error number
+/// @see https://rux-lang.dev/docs/api/freebsd/poll#kevent-call
+/// @see https://man.freebsd.org/cgi/man.cgi?query=kevent&sektion=2
+pub func KeventCall(queue: FileDescriptor, changes: *Kevent, changeCount: int32, events: *var Kevent, eventCount: int32,
+                    timeout: *Timespec) -> int64 {
+    return Syscall6(SysKevent, SignExtendFd(queue), changes as uint64, changeCount as int64 as uint64, events as uint64,
+                    eventCount as int64 as uint64, timeout as uint64);
+}

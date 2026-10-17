@@ -1,0 +1,185 @@
+// Starting another program, waiting for it, and stopping it, and the pipes and handles a child is given.
+// A child inherits the handles the parent marks inheritable and names in its startup information, so the parent makes
+// each pipe end it hands over inheritable and keeps its own ends private.
+
+/// The `SECURITY_ATTRIBUTES` a pipe or file is created with: here only whether its handle is inheritable.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#security-attributes
+pub struct SecurityAttributes {
+    /// The structure's size in bytes.
+    pub length: uint32;
+    /// A security descriptor, or null for the default.
+    pub securityDescriptor: *opaque;
+    /// Non-zero when a child process may inherit the handle.
+    pub inheritHandle: bool32;
+}
+
+/// The `STARTUPINFOW` a new process is started with; this package fills in its standard handles.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#startup-info
+pub struct StartupInfo {
+    /// The structure's size in bytes.
+    pub size: uint32;
+    /// Reserved; null.
+    pub reserved: *opaque;
+    /// The desktop, or null.
+    pub desktop: *uint16;
+    /// The console title, or null.
+    pub title: *uint16;
+    /// The window's left edge, when `flags` says so.
+    pub x: uint32;
+    /// The window's top edge, when `flags` says so.
+    pub y: uint32;
+    /// The window's width, when `flags` says so.
+    pub xSize: uint32;
+    /// The window's height, when `flags` says so.
+    pub ySize: uint32;
+    /// The console buffer's width in characters, when `flags` says so.
+    pub xCountChars: uint32;
+    /// The console buffer's height in characters, when `flags` says so.
+    pub yCountChars: uint32;
+    /// The console's text and background colors, when `flags` says so.
+    pub fillAttribute: uint32;
+    /// Which fields the system reads, such as `STARTF_USESTDHANDLES`.
+    pub flags: uint32;
+    /// How the window is shown, when `flags` says so.
+    pub showWindow: uint16;
+    /// Reserved; zero.
+    pub reserved2Size: uint16;
+    /// Reserved; null.
+    pub reserved2: *opaque;
+    /// The child's standard input.
+    pub standardInput: *opaque;
+    /// The child's standard output.
+    pub standardOutput: *opaque;
+    /// The child's standard error.
+    pub standardError: *opaque;
+}
+
+/// The `PROCESS_INFORMATION` `CreateProcessW` fills in: the new process and its first thread.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#process-information
+pub struct ProcessInformation {
+    /// The new process's handle, to wait on and close.
+    pub process: *opaque;
+    /// Its first thread's handle, to close.
+    pub thread: *opaque;
+    /// The process identifier.
+    pub processId: uint32;
+    /// The first thread's identifier.
+    pub threadId: uint32;
+}
+
+/// `STARTF_USESTDHANDLES`: the standard handles in `StartupInfo` are the child's.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#startf-usestdhandles
+#Allow("naming.const")
+pub const STARTF_USESTDHANDLES: uint32 = 0x00000100;
+
+/// `CREATE_UNICODE_ENVIRONMENT`: the environment block is UTF-16.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#create-unicode-environment
+#Allow("naming.const")
+pub const CREATE_UNICODE_ENVIRONMENT: uint32 = 0x00000400;
+
+/// `HANDLE_FLAG_INHERIT`: the handle is inherited by child processes.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#handle-flag-inherit
+#Allow("naming.const")
+pub const HANDLE_FLAG_INHERIT: uint32 = 0x00000001;
+
+/// `DUPLICATE_SAME_ACCESS`: a duplicated handle has the access of the original.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#duplicate-same-access
+#Allow("naming.const")
+pub const DUPLICATE_SAME_ACCESS: uint32 = 0x00000002;
+
+/// `WAIT_TIMEOUT`: a wait ended because its time ran out.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#wait-timeout
+#Allow("naming.const")
+pub const WAIT_TIMEOUT: uint32 = 0x00000102;
+
+/// `ERROR_BROKEN_PIPE`: the other end of the pipe was closed.
+/// @see https://rux-lang.dev/docs/api/windows/process-control#error-broken-pipe
+#Allow("naming.const")
+pub const ERROR_BROKEN_PIPE: uint32 = 109;
+
+#Link("Kernel32.dll")
+pub extern {
+    /// Starts a program as a new process.
+    /// @param applicationName the program's path, or null to take it from the command line
+    /// @param commandLine the command line, which the call may modify
+    /// @param processAttributes the process handle's security, or null
+    /// @param threadAttributes the thread handle's security, or null
+    /// @param inheritHandles non-zero to let the child inherit the parent's inheritable handles
+    /// @param creationFlags flags such as `CREATE_UNICODE_ENVIRONMENT`
+    /// @param environment the environment block, or null to inherit the parent's
+    /// @param currentDirectory the child's working directory, or null for the parent's
+    /// @param startupInfo how the child starts, including its standard handles
+    /// @param processInformation receives the new process and thread
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#create-process-w
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw
+    func CreateProcessW(applicationName: *uint16, commandLine: *var uint16, processAttributes: *SecurityAttributes,
+                        threadAttributes: *SecurityAttributes, inheritHandles: bool32, creationFlags: uint32,
+                        environment: *opaque, currentDirectory: *uint16, startupInfo: *StartupInfo,
+                        processInformation: *var ProcessInformation) -> bool32;
+
+    /// Reads a process's exit code, or `STILL_ACTIVE` while it runs.
+    /// @param process the process handle
+    /// @param exitCode receives the code
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#get-exit-code-process
+    /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodeprocess
+    func GetExitCodeProcess(process: *opaque, exitCode: *var uint32) -> bool32;
+
+    /// Ends a process and all its threads.
+    /// @param process the process handle
+    /// @param exitCode the code the process ends with
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#terminate-process
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess
+    func TerminateProcess(process: *opaque, exitCode: uint32) -> bool32;
+
+    /// Creates an anonymous pipe.
+    /// @param readPipe receives the read end
+    /// @param writePipe receives the write end
+    /// @param attributes whether the ends are inheritable, or null
+    /// @param size the buffer size suggestion, or zero for the default
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#create-pipe
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-createpipe
+    func CreatePipe(readPipe: *var *opaque, writePipe: *var *opaque, attributes: *SecurityAttributes, size: uint32)
+        -> bool32;
+
+    /// Changes a handle's flags, such as whether it is inherited.
+    /// @param handle the handle
+    /// @param mask the flags to change
+    /// @param flags their new values
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#set-handle-information
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-sethandleinformation
+    func SetHandleInformation(handle: *opaque, mask: uint32, flags: uint32) -> bool32;
+
+    /// Duplicates a handle, here into the same process with different inheritance.
+    /// @param sourceProcess the process that owns the handle
+    /// @param sourceHandle the handle
+    /// @param targetProcess the process to duplicate it into
+    /// @param targetHandle receives the duplicate
+    /// @param desiredAccess the access to grant, ignored with `DUPLICATE_SAME_ACCESS`
+    /// @param inheritHandle non-zero to make the duplicate inheritable
+    /// @param options flags such as `DUPLICATE_SAME_ACCESS`
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#duplicate-handle
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-duplicatehandle
+    func DuplicateHandle(sourceProcess: *opaque, sourceHandle: *opaque, targetProcess: *opaque,
+                         targetHandle: *var *opaque, desiredAccess: uint32, inheritHandle: bool32, options: uint32)
+        -> bool32;
+
+    /// Returns a pseudo-handle for the calling process, which needs no closing.
+    /// @returns the pseudo-handle
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#get-current-process
+    /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess
+    func GetCurrentProcess() -> *opaque;
+
+    /// Sets or removes an environment variable of the calling process.
+    /// @param name the variable's name, NUL-terminated
+    /// @param value its new value, NUL-terminated, or null to remove it
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://rux-lang.dev/docs/api/windows/process-control#set-environment-variable-w
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-setenvironmentvariablew
+    func SetEnvironmentVariableW(name: *uint16, value: *uint16) -> bool32;
+}
