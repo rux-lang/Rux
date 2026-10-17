@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <charconv>
 #include <cstdint>
 #include <format>
 #include <optional>
