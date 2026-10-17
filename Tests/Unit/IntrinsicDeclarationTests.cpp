@@ -812,41 +812,6 @@ std::vector<std::string> DiagnosticMessages(const SemanticModel &model) {
     return messages;
 }
 
-/// A declared type for every field the compiler supplies, so a test can declare each root in full.
-std::string_view SuppliedFieldType(const std::string_view root, const std::string_view field) {
-    static const std::map<std::pair<std::string_view, std::string_view>, std::string_view> types{
-        {{"Target", "os"}, "OperatingSystem"},
-        {{"Target", "arch"}, "Architecture"},
-        {{"Target", "abi"}, "ApplicationBinaryInterface"},
-        {{"Target", "endian"}, "Endianness"},
-        {{"Target", "pointerBits"}, "uint"},
-        {{"Target", "dataModel"}, "DataModel"},
-        {{"Target", "objectFormat"}, "ObjectFormat"},
-        {{"Target", "triple"}, "char8[..]"},
-        {{"Build", "profile"}, "char8[..]"},
-        {{"Build", "mode"}, "BuildMode"},
-        {{"Build", "optimization"}, "OptimizationMode"},
-        {{"Build", "debugAssertions"}, "bool"},
-        {{"Build", "debugInfo"}, "bool"},
-        {{"Build", "isTest"}, "bool"},
-        {{"Build", "outputKind"}, "OutputKind"},
-        {{"Build", "timestamp"}, "uint64"},
-        {{"Build", "date"}, "char8[..]"},
-        {{"Build", "time"}, "char8[..]"},
-        {{"Source", "line"}, "uint"},
-        {{"Source", "column"}, "uint"},
-        {{"Source", "file"}, "char8[..]"},
-        {{"Source", "fileName"}, "char8[..]"},
-        {{"Source", "filePath"}, "char8[..]"},
-        {{"Source", "function"}, "char8[..]"},
-        {{"Source", "module"}, "char8[..]"},
-        {{"Compiler", "version"}, "SemanticVersion"},
-    };
-    const auto found = types.find({root, field});
-    REQUIRE_MESSAGE(found != types.end(), "no test type for supplied field '", root, ".", field, "'");
-    return found->second;
-}
-
 std::string ValueName(const std::string_view root) {
     std::string name = "#" + std::string(root);
     name[1] = static_cast<char>(std::tolower(static_cast<unsigned char>(name[1])));
@@ -927,6 +892,25 @@ intrinsic #config: Config;
     CHECK_EQ(messages[2], "field 'name' of 'Config' is not one the compiler supplies for '#config'");
 }
 
+TEST_CASE("compiler-supplied fields use the types the compiler provides") {
+    auto parsed = ParseIntrinsicSource(R"(
+enum OperatingSystem { Windows }
+struct SemanticVersion { major: uint; minor: uint; patch: uint; }
+struct Target { os: uint; pointerBits: char8[..]; }
+struct Build { isTest: uint; }
+struct Compiler { version: OperatingSystem; }
+intrinsic #target: Target;
+intrinsic #build: Build;
+intrinsic #compiler: Compiler;
+)");
+    const auto messages = DiagnosticMessages(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze());
+    REQUIRE_EQ(messages.size(), 4);
+    CHECK_EQ(messages[0], "field 'os' of 'Target' must have type 'OperatingSystem', but has 'uint'");
+    CHECK_EQ(messages[1], "field 'pointerBits' of 'Target' must have type 'uint', but has 'char8[..]'");
+    CHECK_EQ(messages[2], "field 'isTest' of 'Build' must have type 'bool', but has 'uint'");
+    CHECK_EQ(messages[3], "field 'version' of 'Compiler' must have type 'SemanticVersion', but has 'OperatingSystem'");
+}
+
 TEST_CASE("Core extends every primitive once and declares none") {
     std::map<std::string, std::size_t> documented;
     const auto directory = std::filesystem::path(RUX_PACKAGES_DIR) / "Core" / "Src" / "Primitives";
@@ -976,7 +960,10 @@ TEST_CASE("Core declares exactly the fields the compiler supplies") {
         for (const auto &field : structure->fields) {
             fields.push_back(field.name);
         }
-        std::vector<std::string_view> supplied(root.fields.begin(), root.fields.end());
+        std::vector<std::string_view> supplied;
+        for (const CompilerParameterField &field : root.fields) {
+            supplied.push_back(field.name);
+        }
         std::ranges::sort(fields);
         std::ranges::sort(supplied);
         CHECK_EQ(fields, supplied);
@@ -1000,9 +987,9 @@ struct SemanticVersion { major: uint; minor: uint; patch: uint; }
     std::size_t count = 0;
     for (const CompilerParameterRoot &root : CompilerParameterRoots) {
         source += std::format("struct {} {{\n", root.name);
-        for (const std::string_view field : root.fields) {
-            source += std::format("    {}: {};\n", field, SuppliedFieldType(root.name, field));
-            reads += std::format("    let read{} = {}.{};\n", count++, ValueName(root.name), field);
+        for (const CompilerParameterField &field : root.fields) {
+            source += std::format("    {}: {};\n", field.name, field.type);
+            reads += std::format("    let read{} = {}.{};\n", count++, ValueName(root.name), field.name);
         }
         source += std::format("}}\nintrinsic {}: {};\n", ValueName(root.name), root.name);
     }
@@ -1041,17 +1028,17 @@ struct SemanticVersion { major: uint; minor: uint; patch: uint; }
     evaluator.SetSourceContext(evaluated.module.name, "test", "Read");
     evaluator.SetImports(evaluated.module);
     for (const CompilerParameterRoot &root : CompilerParameterRoots) {
-        for (const std::string_view field : root.fields) {
+        for (const CompilerParameterField &field : root.fields) {
             if (root.name == "Compiler") {
                 continue; // The version is compared as a whole rather than read as one scalar.
             }
             CAPTURE(root.name);
-            CAPTURE(field);
+            CAPTURE(field.name);
             FieldExpr fieldRead;
             auto object = std::make_unique<IdentExpr>();
             object->name = ValueName(root.name);
             fieldRead.object = std::move(object);
-            fieldRead.field = std::string(field);
+            fieldRead.field = std::string(field.name);
             const auto value = evaluator.Evaluate(fieldRead);
             CHECK(value.value.has_value());
             CHECK(value.diagnostics.empty());
