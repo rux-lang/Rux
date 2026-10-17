@@ -288,12 +288,12 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
             for (const CompilerParameterField &candidate : root->fields) {
                 supplied += std::format("{}'{}'", supplied.empty() ? "" : ", ", candidate.name);
             }
-            EmitError(declaration.location,
-                      std::format("field '{}' of '{}' is not one the compiler supplies for '{}'", field.name, root->name,
-                                  declaration.name),
-                      {},
-                      supplied.empty() ? std::format("remove the fields of '{}'; the compiler supplies none", root->name)
-                                       : std::format("remove '{}'; the compiler supplies {}", field.name, supplied));
+            const std::string message = std::format("field '{}' of '{}' is not one the compiler supplies for '{}'",
+                                                    field.name, root->name, declaration.name);
+            const std::string suggestion =
+                supplied.empty() ? std::format("remove the fields of '{}'; the compiler supplies none", root->name)
+                                 : std::format("remove '{}'; the compiler supplies {}", field.name, supplied);
+            EmitError(declaration.location, message, {}, suggestion);
             continue;
         }
 
@@ -313,9 +313,9 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
             }
         }
         if (!matches && !actual.IsUnknown()) {
-            EmitError(field.location,
-                      std::format("field '{}' of '{}' must have type '{}', but has '{}'", field.name, root->name,
-                                  suppliedField->type, actual.ToString()));
+            const std::string message = std::format("field '{}' of '{}' must have type '{}', but has '{}'",
+                                                    field.name, root->name, suppliedField->type, actual.ToString());
+            EmitError(field.location, message);
         }
     }
 }
