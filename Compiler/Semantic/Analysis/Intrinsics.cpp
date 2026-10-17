@@ -300,8 +300,12 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
         const TypeRef actual = ResolveType(*field.type);
         bool matches = false;
         if (suppliedField->kind == CompilerParameterFieldKind::Value) {
-            matches = suppliedField->type == "bool" ? actual->kind == TypeRef::Kind::Bool8
-                                                     : actual.ToString() == suppliedField->type;
+            if (suppliedField->type == "bool") {
+                matches = actual->kind == TypeRef::Kind::Bool8;
+            }
+            else {
+                matches = actual.ToString() == suppliedField->type;
+            }
         }
         else if (actual->kind == TypeRef::Kind::Named) {
             if (suppliedField->kind == CompilerParameterFieldKind::Enum) {
