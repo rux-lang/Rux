@@ -15,6 +15,18 @@ asm func Helper() -> int64 {
     ret
 }
 
+func Twice(value: int32) -> int32 {
+    return value * 2i32;
+}
+
+func Twice(value: int64) -> int64 {
+    return value * 2;
+}
+
+func Same<T>(value: T) -> T {
+    return value;
+}
+
 asm func Names(x: int64) -> int64 {
     call Helper
     mov rax, qword [rip + Counter]
@@ -28,6 +40,8 @@ asm func Names(x: int64) -> int64 {
     call dnoe
     mov rax, qword [Counter]
     mov rax, qword [rbx + Counter]
+    call Twice
+    call Same
 done:
     ret
 }

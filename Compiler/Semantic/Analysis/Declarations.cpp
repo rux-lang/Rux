@@ -247,10 +247,16 @@ void AnalysisContext::CheckAsmBodySymbols(const FuncDecl &d) {
             return;
         }
         std::optional<std::string> note;
+        std::string headline =
+            std::format("'{}' in asm func '{}' is not a label, a function or a module variable", name, d.name);
         std::string help = "define the label in the body, or declare the function or module variable it names";
         if (Symbol *symbol = currentScope->Lookup(name)) {
             const auto *global = AstCast<const GlobalDecl>(symbol->declaration);
-            if (symbol->kind == Symbol::Kind::Func || (global && !global->isThreadLocal)) {
+            // A name stands for one address, which an overload set or a generic function does not have.
+            const bool overloaded = symbol->kind == Symbol::Kind::Func && symbol->funcOverloads.size() > 1;
+            const bool generic = symbol->kind == Symbol::Kind::Func && symbol->funcOverloads.size() == 1 &&
+                                 !symbol->funcOverloads.front()->typeParams.empty();
+            if ((symbol->kind == Symbol::Kind::Func && !overloaded && !generic) || (global && !global->isThreadLocal)) {
                 // The body spells the name as written; lowering spells it as the linker knows the declaration.
                 if (global) {
                     asmSymbolDeclarations.insert_or_assign(&operand, global);
@@ -259,6 +265,17 @@ void AnalysisContext::CheckAsmBodySymbols(const FuncDecl &d) {
                     asmSymbolDeclarations.insert_or_assign(&operand, symbol->funcOverloads.front());
                 }
                 return;
+            }
+            if (overloaded || generic) {
+                headline = std::format("'{}' in asm func '{}' names no single function", name, d.name);
+            }
+            if (overloaded) {
+                note = std::format("'{}' is overloaded, so the name stands for no one function", name);
+                help = "give the function the body calls a name no other function shares";
+            }
+            else if (generic) {
+                note = std::format("'{}' is generic, so it has no address until its type arguments are known", name);
+                help = "call a function that is not generic, which may call the generic one";
             }
             if (symbol->kind == Symbol::Kind::Const) {
                 note = std::format("'{}' is a constant, which has no storage", name);
@@ -278,9 +295,7 @@ void AnalysisContext::CheckAsmBodySymbols(const FuncDecl &d) {
             }
         }
         reported.insert(name);
-        EmitError(location,
-                  std::format("'{}' in asm func '{}' is not a label, a function or a module variable", name, d.name),
-                  note ? std::vector<std::string>{*note} : std::vector<std::string>{}, help);
+        EmitError(location, headline, note ? std::vector<std::string>{*note} : std::vector<std::string>{}, help);
     };
     for (const auto &instr : d.asmBody) {
         for (const auto &operand : instr.operands) {

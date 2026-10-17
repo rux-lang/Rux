@@ -1,7 +1,9 @@
-23:10: error: 'dnoe' in asm func 'Names' is not a label, a function or a module variable
-24:10: error: 'Limit' in asm func 'Names' is not a label, a function or a module variable
-25:14: error: 'Depth' in asm func 'Names' is not a label, a function or a module variable
-26:14: error: 'opterr' in asm func 'Names' is not a label, a function or a module variable
-27:10: error: 'x' in asm func 'Names' is not a label, a function or a module variable
-29:14: error: 'Counter' in a memory operand is reached relative to 'rip', so the operand must be '[rip + Counter]'
-30:14: error: 'Counter' in a memory operand is reached relative to 'rip', so the operand must be '[rip + Counter]'
+35:10: error: 'dnoe' in asm func 'Names' is not a label, a function or a module variable
+36:10: error: 'Limit' in asm func 'Names' is not a label, a function or a module variable
+37:14: error: 'Depth' in asm func 'Names' is not a label, a function or a module variable
+38:14: error: 'opterr' in asm func 'Names' is not a label, a function or a module variable
+39:10: error: 'x' in asm func 'Names' is not a label, a function or a module variable
+41:14: error: 'Counter' in a memory operand is reached relative to 'rip', so the operand must be '[rip + Counter]'
+42:14: error: 'Counter' in a memory operand is reached relative to 'rip', so the operand must be '[rip + Counter]'
+43:10: error: 'Twice' in asm func 'Names' names no single function
+44:10: error: 'Same' in asm func 'Names' names no single function
