@@ -62,6 +62,19 @@ func ForwardGlobal(given: Named) {
     Saved = given;
 }
 
+// An element has no place of its own, so an interface value made in an inner block cannot be stored in one; the block
+// that declares the array may store it.
+func Elements() -> int {
+    var items: Named[2] = [Plain { id: 0 }, Plain { id: 1 }];
+    items[0] = Plain { id: 2 };
+    var i: uint = 0;
+    while i < 2 {
+        items[i] = Plain { id: 3 };
+        i += 1;
+    }
+    return items[0].Id();
+}
+
 func Main() -> int {
     return 0;
 }

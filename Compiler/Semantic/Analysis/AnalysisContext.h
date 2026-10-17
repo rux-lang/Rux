@@ -1081,6 +1081,8 @@ private:
     std::unordered_set<const Symbol *> frameInterfaceLocals;
     /// The declaration of each local a `let` or `var` introduced, which owns the holders of its interface values.
     std::unordered_map<const Symbol *, const LetStmt *> localDeclarations;
+    /// The scope each local of the functions being checked was declared in.
+    std::unordered_map<const Symbol *, const Scope *> localScopes;
     bool checkingPlainAssignmentTarget = false;
     bool checkingBorrowProjectionRoot = false;
     /// The field path, such as `start.x`, that the local about to be read is read through, so a part written on its

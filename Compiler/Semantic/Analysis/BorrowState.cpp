@@ -1238,6 +1238,22 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
             // The value is kept with the local it is stored in, so it lives as long as the local and the next value of
             // its type stored at the same place replaces it. An element of an array has no place of its own here.
             const auto owner = localDeclarations.find(symbol);
+            // An element has no place of its own, so the value lives in storage of the block that made it: a block
+            // inside the one that declared the array ends, or runs again, while the element still points at it.
+            const TypeRef valueType = CheckedExpressionType(value);
+            if (const auto declared = localScopes.find(symbol);
+                throughIndex && declared != localScopes.end() && declared->second != currentScope &&
+                !valueType.IsUnknown() &&
+                !(valueType->kind == TypeRef::Kind::Named && interfaceDecls.contains(valueType->name))) {
+                EmitError(location,
+                          std::format("an interface value made in this block cannot be stored in an element of '{}', "
+                                      "which outlives the block",
+                                      symbol->name),
+                          {"the value it is made from lives in the block, which a loop runs again and every exit ends"},
+                          std::format("store the concrete values in the array, or make the interface value in the "
+                                      "block that declares '{}'",
+                                      symbol->name));
+            }
             if (!throughIndex && owner != localDeclarations.end() &&
                 IsHolderCoercion(CheckedExpressionType(value), targetType)) {
                 std::string place;

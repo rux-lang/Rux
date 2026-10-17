@@ -74,6 +74,7 @@ Symbol *AnalysisContext::DefineTrackedLocal(Symbol symbol, const bool initialize
         viewSources.erase(defined);
         frameInterfaceLocals.erase(defined);
         localDeclarations.erase(defined);
+        localScopes[defined] = currentScope;
         // Fixed arrays are raw inline storage and may be populated element-by-element. Until element-level definite
         // initialization exists, tracking the aggregate as uninitialized produces false paths for every fill loop. An
         // array whose elements need destruction cannot be filled that way, because its drop flag covers it whole and
