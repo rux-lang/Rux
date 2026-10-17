@@ -286,6 +286,17 @@ struct PlaceReplacement {
     const Expr *owner = nullptr;
 };
 
+/// Storage for a value an interface value is made from, kept with the local that holds the interface value: one per
+/// place of that local -- the local itself, or a field path such as `holder.named` -- and per concrete type, so a
+/// value stored there again replaces the one it held, and outlives a block that made it as long as the local does.
+struct InterfaceHolderSite {
+    const LetStmt *owner = nullptr;
+    std::string place;
+    TypeRef type;
+
+    friend bool operator==(const InterfaceHolderSite &, const InterfaceHolderSite &) = default;
+};
+
 struct SemanticFacts {
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> constantReferences;
@@ -334,6 +345,9 @@ struct SemanticFacts {
     std::unordered_map<const Expr *, ResolvedCallableBinding> functionReferenceBindings;
     /// The function or module variable each name in an asm body stands for, which lowering spells by linker name.
     std::unordered_map<const AsmOperand *, const Decl *> asmSymbolDeclarations;
+    /// The holder each value made into an interface value is kept in, and the holders each local declares.
+    std::unordered_map<const Expr *, InterfaceHolderSite> interfaceHolderSites;
+    std::unordered_map<const LetStmt *, std::vector<InterfaceHolderSite>> interfaceHolders;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, bool> effectiveVisibilities;
     /// Effectively public declarations owned by the package being compiled, rather than by one of its dependencies.
@@ -431,6 +445,11 @@ struct SemanticModel {
     [[nodiscard]] const ResolvedCallableBinding *TryGetFunctionReferenceBinding(const Expr &reference) const noexcept;
     /// The function or module variable an asm operand's symbol names, or null for a label or an extern.
     [[nodiscard]] const Decl *TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept;
+    /// The holder a value made into an interface value is kept in, or null for one its scope keeps.
+    [[nodiscard]] const InterfaceHolderSite *TryGetInterfaceHolderSite(const Expr &value) const noexcept;
+    /// The holders a local declares beside itself, or null when it holds no interface value made from a value with a
+    /// destructor.
+    [[nodiscard]] const std::vector<InterfaceHolderSite> *TryGetInterfaceHolders(const LetStmt &local) const noexcept;
 
     /// Returns null for initialized declarations and declarations whose type has no eligible default constructor.
     [[nodiscard]] const ResolvedDefaultConstructor *TryGetDefaultConstructor(const LetStmt &statement) const noexcept;

@@ -258,6 +258,8 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     // `Channel<uint64>` names the package's file, not the caller's.
     const std::string savedFile = currentFile;
     const std::string savedDeclModulePath = declModulePath;
+    // An instance lowered while another body is half done names its own holders, even for the same declarations.
+    auto savedHolders = std::exchange(interfaceHolderBindings, {});
     if (const auto origin = functionOrigins.find(&d); origin != functionOrigins.end()) {
         currentFile = origin->second.file;
         declModulePath = origin->second.declModulePath;
@@ -364,6 +366,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     currentSubstitutions = savedSubstitutions;
     currentFunctionName = savedFuncName;
     currentFile = savedFile;
+    interfaceHolderBindings = std::move(savedHolders);
     declModulePath = savedDeclModulePath;
     return hf;
 }

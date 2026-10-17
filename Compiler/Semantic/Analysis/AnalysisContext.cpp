@@ -164,6 +164,8 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , callableBindings(output.callableBindings)
     , functionReferenceBindings(output.functionReferenceBindings)
     , asmSymbolDeclarations(output.asmSymbolDeclarations)
+    , interfaceHolderSites(output.interfaceHolderSites)
+    , interfaceHolders(output.interfaceHolders)
     , defaultConstructors(output.defaultConstructors)
     , symbolIdentities(output.symbolIdentities)
     , vtableIdentities(output.vtableIdentities)

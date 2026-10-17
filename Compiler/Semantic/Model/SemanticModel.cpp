@@ -272,6 +272,16 @@ const ResolvedCallableBinding *SemanticModel::TryGetFunctionReferenceBinding(con
     return binding == facts.functionReferenceBindings.end() ? nullptr : &binding->second;
 }
 
+const InterfaceHolderSite *SemanticModel::TryGetInterfaceHolderSite(const Expr &value) const noexcept {
+    const auto site = facts.interfaceHolderSites.find(&value);
+    return site == facts.interfaceHolderSites.end() ? nullptr : &site->second;
+}
+
+const std::vector<InterfaceHolderSite> *SemanticModel::TryGetInterfaceHolders(const LetStmt &local) const noexcept {
+    const auto holders = facts.interfaceHolders.find(&local);
+    return holders == facts.interfaceHolders.end() ? nullptr : &holders->second;
+}
+
 const Decl *SemanticModel::TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept {
     const auto declaration = facts.asmSymbolDeclarations.find(&operand);
     return declaration == facts.asmSymbolDeclarations.end() ? nullptr : declaration->second;

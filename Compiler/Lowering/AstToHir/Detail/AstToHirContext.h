@@ -141,6 +141,10 @@ protected:
     std::size_t returnOrdinal = 0;
     /// Names the value an interface value owns, which a scope destroys like a local of its own.
     std::size_t interfaceValueOrdinal = 0;
+    /// The holders of the function being lowered, by `InterfaceHolderKey`: each one's hidden name and binding.
+    std::unordered_map<std::string, std::pair<std::string, std::uint64_t>> interfaceHolderBindings;
+    /// Declarations a statement needs ahead of it in its block: the holders a local keeps its interface values in.
+    std::vector<HirStmtPtr> statementPrelude;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
 
@@ -187,6 +191,12 @@ protected:
 
     [[nodiscard]] HirBlock LowerBlock(const Block &block);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
+    /// Lowers `stmt` into `block`, after the declarations it needs ahead of it.
+    void LowerStmtInto(HirBlock &block, const Stmt &stmt);
+    /// Identifies one holder of the function being lowered, with the holder's type as this instance spells it.
+    [[nodiscard]] std::string InterfaceHolderKey(const InterfaceHolderSite &site) const;
+    /// Declares, ahead of `local`, the holders its interface values keep their values in.
+    void DeclareInterfaceHolders(const LetStmt &local);
     CleanupPlanner::LoopToken BeginLoop(const std::string &label);
     void EndLoop(CleanupPlanner::LoopToken token);
     /// A `break` or `continue` that first runs the defers registered inside the loop it leaves.

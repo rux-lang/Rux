@@ -1166,6 +1166,26 @@ bool AnalysisContext::MakesFrameInterfaceValue(const Expr &value, const TypeRef 
     return symbol != nullptr && frameInterfaceLocals.contains(symbol);
 }
 
+bool AnalysisContext::IsHolderCoercion(const TypeRef &valueType, const TypeRef &targetType) {
+    const auto isInterface = [this](const TypeRef &type) {
+        return !type.IsUnknown() && type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
+    };
+    return isInterface(targetType) && !valueType.IsUnknown() && !isInterface(valueType) &&
+           MayNeedDestruction(valueType);
+}
+
+void AnalysisContext::RecordInterfaceHolder(const Expr &value, const LetStmt &owner, std::string place,
+                                            const TypeRef &type) {
+    InterfaceHolderSite site{&owner, std::move(place), type};
+    auto &holders = interfaceHolders[&owner];
+    if (std::ranges::none_of(holders, [&](const InterfaceHolderSite &holder) {
+            return holder.place == site.place && holder.type == site.type;
+        })) {
+        holders.push_back(site);
+    }
+    interfaceHolderSites.insert_or_assign(&value, std::move(site));
+}
+
 void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType,
                                           const SourceLocation location) {
     const bool makesFrameInterface = MakesFrameInterfaceValue(value, CheckedExpressionType(value), targetType);
@@ -1175,6 +1195,8 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
     // Walk to the name the target is part of, noting whether the way there leaves the local's own storage.
     const Expr *root = &target;
     bool throughIndirection = false;
+    bool throughIndex = false;
+    std::vector<std::string_view> fields;
     const auto indirect = [this](const Expr &object, const bool viewIsIndirect) {
         const TypeRef objectType = CheckedExpressionType(object);
         return objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference ||
@@ -1183,10 +1205,12 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
     while (true) {
         if (const auto *field = AstCast<const FieldExpr>(root)) {
             throughIndirection = throughIndirection || indirect(*field->object, false);
+            fields.push_back(field->field);
             root = field->object.get();
         }
         else if (const auto *index = AstCast<const IndexExpr>(root)) {
             throughIndirection = throughIndirection || indirect(*index->object, true);
+            throughIndex = true;
             root = index->object.get();
         }
         else if (const auto *unary = AstCast<const UnaryExpr>(root); unary && unary->op == TokenKind::Star) {
@@ -1211,6 +1235,17 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
         // A local keeps it, as a view of a local array; storage that outlives the call cannot hold it.
         if (keptInCall) {
             frameInterfaceLocals.insert(symbol);
+            // The value is kept with the local it is stored in, so it lives as long as the local and the next value of
+            // its type stored at the same place replaces it. An element of an array has no place of its own here.
+            const auto owner = localDeclarations.find(symbol);
+            if (!throughIndex && owner != localDeclarations.end() &&
+                IsHolderCoercion(CheckedExpressionType(value), targetType)) {
+                std::string place;
+                for (auto name = fields.rbegin(); name != fields.rend(); ++name) {
+                    place += place.empty() ? std::string(*name) : std::format(".{}", *name);
+                }
+                RecordInterfaceHolder(value, *owner->second, std::move(place), CheckedExpressionType(value));
+            }
         }
         else {
             const std::string function =

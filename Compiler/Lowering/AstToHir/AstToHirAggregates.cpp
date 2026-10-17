@@ -804,9 +804,45 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
             if (interface != interfaceDecls.end() && !interface->second->methods.empty()) {
                 coercion->vtableLabel = InterfaceVtableLabel(*implementationType, targetType->name);
             }
-            // A value with a destructor that an interface value takes over lives in a hidden local of the scope the
-            // coercion is written in, which destroys it when the scope ends, as it would a named local; the interface
-            // value borrows it. Without one, nothing destroyed what the interface value held.
+            // A value stored in a local's interface value is kept in that local's holder for its place and type, which
+            // lives as long as the local: storing it destroys the value the holder kept before, and the interface value
+            // borrows the holder.
+            if (const InterfaceHolderSite *site = model.TryGetInterfaceHolderSite(expression)) {
+                if (const auto holder = interfaceHolderBindings.find(InterfaceHolderKey(*site));
+                    holder != interfaceHolderBindings.end()) {
+                    const auto &[holderName, holderBinding] = holder->second;
+                    const TypeRef heldType = lowered->type;
+                    const auto named = [&] {
+                        auto reference = std::make_unique<HirVarExpr>();
+                        reference->location = expression.location;
+                        reference->name = holderName;
+                        reference->type = heldType;
+                        return reference;
+                    };
+                    auto store = std::make_unique<HirAssignExpr>();
+                    store->location = expression.location;
+                    store->op = TokenKind::Assign;
+                    store->target = named();
+                    store->value = std::move(lowered);
+                    store->overwriteCleanup = cleanupPlanner.ActionFor(holderBinding);
+                    store->type = heldType;
+                    auto statement = std::make_unique<HirExprStmt>();
+                    statement->location = expression.location;
+                    statement->expr = std::move(store);
+                    coercion->value = named();
+                    coercion->borrowed = true;
+                    auto scope = std::make_unique<HirBlockExpr>();
+                    scope->location = expression.location;
+                    scope->type = targetType;
+                    scope->block.location = expression.location;
+                    scope->block.stmts.push_back(std::move(statement));
+                    scope->value = std::move(coercion);
+                    return scope;
+                }
+            }
+            // Any other value with a destructor that an interface value takes over lives in a hidden local of the scope
+            // the coercion is written in, which destroys it when the scope ends, as it would a named local; the
+            // interface value borrows it. Without one, nothing destroyed what the interface value held.
             const std::string hiddenName = std::format("$interface.{}", interfaceValueOrdinal);
             if (const std::uint64_t bindingId = RegisterCleanupBinding(hiddenName, lowered->type, expression.location);
                 bindingId != 0) {

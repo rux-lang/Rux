@@ -480,6 +480,14 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (defined && initializerAccepted && makesFrameInterface) {
             frameInterfaceLocals.insert(defined);
         }
+        if (defined) {
+            localDeclarations[defined] = letStatement;
+            // A value with a destructor made into the local's interface value is kept with the local, where a later
+            // value of the same type stored there replaces it.
+            if (initializerAccepted && makesFrameInterface && IsHolderCoercion(initializerType, declarationType)) {
+                RecordInterfaceHolder(*letStatement->init, *letStatement, "", initializerType);
+            }
+        }
         if (defined && defined->type.IsFallible()) {
             fallibleLocals.push_back({defined, currentScope});
         }
