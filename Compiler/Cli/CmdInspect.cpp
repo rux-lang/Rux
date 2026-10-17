@@ -517,8 +517,9 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             }
             if (!dep.targetOS.empty()) {
                 std::print(", \"targetOS\": [");
-                for (std::size_t i = 0; i < dep.targetOS.size(); ++i) {
-                    std::print("{}\"{}\"", i == 0 ? "" : ", ", EscapeJson(ManifestTargetOSName(dep.targetOS[i])));
+                for (std::size_t osIndex = 0; osIndex < dep.targetOS.size(); ++osIndex) {
+                    std::print("{}\"{}\"", osIndex == 0 ? "" : ", ",
+                               EscapeJson(ManifestTargetOSName(dep.targetOS[osIndex])));
                 }
                 std::print("]");
             }

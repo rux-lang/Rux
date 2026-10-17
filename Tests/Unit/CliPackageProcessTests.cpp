@@ -140,7 +140,7 @@ Type = "SourceLibrary"
 
 TEST_CASE("list and info label the global cache and selected installed version") {
     const ScopedCliPackageCache cache;
-    WriteCachedPackage("rux", "my-pkg", "1.0.0", "first release");
+    const auto first = WriteCachedPackage("rux", "my-pkg", "1.0.0", "first release");
     WriteCachedPackage("rux", "my-pkg", "2.0.0", "second release");
 
     const auto listed = Run(std::array<std::string_view, 2>{"list", "--global"});
