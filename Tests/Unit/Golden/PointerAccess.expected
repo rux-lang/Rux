@@ -1,2 +1,3 @@
-4:16: error: cannot cast '*int' to '*var int', which would give a read-only pointer write access
-8:18: error: cannot iterate over pointer '*int32'
+5:16: error: cannot cast '*int' to '*var int', which would give a read-only pointer write access
+9:18: error: cannot iterate over pointer '*int32'
+16:20: error: cannot cast '*int' to '*var uint64', which would give a read-only pointer write access

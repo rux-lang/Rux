@@ -529,12 +529,13 @@ AnalysisContext::CaseTypeDeclaration AnalysisContext::CastCaseType(const TypeRef
 }
 
 void AnalysisContext::CheckCast(const TypeRef &operand, const TypeRef &target, const SourceLocation location) {
-    // A cast that only adds write access to the same pointee retypes nothing, so it is refused: a read-only pointer to
-    // a value stays read-only. Retyping an address, as `*opaque` to `*var T`, remains the unchecked escape it is, and
-    // `*opaque` to `*var opaque` gains nothing, since nothing is written through an opaque pointee.
+    // A cast may retype an address but never add write access to what a read-only pointer reaches, so a value seen
+    // through a `*T` stays unwritten whatever type the address is given. Untyped memory is the explicit escape:
+    // `*opaque` to `*var T` retypes an address nothing typed, and `*T` to `*var opaque` writes nothing by itself, as
+    // the C functions that take a `void *` they only read declare it.
     if (operand->kind == TypeRef::Kind::Pointer && target->kind == TypeRef::Kind::Pointer && !operand->inner.empty() &&
         !target->inner.empty() && !operand->inner.front().isMut && target->inner.front().isMut &&
-        operand->inner.front() == target->inner.front() && !operand->inner.front().IsOpaque()) {
+        !operand->inner.front().IsOpaque() && !target->inner.front().IsOpaque()) {
         EmitError(location,
                   std::format("cannot cast '{}' to '{}', which would give a read-only pointer write access",
                               operand.ToString(), target.ToString()),

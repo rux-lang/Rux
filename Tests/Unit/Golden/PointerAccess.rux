@@ -1,4 +1,5 @@
-// A cast never gives a read-only pointer write access, and a pointer has no length to iterate over.
+// A cast never gives a read-only pointer write access, whatever pointee it names, except through untyped memory; and a
+// pointer has no length to iterate over.
 func Write(values: int32[3]) -> int32 {
     let x: int = 5;
     let p = @x as *var int;
@@ -12,5 +13,8 @@ func Write(values: int32[3]) -> int32 {
         sum += value;
     }
     let handle = @x as *opaque as *var int;
+    let wider = @x as *var uint64;
+    let untyped = @x as *var opaque;
+    let bytes = @x as *uint8;
     return sum;
 }

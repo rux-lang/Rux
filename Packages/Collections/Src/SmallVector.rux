@@ -82,8 +82,14 @@ extend SmallVector<T> {
         return self.heap == null ? self.InlineCapacity() : self.heapCapacity;
     }
 
-    // Where the elements are.
-    func Items(self: &SmallVector<T>) -> *var T {
+    // Where the elements are, to read them.
+    func Items(self: &SmallVector<T>) -> *T {
+        if self.heap != null { return self.heap; }
+        return (@self.inline[0]) as *T;
+    }
+
+    // Where the elements are, to change them.
+    func WritableItems(self: &var SmallVector<T>) -> *var T {
         if self.heap != null { return self.heap; }
         return (@self.inline[0]) as *var T;
     }
@@ -98,7 +104,7 @@ extend SmallVector<T> {
             return;
         }
         let block = AllocateBlock<T>(self.allocator, capacity)?;
-        let inline = self.Items();
+        let inline = self.WritableItems();
         var index: uint = 0;
         while index < self.length {
             block[index] <- inline[index];
@@ -114,7 +120,7 @@ extend SmallVector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#push
     pub func Push(self: &var SmallVector<T>, value: T) -> ! CollectionError {
         if self.length == self.Capacity() { self.Grow(AddLength(self.length, 1)?)?; }
-        let items = self.Items();
+        let items = self.WritableItems();
         items[self.length] <- value;
         self.length = self.length + 1;
     }
@@ -126,7 +132,7 @@ extend SmallVector<T> {
     pub func TryPop(self: &var SmallVector<T>, value: *var T) -> bool {
         if self.length == 0 || value == null { return false; }
         self.length = self.length - 1;
-        let items = self.Items();
+        let items = self.WritableItems();
         *value <- items[self.length];
         return true;
     }
@@ -146,14 +152,14 @@ extend SmallVector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#as-slice
     pub func AsSlice(self: &SmallVector<T>) -> T[..] {
         let items = self.Items();
-        return (items as *T)[..self.length];
+        return items[..self.length];
     }
 
     /// The elements, writable, valid until the vector next changes or moves.
     /// @returns a view of them
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#as-mutable-slice
     pub func AsMutableSlice(self: &var SmallVector<T>) -> var T[..] {
-        let items = self.Items();
+        let items = self.WritableItems();
         return items[..self.length];
     }
 
@@ -162,7 +168,7 @@ extend SmallVector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#truncate
     pub func Truncate(self: &var SmallVector<T>, length: uint) {
         if length >= self.length { return; }
-        let items = self.Items();
+        let items = self.WritableItems();
         var index = length;
         while index < self.length {
             let taken <- items[index];

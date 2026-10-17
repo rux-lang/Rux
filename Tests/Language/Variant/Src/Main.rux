@@ -283,7 +283,7 @@ func CheckPointerCasts() {
     let writable = untyped as *var WideMaybe;
     *writable = WideMaybe::None;
     Assert(ReadWide(wide) == -1i128, "a write through a pointer cast back from an untyped one reaches the variant");
-    *(bytes as *var WideMaybe) = WideMaybe::Some(42i128);
+    *(@wide as *var uint8 as *var WideMaybe) = WideMaybe::Some(42i128);
     Assert(ReadWide(wide) == 42i128, "a byte pointer to a variant converts back to the variant's pointer");
 
     let parcel = Parcel::Pair(20i32, 22i32);
