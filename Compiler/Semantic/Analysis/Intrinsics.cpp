@@ -300,7 +300,8 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
         const TypeRef actual = ResolveType(*field.type);
         bool matches = false;
         if (suppliedField->kind == CompilerParameterFieldKind::Value) {
-            matches = actual.ToString() == suppliedField->type;
+            matches = suppliedField->type == "bool" ? actual->kind == TypeRef::Kind::Bool8
+                                                     : actual.ToString() == suppliedField->type;
         }
         else if (actual->kind == TypeRef::Kind::Named) {
             if (suppliedField->kind == CompilerParameterFieldKind::Enum) {
@@ -313,8 +314,8 @@ void AnalysisContext::CheckCompilerParameterDeclaration(const ConstDecl &declara
             }
         }
         if (!matches && !actual.IsUnknown()) {
-            const std::string message = std::format("field '{}' of '{}' must have type '{}', but has '{}'",
-                                                    field.name, root->name, suppliedField->type, actual.ToString());
+            const std::string message = std::format("field '{}' of '{}' must have type '{}', but has '{}'", field.name,
+                                                    root->name, suppliedField->type, actual.ToString());
             EmitError(field.location, message);
         }
     }
