@@ -7,7 +7,6 @@
 #include "Target/Platform.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstdlib>
 #include <ctime>
@@ -77,16 +76,6 @@ bool TargetHasFeature(const CompileTimeContext &context, const std::string_view 
     return false;
 }
 
-/// Whether this compiler implements a named language feature, letting source guard a construct that older releases
-/// would not accept.
-bool CompilerHasFeature(const std::string_view feature) {
-    static constexpr std::array features{
-        "conditional-compilation", "namespaced-intrinsics",      "target-intrinsics",
-        "build-intrinsics",        "compiler-feature-detection", "source-location-defaults",
-        "extern-symbol-names",     "no-return-attribute",        "when-attribute",
-        "link-attribute"};
-    return std::ranges::contains(features, feature);
-}
 } // namespace
 
 HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression, const ValueConsumptionKind kind) {
@@ -318,7 +307,8 @@ HirExprPtr AstToHirContext::LowerCompilerParamCall(const std::string &root, cons
         return CompilerLiteral(call.location, TypeRef::MakeBool(),
                                TargetHasFeature(context, argument) ? "true" : "false");
     if (root == "Compiler" && member == "HasFeature")
-        return CompilerLiteral(call.location, TypeRef::MakeBool(), CompilerHasFeature(argument) ? "true" : "false");
+        return CompilerLiteral(call.location, TypeRef::MakeBool(),
+                               IsSupportedCompilerFeature(argument) ? "true" : "false");
     if (root == "Config" && member == "Get") {
         const auto value = context.config.find(argument);
         return CompilerString(call.location, value == context.config.end() ? std::string{} : value->second);
@@ -447,7 +437,7 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         break;
     case Kind::CompilerHasFeature:
         type = TypeRef::MakeBool();
-        value = CompilerHasFeature(intrinsicArgument()) ? "true" : "false";
+        value = IsSupportedCompilerFeature(intrinsicArgument()) ? "true" : "false";
         break;
     case Kind::Config: {
         type = TypeRef::MakeText(TypeRef::Kind::Char8);

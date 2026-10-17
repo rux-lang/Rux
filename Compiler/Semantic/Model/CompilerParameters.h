@@ -50,4 +50,19 @@ inline constexpr std::array<CompilerParameterRoot, 5> CompilerParameterRoots{{
     const CompilerParameterRoot *found = FindCompilerParameterRoot(root);
     return found && std::ranges::contains(found->fields, field);
 }
+
+/// Every language feature `#compiler.HasFeature` reports, letting source guard a construct that older releases would
+/// not accept. Conditional folding and lowering both answer from this one list, so a `when` guard and an ordinary
+/// expression agree.
+inline constexpr std::array<std::string_view, 10> CompilerFeatures{
+    "conditional-compilation",    "namespaced-intrinsics",
+    "target-intrinsics",          "build-intrinsics",
+    "compiler-feature-detection", "source-location-defaults",
+    "extern-symbol-names",        "link-attribute",
+    "no-return-attribute",        "when-attribute"};
+
+/// Whether this compiler implements the language feature named `feature`.
+[[nodiscard]] inline bool IsSupportedCompilerFeature(const std::string_view feature) noexcept {
+    return std::ranges::contains(CompilerFeatures, feature);
+}
 } // namespace Rux

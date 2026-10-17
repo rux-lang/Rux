@@ -79,10 +79,6 @@ constexpr std::array OptimizationVariants{"None", "Size", "Speed"};
 constexpr std::array OutputKindVariants{"Executable", "SharedLibrary", "StaticLibrary", "SourceLibrary"};
 constexpr std::array TargetFeatureVariants{"AVX",  "AVX2",  "AVX512", "NEON",  "SSE2",
                                            "SSE3", "SSE41", "SSE42",  "SSSE3", "SVE"};
-constexpr std::array CompilerFeatures{
-    "conditional-compilation",    "namespaced-intrinsics",    "target-intrinsics",   "build-intrinsics",
-    "compiler-feature-detection", "source-location-defaults", "extern-symbol-names", "link-attribute",
-    "no-return-attribute",        "when-attribute"};
 
 template <std::size_t N>
 void RegisterVariants(std::unordered_map<std::string, std::vector<std::string>> &enums, const std::string &name,
@@ -807,7 +803,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamCal
         return Value{TargetHasFeature(name)};
     }
     if (root == "Compiler" && member == "HasFeature")
-        return Value{std::ranges::contains(CompilerFeatures, name)};
+        return Value{IsSupportedCompilerFeature(name)};
     if (root == "Config" && member == "Get") {
         const auto it = context.config.find(name);
         return Value{it == context.config.end() ? std::string{} : it->second};
@@ -1077,8 +1073,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             return Value{context.buildInfo.Timestamp()};
         case K::CompilerHasFeature: {
             const auto feature = IntrinsicArgument(*e);
-            return feature ? std::optional<Value>{Value{std::ranges::contains(CompilerFeatures, *feature)}}
-                           : std::nullopt;
+            return feature ? std::optional<Value>{Value{IsSupportedCompilerFeature(*feature)}} : std::nullopt;
         }
         case K::Config: {
             const auto key = IntrinsicArgument(*e);
