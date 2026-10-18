@@ -53,8 +53,8 @@ std::size_t Loads(const LirPackage &package) {
     for (const auto &module : package.modules)
         for (const auto &function : module.funcs)
             for (const auto &block : function.blocks)
-                count += std::ranges::count_if(block.instrs,
-                                               [](const LirInstr &instruction) { return instruction.op == LirOpcode::Load; });
+                for (const auto &instruction : block.instrs)
+                    count += instruction.op == LirOpcode::Load;
     return count;
 }
 } // namespace
