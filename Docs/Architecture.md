@@ -181,7 +181,8 @@ its fields hold their call-time values throughout; the snapshot also makes store
 irrelevant to them. Loads through the address of a module constant (`Optimization/ConstantAddresses.h`) read
 read-only data: value numbering shares them across stores like pure arithmetic, and loop-invariant motion hoists them
 even from loops that write memory.
-Promotion admits only direct, type-identical, nonvolatile loads and stores of nonescaping scalar slots. Per-slot
+Promotion admits only direct, type-identical, nonvolatile loads and stores of nonescaping scalar slots. Dead-code
+elimination also retains volatile accesses when their result is unused, including reads from local stack slots. Per-slot
 liveness and definite-initialization dataflow construct pruned SSA merges, including allocations inside loops;
 uninitialized, escaped, aliased, and mixed-width storage retains its memory behavior. Trivial phi nodes collapse before
 constant/copy propagation and dead-code cleanup. Field replacement handles ranges, slices, scalar tuples and concrete

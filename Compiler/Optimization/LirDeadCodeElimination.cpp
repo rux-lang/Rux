@@ -337,6 +337,10 @@ std::vector<char> FindDeadStores(const LirFunc &function, const std::vector<std:
 
 /// Whether the instruction must be kept regardless of who reads its result.
 bool IsRequiredEffect(const LirInstr &instruction, const std::vector<std::int32_t> &slots, const bool deadStore) {
+    // A volatile access is observable even when it reads a local slot and its result is unused.
+    if (instruction.isVolatile) {
+        return true;
+    }
     if (deadStore) {
         return false;
     }
