@@ -519,6 +519,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Division-by-zero trap preservation** — Release constant propagation no longer replaces `0 / divisor` with zero when the divisor is only known at runtime. Dynamic zero divisors retain the required panic on every target; division by a known nonzero constant can still fold.
+
 - **Volatile local memory reads** — LIR dead-code elimination no longer discards an unused volatile load just because its address is a nonescaping local stack slot. Volatile accesses remain observable regardless of result liveness.
 
 - **Wide string literals aligned to their code unit** — a `c16"..."` or `c32"..."` literal written in an expression was packed into read-only data straight after the literal before it, so it could start at an odd address, and Windows refused such a UTF-16 name with `ERROR_NOACCESS` (a registry read failed in one build and passed in another as the layout shifted). Both backends now pad a UTF-16 literal to two bytes and a UTF-32 literal to four, as string constants already were, and a UTF-8 literal with the same bytes is no longer handed back for a wider one. The x86-64 assembly listing prints the matching `align`.
