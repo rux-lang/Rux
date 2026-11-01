@@ -33,7 +33,7 @@ Diagnostics, lint messages, and these docs use one vocabulary: a _member_ is one
 | D11 | Matching                  | Ordinary `match` covers success, failure, and presence patterns; there is no combined `match ... catch`.                                                                                                                         | One compositional matching model works for nested values.                                                        |
 | D12 | Recovery                  | `catch` is postfix-tight and processes one outer fallible level.                                                                                                                                                                 | Recovery has a small, locally visible subject.                                                                   |
 | D13 | Error conversion          | `value? else (e => expression)` binds the complete error and may use local context; error channels stay explicit.                                                                                                                | Adding a filename or other context needs no one-argument helper and no implicit conversion.                      |
-| D14 | Inspection                | `is` tests exact sum membership or one optional level; interface tests remain separate and unimplemented; no flow narrowing.                                                                                                     | Type membership, interface implementation, and payload extraction stay separate questions.                       |
+| D14 | Inspection                | `is` tests sum membership, one optional level, or any `match` pattern, whose names bind only where the test holds: the guarded body and the right of `&&`; interface tests stay unimplemented; no narrowing.                     | Extraction takes a pattern, the subject keeps its type, and membership never implies an interface.               |
 | D15 | Discard checks            | Directly discarded fallibles and never-read fallible locals are diagnosed; an exhaustive match may discard either channel deliberately.                                                                                          | Practical diagnostics, not a proof that every stored error is handled.                                           |
 | D16 | Representation            | Channels stay semantically distinct; a shared layout may use only payload-preserving niches and never rewrites an inner tag.                                                                                                     | Borrowed payload access and pass-through need every nested payload addressable in place.                         |
 | D17 | Tooling                   | Every syntax form is supported by the formatter, dumps, and lint traversal.                                                                                                                                                      | Every fixture survives the workspace tooling.                                                                    |
@@ -82,7 +82,7 @@ Signatures name their error channels explicitly. Widening an internal error sum 
 
 ## Non-Goals and Their Equivalents
 
-Deliberately not introduced: optional chaining `?.`, a brace-less `catch fallback`, `try` blocks, inferred error sets, `From`-style implicit error conversion, `if let`/`guard let`, flow narrowing, closures, exceptions, fallible loops, and `extend` or interface implementations on native forms.
+Deliberately not introduced: optional chaining `?.`, a brace-less `catch fallback`, `try` blocks, inferred error sets, `From`-style implicit error conversion, `if let`/`guard let` (binding `is` takes their place: `if entry is .Some(value) { ... }`), flow narrowing, closures, exceptions, fallible loops, and `extend` or interface implementations on native forms.
 
 | Wanted                              | Write                                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------------- |
@@ -149,7 +149,7 @@ Pitfalls:
 - `==` binds tighter than `??`: write `a == (b ?? c)`.
 - `opt == none` and `opt == .Some(v)` need `==` on the payload; where the payload has none, test `opt is T` or match.
 - A named move-only value as a `match` or `catch` subject is written `<-name`.
-- A block arm `{ ... }` completes with `()`, so it is valid only for a unit success unless it ends by leaving.
+- A block arm `{ ... }` yields its last expression written without a ';', and `()` otherwise, so it recovers a non-unit success only with such a value or by leaving.
 - A helper taking `&(T ! E)` needs a place to borrow from: call it on a named local, or take the fallible by value.
 
 ## Regression Coverage

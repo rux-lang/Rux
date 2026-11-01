@@ -50,12 +50,12 @@ struct PathTypeExpr : TypeExpr {
     std::vector<std::string> segments;
 };
 
-/// Inline arrays: T[] is a flexible struct tail and T[N] has a fixed extent.
+/// An inline array `T[N]` with a fixed extent.
 struct ArrayTypeExpr : TypeExpr {
     ~ArrayTypeExpr() override;
 
     TypeExprPtr element;
-    ExprPtr size; // null for a flexible tail (T[]), non-null for T[N]
+    ExprPtr size; // the extent; null only after a reported parse error
 };
 
 /// A slice: `T[..]` reads its elements and `var T[..]` may also write them. The qualifier sits on the element the way
@@ -461,13 +461,18 @@ struct CastExpr : Expr {
     TypeExprPtr type;
 };
 
-// expr is Type
+/// `expr is Type` tests the type of a sum member or an optional's level; `expr is pattern` tests the operand against
+/// any match pattern, and the names the pattern binds are in scope where the test is known to be true: the body of the
+/// `if` or `while` it conditions and the right side of `&&`. Exactly one of `type` and `pattern` is set.
 struct IsExpr : Expr {
     ExprPtr operand;
     TypeExprPtr type;
+    PatternPtr pattern;
 };
 
-// { stmts; value }  — block used as expression (match arm body)
+/// A block in value position: an `if` branch, or a match or catch arm body. It yields the expression it ends with when
+/// that is written without a ';' (an `ExprStmt` marked `yieldsValue`), `()` when it completes otherwise, and nothing
+/// when it cannot complete.
 struct BlockExpr : Expr {
     ~BlockExpr() override;
     std::unique_ptr<Block> block;
@@ -481,6 +486,15 @@ struct MatchExpr : Expr {
         ExprPtr body;
     };
 
+    /// `If` is an `if` used as a value, which the parser writes as a match on its condition: the first arm, `true`,
+    /// holds the then branch and the `_` arm the `else` branch, which is another such match for `else if`. The
+    /// condition may hold `is` tests whose bindings only the then branch sees.
+    enum class Form : std::uint8_t {
+        Match,
+        If,
+    };
+
+    Form form = Form::Match;
     ExprPtr subject;
     std::vector<Arm> arms;
 };
@@ -542,6 +556,10 @@ struct Stmt {
 // expr;
 struct ExprStmt : Stmt {
     ExprPtr expr;
+    /// Written without its ';' as the last statement of a value block, the expression the block yields.
+    bool yieldsValue = false;
+    /// Where the ';' after the expression is, when one was written.
+    std::optional<SourceLocation> semicolon;
 };
 
 // let/var name [: Type] = expr;
@@ -604,7 +622,8 @@ struct LoopStmt : Stmt {
     std::unique_ptr<Block> body;
 };
 
-// for var in iterable { }
+/// for var in iterable { } A loop over a pattern, `for (key, value) in pairs`, binds a hidden variable here and opens
+/// the body with `let pattern <- variable;`.
 struct ForStmt : Stmt {
     std::string label;
     std::string variable;

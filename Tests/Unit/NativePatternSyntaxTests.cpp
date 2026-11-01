@@ -250,3 +250,133 @@ TEST_CASE("formatting leaves native pattern spellings unchanged") {
     CHECK_FALSE(formatted.changed);
     CHECK_EQ(formatted.text, source);
 }
+
+namespace {
+/// The initializer of `let probe = <expression>;` in a function body, which must parse cleanly.
+const Expr *ParsedInitializer(const ParseResult &parsed) {
+    for (const auto &diagnostic : parsed.diagnostics) {
+        FAIL_CHECK("unexpected diagnostic: ", diagnostic.message);
+    }
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.front().get());
+    REQUIRE(function != nullptr);
+    const auto *let = dynamic_cast<const LetStmt *>(function->body->stmts.front().get());
+    REQUIRE(let != nullptr);
+    return let->init.get();
+}
+
+/// What follows `is` in `let probe = subject is <test>;`: a pattern's shape, or `type` for the type form.
+std::string IsShape(const std::string_view test) {
+    const ParseResult parsed = ParseSource("func F() { let probe = subject is " + std::string(test) + "; }");
+    const auto *is = dynamic_cast<const IsExpr *>(ParsedInitializer(parsed));
+    REQUIRE(is != nullptr);
+    return is->pattern ? Shape(is->pattern.get()) : "type " + TypeShape(is->type.get());
+}
+
+bool Reports(const std::string_view source, const std::string_view message) {
+    return std::ranges::any_of(ParseSource(source).diagnostics,
+                               [&](const ParserDiagnostic &diagnostic) { return diagnostic.message == message; });
+}
+} // namespace
+
+TEST_CASE("'is' takes a pattern, and a type keeps the type test") {
+    CHECK_EQ(IsShape(".Some(value)"), ".Some(value)");
+    CHECK_EQ(IsShape("none"), "none");
+    CHECK_EQ(IsShape("Shape::Circle(radius)"), "Shape::Circle(radius)");
+    CHECK_EQ(IsShape("circle: Circle"), "circle: Circle");
+    CHECK_EQ(IsShape("_: A | B"), "_: sum(A, B)");
+    CHECK_EQ(IsShape("'a'..='z'"), "'a'..'z'");
+    CHECK_EQ(IsShape(".Red | .Green"), "alt(.Red | .Green)");
+    CHECK_EQ(IsShape("(0, y)"), "(0, y)");
+    CHECK_EQ(IsShape("Point { x, y }"), "Point{..}");
+    CHECK_EQ(IsShape("Circle"), "type Circle");
+    CHECK_EQ(IsShape("Shapes::Circle"), "type Shapes::Circle");
+    CHECK_EQ(IsShape("int32?"), "type opt(int32)");
+}
+
+TEST_CASE("an 'is' pattern before a body leaves the brace to the body") {
+    const ParseResult parsed =
+        ParseSource("func F() { if s is .Done { return; } while q.Pop() is .Some(job) { Run(job); } }");
+    CHECK(parsed.diagnostics.empty());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.front().get());
+    REQUIRE(function != nullptr);
+    REQUIRE_EQ(function->body->stmts.size(), 2);
+    const auto *statement = dynamic_cast<const IfStmt *>(function->body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *test = dynamic_cast<const IsExpr *>(statement->condition.get());
+    REQUIRE(test != nullptr);
+    CHECK_EQ(Shape(test->pattern.get()), ".Done");
+    // The conditional operator's ':' is not a typed pattern's.
+    const ParseResult conditional = ParseSource("func F() { let probe = flag ? value is Circle : false; }");
+    const auto *ternary = dynamic_cast<const TernaryExpr *>(ParsedInitializer(conditional));
+    REQUIRE(ternary != nullptr);
+    const auto *typeTest = dynamic_cast<const IsExpr *>(ternary->thenExpr.get());
+    REQUIRE(typeTest != nullptr);
+    CHECK(typeTest->type != nullptr);
+}
+
+TEST_CASE("an 'if' in value position is a match on its condition") {
+    const ParseResult parsed = ParseSource("func F() { let probe = if a { 1 } else if b { 2 } else { 3 }; }");
+    const auto *value = dynamic_cast<const MatchExpr *>(ParsedInitializer(parsed));
+    REQUIRE(value != nullptr);
+    CHECK(value->form == MatchExpr::Form::If);
+    REQUIRE_EQ(value->arms.size(), 2);
+    CHECK_EQ(Shape(value->arms[0].pattern.get()), "true");
+    CHECK_EQ(Shape(value->arms[1].pattern.get()), "_");
+    const auto *then = dynamic_cast<const BlockExpr *>(value->arms[0].body.get());
+    REQUIRE(then != nullptr);
+    const auto *yielded = dynamic_cast<const ExprStmt *>(then->block->stmts.back().get());
+    REQUIRE(yielded != nullptr);
+    CHECK(yielded->yieldsValue);
+    const auto *elseIf = dynamic_cast<const MatchExpr *>(value->arms[1].body.get());
+    REQUIRE(elseIf != nullptr);
+    CHECK(elseIf->form == MatchExpr::Form::If);
+
+    CHECK(Reports("func F() { let probe = if a { 1 }; }", "an 'if' used as a value needs an 'else' branch"));
+    // Only a value block may leave out the last ';'; a function body and a loop body may not.
+    CHECK(Reports("func F() -> int { 1 }", "expected ';' after expression, but found '}'"));
+    CHECK(Reports("func F() { while a { Run() } }", "expected ';' after expression, but found '}'"));
+    CHECK_FALSE(Reports("func F() { if a { Run() } else { Stop() } }", "expected ';' after expression, but found '}'"));
+}
+
+TEST_CASE("a 'for' pattern takes the element apart in the body, and refutable patterns are refused") {
+    const ParseResult parsed = ParseSource("func F() { for (key, value) in pairs { Use(key); } }");
+    CHECK(parsed.diagnostics.empty());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.front().get());
+    REQUIRE(function != nullptr);
+    const auto *loop = dynamic_cast<const ForStmt *>(function->body->stmts.front().get());
+    REQUIRE(loop != nullptr);
+    REQUIRE_EQ(loop->body->stmts.size(), 2);
+    const auto *destructure = dynamic_cast<const LetStmt *>(loop->body->stmts.front().get());
+    REQUIRE(destructure != nullptr);
+    CHECK_EQ(Shape(destructure->pattern.get()), "(key, value)");
+    const auto *transfer = dynamic_cast<const MoveExpr *>(destructure->init.get());
+    REQUIRE(transfer != nullptr);
+    const auto *item = dynamic_cast<const IdentExpr *>(transfer->operand.get());
+    REQUIRE(item != nullptr);
+    CHECK_EQ(item->name, loop->variable);
+
+    const auto refused = [](const std::string_view pattern) {
+        return Reports("func F() { for " + std::string(pattern) + " in items {} }",
+                       "a 'for' pattern must match every element");
+    };
+    CHECK_FALSE(refused("Point { x, y }"));
+    CHECK_FALSE(refused("(_, (a, b))"));
+    CHECK(refused(".Some(value)"));
+    CHECK(refused("(1, value)"));
+    CHECK(refused("value: int32"));
+}
+
+TEST_CASE("'...' is no range operator, while the variadic marker and spread keep it") {
+    const auto messages = [](const std::string_view source) {
+        std::vector<std::string> found;
+        for (const auto &diagnostic : ParseSource(source).diagnostics) {
+            found.push_back(diagnostic.message + " / " + diagnostic.help.value_or(""));
+        }
+        return found;
+    };
+    CHECK(messages("func F(values: int32...) { G(values...); let r = 1..=5; }").empty());
+    const auto ranges = messages("func F() { let a = 1...5; let b = ...5; match x { 1...4 => {} _ => {} } }");
+    CHECK_EQ(ranges.size(), 3);
+    CHECK(std::ranges::all_of(
+        ranges, [](const std::string &text) { return text == "'...' is not a range operator / use '..='"; }));
+}

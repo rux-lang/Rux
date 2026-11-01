@@ -907,3 +907,116 @@ TEST_CASE("a match statement covers its subject as an expression does") {
     )")
               .empty());
 }
+
+TEST_CASE("'is' bindings are in scope only where the test is known true") {
+    CHECK(ErrorsIn(R"(
+        func Use(entry: int32?, other: int32?) -> int32 {
+            if entry is .Some(value) && value > 0i32 {
+                return value;
+            }
+            while other is .Some(next) {
+                return next;
+            }
+            let ready = entry is .Some(first) && first == 1i32;
+            return if entry is .Some(v) { v } else { 0i32 };
+        }
+    )")
+              .empty());
+    const auto errors = ErrorsIn(R"(
+        func Use(entry: int32?) -> int32 {
+            if entry is .Some(value) {
+                return value;
+            }
+            else {
+                return value;
+            }
+        }
+        func After(entry: int32?) -> int32 {
+            let present = entry is .Some(found);
+            return found;
+        }
+    )");
+    CHECK_EQ(CountContaining(errors, "'value'"), 1);
+    CHECK_EQ(CountContaining(errors, "'found'"), 1);
+    CHECK(AnyContains(ErrorsIn(R"(
+        func Use(entry: int32?) -> bool {
+            return entry is .Some(value) || false;
+        }
+    )"),
+                      "an 'is' test under '||' cannot bind names"));
+    CHECK(AnyContains(ErrorsIn(R"(
+        func Use(entry: int32?) -> bool {
+            return !(entry is .Some(value));
+        }
+    )"),
+                      "an 'is' test under '!' cannot bind names"));
+}
+
+TEST_CASE("a named 'is' subject is borrowed by the bindings, and a transferred one is consumed") {
+    CHECK(AnyContains(ErrorsIn(R"(
+        func Use(entry: int32?) -> int32 {
+            var held = entry;
+            if held is .Some(value) {
+                held = none;
+                return value;
+            }
+            return 0i32;
+        }
+    )"),
+                      "cannot modify 'held' while it is immutably borrowed"));
+    CHECK(AnyContains(ErrorsIn(R"(
+        struct Token { id: int32; }
+        extend Token { func ~Token(&var self) {} }
+        func Use(entry: Token?) -> int32 {
+            var held <- entry;
+            if <-held is .Some(token) {
+                return token.id;
+            }
+            if held is .Some(_) {
+                return 1i32;
+            }
+            return 0i32;
+        }
+    )"),
+                      "used after it was moved"));
+}
+
+TEST_CASE("a value block yields its last expression, and the branches of an 'if' unify in any order") {
+    CHECK(ErrorsIn(R"(
+        func Pick(flag: bool, option: int32?) -> int32? {
+            let a: int8 = if flag { 1 } else { 2 };
+            let b = match flag {
+                true => {
+                    let doubled = 2i32 * 3i32;
+                    doubled
+                },
+                false => 0i32,
+            };
+            let c: int32? = if flag { none } else { b };
+            let d = if flag { return none; } else { 4i32 };
+            return c;
+        }
+    )")
+              .empty());
+    const auto errors = ErrorsIn(R"(
+        func First(flag: bool) -> int32 {
+            return if flag { Run(); } else { 1i32 };
+        }
+        func Second(flag: bool) -> int32 {
+            return if flag { 1i32 } else { Run(); };
+        }
+        func Run() {}
+    )");
+    CHECK_EQ(CountContaining(errors, "'if' branch type mismatch: expected 'int32', found '()'"), 2);
+    CHECK_EQ(CountContaining(ErrorsIn(R"(
+        func Seven() -> int32 { return 7i32; }
+        func First(flag: bool) -> int32 {
+            return if flag { Seven(); } else { 1i32 };
+        }
+        func Second(flag: bool) -> int32 {
+            return if flag { 1i32 } else { Seven(); };
+        }
+    )"),
+                             "this block yields '()' because of the ';'"),
+             2);
+}

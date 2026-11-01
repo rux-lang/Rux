@@ -1,0 +1,16 @@
+// An inclusive range is spelled '..=' only; '...' stays the variadic marker and the spread.
+func Count(values: int32...) -> uint {
+    return values.length;
+}
+
+func Main() -> int {
+    let numbers = [1i32, 2i32, 3i32];
+    let all = Count(numbers[..]...);
+    let closed = 1...5;
+    let prefix = ...5;
+    match 3 {
+        1...4 => {}
+        _ => {}
+    }
+    return 0;
+}

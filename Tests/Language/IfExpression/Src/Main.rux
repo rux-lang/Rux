@@ -1,0 +1,132 @@
+// `if` as a value: a branch yields the expression it ends with when that is written without its ';'.
+// Covers the forms the language now accepts: an `if` in a binding, a return, an argument and an arm, `else if`
+// chains, branches of different literal and native types unified as a match's arms are, blocks that run statements
+// before their value, branches that leave, owned values moved out of a branch, and a value block ending a match arm.
+
+import Core::Assert;
+
+enum Size {
+    Small,
+    Medium,
+    Large,
+}
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+func Largest(a: int, b: int) -> int {
+    return if a > b { a } else { b };
+}
+
+func Classify(value: int) -> char {
+    let label = if value < 0 {
+        'n'
+    } else if value == 0 {
+        'z'
+    } else if value < 10 {
+        's'
+    } else {
+        'l'
+    };
+    return label;
+}
+
+var calls: int = 0;
+
+func Record(value: int) -> int {
+    calls += 1;
+    return value;
+}
+
+func Measure(size: Size) -> int {
+    let doubled = match size {
+        .Small => 1,
+        .Medium => {
+            let base = Record(2);
+            base * 2
+        },
+        .Large => {
+            Record(0);
+            if calls > 100 { 0 } else { 10 }
+        },
+    };
+    return doubled;
+}
+
+func FirstPositive(values: int[..]) -> int? {
+    for value in values {
+        let found: int? = if value > 0 { value } else { none };
+        if found != none {
+            return found;
+        }
+    }
+    return none;
+}
+
+func Narrow(flag: bool) -> int8 {
+    // An unsuffixed literal takes the type the context gives the whole `if`.
+    let small: int8 = if flag { 100 } else { -100 };
+    return small;
+}
+
+func Leave(flag: bool) -> int {
+    // A branch that returns decides nothing about the value.
+    let value = if flag { 7 } else { return -1; };
+    return value;
+}
+
+func Pick(flag: bool) -> Pair {
+    return if flag { Pair { first: 1i32, second: 2i32 } } else { Pair { first: 3i32, second: 4i32 } };
+}
+
+var drops: int = 0;
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    func ~Token(&var self) {
+        drops += 1;
+    }
+}
+
+func Make(flag: bool) -> int {
+    // An owned value made in a branch's own scope is moved out before the scope ends, and destroyed once.
+    let token = if flag {
+        let made = Token { id: 1 };
+        <-made
+    } else {
+        Token { id: 2 }
+    };
+    return token.id;
+}
+
+func Main() -> int {
+    Assert(Largest(3, 9) == 9, "the larger value is chosen");
+    Assert(Largest(12, 4) == 12, "the then branch yields its value");
+    Assert(Classify(-5) == 'n', "the first branch of a chain");
+    Assert(Classify(0) == 'z', "an 'else if' branch");
+    Assert(Classify(7) == 's', "a later 'else if' branch");
+    Assert(Classify(70) == 'l', "the 'else' branch");
+    Assert(Measure(.Small) == 1, "a bare arm");
+    Assert(Measure(.Medium) == 4, "an arm block yields its last expression");
+    Assert(Measure(.Large) == 10, "an arm block ending in an 'if' yields that if's value");
+    Assert(calls == 2, "each statement of a block runs once");
+    let values = [-1, 0, 5, 9];
+    Assert(FirstPositive(values[..]) == 5, "an 'if' yields an optional through its annotation");
+    Assert(Narrow(true) == 100i8 && Narrow(false) == -100i8, "literals take the annotated width");
+    Assert(Leave(true) == 7 && Leave(false) == -1, "a branch that returns leaves the function");
+    Assert(Pick(false).second == 4i32, "a structure value");
+    Assert(Make(true) == 1 && drops == 1, "an owned value leaves its branch and is destroyed once");
+    Assert(Make(false) == 2 && drops == 2, "an owned temporary yielded by a branch is destroyed once");
+    // An `if` statement whose branches end in unit calls needs no ';' after them.
+    var count = 0;
+    if count == 0 { count += 1 } else { count -= 1 }
+    Assert(count == 1, "a statement branch may end without ';'");
+    let ternary = count > 0 ? 1 : 2;
+    Assert(ternary == 1, "the conditional operator is still accepted");
+    return 0;
+}

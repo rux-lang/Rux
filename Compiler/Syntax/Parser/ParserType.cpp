@@ -197,7 +197,7 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
     }
 
     // Postfix suffixes apply left to right, so `int32?[..]` is a slice of optionals and `int32[..]?` an optional slice.
-    // A bracket suffix is T[] (flexible tail), T[N] (fixed array) or T[..] (slice); a size is a full expression, and
+    // A bracket suffix is T[N] (fixed array) or T[..] (slice); a size is a full expression, and
     // `..` is one too, so the slice spelling is settled by the one token after '[' before any expression is read. An
     // optional suffix `?` must touch the type, as postfix propagation does, so `flag as bool ? a : b` stays a
     // conditional; the lexer's `??` is two optional suffixes here.
@@ -215,9 +215,20 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
         if (!Check(TokenKind::LeftBracket)) {
             break;
         }
-        Advance();
+        const SourceLocation bracket = Advance().location;
         if (Check(TokenKind::DotDot) && Peek(1).kind == TokenKind::RightBracket) {
             Advance();
+            Advance();
+            auto slice = std::make_unique<SliceTypeExpr>();
+            slice->location = loc;
+            slice->element = std::move(base);
+            base = std::move(slice);
+            continue;
+        }
+        // `T[]` has no length, which a reader takes for a growable array; it is read as a view so the rest recovers.
+        if (Check(TokenKind::RightBracket)) {
+            EmitError(bracket, "an array type needs a length between '[' and ']'",
+                      "use 'Vector<T>' for a growable array or 'T[..]' for a view");
             Advance();
             auto slice = std::make_unique<SliceTypeExpr>();
             slice->location = loc;
@@ -228,9 +239,7 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
         auto a = std::make_unique<ArrayTypeExpr>();
         a->location = loc;
         a->element = std::move(base);
-        if (!Check(TokenKind::RightBracket)) {
-            a->size = ParseRequiredExpr("after '[' in the array type");
-        }
+        a->size = ParseRequiredExpr("after '[' in the array type");
         ExpectBefore(TokenKind::RightBracket, "']' to close the array type");
         base = std::move(a);
     }

@@ -236,7 +236,7 @@ void AnalysisContext::PopScope() {
     currentScope = currentScope->Parent();
 }
 
-void AnalysisContext::CheckBlock(const Block &block) {
+void AnalysisContext::CheckBlock(const Block &block, const ExprStmt *tail, TypeRef *tailType) {
     const Stmt *savedBorrowStatement = currentBorrowStatement;
     auto savedEndedProvenance = std::move(endedBorrowProvenance);
     endedBorrowProvenance.clear();
@@ -244,9 +244,17 @@ void AnalysisContext::CheckBlock(const Block &block) {
     for (const auto &statement : block.stmts) {
         currentBorrowStatement = statement.get();
         endedBorrowProvenance.clear();
+        const auto checkStatement = [&] {
+            if (tail && statement.get() == tail && tailType) {
+                CheckYieldedValue(*tail, *tailType);
+            }
+            else {
+                CheckStatement(*statement);
+            }
+        };
         if (trackedFlowReachable) {
             const auto mark = moveStates.Mark();
-            CheckStatement(*statement);
+            checkStatement();
             moveStates.DiscardTemporariesSince(mark);
             ExpireDeadBorrowsAfter(*statement);
             endedBorrowProvenance.clear();
@@ -254,7 +262,7 @@ void AnalysisContext::CheckBlock(const Block &block) {
         }
 
         const TrackedFlow unreachableEntry = SaveTrackedFlow();
-        CheckStatement(*statement);
+        checkStatement();
         ExpireDeadBorrowsAfter(*statement);
         RestoreTrackedFlow(unreachableEntry);
         endedBorrowProvenance.clear();
@@ -403,6 +411,14 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (declarationType->kind != TypeRef::Kind::Reference) {
             ValidateStoredType(declarationType, letStatement->location, "local variable");
         }
+        // `=` through a reference always writes through it, so a reference is never pointed at other storage.
+        else if (letStatement->isMut) {
+            EmitError(letStatement->location,
+                      std::format("'var' binding '{}' cannot hold reference '{}'",
+                                  letStatement->name.empty() ? std::string("_") : letStatement->name,
+                                  declarationType.ToString()),
+                      {}, "references cannot be reseated; use a pointer or a new binding");
+        }
 
         if (!letStatement->init && !letStatement->type) {
             EmitError(letStatement->location, "uninitialized variable requires an explicit type");
@@ -501,25 +517,36 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
     }
     else if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
-        TypeRef condition = ReadBorrowedScalar(*ifStatement->condition, CheckExpr(*ifStatement->condition));
-        CheckBooleanCondition(condition, ifStatement->condition->location, "if");
-        TrackedFlow fallthrough = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
-
-        RestoreTrackedFlow(fallthrough);
-        CheckBlock(*ifStatement->thenBlock);
-        exits.push_back(SaveTrackedFlow());
+        // A branch's condition may bind names for that branch alone: they get a scope the later branches are outside,
+        // which start from the flow after the condition with that scope left.
+        const auto checkBranch = [&](const Expr &conditionExpression, const std::string_view construct,
+                                     const Block &body) {
+            const bool binds = ConditionBinds(conditionExpression);
+            const TrackedFlow outside = SaveTrackedFlow();
+            if (binds) {
+                PushScope();
+                conditionReceivesBindings = true;
+            }
+            const TypeRef condition = ReadBorrowedScalar(conditionExpression, CheckExpr(conditionExpression));
+            conditionReceivesBindings = false;
+            CheckBooleanCondition(condition, conditionExpression.location, construct);
+            const TrackedFlow afterCondition = SaveTrackedFlow();
+            CheckStatementBranch(body);
+            if (binds) {
+                PopScope();
+            }
+            exits.push_back(SaveTrackedFlow());
+            return binds ? ProjectTrackedFlow(afterCondition, outside) : afterCondition;
+        };
+        TrackedFlow fallthrough = checkBranch(*ifStatement->condition, "if", *ifStatement->thenBlock);
         for (const auto &elseIf : ifStatement->elseIfs) {
             RestoreTrackedFlow(fallthrough);
-            TypeRef elseIfCondition = ReadBorrowedScalar(*elseIf.condition, CheckExpr(*elseIf.condition));
-            CheckBooleanCondition(elseIfCondition, elseIf.condition->location, "else if");
-            fallthrough = SaveTrackedFlow();
-            CheckBlock(*elseIf.block);
-            exits.push_back(SaveTrackedFlow());
+            fallthrough = checkBranch(*elseIf.condition, "else if", *elseIf.block);
         }
         if (ifStatement->elseBlock) {
             RestoreTrackedFlow(fallthrough);
-            CheckBlock(*ifStatement->elseBlock);
+            CheckStatementBranch(*ifStatement->elseBlock);
             exits.push_back(SaveTrackedFlow());
         }
         else {
@@ -532,11 +559,20 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             EnterLoopLabel(whileStatement->label, whileStatement->location);
         }
 
+        // Names the condition binds are in scope for the body, and every pass of the loop binds them afresh.
+        const bool binds = ConditionBinds(*whileStatement->condition);
+        if (binds) {
+            PushScope();
+            conditionReceivesBindings = true;
+        }
         TypeRef condition = ReadBorrowedScalar(*whileStatement->condition, CheckExpr(*whileStatement->condition));
+        conditionReceivesBindings = false;
         CheckBooleanCondition(condition, whileStatement->condition->location, "while");
+        const std::vector<const Symbol *> rebound =
+            binds ? ConditionBindings(*whileStatement->condition) : std::vector<const Symbol *>{};
 
         const TrackedFlow loopEntry = SaveTrackedFlow();
-        TrackedLoop loop = CheckTrackedLoopBody(*whileStatement->body, whileStatement->label);
+        TrackedLoop loop = CheckTrackedLoopBody(*whileStatement->body, whileStatement->label, rebound);
         const TrackedFlow bodyExit = SaveTrackedFlow();
         const auto *literal = AstCast<const LiteralExpr>(whileStatement->condition.get());
         const bool alwaysTrue =
@@ -552,6 +588,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             exits.push_back(bodyExit);
         }
         MergeTrackedFlows(exits);
+        if (binds) {
+            PopScope();
+        }
         if (!whileStatement->label.empty()) {
             ExitLoopLabel(whileStatement->label);
         }
@@ -645,7 +684,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (!forStatement->label.empty()) {
             EnterLoopLabel(forStatement->label, forStatement->location);
         }
-        TrackedLoop loop = CheckTrackedLoopBody(*forStatement->body, forStatement->label, loopVariable);
+        const Symbol *const rebound[] = {loopVariable};
+        TrackedLoop loop = CheckTrackedLoopBody(*forStatement->body, forStatement->label,
+                                                loopVariable ? std::span(rebound) : std::span<const Symbol *const>{});
         if (!forStatement->label.empty()) {
             ExitLoopLabel(forStatement->label);
         }
@@ -680,10 +721,16 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             CheckPattern(*arm.pattern, subjectType);
             currentPatternTakesParts = savedTakesParts;
             currentPatternBorrow = savedBorrow;
-            // A bare-expression arm of a match statement is an expression statement: its value is discarded.
-            const TypeRef armType = CheckExpr(*arm.body);
-            if (!AstCast<const BlockExpr>(arm.body.get()) && !IsDivergingExpression(*arm.body)) {
-                CheckFallibleDiscard(armType, arm.body->location);
+            // A bare-expression arm of a match statement is an expression statement: its value is discarded. A block
+            // arm yields nothing, so a value it ends with is reported as an `if` branch's would be.
+            if (const auto *block = AstCast<const BlockExpr>(arm.body.get())) {
+                CheckStatementBranch(*block->block);
+            }
+            else {
+                const TypeRef armType = CheckExpr(*arm.body);
+                if (!IsDivergingExpression(*arm.body)) {
+                    CheckFallibleDiscard(armType, arm.body->location);
+                }
             }
             PopScope();
             if (!coveredAll) {
@@ -908,6 +955,16 @@ void AnalysisContext::CheckLoopExit(const bool isContinue, const std::string &la
 bool AnalysisContext::IsDivergingExpression(const Expr &expression) const {
     if (AstCast<const DivergeExpr>(&expression)) {
         return true;
+    }
+    // A block that cannot complete, or an `if` whose branches all leave.
+    if (const auto *block = AstCast<const BlockExpr>(&expression)) {
+        return block->block && BlockCannotComplete(*block->block);
+    }
+    if (const auto *conditional = AstCast<const MatchExpr>(&expression);
+        conditional && conditional->form == MatchExpr::Form::If) {
+        return std::ranges::all_of(conditional->arms, [this](const MatchExpr::Arm &arm) {
+            return arm.body && IsDivergingExpression(*arm.body);
+        });
     }
     const auto *call = AstCast<const CallExpr>(&expression);
     return call && CallNeverReturns(*call);

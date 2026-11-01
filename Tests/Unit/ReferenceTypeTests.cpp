@@ -146,6 +146,10 @@ TEST_CASE("a write through a reference names the reference and its writable spel
         func Rebound() {
             var total = 1;
             var alias: &var int = total;
+        }
+        func WritesThrough() {
+            var total = 1;
+            let alias: &var int = total;
             alias = 2;
         }
     )");
@@ -158,8 +162,8 @@ TEST_CASE("a write through a reference names the reference and its writable spel
     CHECK_EQ(errors[0].help, "declare 'count' as '&var int' to write through it");
     CHECK_EQ(errors[1].message, "operator '*' requires a pointer operand, but found '&var int'");
     CHECK_EQ(errors[1].help, "write 'count' in place of '*count', as in 'count += 1'");
-    CHECK_EQ(errors[2].message, "cannot assign 'int' to '&var int'");
-    CHECK_EQ(errors[2].help, "declare 'alias' with 'let' to write through it");
+    CHECK_EQ(errors[2].message, "'var' binding 'alias' cannot hold reference '&var int'");
+    CHECK_EQ(errors[2].help, "references cannot be reseated; use a pointer or a new binding");
 }
 
 TEST_CASE("a whole value written through a reference replaces the referent and destroys the old one") {

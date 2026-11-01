@@ -584,6 +584,16 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
 }
 
 HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &targetType) {
+    // A block that yields a value builds it at the type the context wants, inside the block.
+    if (const auto *block = AstCast<const BlockExpr>(&expression); block && block->block) {
+        const TypeRef *recorded = model.TryGetType(expression);
+        if (recorded && !recorded->IsUnit() && !block->block->stmts.empty()) {
+            const auto *last = AstCast<const ExprStmt>(block->block->stmts.back().get());
+            if (last && last->yieldsValue) {
+                return LowerValueBlock(*block, targetType);
+            }
+        }
+    }
     // A native destination builds its levels explicitly, by the route analysis accepted.
     const bool nativeConstructor =
         AstCast<const NativeConstructExpr>(&expression) && !model.TryGetContextualCase(expression);
@@ -1122,6 +1132,9 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         return lowered;
     }
     if (const auto *match = AstCast<const MatchExpr>(&expression)) {
+        if (match->form == MatchExpr::Form::If && ConditionBinds(*match->subject)) {
+            return LowerBindingIfValue(*match);
+        }
         auto lowered = std::make_unique<HirMatchExpr>();
         lowered->location = match->location;
         lowered->type = ResolvedExpressionType(*match);

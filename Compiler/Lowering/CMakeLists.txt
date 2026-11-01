@@ -4,6 +4,7 @@ rux_add_component(RuxLowering
     AstToHir/AstToHir.cpp
     AstToHir/AstToHirAggregates.cpp
     AstToHir/AstToHirCalls.cpp
+    AstToHir/AstToHirConditionals.cpp
     AstToHir/CleanupPlanner.cpp
     AstToHir/AstToHirContext.cpp
     AstToHir/AstToHirDeclarations.cpp

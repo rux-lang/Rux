@@ -369,10 +369,18 @@ void ExpressionPrinter::Print(const Expr &expression) {
     }
     else if (const auto *is = AstCast<const IsExpr>(&expression)) {
         Pad();
-        out << "IsExpr is " << TypeString(is->type.get()) << '\n';
+        if (is->pattern) {
+            out << "IsExpr pattern\n";
+        }
+        else {
+            out << "IsExpr is " << TypeString(is->type.get()) << '\n';
+        }
         ++indent;
         if (is->operand) {
             Print(*is->operand);
+        }
+        if (is->pattern) {
+            printPattern(*is->pattern);
         }
         --indent;
     }
@@ -383,7 +391,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
     }
     else if (const auto *match = AstCast<const MatchExpr>(&expression)) {
         Pad();
-        out << "MatchExpr\n";
+        out << (match->form == MatchExpr::Form::If ? "MatchExpr if\n" : "MatchExpr\n");
         ++indent;
         if (match->subject) {
             Print(*match->subject);

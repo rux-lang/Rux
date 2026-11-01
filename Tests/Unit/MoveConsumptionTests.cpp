@@ -67,11 +67,6 @@ TEST_CASE("explicit moves invalidate copyable places and reject invalid ownershi
             let alias <- pair;
         }
 
-        func AssignReference(pair: &Pair, other: &Pair) {
-            var alias: &Pair = pair;
-            alias <- other;
-        }
-
         func MoveBorrowed() {
             let pair = Pair { first: 1, second: 2 };
             let alias: &Pair = pair;
@@ -103,7 +98,6 @@ TEST_CASE("explicit moves invalidate copyable places and reject invalid ownershi
         "cannot move '*pointer' out of borrowed pointer storage",
         "cannot move 'pair.first' out of borrowed reference storage",
         "cannot move a non-owning reference",
-        "cannot move ownership into a reference",
         "cannot move 'pair' while it is immutably borrowed",
         "cannot move 'handle' while it is immutably borrowed",
         "value 'source' is used after it was moved",

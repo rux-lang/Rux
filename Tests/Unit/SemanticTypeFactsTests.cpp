@@ -686,7 +686,6 @@ TEST_CASE("semantic model omits recursive and invalid compile-time layouts") {
         struct Recursive { next: Recursive; }
         func Main() {
             let recursive = sizeof(Recursive);
-            let unsized = sizeof(uint8[]);
             let overflow = sizeof(uint64[2305843009213693952]);
         }
     )",
@@ -710,7 +709,7 @@ TEST_CASE("semantic model omits recursive and invalid compile-time layouts") {
     const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
     REQUIRE(main != nullptr);
     REQUIRE(main->body != nullptr);
-    REQUIRE_EQ(main->body->stmts.size(), 3);
+    REQUIRE_EQ(main->body->stmts.size(), 2);
     for (const auto &statement : main->body->stmts) {
         const auto *binding = dynamic_cast<const LetStmt *>(statement.get());
         REQUIRE(binding != nullptr);

@@ -1,0 +1,3 @@
+5:17: error: an array type needs a length between '[' and ']'
+8:23: error: an array type needs a length between '[' and ']'
+13:28: error: an array type needs a length between '[' and ']'

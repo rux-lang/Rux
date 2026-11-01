@@ -266,7 +266,7 @@ A fallible that is dropped loses its failure, so an expression statement produci
 
 ## Membership Tests
 
-`value is Type` answers a question about the operand's type and never consumes, binds, or narrows it: after the test, `value` keeps its static type, and extracting a payload still takes a pattern. The tested type is a postfix type, so a sum or fallible target is grouped, as in `value is (A | B)`; an ungrouped `value is A | B` whose right operand names a type is rejected with that grouping as the fix. The right-hand type is resolved first, and its form and the subject's select the mode:
+`value is Type` answers a question about the operand's type and never consumes, binds, or narrows it: after the test, `value` keeps its static type, and extracting a payload takes a pattern, as below. The tested type is a postfix type, so a sum or fallible target is grouped, as in `value is (A | B)`; an ungrouped `value is A | B` whose right operand names a type is rejected with that grouping as the fix. The right-hand type is resolved first, and its form and the subject's select the mode:
 
 | Subject                             | Meaning                                                                                                                                     |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -279,6 +279,22 @@ A fallible that is dropped loses its failure, so an expression statement produci
 A reference subject is tested through the reference without being consumed. A test whose subject or tested type mentions a type parameter is checked again for each instantiation, so `x is T` over `T | U` stays valid when `T` and `U` are the same type and the subject collapses to that type.
 
 Membership is not interface implementation: knowing that every member of a sum implements an interface, or that a test succeeded, makes no shared member available on the sum.
+
+### Binding `is`
+
+`subject is pattern` tests the subject against any pattern a `match` arm takes and is a `bool`; `value is T` is the type test above, which reads as the pattern `_: T`. What follows `is` is a pattern when it starts as only a pattern can — `.Case`, `none`, `_`, a literal, `name: T`, `Type::Case(...)`, `Type { ... }`, or a tuple holding one of these — and a type otherwise, so `shape is Circle` and `entry is (A | B)` keep testing types. Alternatives are written with `|`, as in `color is .Red | .Green`, and a guard is not: a further test is written with `&&`.
+
+```rux
+if entry is .Some(value) { Use(value); }
+while reader.Next() is .Some(event) { Handle(event); }
+if error is .NotADigit(c) && c != ' ' { Report(c); }
+if shape is circle: Circle { Draw(circle); }
+if !(entry is .Some(_)) { return none; }
+```
+
+The names a pattern binds are in scope where the test is known to be true: the body of the `if` or `while` whose condition holds the test, and the operands after it in a chain of `&&`, inside a condition or anywhere else. They are not in scope in an `else` branch, after the statement, or after a `while` loop, and a `while` binds them afresh on every pass. A test that binds names under `||` or `!` is an error (`an 'is' test under '||' cannot bind names`), because there the names would be in scope where nothing was bound; `_` tests the same shape without binding. Where a brace would open the body of the `if` or `while`, a pattern with a braced payload is grouped, as in `if (shape is .Rect { width, height }) && width > 0 { ... }`.
+
+The subject is evaluated once. A temporary, or a subject transferred with `<-`, is owned by the test the way a `match` owns its subject: its bindings own what they take, and what they leave is destroyed. A named or borrowed subject stays with its owner: the bindings borrow from it, so the subject cannot be written or moved while a binding is in use, and it keeps its value after the test. The test never narrows the subject's type — only the bound names carry the payload — and it needs no coverage: a value it does not match makes it `false`.
 
 ## Bindings and Parameters
 
@@ -401,9 +417,9 @@ References are non-owning, non-null, automatically dereferenced for member and i
 
 A reference to a Copy primitive scalar can supply its value in a typed assignment, return, call, cast, arithmetic expression, comparison, or boolean condition. The compiler loads the scalar without moving ownership or changing the reference's type. Passing the same expression to a reference parameter preserves the borrow, and mutable borrows keep their usual exclusivity rules. Arrays and tuples can hold scalar copies read from references, but aggregate referents are never implicitly copied. Generic scalar reads are checked for every instantiated type.
 
-A name bound to a reference to a Copy primitive scalar — a parameter, a receiver, or a `let` alias — is also a place to write: through `count: &var int`, `count = value`, `count += 1`, `count++`, and `--count` store into the caller's storage, so `func Bump(count: &var int) { count += 1; }` increments the argument. The binding itself is never rebound by such a write, and a write is an exclusive access under the usual borrow rules. Through `&T` the same write is an error naming the reference. A `var` binding of reference type is the one exception for plain `=`, which points it at other storage; compound assignment and `++`/`--` still write through it. A reference is never written with `*`, which stays a raw-pointer operator.
+A name bound to a reference to a Copy primitive scalar — a parameter, a receiver, or a `let` alias — is also a place to write: through `count: &var int`, `count = value`, `count += 1`, `count++`, and `--count` store into the caller's storage, so `func Bump(count: &var int) { count += 1; }` increments the argument. A reference is never reseated: `=` through it always writes through, so a `var` binding of reference type, written or inferred, is an error (`'var' binding 'alias' cannot hold reference '&var int'`) whose help reads `references cannot be reseated; use a pointer or a new binding`. A write is an exclusive access under the usual borrow rules. Through `&T` the same write is an error naming the reference. A reference is never written with `*`, which stays a raw-pointer operator.
 
-A referent of any other type — a struct, tuple, array, or a type parameter — is replaced whole the same way, with `=` or `<-` through a parameter, a receiver, or a `let` alias of type `&var T`: `func Reset(self: &var Pair) { self = Pair { a: 0, b: 0 }; }` replaces the caller's value. The write follows the assignment rules for `T` exactly as an assignment to a `var` local of type `T` does: a custom `=` produces the new state first, the old value is destroyed once, and the result is installed; a move-only value needs `<-`; and the write is an exclusive access. Compound assignment and `++`/`--` reach a scalar referent only, and an interface view cannot be replaced, because its referent's type is not known. A `var` binding of reference type is still rebound by `=`, so a value written to it is an error that suggests `let`. Parts of an aggregate are written through their fields and elements as before.
+A referent of any other type — a struct, tuple, array, or a type parameter — is replaced whole the same way, with `=` or `<-` through a parameter, a receiver, or a `let` alias of type `&var T`: `func Reset(self: &var Pair) { self = Pair { a: 0, b: 0 }; }` replaces the caller's value. The write follows the assignment rules for `T` exactly as an assignment to a `var` local of type `T` does: a custom `=` produces the new state first, the old value is destroyed once, and the result is installed; a move-only value needs `<-`; and the write is an exclusive access. Compound assignment and `++`/`--` reach a scalar referent only, and an interface view cannot be replaced, because its referent's type is not known. Parts of an aggregate are written through their fields and elements as before.
 
 Writing a parameter taken by value is the error `cannot modify parameter 'x'`, and writing a receiver taken by value is `cannot modify immutable receiver 'self'`. Neither has a `var` form, so the help offers taking it as `&var T` to change the caller's value, or, for a parameter, moving it into a `var` local.
 
@@ -539,7 +555,7 @@ Range expressions and annotations use the same punctuation family. Bounds in a t
 | `..=4`     | `..=int`    | `.end`           |
 | `..`       | `..`        | none             |
 
-Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary two-sided ranges exclude it. A `for` over an inclusive range visits its end last and stops there, even when the end is its type's maximum, so `for v in start..=255` over `uint8` never wraps around; a range whose start is past its end visits nothing. The full range selects an entire array or slice. A pointer requires an explicit end.
+Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary two-sided ranges exclude it. `..=` is the only inclusive spelling, in expressions and patterns alike: `1...5` is `'...' is not a range operator` with the help `use '..='`, and `...` keeps only its other roles, the variadic marker `args: Display...` and the spread `values...`. A `for` over an inclusive range visits its end last and stops there, even when the end is its type's maximum, so `for v in start..=255` over `uint8` never wraps around; a range whose start is past its end visits nothing. The full range selects an entire array or slice. A pointer requires an explicit end.
 
 An extension of one instantiation of a generic type, such as `extend Pair<int32>`, gives methods to that instantiation alone: calling one on a `Pair<int64>` is `type 'Pair<int64>' has no method 'Sum'`, with a note naming the extension it is declared in. Extensions of two instantiations, such as `extend Pair<int32>` and `extend Pair<int64>`, may each declare a method of the same name and parameters, since no receiver can call both; a method of the same signature in `extend Pair<T>` competes with them and is `function 'Sum' has the same parameter signature as an earlier overload`. `extend Pair<T>` gives methods to every instantiation, and `extend Box<T> : Named` makes every instantiation of `Box` a `Named`: a `Box<int32>` converts to a `Named` interface value or a `&Named` borrow, through a table of the `Box<int32>` instance's methods that the module converting it carries.
 
@@ -700,13 +716,44 @@ The fallback transfer is conditional, so `ownedFallback` is possibly moved after
 
 A loop body runs again from where its last pass ended, so a value one pass moves out is not there for the next. Moving an outer local inside a loop body is an error unless the same pass gives it a new value before the loop repeats, or leaves the loop with `break`, `return`, or `fail` after the move; the loop's own `for` variable and locals declared inside the body are fresh on every pass.
 
+The loop variable may be a pattern that matches every element — names, `_`, and tuples and structures made of them — which takes each element apart: `for (key, value) in pairs`, `for Point { x, y } in points`, `for (_, value) in entries`. The element is moved into the pattern, so an owning part is the body's to keep or let go of. A pattern that could fail to match, such as `.Some(value)` or `(0, value)`, is `a 'for' pattern must match every element`; such a loop binds the element and tests it in its body with `if item is ...`.
+
 A loop may be labeled, as in `outer: for i in 0..3 { ... }`, so that `break outer` and `continue outer` name it from inside a nested loop. A label names exactly one loop at a time: an inner loop may not reuse the label of a loop around it, because `break outer` inside it would then read as either loop.
 
-The two branches of a conditional `condition ? a : b` produce one type, as the arms of a `match` do: the second converts to the first, or the first to the second, and two values of unrelated types are an error rather than a value of either. A branch that leaves — `return`, `fail`, or a call to `Panic` — does not take part, and an unsuffixed literal in either branch takes its type from the context, as `let r: uint128 = flag ? 0 : 1;` does.
+The two branches of a conditional `condition ? a : b` produce one type, as the arms of a `match` do: the second converts to the first, or the first to the second, and two values of unrelated types are an error rather than a value of either. A branch that leaves — `return`, `fail`, or a call to `Panic` — does not take part, and an unsuffixed literal in either branch takes its type from the context, as `let r: uint128 = flag ? 0 : 1;` does. The conditional is still accepted while packages move to `if` values, which replace it.
+
+## `if` Values and Value Blocks
+
+`if` is a value wherever an expression is expected, and a statement where a statement starts:
+
+```rux
+let largest = if a > b { a } else { b };
+
+let label = if ready {
+    RecordReady();
+    "ready"
+} else {
+    "waiting"
+};
+
+let size = match kind {
+    .Small => 1,
+    .Large => {
+        let base = Measure();
+        base * 2
+    },
+};
+```
+
+A block in value position — an `if` branch used as a value, or the block of a `match` or `catch` arm — yields the expression it ends with when that expression is written without a ';'. A block that ends otherwise yields `()`, and a block that cannot complete, because it ends by returning, failing, calling a function that never returns, or leaving a loop, yields nothing and does not decide the type. The yielded value leaves the block before the block's own locals are destroyed, so a local can be moved out as its last expression (`{ let made = Build(); <-made }`). Only these blocks yield values: a function body still needs `return`, and a loop body or a nested block keeps every ';'.
+
+An `if` used as a value needs an `else` (`an 'if' used as a value needs an 'else' branch`), and `else if` chains are allowed. The branches unify by the rules for the arms of a `match`, whichever comes first: a block that yields `()` decides nothing while another branch yields a value, an unsuffixed literal takes the type its context gives the whole `if`, and an annotation of an optional, a fallible or a sum is the type of every branch. A ';' after the last expression of a block that must yield a value is reported at the ';' (`this block yields '()' because of the ';'`, with the help to remove it) rather than as a distant mismatch. An `if` that ends a value block and yields a value is that block's value.
+
+An `if` at the start of a statement is the statement: its value is not used, so a branch may end with an expression that yields `()`, such as a call that returns nothing, without its ';', and a branch that ends with any other value is an error whose help reads `add ';' or use the value`. The same holds for the block of an arm of a `match` statement. An `if` value is lowered as a two-arm `match` on its condition.
 
 ## Indexing
 
-Built-in indexing of an array or a slice is bounds-checked on every target and in every build profile. `a[i]`, as a read, a write, or a compound assignment, stops the program with `Panic: index out of range`, followed by the function, file, line, and column of the subscript, unless `i` names an element; a negative index is never in range. A range subscript is checked the same way: `a[start..end]` requires `start <= end <= a.length`, and an inclusive end must be below the length. A constant index into a fixed array is checked when the program is compiled instead, so `primes[7]` on an `int32[4]` is an error, and so are constant slice bounds past its end, as in `primes[1..9]` (`slice end 9 is out of range for an array of 4 elements`). Indexing or slicing a raw pointer is not checked, because a pointer carries no length; the caller vouches for what it addresses. A flexible array tail, the `bytes: uint8[]` last field of a struct, is the same: it has no length of its own, since the struct records how many elements were allocated after it, so `packet.bytes[i]` is not checked, a slice of it needs an end bound (`packet.bytes[..count]`), and it cannot be iterated directly (`cannot iterate over flexible array 'uint8[]'`). A release build removes a check it proves always passes.
+Built-in indexing of an array or a slice is bounds-checked on every target and in every build profile. `a[i]`, as a read, a write, or a compound assignment, stops the program with `Panic: index out of range`, followed by the function, file, line, and column of the subscript, unless `i` names an element; a negative index is never in range. A range subscript is checked the same way: `a[start..end]` requires `start <= end <= a.length`, and an inclusive end must be below the length. A constant index into a fixed array is checked when the program is compiled instead, so `primes[7]` on an `int32[4]` is an error, and so are constant slice bounds past its end, as in `primes[1..9]` (`slice end 9 is out of range for an array of 4 elements`). Indexing or slicing a raw pointer is not checked, because a pointer carries no length; the caller vouches for what it addresses. An array type always has a length: `T[]` is rejected wherever it is written (`an array type needs a length between '[' and ']'`) with the help `use 'Vector<T>' for a growable array or 'T[..]' for a view`. A release build removes a check it proves always passes.
 
 A type indexes itself by declaring the indexing operators in an `extend` block, the same way it declares `==` or `<`. `[]` reads one element and `[]=` writes one:
 

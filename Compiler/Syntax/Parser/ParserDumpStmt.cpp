@@ -72,7 +72,7 @@ void StatementPrinter::Print(const Stmt &statement) {
     }
     else if (const auto *expressionStatement = AstCast<const ExprStmt>(&statement)) {
         Pad();
-        out << "ExprStmt\n";
+        out << (expressionStatement->yieldsValue ? "ExprStmt yields\n" : "ExprStmt\n");
         ++indent;
         if (expressionStatement->expr) {
             printExpression(*expressionStatement->expr);

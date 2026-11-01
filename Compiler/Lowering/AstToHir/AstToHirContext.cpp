@@ -85,6 +85,7 @@ void AstToHirContext::ResetModuleState() {
     zeroizationOrdinal = 0;
     nativeOrdinal = 0;
     returnOrdinal = 0;
+    blockValueOrdinal = 0;
     interfaceValueOrdinal = 0;
     cleanupPlanner.ResetBindingIds();
 }

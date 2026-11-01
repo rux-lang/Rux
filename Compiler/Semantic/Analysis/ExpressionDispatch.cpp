@@ -17,11 +17,28 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
 TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
+    // Only the expression this was set for keeps its bindings in scope; anything nested in it is checked afresh.
+    const bool receivesBindings = std::exchange(conditionReceivesBindings, false);
+    if (const auto *test = AstCast<const IsExpr>(&expr); test && test->pattern) {
+        return CheckIsPattern(*test, receivesBindings);
+    }
+    if (const auto *binary = AstCast<const BinaryExpr>(&expr)) {
+        if (binary->op == TokenKind::AmpAmp && binary->left && binary->right && ConditionBinds(*binary)) {
+            return CheckBindingConjunction(*binary, receivesBindings);
+        }
+        if (binary->op == TokenKind::PipePipe) {
+            RejectUnreachableBindings(*binary);
+        }
+    }
+    if (const auto *unary = AstCast<const UnaryExpr>(&expr); unary && unary->op == TokenKind::Bang) {
+        RejectUnreachableBindings(*unary);
+    }
     if (const std::optional<TypeRef> basicType = CheckBasicExpression(expr)) {
         return *basicType;
     }
@@ -421,12 +438,11 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return TypeRef::MakeBool();
     }
     if (auto *e = AstCast<const MatchExpr>(&expr)) {
-        return CheckMatchExpression(*e);
+        return e->form == MatchExpr::Form::If && e->arms.size() == 2 ? CheckIfExpression(*e) : CheckMatchExpression(*e);
     }
 
     if (auto *e = AstCast<const BlockExpr>(&expr)) {
-        CheckBlock(*e->block);
-        return TypeRef::MakeUnknown();
+        return CheckValueBlock(*e);
     }
 
     if (auto *e = AstCast<const SpreadExpr>(&expr)) {

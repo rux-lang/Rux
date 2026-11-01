@@ -1,0 +1,2 @@
+4:5: error: 'var' binding 'alias' cannot hold reference '&var int'
+5:5: error: 'var' binding 'inferred' cannot hold reference '&var int'

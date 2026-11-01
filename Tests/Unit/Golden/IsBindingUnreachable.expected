@@ -1,0 +1,2 @@
+6:17: error: an 'is' test under '||' cannot bind names
+9:19: error: an 'is' test under '!' cannot bind names

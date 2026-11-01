@@ -1,0 +1,2 @@
+9:9: error: this branch yields a value of type 'int' that is not used
+15:16: error: this branch yields a value of type 'int' that is not used

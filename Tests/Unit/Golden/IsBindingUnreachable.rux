@@ -1,0 +1,19 @@
+// An 'is' test binds names only where it is known to be true: the body it guards and the right side of '&&'. Under
+// '||' or '!' the names would be in scope where nothing was bound.
+func Main() -> int {
+    let entry: int? = 3;
+    let other: int? = none;
+    if entry is .Some(value) || other is .Some(value) {
+        return 1;
+    }
+    if !(entry is .Some(value)) {
+        return 2;
+    }
+    if !(entry is .Some(_)) {
+        return 3;
+    }
+    if entry is .Some(value) && value > 2 {
+        return value;
+    }
+    return 0;
+}

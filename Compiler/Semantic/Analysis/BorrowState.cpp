@@ -173,6 +173,53 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
     }
 }
 
+/// The names the `is` tests of a condition's `&&` chain bind, which the guarded body reads as its own.
+void EraseConditionBindings(const Expr *condition, NameSet &live) {
+    if (!condition) {
+        return;
+    }
+    if (const auto *binary = AstCast<const BinaryExpr>(condition); binary && binary->op == TokenKind::AmpAmp) {
+        EraseConditionBindings(binary->left.get(), live);
+        EraseConditionBindings(binary->right.get(), live);
+        return;
+    }
+    const auto *test = AstCast<const IsExpr>(condition);
+    if (!test || !test->pattern) {
+        return;
+    }
+    const auto erase = [&](this const auto &self, const Pattern &pattern) -> void {
+        const auto visit = [&](const PatternPtr &child) {
+            if (child) {
+                self(*child);
+            }
+        };
+        if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
+            live.erase(identifier->name);
+        }
+        else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
+            live.erase(typed->name);
+        }
+        else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
+            visit(presence->inner);
+        }
+        else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
+            std::ranges::for_each(enumeration->args, visit);
+            for (const auto &argument : enumeration->namedArgs) {
+                visit(argument.pattern);
+            }
+        }
+        else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
+            for (const auto &field : structure->fields) {
+                visit(field.pattern);
+            }
+        }
+        else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
+            std::ranges::for_each(tuple->elements, visit);
+        }
+    };
+    erase(*test->pattern);
+}
+
 NameSet ExpressionUses(const Expr *expression) {
     NameSet uses;
     if (expression) {
@@ -199,11 +246,16 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         else {
             AddAll(branches, liveAfter);
         }
+        // A branch's condition binds its own names, so their uses in the branch are not uses of an outer name.
         for (auto branch = conditional->elseIfs.rbegin(); branch != conditional->elseIfs.rend(); ++branch) {
-            AddAll(branches, AnalyzeBlockLiveness(*branch->block, liveAfter, result));
+            NameSet branchLive = AnalyzeBlockLiveness(*branch->block, liveAfter, result);
+            EraseConditionBindings(branch->condition.get(), branchLive);
+            AddAll(branches, branchLive);
             AddAll(branches, ExpressionUses(branch->condition.get()));
         }
-        AddAll(branches, AnalyzeBlockLiveness(*conditional->thenBlock, liveAfter, result));
+        NameSet thenLive = AnalyzeBlockLiveness(*conditional->thenBlock, liveAfter, result);
+        EraseConditionBindings(conditional->condition.get(), thenLive);
+        AddAll(branches, thenLive);
         AddAll(branches, ExpressionUses(conditional->condition.get()));
         AddAll(live, branches);
     }
@@ -213,7 +265,9 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         for (;;) {
             NameSet next = liveAfter;
             AddAll(next, ExpressionUses(whileLoop->condition.get()));
-            AddAll(next, AnalyzeBlockLiveness(*whileLoop->body, loopLive, result));
+            NameSet body = AnalyzeBlockLiveness(*whileLoop->body, loopLive, result);
+            EraseConditionBindings(whileLoop->condition.get(), body);
+            AddAll(next, body);
             if (next == loopLive) {
                 break;
             }
@@ -541,7 +595,9 @@ void AnalysisContext::FinishBorrowAnalysis() {
 }
 
 void AnalysisContext::ExpireBorrowAtLastUse(const Symbol &symbol, const SourceLocation location) {
-    if (symbol.type->kind != TypeRef::Kind::Reference || !currentBorrowStatement) {
+    // A reference, or a name an `is` test bound from a subject it borrows, holds its borrow until its last use.
+    if (!currentBorrowStatement ||
+        (symbol.type->kind != TypeRef::Kind::Reference && !activeBorrows.contains(&symbol))) {
         return;
     }
     const auto live = borrowLiveAfter.find(currentBorrowStatement);

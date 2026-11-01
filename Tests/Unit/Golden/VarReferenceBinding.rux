@@ -1,0 +1,14 @@
+// '=' through a reference always writes through it, so a reference is never pointed at other storage and a 'var'
+// binding cannot hold one, whether the reference type is written or inferred.
+func Bump(count: &var int) {
+    var alias: &var int = count;
+    var inferred = count;
+    let target: &var int = count;
+    target = 3;
+}
+
+func Main() -> int {
+    var total = 1;
+    Bump(total);
+    return total;
+}

@@ -1,0 +1,3 @@
+5:10: error: this block yields '()' because of the ';'
+17:20: error: this block yields '()' because of the ';'
+23:49: error: this block yields '()' because of the ';'

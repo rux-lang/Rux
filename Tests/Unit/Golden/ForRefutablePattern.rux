@@ -1,0 +1,17 @@
+// A 'for' pattern takes every element apart, so it must match every element: a case, a literal or a range is a test,
+// which belongs in the body.
+func Main() -> int {
+    let pairs = [(1, 2), (3, 4)];
+    let entries: int?[2] = [3, none];
+    var total = 0;
+    for (left, right) in pairs {
+        total += left + right;
+    }
+    for .Some(value) in entries {
+        total += value;
+    }
+    for (1, right) in pairs {
+        total += right;
+    }
+    return total;
+}

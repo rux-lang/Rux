@@ -226,7 +226,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         TypeRef operandType = CheckExpr(*unary->operand);
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
-            if (const Symbol *reference = ReferenceWriteTarget(*unary->operand, false, false)) {
+            if (const Symbol *reference = ReferenceWriteTarget(*unary->operand, false)) {
                 const bool writable = CheckReferenceWrite(*unary->operand, *reference);
                 operandType = ScalarReferent(operandType);
                 if (!writable) {
@@ -285,7 +285,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
     if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         TypeRef operandType = CheckExpr(*postfix->operand);
         bool isAssignable = false;
-        if (const Symbol *reference = ReferenceWriteTarget(*postfix->operand, false, false)) {
+        if (const Symbol *reference = ReferenceWriteTarget(*postfix->operand, false)) {
             isAssignable = CheckReferenceWrite(*postfix->operand, *reference);
             operandType = ScalarReferent(operandType);
         }
@@ -333,7 +333,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         const bool simpleAssignment = assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow;
         // A write through a reference reads the reference itself, so its name is checked as a use rather than as a
         // place the assignment initializes.
-        const Symbol *writtenReference = ReferenceWriteTarget(*assignment->target, simpleAssignment, simpleAssignment);
+        const Symbol *writtenReference = ReferenceWriteTarget(*assignment->target, simpleAssignment);
         checkingPlainAssignmentTarget = simpleAssignment && !writtenReference;
         // A plain assignment whose target is an index may be a call to `[]=` rather than a store. Naming the exact
         // node lets the target check resolve the setter while it already holds the object and index types, so
@@ -436,16 +436,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             const bool nullReference = target->kind == TypeRef::Kind::Reference && IsNullLiteral(*assignment->value);
             const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
                                                        CanAssignExprTo(*assignment->value, value, target));
-            const Symbol *rebound = !compatible && !nullReference && simpleAssignment
-                                      ? ReferenceWriteTarget(*assignment->target, true, false)
-                                      : nullptr;
-            if (rebound && !value.IsUnknown() && CanAssignExprTo(*assignment->value, value, ScalarReferent(target))) {
-                EmitError(assignment->location,
-                          std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString()),
-                          {std::format("'=' points the 'var' reference '{}' at other storage", rebound->name)},
-                          std::format("declare '{}' with 'let' to write through it", rebound->name));
-            }
-            else if (!compatible) {
+            if (!compatible) {
                 EmitError(assignment->location,
                           AssignmentErrorMessage(
                               *assignment->value, target,
@@ -1666,7 +1657,7 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
     return true;
 }
 
-const Symbol *AnalysisContext::ReferenceWriteTarget(const Expr &target, const bool replaces, const bool rebinds) const {
+const Symbol *AnalysisContext::ReferenceWriteTarget(const Expr &target, const bool replaces) const {
     const Symbol *symbol = nullptr;
     if (const auto *identifier = AstCast<const IdentExpr>(&target)) {
         symbol = currentScope->Lookup(identifier->name);
@@ -1687,9 +1678,7 @@ const Symbol *AnalysisContext::ReferenceWriteTarget(const Expr &target, const bo
     if (!scalar && (!replaces || interfaceView || referent.IsUnknown())) {
         return nullptr;
     }
-    // `alias = other` points a `var alias: &var T` at other storage, so only a binding that cannot be rebound — a
-    // parameter, a receiver, or a `let` alias — reads a plain assignment as a write through it.
-    return rebinds && symbol->isMut ? nullptr : symbol;
+    return symbol;
 }
 
 bool AnalysisContext::CheckReferenceWrite(const Expr &target, const Symbol &reference) {

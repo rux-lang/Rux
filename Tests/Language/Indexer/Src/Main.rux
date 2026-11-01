@@ -129,7 +129,7 @@ func Main() -> int {
     Assert(mutable[2] == 0 && mutable[8] == 0, "a method writes through its own setter");
 
     // Writing through an exclusive borrow reaches the same operator.
-    var borrowed: &var Vect = mutable;
+    let borrowed: &var Vect = mutable;
     borrowed[1] = 6;
     Assert(mutable[1] == 6, "a mutable reference writes through the setter");
 

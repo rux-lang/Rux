@@ -91,6 +91,7 @@ ExprPtr Parser::ParseRange() {
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
         const auto loc = CurrentLocation();
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
+        RejectEllipsisRange();
         Advance();
         auto right = parseUpperBound();
         if (incl && !right) {
@@ -118,6 +119,7 @@ ExprPtr Parser::ParseRange() {
         }
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
+        RejectEllipsisRange();
         Advance();
         auto right = parseUpperBound();
         if (incl && !right) {
@@ -133,6 +135,12 @@ ExprPtr Parser::ParseRange() {
     return left;
 }
 
+void Parser::RejectEllipsisRange() {
+    if (Check(TokenKind::DotDotDot)) {
+        EmitError(CurrentLocation(), "'...' is not a range operator", "use '..='");
+    }
+}
+
 ExprPtr Parser::ParseTernary() {
     auto cond = ParseCoalesce();
     if (!cond) {
@@ -141,7 +149,9 @@ ExprPtr Parser::ParseTernary() {
 
     if (Match(TokenKind::Question)) {
         const auto loc = Previous().location;
+        const bool savedConditionalThen = std::exchange(inConditionalThen, true);
         auto thenExpr = ParseCoalesce();
+        inConditionalThen = savedConditionalThen;
         if (!thenExpr) {
             EmitMissingExpression("after '?' in the conditional expression");
         }
@@ -377,12 +387,16 @@ ExprPtr Parser::ParseCast() {
         }
         else {
             Match(TokenKind::IsKeyword);
-            auto type = ParsePostfixType();
-            rejectUngroupedFallible("is");
             auto e = std::make_unique<IsExpr>();
             e->location = loc;
             e->operand = std::move(left);
-            e->type = std::move(type);
+            if (CheckPatternAfterIs()) {
+                e->pattern = ParseIsPattern();
+            }
+            else {
+                e->type = ParsePostfixType();
+                rejectUngroupedFallible("is");
+            }
             left = std::move(e);
         }
     }
@@ -680,12 +694,16 @@ ExprPtr Parser::ParsePostfix() {
 
 ExprPtr Parser::ParsePrimary() {
     const auto loc = CurrentLocation();
+    // `if` in value position; at the start of a statement it is the statement.
+    if (Check(TokenKind::IfKeyword)) {
+        return ParseIfExpr();
+    }
     if (Match(TokenKind::MatchKeyword)) {
         auto e = std::make_unique<MatchExpr>();
         e->location = loc;
-        structInitAllowed = false;
+        const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
         e->subject = ParseRequiredExpr("after 'match'");
-        structInitAllowed = true;
+        structInitAllowed = savedStructInitAllowed;
 
         if (!Match(TokenKind::LeftBrace)) {
             EmitExpected(CurrentLocation(), "'{' to start the match expression arms");
@@ -972,7 +990,7 @@ ExprPtr Parser::ParseArmBody(const std::string_view construct) {
     if (Check(TokenKind::LeftBrace)) {
         auto block = std::make_unique<BlockExpr>();
         block->location = CurrentLocation();
-        block->block = ParseBlock(std::format("the {} arm body", construct));
+        block->block = ParseBlock(std::format("the {} arm body", construct), true);
         return block;
     }
     if (CheckDivergingKeyword()) {
@@ -1106,6 +1124,96 @@ PatternPtr Parser::ParseMatchArmPattern() {
     return pattern;
 }
 
+bool Parser::CheckPatternAfterIs() const noexcept {
+    const auto startsPatternElement = [this](const std::size_t at) {
+        const Token &token = Peek(at);
+        switch (token.kind) {
+        case TokenKind::Dot:
+        case TokenKind::NoneKeyword:
+        case TokenKind::IntLiteral:
+        case TokenKind::FloatLiteral:
+        case TokenKind::StringLiteral:
+        case TokenKind::CharLiteral:
+        case TokenKind::BoolLiteral:
+        case TokenKind::NullKeyword:
+            return true;
+        case TokenKind::Minus:
+            return Peek(at + 1).Is(TokenKind::IntLiteral);
+        case TokenKind::Ident:
+            return token.text == "_" || Peek(at + 1).Is(TokenKind::Colon) || Peek(at + 1).Is(TokenKind::LeftParen) ||
+                   Peek(at + 1).Is(TokenKind::LeftBrace);
+        default:
+            return false;
+        }
+    };
+    const Token &next = Peek();
+    if (next.Is(TokenKind::Ident) && next.text != "_") {
+        // `name: T` binds what it selects, unless the ':' separates the branches of a conditional `c ? a : b`.
+        if (Peek(1).Is(TokenKind::Colon)) {
+            return !inConditionalThen;
+        }
+        // `Point { x, y }` is a structure pattern where a brace cannot open a body.
+        if (Peek(1).Is(TokenKind::LeftBrace)) {
+            return structInitAllowed;
+        }
+        // `Shape::Circle(r)` and `Shape::Box { width }` name a case with its payload; a bare path is a type.
+        std::size_t at = 1;
+        while (Peek(at).Is(TokenKind::ColonColon) && Peek(at + 1).Is(TokenKind::Ident)) {
+            at += 2;
+        }
+        return at > 1 &&
+               (Peek(at).Is(TokenKind::LeftParen) || (Peek(at).Is(TokenKind::LeftBrace) && structInitAllowed));
+    }
+    if (next.Is(TokenKind::LeftParen)) {
+        // A tuple is a pattern when one of its elements starts as only a pattern can; `(A, B)` and `(A | B)` are types.
+        std::size_t depth = 0;
+        for (std::size_t at = 0; !Peek(at).IsEof(); ++at) {
+            const TokenKind kind = Peek(at).kind;
+            if (kind == TokenKind::LeftParen || kind == TokenKind::LeftBracket || kind == TokenKind::LeftBrace) {
+                ++depth;
+                if (kind == TokenKind::LeftParen && depth == 1 && startsPatternElement(at + 1)) {
+                    return true;
+                }
+                continue;
+            }
+            if (kind == TokenKind::RightParen || kind == TokenKind::RightBracket || kind == TokenKind::RightBrace) {
+                if (--depth == 0) {
+                    return false;
+                }
+                continue;
+            }
+            if (kind == TokenKind::Comma && depth == 1 && startsPatternElement(at + 1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return startsPatternElement(0);
+}
+
+PatternPtr Parser::ParseIsPattern() {
+    auto first = ParseSinglePattern();
+    if (!first) {
+        EmitExpected(CurrentLocation(), "a pattern after 'is'");
+        return nullptr;
+    }
+    if (!Check(TokenKind::Pipe)) {
+        return first;
+    }
+    auto alternatives = std::make_unique<AlternativePattern>();
+    alternatives->location = first->location;
+    alternatives->alternatives.push_back(std::move(first));
+    while (Match(TokenKind::Pipe)) {
+        auto alternative = ParseSinglePattern();
+        if (!alternative) {
+            EmitExpected(CurrentLocation(), "a pattern after '|'");
+            break;
+        }
+        alternatives->alternatives.push_back(std::move(alternative));
+    }
+    return alternatives;
+}
+
 PatternPtr Parser::ParsePattern() {
     return ParseRequiredPattern();
 }
@@ -1190,10 +1298,11 @@ PatternPtr Parser::ParseSinglePattern() {
     // Presence suffix: `value?` is `.Some(value)`, and `value??` peels two levels.
     inner = ParsePresenceSuffix(std::move(inner));
 
-    // Range pattern: lo..hi or lo...hi or lo..=hi
+    // Range pattern: lo..hi or lo..=hi; `...` is reported and read as `..=`.
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
+        RejectEllipsisRange();
         constexpr std::string_view rangeSuffixHelp = "write '.Some(lo..hi)' to match a present value in a range";
         if (AstCast<const PresencePattern>(inner.get())) {
             EmitError(inner->location, "a range bound cannot take a presence suffix", std::string(rangeSuffixHelp));
@@ -1221,7 +1330,9 @@ PatternPtr Parser::ParsePrimaryPattern() {
     const auto loc = CurrentLocation();
 
     const auto parseEnumPatternSuffix = [this](std::unique_ptr<EnumPattern> pattern) -> PatternPtr {
+        // Inside the payload's parentheses a brace opens no body, so a structure pattern is fine even in a condition.
         if (Match(TokenKind::LeftParen)) {
+            const bool savedStructInitAllowed = std::exchange(structInitAllowed, true);
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 auto argument = ParseRequiredPattern(pattern->args.empty() ? "after '(' in the variant pattern"
                                                                            : "after ',' in the variant pattern");
@@ -1244,9 +1355,11 @@ PatternPtr Parser::ParsePrimaryPattern() {
                     break;
                 }
             }
+            structInitAllowed = savedStructInitAllowed;
             ExpectBefore(TokenKind::RightParen, "')' to close the variant pattern");
         }
-        else if (Match(TokenKind::LeftBrace)) {
+        // Where a brace opens the body of an `if` or `while`, a case written before it takes no braced payload.
+        else if (structInitAllowed && Match(TokenKind::LeftBrace)) {
             pattern->braced = true;
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumPattern::NamedArg arg;
@@ -1337,6 +1450,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
     if (Match(TokenKind::LeftParen)) {
         auto p = std::make_unique<TuplePattern>();
         p->location = loc;
+        const bool savedStructInitAllowed = std::exchange(structInitAllowed, true);
         while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
             auto element = ParseRequiredPattern(p->elements.empty() ? "after '(' in the tuple pattern"
                                                                     : "after ',' in the tuple pattern");
@@ -1359,6 +1473,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
                 break;
             }
         }
+        structInitAllowed = savedStructInitAllowed;
         ExpectBefore(TokenKind::RightParen, "')' to close the tuple pattern");
         return p;
     }

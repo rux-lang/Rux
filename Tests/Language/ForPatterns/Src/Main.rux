@@ -1,0 +1,87 @@
+// A `for` loop may take each element apart with a pattern that matches every element: a tuple, a structure, `_`, and
+// any nesting of them. The element is moved into the pattern, so an owning part is the loop body's to keep or drop.
+
+import Core::Assert;
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+struct Segment {
+    from: Point;
+    to: Point;
+}
+
+var drops: int = 0;
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    func ~Token(&var self) {
+        drops += 1;
+    }
+}
+
+struct Pairs {
+    next: int;
+}
+
+extend Pairs {
+    func Next(&var self) -> (int, int)? {
+        if self.next == 3 {
+            return none;
+        }
+        self.next += 1;
+        return (self.next, self.next * self.next);
+    }
+}
+
+func Main() -> int {
+    let pairs = [(1, 10), (2, 20), (3, 30)];
+    var keys = 0;
+    var values = 0;
+    for (key, value) in pairs {
+        keys += key;
+        values += value;
+    }
+    Assert(keys == 6 && values == 60, "a tuple pattern binds each element");
+
+    var seconds = 0;
+    for (_, second) in pairs[1..] {
+        seconds += second;
+    }
+    Assert(seconds == 50, "'_' skips an element of a slice's tuples");
+
+    let points = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+    var sum = 0;
+    for Point { x, y } in points {
+        sum += x * y;
+    }
+    Assert(sum == 14, "a structure pattern binds its fields");
+
+    let segments = [Segment { from: Point { x: 0, y: 0 }, to: Point { x: 2, y: 5 } }];
+    var length = 0;
+    for Segment { from: Point { x: startX, y: _ }, to } in segments {
+        length += to.x - startX + to.y;
+    }
+    Assert(length == 7, "patterns nest");
+
+    var squares = 0;
+    for (index, square) in (Pairs { next: 0 }) {
+        Assert(square == index * index, "an iterator's tuples are taken apart");
+        squares += square;
+    }
+    Assert(squares == 14, "every element of an iterator is visited");
+
+    let tokens = [(Token { id: 1 }, 5), (Token { id: 2 }, 6)];
+    var ids = 0;
+    for (token, weight) in tokens {
+        ids += token.id * weight;
+    }
+    Assert(ids == 17, "an owning part is bound");
+    Assert(drops == 2, "each pass destroys the copy it took apart once");
+    return 0;
+}

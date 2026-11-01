@@ -2,6 +2,7 @@
 
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <format>
 #include <memory>
 #include <optional>
@@ -10,8 +11,9 @@
 
 namespace Rux {
 // Block and statements
-std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
+std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role, const bool valueBlock) {
     const auto loc = CurrentLocation();
+    const bool savedYieldsValue = blockYieldsValue;
     if (!Match(TokenKind::LeftBrace)) {
         EmitExpected(CurrentLocation(), std::format("'{{' to start {}", role));
     }
@@ -30,6 +32,8 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
             }
             continue;
         }
+        // A statement nested inside this one reads its own block, which sets this again for its statements.
+        blockYieldsValue = valueBlock;
         if (auto stmt = ParseStmt()) {
             block->stmts.push_back(std::move(stmt));
         }
@@ -37,6 +41,7 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
             Recover();
         }
     }
+    blockYieldsValue = savedYieldsValue;
 
     ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close {}", role));
     block->end = CurrentLocation();
@@ -45,12 +50,23 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
 
 StmtPtr Parser::ParseStmt() {
     const auto loc = CurrentLocation();
+    // Only the last expression of a value block may leave out its ';', so the flag is read before anything nested.
+    const bool tailAllowed = std::exchange(blockYieldsValue, false);
 
     if (CheckAny({TokenKind::LetKeyword, TokenKind::VarKeyword})) {
         return ParseLetStmt();
     }
     if (Check(TokenKind::IfKeyword) || Check(TokenKind::WhenKeyword)) {
-        return ParseIfStmt();
+        auto conditional = ParseIfStmt();
+        // An `if` that ends a value block and yields a value is that block's value, as an `if` expression would be.
+        if (tailAllowed && Check(TokenKind::RightBrace) && IfYieldsValue(*conditional)) {
+            auto tail = std::make_unique<ExprStmt>();
+            tail->location = loc;
+            tail->expr = IfAsExpression(*conditional);
+            tail->yieldsValue = true;
+            return tail;
+        }
+        return conditional;
     }
     // The form `when` replaced.
     if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::IfKeyword)) {
@@ -155,8 +171,15 @@ StmtPtr Parser::ParseStmt() {
     // expression (e.g. two identifiers `asas asasass`, or a removed keyword used
     // as one): name the token that got in the way instead. The cursor stays put,
     // so the block loop re-parses that token as the next statement.
+    auto s = std::make_unique<ExprStmt>();
+    s->location = loc;
     if (Check(TokenKind::Semicolon)) {
+        s->semicolon = CurrentLocation();
         Advance();
+    }
+    else if (tailAllowed && Check(TokenKind::RightBrace)) {
+        // The last expression of a value block, written without its ';', is the value the block yields.
+        s->yieldsValue = true;
     }
     else if (!IsAtEnd()) {
         EmitError(CurrentLocation(), "expected ';' after expression, but found '" + Peek().text + "'");
@@ -164,8 +187,6 @@ StmtPtr Parser::ParseStmt() {
     else {
         EmitError(CurrentLocation(), "expected ';' after expression");
     }
-    auto s = std::make_unique<ExprStmt>();
-    s->location = loc;
     s->expr = std::move(expr);
     return s;
 }
@@ -246,9 +267,9 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     s->location = loc;
     s->isCompileTime = isCompileTime;
     bodiesNeedConditionalFolding = bodiesNeedConditionalFolding || isCompileTime;
-    structInitAllowed = false;
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
     auto subject = ParseRequiredExpr(isCompileTime ? "after 'when'" : "after 'if'");
-    structInitAllowed = true;
+    structInitAllowed = savedStructInitAllowed;
 
     // Compile-time match: `when subject { pattern, ... => body, ... else => body }`.
     // An arm names one or more comma-separated patterns before `=>` (it is taken
@@ -333,8 +354,11 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
         return s;
     }
 
+    // A run-time branch is a value block, whether the `if` is a statement or a value; a compile-time branch is spliced
+    // in place of the `when`.
+    const bool valueBranches = !isCompileTime;
     s->condition = std::move(subject);
-    s->thenBlock = ParseBlock(isCompileTime ? "the 'when' body" : "the 'if' body");
+    s->thenBlock = ParseBlock(isCompileTime ? "the 'when' body" : "the 'if' body", valueBranches);
 
     // A chain keeps the keyword it opened with: `if`/`else if` throughout, or
     // `when`/`else when` throughout. Mixing them would hide which arms the
@@ -353,16 +377,102 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
         Advance(); // consume 'if' / 'when'
         structInitAllowed = false;
         elif.condition = ParseRequiredExpr(isCompileTime ? "after 'else when'" : "after 'else if'");
-        structInitAllowed = true;
-        elif.block = ParseBlock(isCompileTime ? "the 'else when' body" : "the 'else if' body");
+        structInitAllowed = savedStructInitAllowed;
+        elif.block = ParseBlock(isCompileTime ? "the 'else when' body" : "the 'else if' body", valueBranches);
         s->elseIfs.push_back(std::move(elif));
     }
 
     if (Match(TokenKind::ElseKeyword)) {
-        s->elseBlock = ParseBlock("the 'else' body");
+        s->elseBlock = ParseBlock("the 'else' body", valueBranches);
     }
 
     return s;
+}
+
+ExprPtr Parser::ParseIfExpr() {
+    const SourceLocation location = CurrentLocation();
+    auto statement = ParseIfStmt();
+    if (!statement->elseBlock) {
+        EmitError(location, "an 'if' used as a value needs an 'else' branch",
+                  "add 'else { ... }' with the value for when the condition is false");
+    }
+    return IfAsExpression(*statement);
+}
+
+namespace {
+ExprPtr BranchExpression(std::unique_ptr<Block> block, const SourceLocation location) {
+    auto branch = std::make_unique<BlockExpr>();
+    if (!block) {
+        block = std::make_unique<Block>();
+        block->location = location;
+        block->end = location;
+    }
+    branch->location = block->location;
+    branch->block = std::move(block);
+    return branch;
+}
+
+ExprPtr ConditionalMatch(const SourceLocation location, ExprPtr condition, ExprPtr thenBranch, ExprPtr elseBranch,
+                         const SourceLocation elseLocation) {
+    auto match = std::make_unique<MatchExpr>();
+    match->location = location;
+    match->form = MatchExpr::Form::If;
+    match->subject = std::move(condition);
+
+    MatchExpr::Arm taken;
+    taken.location = thenBranch->location;
+    auto truth = std::make_unique<LiteralPattern>();
+    truth->location = thenBranch->location;
+    truth->value.kind = TokenKind::BoolLiteral;
+    truth->value.text = "true";
+    truth->value.location = thenBranch->location;
+    taken.pattern = std::move(truth);
+    taken.body = std::move(thenBranch);
+    match->arms.push_back(std::move(taken));
+
+    MatchExpr::Arm otherwise;
+    otherwise.location = elseLocation;
+    auto wildcard = std::make_unique<WildcardPattern>();
+    wildcard->location = elseLocation;
+    otherwise.pattern = std::move(wildcard);
+    otherwise.body = elseBranch ? std::move(elseBranch) : BranchExpression(nullptr, elseLocation);
+    match->arms.push_back(std::move(otherwise));
+    return match;
+}
+
+bool BlockYieldsValue(const Block *block) noexcept {
+    if (!block || block->stmts.empty()) {
+        return false;
+    }
+    const auto *last = AstCast<const ExprStmt>(block->stmts.back().get());
+    return last && last->yieldsValue;
+}
+} // namespace
+
+bool Parser::IfYieldsValue(const IfStmt &statement) noexcept {
+    if (statement.isCompileTime || !statement.elseBlock) {
+        return false;
+    }
+    return BlockYieldsValue(statement.thenBlock.get()) || BlockYieldsValue(statement.elseBlock.get()) ||
+           std::ranges::any_of(statement.elseIfs,
+                               [](const IfStmt::ElseIf &branch) { return BlockYieldsValue(branch.block.get()); });
+}
+
+ExprPtr Parser::IfAsExpression(IfStmt &statement) {
+    ExprPtr elseBranch;
+    SourceLocation elseLocation = statement.elseBlock ? statement.elseBlock->location : statement.location;
+    if (statement.elseBlock) {
+        elseBranch = BranchExpression(std::move(statement.elseBlock), elseLocation);
+    }
+    for (auto branch = statement.elseIfs.rbegin(); branch != statement.elseIfs.rend(); ++branch) {
+        elseBranch = ConditionalMatch(branch->location, std::move(branch->condition),
+                                      BranchExpression(std::move(branch->block), branch->location),
+                                      std::move(elseBranch), elseLocation);
+        elseLocation = branch->location;
+    }
+    return ConditionalMatch(statement.location, std::move(statement.condition),
+                            BranchExpression(std::move(statement.thenBlock), statement.location), std::move(elseBranch),
+                            elseLocation);
 }
 
 std::unique_ptr<WhileStmt> Parser::ParseWhileStmt() {
@@ -371,9 +481,9 @@ std::unique_ptr<WhileStmt> Parser::ParseWhileStmt() {
 
     auto s = std::make_unique<WhileStmt>();
     s->location = loc;
-    structInitAllowed = false;
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
     s->condition = ParseRequiredExpr("after 'while'");
-    structInitAllowed = true;
+    structInitAllowed = savedStructInitAllowed;
     s->body = ParseBlock("the 'while' body");
     return s;
 }
@@ -386,9 +496,9 @@ std::unique_ptr<DoWhileStmt> Parser::ParseDoWhileStmt() {
     s->location = loc;
     s->body = ParseBlock("the 'do' body");
     ExpectBefore(TokenKind::WhileKeyword, "'while' after the 'do' body");
-    structInitAllowed = false;
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
     s->condition = ParseRequiredExpr("after 'while' in the 'do' statement");
-    structInitAllowed = true;
+    structInitAllowed = savedStructInitAllowed;
     ExpectBefore(TokenKind::Semicolon, "';' after the 'do while' condition");
     return s;
 }
@@ -409,13 +519,54 @@ std::unique_ptr<ForStmt> Parser::ParseForStmt() {
 
     auto s = std::make_unique<ForStmt>();
     s->location = loc;
-    s->variable = ExpectBefore(TokenKind::Ident, "a loop variable after 'for'").text;
+    // A pattern other than a name binds a hidden loop variable and takes it apart at the top of the body.
+    PatternPtr pattern;
+    if (Check(TokenKind::Ident) && Peek(1).Is(TokenKind::InKeyword)) {
+        s->variable = Advance().text;
+    }
+    else {
+        pattern = ParseRequiredPattern("after 'for'");
+        if (pattern && !PatternMatchesEveryElement(*pattern)) {
+            EmitError(pattern->location, "a 'for' pattern must match every element",
+                      "bind the element and test it in the body, as in 'for item in items { if item is ... { ... } }'");
+        }
+        s->variable = std::format("<for item {}:{}>", loc.line, loc.column);
+    }
     ExpectBefore(TokenKind::InKeyword, "'in' after the loop variable");
-    structInitAllowed = false;
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
     s->iterable = ParseRequiredExpr("after 'in' in the 'for' statement");
-    structInitAllowed = true;
+    structInitAllowed = savedStructInitAllowed;
     s->body = ParseBlock("the 'for' body");
+    if (pattern && s->body) {
+        auto item = std::make_unique<IdentExpr>();
+        item->location = pattern->location;
+        item->name = s->variable;
+        auto transfer = std::make_unique<MoveExpr>();
+        transfer->location = pattern->location;
+        transfer->operand = std::move(item);
+        auto destructure = std::make_unique<LetStmt>();
+        destructure->location = pattern->location;
+        destructure->pattern = std::move(pattern);
+        destructure->init = std::move(transfer);
+        s->body->stmts.insert(s->body->stmts.begin(), std::move(destructure));
+    }
     return s;
+}
+
+bool Parser::PatternMatchesEveryElement(const Pattern &pattern) noexcept {
+    if (AstCast<const IdentPattern>(&pattern) || AstCast<const WildcardPattern>(&pattern)) {
+        return true;
+    }
+    if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
+        return std::ranges::all_of(
+            tuple->elements, [](const PatternPtr &element) { return element && PatternMatchesEveryElement(*element); });
+    }
+    if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
+        return std::ranges::all_of(structure->fields, [](const StructPattern::Field &field) {
+            return field.pattern && PatternMatchesEveryElement(*field.pattern);
+        });
+    }
+    return false;
 }
 
 std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
@@ -424,9 +575,9 @@ std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
 
     auto s = std::make_unique<MatchStmt>();
     s->location = loc;
-    structInitAllowed = false;
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
     s->subject = ParseRequiredExpr("after 'match'");
-    structInitAllowed = true;
+    structInitAllowed = savedStructInitAllowed;
 
     if (!Match(TokenKind::LeftBrace)) {
         EmitExpected(CurrentLocation(), "'{' to start the match statement arms");
@@ -490,6 +641,8 @@ std::unique_ptr<DeferStmt> Parser::ParseDeferStmt() {
 
     auto s = std::make_unique<DeferStmt>();
     s->location = loc;
+    // A deferred expression is never the value of its block, so it keeps its ';'.
+    blockYieldsValue = false;
     s->deferredStmt = ParseStmt();
     return s;
 }

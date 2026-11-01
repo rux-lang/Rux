@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <optional>
 #include <set>
@@ -637,6 +638,8 @@ private:
     template <typename Arm>
     bool ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                              SourceLocation location);
+    /// The same for a subject whose arms bind something exactly when `armsBind` holds.
+    bool ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, bool armsBind, SourceLocation location);
     void ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                const FuncDecl &method);
 
@@ -665,11 +668,71 @@ private:
     /// from the merged state and a use only a later pass reaches is reported. `rebound` is a `for` variable, which
     /// every pass binds afresh.
     [[nodiscard]] TrackedLoop CheckTrackedLoopBody(const Block &body, std::string_view label,
-                                                   const Symbol *rebound = nullptr);
+                                                   std::span<const Symbol *const> rebound = {});
     void RecordTrackedLoopExit(std::string_view label, bool isContinue);
     [[nodiscard]] TypeRef CheckShortCircuitExpression(const BinaryExpr &expression);
     [[nodiscard]] TypeRef CheckTernaryExpression(const TernaryExpr &expression);
     [[nodiscard]] TypeRef CheckMatchExpression(const MatchExpr &expression);
+
+    // Value blocks, `if` values and binding `is` tests (Conditionals.cpp).
+
+    /// The type a match or an `if` takes from its arms. A block arm that yields `()` decides nothing while another arm
+    /// yields a value, so the result does not depend on the order of the arms.
+    struct ArmUnification {
+        struct Arm {
+            const Expr *body = nullptr;
+            TypeRef type;
+            SourceLocation location;
+        };
+
+        /// What the diagnostics call an arm: "match arm" or "'if' branch".
+        std::string_view construct = "match arm";
+        /// An optional, fallible or sum annotation the context gives, which every arm converts to.
+        std::optional<TypeRef> expected;
+        TypeRef result = TypeRef::MakeUnknown();
+        std::vector<Arm> accepted;
+        std::vector<Arm> unitBlocks;
+    };
+
+    void UnifyArm(ArmUnification &unification, const Expr &body, const TypeRef &armType, SourceLocation location);
+    [[nodiscard]] TypeRef FinishArmUnification(ArmUnification &unification);
+    /// Gives an arm body the type its value is expected to have: a case written without its type takes it, and a
+    /// block or a nested `if` passes it on to the value it yields.
+    void ExpectArmValue(const Expr &body, const TypeRef &type);
+    /// The last statement of a value block when it is the value the block yields.
+    [[nodiscard]] static const ExprStmt *YieldedStatement(const Block &block) noexcept;
+    /// A block arm, `if` branch or match arm block: its statements, then the value it yields, or `()`. A block that
+    /// cannot complete has no type.
+    [[nodiscard]] TypeRef CheckValueBlock(const BlockExpr &expression);
+    /// The value a block yields, checked as the block's last statement while its locals are still in scope.
+    void CheckYieldedValue(const ExprStmt &tail, TypeRef &type);
+    /// A branch of an `if` statement or a match statement arm block, whose value nothing uses.
+    void CheckStatementBranch(const Block &block);
+    void ReportUnusedBranchValue(const ExprStmt *tail, const TypeRef &yielded);
+    /// Reports a block that yields `()` only because its last expression ends with a ';', at the ';', when the block
+    /// is expected to yield a value. Returns whether it did.
+    bool ReportStrayTailSemicolon(const Expr &body, const TypeRef &expected);
+    /// Whether a block ends by leaving: a return, a failure, a call that never returns, a `break` or a `continue`.
+    [[nodiscard]] bool BlockCannotComplete(const Block &block) const;
+    /// `if c { a } else { b }` used as a value, which the parser writes as a match of `MatchExpr::Form::If`.
+    [[nodiscard]] TypeRef CheckIfExpression(const MatchExpr &expression);
+    /// `subject is pattern`. `receivesBindings` says the names it binds stay in scope after it, for the rest of a
+    /// condition and the body it guards.
+    [[nodiscard]] TypeRef CheckIsPattern(const IsExpr &expression, bool receivesBindings);
+    /// `a && b` where an `is` test binds names the right side and the guarded body see.
+    [[nodiscard]] TypeRef CheckBindingConjunction(const BinaryExpr &expression, bool receivesBindings);
+    /// Reports an `is` test that binds names under `||` or `!`, where they would be in scope without a value.
+    void RejectUnreachableBindings(const Expr &expression);
+    /// The binding `is` test that `expression` holds, looking through `&&`, `||` and `!` only.
+    [[nodiscard]] static const IsExpr *FindBindingTest(const Expr &expression);
+    /// The operands of a chain of `&&`, in evaluation order.
+    static void CollectConditionTests(const Expr &condition, std::vector<const Expr *> &tests);
+    /// Whether a condition holds an `is` test that binds names for the body it guards.
+    [[nodiscard]] static bool ConditionBinds(const Expr &condition);
+    /// The names a condition's `is` tests bound, as defined in the current scope.
+    [[nodiscard]] std::vector<const Symbol *> ConditionBindings(const Expr &condition) const;
+    /// `flow` restricted to the scopes `shape` has, for a path that leaves scopes opened after `shape` was saved.
+    [[nodiscard]] static TrackedFlow ProjectTrackedFlow(const TrackedFlow &flow, const TrackedFlow &shape);
     /// `outcome catch { arms }`: the success passes through, and the arms recover from the error or leave.
     [[nodiscard]] TypeRef CheckCatchExpression(const CatchExpr &expression);
     /// `value? else (e => mapper)`: the success continues, and on failure the mapper's value fails the function.
@@ -677,7 +740,9 @@ private:
     /// Checks recovery arms whose subject was rejected, so their bindings and bodies report nothing spurious.
     void CheckRecoveryArmsWithoutSubject(const std::vector<MatchExpr::Arm> &arms);
 
-    void CheckBlock(const Block &block);
+    /// Checks a block's statements in a scope of their own. `tail`, when set, is the statement the block yields,
+    /// whose value is checked into `tailType`.
+    void CheckBlock(const Block &block, const ExprStmt *tail = nullptr, TypeRef *tailType = nullptr);
     void CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType);
     void CheckBooleanCondition(const TypeRef &type, SourceLocation location, std::string_view construct) const;
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
@@ -948,6 +1013,13 @@ private:
     std::unordered_map<const Pattern *, PatternBindingMode> &patternBindingModes;
 
     PatternBorrow currentPatternBorrow = PatternBorrow::Owned;
+    /// Set just before checking an expression whose `is` bindings stay in scope after it: an `if` or `while` condition
+    /// or an operand of `&&` there. Every check reads and clears it on entry.
+    bool conditionReceivesBindings = false;
+    /// The `_` arm an `is` test is validated against, one per test, so a test is never reported as not exhaustive.
+    std::deque<WildcardPattern> isTestDefaultArms;
+    /// Binding `is` tests already reported under `||` or `!`, so a nested operator does not report one again.
+    std::unordered_set<const IsExpr *> unreachableBindingTests;
     /// Whether the arm whose pattern is being checked owns what it binds: its match owns its subject, or it is a
     /// `catch` arm taking the error. A structure pattern binding a part there takes the value apart.
     bool currentPatternTakesParts = false;
@@ -1450,9 +1522,9 @@ private:
                                              std::string_view operatorName);
     /// The reference binding a write to `target` stores through, or null when `target` is not a name bound to a
     /// reference the write can reach through. `replaces` is set for `=` and `<-`, which replace a referent of any
-    /// concrete or generic type whole; other writes reach only a Copy primitive scalar. `rebinds` is set for a plain
-    /// assignment, which points a `var` reference binding at other storage rather than writing through it.
-    [[nodiscard]] const Symbol *ReferenceWriteTarget(const Expr &target, bool replaces, bool rebinds) const;
+    /// concrete or generic type whole; other writes reach only a Copy primitive scalar. A reference binding is never
+    /// pointed at other storage, so a plain assignment always writes through it.
+    [[nodiscard]] const Symbol *ReferenceWriteTarget(const Expr &target, bool replaces) const;
     /// Accepts a write through the reference `target` names and records it for lowering. Returns false after reporting
     /// a write through an immutable reference.
     [[nodiscard]] bool CheckReferenceWrite(const Expr &target, const Symbol &reference);

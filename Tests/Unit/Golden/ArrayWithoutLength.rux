@@ -1,0 +1,15 @@
+// An array type always has a length. 'T[]' is read as a growable array, which it never was, so it is rejected
+// wherever it is written, with the two types meant instead.
+struct Packet {
+    length: uint32;
+    bytes: uint8[];
+}
+
+func Sum(values: int32[]) -> int32 {
+    return 0i32;
+}
+
+func Main() -> int {
+    let size = sizeof(uint8[]);
+    return 0;
+}

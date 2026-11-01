@@ -34,6 +34,7 @@ rux_add_component(RuxSemantic
     Analysis/BasicExpressions.cpp
     Analysis/BorrowState.cpp
     Analysis/CallExpressions.cpp
+    Analysis/Conditionals.cpp
     Analysis/Constraints.cpp
     Analysis/MoveState.cpp
     Analysis/DropGlue.cpp

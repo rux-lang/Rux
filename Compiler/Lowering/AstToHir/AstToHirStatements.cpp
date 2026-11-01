@@ -41,11 +41,26 @@ bool AstToHirContext::IsDiagnosticIntrinsicCall(const Expr &expression) const {
     return symbol && (symbol->intrinsicName == "#Error" || symbol->intrinsicName == "#Warn");
 }
 
-HirBlock AstToHirContext::LowerBlock(const Block &block) {
+HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value) {
     HirBlock loweredBlock;
     loweredBlock.location = block.location;
     PushScope();
     for (const auto &statement : block.stmts) {
+        // The value is taken before the defers run and the block's locals are destroyed.
+        if (value && statement.get() == value->tail) {
+            auto capture = std::make_unique<HirLetStmt>();
+            capture->location = value->tail->location;
+            capture->isMut = false;
+            capture->name = value->name;
+            capture->type = value->type;
+            capture->init = LowerYielded(*value->tail->expr, value->target);
+            for (HirStmtPtr &declaration : statementPrelude) {
+                loweredBlock.stmts.push_back(std::move(declaration));
+            }
+            statementPrelude.clear();
+            loweredBlock.stmts.push_back(std::move(capture));
+            continue;
+        }
         if (const auto *expressionStatement = AstCast<const ExprStmt>(statement.get());
             expressionStatement && IsDiagnosticIntrinsicCall(*expressionStatement->expr)) {
             continue;
@@ -265,6 +280,12 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = AstCast<const IfStmt>(&stmt)) {
+        // A condition that binds names nests the tests around the branch it guards.
+        if (ConditionBinds(*statement->condition) ||
+            std::ranges::any_of(statement->elseIfs,
+                                [](const IfStmt::ElseIf &branch) { return ConditionBinds(*branch.condition); })) {
+            return LowerIfBranches(*statement, 0);
+        }
         auto lowered = std::make_unique<HirIfStmt>();
         lowered->location = statement->location;
         lowered->condition = LowerExpr(*statement->condition);
@@ -283,6 +304,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = AstCast<const WhileStmt>(&stmt)) {
+        if (ConditionBinds(*statement->condition)) {
+            return LowerBindingWhile(*statement);
+        }
         auto lowered = std::make_unique<HirWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;

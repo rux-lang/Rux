@@ -31,7 +31,7 @@ func CopyGeneric(slot: &var Token, token: Token) {
 }
 
 func Rebind(pair: &var Pair) {
-    // A 'var' reference binding is rebound by '=', so a struct is not a reference.
+    // A reference is never reseated, so a 'var' binding cannot hold one.
     var alias: &var Pair = pair;
     alias = Pair { a: 1i32, b: 2i32 };
 }

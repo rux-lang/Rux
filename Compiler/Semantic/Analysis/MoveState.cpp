@@ -304,7 +304,7 @@ AnalysisContext::TrackedLoop AnalysisContext::EndTrackedLoop() {
 }
 
 AnalysisContext::TrackedLoop AnalysisContext::CheckTrackedLoopBody(const Block &body, const std::string_view label,
-                                                                   const Symbol *rebound) {
+                                                                   const std::span<const Symbol *const> rebound) {
     const TrackedFlow entry = SaveTrackedFlow();
     // The expressions a pass records, so a second pass can check them afresh rather than reuse their recorded types.
     loopCheckedExpressions.emplace_back();
@@ -337,8 +337,8 @@ AnalysisContext::TrackedLoop AnalysisContext::CheckTrackedLoopBody(const Block &
         }
     }
     MoveStateTracker::Snapshot head = MoveStateTracker::Merge(heads);
-    if (rebound) {
-        const auto identity = MoveStateTracker::Local(rebound);
+    for (const Symbol *bound : rebound) {
+        const auto identity = MoveStateTracker::Local(bound);
         const auto atHead = std::ranges::find(head.entries, identity, &MoveStateTracker::SnapshotEntry::identity);
         const auto atEntry =
             std::ranges::find(entry.states.entries, identity, &MoveStateTracker::SnapshotEntry::identity);
@@ -520,6 +520,13 @@ bool PatternBindsValue(const Pattern &pattern) {
 template <typename Arm>
 bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                                           const SourceLocation location) {
+    return ConsumeMatchSubject(
+        subject, subjectType, std::ranges::any_of(arms, [](const Arm &arm) { return PatternBindsValue(*arm.pattern); }),
+        location);
+}
+
+bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const bool armsBind,
+                                          const SourceLocation location) {
     // `<-value` records its transfer on the moved operand rather than on itself.
     if (const auto *move = AstCast<const MoveExpr>(&subject)) {
         const bool handedOver = valueConsumptions.contains(move->operand.get());
@@ -534,8 +541,7 @@ bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &su
     }
     // A named subject that no arm takes anything from stays with its owner; a temporary has no other owner, so its
     // match takes it whole and destroys whatever the selected arm leaves.
-    if (!std::ranges::any_of(arms, [](const Arm &arm) { return PatternBindsValue(*arm.pattern); }) &&
-        place.IsNamedStorage()) {
+    if (!armsBind && place.IsNamedStorage()) {
         return false;
     }
     if (!trackedFlowReachable) {
@@ -622,33 +628,18 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     const TrackedFlow matchEntry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits;
     std::vector<const Pattern *> patterns;
-    TypeRef resultType = TypeRef::MakeUnknown();
     bool coveredAll = false;
     // An annotation of an optional, a fallible or a sum is the type of the match and of every arm, so `none` and a
     // member's value are injected into it the way a `let` or a `return` would inject them.
-    std::optional<TypeRef> expectedOutcome;
+    ArmUnification unification;
     if (const auto expected = expectedExpressionTypes.find(&expression);
         expected != expectedExpressionTypes.end() &&
         (expected->second.IsOptional() || expected->second.IsFallible() || expected->second.IsSum()) &&
         !expected->second.MentionsIncompleteNative()) {
-        expectedOutcome = expected->second;
-        resultType = *expectedOutcome;
+        unification.expected = expected->second;
+        unification.result = expected->second;
     }
-
-    // Arms accepted while the result was still incomplete, such as a leading `none`. A later arm that completes the
-    // type has to accept them too.
-    struct AcceptedArm {
-        const Expr *body;
-        TypeRef type;
-        SourceLocation location;
-    };
-
-    std::vector<AcceptedArm> acceptedArms;
-    const auto reportMismatch = [&](const Expr &body, const TypeRef &armType, const SourceLocation location) {
-        EmitError(location, AssignmentErrorMessage(body, resultType,
-                                                   std::format("match arm type mismatch: expected '{}', found '{}'",
-                                                               resultType.ToString(), armType.DisplayString())));
-    };
+    const std::optional<TypeRef> &expectedOutcome = unification.expected;
 
     for (const auto &arm : expression.arms) {
         RestoreTrackedFlow(matchEntry);
@@ -662,15 +653,13 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
             expectedExpressionTypes.insert_or_assign(arm.body.get(), *expectedOutcome);
         }
         // An arm that names a case without its type takes the type of the match: the one its context expects, or the
-        // one the arms before it settled on.
-        else if (IsContextualCaseExpression(*arm.body)) {
-            if (const auto expected = expectedExpressionTypes.find(&expression);
-                expected != expectedExpressionTypes.end()) {
-                ExpectContextualCaseArgument(arm.body.get(), expected->second);
-            }
-            else if (!resultType.IsUnknown() && !resultType.MentionsIncompleteNative()) {
-                ExpectContextualCaseArgument(arm.body.get(), resultType);
-            }
+        // one the arms before it settled on. A block or a nested `if` passes it on to the value it yields.
+        else if (const auto expected = expectedExpressionTypes.find(&expression);
+                 expected != expectedExpressionTypes.end()) {
+            ExpectArmValue(*arm.body, expected->second);
+        }
+        else if (!unification.result.IsUnknown() && !unification.result.MentionsIncompleteNative()) {
+            ExpectArmValue(*arm.body, unification.result);
         }
         // A diverging arm, such as `return` or a call to `Panic`, leaves the match and never decides its type.
         const TypeRef checkedArm = CheckExpr(*arm.body);
@@ -683,40 +672,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         }
         coveredAll = coveredAll || AstCast<const WildcardPattern>(arm.pattern.get()) != nullptr ||
                      AstCast<const IdentPattern>(arm.pattern.get()) != nullptr;
-
-        if (armType.IsUnknown()) {
-            continue;
-        }
-        if (expectedOutcome) {
-            // The annotation decided the type, so each arm converts to it or is reported where it is.
-            if (!CanAssignExprTo(*arm.body, armType, *expectedOutcome)) {
-                reportMismatch(*arm.body, armType, arm.location);
-            }
-            continue;
-        }
-        if (resultType.IsUnknown()) {
-            resultType = armType;
-        }
-        else if (CanAssignExprTo(*arm.body, armType, resultType)) {
-            // The arm fits the type the earlier arms settled on.
-        }
-        else if (resultType.MentionsIncompleteNative() && !armType.MentionsIncompleteNative()) {
-            // `none`, `.Success(v)` and `.Failure(e)` leave part of their type open, so the first arm that has a whole
-            // type decides the match, and the open arms before it are checked against that type.
-            resultType = armType;
-            for (const AcceptedArm &earlier : acceptedArms) {
-                if (!CanAssignExprTo(*earlier.body, earlier.type, resultType)) {
-                    reportMismatch(*earlier.body, earlier.type, earlier.location);
-                }
-            }
-        }
-        else if (!resultType.MentionsIncompleteNative() && !armType.MentionsIncompleteNative()) {
-            reportMismatch(*arm.body, armType, arm.location);
-        }
-        // Otherwise no arm so far has a whole type, as with `.Success(v)` beside `.Failure(e)`. The match keeps its
-        // open type and the expected type of its context checks every arm.
-        acceptedArms.push_back({arm.body.get(), armType, arm.location});
+        UnifyArm(unification, *arm.body, armType, arm.location);
     }
+    const TypeRef resultType = FinishArmUnification(unification);
     ValidateMatchPatterns(patterns, subjectType);
     if (MatchPatternsAreExhaustive(patterns, subjectType)) {
         // A native subject's tag is the compiler's own and never holds a value outside its members.

@@ -1,2 +1,0 @@
-11:28: error: cannot slice flexible array 'uint8[]' without an end bound
-12:23: error: cannot iterate over flexible array 'uint8[]'

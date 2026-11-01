@@ -49,6 +49,12 @@ private:
     std::vector<ParserDiagnostic> diagnostics;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
     bool structInitAllowed = true; ///< disabled inside if/while/for/match conditions
+    /// Whether the statement being read is in a value block (an `if` branch, or a match or catch arm block), where the
+    /// last expression may leave out its ';' to be the value the block yields.
+    bool blockYieldsValue = false;
+    /// Whether the then branch of a conditional `c ? a : b` is being read, where `x is name: T` would take the ':'
+    /// separating the branches; there `is` keeps reading a type.
+    bool inConditionalThen = false;
     /// Whether a block so far held a `when` statement or a nested declaration (`Module::bodiesNeedConditionalFolding`).
     bool bodiesNeedConditionalFolding = false;
     /// Whether a block so far declared anything but a constant (`Module::bodiesDeclareItems`).
@@ -268,14 +274,26 @@ private:
     [[nodiscard]] bool CanStartType() const noexcept;                   ///< whether the next token begins a type
 
     // Blocks and statements
-    std::unique_ptr<Block> ParseBlock(std::string_view role = "the block");
+    /// A braced block. A value block lets its last expression leave out the ';' to be the value the block yields.
+    std::unique_ptr<Block> ParseBlock(std::string_view role = "the block", bool valueBlock = false);
     StmtPtr ParseStmt();
     std::unique_ptr<LetStmt> ParseLetStmt();
     std::unique_ptr<IfStmt> ParseIfStmt();
+    /// An `if` in value position: an `if` statement read whole and written as the match on its condition that
+    /// `MatchExpr::Form::If` describes. It needs an `else`.
+    ExprPtr ParseIfExpr();
+    /// The match `MatchExpr::Form::If` describes for a run-time `if` chain, which `statement` gives up its parts to.
+    static ExprPtr IfAsExpression(IfStmt &statement);
+    /// Whether a run-time `if` that ends a value block yields a value: it has an `else` and a branch ends with an
+    /// expression written without its ';'.
+    [[nodiscard]] static bool IfYieldsValue(const IfStmt &statement) noexcept;
     std::unique_ptr<WhileStmt> ParseWhileStmt();
     std::unique_ptr<DoWhileStmt> ParseDoWhileStmt();
     std::unique_ptr<LoopStmt> ParseLoopStmt();
     std::unique_ptr<ForStmt> ParseForStmt();
+    /// Whether `pattern` matches every value of the type it takes apart, as a `for` pattern must: names, `_`, and
+    /// tuples and structures made of them.
+    [[nodiscard]] static bool PatternMatchesEveryElement(const Pattern &pattern) noexcept;
     std::unique_ptr<MatchStmt> ParseMatchStmt();
     std::unique_ptr<ReturnStmt> ParseReturnStmt();
     std::unique_ptr<FailStmt> ParseFailStmt();
@@ -291,6 +309,8 @@ private:
     ExprPtr ParseAssign();
     ExprPtr ParseRange();
     ExprPtr ParseTernary();
+    /// Report `...` where a range operator is read: the inclusive range is spelled `..=`.
+    void RejectEllipsisRange();
     ExprPtr ParseCoalesce();
     ExprPtr ParseOr();
     ExprPtr ParseAnd();
@@ -336,6 +356,10 @@ private:
     /// One pattern without alternatives or a guard: a primary pattern, its presence suffix, and a range.
     PatternPtr ParseSinglePattern();
     PatternPtr ParseMatchArmPattern();
+    /// Whether the tokens after `is` begin a pattern rather than the type `x is T` tests.
+    [[nodiscard]] bool CheckPatternAfterIs() const noexcept;
+    /// The pattern after `is`: alternatives of single patterns, without a guard.
+    PatternPtr ParseIsPattern();
     /// Wrap `inner` in one presence pattern per `?` that follows it; `??` is two.
     PatternPtr ParsePresenceSuffix(PatternPtr inner);
 

@@ -139,6 +139,16 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         return CanAssignExprTo(*repeat->value, elementType, targetType->inner[0]);
     }
 
+    // A block yields its last expression, which converts to the target as that expression would.
+    if (const auto *block = AstCast<const BlockExpr>(&expr); block && block->block) {
+        if (const ExprStmt *tail = YieldedStatement(*block->block)) {
+            if (const auto yielded = expressionTypes.find(tail->expr.get());
+                yielded != expressionTypes.end() && yielded->second == exprType) {
+                return CanAssignExprTo(*tail->expr, exprType, targetType);
+            }
+        }
+    }
+
     // Tuple literals are contextually typed element-by-element. This lets
     // each element use the same assignment rules as a scalar expression
     // (notably range-checked unsuffixed integer literals), and naturally

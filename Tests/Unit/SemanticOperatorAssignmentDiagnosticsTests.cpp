@@ -573,7 +573,7 @@ TEST_CASE("an indexer call reads its whole receiver rather than projecting into 
         }
         func Main() {
             var vect = Vect { data: [1, 2, 3, 4] };
-            var exclusive: &var Vect = vect;
+            let exclusive: &var Vect = vect;
             let read: int = vect[0];
             exclusive.Bump();
         }
@@ -662,7 +662,7 @@ TEST_CASE("an indexed assignment needs a receiver it may write, and conflicts wi
             let frozen = Vect { data: [1, 2, 3, 4] };
             frozen[0] = 9;
             var vect = Vect { data: [1, 2, 3, 4] };
-            var exclusive: &var Vect = vect;
+            let exclusive: &var Vect = vect;
             vect[0] = 5;
             exclusive[1] = 6;
         }

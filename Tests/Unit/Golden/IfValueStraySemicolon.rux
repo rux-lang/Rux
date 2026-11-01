@@ -1,0 +1,29 @@
+// A block yields its last expression only when that expression has no ';'. The ';' is reported where it is, whichever
+// branch or arm it ends, instead of a mismatch between the branches.
+func Pick(flag: bool) -> int {
+    let value = if flag {
+        1;
+    } else {
+        2
+    };
+    return value;
+}
+
+func Arm(key: int) -> int {
+    return match key {
+        0 => 10,
+        _ => {
+            let doubled = key * 2;
+            doubled;
+        },
+    };
+}
+
+func Recover(flag: bool) -> int {
+    let chosen = if flag { 5 } else { Pick(flag); };
+    return chosen;
+}
+
+func Main() -> int {
+    return Pick(true) + Arm(1) + Recover(false);
+}

@@ -129,7 +129,7 @@ TEST_CASE("exclusive loans distinguish disjoint fields") {
     CheckNoErrors(diagnostics);
 }
 
-TEST_CASE("reference provenance merges through control flow and expires after use") {
+TEST_CASE("a borrow made in a branch ends with the branch and expires after use") {
     const auto diagnostics = AnalyzeBorrows(R"(
         struct Item { value: int32; }
         func Read(item: &Item) {}
@@ -137,11 +137,14 @@ TEST_CASE("reference provenance merges through control flow and expires after us
         func Test(flag: bool) {
             var left = Item { value: 1i32 };
             var right = Item { value: 2i32 };
-            var selected: &Item = left;
             if flag {
-                selected = right;
+                let selected: &Item = right;
+                Read(selected);
             }
-            Read(selected);
+            else {
+                let selected: &Item = left;
+                Read(selected);
+            }
             Write(left);
             Write(right);
         }

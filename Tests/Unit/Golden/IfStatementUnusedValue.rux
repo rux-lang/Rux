@@ -1,0 +1,19 @@
+// An 'if' at the start of a statement yields nothing, so a branch ending in a value without ';' has nothing to give it
+// to. A branch ending in a call that returns nothing is fine without its ';'.
+func Touch() {}
+
+func Main() -> int {
+    let flag = true;
+    var count = 0;
+    if flag {
+        count + 1
+    } else {
+        Touch()
+    }
+    if flag { count += 1 }
+    match count {
+        1 => { count * 2 }
+        _ => {}
+    }
+    return count;
+}

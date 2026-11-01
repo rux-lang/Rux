@@ -139,6 +139,8 @@ protected:
     /// `break` or `continue` runs the defers registered inside the loop before it jumps.
     std::vector<std::pair<std::string, std::size_t>> loopDeferBases;
     std::size_t returnOrdinal = 0;
+    /// Names the hidden locals a value block, an `if` value and a binding condition introduce.
+    std::size_t blockValueOrdinal = 0;
     /// Names the value an interface value owns, which a scope destroys like a local of its own.
     std::size_t interfaceValueOrdinal = 0;
     /// The holders of the function being lowered, by `InterfaceHolderKey`: each one's hidden name and binding.
@@ -189,7 +191,16 @@ protected:
     [[nodiscard]] TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
                                        const std::vector<std::string> &typeParams = {});
 
-    [[nodiscard]] HirBlock LowerBlock(const Block &block);
+    /// The value a block yields: its last statement, stored in a hidden local before the block's own locals are
+    /// destroyed, converted to `target` when the context fixes the type.
+    struct BlockValue {
+        const ExprStmt *tail = nullptr;
+        std::optional<TypeRef> target;
+        std::string name;
+        TypeRef type;
+    };
+
+    [[nodiscard]] HirBlock LowerBlock(const Block &block, const BlockValue *value = nullptr);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
     /// Lowers `stmt` into `block`, after the declarations it needs ahead of it.
     void LowerStmtInto(HirBlock &block, const Stmt &stmt);
@@ -300,6 +311,31 @@ protected:
                                                ValueConsumptionKind kind = ValueConsumptionKind::MatchSubject);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
+
+    // Value blocks, `if` values and `is` tests (AstToHirConditionals.cpp).
+
+    /// Whether a condition's `&&` chain holds an `is` test that binds names for what the condition guards.
+    [[nodiscard]] static bool ConditionBinds(const Expr &condition);
+    /// The value a block or a branch yields, at `target` when the context fixes it.
+    [[nodiscard]] HirExprPtr LowerYielded(const Expr &value, const std::optional<TypeRef> &target);
+    /// A block arm or branch: its statements, and the value of its last expression when it yields one.
+    [[nodiscard]] HirExprPtr LowerValueBlock(const BlockExpr &expression, const std::optional<TypeRef> &target);
+    /// `subject is pattern` as a `bool`: a match whose matched arm is `whenMatched`, with the pattern's names bound,
+    /// or `true`.
+    [[nodiscard]] HirExprPtr LowerIsTest(const IsExpr &expression, const std::function<HirExprPtr()> &whenMatched);
+    /// `a && b` as a `bool` where an `is` test binds names the operands after it read.
+    [[nodiscard]] HirExprPtr LowerBindingConjunction(const BinaryExpr &expression);
+    /// The tests of a condition from `index` on, nested so each one's bindings reach the next, with `whenTrue`
+    /// filling the innermost block, where every test holds.
+    void LowerConditionChain(const std::vector<const Expr *> &tests, std::size_t index, HirBlock &into,
+                             const std::function<void(HirBlock &)> &whenTrue);
+    /// The `if` statement from its branch `branch` on, the first branch being the `if` itself.
+    [[nodiscard]] HirStmtPtr LowerIfBranches(const IfStmt &statement, std::size_t branch);
+    /// A `while` whose condition binds names: a loop that leaves when the condition's tests fail.
+    [[nodiscard]] HirStmtPtr LowerBindingWhile(const WhileStmt &statement);
+    /// An `if` value whose condition binds names: the then branch runs inside the tests and the `else` branch after
+    /// them, each storing its value in a hidden local the block yields.
+    [[nodiscard]] HirExprPtr LowerBindingIfValue(const MatchExpr &expression);
     /// `value` at `targetType`, when both are scalars and analysis accepted one where the other was expected.
     [[nodiscard]] static HirExprPtr ConvertScalar(HirExprPtr value, const TypeRef &targetType);
     [[nodiscard]] std::unique_ptr<HirArrayExpr>

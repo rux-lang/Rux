@@ -547,7 +547,7 @@ func Main() -> int {
 
     match count {
         0 => 0,
-        1...2 => 1,
+        1..=2 => 1,
         Choice::Pair(value, _) => 2,
         .Named { field: named } => 3,
         Point { x: 0, y: other } => 4,

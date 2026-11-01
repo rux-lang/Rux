@@ -63,7 +63,7 @@ const JsonHexDigits: char8[..] = "0123456789abcdef";
 /// @returns success when the whole quoted string was accepted
 /// @see https://rux-lang.dev/docs/api/json/write-value#write-escaped
 pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError {
-    var sink = writer;
+    let sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
     sink.Write(quote[0..1])?;
@@ -144,7 +144,7 @@ func IsFiniteNumberText(text: char8[..]) -> bool {
 // One run of bytes to the destination, reporting exactly what the destination said. Named apart from Text's
 // `WriteBytes` deliberately: a name that shadows an imported one is a name that will be reached for by accident.
 func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) -> ! FormatError {
-    var sink = writer;
+    let sink = writer;
     return sink.Write(bytes);
 }
 

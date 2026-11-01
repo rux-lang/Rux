@@ -234,33 +234,26 @@ TEST_CASE("ordinary unknown types keep the unknown-type diagnostic") {
     CHECK_EQ(diagnostics.front().message, "type 'CustomInteger' is not defined in this scope");
 }
 
-TEST_CASE("a flexible array is accepted only as the final struct field") {
-    CHECK(AnalyzeSource(R"(
+TEST_CASE("an array type without a length is rejected wherever it is written") {
+    Lexer lexer(R"(
         struct Packet {
             length: uint;
             data: uint8[];
         }
-    )")
-              .empty());
-
-    const auto diagnostics = AnalyzeSource(R"(
-        struct NotTail {
-            data: uint8[];
-            length: uint;
-        }
-        union NotStruct { data: uint8[] }
         func Invalid(value: uint8[]) -> uint8[] {
-            var local: uint8[];
             return value;
         }
-    )");
-
-    CHECK_EQ(std::ranges::count_if(diagnostics,
-                                   [](const SemanticDiagnostic &diagnostic) {
-                                       return diagnostic.message ==
-                                              "flexible array type is only allowed as the final field of a struct";
-                                   }),
-             5);
+    )",
+                "array_without_length.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "array_without_length.rux");
+    const ParseResult parsed = parser.Parse();
+    const auto rejected = std::ranges::count_if(parsed.diagnostics, [](const ParserDiagnostic &diagnostic) {
+        return diagnostic.message == "an array type needs a length between '[' and ']'" &&
+               diagnostic.help == "use 'Vector<T>' for a growable array or 'T[..]' for a view";
+    });
+    CHECK_EQ(rejected, 3);
 }
 
 TEST_CASE("fixed arrays require matching literal extents") {

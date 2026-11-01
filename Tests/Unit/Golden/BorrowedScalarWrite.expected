@@ -2,5 +2,5 @@
 11:5: error: cannot modify 'count' through immutable reference '&int'
 12:5: error: cannot modify 'count' through immutable reference '&int'
 16:5: error: operator '*' requires a pointer operand, but found '&var int'
-24:13: error: cannot assign 'int' to '&var int'
+23:5: error: 'var' binding 'rebound' cannot hold reference '&var int'
 27:27: error: cannot borrow exclusively 'total' while it is immutably borrowed

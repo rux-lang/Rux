@@ -35,12 +35,22 @@ func Main() -> int {
         return 2;
     }
 
-    var exclusive: &var Counter = counter;
+    let exclusive: &var Counter = counter;
     exclusive.value = 6i32;
     Increment(exclusive);
     exclusive.Add(3i32);
     if Observe(exclusive) != 10i32 || counter.value != 10i32 {
         return 3;
+    }
+    // A reference is never reseated: '=' through it replaces the referent, for a struct and a scalar alike.
+    let replaced: &var Counter = counter;
+    replaced = Counter { value: 20i32 };
+    var total = 1i32;
+    let slot: &var int32 = total;
+    slot = 5i32;
+    slot += 1i32;
+    if counter.value != 20i32 || total != 6i32 {
+        return 5;
     }
 
     let values = [7i32, 8i32, 9i32];

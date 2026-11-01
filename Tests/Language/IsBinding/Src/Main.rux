@@ -1,0 +1,222 @@
+// `subject is pattern`: a test that takes a value apart where it holds.
+// The names a pattern binds are in scope where the test is known to be true: the body of the `if` or `while` it
+// conditions and the right side of `&&`. The subject is evaluated once; a named subject keeps its value and the
+// bindings borrow from it, while a temporary or a subject written with `<-` is taken apart. `x is T` still tests a
+// type, and a test that binds nothing is an ordinary `bool`.
+
+import Core::Assert;
+
+variant Shape {
+    Circle(int),
+    Rect { width: int; height: int; },
+    Empty,
+}
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+var drops: int = 0;
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    func ~Token(&var self) {
+        drops += 1;
+    }
+}
+
+var calls: int = 0;
+
+func Lookup(key: int) -> int? {
+    calls += 1;
+    return if key > 0 { key * 10 } else { none };
+}
+
+func Area(shape: Shape) -> int {
+    if shape is .Circle(radius) {
+        return radius * radius * 3;
+    }
+    // Where a brace would open the body, a braced payload is written inside parentheses.
+    else if (shape is .Rect { width, height }) && width > 0 {
+        return width * height;
+    }
+    return 0;
+}
+
+func Describe(value: int | bool) -> int {
+    if value is number: int {
+        return number;
+    }
+    if value is flag: bool && flag {
+        return 1;
+    }
+    return -1;
+}
+
+struct Countdown {
+    left: int;
+}
+
+extend Countdown {
+    func Next(&var self) -> int? {
+        if self.left == 0 {
+            return none;
+        }
+        self.left -= 1;
+        return self.left;
+    }
+}
+
+func Drain(start: int) -> int {
+    var countdown = Countdown { left: start };
+    var total = 0;
+    while countdown.Next() is .Some(value) {
+        total += value;
+    }
+    return total;
+}
+
+func FirstLarge(values: int?[..]) -> int {
+    for entry in values {
+        if entry is .Some(value) && value > 5 && value < 100 {
+            return value;
+        }
+    }
+    return 0;
+}
+
+func Chain(a: int?, b: int?) -> int {
+    if a is .Some(x) && b is .Some(y) {
+        return x + y;
+    }
+    else if a is .Some(x) {
+        return x;
+    }
+    else if b is .Some(y) && y > 100 {
+        return -y;
+    }
+    else {
+        return 0;
+    }
+}
+
+func Doubled(a: int?) -> int {
+    let value = if a is .Some(x) && x > 0 { x * 2 } else if a is .Some(_) { return -5; } else { -1 };
+    return value;
+}
+
+var deferred: int = 0;
+
+struct Source {
+    left: int;
+}
+
+extend Source {
+    func Next(&var self) -> Token? {
+        if self.left == 0 {
+            return none;
+        }
+        self.left -= 1;
+        return Token { id: self.left };
+    }
+}
+
+func Origin(point: Point?) -> bool {
+    return point is .Some(Point { x: 0, y: 0 });
+}
+
+func Main() -> int {
+    // An optional, its subject a call evaluated exactly once.
+    if Lookup(4) is .Some(found) {
+        Assert(found == 40, "the payload is bound in the body");
+    }
+    else {
+        Assert(false, "a present value takes the then branch");
+    }
+    Assert(calls == 1, "the subject is evaluated once");
+    if Lookup(-1) is .Some(_) {
+        Assert(false, "an absent value fails the test");
+    }
+
+    // A named subject keeps its value: the binding only borrows it.
+    let stored: int? = 8;
+    if stored is .Some(inner) && inner == 8 {
+        Assert(stored == 8, "the subject is still usable while the binding is");
+    }
+    Assert(stored == 8, "the subject keeps its value after the test");
+    // The borrow ends at the binding's last use, so the body may then replace the subject.
+    var current: int? = 3;
+    var steps = 0;
+    while current is .Some(left) {
+        steps += 1;
+        current = if left > 0 { left - 1 } else { none };
+    }
+    Assert(steps == 4 && current == none, "a loop over a named subject rewrites it after reading the binding");
+
+    // Variants, with positional and named payloads.
+    Assert(Area(Shape::Circle(2)) == 12, "a positional case binds its payload");
+    Assert(Area(Shape::Rect { width: 3, height: 4 }) == 12, "a named case binds its fields");
+    Assert(Area(Shape::Rect { width: -1, height: 4 }) == 0, "'&&' reads the bindings and can fail the test");
+    Assert(Area(Shape::Empty) == 0, "an unmatched case takes neither branch");
+
+    // A sum, by a typed pattern; the type form `x is T` keeps its meaning.
+    Assert(Describe(7) == 7, "a typed pattern binds the selected member");
+    Assert(Describe(true) == 1, "a typed binding reaches the right side of '&&'");
+    Assert(Describe(false) == -1, "a failed '&&' takes the else path");
+    let member: int | bool = true;
+    Assert(member is bool && !(member is int), "a type test still answers a question");
+
+    // `while` binds afresh each pass and leaves when the test fails.
+    Assert(Drain(4) == 6, "'while' runs its body once for each value");
+    Assert(Drain(0) == 0, "'while' leaves at once when the first test fails");
+
+    // A test whose names reach the right side of '&&' outside a condition, and one that binds nothing.
+    let values: int?[4] = [none, 3, 50, 7];
+    Assert(FirstLarge(values[..]) == 50, "bindings and further tests chain with '&&'");
+    let ready = values[1] is .Some(v) && v == 3;
+    Assert(ready, "a binding conjunction is a 'bool' value");
+    Assert(Origin(Point { x: 0, y: 0 }) && !Origin(Point { x: 1, y: 0 }), "nested patterns test without binding");
+    Assert(!Origin(none), "an absent subject fails a nested pattern");
+
+    // Several tests in one chain, `else if` branches with their own bindings, and an `if` value whose branch leaves.
+    Assert(Chain(1, 2) == 3, "two tests bind in one chain");
+    Assert(Chain(1, none) == 1, "an 'else if' binds its own names");
+    Assert(Chain(none, 200) == -200 && Chain(none, 2) == 0, "a failed chain takes the next branch");
+    Assert(Doubled(4) == 8 && Doubled(-3) == -5 && Doubled(none) == -1, "an 'if' value binds in its condition");
+
+    // A labeled loop over temporaries: `continue`, `break` and `defer` release what each pass bound.
+    var source = Source { left: 5 };
+    var seen = 0;
+    outer: while source.Next() is .Some(token) {
+        defer deferred += 1;
+        if token.id == 3 {
+            continue;
+        }
+        if token.id == 1 {
+            break outer;
+        }
+        seen += token.id;
+    }
+    Assert(seen == 6, "the loop skips one value and stops at another");
+    Assert(drops == 4 && deferred == 4, "every token taken is destroyed once, and every pass runs its defer");
+    drops = 0;
+
+    // A subject transferred with `<-` is owned by the test: its payload is destroyed once, by whoever holds it.
+    var owned: Token? = Token { id: 5 };
+    if <-owned is .Some(token) {
+        Assert(token.id == 5, "the transferred payload is bound");
+    }
+    Assert(drops == 1, "the bound payload is destroyed once at the end of the body");
+    // Where a brace would open a body, a structure pattern is written inside parentheses.
+    let seven = Token { id: 7 } is Token { id: 7 };
+    Assert(seven, "a structure pattern compares its fields");
+    if (Token { id: 6 } is Token { id: 7 }) {
+        Assert(false, "a structure pattern with another field value fails");
+    }
+    Assert(drops == 3, "a temporary subject is destroyed whether or not it matched");
+    return 0;
+}

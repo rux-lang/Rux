@@ -7,21 +7,6 @@
 #include <utility>
 
 namespace Rux::SemanticDetail {
-namespace {
-bool IsBlockArm(const Expr &body) {
-    return AstCast<const BlockExpr>(&body) != nullptr;
-}
-
-/// Whether a block arm ends by leaving the enclosing loop, which leaves the arm as surely as a return does.
-bool EndsWithLoopExit(const Block &block) {
-    if (block.stmts.empty()) {
-        return false;
-    }
-    const Stmt &last = *block.stmts.back();
-    return AstCast<const BreakStmt>(&last) != nullptr || AstCast<const ContinueStmt>(&last) != nullptr;
-}
-} // namespace
-
 void AnalysisContext::CheckRecoveryArmsWithoutSubject(const std::vector<MatchExpr::Arm> &arms) {
     for (const auto &arm : arms) {
         PushScope();
@@ -183,21 +168,20 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
                       {"a catch arm owns the error it binds, which moves it out of the subject"},
                       "match the subject with a non-binding pattern, or permit the canonical move operation");
         }
+        // A block arm yields its last expression written without a ';', or `()`, which only a unit success takes.
+        ExpectArmValue(*arm.body, success);
         const TypeRef bodyType = CheckExpr(*arm.body);
-        const bool blockArm = IsBlockArm(*arm.body);
-        const Block *armBlock = blockArm ? static_cast<const BlockExpr &>(*arm.body).block.get() : nullptr;
-        const bool diverging = IsDivergingExpression(*arm.body) ||
-                               (armBlock && (BlockDefinitelyReturns(*armBlock) || EndsWithLoopExit(*armBlock)));
-        if (!diverging) {
-            if (blockArm) {
-                // A normally completing block has type `()`, which only a unit success can take; a non-unit success
-                // never acquires an invented value.
-                if (!success.IsUnit()) {
+        const auto *blockArm = AstCast<const BlockExpr>(arm.body.get());
+        if (!IsDivergingExpression(*arm.body)) {
+            if (blockArm && bodyType.IsUnit() && !success.IsUnit() && !success.IsUnknown()) {
+                if (!ReportStrayTailSemicolon(*arm.body, success)) {
                     EmitError(arm.location,
                               std::format("a block arm completes with '()', but 'catch' must recover a value of type "
                                           "'{}'",
                                           success.ToString()),
-                              {}, "give the arm a value, or leave it with 'fail', 'return', or a call to 'Panic'");
+                              {},
+                              "end the block with the recovered value written without a ';', or leave it with "
+                              "'fail', 'return', or a call to 'Panic'");
                 }
             }
             else if (!bodyType.IsUnknown() && !success.IsUnknown()) {

@@ -519,6 +519,14 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     if (const ResolvedContextualCase *contextual = model.TryGetContextualCase(expr)) {
         return finish(LowerContextualCase(expr, *contextual));
     }
+    // A test that binds names, and a conjunction whose later operands read them, nest the reads inside the match.
+    if (const auto *test = AstCast<const IsExpr>(&expr); test && test->pattern) {
+        return finish(LowerIsTest(*test, {}));
+    }
+    if (const auto *conjunction = AstCast<const BinaryExpr>(&expr);
+        conjunction && conjunction->op == TokenKind::AmpAmp && ConditionBinds(*conjunction)) {
+        return finish(LowerBindingConjunction(*conjunction));
+    }
     if (HirExprPtr basic = LowerBasicExpr(expr)) {
         return finish(std::move(basic));
     }
@@ -529,10 +537,7 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
         return finish(LowerCallExpr(*e));
     }
     if (auto *e = AstCast<const BlockExpr>(&expr)) {
-        auto he = std::make_unique<HirBlockExpr>();
-        he->location = e->location;
-        he->block = LowerBlock(*e->block);
-        return finish(std::move(he));
+        return finish(LowerValueBlock(*e, std::nullopt));
     }
     if (AstCast<const NativeConstructExpr>(&expr) || AstCast<const NoneExpr>(&expr)) {
         return finish(LowerPendingNative(expr));

@@ -19,7 +19,7 @@ func Pointerlike(count: &var int) {
 func Main() -> int {
     var total = 4;
     Bump(total);
-    // A 'var' reference binding is rebound by '=', so a scalar is not a reference.
+    // A reference is never reseated, so a 'var' binding cannot hold one.
     var rebound: &var int = total;
     rebound = 5;
     // Writes are exclusive accesses: the shared borrow is still live below.

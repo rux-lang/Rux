@@ -1,0 +1,6 @@
+// An 'if' used as a value needs an 'else': without one there is no value when the condition is false.
+func Main() -> int {
+    let flag = true;
+    let value = if flag { 1 };
+    return value;
+}
