@@ -342,6 +342,17 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
         Pad();
         out << "NonePattern\n";
     }
+    else if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        Pad();
+        out << "AlternativePattern [" << alternatives->alternatives.size() << "]\n";
+        ++indent;
+        for (const auto &alternative : alternatives->alternatives) {
+            if (alternative) {
+                PrintPattern(*alternative);
+            }
+        }
+        --indent;
+    }
     else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         Pad();
         out << "GuardedPattern\n";

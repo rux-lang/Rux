@@ -1,0 +1,20 @@
+// A name bound in one alternative would be unset when another one matched, so alternatives bind nothing.
+variant Shape {
+    Circle(int),
+    Square(int),
+    Dot,
+}
+
+func Size(shape: Shape) -> int {
+    return match shape {
+        .Circle(size) | .Square(size) => size,
+        .Dot => 0,
+    };
+}
+
+func Main() -> int {
+    return match 2 {
+        1 | value => value,
+        _ => 0,
+    };
+}

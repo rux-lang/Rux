@@ -262,8 +262,16 @@ private:
     ExprPtr ParseDivergingExpr();
     /// A match or catch arm body: a block, a diverging form, or an expression.
     ExprPtr ParseArmBody(std::string_view construct);
-    /// The comma-separated arms of a match or catch expression after its opening brace, through the closing brace.
-    void ParseArmList(std::vector<MatchExpr::Arm> &arms, std::string_view construct);
+    /// The comma-separated arms of a match or catch after its opening brace, through the closing brace. A comma may
+    /// follow the last arm, and an arm whose body is a block may leave it out. `form` names what the brace closes.
+    template <typename Arm>
+    void ParseArmList(std::vector<Arm> &arms, std::string_view construct, std::string_view form = "expression");
+    /// Reports a default arm (`_` or `else`) at `location` that other arms follow.
+    void ReportNonfinalDefaultArm(SourceLocation location, std::string_view construct);
+    /// Whether the current tokens begin the default arm of a compile-time `when` match: `_ =>` or `else`.
+    [[nodiscard]] bool CheckWhenDefaultArm() const noexcept;
+    /// The patterns of one compile-time `when` arm, up to its `=>`: alternatives separated by `|` or `,`.
+    void ParseWhenArmPatterns(std::vector<ExprPtr> &patterns);
     /// The `else (binding => body)` mapping after a tight `?`, which wraps `operand` in a mapped propagation.
     ExprPtr ParseErrorMapper(SourceLocation location, ExprPtr operand);
 
@@ -272,6 +280,8 @@ private:
     PatternPtr ParsePatternImpl();
     PatternPtr ParseRequiredPattern(std::string_view context = {});
     PatternPtr ParsePrimaryPattern();
+    /// One pattern without alternatives or a guard: a primary pattern, its presence suffix, and a range.
+    PatternPtr ParseSinglePattern();
     PatternPtr ParseMatchArmPattern();
     /// Wrap `inner` in one presence pattern per `?` that follows it; `??` is two.
     PatternPtr ParsePresenceSuffix(PatternPtr inner);
@@ -279,4 +289,9 @@ private:
     // Expression argument list
     std::vector<ExprPtr> ParseArgList(); ///< ( expr, ... )
 };
+
+extern template void Parser::ParseArmList<MatchExpr::Arm>(std::vector<MatchExpr::Arm> &, std::string_view,
+                                                          std::string_view);
+extern template void Parser::ParseArmList<MatchStmt::Arm>(std::vector<MatchStmt::Arm> &, std::string_view,
+                                                          std::string_view);
 } // namespace Rux

@@ -155,6 +155,11 @@ struct HirGuardedPattern : HirPattern {
     HirExprPtr guard;
 };
 
+// a | b: matches when any alternative does, tried in order. Alternatives bind nothing.
+struct HirAlternativePattern : HirPattern {
+    std::vector<HirPatternPtr> alternatives;
+};
+
 // HIR Expressions
 struct HirExpr {
     TypeRef type;

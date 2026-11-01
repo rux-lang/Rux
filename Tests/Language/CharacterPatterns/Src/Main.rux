@@ -123,12 +123,14 @@ func Main() -> int {
     var selected = 0;
     match c16'λ' {
         c16'λ' => { selected = 11; }
+        _ => {}
     }
-    Assert(selected == 11, "a sole character arm executes without an else");
+    Assert(selected == 11, "a character arm executes before an empty default");
     match c16'B' {
         c16'λ' => { selected = 99; }
+        _ => {}
     }
-    Assert(selected == 11, "an unmatched sole arm has no effect");
+    Assert(selected == 11, "an unmatched character arm has no effect");
     var calls = 0u;
     let answer = match Once(@calls) { 'A' => 23, else => 29 };
     Assert(answer == 23 && calls == 1u, "the character subject is evaluated once");
@@ -160,7 +162,8 @@ func Main() -> int {
     var wideSelected = 0;
     match c512'λ' {
         c512'λ' => { wideSelected = 13; }
+        _ => {}
     }
-    Assert(wideSelected == 13, "a sole char512 arm executes without an else");
+    Assert(wideSelected == 13, "a char512 arm executes before an empty default");
     return 0;
 }

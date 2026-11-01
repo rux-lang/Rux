@@ -1,0 +1,3 @@
+10:5: error: match on 'int' is not exhaustive; its arms do not cover every value
+14:5: error: match on 'bool8' is not exhaustive; missing false
+18:9: error: match on 'Mode' is not exhaustive; missing Mode::Small

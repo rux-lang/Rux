@@ -206,17 +206,29 @@ when #build.debugAssertions {
     CHECK_FALSE(AnalyzeNoDeps(local.module, CompileTimeContext{}).HasErrors());
 }
 
-TEST_CASE("an enum shorthand is an error; the variant must be written in full") {
-    auto parsed = ParseSource(R"(
+TEST_CASE("an enum shorthand takes its type from the expected type, and is an error without one") {
+    auto contextual = ParseSource(R"(
 enum Mode { Fast, Small }
 
 func Do() -> Mode {
     return .Fast;
 }
 )");
+    CHECK_FALSE(Analyze(contextual.module).HasErrors());
+
+    auto parsed = ParseSource(R"(
+enum Mode { Fast, Small }
+
+func Do() -> int {
+    let mode = .Fast;
+    return 0;
+}
+)");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Mode::Fast'");
+    CHECK(model.diagnostics[0].message == "case '.Fast' needs an expected type to name its enum or variant");
+    REQUIRE(model.diagnostics[0].help.has_value());
+    CHECK(*model.diagnostics[0].help == "write 'Mode::Fast'");
 }
 
 TEST_CASE("compile-time evaluation accepts scalar enums and rejects variants") {

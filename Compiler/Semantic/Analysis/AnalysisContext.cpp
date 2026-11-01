@@ -151,6 +151,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , typeNodeTypes(output.typeNodeTypes)
     , patternTypes(output.patternTypes)
     , casePatterns(output.casePatterns)
+    , contextualCases(output.contextualCases)
     , typedPatternTypes(output.typedPatternTypes)
     , sumMemberPatterns(output.sumMemberPatterns)
     , patternBindingModes(output.patternBindingModes)

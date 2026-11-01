@@ -57,7 +57,9 @@ TypeRef AnalysisContext::CheckedExpressionType(const Expr &expression) {
 }
 
 bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
-    if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {
+    // A native constructor a user case took over is a value of that variant, converted as any other value is.
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expr);
+        construct && !contextualCases.contains(&expr)) {
         return CanConstructNative(*construct, targetType);
     }
     if (targetType->kind == TypeRef::Kind::Reference) {

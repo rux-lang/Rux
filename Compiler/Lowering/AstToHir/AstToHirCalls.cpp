@@ -424,28 +424,62 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
     const auto *declaration = AstCast<const EnumDecl>(binding.selectedDeclaration);
     assert(declaration && binding.selectedVariant && "enum constructor binding is incomplete");
     assert(binding.caseTypeForm == declaration->form && "case constructor binding lost its declaration form");
-    std::vector<TypeRef> typeArguments;
-    typeArguments.reserve(declaration->typeParams.size());
-    for (const auto &parameter : declaration->typeParams) {
-        typeArguments.push_back(binding.substitutions.at(parameter.name));
+    std::vector<const Expr *> arguments;
+    arguments.reserve(call.args.size());
+    for (const ExprPtr &argument : call.args) {
+        arguments.push_back(argument.get());
     }
-    const TypeRef constructor = EnumVariantConstructorType(*declaration, *binding.selectedVariant, typeArguments);
+    return LowerCaseConstruction(call.location, *declaration, *binding.selectedVariant, binding.substitutions,
+                                 arguments);
+}
+
+HirExprPtr AstToHirContext::LowerCaseConstruction(const SourceLocation location, const EnumDecl &declaration,
+                                                  const EnumDecl::Variant &variant,
+                                                  const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                  const std::vector<const Expr *> &arguments) {
+    std::vector<TypeRef> typeArguments;
+    typeArguments.reserve(declaration.typeParams.size());
+    for (const auto &parameter : declaration.typeParams) {
+        typeArguments.push_back(substitutions.at(parameter.name));
+    }
+    const TypeRef constructor = EnumVariantConstructorType(declaration, variant, typeArguments);
     auto lowered = std::make_unique<HirEnumConstructExpr>();
-    lowered->location = call.location;
-    lowered->form = declaration->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
+    lowered->location = location;
+    lowered->form = declaration.IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
     lowered->type = constructor->inner.back();
     std::vector<HirPartialDropAction> completed;
-    for (std::size_t i = 0; i < call.args.size(); ++i) {
+    for (std::size_t i = 0; i < arguments.size(); ++i) {
         AppendFailureCleanup(lowered->failureCleanups, completed);
-        lowered->payloads.push_back(LowerArgumentAs(*call.args[i], constructor->inner[i]));
+        lowered->payloads.push_back(LowerArgumentAs(*arguments[i], constructor->inner[i]));
         if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, constructor->inner[i], i, {},
-                                          call.args[i]->location, CaseTypeForm::Variant)) {
+                                          arguments[i]->location, CaseTypeForm::Variant)) {
             completed.push_back(std::move(*cleanup));
         }
     }
-    lowered->discriminant =
-        LookupEnumVariantDiscriminant(NominalName(*declaration), binding.selectedVariant->name).value();
+    lowered->discriminant = LookupEnumVariantDiscriminant(NominalName(declaration), variant.name).value();
     return lowered;
+}
+
+HirExprPtr AstToHirContext::LowerContextualCase(const Expr &expression, const ResolvedContextualCase &resolved) {
+    std::unordered_map<std::string, TypeRef> substitutions;
+    for (const auto &[name, type] : resolved.substitutions) {
+        substitutions.emplace(name, SubstituteCurrentType(type));
+    }
+    const EnumDecl &declaration = *resolved.declaration;
+    if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
+        return LowerCaseConstruction(expression.location, declaration, *resolved.selectedCase, substitutions,
+                                     {construct->operand.get()});
+    }
+    // A case without a payload: an enumerator is its constant, and a variant case is built with no payload.
+    if (!declaration.IsVariant()) {
+        auto literal = std::make_unique<HirLiteralExpr>();
+        literal->location = expression.location;
+        literal->type = EnumType(declaration);
+        literal->value =
+            LookupEnumVariantDiscriminant(NominalName(declaration), resolved.selectedCase->name).value_or("0");
+        return literal;
+    }
+    return LowerCaseConstruction(expression.location, declaration, *resolved.selectedCase, substitutions, {});
 }
 
 HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {

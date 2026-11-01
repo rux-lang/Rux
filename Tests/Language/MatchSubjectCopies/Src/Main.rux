@@ -163,7 +163,8 @@ func GuardRefutesArm(log: *var Log) {
 func GuardRefutesEveryArm(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
     match pair {
-        (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the only arm")
+        (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the only binding arm"),
+        _ => {}
     }
     Mark(log);
 }
@@ -200,7 +201,8 @@ func TemporarySubject(log: *var Log) {
 func MovedSubjectNotTaken(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
     match <-pair {
-        (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the only arm")
+        (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the only binding arm"),
+        _ => {}
     }
     Mark(log);
 }

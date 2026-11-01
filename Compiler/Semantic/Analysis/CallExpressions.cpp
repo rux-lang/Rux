@@ -249,7 +249,20 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
         return accepted;
     };
+    const bool hasContextualArguments = std::ranges::any_of(
+        e->args, [](const ExprPtr &argument) { return argument && IsContextualCaseExpression(*argument); });
     if (auto *ident = AstCast<const IdentExpr>(e->callee.get())) {
+        // A case written without its type takes it from the parameter it is passed to, when only one function can be
+        // called and its parameter types do not wait on deduction.
+        if (const Symbol *sym = hasContextualArguments ? currentScope->Lookup(ident->name) : nullptr;
+            sym && sym->kind == Symbol::Kind::Func && sym->funcOverloads.size() == 1 &&
+            sym->funcOverloads.front()->typeParams.empty()) {
+            const TypeRef function = FunctionType(*sym->funcOverloads.front());
+            if (function->kind == TypeRef::Kind::Func && !function->inner.empty()) {
+                ExpectContextualCaseArguments(*e,
+                                              std::vector<TypeRef>(function->inner.begin(), function->inner.end() - 1));
+            }
+        }
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
         // `#Error`/`#Warn` emit a diagnostic here rather than resolving as
@@ -471,6 +484,12 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
     if (auto *field = AstCast<const FieldExpr>(e->callee.get())) {
         TypeRef receiverType = CheckExpr(*field->object);
+        if (hasContextualArguments) {
+            if (const auto candidates = AccessibleMethodCandidates(receiverType, field->field);
+                candidates.size() == 1 && candidates.front()->typeParams.empty()) {
+                ExpectContextualCaseArguments(*e, ResolveMethodParamTypes(receiverType, *candidates.front()));
+            }
+        }
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
         // A receiver whose type is a generic parameter carries exactly the operations its bounds declare. The concrete
@@ -644,108 +663,146 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
     }
 
+    // A case constructor `Type::Case(...)`, or `.Case(...)` whose enum or variant the expected type supplies along with
+    // its type arguments, `contextTypeArgs`, when it is generic.
+    const auto checkCaseCall = [&](const EnumDecl &decl, const EnumDecl::Variant &caseDecl,
+                                   const std::optional<std::vector<TypeRef>> &contextTypeArgs) -> TypeRef {
+        const EnumDecl::Variant *variant = &caseDecl;
+        const std::string caseName = std::format("{}::{}", decl.name, variant->name);
+        std::vector<TypeRef> typeArgs;
+        typeArgs.reserve(e->typeArgs.size());
+        for (const auto &typeArg : e->typeArgs) {
+            typeArgs.push_back(ResolveType(*typeArg));
+        }
+        // With no type arguments written, an annotation or return type naming an instantiation of this variant supplies
+        // them, so `let b: Reading<int32> = Reading::Exact(7)` gives `7` the type `int32` instead of deducing
+        // `Reading<int>` from it.
+        if (typeArgs.empty()) {
+            if (contextTypeArgs) {
+                typeArgs = *contextTypeArgs;
+            }
+            else if (auto expected = ExpectedCaseTypeArguments(*e, decl)) {
+                typeArgs = std::move(*expected);
+            }
+        }
+        // Once the instantiation is known, each field's type is what a case written without its type in that position
+        // is resolved against.
+        if (typeArgs.size() == decl.typeParams.size() && variant->namedFields.empty()) {
+            const TypeRef fields = EnumVariantConstructorType(decl, *variant, typeArgs);
+            if (!fields->inner.empty()) {
+                ExpectContextualCaseArguments(*e, std::vector<TypeRef>(fields->inner.begin(), fields->inner.end() - 1));
+            }
+        }
+        const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
+        if (typeArgs.size() < decl.typeParams.size()) {
+            std::unordered_map<std::string, TypeRef> substitutions;
+            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+                substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
+            }
+            std::unordered_set<std::string> typeParamNames;
+            for (const auto &tp : decl.typeParams) {
+                typeParamNames.insert(tp.name);
+            }
+            const auto savedTypeParams = currentTypeParams;
+            for (const auto &tp : decl.typeParams) {
+                currentTypeParams.push_back(tp.name);
+            }
+            if (variant->fields.size() == argTypes.size()) {
+                for (std::size_t i = 0; i < variant->fields.size(); ++i) {
+                    TypeRef fieldType = ResolveTypeWithSubstitution(*variant->fields[i], substitutions);
+                    DeduceTypeArgument(fieldType, argTypes[i], typeParamNames, substitutions);
+                }
+            }
+            currentTypeParams = savedTypeParams;
+            if (substitutions.size() == decl.typeParams.size()) {
+                typeArgs.clear();
+                for (const auto &tp : decl.typeParams) {
+                    typeArgs.push_back(substitutions.at(tp.name));
+                }
+            }
+        }
+        if (typeArgs.size() != decl.typeParams.size()) {
+            EmitError(e->location,
+                      std::format("variant case '{}' requires {}, but {} provided", caseName,
+                                  Counted(decl.typeParams.size(), "type argument"),
+                                  e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())));
+        }
+        if (!variant->namedFields.empty()) {
+            EmitNamedCaseCalled(e->location, decl.name, *variant);
+            return EnumType(decl, typeArgs);
+        }
+        const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
+        const std::size_t paramCount = constructor->inner.empty() ? 0 : constructor->inner.size() - 1;
+        bool callAccepted = argTypes.size() == paramCount;
+        if (argTypes.size() != paramCount) {
+            emitArityError(caseName, paramCount, paramCount, false, argTypes.size());
+        }
+        else {
+            for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                const TypeRef &paramType = constructor->inner[i];
+                if (!canPassArgument(i, argTypes[i], paramType)) {
+                    callAccepted = false;
+                    EmitError(e->args[i]->location,
+                              std::format("argument {} to variant case '{}' has type '{}', but field {} requires '{}'",
+                                          i + 1, caseName, argTypes[i].ToString(), i + 1, paramType.ToString()),
+                              {std::format("variant '{}' declared at '{}':{}:{}", caseName, currentFile,
+                                           variant->location.line, variant->location.column)});
+                }
+            }
+        }
+        if (callAccepted) {
+            const std::vector<TypeRef> parameterTypes(constructor->inner.begin(),
+                                                      constructor->inner.begin() + paramCount);
+            ConsumeCallArguments(*e, argTypes, &parameterTypes);
+        }
+        ResolvedCallableBinding binding;
+        binding.dispatch = ResolvedCallableBinding::DispatchKind::EnumVariant;
+        binding.selectedDeclaration = &decl;
+        binding.selectedVariant = variant;
+        binding.caseTypeForm = decl.form;
+        const std::size_t substitutionCount = std::min(decl.typeParams.size(), typeArgs.size());
+        for (std::size_t i = 0; i < substitutionCount; ++i) {
+            binding.substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
+        }
+        CheckTypeArgumentConstraints(decl.typeParams, binding.substitutions, e->location,
+                                     std::format("enum '{}'", decl.name));
+        callableBindings.insert_or_assign(e, std::move(binding));
+        return constructor->inner.empty() ? TypeRef::MakeUnknown() : constructor->inner.back();
+    };
+
+    // `.Case(...)` names its case without its type, so the expected type of the call is the only place it is looked up.
+    if (const auto *shorthand = AstCast<const EnumShorthandExpr>(e->callee.get())) {
+        const std::optional<TypeRef> expected = ExpectedCaseType(*e, true);
+        const std::optional<ResolvedCase> resolved =
+            expected ? LookupCase(BaseTypeName((*expected)->name), shorthand->variant) : std::nullopt;
+        if (!resolved) {
+            ReportContextualCase(*e, shorthand->location, shorthand->variant, expected);
+            static_cast<void>(CheckCallArgumentValues(*e));
+            return TypeRef::MakeUnknown();
+        }
+        if (resolved->form == EnumDecl::Form::Enumeration) {
+            EmitError(shorthand->location,
+                      std::format("enum enumerator '{}::{}' takes no values", resolved->declaration->name,
+                                  shorthand->variant),
+                      {}, std::format("write '.{}' without parentheses", shorthand->variant));
+            static_cast<void>(CheckCallArgumentValues(*e));
+            return TypeRef::MakeUnknown();
+        }
+        std::vector<TypeRef> contextTypeArgs = ExpectedCaseTypeArgumentsOf(*expected, *resolved->declaration);
+        if (contextTypeArgs.size() != resolved->declaration->typeParams.size()) {
+            static_cast<void>(CheckCallArgumentValues(*e));
+            return TypeRef::MakeUnknown();
+        }
+        return checkCaseCall(*resolved->declaration, *resolved->selectedCase, std::move(contextTypeArgs));
+    }
+
     if (auto *path = AstCast<const PathExpr>(e->callee.get())) {
         if (path->segments.size() == 2) {
             Symbol *first = currentScope->Lookup(path->segments[0]);
             if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
                 if (const EnumDecl *enumeration = EnumNamed(path->segments[0])) {
                     if (const auto resolved = LookupCase(path->segments[0], path->segments[1])) {
-                        const EnumDecl &decl = *enumeration;
-                        const EnumDecl::Variant *variant = resolved->selectedCase;
-                        const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
-                        std::vector<TypeRef> typeArgs;
-                        typeArgs.reserve(e->typeArgs.size());
-                        for (const auto &typeArg : e->typeArgs) {
-                            typeArgs.push_back(ResolveType(*typeArg));
-                        }
-                        // With no type arguments written, an annotation or return type naming an instantiation of this
-                        // variant supplies them, so `let b: Reading<int32> = Reading::Exact(7)` gives `7` the type
-                        // `int32` instead of deducing `Reading<int>` from it.
-                        if (typeArgs.empty()) {
-                            if (auto expected = ExpectedCaseTypeArguments(*e, decl)) {
-                                typeArgs = std::move(*expected);
-                            }
-                        }
-                        if (typeArgs.size() < decl.typeParams.size()) {
-                            std::unordered_map<std::string, TypeRef> substitutions;
-                            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
-                                substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
-                            }
-                            std::unordered_set<std::string> typeParamNames;
-                            for (const auto &tp : decl.typeParams) {
-                                typeParamNames.insert(tp.name);
-                            }
-                            const auto savedTypeParams = currentTypeParams;
-                            for (const auto &tp : decl.typeParams) {
-                                currentTypeParams.push_back(tp.name);
-                            }
-                            if (variant->fields.size() == argTypes.size()) {
-                                for (std::size_t i = 0; i < variant->fields.size(); ++i) {
-                                    TypeRef fieldType = ResolveTypeWithSubstitution(*variant->fields[i], substitutions);
-                                    DeduceTypeArgument(fieldType, argTypes[i], typeParamNames, substitutions);
-                                }
-                            }
-                            currentTypeParams = savedTypeParams;
-                            if (substitutions.size() == decl.typeParams.size()) {
-                                typeArgs.clear();
-                                for (const auto &tp : decl.typeParams) {
-                                    typeArgs.push_back(substitutions.at(tp.name));
-                                }
-                            }
-                        }
-                        if (typeArgs.size() != decl.typeParams.size()) {
-                            EmitError(e->location, std::format("variant case '{}::{}' requires {}, but {} provided",
-                                                               path->segments[0], path->segments[1],
-                                                               Counted(decl.typeParams.size(), "type argument"),
-                                                               e->typeArgs.size() == 1
-                                                                   ? "1 was"
-                                                                   : std::format("{} were", e->typeArgs.size())));
-                        }
-                        if (!variant->namedFields.empty()) {
-                            EmitNamedCaseCalled(e->location, path->segments[0], *variant);
-                            return EnumType(decl, typeArgs);
-                        }
-                        const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
-                        const std::size_t paramCount = constructor->inner.empty() ? 0 : constructor->inner.size() - 1;
-                        bool callAccepted = argTypes.size() == paramCount;
-                        if (argTypes.size() != paramCount) {
-                            emitArityError(std::format("{}::{}", path->segments[0], path->segments[1]), paramCount,
-                                           paramCount, false, argTypes.size());
-                        }
-                        else {
-                            for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                                const TypeRef &paramType = constructor->inner[i];
-                                if (!canPassArgument(i, argTypes[i], paramType)) {
-                                    callAccepted = false;
-                                    EmitError(e->args[i]->location,
-                                              std::format("argument {} to variant case '{}::{}' has type '{}', but "
-                                                          "field {} requires '{}'",
-                                                          i + 1, path->segments[0], path->segments[1],
-                                                          argTypes[i].ToString(), i + 1, paramType.ToString()),
-                                              {std::format("variant '{}::{}' declared at '{}':{}:{}", path->segments[0],
-                                                           path->segments[1], currentFile, variant->location.line,
-                                                           variant->location.column)});
-                                }
-                            }
-                        }
-                        if (callAccepted) {
-                            const std::vector<TypeRef> parameterTypes(constructor->inner.begin(),
-                                                                      constructor->inner.begin() + paramCount);
-                            ConsumeCallArguments(*e, argTypes, &parameterTypes);
-                        }
-                        ResolvedCallableBinding binding;
-                        binding.dispatch = ResolvedCallableBinding::DispatchKind::EnumVariant;
-                        binding.selectedDeclaration = &decl;
-                        binding.selectedVariant = variant;
-                        binding.caseTypeForm = decl.form;
-                        const std::size_t substitutionCount = std::min(decl.typeParams.size(), typeArgs.size());
-                        for (std::size_t i = 0; i < substitutionCount; ++i) {
-                            binding.substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
-                        }
-                        CheckTypeArgumentConstraints(decl.typeParams, binding.substitutions, e->location,
-                                                     std::format("enum '{}'", decl.name));
-                        callableBindings.insert_or_assign(e, std::move(binding));
-                        return constructor->inner.empty() ? TypeRef::MakeUnknown() : constructor->inner.back();
+                        return checkCaseCall(*enumeration, *resolved->selectedCase, std::nullopt);
                     }
                 }
                 TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;

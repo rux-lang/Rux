@@ -1,6 +1,6 @@
-// A match expression must produce a value for every value of its subject; a statement need not. A character, a float,
-// a string or a structure has more values than arms can list, so only an 'else', a binding or an irrefutable pattern
-// covers it.
+// Every match covers every value of its subject, whether it is an expression or a statement. A character, a float, a
+// string or a structure has more values than arms can list, so only a '_', a binding or an irrefutable pattern covers
+// it.
 struct Point {
     x: int32;
     y: int32;
@@ -15,7 +15,7 @@ func Main() -> int {
     let both = match flag { true => 1i32, false => 2i32 };
     let partial = match n { 1 => 10i32, 3 => 30i32 };
     let ranged = match n { 0..=9 => 1i32 };
-    let covered = match n { 1 => 10i32, else => 0i32 };
+    let covered = match n { 1 => 10i32, _ => 0i32 };
     let bound = match n { value => value };
     let letter = 'b';
     let ratio = 0.5;

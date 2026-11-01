@@ -683,9 +683,13 @@ private:
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
     void ValidateMatchPatterns(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType);
     void ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType);
-    /// Reports a match expression on a bool or an integer that leaves some value without an arm.
-    void ReportNonExhaustiveMatchExpression(const MatchExpr &expression, const std::vector<const Pattern *> &patterns,
-                                            const TypeRef &subjectType);
+    /// Reports a match on a bool, an integer, a tuple, or any other open subject that leaves some value without an
+    /// arm. Enums and native subjects report their missing cases while their patterns are validated.
+    void ReportNonExhaustiveMatch(SourceLocation location, const std::vector<const Pattern *> &patterns,
+                                  const TypeRef &subjectType);
+    /// The alternatives of an unguarded `a | b` arm pattern, or the pattern itself, so a check made arm by arm sees
+    /// each alternative as its own arm.
+    [[nodiscard]] static std::vector<const Pattern *> ArmAlternatives(const Pattern *pattern);
     [[nodiscard]] bool MatchPatternsAreExhaustive(const std::vector<const Pattern *> &patterns,
                                                   const TypeRef &subjectType) const;
 
@@ -734,6 +738,8 @@ private:
                                                                 std::string *issue, std::optional<std::string> *help);
     void CheckTypedPattern(const TypedPattern &pattern, const TypeRef &subjectType);
     void CheckNativeCasePattern(const EnumPattern &pattern, const TypeRef &subjectType);
+    /// Checks each alternative of `a | b` against the subject and rejects a name bound inside one.
+    void CheckAlternativePattern(const AlternativePattern &pattern, const TypeRef &subjectType);
     /// Defines every name a rejected pattern binds, with no type, so its arm does not cascade into unknown names.
     void DefinePatternBindings(const Pattern &pattern);
     [[nodiscard]] std::optional<PatternIssue>
@@ -936,6 +942,7 @@ private:
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
+    std::unordered_map<const Expr *, ResolvedContextualCase> &contextualCases;
     std::unordered_map<const TypedPattern *, TypeRef> &typedPatternTypes;
     std::unordered_map<const Pattern *, TypeRef> &sumMemberPatterns;
     std::unordered_map<const Pattern *, PatternBindingMode> &patternBindingModes;
@@ -1404,6 +1411,29 @@ private:
     void CheckFormatArguments(const CallExpr &call, const FuncDecl &declaration, bool isMethod);
     /// The element type the destination of `array` fixes, when it fixes one its elements can be converted to.
     [[nodiscard]] std::optional<TypeRef> ExpectedArrayElementType(const ArrayExpr &array) const;
+
+    // Cases written without their type (ContextualCases.cpp).
+    /// Whether `expression` names a case without its type: `.Case`, `.Case(...)`, or a native constructor that a user
+    /// case of the same name may take over.
+    [[nodiscard]] static bool IsContextualCaseExpression(const Expr &expression) noexcept;
+    /// Gives each argument that names a case without its type the parameter type it is passed as.
+    void ExpectContextualCaseArguments(const CallExpr &call, const std::vector<TypeRef> &parameterTypes);
+    /// Gives `expression` the type `type` its destination expects, when it names a case without its type.
+    void ExpectContextualCaseArgument(const Expr *expression, const TypeRef &type);
+    /// The enum or variant type the context of `expression` expects, looking through optional levels when
+    /// `throughOptional`, or nothing when it expects no such type.
+    [[nodiscard]] std::optional<TypeRef> ExpectedCaseType(const Expr &expression, bool throughOptional) const;
+    /// The type arguments `expected` gives `declaration`, empty when it has none or they do not fit.
+    [[nodiscard]] std::vector<TypeRef> ExpectedCaseTypeArgumentsOf(const TypeRef &expected,
+                                                                   const EnumDecl &declaration) const;
+    /// Reports a case written without its type that its context does not resolve.
+    void ReportContextualCase(const Expr &expression, SourceLocation location, const std::string &caseName,
+                              const std::optional<TypeRef> &expected);
+    /// `.Case` resolved against its expected type.
+    [[nodiscard]] TypeRef CheckContextualCase(const EnumShorthandExpr &expression);
+    /// `.Some(v)`, `.Success(v)` or `.Failure(v)` whose expected type is a user variant declaring that case, or nothing
+    /// when the native constructor applies.
+    [[nodiscard]] std::optional<TypeRef> CheckContextualNativeCase(const NativeConstructExpr &construct);
     /// The type arguments of a generic variant case written without them, when its destination names an instantiation
     /// of the same variant.
     [[nodiscard]] std::optional<std::vector<TypeRef>> ExpectedCaseTypeArguments(const Expr &expression,

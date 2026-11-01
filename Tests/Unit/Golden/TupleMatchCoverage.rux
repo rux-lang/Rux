@@ -1,4 +1,4 @@
-// A match expression on a tuple must produce a value for every combination of its elements; a statement need not.
+// A match on a tuple covers every combination of its elements, whether it is an expression or a statement.
 enum Light { Red, Green }
 
 func Main() -> int {

@@ -88,6 +88,11 @@ bool PatternMatchesEveryValue(const Pattern &pattern) {
     if (AstCast<const WildcardPattern>(&pattern) || AstCast<const IdentPattern>(&pattern)) {
         return true;
     }
+    if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        return std::ranges::any_of(alternatives->alternatives, [](const PatternPtr &alternative) {
+            return alternative && PatternMatchesEveryValue(*alternative);
+        });
+    }
     // A tuple or structure pattern takes its subject apart without testing it when every part it names is irrefutable.
     if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
         return std::ranges::all_of(tuple->elements,
@@ -687,15 +692,16 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             coveredAll = coveredAll || PatternMatchesEveryValue(*arm.pattern);
         }
         ValidateMatchPatterns(patterns, subjectType);
-        // A statement may leave values unmatched by design; one that covers its subject records so, because a value
-        // outside the subject's cases then has nowhere to go. A native subject's tag is the compiler's own and never
-        // holds anything else.
+        // A statement covers its subject as an expression does; one that ignores the rest says so with `_ => {}`.
+        // One that covers it records so, because a value outside the subject's cases then has nowhere to go. A native
+        // subject's tag is the compiler's own and never holds anything else.
         if (MatchPatternsAreExhaustive(patterns, subjectType)) {
             if (!IsNativeMatchSubject(subjectType)) {
                 exhaustiveMatchStatements.insert(matchStatement);
             }
         }
         else {
+            ReportNonExhaustiveMatch(matchStatement->location, patterns, subjectType);
             exits.push_back(matchEntry);
         }
         MergeTrackedFlows(exits);
@@ -847,6 +853,10 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
 void AnalysisContext::CheckFail(const Expr *value, const SourceLocation location) {
     if (checkingDeferred) {
         EmitExitFromDeferred(location, "fail", "move the 'fail' out of the 'defer'");
+    }
+    // A case written without its type takes the type of the error channel it fails through.
+    if (value && currentReturnType.IsFallible()) {
+        ExpectContextualCaseArgument(value, currentReturnType.FallibleError());
     }
     const TypeRef valueType = value ? CheckExpr(*value) : TypeRef::MakeUnknown();
     if (!currentReturnType.IsFallible()) {
@@ -1063,6 +1073,10 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         NoteGenericBodyType(subjectType);
         NoteDeferredNativeType(subjectType);
     }
+    if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        CheckAlternativePattern(*alternatives, subjectType);
+        return;
+    }
     if (const auto *typedPattern = AstCast<const TypedPattern>(&pattern)) {
         CheckTypedPattern(*typedPattern, subjectType);
         return;
@@ -1138,7 +1152,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                       std::format("this pattern cannot match native {} '{}'", optional ? "optional" : "fallible",
                                   subjectType.ToString()),
                       {},
-                      optional ? "match a present value with '.Some(...)' or 'value?', and absence with 'none'"
+                      optional ? "match a present value with '.Some(...)', and absence with 'none'"
                                : "match a channel with '.Success(...)' or '.Failure(...)'");
             DefinePatternBindings(pattern);
             return;
@@ -1366,12 +1380,18 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
     std::unordered_set<std::string> seen;
     std::unordered_set<std::string> coveredVariants;
     bool coveredAll = false;
-    for (const Pattern *pattern : patterns) {
+    std::vector<const Pattern *> alternatives;
+    for (const Pattern *arm : patterns) {
+        if (arm) {
+            std::ranges::copy(ArmAlternatives(arm), std::back_inserter(alternatives));
+        }
+    }
+    for (const Pattern *pattern : alternatives) {
         if (!pattern) {
             continue;
         }
         if (coveredAll) {
-            // An `else` arm covers whatever remains, possibly nothing, so it is never reported.
+            // A default arm covers whatever remains, possibly nothing, so it is never reported.
             if (!AstCast<const WildcardPattern>(pattern)) {
                 EmitError(pattern->location, "match arm is unreachable because an earlier pattern matches every value");
             }
@@ -1417,7 +1437,8 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
             names += (names.empty() ? "" : ", ") + name;
         }
         EmitError(patterns.empty() ? SourceLocation{} : patterns.back()->location,
-                  std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), names));
+                  std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), names), {},
+                  "add arms for the missing cases, or a '_' arm");
     }
 }
 
@@ -1444,10 +1465,12 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
     if (subjectType.IsBool()) {
         bool hasTrue = false;
         bool hasFalse = false;
-        for (const Pattern *pattern : patterns) {
-            const auto *literal = AstCast<const LiteralPattern>(pattern);
-            hasTrue = hasTrue || (literal && literal->value.text == "true");
-            hasFalse = hasFalse || (literal && literal->value.text == "false");
+        for (const Pattern *arm : patterns) {
+            for (const Pattern *pattern : ArmAlternatives(arm)) {
+                const auto *literal = AstCast<const LiteralPattern>(pattern);
+                hasTrue = hasTrue || (literal && literal->value.text == "true");
+                hasFalse = hasFalse || (literal && literal->value.text == "false");
+            }
         }
         return hasTrue && hasFalse;
     }
@@ -1469,7 +1492,11 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
         return true;
     }
     std::unordered_set<std::string> covered;
-    for (const Pattern *pattern : patterns) {
+    std::vector<const Pattern *> alternatives;
+    for (const Pattern *arm : patterns) {
+        std::ranges::copy(ArmAlternatives(arm), std::back_inserter(alternatives));
+    }
+    for (const Pattern *pattern : alternatives) {
         const auto *enumerator = AstCast<const EnumPattern>(pattern);
         if (enumerator && !enumerator->path.empty()) {
             const std::string &variantName = enumerator->path.back();

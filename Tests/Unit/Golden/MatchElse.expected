@@ -1,1 +1,1 @@
-4:9: error: use 'else' for the default match arm
+12:9: error: the default arm must be the last match arm

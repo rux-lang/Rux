@@ -131,6 +131,7 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     own.typeNodeTypes = OwnEntries(mine.typeNodeTypes, base.typeNodeTypes);
     own.patternTypes = OwnEntries(mine.patternTypes, base.patternTypes);
     own.casePatterns = OwnEntries(mine.casePatterns, base.casePatterns);
+    own.contextualCases = OwnEntries(mine.contextualCases, base.contextualCases);
     own.typedPatternTypes = OwnEntries(mine.typedPatternTypes, base.typedPatternTypes);
     own.sumMemberPatterns = OwnEntries(mine.sumMemberPatterns, base.sumMemberPatterns);
     own.patternBindingModes = OwnEntries(mine.patternBindingModes, base.patternBindingModes);
@@ -240,6 +241,7 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
         [&] { MergeLaterWins(facts.typeNodeTypes, records, [](R &r) -> auto & { return r.facts.typeNodeTypes; }); },
         [&] { MergeLaterWins(facts.patternTypes, records, [](R &r) -> auto & { return r.facts.patternTypes; }); },
         [&] { MergeLaterWins(facts.casePatterns, records, [](R &r) -> auto & { return r.facts.casePatterns; }); },
+        [&] { MergeLaterWins(facts.contextualCases, records, [](R &r) -> auto & { return r.facts.contextualCases; }); },
         [&] {
             MergeLaterWins(facts.typedPatternTypes, records, [](R &r) -> auto & { return r.facts.typedPatternTypes; });
         },

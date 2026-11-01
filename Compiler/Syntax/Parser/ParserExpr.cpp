@@ -988,9 +988,10 @@ ExprPtr Parser::ParseArmBody(const std::string_view construct) {
     return ParseRequiredExpr(std::format("after '=>' in the {} arm", construct));
 }
 
-void Parser::ParseArmList(std::vector<MatchExpr::Arm> &arms, const std::string_view construct) {
+template <typename Arm>
+void Parser::ParseArmList(std::vector<Arm> &arms, const std::string_view construct, const std::string_view form) {
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-        MatchExpr::Arm arm;
+        Arm arm;
         arm.location = CurrentLocation();
         arm.pattern = ParseMatchArmPattern();
         if (!arm.pattern) {
@@ -1000,22 +1001,32 @@ void Parser::ParseArmList(std::vector<MatchExpr::Arm> &arms, const std::string_v
         }
         ExpectBefore(TokenKind::FatArrow, std::format("'=>' after the {} arm pattern", construct));
         arm.body = ParseArmBody(construct);
+        const bool blockBody = AstCast<const BlockExpr>(arm.body.get()) != nullptr;
         arms.push_back(std::move(arm));
-        if (Match(TokenKind::Comma)) {
-            if (Check(TokenKind::RightBrace)) {
-                EmitError(Previous().location, std::format("trailing comma is not allowed in {} blocks", construct));
-            }
+        // A comma separates arms and may follow the last one; a block body ends where its brace closes.
+        if (Match(TokenKind::Comma) || blockBody || Check(TokenKind::RightBrace)) {
             continue;
         }
-        if (!Check(TokenKind::RightBrace)) {
-            EmitExpected(CurrentLocation(), std::format("',' between {} arms", construct));
-            while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
-                Advance();
-            }
-            Match(TokenKind::Comma);
+        EmitExpected(CurrentLocation(), std::format("',' between {} arms", construct));
+        while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+            Advance();
+        }
+        Match(TokenKind::Comma);
+    }
+    ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close the {} {}", construct, form));
+    for (std::size_t index = 0; index + 1 < arms.size(); ++index) {
+        if (AstCast<const WildcardPattern>(arms[index].pattern.get())) {
+            ReportNonfinalDefaultArm(arms[index].location, construct);
         }
     }
-    ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close the {} expression", construct));
+}
+
+template void Parser::ParseArmList<MatchExpr::Arm>(std::vector<MatchExpr::Arm> &, std::string_view, std::string_view);
+template void Parser::ParseArmList<MatchStmt::Arm>(std::vector<MatchStmt::Arm> &, std::string_view, std::string_view);
+
+void Parser::ReportNonfinalDefaultArm(const SourceLocation location, const std::string_view construct) {
+    EmitError(location, std::format("the default arm must be the last {} arm", construct),
+              "move the '_' arm after the other arms");
 }
 
 ExprPtr Parser::ParseErrorMapper(const SourceLocation location, ExprPtr operand) {
@@ -1086,6 +1097,7 @@ std::vector<ExprPtr> Parser::ParseArgList() {
 // Patterns
 PatternPtr Parser::ParseMatchArmPattern() {
     const auto loc = CurrentLocation();
+    // `_` is the default arm; `else` is its older spelling and is still read the same way.
     if (Match(TokenKind::ElseKeyword)) {
         auto pattern = std::make_unique<WildcardPattern>();
         pattern->location = loc;
@@ -1093,8 +1105,10 @@ PatternPtr Parser::ParseMatchArmPattern() {
     }
 
     auto pattern = ParseRequiredPattern("at the start of the match arm");
-    if (AstCast<const WildcardPattern>(pattern.get())) {
-        EmitError(loc, "use 'else' for the default match arm");
+    if (const auto *guarded = AstCast<const GuardedPattern>(pattern.get());
+        guarded && AstCast<const WildcardPattern>(guarded->inner.get())) {
+        EmitError(loc, "the default arm '_' cannot have a guard",
+                  "remove the guard, or bind the value and test it, as in 'value if ...'");
     }
     return pattern;
 }
@@ -1139,6 +1153,43 @@ PatternPtr Parser::ParsePresenceSuffix(PatternPtr inner) {
 }
 
 PatternPtr Parser::ParsePatternImpl() {
+    auto inner = ParseSinglePattern();
+    if (!inner) {
+        return nullptr;
+    }
+
+    // Alternatives: `.FreeBSD | .Linux` matches what either side matches. A typed pattern's annotation is a whole
+    // type, so the `|` of a sum type `v: A | B` never reaches here.
+    if (Check(TokenKind::Pipe)) {
+        auto alternatives = std::make_unique<AlternativePattern>();
+        alternatives->location = inner->location;
+        alternatives->alternatives.push_back(std::move(inner));
+        while (Match(TokenKind::Pipe)) {
+            auto alternative = ParseSinglePattern();
+            if (!alternative) {
+                EmitExpected(CurrentLocation(), "a pattern after '|'");
+                break;
+            }
+            alternatives->alternatives.push_back(std::move(alternative));
+        }
+        inner = std::move(alternatives);
+    }
+
+    // Guard: pattern if condition, after any range or alternatives so that `1..=9 if flag` guards the whole range.
+    if (Match(TokenKind::IfKeyword)) {
+        const auto loc = Previous().location;
+        auto guard = ParseRequiredExpr("after 'if' in the pattern guard");
+        auto p = std::make_unique<GuardedPattern>();
+        p->location = loc;
+        p->inner = std::move(inner);
+        p->guard = std::move(guard);
+        return p;
+    }
+
+    return inner;
+}
+
+PatternPtr Parser::ParseSinglePattern() {
     auto inner = ParsePrimaryPattern();
     if (!inner) {
         return nullptr;
@@ -1170,18 +1221,6 @@ PatternPtr Parser::ParsePatternImpl() {
         p->hi = std::move(hi);
         inner = std::move(p);
     }
-
-    // Guard: pattern if condition, after any range so that `1..=9 if flag` guards the whole range.
-    if (Match(TokenKind::IfKeyword)) {
-        const auto loc = Previous().location;
-        auto guard = ParseRequiredExpr("after 'if' in the pattern guard");
-        auto p = std::make_unique<GuardedPattern>();
-        p->location = loc;
-        p->inner = std::move(inner);
-        p->guard = std::move(guard);
-        return p;
-    }
-
     return inner;
 }
 

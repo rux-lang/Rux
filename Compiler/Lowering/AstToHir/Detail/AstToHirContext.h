@@ -333,6 +333,13 @@ private:
     [[nodiscard]] HirExprPtr LowerBoundConstrainedCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    /// Builds `variant` of `declaration` instantiated with `substitutions`, from one argument per payload field.
+    [[nodiscard]] HirExprPtr LowerCaseConstruction(SourceLocation location, const EnumDecl &declaration,
+                                                   const EnumDecl::Variant &variant,
+                                                   const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                   const std::vector<const Expr *> &arguments);
+    /// A case written without its type, built as the case analysis resolved it from its expected type.
+    [[nodiscard]] HirExprPtr LowerContextualCase(const Expr &expression, const ResolvedContextualCase &resolved);
     [[nodiscard]] std::uint64_t ResolvedTypeQuery(const TypeQueryExpr &expression);
     [[nodiscard]] std::string GenericStructInitName(const StructInitExpr &expression);
     [[nodiscard]] std::pair<const EnumDecl *, const EnumDecl::Variant *>

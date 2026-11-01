@@ -213,7 +213,8 @@ func Main() -> int {
         (0, _) => {
             seen = 1;
         }
+        _ => {}
     }
-    Assert(seen == 0, "a tuple match statement may leave values unmatched");
+    Assert(seen == 0, "a tuple match statement ignores the rest with an empty default");
     return 0;
 }

@@ -1,0 +1,2 @@
+8:9: error: the default arm must be the last match arm
+12:9: error: the default arm must be the last catch arm

@@ -106,6 +106,13 @@ std::string Shape(const Pattern *pattern) {
     if (const auto *range = dynamic_cast<const RangePattern *>(pattern)) {
         return Shape(range->lo.get()) + ".." + Shape(range->hi.get());
     }
+    if (const auto *alternatives = dynamic_cast<const AlternativePattern *>(pattern)) {
+        std::string text;
+        for (std::size_t index = 0; index < alternatives->alternatives.size(); ++index) {
+            text += (index ? " | " : "") + Shape(alternatives->alternatives[index].get());
+        }
+        return "alt(" + text + ")";
+    }
     return "?";
 }
 
@@ -190,14 +197,50 @@ TEST_CASE("the presence suffix is rejected where its meaning would be unclear") 
     CHECK(ArmReports("1?..10", "a range bound cannot take a presence suffix"));
 }
 
-TEST_CASE("arm rules are unchanged around the new patterns") {
-    const ParseResult trailing = ParseSource("func F() { let a = match s { value? => 0, none => 1, }; }");
+TEST_CASE("arm lists take a trailing comma, and a block arm needs no comma") {
+    CHECK(ParseSource("func F() { let a = match s { value? => 0, none => 1, }; }").diagnostics.empty());
+    CHECK(ParseSource("func F() { let a = match s { .Some(v) => 0, none => 1, }; }").diagnostics.empty());
+    CHECK(ParseSource("func F() { match s { value? => {}, none => {} } }").diagnostics.empty());
+    CHECK(ParseSource("func F() { match s { .Some(v) => {} none => {} } }").diagnostics.empty());
     bool reported = false;
-    for (const auto &diagnostic : trailing.diagnostics) {
-        reported = reported || diagnostic.message == "trailing comma is not allowed in match blocks";
+    for (const auto &diagnostic : ParseSource("func F() { let a = match s { none => 1 _ => 2 }; }").diagnostics) {
+        reported = reported || diagnostic.message.starts_with("expected ',' between match arms");
     }
     CHECK(reported);
-    CHECK(ParseSource("func F() { match s { value? => {}, none => {} } }").diagnostics.empty());
+}
+
+TEST_CASE("alternatives join whole patterns with '|' and a guard covers all of them") {
+    CHECK_EQ(ArmShape(".FreeBSD | .Linux"), "alt(.FreeBSD | .Linux)");
+    CHECK_EQ(ArmShape("1 | 2 | 3"), "alt(1 | 2 | 3)");
+    CHECK_EQ(ArmShape("none | .Some(0)"), "alt(none | .Some(0))");
+    CHECK_EQ(ArmShape(".Circle(1 | 2)"), ".Circle(alt(1 | 2))");
+    CHECK_EQ(ArmShape("0..=9 | 20..=29"), "alt(0..9 | 20..29)");
+    CHECK_EQ(ArmShape(".A | .B if ready"), "alt(.A | .B) if ..");
+    // A typed annotation keeps reading its `|` as the sum type.
+    CHECK_EQ(ArmShape("v: A | B"), "v: sum(A, B)");
+    bool reported = false;
+    for (const auto &diagnostic : ParseSource("func F() { let a = match s { .A | => 0, _ => 1 }; }").diagnostics) {
+        reported = reported || diagnostic.message.starts_with("expected a pattern after '|'");
+    }
+    CHECK(reported);
+}
+
+TEST_CASE("'_' is the default arm, and it is last and unguarded") {
+    CHECK(ParseSource("func F() { let a = match s { 1 => 0, _ => 1 }; }").diagnostics.empty());
+    CHECK(ParseSource("func F() { let a = match s { 1 => 0, else => 1 }; }").diagnostics.empty());
+    CHECK(ArmReports("_ if ready", "the default arm '_' cannot have a guard"));
+    const auto reports = [](const std::string_view source, const std::string_view message) {
+        for (const auto &diagnostic : ParseSource(source).diagnostics) {
+            if (diagnostic.message == message) {
+                return true;
+            }
+        }
+        return false;
+    };
+    CHECK(reports("func F() { let a = match s { _ => 0, 1 => 1 }; }", "the default arm must be the last match arm"));
+    CHECK(reports("func F() { match s { else => {} 1 => {} } }", "the default arm must be the last match arm"));
+    CHECK(
+        reports("func F() { let a = Read() catch { _ => 0, e => 1 }; }", "the default arm must be the last catch arm"));
 }
 
 TEST_CASE("formatting leaves native pattern spellings unchanged") {

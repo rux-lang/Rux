@@ -286,7 +286,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
         };
 
         ExpectBefore(TokenKind::LeftBrace, "'{' to start the 'when' match arms");
-        bool sawElse = false;
+        std::optional<SourceLocation> defaultArm;
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             // Where this arm started. An arm whose body does not parse consumes nothing, and without this the loop
             // would run forever building empty arms -- which is what a statement written as a bare arm body used to
@@ -294,31 +294,34 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
             const std::size_t armStart = pos;
             IfStmt::MatchArm arm;
             arm.location = CurrentLocation();
-            if (Match(TokenKind::ElseKeyword)) {
-                sawElse = true;
+            if (defaultArm) {
+                ReportNonfinalDefaultArm(*defaultArm, "'when'");
+                defaultArm.reset();
+            }
+            if (CheckWhenDefaultArm()) {
+                Advance();
+                defaultArm = arm.location;
             }
             else {
-                structInitAllowed = false;
-                arm.patterns.push_back(ParseRequiredExpr("at the start of the 'when' arm"));
-                // Commas before `=>` separate patterns that share this arm's body.
-                while (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
-                    arm.patterns.push_back(ParseRequiredExpr("after ',' in the 'when' arm pattern list"));
-                }
-                structInitAllowed = true;
+                ParseWhenArmPatterns(arm.patterns);
             }
             ExpectBefore(TokenKind::FatArrow, "'=>' after a 'when' arm pattern");
             arm.block = parseArmBody();
+            const bool blockBody =
+                arm.block && (Previous().kind == TokenKind::RightBrace || Previous().kind == TokenKind::Semicolon);
             s->matchArms.push_back(std::move(arm));
 
-            Match(TokenKind::Comma); // optional separator; required only to end a bare-expression arm
+            // Arms are separated as a match separates them: a comma, which may follow the last arm and may be left
+            // out after a block.
+            const bool separated = Match(TokenKind::Comma);
             if (pos == armStart) {
                 EmitError(CurrentLocation(),
                           "expected a 'when' match arm, or '}' to close the match; an arm body that is a statement "
                           "rather than an expression needs braces, as in '.Windows => { return 1; }'");
                 break;
             }
-            if (sawElse && !Check(TokenKind::RightBrace)) {
-                EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
+            if (!separated && !blockBody && !Check(TokenKind::RightBrace)) {
+                EmitExpected(CurrentLocation(), "',' between 'when' arms");
             }
         }
         ExpectBefore(TokenKind::RightBrace, "'}' to close the 'when' match");
@@ -424,35 +427,7 @@ std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
         EmitExpected(CurrentLocation(), "'{' to start the match statement arms");
         return s;
     }
-    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-        MatchStmt::Arm arm;
-        arm.location = CurrentLocation();
-        arm.pattern = ParseMatchArmPattern();
-        if (!arm.pattern) {
-            while (!CheckAny({TokenKind::FatArrow, TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
-                Advance();
-            }
-        }
-        ExpectBefore(TokenKind::FatArrow, "'=>' after the match arm pattern");
-
-        arm.body = ParseArmBody("match");
-
-        s->arms.push_back(std::move(arm));
-        if (Match(TokenKind::Comma)) {
-            if (Check(TokenKind::RightBrace)) {
-                EmitError(Previous().location, "trailing comma is not allowed in match blocks");
-            }
-            continue;
-        }
-        if (!Check(TokenKind::RightBrace)) {
-            EmitExpected(CurrentLocation(), "',' between match arms");
-            while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
-                Advance();
-            }
-            Match(TokenKind::Comma);
-        }
-    }
-    ExpectBefore(TokenKind::RightBrace, "'}' to close the match statement");
+    ParseArmList(s->arms, "match", "statement");
     return s;
 }
 
@@ -512,5 +487,32 @@ std::unique_ptr<DeferStmt> Parser::ParseDeferStmt() {
     s->location = loc;
     s->deferredStmt = ParseStmt();
     return s;
+}
+
+bool Parser::CheckWhenDefaultArm() const noexcept {
+    return Check(TokenKind::ElseKeyword) ||
+           (Check(TokenKind::Ident) && Peek().text == "_" && Peek(1).Is(TokenKind::FatArrow));
+}
+
+void Parser::ParseWhenArmPatterns(std::vector<ExprPtr> &patterns) {
+    // A `when` pattern is a compile-time value, so each alternative is read above `|`, which separates them as it does
+    // in a match. A comma separates them too, and may end the list before `=>`.
+    const bool savedStructInitAllowed = structInitAllowed;
+    structInitAllowed = false;
+    for (bool first = true;; first = false) {
+        ExprPtr pattern = ParseBitXor();
+        if (!pattern) {
+            EmitMissingExpression(first ? "at the start of the 'when' arm" : "after '|' or ',' in the 'when' arm");
+        }
+        patterns.push_back(std::move(pattern));
+        if (Match(TokenKind::Pipe)) {
+            continue;
+        }
+        if (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
+            continue;
+        }
+        break;
+    }
+    structInitAllowed = savedStructInitAllowed;
 }
 } // namespace Rux

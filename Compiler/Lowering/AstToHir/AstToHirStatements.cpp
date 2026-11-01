@@ -542,6 +542,15 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
 }
 
 HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRef &subjectType) {
+    // Each alternative is a whole pattern over the same subject, native or not.
+    if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        auto lowered = std::make_unique<HirAlternativePattern>();
+        lowered->location = alternatives->location;
+        for (const PatternPtr &alternative : alternatives->alternatives) {
+            lowered->alternatives.push_back(LowerPattern(*alternative, subjectType));
+        }
+        return lowered;
+    }
     if (HirPatternPtr native = LowerNativePattern(pattern, subjectType)) {
         return native;
     }

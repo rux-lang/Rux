@@ -806,6 +806,13 @@ private:
                 VisitExpr(*guardedPat->guard);
             }
         }
+        else if (const auto *alternativePat = AstCast<const AlternativePattern>(&pattern)) {
+            for (const auto &alternative : alternativePat->alternatives) {
+                if (alternative) {
+                    VisitPattern(*alternative, scopeNames);
+                }
+            }
+        }
     }
 
     void VisitExpr(const Expr &expr) {

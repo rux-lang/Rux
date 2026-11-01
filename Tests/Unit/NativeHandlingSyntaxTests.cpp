@@ -178,7 +178,10 @@ TEST_CASE("catch attaches to the nearest postfix expression") {
 TEST_CASE("catch arms share the match arm grammar") {
     CHECK(ParsesCleanly("func F() { let a = Read() catch { e if e.code > 0 => 1, else => 0 }; }"));
     CHECK(ParsesCleanly("func F() { let a = Read() catch { e => { Log(e); }, else => fail Other {} }; }"));
-    CHECK(Reports("func F() { let a = Read() catch { e => 0, }; }", "trailing comma is not allowed in catch blocks"));
+    CHECK(ParsesCleanly("func F() { let a = Read() catch { e => 0, }; }"));
+    CHECK(ParsesCleanly("func F() { let a = Read() catch { .Missing | .Denied => 0, _ => 1 }; }"));
+    CHECK(
+        Reports("func F() { let a = Read() catch { _ => 0, e => 1 }; }", "the default arm must be the last catch arm"));
     CHECK(ReportsContaining("func F() { let a = Read() catch e => 0; }", "expected '{' to start the catch arms"));
 }
 

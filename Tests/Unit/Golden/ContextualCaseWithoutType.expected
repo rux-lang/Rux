@@ -1,0 +1,7 @@
+18:16: error: case '.Small' needs an expected type to name its enum or variant
+19:17: error: case '.Fast' needs an expected type to name its enum or variant
+20:17: error: case '.Circle' needs an expected type to name its enum or variant
+21:22: error: case '.Small' needs an enum or variant, but the expected type is 'int'
+22:25: error: enum 'Mode' has no enumerator 'Large'
+23:23: error: case 'Shape::Circle' carries a payload, so '.Circle' needs its values
+24:24: error: enum enumerator 'Mode::Fast' takes no values

@@ -1,0 +1,165 @@
+// Contextual cases: `.Case` and `.Case(...)` name a case without its type wherever the type is already known -- an
+// annotated binding, a parameter, a field, a return value, a `fail` operand, an assignment to a typed place, or an arm
+// of a match whose type is known. The expected type is the only place the case is looked up. A user variant that is
+// itself the expected type takes over `.Some(...)` when it declares a `Some` case.
+
+import Core::{ Assert };
+
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+variant Shape {
+    Dot,
+    Circle(int32),
+    Rect(int32, int32),
+}
+
+variant Maybe<T> {
+    Some(T),
+    Nothing,
+}
+
+variant Slot {
+    Some(int32),
+    Empty,
+}
+
+variant Frame {
+    Framed(Shape),
+    Bare,
+}
+
+variant Problem {
+    NotFound,
+    Invalid(int32),
+}
+
+struct Brush {
+    color: Color;
+    shape: Shape;
+}
+
+struct Palette {
+    total: int32;
+}
+
+extend Palette {
+    pub func Add(self: &var Palette, color: Color) {
+        self.total += Weight(color);
+    }
+}
+
+func Weight(color: Color) -> int32 {
+    return match color {
+        .Red => 1i32,
+        .Green => 10i32,
+        .Blue => 100i32,
+    };
+}
+
+func Area(shape: Shape) -> int32 {
+    return match shape {
+        .Dot => 0i32,
+        .Circle(radius) => radius * 3i32,
+        .Rect(width, height) => width * height,
+    };
+}
+
+func Make(size: int32) -> Shape {
+    if size == 0i32 {
+        return .Dot;
+    }
+    if size < 0i32 {
+        return .Rect(-size, 2i32);
+    }
+    return .Circle(size);
+}
+
+func Lift<T>(value: T) -> Maybe<T> {
+    return .Some(value);
+}
+
+func Nothing<T>() -> Maybe<T> {
+    return .Nothing;
+}
+
+func Fill(value: int32) -> Slot {
+    if value == 0i32 {
+        return .Empty;
+    }
+    return .Some(value);
+}
+
+func Load(value: int32) -> int32 ! Problem {
+    if value == 0i32 {
+        fail .NotFound;
+    }
+    if value < 0i32 {
+        fail .Invalid(value);
+    }
+    return value;
+}
+
+func Choose(warm: bool) -> Color {
+    let chosen: Color = match warm {
+        true => .Red,
+        false => .Blue,
+    };
+    return chosen;
+}
+
+func Main() -> int {
+    let annotated: Color = .Green;
+    Assert(Weight(annotated) == 10i32, "an annotated binding gives the case its type");
+    Assert(Weight(.Blue) == 100i32, "so does a parameter");
+
+    Assert(Area(Make(0i32)) == 0i32, "a returned unit case");
+    Assert(Area(Make(2i32)) == 6i32 && Area(Make(-3i32)) == 6i32, "a returned case with a payload");
+    Assert(Area(.Rect(2i32, 5i32)) == 10i32, "an argument case with a payload");
+
+    var brush = Brush { color: .Red, shape: .Circle(1i32) };
+    Assert(Weight(brush.color) == 1i32 && Area(brush.shape) == 3i32, "a field initializer gives the case its type");
+    brush.color = .Blue;
+    brush.shape = .Rect(3i32, 3i32);
+    Assert(Weight(brush.color) == 100i32 && Area(brush.shape) == 9i32, "so does an assignment to a typed place");
+
+    var palette = Palette { total: 0i32 };
+    palette.Add(.Green);
+    palette.Add(.Red);
+    Assert(palette.total == 11i32, "a method parameter gives the case its type");
+
+    Assert(Weight(Choose(true)) == 1i32 && Weight(Choose(false)) == 100i32, "an arm of a typed match");
+
+    let framed: Frame = .Framed(.Circle(4i32));
+    let radius = match framed {
+        .Framed(.Circle(value)) => value,
+        _ => 0i32,
+    };
+    Assert(radius == 4i32, "a case payload gives a nested case its type");
+
+    let maybeColor: Color? = .Red;
+    Assert((match maybeColor { .Some(color) => Weight(color), none => 0i32 }) == 1i32,
+           "an optional destination names the type of its present value");
+
+    let lifted = Lift(5i32);
+    Assert((match lifted { .Some(value) => value, .Nothing => -1i32 }) == 5i32,
+           "a generic variant takes its arguments from the expected type");
+    let empty = Nothing<int32>();
+    Assert((match empty { .Some(value) => value, .Nothing => -1i32 }) == -1i32, "and so does its unit case");
+
+    let filled = Fill(7i32);
+    Assert((match filled { .Some(value) => value, .Empty => -1i32 }) == 7i32,
+           "a variant that is the expected type takes '.Some' over the native constructor");
+    Assert((match Fill(0i32) { .Some(value) => value, .Empty => -1i32 }) == -1i32, "and its other cases still work");
+    let native: int32? = .Some(3i32);
+    Assert((native ?? 0i32) == 3i32, "without such a variant '.Some' is the native optional");
+
+    Assert((match Load(0i32) { .Failure(.NotFound) => 1i32, _ => 0i32 }) == 1i32, "a 'fail' operand");
+    Assert((match Load(-2i32) { .Failure(.Invalid(value)) => value, _ => 0i32 }) == -2i32,
+           "a 'fail' operand with a payload");
+    Assert((match Load(4i32) { .Success(value) => value, _ => 0i32 }) == 4i32, "a success passes through");
+    return 0;
+}

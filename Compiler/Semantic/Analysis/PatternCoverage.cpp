@@ -18,7 +18,9 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -268,7 +270,7 @@ private:
     std::map<std::string, std::optional<std::vector<std::vector<TypeRef>>>> constructorCache;
 };
 
-/// Whether a pattern is an `else` arm: the parser writes `else` as the only top-level wildcard a match arm can have.
+/// Whether a pattern is the default arm, `_` or its older spelling `else`: the only top-level wildcard of an arm.
 bool IsElseArm(const Pattern &pattern) {
     return AstCast<const WildcardPattern>(&pattern) != nullptr;
 }
@@ -280,6 +282,49 @@ const Pattern &UnguardedPattern(const Pattern &pattern) {
 
 std::string MemberList(const TypeRef &sum) {
     return std::format("'{}'", sum.ToString());
+}
+
+/// Every name a pattern binds, with where it is bound, in source order.
+void CollectBindingNames(const Pattern &pattern, std::vector<std::pair<std::string, SourceLocation>> &names) {
+    const auto add = [&names](const std::string &name, const SourceLocation location) {
+        if (!name.empty() && name != "_") {
+            names.emplace_back(name, location);
+        }
+    };
+    const auto visit = [&names](const PatternPtr &child) {
+        if (child) {
+            CollectBindingNames(*child, names);
+        }
+    };
+    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
+        add(identifier->name, identifier->location);
+    }
+    else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
+        add(typed->name, typed->location);
+    }
+    else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
+        visit(guarded->inner);
+    }
+    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
+        visit(presence->inner);
+    }
+    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
+        std::ranges::for_each(enumeration->args, visit);
+        for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
+            visit(argument.pattern);
+        }
+    }
+    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
+        std::ranges::for_each(tuple->elements, visit);
+    }
+    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
+        for (const StructPattern::Field &field : structure->fields) {
+            visit(field.pattern);
+        }
+    }
+    else if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        std::ranges::for_each(alternatives->alternatives, visit);
+    }
 }
 } // namespace
 
@@ -607,10 +652,9 @@ void AnalysisContext::CheckNativeCasePattern(const EnumPattern &pattern, const T
                                   name == "Some" ? "optional" : "fallible", subject));
         }
         else {
-            EmitError(
-                pattern.location,
-                std::format("native {} '{}' has no case '{}'", fallible ? "fallible" : "optional", subject, name), {},
-                fallible ? "match '.Success(...)' or '.Failure(...)'" : "match '.Some(...)', 'value?', or 'none'");
+            EmitError(pattern.location,
+                      std::format("native {} '{}' has no case '{}'", fallible ? "fallible" : "optional", subject, name),
+                      {}, fallible ? "match '.Success(...)' or '.Failure(...)'" : "match '.Some(...)' or 'none'");
         }
         DefinePatternBindings(pattern);
         return;
@@ -625,46 +669,42 @@ void AnalysisContext::CheckNativeCasePattern(const EnumPattern &pattern, const T
 }
 
 void AnalysisContext::DefinePatternBindings(const Pattern &pattern) {
-    const auto define = [this](const std::string &name, const SourceLocation location) {
-        if (name.empty() || name == "_") {
-            return;
+    std::vector<std::pair<std::string, SourceLocation>> names;
+    CollectBindingNames(pattern, names);
+    std::unordered_set<std::string> defined;
+    for (auto &[name, location] : names) {
+        if (!defined.insert(name).second) {
+            continue;
         }
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
-        symbol.name = name;
+        symbol.name = std::move(name);
         symbol.location = location;
         symbol.type = TypeRef::MakeUnknown();
         DefineTrackedLocal(std::move(symbol), true);
-    };
-    const auto visit = [this](const PatternPtr &child) {
-        if (child) {
-            DefinePatternBindings(*child);
-        }
-    };
-    if (const auto *identifier = AstCast<const IdentPattern>(&pattern)) {
-        define(identifier->name, identifier->location);
     }
-    else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
-        define(typed->name, typed->location);
-    }
-    else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
-        visit(guarded->inner);
-    }
-    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        visit(presence->inner);
-    }
-    else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
-        std::ranges::for_each(enumeration->args, visit);
-        for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
-            visit(argument.pattern);
+}
+
+void AnalysisContext::CheckAlternativePattern(const AlternativePattern &pattern, const TypeRef &subjectType) {
+    // A name bound by one alternative would hold nothing when another one matched, so alternatives bind no names. Each
+    // rejected name is still defined once, without a type, so the arm reports nothing further about it.
+    std::vector<std::pair<std::string, SourceLocation>> names;
+    for (const PatternPtr &alternative : pattern.alternatives) {
+        if (alternative) {
+            CollectBindingNames(*alternative, names);
         }
     }
-    else if (const auto *tuple = AstCast<const TuplePattern>(&pattern)) {
-        std::ranges::for_each(tuple->elements, visit);
+    for (const auto &[name, location] : names) {
+        EmitError(location, std::format("pattern alternative cannot bind '{}'", name), {},
+                  std::format("write '_' in place of '{}', or match each alternative in its own arm", name));
     }
-    else if (const auto *structure = AstCast<const StructPattern>(&pattern)) {
-        for (const StructPattern::Field &field : structure->fields) {
-            visit(field.pattern);
+    if (!names.empty()) {
+        DefinePatternBindings(pattern);
+        return;
+    }
+    for (const PatternPtr &alternative : pattern.alternatives) {
+        if (alternative) {
+            CheckPattern(*alternative, subjectType);
         }
     }
 }
@@ -813,6 +853,16 @@ public:
         }
         if (AstCast<const WildcardPattern>(&pattern) || AstCast<const IdentPattern>(&pattern)) {
             return {};
+        }
+        // Alternatives match the union of what each one matches.
+        if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+            std::vector<Space> choices;
+            for (const PatternPtr &alternative : alternatives->alternatives) {
+                if (alternative) {
+                    choices.push_back(Translate(*alternative, type));
+                }
+            }
+            return Space::Choice(std::move(choices));
         }
         if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
             return TranslateTyped(*typed, type);
@@ -1055,7 +1105,7 @@ bool AnalysisContext::NativeMatchCoverage(const std::vector<const Pattern *> &pa
         const Space space = translator.Translate(UnguardedPattern(*pattern), subjectType);
         const bool invalid = translator.sawInvalidSelection;
         translator.sawInvalidSelection = invalidBefore || invalid;
-        // An `else` arm covers whatever remains, possibly nothing, so it is never reported, even after a generic sum
+        // A default arm covers whatever remains, possibly nothing, so it is never reported, even after a generic sum
         // collapsed and an earlier arm came to match everything.
         if (issues && !IsElseArm(*pattern) && !invalid && solver.Useful(rows, Row{space}, {subjectType}, 1).empty()) {
             issues->push_back(PatternIssue{pattern->location,
@@ -1160,6 +1210,9 @@ bool AnalysisContext::PatternContains(const Pattern &pattern, const Pattern &tar
     }
     if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         return contains(range->lo) || contains(range->hi);
+    }
+    if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        return std::ranges::any_of(alternatives->alternatives, contains);
     }
     return false;
 }

@@ -1,0 +1,125 @@
+// Pattern alternatives: `a | b` matches a value either side matches, in `match`, `catch` and `when` alike.
+// Alternatives are tried in order and bind no names, and coverage counts the union of what they match, so an arm of
+// alternatives can complete a match on its own.
+
+import Core::{ #target, Assert };
+
+enum Os {
+    FreeBSD,
+    Linux,
+    MacOS,
+    Windows,
+}
+
+variant Token {
+    Digit(int32),
+    Letter(char),
+    Space,
+    Tab,
+    End,
+}
+
+struct ReadError {
+    code: int32;
+}
+
+func Family(os: Os) -> int32 {
+    return match os {
+        .FreeBSD | .Linux | .MacOS => 1i32,
+        .Windows => 2i32,
+    };
+}
+
+func Kind(token: Token) -> int32 {
+    return match token {
+        .Space | .Tab => 0i32,
+        .Digit(0 | 1) => 1i32,
+        .Digit(_) | .Letter('x') => 2i32,
+        .Letter(_) => 3i32,
+        .End => 4i32,
+    };
+}
+
+func Bucket(value: int32) -> int32 {
+    return match value {
+        0 | 1 => 0i32,
+        2..=9 | 20..=29 => 1i32,
+        _ => 2i32,
+    };
+}
+
+func Present(found: int32?) -> int32 {
+    return match found {
+        none | .Some(0i32) => 0i32,
+        .Some(value) => value,
+    };
+}
+
+func Both(flag: bool) -> int32 {
+    return match flag {
+        true | false => 7i32,
+    };
+}
+
+func Guarded(value: int32, ready: bool) -> int32 {
+    return match value {
+        1 | 2 if ready => 1i32,
+        _ => 0i32,
+    };
+}
+
+func Read(code: int32) -> int32 ! ReadError {
+    if code != 0i32 {
+        fail ReadError { code: code };
+    }
+    return 5i32;
+}
+
+func Recovered(code: int32) -> int32 {
+    return Read(code) catch {
+        ReadError { code: 1 } | ReadError { code: 2 } => -1i32,
+        _ => -2i32,
+    };
+}
+
+func Main() -> int {
+    Assert(Family(Os::FreeBSD) == 1i32 && Family(Os::Linux) == 1i32 && Family(Os::MacOS) == 1i32,
+           "every alternative of an arm selects it");
+    Assert(Family(Os::Windows) == 2i32, "a value no alternative names goes on to the next arm");
+
+    Assert(Kind(Token::Space) == 0i32 && Kind(Token::Tab) == 0i32, "unit cases share an arm");
+    Assert(Kind(Token::Digit(0i32)) == 1i32 && Kind(Token::Digit(1i32)) == 1i32, "alternatives nest in a payload");
+    Assert(Kind(Token::Digit(7i32)) == 2i32 && Kind(Token::Letter('x')) == 2i32, "cases with payloads share an arm");
+    Assert(Kind(Token::Letter('y')) == 3i32 && Kind(Token::End) == 4i32, "the remaining arms still run");
+
+    Assert(Bucket(0i32) == 0i32 && Bucket(1i32) == 0i32, "literal alternatives");
+    Assert(Bucket(5i32) == 1i32 && Bucket(25i32) == 1i32, "range alternatives");
+    Assert(Bucket(15i32) == 2i32, "a value between the ranges takes the default");
+
+    Assert(Present(none) == 0i32 && Present(.Some(0i32)) == 0i32, "an absent and a present alternative");
+    Assert(Present(.Some(4i32)) == 4i32, "the next arm binds what the alternatives leave");
+    Assert(Both(true) == 7i32 && Both(false) == 7i32, "one arm of alternatives covers a bool");
+
+    Assert(Guarded(2i32, true) == 1i32, "a guard applies to every alternative");
+    Assert(Guarded(2i32, false) == 0i32 && Guarded(3i32, true) == 0i32, "and refuses them all together");
+
+    Assert(Recovered(0i32) == 5i32, "a success passes a catch through");
+    Assert(Recovered(1i32) == -1i32 && Recovered(2i32) == -1i32, "catch arms take alternatives");
+    Assert(Recovered(3i32) == -2i32, "and a default after them");
+
+    var family = 0i32;
+    when #target.os {
+        .FreeBSD | .Linux | .macOS => { family = 1i32; }
+        .Windows => { family = 2i32; }
+        _ => {}
+    }
+    Assert(family != 0i32, "a 'when' arm takes alternatives and a '_' default");
+
+    var statement = 0i32;
+    match Os::Linux {
+        .Windows | .MacOS => { statement = 1i32; }
+        _ => { statement = 2i32; }
+    }
+    Assert(statement == 2i32, "a match statement takes alternatives");
+    return 0;
+}

@@ -288,7 +288,9 @@ HirExprPtr AstToHirContext::LowerNativeConstruct(const NativeConstructExpr &cons
 }
 
 HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef &targetType) {
-    if (AstCast<const NativeConstructExpr>(&expression) || AstCast<const NoneExpr>(&expression)) {
+    const bool nativeConstructor =
+        AstCast<const NativeConstructExpr>(&expression) && !model.TryGetContextualCase(expression);
+    if (nativeConstructor || AstCast<const NoneExpr>(&expression)) {
         // Lowered through the ordinary path so the constructor's own consumption facts still apply, with the
         // destination it is built as.
         const std::optional<TypeRef> saved = std::exchange(pendingNativeTarget, targetType);

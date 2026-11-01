@@ -214,16 +214,11 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
         }
 
         decl->variants.push_back(std::move(variant));
-        if (Match(TokenKind::Comma)) {
-            if (Check(TokenKind::RightBrace)) {
-                EmitError(Previous().location,
-                          "trailing comma is not allowed in " + std::string(declarationName) + " declarations");
+        // A comma separates cases and may follow the last one.
+        if (!Match(TokenKind::Comma)) {
+            if (Check(TokenKind::RightBrace) || IsAtEnd()) {
+                break;
             }
-        }
-        else if (Check(TokenKind::RightBrace) || IsAtEnd()) {
-            break;
-        }
-        else {
             EmitExpected(CurrentLocation(), "',' between " + std::string(memberName) + "s",
                          "separate adjacent " + std::string(memberName) + "s with ','");
         }
@@ -692,23 +687,22 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
     decl->matchSubject = std::move(subject);
 
     Expect(TokenKind::LeftBrace, "expected '{'");
-    bool sawElse = false;
+    std::optional<SourceLocation> defaultArm;
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         // Where this arm started: an arm whose body does not parse consumes nothing, and the loop must not spin on it.
         const std::size_t armStart = pos;
         WhenDecl::Branch branch;
         branch.location = CurrentLocation();
-        if (Match(TokenKind::ElseKeyword)) {
-            sawElse = true;
+        if (defaultArm) {
+            ReportNonfinalDefaultArm(*defaultArm, "'when'");
+            defaultArm.reset();
+        }
+        if (CheckWhenDefaultArm()) {
+            Advance();
+            defaultArm = branch.location;
         }
         else {
-            structInitAllowed = false;
-            branch.patterns.push_back(ParseRequiredExpr("at the start of the 'when' arm"));
-            // Commas before `=>` separate patterns that share this arm's body.
-            while (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
-                branch.patterns.push_back(ParseRequiredExpr("after ',' in the 'when' arm pattern list"));
-            }
-            structInitAllowed = true;
+            ParseWhenArmPatterns(branch.patterns);
         }
         Expect(TokenKind::FatArrow, "expected '=>' after a 'when' arm pattern");
 
@@ -758,14 +752,17 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
             branch.items.push_back(std::move(item));
         }
 
+        // Arms are separated as a match separates them: a comma, which may follow the last arm and may be left out
+        // after a body that ends itself, as a block or a declaration does. A directive is an expression and does not.
+        const bool directiveBody = branch.directive != WhenDecl::Directive::None;
         decl->branches.push_back(std::move(branch));
-        Match(TokenKind::Comma); // optional separator
+        const bool separated = Match(TokenKind::Comma);
         if (pos == armStart) {
             EmitError(CurrentLocation(), "expected a 'when' match arm, or '}' to close the match");
             break;
         }
-        if (sawElse && !Check(TokenKind::RightBrace)) {
-            EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
+        if (directiveBody && !separated && !Check(TokenKind::RightBrace)) {
+            EmitExpected(CurrentLocation(), "',' between 'when' arms");
         }
     }
     Expect(TokenKind::RightBrace, "expected '}' to close the 'when' match");

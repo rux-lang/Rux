@@ -154,7 +154,7 @@ TEST_CASE("a fallible constructor needs its other channel from the context") {
              TypeRef::MakeOptional(TypeRef::MakeInt32()));
 }
 
-TEST_CASE("a constructor meeting another form or a nominal variant is refused") {
+TEST_CASE("a constructor meeting another form is refused, and a variant that is the expected type takes its case") {
     const auto analyzed = Analyze(R"(
         variant Option<T> {
             Some(T),
@@ -172,10 +172,13 @@ TEST_CASE("a constructor meeting another form or a nominal variant is refused") 
             let optional: int32? = .Success(1i32);
         }
     )");
-    CHECK(Reports(*analyzed,
-                  "'.Some(...)' constructs a native optional; write 'Option::Some(...)' for variant 'Option'"));
-    CHECK(Reports(*analyzed,
-                  "'.Success(...)' constructs a native fallible; write 'Result::Success(...)' for variant 'Result'"));
+    // A user variant that is the expected type and declares the case builds its own case.
+    CHECK_FALSE(Reports(*analyzed, "'.Some(...)' constructs a native optional; write"));
+    CHECK_FALSE(Reports(*analyzed, "'.Success(...)' constructs a native fallible; write"));
+    const FuncDecl &use = Function(*analyzed, "Use");
+    CHECK(analyzed->model.TryGetContextualCase(Initializer(use, 0)) != nullptr);
+    CHECK(analyzed->model.TryGetContextualCase(Initializer(use, 1)) != nullptr);
+    CHECK(analyzed->model.TryGetContextualCase(Initializer(use, 2)) == nullptr);
     CHECK(Reports(*analyzed, "'.Some(...)' constructs a native optional, but the expected type is 'int32'"));
     CHECK(Reports(*analyzed, "'.Success(...)' constructs a native fallible, but the expected type is 'int32?'"));
 }

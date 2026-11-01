@@ -333,16 +333,18 @@ TEST_CASE("a by-value match of a named copyable value takes the copy it makes") 
     CHECK(CallsGlue(*arm));
 }
 
-TEST_CASE("a match destroys an owned subject that no arm takes") {
+TEST_CASE("a default arm destroys an owned subject the other arms leave") {
     const LirPackage lir = LowerToLir(LowerSource(std::string(kCounted) + R"(
         func Guarded(pair: (Counted, int32)) {
             match pair {
                 (item, count) if count > 5 => {}
+                _ => {}
             }
         }
         func Moved(pair: (Counted, int32)) {
             match <-pair {
                 (item, 7) => {}
+                _ => {}
             }
         }
         func Covered(pair: (Counted, int32)) {
@@ -351,15 +353,14 @@ TEST_CASE("a match destroys an owned subject that no arm takes") {
             }
         }
     )"));
-    for (const char *name : {"Guarded", "Moved"}) {
+    // Every match is exhaustive, so its last arm takes what the others leave and destroys it, and nothing is left
+    // for an untaken path.
+    for (const char *name : {"Guarded", "Moved", "Covered"}) {
         const LirFunc &function = RequireFunction(lir, name);
-        const auto untaken = std::ranges::find_if(
-            function.blocks, [](const LirBlock &block) { return StartsWith(block.label, "match.untaken"); });
-        REQUIRE_MESSAGE(untaken != function.blocks.end(), name);
-        CHECK_MESSAGE(CallsGlue(*untaken), name);
+        CHECK_MESSAGE(std::ranges::any_of(function.blocks, CallsGlue), name);
+        CHECK_FALSE_MESSAGE(
+            std::ranges::any_of(function.blocks,
+                                [](const LirBlock &block) { return StartsWith(block.label, "match.untaken"); }),
+            name);
     }
-    // A last arm that takes every value leaves nothing untaken.
-    const LirFunc &covered = RequireFunction(lir, "Covered");
-    CHECK_FALSE(std::ranges::any_of(covered.blocks,
-                                    [](const LirBlock &block) { return StartsWith(block.label, "match.untaken"); }));
 }

@@ -1,0 +1,27 @@
+// A case written without its type takes it from the type its context expects, and from nowhere else.
+enum Mode {
+    Fast,
+    Small,
+}
+
+enum Speed {
+    Fast,
+    Slow,
+}
+
+variant Shape {
+    Dot,
+    Circle(int),
+}
+
+func Main() -> int {
+    let mode = .Small;
+    let speed = .Fast;
+    let shape = .Circle(2);
+    let count: int = .Small;
+    let missing: Mode = .Large;
+    let bare: Shape = .Circle;
+    let called: Mode = .Fast(1);
+    let fine: Mode = .Small;
+    return 0;
+}

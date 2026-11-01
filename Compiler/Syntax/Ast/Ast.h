@@ -236,6 +236,11 @@ struct PresencePattern : Pattern {
 /// `none`: the outer absence of an optional.
 struct NonePattern : Pattern {};
 
+/// `a | b | c`: matches a value any alternative matches, tried in source order. Alternatives bind no names.
+struct AlternativePattern : Pattern {
+    std::vector<PatternPtr> alternatives;
+};
+
 // pattern if guard
 struct GuardedPattern : Pattern {
     ~GuardedPattern() override;

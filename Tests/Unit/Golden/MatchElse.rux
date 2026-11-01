@@ -1,6 +1,16 @@
+// '_' is the default arm, and 'else' is still read as its older spelling. Either one comes last.
 func Main() -> int {
-    return match 7 {
+    let first = match 7 {
         0 => 1,
         _ => 2
     };
+    let second = match 7 {
+        0 => 1,
+        else => 2,
+    };
+    let misplaced = match 7 {
+        else => 1,
+        0 => 2
+    };
+    return first + second + misplaced;
 }

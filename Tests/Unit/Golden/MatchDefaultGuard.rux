@@ -1,0 +1,9 @@
+// A default arm takes whatever is left; a guard would let a value through it to no arm at all.
+func Main() -> int {
+    let ready = true;
+    return match 3 {
+        1 => 1,
+        _ if ready => 2,
+        _ => 3,
+    };
+}

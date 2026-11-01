@@ -1,2 +1,1 @@
-9:42: error: '.Left' must be written in full, as in 'Turn::Left'
-9:69: error: '.North' must be written in full, with the name of its enum or variant
+10:42: error: enum 'Direction' has no enumerator 'Left'

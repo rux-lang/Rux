@@ -808,3 +808,102 @@ TEST_CASE("the grouping help names a primitive first member as written") {
     REQUIRE(errors.front().help.has_value());
     CHECK_EQ(*errors.front().help, "write 'value is (int32 | bool)'");
 }
+
+TEST_CASE("alternatives cover the union of what each one matches") {
+    CHECK(ErrorsIn(R"(
+        enum Os { FreeBSD, Linux, MacOS, Windows }
+        func Family(os: Os) -> int32 {
+            return match os {
+                .FreeBSD | .Linux | .MacOS => 1i32,
+                .Windows => 2i32
+            };
+        }
+        func Count(found: int32?) -> int32 {
+            return match found {
+                none | .Some(0i32) => 0i32,
+                .Some(value) => value
+            };
+        }
+        func Flag(flag: bool) -> int32 {
+            return match flag {
+                true | false => 1i32
+            };
+        }
+    )")
+              .empty());
+
+    const auto missing = ErrorsIn(R"(
+        enum Os { FreeBSD, Linux, MacOS, Windows }
+        func Family(os: Os) -> int32 {
+            return match os {
+                .FreeBSD | .Linux => 1i32,
+                .Windows => 2i32
+            };
+        }
+        func Count(found: int32??) -> int32 {
+            return match found {
+                none | .Some(none) => 0i32,
+                .Some(.Some(0i32)) => 1i32
+            };
+        }
+    )");
+    CHECK(AnyContains(missing, "match on 'Os' is not exhaustive; missing Os::MacOS"));
+    CHECK(AnyContains(missing, "match on 'int32?\?' is not exhaustive; missing .Some(.Some(_))"));
+
+    const auto repeated = ErrorsIn(R"(
+        func Count(found: int32?) -> int32 {
+            return match found {
+                none | .Some(0i32) => 0i32,
+                none => 1i32,
+                .Some(_) => 2i32
+            };
+        }
+    )");
+    CHECK_EQ(CountContaining(repeated, "match arm is unreachable"), 1);
+}
+
+TEST_CASE("an alternative binds no name") {
+    const auto errors = ErrorsIn(R"(
+        func Count(found: int32?) -> int32 {
+            return match found {
+                .Some(value) | none => 0i32,
+                _ => 1i32
+            };
+        }
+    )");
+    CHECK(AnyContains(errors, "pattern alternative cannot bind 'value'"));
+    CHECK_FALSE(AnyContains(errors, "unknown"));
+}
+
+TEST_CASE("a match statement covers its subject as an expression does") {
+    const auto errors = ErrorsIn(R"(
+        func Statements(n: int32, flag: bool, found: int32?) {
+            match n {
+                1i32 | 2i32 => {}
+            }
+            match flag {
+                true => {}
+            }
+            match found {
+                .Some(_) => {}
+            }
+        }
+    )");
+    CHECK(AnyContains(errors, "match on 'int32' is not exhaustive; its arms do not cover every value"));
+    CHECK(AnyContains(errors, "match on 'bool8' is not exhaustive; missing false"));
+    CHECK(AnyContains(errors, "match on 'int32?' is not exhaustive; missing none"));
+
+    CHECK(ErrorsIn(R"(
+        func Statements(n: int32, found: int32?) {
+            match n {
+                1i32 => {}
+                _ => {}
+            }
+            match found {
+                .Some(_) => {}
+                none => {}
+            }
+        }
+    )")
+              .empty());
+}

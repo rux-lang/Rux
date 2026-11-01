@@ -203,6 +203,11 @@ const ResolvedCasePattern *SemanticModel::TryGetCasePattern(const EnumPattern &p
     return fact == facts.casePatterns.end() ? nullptr : &fact->second;
 }
 
+const ResolvedContextualCase *SemanticModel::TryGetContextualCase(const Expr &expression) const noexcept {
+    const auto fact = facts.contextualCases.find(&expression);
+    return fact == facts.contextualCases.end() ? nullptr : &fact->second;
+}
+
 const TypeRef *SemanticModel::TryGetTypedPatternType(const TypedPattern &pattern) const noexcept {
     const auto type = facts.typedPatternTypes.find(&pattern);
     return type == facts.typedPatternTypes.end() ? nullptr : &type->second;

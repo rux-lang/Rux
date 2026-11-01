@@ -179,7 +179,6 @@ TEST_CASE("variant diagnostics identify case grammar roles") {
         {"variant Choice { First { value: int next: bool; } }",
          "expected ';' after the variant case field before 'next'", ""},
         {"variant Choice { First = }", "expected an integer variant discriminant after '=' before '}'", ""},
-        {"variant Choice { First, }", "trailing comma is not allowed in variant declarations", ""},
     };
 
     for (const Case &testCase : cases) {
@@ -192,6 +191,12 @@ TEST_CASE("variant diagnostics identify case grammar roles") {
             REQUIRE(diagnostic->help.has_value());
             CHECK_EQ(*diagnostic->help, testCase.help);
         }
+    }
+    // A comma may follow the last case, as it may end any comma-separated list.
+    for (const std::string_view source :
+         {"variant Choice { First, }", "variant Choice { First(int), Second, }", "enum Mode { Fast, Small, }"}) {
+        CAPTURE(source);
+        CHECK(ParseSource(source).diagnostics.empty());
     }
 }
 

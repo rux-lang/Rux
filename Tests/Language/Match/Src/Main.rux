@@ -3,9 +3,9 @@
 // ever asserted incidentally, by tests that were really about the container or the option they happened to match
 // on. What belongs here is the construct: which patterns exist, that a payload binds, that a match is an expression
 // as well as a statement, and that arms are tried in order with only the first taken.
-// Exhaustiveness is the property worth being deliberate about. A match over a closed set needs no `else` when it
-// names every case, and the arms below are written without one wherever that is true, so removing a case from a
-// variant would fail to compile rather than silently fall through.
+// Exhaustiveness is the property worth being deliberate about. Every match, statement or expression, covers its
+// subject. A match over a closed set needs no `_` arm when it names every case, and the arms below are written without
+// one wherever that is true, so removing a case from a variant would fail to compile rather than silently fall through.
 
 import Core::{ Assert, Panic };
 
@@ -297,5 +297,63 @@ func Main() -> int {
         else => .Some(subject)
     };
     Assert(nested == none, "a ternary arm is typed the same way");
+
+    // `_` is the default arm, a comma may follow the last arm, and a block arm needs no comma after it.
+    let fallback = match subject {
+        1 => 10i32,
+        _ => 20i32,
+    };
+    Assert(fallback == 20i32, "the '_' arm takes every value the others leave");
+    var visited: int32 = 0;
+    match subject {
+        3 => { visited += 1i32; }
+        _ => { visited = -1i32; }
+    }
+    Assert(visited == 1i32, "block arms need no comma between them");
+
+    // A statement covers its subject as an expression does; `_ => {}` ignores the rest on purpose.
+    match subject {
+        0 => { visited = -1i32; }
+        _ => {}
+    }
+    Assert(visited == 1i32, "an empty default arm does nothing");
+
+    // An optional is matched by its case spelling at every level.
+    Assert(Depth(.Some(.Some(4i32))) == 4i32, "'.Some(.Some(x))' reaches the inner value");
+    Assert(Depth(.Some(none)) == -1i32, "'.Some(none)' is a present outer level with an absent inner one");
+    Assert(Depth(none) == -2i32, "'none' is the absent outer level");
+    Assert(Sign(.Some(0i32)) == 0i32 && Sign(.Some(-3i32)) == -1i32 && Sign(.Some(8i32)) == 1i32,
+           "'.Some(literal)' and a guarded '.Some(x)' choose by the present value");
+    Assert(Sign(none) == 2i32, "and 'none' takes the absent value");
+    Assert(Steps(Step::Back) == 1i32, "a case list may end with a comma");
     return 0;
+}
+
+variant Step {
+    Forward,
+    Back,
+}
+
+func Steps(step: Step) -> int32 {
+    return match step {
+        .Forward => 0i32,
+        .Back => 1i32,
+    };
+}
+
+func Depth(found: int32??) -> int32 {
+    return match found {
+        .Some(.Some(value)) => value,
+        .Some(none) => -1i32,
+        none => -2i32,
+    };
+}
+
+func Sign(value: int32?) -> int32 {
+    return match value {
+        .Some(0) => 0i32,
+        .Some(negative) if negative < 0i32 => -1i32,
+        .Some(_) => 1i32,
+        none => 2i32,
+    };
 }

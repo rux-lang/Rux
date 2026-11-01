@@ -518,6 +518,7 @@ func Flag(flag: bool) -> int {
 func Partial(n: int) {
     match n {
         1 => {}
+        _ => {}
     }
 }
 

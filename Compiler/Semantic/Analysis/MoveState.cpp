@@ -495,6 +495,11 @@ bool PatternBindsValue(const Pattern &pattern) {
     if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         return guarded->inner && PatternBindsValue(*guarded->inner);
     }
+    if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        return std::ranges::any_of(alternatives->alternatives, [](const PatternPtr &alternative) {
+            return alternative && PatternBindsValue(*alternative);
+        });
+    }
     return false;
 }
 
@@ -543,30 +548,31 @@ template bool AnalysisContext::ConsumeMatchSubject<MatchExpr::Arm>(const Expr &,
 template bool AnalysisContext::ConsumeMatchSubject<MatchStmt::Arm>(const Expr &, const TypeRef &,
                                                                    const std::vector<MatchStmt::Arm> &, SourceLocation);
 
-void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expression,
-                                                         const std::vector<const Pattern *> &patterns,
-                                                         const TypeRef &subjectType) {
+void AnalysisContext::ReportNonExhaustiveMatch(const SourceLocation location,
+                                               const std::vector<const Pattern *> &patterns,
+                                               const TypeRef &subjectType) {
     if (subjectType.IsBool()) {
         bool hasTrue = false;
         bool hasFalse = false;
-        for (const Pattern *pattern : patterns) {
-            const auto *literal = AstCast<const LiteralPattern>(pattern);
-            hasTrue = hasTrue || (literal && literal->value.text == "true");
-            hasFalse = hasFalse || (literal && literal->value.text == "false");
+        for (const Pattern *arm : patterns) {
+            for (const Pattern *pattern : ArmAlternatives(arm)) {
+                const auto *literal = AstCast<const LiteralPattern>(pattern);
+                hasTrue = hasTrue || (literal && literal->value.text == "true");
+                hasFalse = hasFalse || (literal && literal->value.text == "false");
+            }
         }
         const std::string missing = !hasTrue && !hasFalse ? "true, false" : !hasTrue ? "true" : "false";
-        EmitError(expression.location,
-                  std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), missing), {},
-                  std::format("add an arm for {}, or an 'else' arm", missing));
+        EmitError(location, std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), missing),
+                  {}, std::format("add an arm for {}, or a '_' arm", missing));
         return;
     }
     if (subjectType->kind == TypeRef::Kind::Tuple && !patterns.empty()) {
         if (const auto found = tupleMatchMissing.find(patterns.front());
             found != tupleMatchMissing.end() && found->second) {
             EmitError(
-                expression.location,
+                location,
                 std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), *found->second), {},
-                "add arms for the missing values, or an 'else' arm");
+                "add arms for the missing values, or a '_' arm");
         }
         return;
     }
@@ -579,9 +585,23 @@ void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expres
         MentionsTypeParameter(subjectType)) {
         return;
     }
-    EmitError(expression.location,
+    EmitError(location,
               std::format("match on '{}' is not exhaustive; its arms do not cover every value", subjectType.ToString()),
-              {}, "add an 'else' arm");
+              {}, "add a '_' arm");
+}
+
+std::vector<const Pattern *> AnalysisContext::ArmAlternatives(const Pattern *pattern) {
+    if (const auto *alternatives = AstCast<const AlternativePattern>(pattern)) {
+        std::vector<const Pattern *> parts;
+        parts.reserve(alternatives->alternatives.size());
+        for (const PatternPtr &alternative : alternatives->alternatives) {
+            if (alternative) {
+                parts.push_back(alternative.get());
+            }
+        }
+        return parts;
+    }
+    return {pattern};
 }
 
 TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
@@ -638,6 +658,17 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         if (expectedOutcome) {
             expectedExpressionTypes.insert_or_assign(arm.body.get(), *expectedOutcome);
         }
+        // An arm that names a case without its type takes the type of the match: the one its context expects, or the
+        // one the arms before it settled on.
+        else if (IsContextualCaseExpression(*arm.body)) {
+            if (const auto expected = expectedExpressionTypes.find(&expression);
+                expected != expectedExpressionTypes.end()) {
+                ExpectContextualCaseArgument(arm.body.get(), expected->second);
+            }
+            else if (!resultType.IsUnknown() && !resultType.MentionsIncompleteNative()) {
+                ExpectContextualCaseArgument(arm.body.get(), resultType);
+            }
+        }
         // A diverging arm, such as `return` or a call to `Panic`, leaves the match and never decides its type.
         const TypeRef checkedArm = CheckExpr(*arm.body);
         const TypeRef armType = IsDivergingExpression(*arm.body) ? TypeRef::MakeUnknown() : checkedArm;
@@ -693,7 +724,7 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     else {
         // An expression has to produce a value whatever the subject holds. Enums and native subjects report their
         // missing cases through pattern validation; every other subject is reported here.
-        ReportNonExhaustiveMatchExpression(expression, patterns, subjectType);
+        ReportNonExhaustiveMatch(expression.location, patterns, subjectType);
         exits.push_back(matchEntry);
     }
     MergeTrackedFlows(exits);

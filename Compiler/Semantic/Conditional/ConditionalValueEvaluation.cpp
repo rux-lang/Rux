@@ -785,7 +785,7 @@ int ConditionalEvaluator::Impl::SelectMatchArmImpl(const Expr &subject,
     for (std::size_t i = 0; i < arms.size(); ++i) {
         if (arms[i].empty()) {
             if (elseIndex >= 0) {
-                EmitError(location, "a compile-time 'when' match can have only one 'else' arm");
+                EmitError(location, "a compile-time 'when' match can have only one default arm");
                 reportedError = true;
             }
             elseIndex = static_cast<int>(i);

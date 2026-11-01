@@ -102,6 +102,16 @@ struct ResolvedCasePattern {
     std::unordered_map<std::string, TypeRef> substitutions;
 };
 
+/// A case written without its type, `.Case` or a single-payload `.Some(value)`, `.Success(value)` or
+/// `.Failure(value)`, that the type its context expects resolved to a case of a user enum or variant. A call
+/// `.Case(...)` records an ordinary case constructor binding on the call instead.
+struct ResolvedContextualCase {
+    const EnumDecl *declaration = nullptr;
+    const EnumDecl::Variant *selectedCase = nullptr;
+    /// The declaration's type parameters, bound to the arguments of the expected type.
+    std::unordered_map<std::string, TypeRef> substitutions;
+};
+
 /// How a binding under a borrowed native match subject refers to the payload it names. An alias is the payload in
 /// place, at its offset inside the subject; a view reads several members of a sum through the subject's own tag.
 enum class PatternBindingMode {
@@ -321,6 +331,9 @@ struct SemanticFacts {
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
+    /// Each case written without its type that is not a call, keyed by the shorthand or native constructor
+    /// expression, with the user case its expected type selected.
+    std::unordered_map<const Expr *, ResolvedContextualCase> contextualCases;
     /// The resolved annotation of each accepted typed pattern, before generic substitution. What it selects follows
     /// from the substituted subject and annotation through `ClassifyNativeSelection`.
     std::unordered_map<const TypedPattern *, TypeRef> typedPatternTypes;
@@ -416,6 +429,8 @@ struct SemanticModel {
 
     /// Returns null for non-case patterns and case patterns rejected during semantic analysis.
     [[nodiscard]] const ResolvedCasePattern *TryGetCasePattern(const EnumPattern &pattern) const noexcept;
+    /// Returns null unless `expression` is a case written without its type that its expected type resolved.
+    [[nodiscard]] const ResolvedContextualCase *TryGetContextualCase(const Expr &expression) const noexcept;
     /// Returns null for a typed pattern whose annotation did not resolve.
     [[nodiscard]] const TypeRef *TryGetTypedPatternType(const TypedPattern &pattern) const noexcept;
     /// Returns null unless the pattern selects one member of a sum subject.

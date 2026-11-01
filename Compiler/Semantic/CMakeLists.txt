@@ -7,6 +7,7 @@ rux_add_component(RuxSemantic
     Analysis/Intrinsics.cpp
     Analysis/TypeResolution.cpp
     Analysis/ConstantChecking.cpp
+    Analysis/ContextualCases.cpp
     Analysis/Assignments.cpp
     Analysis/CallableResolution.cpp
     Analysis/TypeLayout.cpp

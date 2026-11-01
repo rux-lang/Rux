@@ -515,6 +515,10 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
         }
         return lowered;
     };
+    // A case written without its type is built as the case its expected type resolved, whatever its spelling.
+    if (const ResolvedContextualCase *contextual = model.TryGetContextualCase(expr)) {
+        return finish(LowerContextualCase(expr, *contextual));
+    }
     if (HirExprPtr basic = LowerBasicExpr(expr)) {
         return finish(std::move(basic));
     }

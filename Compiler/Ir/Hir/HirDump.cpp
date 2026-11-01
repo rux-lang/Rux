@@ -255,6 +255,16 @@ static std::string PrintPattern(const HirPattern &pat) {
     if (auto *p = HirCast<const HirGuardedPattern>(&pat)) {
         return PrintPattern(*p->inner) + " if " + PrintExpr(*p->guard);
     }
+    if (auto *p = HirCast<const HirAlternativePattern>(&pat)) {
+        std::string s;
+        for (std::size_t i = 0; i < p->alternatives.size(); ++i) {
+            if (i) {
+                s += " | ";
+            }
+            s += PrintPattern(*p->alternatives[i]);
+        }
+        return s;
+    }
     if (auto *p = HirCast<const HirNativeSubsetPattern>(&pat)) {
         return (p->binding ? PrintPattern(*p->binding) : std::string("_")) + ": " + p->subsetType.ToString();
     }

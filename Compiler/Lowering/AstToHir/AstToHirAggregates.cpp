@@ -585,8 +585,9 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
 
 HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &targetType) {
     // A native destination builds its levels explicitly, by the route analysis accepted.
-    if (IsNativeType(targetType) || AstCast<const NativeConstructExpr>(&expression) ||
-        AstCast<const NoneExpr>(&expression)) {
+    const bool nativeConstructor =
+        AstCast<const NativeConstructExpr>(&expression) && !model.TryGetContextualCase(expression);
+    if (IsNativeType(targetType) || nativeConstructor || AstCast<const NoneExpr>(&expression)) {
         return LowerNativeAs(expression, targetType);
     }
 

@@ -224,7 +224,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
         !(error->kind == TypeRef::Kind::Named && EnumNamed(BaseTypeName(error->name)))) {
         EmitError(expression.location,
                   std::format("'catch' arms do not cover every error of type '{}'", error.ToString()), {},
-                  "add an 'else' arm, or bind the whole error, as in 'e => ...'");
+                  "add a '_' arm, or bind the whole error, as in 'e => ...'");
     }
     MergeTrackedFlows(exits);
     return success;

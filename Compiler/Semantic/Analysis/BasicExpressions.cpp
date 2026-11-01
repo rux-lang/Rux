@@ -348,6 +348,10 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             (AstCast<const IdentExpr>(assignment->value.get()) || AstCast<const PathExpr>(assignment->value.get()))) {
             expectedExpressionTypes.insert_or_assign(assignment->value.get(), target);
         }
+        // A case written without its type takes the type of the place it is stored in.
+        if (simpleAssignment) {
+            ExpectContextualCaseArgument(assignment->value.get(), target);
+        }
         TypeRef value = CheckExpr(*assignment->value);
         // `a = b = 7` reads as a chain, but the inner assignment is a statement-like expression with no value.
         if (const auto *inner = AstCast<const AssignExpr>(assignment->value.get())) {

@@ -8,7 +8,7 @@ The design favors locally visible ownership effects, explicit signatures, and se
 
 A typed integer initializer, assignment, return, call argument, or aggregate element supplies the required type to both arms of `condition ? first : second`. Unsuffixed integer literals must fit that type; nested conditional arms receive the same context. Each selected arm is materialized at the required width before the values merge, including integers wider than one machine word. The condition runs once and only the selected arm is evaluated.
 
-A `match` expression passes a native expected type to its arms the same way. When the annotation or return type the match is used for is an optional, a fallible or a sum, that type is the match's and every arm's: `none`, `.Success(value)` and `.Failure(error)` take it, and a plain arm converts to it as an initializer would, so `let r: int32? = match n { 0 => none, else => n };` makes `n` the present value and `let s: int32 | bool = match n { 0 => false, else => n };` injects each arm into its member; an arm that cannot convert is reported where it is. With no such expected type, the first arm whose type is complete decides the match and the open arms before it are checked against that type; a match whose arms are all open needs an annotation. Arms whose types are complete must still agree with each other.
+A `match` expression passes a native expected type to its arms the same way. When the annotation or return type the match is used for is an optional, a fallible or a sum, that type is the match's and every arm's: `none`, `.Success(value)` and `.Failure(error)` take it, and a plain arm converts to it as an initializer would, so `let r: int32? = match n { 0 => none, _ => n };` makes `n` the present value and `let s: int32 | bool = match n { 0 => false, _ => n };` injects each arm into its member; an arm that cannot convert is reported where it is. With no such expected type, the first arm whose type is complete decides the match and the open arms before it are checked against that type; a match whose arms are all open needs an annotation. Arms whose types are complete must still agree with each other.
 
 An unsuffixed integer literal used as an operand of an arithmetic, bitwise, or comparison operator takes the integer type of the other operand, on either side: `year % 4 != 0` needs no suffix for an `int32` year. The literal must fit that type, so `count == -1` with an unsigned `count` and `narrow + 300` with a `uint8` are errors rather than a comparison of bits or a wrapped value. A shift amount keeps its own type rather than taking the shifted operand's, but it must lie between zero and one less than the shifted operand's bit width: a count known while compiling is an error outside that range (`shift count 32 is out of range for 'int32', which takes counts from 0 to 31`), and any other count stops the program with `Panic: shift count out of range`, on every target and in every build profile. A count masked below the width, as in `value << (n & 31)`, needs no check.
 
@@ -114,7 +114,7 @@ enum Month: uint8 {
 }
 ```
 
-Members are values, written `Month::January` or `.January` where context already fixes `Month`. Their discriminants participate in the existing explicit enum/integer conversions and scalar comparisons. Matching an enum selects members and cannot bind data:
+Members are values, written `Month::January` or `.January` where context already fixes `Month` (see [Cases written without their type](#cases-written-without-their-type)). Their discriminants participate in the existing explicit enum/integer conversions and scalar comparisons. Matching an enum selects members and cannot bind data:
 
 ```rux
 func Days(month: Month) -> int32 {
@@ -126,7 +126,23 @@ func Days(month: Month) -> int32 {
 }
 ```
 
-A `match` expression must produce a value for every value of its subject: it names every member of an enum, both `true` and `false` of a bool, and, because the values of an integer, a character, a float, a string or a structure are not listed one by one, ends a match on one of them with an `else` arm, a binding, or a structure pattern whose fields all match anything; otherwise it is `match on 'char32' is not exhaustive; its arms do not cover every value`. A tuple is covered by the combinations of its elements, so `match flags { (true, true) => 1, (false, _) => 2 }` is rejected with `missing (true, false)`, while the four `(bool, bool)` combinations cover it without `else`. A case is covered by its arms together, so `.Light(true)` and `.Light(false)` cover a `Light(bool)` case without a `.Light(_)` arm, while literals of an integer payload never cover theirs. A match statement on an enum names every member too, while one on any other subject may leave values unmatched, and those values skip it. Converting an integer to an enum with `as` is unchecked, so it can produce a value that is no member at all. An exhaustive match without an `else` arm that meets such a value stops the program with `Panic: no match arm matched value of 'Month'` and the location of the `match`, instead of taking an arm or falling through; check an untrusted integer before converting it.
+Every `match`, whether it produces a value or is a statement, covers every value of its subject: it names every member of an enum, both `true` and `false` of a bool, and, because the values of an integer, a character, a float, a string or a structure are not listed one by one, ends a match on one of them with a `_` arm, a binding, or a structure pattern whose fields all match anything; otherwise it is `match on 'char32' is not exhaustive; its arms do not cover every value`. A statement that means to ignore the values it does not name says so with `_ => {}`, so turning a statement into an expression never changes what it must cover. A tuple is covered by the combinations of its elements, so `match flags { (true, true) => 1, (false, _) => 2 }` is rejected with `missing (true, false)`, while the four `(bool, bool)` combinations cover it without `_`. A case is covered by its arms together, so `.Light(true)` and `.Light(false)` cover a `Light(bool)` case without a `.Light(_)` arm, while literals of an integer payload never cover theirs. Converting an integer to an enum with `as` is unchecked, so it can produce a value that is no member at all. An exhaustive match without a `_` arm that meets such a value stops the program with `Panic: no match arm matched value of 'Month'` and the location of the `match`, instead of taking an arm or falling through; check an untrusted integer before converting it.
+
+One arm grammar serves `match`, `catch`, and the compile-time `when`:
+
+```rux
+func Family(os: OperatingSystem) -> int32 {
+    return match os {
+        .FreeBSD | .Linux | .macOS => 1i32,
+        _ => 2i32,
+    };
+}
+```
+
+- `_` is the default arm. It takes every value the arms before it leave, so it is the last arm (`the default arm must be the last match arm`) and takes no guard (`the default arm '_' cannot have a guard`). `_` is the same wildcard at every level, as in `.Some(_)`. The older spelling `else =>` is still accepted for the default arm.
+- `a | b` joins alternatives: the arm is taken when any of them matches, tried in source order. Alternatives may nest inside a payload, as in `.Digit(0 | 1)`, and a guard after them, `.A | .B if ready`, covers all of them. An alternative binds no names (`pattern alternative cannot bind 'value'`); bind in an arm of its own instead. Coverage counts what the alternatives match together, so `true | false` covers a bool. In a typed pattern the annotation is a whole type, so `v: A | B` is still a sum annotation, not two alternatives.
+- A comma separates arms and may follow the last one, and an arm whose body is a block, or a declaration in a declaration-level `when`, may leave it out. Enum and variant case lists also take a comma after their last case.
+- A `when` arm's patterns are compile-time values compared with its subject, so `when #target.os { .FreeBSD | .Linux => { ... }, _ => { ... } }` takes the same `|` alternatives and `_` default; its older `a, b =>` alternatives are still accepted.
 
 `variant` is a closed tagged union. A case may be unit-like, carry positional values, or carry named fields, and the declaration may be generic. Its tag is private: source cannot choose a base type or assign case discriminants.
 
@@ -143,7 +159,7 @@ variant Shape {
 }
 ```
 
-Cases are constructed with their declaration name. A unit case may omit `()` where it is already a value; positional and named payloads use the corresponding call or initializer syntax. A match tests the active case before reading its payload, and an exhaustive match covers every declared case:
+Cases are constructed with their declaration name, or without it where the context fixes the variant, as described below. A unit case may omit `()` where it is already a value; positional and named payloads use the corresponding call or initializer syntax. A match tests the active case before reading its payload, and an exhaustive match covers every declared case:
 
 ```rux
 func Area(shape: Shape) -> float64 {
@@ -154,6 +170,23 @@ func Area(shape: Shape) -> float64 {
     };
 }
 ```
+
+### Cases written without their type
+
+`.Case` and `.Case(...)` name an enum member or a variant case without its type wherever the type the expression must have is already known: an annotated `let` or `var`, a function or method parameter, a field initializer, a returned value, a `fail` operand, an assignment to a typed place, and an arm of a `match` whose type its context or its earlier arms fixed. An optional destination names the type of its present value, so `let color: Color? = .Red;` builds a present `Color::Red`. A generic variant takes its type arguments from the expected type, so `return .Nothing;` in a function returning `Maybe<T>` needs none written. The case payload is itself a destination, so `.Framed(.Circle(4))` resolves both levels.
+
+```rux
+func Find(values: int32[..], wanted: int32) -> Lookup<int32> {
+    for value in values {
+        if value == wanted { return .Found(value); }
+    }
+    return .Missing;
+}
+```
+
+The expected type is the only place a case is looked up; no other declaration is searched for its name. Without an expected type, `let mode = .Fast;` is `case '.Fast' needs an expected type to name its enum or variant`, with help naming `Mode::Fast` when exactly one type in scope declares the case; write the qualified form there. A destination that is not an enum or variant, or one without that case, is reported as such. A case with fields needs its values (`.Found` alone is an error where `Lookup<int32>` is expected), and an enum member takes none. A case with named fields is still built with its type, as in `Shape::Circle { radius: 1.0 }`.
+
+A variant that is itself the expected type and declares a `Some`, `Success`, or `Failure` case builds that case from `.Some(value)`, `.Success(value)`, or `.Failure(value)`, in place of the native constructor of the same name. Through an optional or a fallible, or where no such variant is expected, those spellings remain the native constructors.
 
 Variant equality is structural. Values with different active cases are unequal without inspecting inactive storage. Values with the same case compare each active payload in declaration order, recursively using that payload type's equality; a variant is not equality-comparable when one of its reachable payloads is not. This applies to wide, nested, generic, tuple, and named payloads and does not compare padding or stale bytes.
 
@@ -186,7 +219,7 @@ Four compiler-owned type forms describe outcomes without a library declaration. 
 | Form     | Meaning                                                                                        | Inspection                                                                    |
 | -------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `A \| B` | A _sum_: one value of a set of distinct types.                                                 | Typed patterns, qualified case patterns, `is`.                                |
-| `T?`     | An _optional_: a present `T` or absence. `T??` keeps both levels.                              | `value?`, `.Some(pattern)`, `none`, typed presence patterns, `is`, `?`, `??`. |
+| `T?`     | An _optional_: a present `T` or absence. `T??` keeps both levels.                              | `.Some(pattern)`, `none`, `value?`, typed presence patterns, `is`, `?`, `??`. |
 | `T ! E`  | A _fallible_: a successful `T` or a failed `E`, even when `T` and `E` are the same type.       | `.Success(pattern)`, `.Failure(pattern)`, `catch`, `?`, `? else`.             |
 | `()`     | The _unit_, the empty tuple, whose only value is also written `()`. `! E` is exactly `() ! E`. | The pattern `()` or a binding.                                                |
 
@@ -214,22 +247,22 @@ func Describe(outcome: (Options | Defaults) ! (DecodeError | IoError)) -> int32 
         .Success(options: Options) => options.verbose ? 2i32 : 1i32,
         .Success(_: Defaults) => 0i32,
         .Failure(DecodeError::InvalidDigit(position)) => position,
-        else => -1i32
+        _ => -1i32
     };
 }
 ```
 
-`.Success(p)` and `.Failure(p)` select a channel, and `.Some(p)` and `none` an optional level. The presence suffix `p?` is exact shorthand for `.Some(p)`, so `value??` binds the payload of two levels and `none?` matches a present absence. A typed pattern `v: T` selects the sum member `T` and binds it, a subset `v: A | B` binds the matched members as a smaller sum, and on an optional subject the typed presence pattern selects one present level whose payload has that type; on a fallible subject it must name the whole type. `_: T` selects without binding. A qualified case pattern `Type::Case(...)` selects the variant member and its case at once, and is ambiguous when two members are instantiations of the same variant; an unqualified `.Case` on a sum subject is rejected in favour of `Type::Case`. Guards and the unit pattern `()` work as elsewhere.
+`.Success(p)` and `.Failure(p)` select a channel, and `.Some(p)` and `none` an optional level, so `.Some(.Some(value))` binds the payload of two levels and `.Some(none)` matches a present absence. The presence suffix `p?` is the older shorthand for `.Some(p)` and is still accepted: `value??` is `.Some(.Some(value))` and `none?` is `.Some(none)`. Alternatives combine levels, as in `none | .Some(0)`. A typed pattern `v: T` selects the sum member `T` and binds it, a subset `v: A | B` binds the matched members as a smaller sum, and on an optional subject the typed presence pattern selects one present level whose payload has that type; on a fallible subject it must name the whole type. `_: T` selects without binding. A qualified case pattern `Type::Case(...)` selects the variant member and its case at once, and is ambiguous when two members are instantiations of the same variant; an unqualified `.Case` on a sum subject is rejected in favour of `Type::Case`. Guards and the unit pattern `()` work as elsewhere.
 
 An identifier pattern binds only a free name. A name that already resolves to a type, alias, generic parameter, enum, variant, interface, constant, function, or module, or that spells a case of the subject or of one of its members, is rejected rather than silently binding the whole subject: `Options =>` on `Options | Defaults` and `Missing =>` on a `DecodeError` channel are errors whose help names `options: Options`, `Options { ... }`, or `DecodeError::Missing`. Shadowing a local variable or parameter remains legal.
 
-Coverage is checked over every level, so a missing `.Failure(_: IoError)` or `.Some(none)` is named in the diagnostic. An arm covered entirely by earlier unguarded arms is unreachable, but an `else` arm never is: it covers whatever remains, possibly nothing, which keeps `x: T => ..., else => ...` valid when a generic `T | U` collapses at `T = U`. Patterns that depend on type parameters are rechecked for each instantiation and report conflicts there, with both locations.
+Coverage is checked over every level, so a missing `.Failure(_: IoError)` or `.Some(none)` is named in the diagnostic. An arm covered entirely by earlier unguarded arms is unreachable, but a `_` arm never is: it covers whatever remains, possibly nothing, which keeps `x: T => ..., _ => ...` valid when a generic `T | U` collapses at `T = U`. Patterns that depend on type parameters are rechecked for each instantiation and report conflicts there, with both locations.
 
 A match consumes an owned subject, so arms that bind payloads own them and the payload of an arm that binds nothing is destroyed there. A borrowed subject is matched in place: bindings alias the payloads where they lie and a subset binding reads the original tag through the borrow. Such a view can be read and matched but not borrowed again, passed by reference, stored, or moved, and only a single-member binding writes through. `==` and `!=` compare native values structurally: the tags of each level first, then the active payloads.
 
 ### Discarded results
 
-A fallible that is dropped loses its failure, so an expression statement producing a fallible, a bare-expression arm of a match statement that produces one, and `let _ = outcome;` are errors, and a fallible local that nothing reads is a warning. These are practical checks rather than a proof of handling: reading, passing, storing, or overwriting a fallible counts as a use, and nothing is followed through fields, containers, or later writes. A match covering both channels with `.Success(_) => {}` and `.Failure(_) => {}` discards a fallible deliberately, and `catch { else => {} }` does so for a unit success only.
+A fallible that is dropped loses its failure, so an expression statement producing a fallible, a bare-expression arm of a match statement that produces one, and `let _ = outcome;` are errors, and a fallible local that nothing reads is a warning. These are practical checks rather than a proof of handling: reading, passing, storing, or overwriting a fallible counts as a use, and nothing is followed through fields, containers, or later writes. A match covering both channels with `.Success(_) => {}` and `.Failure(_) => {}` discards a fallible deliberately, and `catch { _ => {} }` does so for a unit success only.
 
 ## Membership Tests
 
@@ -625,7 +658,7 @@ func LoadWithDefaults() -> Options | Defaults ! IoError {
 }
 ```
 
-The arms use ordinary match-arm grammar, including guards and an `else` arm, and must cover every error value. Each arm either produces a value that converts to the success type or leaves through `fail`, `return`, `break`, `continue`, a call to `Panic`, or a no-return function; a leaving arm never decides the result type. A block arm completes with `()`, so `Close(file) catch { else => {} };` is valid only for a unit success; a non-unit success never acquires an invented fallback value. An arm's own `fail` or `?` leaves the enclosing function normally and is not caught again.
+The arms use ordinary match-arm grammar, including guards, alternatives and a `_` arm, and must cover every error value. Each arm either produces a value that converts to the success type or leaves through `fail`, `return`, `break`, `continue`, a call to `Panic`, or a no-return function; a leaving arm never decides the result type. A block arm completes with `()`, so `Close(file) catch { _ => {} };` is valid only for a unit success; a non-unit success never acquires an invented fallback value. An arm's own `fail` or `?` leaves the enclosing function normally and is not caught again.
 
 `catch` binds tightly to the postfix expression before it, so `a + F() catch { ... }` recovers `F()` alone, and a chain continues after the closing brace. It consumes its subject: a named copyable subject is copied, a named move-only subject is transferred as `(<-outcome) catch { ... }`, and a borrowed fallible is never a subject. An arm that binds the error owns it, so an error payload that prohibits moving cannot be bound by value. A `match` expression may be the subject, as in `let value = match key { ... } catch { ... };`; a match statement takes no postfix operator.
 

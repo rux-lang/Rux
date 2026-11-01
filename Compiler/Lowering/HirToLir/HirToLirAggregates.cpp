@@ -178,6 +178,11 @@ bool HirToLirContext::PatternTakesEveryValue(const HirPattern &pattern) {
             return PatternTakesEveryValue(*field.pattern);
         });
     }
+    if (const auto *alternatives = HirCast<const HirAlternativePattern>(&pattern)) {
+        return std::ranges::any_of(alternatives->alternatives, [](const HirPatternPtr &alternative) {
+            return PatternTakesEveryValue(*alternative);
+        });
+    }
     return false;
 }
 
@@ -685,6 +690,39 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
 
     if (auto *p = HirCast<const HirNativeSubsetPattern>(&pat)) {
         return LowerNativeSubsetPattern(*p, subjectVal, subjectSlot);
+    }
+
+    // Alternatives are tried in order and bind nothing, so the first one that matches decides and the rest are skipped.
+    // An alternative accounts for no payload of its own: what the arm leaves is settled by the pattern around it.
+    if (auto *p = HirCast<const HirAlternativePattern>(&pat)) {
+        std::vector<std::pair<LirReg, TypeRef>> *const residual = std::exchange(residualPayloads, nullptr);
+        const std::uint32_t mergeBlock = NewBlock("pattern.alternatives.merge");
+        LirPhiEdges preds;
+        for (std::size_t index = 0; index < p->alternatives.size(); ++index) {
+            const LirReg matched =
+                LowerPattern(*p->alternatives[index], subjectVal, subjectType, enumPayload, subjectSlot);
+            preds.emplace_back(matched, builder->CurrentBlock());
+            if (index + 1 == p->alternatives.size()) {
+                Jump(mergeBlock);
+                break;
+            }
+            const std::uint32_t nextBlock = NewBlock("pattern.alternative");
+            Branch(matched, mergeBlock, nextBlock);
+            SetBlock(nextBlock);
+        }
+        residualPayloads = residual;
+        SetBlock(mergeBlock);
+        if (preds.empty()) {
+            return EmitConst("0", TypeRef::MakeBool());
+        }
+        const LirReg result = NewReg();
+        LirInstr phi;
+        phi.dst = result;
+        phi.op = LirOpcode::Phi;
+        phi.type = TypeRef::MakeBool();
+        phi.phiPreds = std::move(preds);
+        Emit(std::move(phi));
+        return result;
     }
 
     if (auto *p = HirCast<const HirGuardedPattern>(&pat)) {

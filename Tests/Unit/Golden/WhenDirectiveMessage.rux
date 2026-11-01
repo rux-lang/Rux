@@ -3,8 +3,8 @@
 const Message = "unsupported target";
 
 when #target.pointerBits {
-    32 => #Error(Message)
-    16 => #Warn("prefix " + Message)
+    32 => #Error(Message),
+    16 => #Warn("prefix " + Message),
     else => #Warn(Describe(Message))
 }
 

@@ -48,6 +48,11 @@ void CollectPatternUses(const Pattern &pattern, NameSet &uses) {
             CollectPatternUses(*element, uses);
         }
     }
+    else if (const auto *alternatives = AstCast<const AlternativePattern>(&pattern)) {
+        for (const auto &alternative : alternatives->alternatives) {
+            CollectPatternUses(*alternative, uses);
+        }
+    }
 }
 
 void CollectExpressionUses(const Expr &expression, NameSet &uses) {

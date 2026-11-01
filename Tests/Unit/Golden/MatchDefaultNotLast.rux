@@ -1,0 +1,16 @@
+// A default arm takes every value the arms before it leave, so no arm can follow it.
+func Read() -> int ! int {
+    return 1;
+}
+
+func Main() -> int {
+    match 3 {
+        _ => {}
+        1 => {}
+    }
+    let value = Read() catch {
+        _ => 0,
+        e => e,
+    };
+    return value;
+}

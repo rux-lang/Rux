@@ -1,0 +1,25 @@
+// A match statement covers every value of its subject, as a match expression does; '_ => {}' ignores the rest.
+enum Mode {
+    Fast,
+    Small,
+}
+
+func Main() -> int {
+    var total = 0;
+    let n = 4;
+    match n {
+        0 => { total += 1; }
+        1 | 2 => { total += 2; }
+    }
+    match n > 2 {
+        true => { total += 3; }
+    }
+    match Mode::Fast {
+        Mode::Fast => { total += 4; }
+    }
+    match n {
+        0 => { total += 5; }
+        _ => {}
+    }
+    return total;
+}

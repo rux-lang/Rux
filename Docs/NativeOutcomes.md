@@ -10,7 +10,7 @@ This page records why the native outcome forms are shaped the way they are, wher
 | `A \| B`                | One value of a set of distinct resolved types: a _sum_.                                     | Typed patterns, qualified case patterns, `is`.                          |
 | `T ! E`                 | A successful `T` or a failed `E`: a _fallible_. Either payload may be any well-formed type. | `.Success(p)`, `.Failure(p)`, `catch`, `?`, `? else`.                   |
 | `! E`                   | Exactly `() ! E`: successful completion or a failed `E`.                                    | The same operations as every fallible.                                  |
-| `T?`                    | A present `T` or absence: an _optional_, preserving every level.                            | `value?`, `.Some(p)`, `none`, typed presence patterns, `is`, `?`, `??`. |
+| `T?`                    | A present `T` or absence: an _optional_, preserving every level.                            | `.Some(p)`, `none`, `value?`, typed presence patterns, `is`, `?`, `??`. |
 | `()`                    | The built-in empty tuple, the _unit_, whose only value is also `()`.                        | The pattern `()` or a binding.                                          |
 | `union Storage { ... }` | Untagged overlapping storage.                                                               | Field access.                                                           |
 
@@ -39,10 +39,10 @@ Diagnostics, lint messages, and these docs use one vocabulary: a _member_ is one
 | D17 | Tooling                   | Every syntax form is supported by the formatter, dumps, and lint traversal.                                                                                                                                                      | Every fixture survives the workspace tooling.                                                                    |
 | D18 | Migration                 | Conflicting identifiers were renamed before `none`, `fail`, and `catch` were reserved; the shape-recognized `Result`/`Option` protocols coexisted until the packages migrated, then were removed.                                | Coexistence alone could not prevent keyword breakage, and removal had to wait for an audited migration.          |
 | D19 | Public errors             | Exact sum widening is available; named error variants keep a public abstraction and original causes.                                                                                                                             | An alias of a sum hides no dependency type and does not stabilize exhaustive callers.                            |
-| D20 | Presence suffix           | A tight postfix `?` on a primary pattern is exact shorthand for `.Some(pattern)`; `value??` peels two levels.                                                                                                                    | The common present case needs no constructor name or repeated payload type, mirroring expression `?`.            |
+| D20 | Presence suffix           | A tight postfix `?` on a primary pattern is exact shorthand for `.Some(pattern)`; `value??` peels two levels. `.Some(p)`, `.Some(.Some(p))`, and `.Some(none)` are the canonical spellings, and the suffix is kept only until packages migrate. | The case form is the one pattern grammar every level shares; `?` is left to optionals in expressions.            |
 | D21 | Extension of native forms | Native forms are not `extend` targets and implement no interface; reusable operations are generic functions whose parameters spell the forms, and inference descends through them.                                               | Anonymous compiler-owned types have no declaring package to own a method set.                                    |
 | D22 | Optional widening         | `A?` widens to `(A \| B)?` by injection or subset widening of the payload while preserving absence; presence is never constructed inside an existing optional.                                                                   | It mirrors fallible channel widening, and identity still wins at the outer level.                                |
-| D23 | Collapse-safe `else`      | An `else` arm is never diagnosed as unreachable; only typed, qualified, native, literal, and unit arms covered by earlier unguarded arms are.                                                                                    | `x: T => ..., else => ...` must stay valid when `T = U`.                                                         |
+| D23 | Collapse-safe `_`         | A `_` default arm (or its older spelling `else`) is never diagnosed as unreachable; only typed, qualified, native, literal, and unit arms covered by earlier unguarded arms are.                                                 | `x: T => ..., _ => ...` must stay valid when `T = U`.                                                            |
 | D24 | Free-name binding         | An identifier pattern naming a type, alias, generic parameter, enum, variant, interface, constant, function, or module, or a case of the subject, is rejected instead of binding; shadowing a variable or parameter stays legal. | With typed patterns, `Options =>` is the obvious slip, and a bare binding silently matches everything.           |
 | D25 | Fallible `Main`           | `Main` may return `! E` or `int ! E`; a failure runs ordinary cleanup and exits with status 1 without printing.                                                                                                                  | Every executable test is an integer `Main`; otherwise each top-level `?` needs a wrapper.                        |
 
@@ -74,7 +74,7 @@ The required counterexample is `R = int32 ! E` converted to `(int32 | R) ! E`: f
 
 ## Discard Diagnostics and Their Limits
 
-An expression statement producing a fallible, a bare-expression arm of a match statement producing one, and `let _ = outcome;` are errors; a fallible local that nothing reads is a warning, because many fixtures hold a fallible only to observe its destruction. Reading, passing, returning, storing, or overwriting a fallible counts as a use, and nothing is followed through fields, containers, sums, optionals, or later writes. These are practical checks, not eventual-handling proofs. A two-channel match with `.Success(_) => {}` and `.Failure(_) => {}` discards any fallible deliberately; `catch { else => {} }` does so for a unit success only.
+An expression statement producing a fallible, a bare-expression arm of a match statement producing one, and `let _ = outcome;` are errors; a fallible local that nothing reads is a warning, because many fixtures hold a fallible only to observe its destruction. Reading, passing, returning, storing, or overwriting a fallible counts as a use, and nothing is followed through fields, containers, sums, optionals, or later writes. These are practical checks, not eventual-handling proofs. A two-channel match with `.Success(_) => {}` and `.Failure(_) => {}` discards any fallible deliberately; `catch { _ => {} }` does so for a unit success only.
 
 ## Public Error Boundaries
 
@@ -87,7 +87,7 @@ Deliberately not introduced: optional chaining `?.`, a brace-less `catch fallbac
 | Wanted                              | Write                                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------------- |
 | `let else`                          | `let v = option ?? return none;` or `let v = result catch { _ => return ...; };` |
-| A bare `catch fallback`             | `result catch { else => fallback }`                                              |
+| A bare `catch fallback`             | `result catch { _ => fallback }`                                                 |
 | `From` conversion                   | `value? else (e => Wrap(e, context))`                                            |
 | `unwrap`/`expect` in a test         | `let value = result catch { e => Panic(message) };`                              |
 | A method on an optional or fallible | A generic free function, such as `Core::Succeeded` and `Core::Failed`            |
@@ -116,9 +116,9 @@ Code written against shape-recognized `Result`/`Option` variants migrates leaf A
 | `return Result::Error(error)`                                             | `fail error;` or `return .Failure(error);`                                                     |
 | `Option<T>`, `Option<Option<T>>`                                          | `T?`, `T??`                                                                                    |
 | `Option::Some(value)`, `Option::None`                                     | `.Some(value)` (or a plain value when unambiguous), `none`                                     |
-| Option matching                                                           | `value?` or `.Some(pattern)`, and `none`                                                       |
+| Option matching                                                           | `.Some(pattern)` and `none`                                                                    |
 | `IsSome`/`IsNone`                                                         | `value is T`, or a presence match                                                              |
-| `ValueOr` on an option / on a result                                      | `option ?? fallback` / `result catch { else => fallback }`                                     |
+| `ValueOr` on an option / on a result                                      | `option ?? fallback` / `result catch { _ => fallback }`                                        |
 | `IsSuccess`/`IsError`                                                     | A two-arm match, or `Core::Succeeded`/`Core::Failed`                                           |
 | Assertion followed by extraction                                          | `let value = result catch { e => Panic(message) };`                                            |
 | Status enum with a success member (`-> IoError` with `None = 0`)          | `! E` with the success member, `IsOk`, and `IsError` removed                                   |
@@ -130,7 +130,7 @@ Code written against shape-recognized `Result`/`Option` variants migrates leaf A
 Idioms that worked well during the first-party migration:
 
 - A fallible test `Main` (`func Main() -> ! E` or `-> int ! E`) lets every step use `?`; a failure exits with status 1 and fails the test.
-- `call() catch { else => Panic(message) }` for an expected success inside a non-fallible function, and a per-file helper for an expected failure:
+- `call() catch { _ => Panic(message) }` for an expected success inside a non-fallible function, and a per-file helper for an expected failure:
 
   ```rux
   func Refusal<T, E>(outcome: T ! E) -> E {
@@ -141,7 +141,7 @@ Idioms that worked well during the first-party migration:
   }
   ```
 
-- Cleanup whose outcome does not matter writes `Close(file) catch { else => {} };`, because a bare fallible statement is an error.
+- Cleanup whose outcome does not matter writes `Close(file) catch { _ => {} };`, because a bare fallible statement is an error.
 - An assertion that a failed constructor "comes back empty" is dropped: no value comes back.
 
 Pitfalls:

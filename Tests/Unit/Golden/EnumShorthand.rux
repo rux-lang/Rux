@@ -1,4 +1,5 @@
-// A bare '.Case' is not part of the language; the message names the type that declares the case.
+// A case written without its type takes the type its context expects, here the match's return type, so a case that
+// type does not declare is reported even when another enum in scope declares it.
 enum Direction { North, South }
 
 enum Pole { North, South }
