@@ -25,8 +25,9 @@ pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
 
 /// Appends the next line of `reader` to `builder`, without its ending, reading one byte at a time.
 /// This is `ReadLine` over any source: a line feed ends the line, a carriage return immediately before it belongs
-/// to the ending, and `EndOfStream` is reported only when the source ends with nothing before it. A stream failure
-/// is returned as itself, with whatever was read so far left in the builder. The line must be UTF-8: a byte that
+/// to the ending, and `EndOfStream` is reported only when the source ends with nothing before it. Interruptions are
+/// retried; any other stream failure, `WouldBlock` included, is returned as itself, with whatever was read so far
+/// left in the builder. The line must be UTF-8: a byte that
 /// does not belong to a well-formed character, or a character cut short by the end of the source, is
 /// `InvalidText`, reported once the rest of the line has been read through its ending; the text before the fault
 /// stays in the builder. No byte past the line's ending is read, which is what makes it safe on a shared stream;
@@ -46,7 +47,7 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoE
     var pendingCarriageReturn = false;
     while true {
         let filled = reader.Read(room) catch {
-            error if error.IsTransient() => continue,
+            error if error.IsInterrupted() => continue,
             error if error.IsEnd() => 0,
             error => fail error
         };

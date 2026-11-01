@@ -78,6 +78,18 @@ extend SinkHandle : Writer {
     }
 }
 
+// A non-blocking source that is never ready: every read fails with `WouldBlock`, counted where the test can see it.
+struct BlockedHandle {
+    calls: *var uint;
+}
+
+extend BlockedHandle : Reader {
+    func Read(self: &var BlockedHandle, into: var char8[..]) -> uint ! IoError {
+        *self.calls = *self.calls + 1;
+        fail IoError::Of(IoErrorKind::WouldBlock);
+    }
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
@@ -163,6 +175,25 @@ func Main() -> int {
     Assert(sinkStorage[16] == c8'x' && sinkStorage[17] == c8'y', "the gathered bytes went first");
     Assert(sinkStorage[18] == c8'0', "then the bypass");
     Assert(writer.Pending() == 0, "and nothing waits");
+
+    // A source that would block is handed back to the caller after one attempt, by the fill and by the bypass alike,
+    // rather than asked again until it is ready.
+    var blockedCalls: uint = 0;
+    let blockedHandle: Reader = BlockedHandle { calls: @blockedCalls };
+    var blocked = BufferedReader::New(allocator, blockedHandle, 8) catch {
+        else => Panic("the reader takes its buffer")
+    };
+    match blocked.Fill() {
+        .Success(_) => Panic("a source that is never ready fills nothing"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "the fill reports the would-block")
+    }
+    Assert(blockedCalls == 1, "after a single attempt");
+    var wide: char8[16];
+    match blocked.Read(wide[..]) {
+        .Success(_) => Panic("a bypassing read of a source that is never ready reads nothing"),
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "the bypass reports it too")
+    }
+    Assert(blockedCalls == 2, "after a single attempt of its own");
 
     return 0;
 }

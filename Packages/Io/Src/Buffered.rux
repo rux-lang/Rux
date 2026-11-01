@@ -87,8 +87,8 @@ extend BufferedReader {
     }
 
     /// Refills an empty buffer from the source, retrying interruptions.
-    /// Reports what the source reported; `EndOfStream` when the source is done. A source that reports success
-    /// while handing over nothing breaks the `Reader` contract, and is reported as the end rather than looped on.
+    /// Reports what the source reported, `WouldBlock` included, and `EndOfStream` when the source is done. A source
+    /// that reports success while handing over nothing is reported as the end rather than looped on.
     /// @returns success when at least one byte is buffered; `IsEnd` at the end of the source
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#fill
     pub func Fill(self: &var BufferedReader) -> ! IoError {
@@ -98,7 +98,7 @@ extend BufferedReader {
         self.end = 0;
         while true {
             let filled = self.source.Read((self.data)[..self.capacity]) catch {
-                error if error.IsTransient() => continue,
+                error if error.IsInterrupted() => continue,
                 error => fail error
             };
             if filled == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
@@ -109,6 +109,7 @@ extend BufferedReader {
 
     /// Fills what it can of `into`: from the buffer while it has bytes, straight from the source for a request
     /// already larger than the whole buffer.
+    /// Interruptions of the source are retried; any other failure, `WouldBlock` included, is returned as itself.
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#read
@@ -118,7 +119,7 @@ extend BufferedReader {
             // The bypass: copying a buffer-sized read through the buffer would be pure overhead.
             while true {
                 let filled = self.source.Read(into) catch {
-                    error if error.IsTransient() => continue,
+                    error if error.IsInterrupted() => continue,
                     error => fail error
                 };
                 if filled == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }

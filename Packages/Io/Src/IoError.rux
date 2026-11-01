@@ -1,8 +1,10 @@
 // What went wrong at the edge of the machine.
 // An I/O failure is not one thing. Some report a fact about the world — the file is not there, the disk is full,
-// permission was refused — and a caller acts on which fact. Some report a moment: the operation was interrupted,
-// or would block, and the right response is to go again. And the end of a stream is not a failure at all, but it
-// arrives through the same channel, so it lives in the same type where nobody can lose it.
+// permission was refused — and a caller acts on which fact. Some report a moment, and the two moments differ: an
+// interruption is answered by going again at once, while a would-block is answered by waiting until the stream is
+// ready, so going again at once would only spin. And the end of a stream is not a failure at all, but it arrives
+// through the same channel, so it lives in the same type where nobody can lose it; running out partway through
+// something that needed more bytes is a failure, and has a kind of its own.
 // The set is deliberately the meanings shared by every platform, with the raw code carried beside the meaning:
 // translation loses detail, and the detail is sometimes the diagnosis. Success is not in the set: an operation that
 // can fail returns a native fallible, and `IoError` is only ever its failure.
@@ -26,9 +28,9 @@ pub enum IoErrorKind: int32 {
     NotDirectory = 6,
     /// The device has no room left.
     StorageFull = 7,
-    /// The operation was interrupted and may simply be retried.
+    /// The operation was interrupted before doing anything and may simply be retried at once.
     Interrupted = 8,
-    /// The operation would block a stream opened not to.
+    /// The operation would block a stream opened not to; retry once the stream is ready, not at once.
     WouldBlock = 9,
     /// A handle that is not open, or not open for this.
     InvalidHandle = 10,
@@ -58,6 +60,8 @@ pub enum IoErrorKind: int32 {
     Unreachable = 23,
     /// The other end closed the connection, so nothing more can be written to it.
     BrokenPipe = 24,
+    /// The stream ended partway through something that needed more bytes, such as a buffer `ReadExact` was filling.
+    UnexpectedEnd = 25,
     /// Something the platform reported that has no shared meaning; the raw code is the detail.
     Other = 14
 }
@@ -89,11 +93,13 @@ extend IoError {
         return self.kind == IoErrorKind::EndOfStream;
     }
 
-    /// Whether going again is the right response: an interruption or a would-block.
-    /// @returns whether trying again could succeed
-    /// @see https://rux-lang.dev/docs/api/io/io-error#is-transient
-    pub func IsTransient(self: &IoError) -> bool {
-        return self.kind == IoErrorKind::Interrupted || self.kind == IoErrorKind::WouldBlock;
+    /// Whether the operation was interrupted, the one report that going again at once answers.
+    /// A would-block is deliberately not included: the stream is not ready, and asking again before it is only
+    /// spins, so it is returned to whoever can wait for readiness, such as a `Net` poller.
+    /// @returns whether retrying the operation immediately is the right response
+    /// @see https://rux-lang.dev/docs/api/io/io-error#is-interrupted
+    pub func IsInterrupted(self: &IoError) -> bool {
+        return self.kind == IoErrorKind::Interrupted;
     }
 }
 
@@ -123,6 +129,7 @@ func DescribeKind(kind: &IoErrorKind) -> char8[..] {
         .AddressUnavailable => "address unavailable",
         .Unreachable => "unreachable",
         .BrokenPipe => "broken pipe",
+        .UnexpectedEnd => "unexpected end of stream",
         .Other => "other error"
     };
 }

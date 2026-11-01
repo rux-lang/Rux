@@ -1,6 +1,6 @@
 
 import Core::{ Assert, Panic, Succeeded };
-import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
+import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer, ZeroProgressLimit };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -8,28 +8,47 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 // The helpers' whole job is looping over honesty: a reader that hands over two bytes at a time, a writer that
-// takes three, a stream that says "interrupted" before every real answer, and one that reports success while
-// moving nothing. Each of those lives here as a small scripted stream, and the helpers must assemble the truth
-// from all of them.
+// takes three, a stream that says "interrupted" before every real answer, one that reports success while moving
+// nothing, and one that is never ready. Each of those lives here as a small scripted stream that counts its calls,
+// so what the helpers do is checked by how often they asked rather than by how long they took.
 
-// A reader over a fixed run of bytes that hands over at most `chunk` per call, and reports one interruption
-// before each real read when asked to.
+// A reader over a fixed run of bytes that hands over at most `chunk` per call, reports one interruption before each
+// real read while `interruptions` remain, and past its bytes either fails with `EndOfStream` or, when `endsSilently`
+// is set, reports a success of zero.
 struct ScriptedReader {
     bytes: char8[..];
     cursor: uint;
     chunk: uint;
     interruptions: uint;
     pendingInterruption: bool;
+    endsSilently: bool;
+    calls: uint;
+}
+
+// A scripted reader over `text` with no interruptions that fails with `EndOfStream` at its end.
+func Scripted(text: char8[..], chunk: uint) -> ScriptedReader {
+    return ScriptedReader {
+        bytes: TextBytes(text),
+        cursor: 0,
+        chunk: chunk,
+        interruptions: 0,
+        pendingInterruption: false,
+        endsSilently: false,
+        calls: 0
+    };
 }
 
 extend ScriptedReader : Reader {
     func Read(self: &var ScriptedReader, into: var char8[..]) -> uint ! IoError {
+        self.calls = self.calls + 1;
         if self.pendingInterruption && self.interruptions > 0 {
             self.interruptions = self.interruptions - 1;
+            self.pendingInterruption = false;
             fail IoError::Of(IoErrorKind::Interrupted);
         }
         self.pendingInterruption = true;
         if self.cursor >= self.bytes.length {
+            if self.endsSilently { return 0; }
             fail IoError::Of(IoErrorKind::EndOfStream);
         }
         var give = self.bytes.length - self.cursor;
@@ -49,17 +68,24 @@ extend ScriptedReader : Reader {
     }
 }
 
-// A writer into a fixed buffer that takes at most `chunk` per call, and can be told to stall: report success and
-// take nothing.
+// A writer into a fixed buffer that takes at most `chunk` per call, reports `interruptions` interruptions before
+// its first write, and can be told to stall: report success and take nothing.
 struct ScriptedWriter {
     room: var char8[..];
     written: uint;
     chunk: uint;
     stalling: bool;
+    interruptions: uint;
+    calls: uint;
 }
 
 extend ScriptedWriter : Writer {
     func Write(self: &var ScriptedWriter, bytes: char8[..]) -> uint ! IoError {
+        self.calls = self.calls + 1;
+        if self.interruptions > 0 {
+            self.interruptions = self.interruptions - 1;
+            fail IoError::Of(IoErrorKind::Interrupted);
+        }
         if self.stalling {
             return 0;
         }
@@ -84,6 +110,30 @@ extend ScriptedWriter : Writer {
     }
 }
 
+// A non-blocking stream that is never ready: every read and every write fails with `WouldBlock`. A helper that
+// retried it would never return, so the call count is what proves it was handed back.
+struct BlockedStream {
+    calls: uint;
+}
+
+extend BlockedStream : Reader {
+    func Read(self: &var BlockedStream, into: var char8[..]) -> uint ! IoError {
+        self.calls = self.calls + 1;
+        fail IoError::Of(IoErrorKind::WouldBlock);
+    }
+}
+
+extend BlockedStream : Writer {
+    func Write(self: &var BlockedStream, bytes: char8[..]) -> uint ! IoError {
+        self.calls = self.calls + 1;
+        fail IoError::Of(IoErrorKind::WouldBlock);
+    }
+
+    func Flush(self: &var BlockedStream) -> ! IoError {
+        return;
+    }
+}
+
 // The failure an operation expected to fail reported.
 func Refusal<T>(outcome: T ! IoError) -> IoError {
     return match outcome {
@@ -94,29 +144,57 @@ func Refusal<T>(outcome: T ! IoError) -> IoError {
 
 func Main() -> int {
     // ReadExact assembles a full buffer from two-byte reads, riding out an interruption before each.
-    var source = ScriptedReader {
-        bytes: TextBytes("abcdefgh"),
-        cursor: 0,
-        chunk: 2,
-        interruptions: 10,
-        pendingInterruption: false
-    };
+    var source = Scripted("abcdefgh", 2);
+    source.interruptions = 10;
     var storage: char8[8];
     let into = (@storage[0])[..8];
     Assert(Succeeded(ReadExact(source, into)), "the exact read assembles from partial, interrupted reads");
     Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
+    // Four two-byte reads, and an interruption before each of the three after the first.
+    Assert(source.calls == 7, "asking once per short read and once per interruption");
 
-    // A stream that ends early says so, rather than succeeding by silence.
-    var short = ScriptedReader {
-        bytes: TextBytes("abc"),
-        cursor: 0,
-        chunk: 2,
-        interruptions: 0,
-        pendingInterruption: false
-    };
+    // An interruption is retried at once, and the read that follows it succeeds.
+    var interrupted = Scripted("ab", 8);
+    interrupted.interruptions = 1;
+    interrupted.pendingInterruption = true;
+    var pair: char8[2];
+    Assert(Succeeded(ReadExact(interrupted, pair[..])), "an interrupted read is retried");
+    Assert(interrupted.calls == 2, "exactly once");
+
+    // A stream that ends partway says so with its own kind, rather than succeeding by silence or looking like a
+    // clean end between records.
+    var short = Scripted("abc", 2);
     var bigStorage: char8[8];
     let big = (@bigStorage[0])[..8];
-    Assert(Refusal(ReadExact(short, big)).IsEnd(), "a stream that ends mid-buffer reports the end");
+    let cut = Refusal(ReadExact(short, big));
+    Assert(cut.kind == IoErrorKind::UnexpectedEnd, "a stream that ends mid-buffer is an unexpected end");
+    Assert(!cut.IsEnd(), "which is not the clean end");
+    Assert(bigStorage[2] == c8'c', "with what did arrive written");
+    Assert(short.calls == 3, "and the end asked for once");
+
+    // A stream that has already ended reports the clean end, so a loop reading records stops between them.
+    var finished = Scripted("", 4);
+    Assert(Refusal(ReadExact(finished, big)).IsEnd(), "a stream ended before the first byte is the end");
+    Assert(finished.calls == 1, "found on the first read");
+
+    // A read of zero bytes is the end too, and is not asked again.
+    var silent = Scripted("ab", 2);
+    silent.endsSilently = true;
+    Assert(Refusal(ReadExact(silent, big)).kind == IoErrorKind::UnexpectedEnd,
+           "a read of zero partway through is an unexpected end");
+    Assert(silent.calls == 2, "taken from the first zero rather than retried");
+    var mute = Scripted("", 2);
+    mute.endsSilently = true;
+    Assert(Refusal(ReadExact(mute, big)).IsEnd(), "and a read of zero before anything is the end");
+    Assert(mute.calls == 1, "after one read");
+
+    // A stream that is never ready is handed back after one call rather than spun on.
+    var blocked = BlockedStream { calls: 0 };
+    Assert(Refusal(ReadExact(blocked, big)).kind == IoErrorKind::WouldBlock, "a would-block read is returned");
+    Assert(blocked.calls == 1, "after a single attempt");
+    Assert(Refusal(WriteAll(blocked, TextBytes("data"))).kind == IoErrorKind::WouldBlock,
+           "and so is a would-block write");
+    Assert(blocked.calls == 2, "after a single attempt too");
 
     // WriteAll pushes everything through three-byte writes.
     var sinkStorage: char8[16];
@@ -124,9 +202,14 @@ func Main() -> int {
         room: (@sinkStorage[0])[..16],
         written: 0,
         chunk: 3,
-        stalling: false
+        stalling: false,
+        interruptions: 2,
+        calls: 0
     };
     Assert(Succeeded(WriteAll(sink, TextBytes("hello world"))), "the whole write goes through partial writes");
+    Assert(sink.written == 11 && sinkStorage[10] == c8'd', "every byte in its place");
+    // Two interruptions, then four writes of three, three, three and two bytes.
+    Assert(sink.calls == 6, "asking once per short write and once per interruption");
 
     // A writer that takes nothing while claiming success is refused rather than spun on.
     var stallStorage: char8[4];
@@ -134,16 +217,20 @@ func Main() -> int {
         room: (@stallStorage[0])[..4],
         written: 0,
         chunk: 4,
-        stalling: true
+        stalling: true,
+        interruptions: 0,
+        calls: 0
     };
     Assert(Refusal(WriteAll(stalled, TextBytes("data"))).kind == IoErrorKind::WriteZero,
            "a stream making no progress is refused, not spun on");
+    Assert(stalled.calls == ZeroProgressLimit, "after exactly the tolerated number of empty rounds");
 
     // The error type's own small contracts.
-    Assert(IoError::Of(IoErrorKind::Interrupted).IsTransient(), "an interruption is worth retrying");
-    Assert(IoError::Of(IoErrorKind::WouldBlock).IsTransient(), "and so is a would-block");
-    Assert(!IoError::Of(IoErrorKind::NotFound).IsTransient(), "a missing file is not");
-    Assert(IoError::Of(IoErrorKind::EndOfStream).IsEnd(), "and the end is the end");
+    Assert(IoError::Of(IoErrorKind::Interrupted).IsInterrupted(), "an interruption is worth retrying at once");
+    Assert(!IoError::Of(IoErrorKind::WouldBlock).IsInterrupted(), "a would-block is not");
+    Assert(!IoError::Of(IoErrorKind::NotFound).IsInterrupted(), "and neither is a missing file");
+    Assert(IoError::Of(IoErrorKind::EndOfStream).IsEnd(), "the end is the end");
+    Assert(!IoError::Of(IoErrorKind::UnexpectedEnd).IsEnd(), "and an unexpected end is a failure, not the end");
 
     return 0;
 }

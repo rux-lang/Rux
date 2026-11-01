@@ -1,7 +1,7 @@
 // The suite runs this with nothing on standard input, which is itself the contract worth holding: an ended
 // stream with nothing before it is EndOfStream, not an empty line, so an echo loop stops rather than spins.
 // The same reading over a scripted source checks what a console cannot be made to type: UTF-8 lines, a character
-// split across reads, and the bytes that are not text.
+// split across reads, the bytes that are not text, and a source that is interrupted or not ready.
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic };
@@ -30,9 +30,83 @@ extend ScriptHandle : Reader {
     }
 }
 
+// A source that serves bytes one at a time like `ScriptHandle`, but fails once with `pauseKind` when it reaches
+// `pauseAt`, and counts every call.
+struct PausingState {
+    bytes: char8[..];
+    offset: uint;
+    pauseAt: uint;
+    pauseKind: IoErrorKind;
+    paused: bool;
+    calls: uint;
+}
+
+struct PausingHandle {
+    state: *var PausingState;
+}
+
+extend PausingHandle : Reader {
+    func Read(self: &var PausingHandle, into: var char8[..]) -> uint ! IoError {
+        let state = self.state;
+        state.calls = state.calls + 1;
+        if state.offset == state.pauseAt && !state.paused {
+            state.paused = true;
+            fail IoError::Of(state.pauseKind);
+        }
+        if state.offset == state.bytes.length {
+            fail IoError::Of(IoErrorKind::EndOfStream);
+        }
+        into.data[0] = state.bytes.data[state.offset];
+        state.offset = state.offset + 1;
+        return 1;
+    }
+}
+
+// An interruption is retried within the line; a would-block ends the call with what was read so far, and the next
+// call carries on from the byte the source had not yet given.
+func CheckPauses(allocator: Allocator) {
+    var interrupted = PausingState {
+        bytes: "ab\n",
+        offset: 0,
+        pauseAt: 1,
+        pauseKind: IoErrorKind::Interrupted,
+        paused: false,
+        calls: 0
+    };
+    var interruptedSource = PausingHandle { state: @interrupted };
+    var first = StringBuilder(allocator);
+    Assert(match ReadLineFrom(interruptedSource, first) { .Success(_) => true, .Failure(_) => false },
+           "an interrupted read is retried within the line");
+    let ab = StringView::FromBytes("ab") ?? StringView();
+    Assert(first.View().Equals(ab), "which arrives whole");
+    Assert(interrupted.calls == 4, "after three bytes and one interruption");
+    first.Release();
+
+    var blocked = PausingState {
+        bytes: "ab\n",
+        offset: 0,
+        pauseAt: 2,
+        pauseKind: IoErrorKind::WouldBlock,
+        paused: false,
+        calls: 0
+    };
+    var blockedSource = PausingHandle { state: @blocked };
+    var second = StringBuilder(allocator);
+    let kind: IoErrorKind? = match ReadLineFrom(blockedSource, second) {
+        .Success(_) => none,
+        .Failure(error) => .Some(error.kind)
+    };
+    Assert(kind == .Some(IoErrorKind::WouldBlock), "a source that is not ready is handed back");
+    Assert(second.View().Equals(ab), "with the bytes read before it in the builder");
+    Assert(blocked.calls == 3, "after a single attempt, not a spin");
+    CheckLine(allocator, blockedSource, none, "");
+    Assert(blocked.calls == 4, "and the next call finishes the line once the source is ready");
+    second.Release();
+}
+
 // Reads the next line of `source` and checks the outcome: success when `expectedKind` is `none`, otherwise a
 // failure of that kind; either way the builder holds `expected`.
-func CheckLine(allocator: Allocator, source: &var ScriptHandle, expectedKind: IoErrorKind?, expected: char8[..]) {
+func CheckLine(allocator: Allocator, source: &var Reader, expectedKind: IoErrorKind?, expected: char8[..]) {
     var builder = StringBuilder(allocator);
     let reported: IoErrorKind? = match ReadLineFrom(source, builder) {
         .Success(_) => none,
@@ -96,6 +170,7 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     CheckScript(allocator);
+    CheckPauses(allocator);
 
     var count: uint = 0;
     while count < 8 {
