@@ -746,6 +746,76 @@ private:
     /// Checks recovery arms whose subject was rejected, so their bindings and bodies report nothing spurious.
     void CheckRecoveryArmsWithoutSubject(const std::vector<MatchExpr::Arm> &arms);
 
+    // Typed throws (Throws.cpp).
+
+    /// A place an error raised in the code being checked can go to. A handler is a `try` block or a `try` expression
+    /// with `catch` or `?`; it gathers the errors thrown to it and the flow at each throw. A deferred statement and a
+    /// destructor body are barriers no error may cross.
+    struct ThrowHandlerFrame {
+        enum class Kind : std::uint8_t {
+            Handler,
+            Deferred,
+            Destructor,
+        };
+
+        Kind kind = Kind::Handler;
+        const TryStmt *block = nullptr;
+        const TryMarkExpr *expression = nullptr;
+        std::vector<TypeRef> errors;
+        TrackedFlow shape;
+        std::vector<TrackedFlow> edges;
+        std::size_t sites = 0;
+    };
+
+    /// The `try` that marks the throw sites being checked. A frame with neither node is a barrier, such as a catch arm
+    /// or a deferred statement, inside which a call needs a `try` of its own.
+    struct ThrowMarkFrame {
+        const TryStmt *block = nullptr;
+        const TryMarkExpr *expression = nullptr;
+        std::size_t sites = 0;
+    };
+
+    /// How a callee declares that it can fail: not at all, with the older `-> T ! E`, which a call outside `try`
+    /// still returns as a value, or with `throws E`, whose calls must be marked.
+    struct ThrowingCallee {
+        enum class Spelling : std::uint8_t {
+            None,
+            Fallible,
+            Throws,
+        };
+
+        Spelling spelling = Spelling::None;
+        /// How diagnostics name the call: "call to 'ReadDigit'" or "operator '+'".
+        std::string description;
+        SourceLocation location;
+    };
+
+    std::vector<ThrowHandlerFrame> throwHandlerFrames;
+    std::vector<ThrowMarkFrame> throwMarkFrames;
+    /// The operand of an older `?`, `? else` or postfix `catch` being checked, which consumes the outcome a call
+    /// returns as a value, so that call is not a throw site whatever its callee's spelling.
+    const Expr *outcomeOperand = nullptr;
+
+    [[nodiscard]] ThrowingCallee ThrowingCalleeOf(const Expr &expression);
+    /// A call or operator whose type is the fallible `outcome`: a throw site when a `try` covers it, whose value is
+    /// the success payload, or an outcome value as before; an unmarked call of a `throws` callee is an error.
+    [[nodiscard]] TypeRef CheckThrowSite(const Expr &expression, const TypeRef &outcome);
+    /// Sends `error`, thrown at `location`, to the innermost handler or the function's `throws` channel, recording the
+    /// flow edge and the target in `site`. False when it has nowhere to go, which has been reported.
+    bool RouteThrownError(ResolvedThrowSite &site, const TypeRef &error, SourceLocation location,
+                          const std::string &description);
+    [[nodiscard]] TypeRef CheckTryMark(const TryMarkExpr &expression);
+    void CheckTryStatement(const TryStmt &statement);
+    /// The arms of a handler, which match `error` as a `match` would. An expression handler's arms produce `value`; a
+    /// statement's discard what they produce. Each arm's exit flow is added to `exits`.
+    void CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, const TypeRef &error,
+                          const std::optional<TypeRef> &value, SourceLocation location,
+                          std::vector<TrackedFlow> &exits);
+    /// The error type a handler takes: the sum of the errors thrown to it, or unknown when nothing throws.
+    [[nodiscard]] static TypeRef HandlerErrorType(const ThrowHandlerFrame &frame);
+    /// Runs `check` inside a barrier no error may cross, as a deferred statement or destructor body is.
+    void CheckBehindThrowBarrier(ThrowHandlerFrame::Kind kind, const std::function<void()> &check);
+
     /// Checks a block's statements in a scope of their own. `tail`, when set, is the statement the block yields,
     /// whose value is checked into `tailType`.
     void CheckBlock(const Block &block, const ExprStmt *tail = nullptr, TypeRef *tailType = nullptr);
@@ -1063,6 +1133,12 @@ private:
     /// One entry per accepted `expr?`, so lowering builds its early return without recognizing Result or Option again.
     std::unordered_map<const TryExpr *, ResolvedPropagation> &propagations;
     std::unordered_map<const MappedTryExpr *, ResolvedPropagation> &mappedPropagations;
+    /// One entry per accepted throw site, `throw` statement and handler (Throws.cpp), so lowering routes each error
+    /// without deciding again where it goes.
+    std::unordered_map<const Expr *, ResolvedThrowSite> &throwSites;
+    std::unordered_map<const FailStmt *, ResolvedThrowSite> &throwStatements;
+    std::unordered_map<const TryStmt *, ResolvedThrowHandler> &tryBlockHandlers;
+    std::unordered_map<const TryMarkExpr *, ResolvedThrowHandler> &tryExpressionHandlers;
     /// One entry per accepted `??`, so lowering does not repeat structural Option recognition.
     std::unordered_map<const BinaryExpr *, ResolvedCoalescing> &coalescings;
     /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator
@@ -1683,8 +1759,9 @@ private:
     [[nodiscard]] static bool CompletesWithoutValue(const TypeRef &returnType) noexcept;
     /// The checks a `return`, with or without `value`, makes against the enclosing function.
     void CheckReturn(const Expr *value, SourceLocation location);
-    /// The checks a `fail value` makes: an enclosing fallible function and an operand that fits its error channel.
-    void CheckFail(const Expr *value, SourceLocation location);
+    /// The checks a `throw value` or `fail value` makes: the innermost handler takes the error, or else an enclosing
+    /// function that throws, whose channel the operand has to fit. Returns where the error goes once accepted.
+    std::optional<ResolvedThrowSite> CheckFail(const Expr *value, SourceLocation location, bool throwSpelling);
     /// The checks a `break` or `continue`, with its optional label, makes against the enclosing loops.
     /// Refuses leaving a deferred statement by `keyword`, which would leave a scope already being left.
     void EmitExitFromDeferred(SourceLocation location, std::string_view keyword, std::string help);

@@ -1,0 +1,117 @@
+// Cleanup when an error leaves a scope: there is no `finally`, because `defer` and destructors already run on every
+// exit. When a call in a `try` block throws, the defers registered inside the block run and the locals declared inside
+// it are destroyed as the error leaves, in the order a return runs them, before the `catch` arm runs; what was declared
+// outside the block stays alive, and a value built only in part is destroyed in part. An error passing to the caller
+// runs every defer and destructor on the way out, as a return does. A deferred statement may handle an error itself
+// with `try?` or `try ... catch`, but no error may leave it.
+
+import Core::Assert;
+
+struct Failure {
+    code: int32;
+}
+
+struct Journal {
+    entries: int32[8];
+    count: int32;
+}
+
+extend Journal {
+    func Note(self: &var Journal, entry: int32) {
+        self.entries[self.count] = entry;
+        self.count = self.count + 1i32;
+    }
+}
+
+struct Guard {
+    journal: *var Journal;
+    id: int32;
+}
+
+extend Guard {
+    func ~Guard(self: &var Guard) {
+        (*self.journal).Note(self.id);
+    }
+}
+
+func Fail(code: int32) -> int32 throws Failure {
+    if code != 0i32 {
+        throw Failure { code: code };
+    }
+    return 0i32;
+}
+
+func Passes(journal: *var Journal) -> int32 throws Failure {
+    let guard = Guard { journal: journal, id: 30i32 };
+    defer (*journal).Note(31i32);
+    try Fail(1i32);
+    (*journal).Note(99i32);
+    return guard.id;
+}
+
+struct Pair {
+    guard: Guard;
+    value: int32;
+}
+
+func Swallow(code: int32) -> int32 {
+    return (try? Fail(code)) ?? -1i32;
+}
+
+func Main() -> int {
+    var journal = Journal { entries: [0i32; 8], count: 0i32 };
+    if true {
+        let outside = Guard { journal: @journal, id: 1i32 };
+        try {
+            let inside = Guard { journal: @journal, id: 2i32 };
+            defer journal.Note(3i32);
+            if true {
+                let nested = Guard { journal: @journal, id: 4i32 };
+                defer journal.Note(5i32);
+                Fail(7i32);
+                journal.Note(98i32);
+            }
+            journal.Note(97i32);
+        } catch {
+            e => journal.Note(e.code),
+        }
+        journal.Note(outside.id * 10i32);
+    }
+    // As for a return: the defers of the scopes the error leaves, innermost first, then their locals, innermost first,
+    // then the arm, then the code after the handler.
+    Assert(journal.count == 7i32, "every cleanup ran once");
+    Assert(journal.entries[0] == 5i32 && journal.entries[1] == 3i32, "the defers run first");
+    Assert(journal.entries[2] == 4i32 && journal.entries[3] == 2i32, "then the locals are destroyed");
+    Assert(journal.entries[4] == 7i32, "then the arm");
+    Assert(journal.entries[5] == 10i32 && journal.entries[6] == 1i32, "the outside local lives on");
+
+    // An error passing to the caller runs the function's defers and destroys its locals.
+    journal = Journal { entries: [0i32; 8], count: 0i32 };
+    Assert((try? Passes(@journal)) == none, "the error reached the caller");
+    Assert(journal.count == 2i32, "no statement after the throw ran");
+    Assert(journal.entries[0] == 31i32 && journal.entries[1] == 30i32, "defer, then destructor");
+
+    // A value built only in part when the error leaves is destroyed in part.
+    journal = Journal { entries: [0i32; 8], count: 0i32 };
+    try {
+        let pair = Pair { guard: Guard { journal: @journal, id: 8i32 }, value: Fail(2i32) };
+        journal.Note(pair.value);
+    } catch {
+        _ => {}
+    }
+    Assert(journal.count == 1i32 && journal.entries[0] == 8i32, "the finished field is destroyed");
+
+    // A deferred statement handles its own errors.
+    journal = Journal { entries: [0i32; 8], count: 0i32 };
+    if true {
+        defer if true {
+            let code = try Fail(4i32) catch { e => e.code };
+            journal.Note(code);
+        }
+        defer journal.Note((try? Fail(0i32)) ?? 6i32);
+    }
+    Assert(journal.count == 2i32, "both deferred statements ran");
+    Assert(journal.entries[0] == 0i32 && journal.entries[1] == 4i32, "each handled its own error");
+    Assert(Swallow(3i32) == -1i32 && Swallow(0i32) == 0i32, "'try?' gives 'none' for an error");
+    return 0;
+}

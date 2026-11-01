@@ -1,0 +1,24 @@
+// `Main` may declare `throws E`: an error that reaches it ends the program with exit status 1, as an older fallible
+// `Main` does, after every defer and destructor on the way out has run. Here nothing throws, so the program exits with
+// the status `Main` returns. Its calls are marked with `try` like any other.
+
+import Core::Assert;
+
+struct Fault {
+    code: int32;
+}
+
+func Parse(text: int32) -> int32 throws Fault {
+    if text < 0i32 {
+        throw Fault { code: text };
+    }
+    return text;
+}
+
+func Main() -> int throws Fault {
+    let parsed = try Parse(5i32);
+    Assert(parsed == 5i32, "a success continues");
+    let recovered = try Parse(-1i32) catch { e => -e.code };
+    Assert(recovered == 1i32, "an error handled inside Main never reaches the exit");
+    return try Parse(0i32) * 7;
+}

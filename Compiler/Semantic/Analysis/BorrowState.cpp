@@ -96,6 +96,15 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
             CollectExpressionUses(*arm.body, uses);
         }
     }
+    else if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
+        if (marked->operand) {
+            CollectExpressionUses(*marked->operand, uses);
+        }
+        for (const auto &arm : marked->arms) {
+            CollectPatternUses(*arm.pattern, uses);
+            CollectExpressionUses(*arm.body, uses);
+        }
+    }
     else if (const auto *postfix = AstCast<const PostfixExpr>(&expression)) {
         CollectExpressionUses(*postfix->operand, uses);
     }
@@ -325,6 +334,18 @@ NameSet AnalyzeStatementLiveness(const Stmt &statement, const NameSet &liveAfter
         }
         AddAll(live, ExpressionUses(match->subject.get()));
     }
+    else if (const auto *handled = AstCast<const TryStmt>(&statement)) {
+        // An arm may run after any statement of the block, so what the arms read is live throughout it.
+        NameSet armsLive;
+        for (const auto &arm : handled->arms) {
+            AddAll(armsLive, ExpressionUses(arm.body.get()));
+            CollectPatternUses(*arm.pattern, armsLive);
+        }
+        NameSet bodyAfter = liveAfter;
+        AddAll(bodyAfter, armsLive);
+        AddAll(live, armsLive);
+        AddAll(live, AnalyzeBlockLiveness(*handled->body, bodyAfter, result));
+    }
     else if (const auto *returned = AstCast<const ReturnStmt>(&statement)) {
         live.clear();
         AddAll(live, ExpressionUses(returned->value ? returned->value->get() : nullptr));
@@ -378,6 +399,14 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
     else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
         RecordExpressionLastUses(*recovery->subject, offsets, result);
         for (const auto &arm : recovery->arms) {
+            RecordExpressionLastUses(*arm.body, offsets, result);
+        }
+    }
+    else if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
+        if (marked->operand) {
+            RecordExpressionLastUses(*marked->operand, offsets, result);
+        }
+        for (const auto &arm : marked->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
         }
     }
@@ -510,6 +539,13 @@ void RecordStatementLastUses(const Stmt &statement, LastUseMap &result) {
     else if (const auto *match = AstCast<const MatchStmt>(&statement)) {
         RecordExpressionLastUses(*match->subject, offsets, result);
         for (const auto &arm : match->arms) {
+            RecordExpressionLastUses(*arm.body, offsets, result);
+        }
+    }
+    else if (const auto *handled = AstCast<const TryStmt>(&statement)) {
+        RecordBlockLastUses(*handled->body, result);
+        RemoveBlockUsesFromOffsets(*handled->body, offsets);
+        for (const auto &arm : handled->arms) {
             RecordExpressionLastUses(*arm.body, offsets, result);
         }
     }

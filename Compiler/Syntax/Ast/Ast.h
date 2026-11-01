@@ -113,10 +113,14 @@ struct OptionalTypeExpr : TypeExpr {
     TypeExprPtr payload;
 };
 
-/// A fallible type `T ! E`, or `! E` with a unit success, in which case `success` is null.
+/// A fallible type `T ! E`, or `! E` with a unit success, in which case `success` is null. A function's `throws E`
+/// clause is the same node with `throwsClause` set: `-> T throws E` and `-> T ! E` are one type, and only the spelling
+/// differs, which decides whether a call needs `try`.
 struct FallibleTypeExpr : TypeExpr {
     TypeExprPtr success;
     TypeExprPtr error;
+    /// Written as a `throws` clause after the return type, or after the parameter list when there is none.
+    bool throwsClause = false;
 };
 
 /// Whether `type` is a native sum, optional, or fallible type form.
@@ -530,8 +534,25 @@ struct NativeConstructExpr : Expr {
 /// `none`: the outer absence of the optional type its context expects.
 struct NoneExpr : Expr {};
 
-/// `fail value`, `return [value]`, `break [label]`, or `continue [label]` written where a value is expected: as a whole
-/// match or catch arm body, a mapping body, or the right operand of `??`. It never produces a value.
+/// `try expr`, `try expr catch { arms }` or `try? expr`. `try` marks every call in its operand that can throw. The
+/// plain form passes their errors on to the innermost enclosing handler or the function's `throws` channel, `catch`
+/// hands them to its arms, which match the error as a `match` does, and `try?` turns them into `none`.
+struct TryMarkExpr : Expr {
+    enum class Form : std::uint8_t {
+        Propagate,
+        Catch,
+        Optional,
+    };
+
+    Form form = Form::Propagate;
+    ExprPtr operand;
+    std::vector<MatchExpr::Arm> arms; // the `catch` arms of the `Catch` form
+    SourceLocation catchLocation;
+};
+
+/// `fail value`, `throw value`, `return [value]`, `break [label]`, or `continue [label]` written where a value is
+/// expected: as a whole match or catch arm body, a mapping body, or the right operand of `??`. It never produces a
+/// value.
 struct DivergeExpr : Expr {
     enum class Kind {
         Return,
@@ -543,6 +564,8 @@ struct DivergeExpr : Expr {
     Kind kind = Kind::Return;
     ExprPtr value; // the returned or failed value; null for a bare return, break, or continue
     std::string label;
+    /// A `Fail` written with the `throw` keyword. Both spellings send the error to the same place.
+    bool throwSpelling = false;
 };
 
 // Statements
@@ -649,12 +672,23 @@ struct DeferStmt : Stmt {
     StmtPtr deferredStmt;
 };
 
-// return [expr];
-/// `fail error;`: exit the enclosing fallible function through its outer failure channel.
+/// `throw error;` or the older `fail error;`: the error goes to the innermost enclosing handler, a `try` block or
+/// `try` expression with `catch` or `?`, or else leaves the function through its `throws` channel.
 struct FailStmt : Stmt {
     ExprPtr value;
+    /// Written with the `throw` keyword rather than `fail`.
+    bool throwSpelling = false;
 };
 
+/// `try { ... } catch { pattern => body, ... }`: every call that can throw in the block is marked by the block itself,
+/// and its error, or a `throw` in the block, goes to the arms, which match it as a `match` matches its subject.
+struct TryStmt : Stmt {
+    std::unique_ptr<Block> body;
+    std::vector<MatchExpr::Arm> arms;
+    SourceLocation catchLocation;
+};
+
+// return [expr];
 struct ReturnStmt : Stmt {
     std::optional<ExprPtr> value;
 };

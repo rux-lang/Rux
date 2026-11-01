@@ -13,6 +13,8 @@ namespace Rux::Documentation {
 [[nodiscard]] std::string TypeText(const TypeExpr *type);
 /// Spell a type as written, without the parentheses the source may have grouped it in.
 [[nodiscard]] std::string UngroupedTypeText(const TypeExpr *type);
+/// Spell what follows a function's parameter list: ` -> T`, ` -> T throws E` or ` throws E`.
+[[nodiscard]] std::string ReturnClause(const TypeExpr *type);
 /// Spell a generic parameter list with its bounds, as in `<T: Display + Debug>`, or nothing when there is none.
 [[nodiscard]] std::string TypeParams(const std::vector<TypeParameter> &parameters);
 /// Spell a function's declaration line without its body.

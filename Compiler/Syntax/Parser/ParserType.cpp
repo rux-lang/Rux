@@ -347,8 +347,34 @@ TypeExprPtr Parser::ParseFunctionType() {
     if (Match(TokenKind::Arrow)) {
         t->returnType = ParseType("add the function type's return type after '->'");
     }
+    ParseThrowsClause(t->returnType);
 
     return t;
+}
+
+void Parser::ParseThrowsClause(std::optional<TypeExprPtr> &returnType) {
+    if (!Check(TokenKind::ThrowsKeyword)) {
+        return;
+    }
+    const SourceLocation location = CurrentLocation();
+    Advance(); // consume 'throws'
+    if (returnType && *returnType) {
+        if (const auto *fallible = AstCast<const FallibleTypeExpr>(returnType->get());
+            fallible && !fallible->parenthesized) {
+            EmitError(location, "a function that returns 'T ! E' cannot also declare 'throws'",
+                      "write the error once, as in '-> T throws E'");
+        }
+    }
+    auto fallible = std::make_unique<FallibleTypeExpr>();
+    fallible->throwsClause = true;
+    fallible->success = returnType ? std::move(*returnType) : nullptr;
+    fallible->location = fallible->success ? fallible->success->location : location;
+    fallible->error = ParseSumType("add the error type after 'throws'");
+    if (const auto *optional = AstCast<const OptionalTypeExpr>(fallible->error.get());
+        optional && !optional->parenthesized) {
+        EmitError(optional->location, "an optional error type must be grouped", "write 'throws (E?)'");
+    }
+    returnType = std::move(fallible);
 }
 
 std::vector<TypeParameter> Parser::ParseTypeParams() {

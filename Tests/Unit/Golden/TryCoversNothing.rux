@@ -1,0 +1,13 @@
+// A `try` with no call that can throw marks nothing, which is likely a mistake.
+func Twice(x: int) -> int {
+    return try x * 2;
+}
+
+func Main() -> int {
+    try {
+        let value = Twice(2);
+    } catch {
+        _ => {}
+    }
+    return 0;
+}

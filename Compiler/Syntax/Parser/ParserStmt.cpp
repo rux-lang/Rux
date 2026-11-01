@@ -112,8 +112,20 @@ StmtPtr Parser::ParseStmt() {
     if (Check(TokenKind::ReturnKeyword)) {
         return ParseReturnStmt();
     }
-    if (Check(TokenKind::FailKeyword)) {
+    if (CheckAny({TokenKind::FailKeyword, TokenKind::ThrowKeyword})) {
         return ParseFailStmt();
+    }
+    if (Check(TokenKind::TryKeyword) && Peek(1).Is(TokenKind::LeftBrace)) {
+        return ParseTryStmt();
+    }
+    if (Check(TokenKind::FinallyKeyword)) {
+        RejectFinally();
+        auto skipped = std::make_unique<ExprStmt>();
+        skipped->location = loc;
+        auto unit = std::make_unique<TupleExpr>();
+        unit->location = loc;
+        skipped->expr = std::move(unit);
+        return skipped;
     }
     if (Check(TokenKind::DeferKeyword)) {
         return ParseDeferStmt();
@@ -607,10 +619,49 @@ std::unique_ptr<ReturnStmt> Parser::ParseReturnStmt() {
 std::unique_ptr<FailStmt> Parser::ParseFailStmt() {
     auto s = std::make_unique<FailStmt>();
     s->location = CurrentLocation();
-    Expect(TokenKind::FailKeyword, "expected 'fail'");
-    s->value = ParseRequiredExpr("after 'fail'");
-    ExpectBefore(TokenKind::Semicolon, "';' after the 'fail' statement");
+    s->throwSpelling = Advance().kind == TokenKind::ThrowKeyword;
+    const std::string_view keyword = s->throwSpelling ? "throw" : "fail";
+    s->value = ParseRequiredExpr(std::format("after '{}'", keyword));
+    ExpectBefore(TokenKind::Semicolon, std::format("';' after the '{}' statement", keyword));
     return s;
+}
+
+std::unique_ptr<TryStmt> Parser::ParseTryStmt() {
+    auto s = std::make_unique<TryStmt>();
+    s->location = CurrentLocation();
+    Expect(TokenKind::TryKeyword, "expected 'try'");
+    s->body = ParseBlock("the 'try' block");
+    bool rejectedFinally = false;
+    if (Check(TokenKind::FinallyKeyword)) {
+        RejectFinally();
+        rejectedFinally = true;
+    }
+    if (Check(TokenKind::CatchKeyword)) {
+        s->catchLocation = CurrentLocation();
+        Advance();
+        if (Match(TokenKind::LeftBrace)) {
+            ParseArmList(s->arms, "catch", "statement");
+        }
+        else {
+            EmitExpected(CurrentLocation(), "'{' to start the catch arms");
+        }
+        if (Check(TokenKind::FinallyKeyword)) {
+            RejectFinally();
+        }
+    }
+    else if (!rejectedFinally) {
+        EmitError(CurrentLocation(), "a 'try' block needs 'catch' arms",
+                  "add 'catch { e => ... }' after the block, or write 'try' before a call to pass its error on");
+    }
+    return s;
+}
+
+void Parser::RejectFinally() {
+    EmitError(CurrentLocation(), "'finally' is not supported", "use 'defer' inside the try block");
+    Advance(); // consume 'finally'
+    if (Check(TokenKind::LeftBrace)) {
+        static_cast<void>(ParseBlock("the 'finally' block"));
+    }
 }
 
 void Parser::RejectPostfixAfterMatchStatement() {
@@ -620,8 +671,8 @@ void Parser::RejectPostfixAfterMatchStatement() {
     }
     // A match that begins a statement ends at its closing brace and yields no value, so nothing postfix applies to it.
     EmitError(CurrentLocation(), std::format("'{}' cannot follow a match statement", Peek().text),
-              "write 'let value = match ... { ... } catch { ... };' or '(match ... { ... }) catch { ... };' to use "
-              "the match's result");
+              "use the match as a value, as in 'let value = match ... { ... };', and mark a call in an arm that can "
+              "throw with 'try'");
     if (Match(TokenKind::CatchKeyword)) {
         if (Match(TokenKind::LeftBrace)) {
             std::vector<MatchExpr::Arm> discarded;

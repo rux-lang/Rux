@@ -68,7 +68,7 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     loop->label = statement.label;
     loop->body.location = statement.location;
 
-    const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement.label);
+    const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(loop->label);
     PushScope();
 
     // `Next` reports the item or the end, so the loop body is the arm that received an item and the exit is the arm

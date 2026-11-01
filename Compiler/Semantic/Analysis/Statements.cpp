@@ -273,7 +273,18 @@ void AnalysisContext::CheckBlock(const Block &block, const ExprStmt *tail, TypeR
 }
 
 void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType) {
-    CheckBlock(block);
+    // Errors leave a body through its own `throws` channel, never into the handlers of the body being checked around
+    // it, and none leaves a destructor.
+    auto savedHandlers = std::exchange(throwHandlerFrames, {});
+    auto savedMarks = std::exchange(throwMarkFrames, {});
+    if (function.name.starts_with('~')) {
+        CheckBehindThrowBarrier(ThrowHandlerFrame::Kind::Destructor, [&] { CheckBlock(block); });
+    }
+    else {
+        CheckBlock(block);
+    }
+    throwHandlerFrames = std::move(savedHandlers);
+    throwMarkFrames = std::move(savedMarks);
     if (function.isNoReturn) {
         // A caller of a function that never returns goes on into code marked unreachable, so its body must not end.
         if (!function.isAsm && !BlockDefinitelyReturns(block)) {
@@ -754,7 +765,13 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         MergeTrackedFlows(exits);
     }
     else if (const auto *failStatement = AstCast<const FailStmt>(&statement)) {
-        CheckFail(failStatement->value.get(), failStatement->location);
+        if (const std::optional<ResolvedThrowSite> site =
+                CheckFail(failStatement->value.get(), failStatement->location, failStatement->throwSpelling)) {
+            throwStatements.insert_or_assign(failStatement, *site);
+        }
+    }
+    else if (const auto *tryStatement = AstCast<const TryStmt>(&statement)) {
+        CheckTryStatement(*tryStatement);
     }
     else if (const auto *returnStatement = AstCast<const ReturnStmt>(&statement)) {
         CheckReturn(returnStatement->value ? returnStatement->value->get() : nullptr, returnStatement->location);
@@ -792,7 +809,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (deferStatement->deferredStmt) {
             std::optional<DeferredContext> saved =
                 std::exchange(checkingDeferred, DeferredContext{loopDepth, activeLabels});
-            CheckStatement(*deferStatement->deferredStmt);
+            // No error may leave a deferred statement: a call in it that can throw is handled there.
+            CheckBehindThrowBarrier(ThrowHandlerFrame::Kind::Deferred,
+                                    [&] { CheckStatement(*deferStatement->deferredStmt); });
             checkingDeferred = std::move(saved);
         }
     }
@@ -893,40 +912,6 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
         }
         CheckViewEscape(*value, viewTarget, location, "returned value");
         ConsumeRecordedValue(*value, ValueConsumptionKind::Return, location);
-    }
-    trackedFlowReachable = false;
-}
-
-void AnalysisContext::CheckFail(const Expr *value, const SourceLocation location) {
-    if (checkingDeferred) {
-        EmitExitFromDeferred(location, "fail", "move the 'fail' out of the 'defer'");
-    }
-    // A case written without its type takes the type of the error channel it fails through.
-    if (value && currentReturnType.IsFallible()) {
-        ExpectContextualCaseArgument(value, currentReturnType.FallibleError());
-    }
-    const TypeRef valueType = value ? CheckExpr(*value) : TypeRef::MakeUnknown();
-    if (!currentReturnType.IsFallible()) {
-        if (!currentReturnType.IsUnknown()) {
-            EmitError(location,
-                      std::format("'fail' needs an enclosing fallible function, but this function {}",
-                                  currentReturnType.IsOpaque()
-                                      ? std::string("returns no value")
-                                      : std::format("returns '{}'", currentReturnType.ToString())),
-                      {}, "declare the function's error channel, as in '-> T ! E' or '-> ! E'");
-        }
-    }
-    else if (value && !valueType.IsUnknown()) {
-        // `fail` selects the outer failure channel itself, so only its operand converts, to that channel's payload.
-        const TypeRef &error = currentReturnType.FallibleError();
-        if (CanAssignExprTo(*value, valueType, error)) {
-            ConsumeRecordedValue(*value, ValueConsumptionKind::Return, location);
-        }
-        else {
-            EmitError(location, AssignmentErrorMessage(*value, error,
-                                                       std::format("'fail' value must have type '{}', but found '{}'",
-                                                                   error.ToString(), valueType.DisplayString())));
-        }
     }
     trackedFlowReachable = false;
 }
@@ -1638,6 +1623,15 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
                     return true;
                 }
             }
+            else if (const auto *handled = AstCast<const TryStmt>(inner.get())) {
+                if (containsBreak(*handled->body, label, allowUnlabeled) ||
+                    std::ranges::any_of(handled->arms, [&](const auto &arm) {
+                        const auto *body = AstCast<const BlockExpr>(arm.body.get());
+                        return body && containsBreak(*body->block, label, allowUnlabeled);
+                    })) {
+                    return true;
+                }
+            }
         }
         return false;
     };
@@ -1679,6 +1673,11 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
         }
         if (const auto *loop = AstCast<const LoopStmt>(&statement)) {
             return !containsBreak(*loop->body, loop->label, true);
+        }
+        // Every way out of the block, a `throw` to the arms included, leaves, and so does every arm.
+        if (const auto *handled = AstCast<const TryStmt>(&statement)) {
+            return blockReturns(*handled->body) &&
+                   std::ranges::all_of(handled->arms, [&](const auto &arm) { return expressionReturns(*arm.body); });
         }
         return false;
     };

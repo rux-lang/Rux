@@ -1,0 +1,70 @@
+// The older fallible spelling beside `throws`, while sources migrate.
+// `-> T ! E` and `-> T throws E` declare the same function type, so either kind of function can call the other:
+// - New code marks a call to an older `-> T ! E` function with `try`, `try?` or `try ... catch`, as it marks any call
+//   that can throw.
+// - Older code applies `?`, `? else` and postfix `catch` to a call of a `throws` function, which hands those operators
+//   the outcome as before.
+// - An unmarked call of an older function outside `try` still returns its outcome as a value. An unmarked call of a
+//   `throws` function is an error everywhere else, so its error can never be ignored.
+
+import Core::Assert;
+
+struct ParseError {
+    at: int32;
+}
+
+struct IoError {
+    code: int32;
+}
+
+func OldParse(text: int32) -> int32 ! ParseError {
+    if text < 0i32 {
+        fail ParseError { at: -text };
+    }
+    return text;
+}
+
+func NewParse(text: int32) -> int32 throws ParseError {
+    if text < 0i32 {
+        throw ParseError { at: -text };
+    }
+    return text;
+}
+
+// New code calls the older function.
+func NewCallsOld(text: int32) -> int32 throws ParseError {
+    return try OldParse(text) + 1i32;
+}
+
+// Older code calls the new function with each older operator.
+func OldPropagates(text: int32) -> int32 ! ParseError {
+    return NewParse(text)? + 1i32;
+}
+
+func OldMaps(text: int32) -> int32 ! IoError {
+    return NewParse(text)? else (e => IoError { code: e.at });
+}
+
+func OldRecovers(text: int32) -> int32 {
+    return NewParse(text) catch { e => -e.at };
+}
+
+func Main() -> int {
+    Assert((try? NewCallsOld(4i32)) == .Some(5i32), "'try' covers an older call");
+    Assert((try NewCallsOld(-4i32) catch { e => e.at }) == 4i32, "its failure is thrown");
+    Assert((try OldParse(-2i32) catch { e => e.at }) == 2i32, "'try ... catch' handles an older call");
+
+    Assert((try? OldPropagates(1i32)) == .Some(2i32), "'?' takes a new call's outcome");
+    Assert((try OldPropagates(-1i32) catch { e => e.at }) == 1i32, "'?' propagates its failure");
+    Assert((try OldMaps(-3i32) catch { e => e.code }) == 3i32, "'? else' maps it");
+    Assert(OldRecovers(-6i32) == -6i32 && OldRecovers(6i32) == 6i32, "'catch' recovers it");
+
+    // An unmarked older call is the outcome itself.
+    let outcome = OldParse(-9i32);
+    let at = match outcome {
+        .Success(_) => 0i32,
+        .Failure(e) => e.at,
+    };
+    Assert(at == 9i32, "an older call returns its outcome");
+    return 0;
+}

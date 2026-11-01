@@ -138,6 +138,17 @@ protected:
     /// For each loop being lowered, innermost last: its label and how many defer scopes were open around it, so a
     /// `break` or `continue` runs the defers registered inside the loop before it jumps.
     std::vector<std::pair<std::string, std::size_t>> loopDeferBases;
+
+    /// For each loop being lowered, beside its `loopDeferBases` entry: the label of the HIR loop, and whether it is the
+    /// hidden loop a handler leaves with a `break`. An unlabeled `break` or `continue` inside a handler names the
+    /// source loop around it, which is given a label for it when it has none.
+    struct LoopLabelSlot {
+        std::string *label = nullptr;
+        bool handler = false;
+        CleanupPlanner::LoopToken token;
+    };
+
+    std::vector<LoopLabelSlot> loopLabelSlots;
     std::size_t returnOrdinal = 0;
     /// Names the hidden locals a value block, an `if` value and a binding condition introduce.
     std::size_t blockValueOrdinal = 0;
@@ -208,8 +219,12 @@ protected:
     [[nodiscard]] std::string InterfaceHolderKey(const InterfaceHolderSite &site) const;
     /// Declares, ahead of `local`, the holders its interface values keep their values in.
     void DeclareInterfaceHolders(const LetStmt &local);
-    CleanupPlanner::LoopToken BeginLoop(const std::string &label);
+    /// Opens a loop whose HIR node has the label `label`, which stays where it is until the loop ends.
+    CleanupPlanner::LoopToken BeginLoop(std::string &label, bool handler = false);
     void EndLoop(CleanupPlanner::LoopToken token);
+    /// The label a `break` or `continue` written with `label` jumps by: the source loop it leaves, never the hidden
+    /// loop of a handler around it.
+    [[nodiscard]] std::string LoopExitLabel(const std::string &label);
     /// A `break` or `continue` that first runs the defers registered inside the loop it leaves.
     [[nodiscard]] HirStmtPtr LowerLoopExit(HirStmtPtr jump, const std::string &label, SourceLocation location);
     [[nodiscard]] HirStmtPtr LowerFunctionReturn(HirExprPtr value, SourceLocation location);
@@ -277,8 +292,8 @@ protected:
                                                     SourceLocation location);
     /// `value is T` on a native subject: a match testing the selection without binding or consuming anything.
     [[nodiscard]] HirExprPtr LowerNativeMembership(const IsExpr &expression);
-    /// `fail value`: an ordinary return of the enclosing function's outer failure.
-    [[nodiscard]] HirStmtPtr LowerFail(const Expr *value, SourceLocation location);
+    /// `throw value` or `fail value`: the error goes to its handler, or leaves as the function's outer failure.
+    [[nodiscard]] HirStmtPtr LowerFail(const Expr *value, SourceLocation location, const ResolvedThrowSite *site);
     /// A diverging arm, mapping, or fallback body: the statement it spells, in a block that yields no value.
     [[nodiscard]] HirExprPtr LowerDiverge(const DivergeExpr &expression);
     /// `?` on a native fallible: a match whose failure arm returns the error as the enclosing outer failure.
@@ -292,6 +307,38 @@ protected:
     [[nodiscard]] HirExprPtr LowerCatch(const CatchExpr &expression);
     /// `value? else (e => mapper)`: propagation whose failure arm owns the error as `e` and fails with the mapper.
     [[nodiscard]] HirExprPtr LowerMappedTry(const MappedTryExpr &expression);
+    // Typed throws (AstToHirThrows.cpp). A handler is a hidden loop holding the code it handles, after which its
+    // arms match an outcome slot: the code stores its value as the success and leaves; a throw site stores its error
+    // as the failure and leaves the loop like a labeled `break`, running the defers and destroying the locals of every
+    // scope it leaves before the arms run.
+
+    /// A handler whose code is being lowered: the hidden loop's label and the slot its arms match.
+    struct ActiveThrowHandler {
+        std::string label;
+        std::string slot;
+        TypeRef outcomeType;
+    };
+
+    std::unordered_map<const void *, ActiveThrowHandler> activeThrowHandlers;
+    std::size_t throwOrdinal = 0;
+    /// The throw site whose call is being lowered as the outcome it returns.
+    const Expr *rawThrowSite = nullptr;
+    /// A call or operator that a `try` marks: a match whose success continues and whose failure is thrown.
+    [[nodiscard]] HirExprPtr LowerThrowSite(const Expr &expression, const ResolvedThrowSite &site);
+    /// Sends the lowered `error` where `site` says it goes: into its handler's slot and out of the handler's loop, or
+    /// out of the function as its failure.
+    [[nodiscard]] HirStmtPtr LowerThrowTo(const ResolvedThrowSite &site, HirExprPtr error, SourceLocation location);
+    [[nodiscard]] HirStmtPtr LowerTryStatement(const TryStmt &statement);
+    [[nodiscard]] HirExprPtr LowerTryMark(const TryMarkExpr &expression);
+    /// Lowers the code a handler handles into a hidden loop that leaves `slot` holding the outcome: `store` builds the
+    /// statement storing its success.
+    [[nodiscard]] std::unique_ptr<HirLoopStmt> LowerHandledCode(const void *handler, const ActiveThrowHandler &active,
+                                                                const std::function<void(HirBlock &)> &lower,
+                                                                SourceLocation location);
+    /// The `catch` arms of a handler, each matching inside the failure of `outcome`; an expression's arms produce
+    /// `result`, a statement's are run for their effect.
+    void LowerHandlerArms(const std::vector<MatchExpr::Arm> &arms, const TypeRef &outcome,
+                          const std::optional<TypeRef> &result, std::vector<HirMatchArm> &lowered);
     /// The symbol a fallible `Main` is renamed to, called by the synthesized entry point.
     static constexpr std::string_view kFallibleMainBody = "Main$fallible";
     /// `Main() -> int` calling the fallible `body`: a success exits with its integer payload or 0, a failure with 1,

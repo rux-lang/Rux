@@ -15,6 +15,7 @@ rux_add_component(RuxLowering
     AstToHir/AstToHirNative.cpp
     AstToHir/AstToHirPropagation.cpp
     AstToHir/AstToHirStatements.cpp
+    AstToHir/AstToHirThrows.cpp
     AstToHir/AstToHirTypes.cpp
     HirToLir/CheckedLirBuilder.cpp
     HirToLir/HirToLirBacktrace.cpp

@@ -392,6 +392,10 @@ TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
             callableBindings.erase(call);
         }
     }
+    // A call whose callee throws evaluates to its success where a `try` marks it.
+    if (type.IsFallible() && !type.IsIncompleteNative()) {
+        type = CheckThrowSite(expr, type);
+    }
     RecordCheckedExpression(expr, type);
     return type;
 }

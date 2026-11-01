@@ -358,8 +358,13 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
     return ConvertNative(std::move(lowered), targetType, expression.location);
 }
 
-HirStmtPtr AstToHirContext::LowerFail(const Expr *value, const SourceLocation location) {
-    // `fail` selects the outer failure channel itself; only its operand converts, to that channel's payload.
+HirStmtPtr AstToHirContext::LowerFail(const Expr *value, const SourceLocation location, const ResolvedThrowSite *site) {
+    // A `throw` inside a handler stores its error there, as a call it covers would.
+    if (site && !site->LeavesFunction() && value) {
+        return LowerThrowTo(*site, LowerExprAs(*value, SubstituteCurrentType(site->errorType)), location);
+    }
+    // Otherwise the statement selects the outer failure channel itself; only its operand converts, to that channel's
+    // payload.
     const TypeRef error = currentReturnType.IsFallible() ? currentReturnType.FallibleError() : TypeRef::MakeUnknown();
     HirExprPtr payload = value ? LowerExprAs(*value, error) : MakeUnitValue(location);
     return LowerFunctionReturn(MakeNativeCase(currentReturnType, NativeFailureTag, std::move(payload), location),
@@ -378,21 +383,21 @@ HirExprPtr AstToHirContext::LowerDiverge(const DivergeExpr &expression) {
         break;
     }
     case DivergeExpr::Kind::Fail:
-        statement = LowerFail(expression.value.get(), expression.location);
+        statement = LowerFail(expression.value.get(), expression.location, model.TryGetThrowSite(expression));
         break;
     case DivergeExpr::Kind::Break: {
         auto exit = std::make_unique<HirBreakStmt>();
         exit->location = expression.location;
-        exit->label = expression.label;
-        exit->cleanups = cleanupPlanner.LoopExitActions(expression.label);
+        exit->label = LoopExitLabel(expression.label);
+        exit->cleanups = cleanupPlanner.LoopExitActions(exit->label);
         statement = std::move(exit);
         break;
     }
     case DivergeExpr::Kind::Continue: {
         auto exit = std::make_unique<HirContinueStmt>();
         exit->location = expression.location;
-        exit->label = expression.label;
-        exit->cleanups = cleanupPlanner.LoopExitActions(expression.label);
+        exit->label = LoopExitLabel(expression.label);
+        exit->cleanups = cleanupPlanner.LoopExitActions(exit->label);
         statement = std::move(exit);
         break;
     }

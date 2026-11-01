@@ -315,6 +315,7 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
     if (Match(TokenKind::Arrow)) {
         decl->returnType = ParseType("add the function return type after '->'");
     }
+    ParseThrowsClause(decl->returnType);
 
     if (isAsm) {
         if (Match(TokenKind::LeftBrace)) {

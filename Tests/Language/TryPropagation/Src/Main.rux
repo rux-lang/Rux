@@ -1,0 +1,129 @@
+// `try expr`: marking the calls that can throw and passing their errors on.
+// One `try` covers the whole expression to its right, so `try A() + B()` marks both calls. Evaluation stops at the
+// first call that throws: nothing to its right runs. With no handler around it, the error leaves the function through
+// its `throws` channel, as itself, as a member of a larger sum, or as part of one; it is never converted. A call that
+// throws evaluates to its success, so a chain continues on the value, and `try` may also mark the value of an
+// assignment.
+
+import Core::Assert;
+
+struct Overflow {
+    limit: int32;
+}
+
+struct Missing {}
+
+struct Log {
+    calls: int32;
+    last: int32;
+}
+
+func Step(log: &var Log, value: int32) -> int32 throws Overflow {
+    log.calls = log.calls + 1i32;
+    log.last = value;
+    if value > 100i32 {
+        throw Overflow { limit: 100i32 };
+    }
+    return value;
+}
+
+func Sum(log: &var Log, a: int32, b: int32, c: int32) -> int32 throws Overflow {
+    return try Step(log, a) + Step(log, b) + Step(log, c);
+}
+
+func Find(key: int32) -> int32 throws Missing {
+    if key < 0i32 {
+        throw Missing {};
+    }
+    return key;
+}
+
+// Both errors widen into the sum this function throws.
+func Combined(log: &var Log, key: int32) -> int32 throws Overflow | Missing {
+    return try Step(log, Find(key)) * 2i32;
+}
+
+struct Counter {
+    value: int32;
+}
+
+extend Counter {
+    func Next(self: &var Counter) -> int32 throws Overflow {
+        self.value = self.value + 1i32;
+        if self.value > 2i32 {
+            throw Overflow { limit: 2i32 };
+        }
+        return self.value;
+    }
+
+    func Doubled(self: &Counter) -> int32 {
+        return self.value * 2i32;
+    }
+}
+
+func MakeCounter(start: int32) -> Counter throws Overflow {
+    if start > 10i32 {
+        throw Overflow { limit: 10i32 };
+    }
+    return Counter { value: start };
+}
+
+func Chain(start: int32) -> int32 throws Overflow {
+    // A call that throws evaluates to its success, which the chain continues on.
+    return try MakeCounter(start).Doubled();
+}
+
+func Assigned(counter: &var Counter) -> int32 throws Overflow {
+    var total = 0i32;
+    total = try counter.Next();
+    total += try counter.Next();
+    return total;
+}
+
+// A generic function throws and marks its calls the same way; each instance throws its own types.
+func Checked<T>(value: T, ok: bool) -> T throws Overflow {
+    if !ok {
+        throw Overflow { limit: 0i32 };
+    }
+    return value;
+}
+
+func CheckedTwice<T>(value: T, ok: bool) -> T throws Overflow {
+    let first = try Checked(value, true);
+    return try Checked(first, ok);
+}
+
+func Main() -> int {
+    var log = Log { calls: 0i32, last: 0i32 };
+    Assert((try? Sum(log, 1i32, 2i32, 3i32)) == .Some(6i32), "every call under one try runs");
+    Assert(log.calls == 3i32, "three calls");
+
+    log = Log { calls: 0i32, last: 0i32 };
+    let failed = try Sum(log, 1i32, 500i32, 3i32) catch { e => -e.limit };
+    Assert(failed == -100i32, "the error passes to the caller unchanged");
+    Assert(log.calls == 2i32 && log.last == 500i32, "evaluation stops at the first call that throws");
+
+    log = Log { calls: 0i32, last: 0i32 };
+    let missing = try Combined(log, -1i32) catch {
+        _: Missing => 1i32,
+        _: Overflow => 2i32,
+    };
+    Assert(missing == 1i32 && log.calls == 0i32, "an error thrown by an argument stops the outer call");
+    let overflow = try Combined(log, 200i32) catch {
+        _: Missing => 1i32,
+        _: Overflow => 2i32,
+    };
+    Assert(overflow == 2i32, "each error widens into the sum");
+    Assert((try? Combined(log, 5i32)) == .Some(10i32), "the success continues");
+
+    Assert((try? Chain(3i32)) == .Some(6i32), "a chain continues on the success");
+    Assert((try? Chain(30i32)) == none, "a chain stops where it throws");
+
+    var counter = Counter { value: 0i32 };
+    Assert((try? Assigned(counter)) == .Some(3i32), "'try' marks an assigned value");
+    Assert((try? Assigned(counter)) == none, "a compound assignment that throws stops");
+
+    Assert((try? CheckedTwice(5i64, true)) == .Some(5i64), "a generic instance succeeds");
+    Assert((try CheckedTwice(5i32, false) catch { e => e.limit - 1i32 }) == -1i32, "a generic instance throws");
+    return 0;
+}

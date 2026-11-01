@@ -23,6 +23,7 @@ const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"extern", TokenKind::ExternKeyword},
     {"fail", TokenKind::FailKeyword},
     {"false", TokenKind::BoolLiteral},
+    {"finally", TokenKind::FinallyKeyword},
     {"for", TokenKind::ForKeyword},
     {"func", TokenKind::FuncKeyword},
     {"if", TokenKind::IfKeyword},
@@ -42,7 +43,10 @@ const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"return", TokenKind::ReturnKeyword},
     {"self", TokenKind::SelfKeyword},
     {"struct", TokenKind::StructKeyword},
+    {"throw", TokenKind::ThrowKeyword},
+    {"throws", TokenKind::ThrowsKeyword},
     {"true", TokenKind::BoolLiteral},
+    {"try", TokenKind::TryKeyword},
     {"type", TokenKind::TypeKeyword},
     {"union", TokenKind::UnionKeyword},
     {"var", TokenKind::VarKeyword},
@@ -143,6 +147,14 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "ModuleKeyword";
     case TokenKind::MoveKeyword:
         return "MoveKeyword";
+    case TokenKind::ThrowKeyword:
+        return "ThrowKeyword";
+    case TokenKind::ThrowsKeyword:
+        return "ThrowsKeyword";
+    case TokenKind::TryKeyword:
+        return "TryKeyword";
+    case TokenKind::FinallyKeyword:
+        return "FinallyKeyword";
     case TokenKind::ImportKeyword:
         return "ImportKeyword";
     case TokenKind::PubKeyword:

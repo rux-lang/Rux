@@ -1,0 +1,10 @@
+// A `try` with no handler around it passes the error to the caller, which needs a function that throws.
+struct Fault {}
+
+func Read() -> int throws Fault {
+    return 1;
+}
+
+func Main() -> int {
+    return try Read();
+}

@@ -56,6 +56,11 @@ void CleanupPlanner::EndLoop(const LoopToken token) {
     assert(InvariantsHold());
 }
 
+void CleanupPlanner::RenameLoop(const LoopToken token, std::string label) {
+    assert(token.index < loops.size() && "renamed cleanup loop is not open");
+    loops[token.index].label = std::move(label);
+}
+
 std::uint64_t CleanupPlanner::Register(const std::string &name, const TypeRef &type, SourceLocation origin) {
     if (!functionBase || scopes.empty()) {
         return 0;

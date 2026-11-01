@@ -74,24 +74,18 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
     }
 
     if (auto *s = HirCast<const HirBreakStmt>(&stmt)) {
+        const std::uint32_t target = s->label.empty() ? breakTarget : labelTargets.at(s->label).breakTarget;
+        EmitPartialCleanupsInsideLoop(target);
         EmitCleanups(s->cleanups);
-        if (!s->label.empty()) {
-            Jump(labelTargets.at(s->label).breakTarget);
-        }
-        else {
-            Jump(breakTarget);
-        }
+        Jump(target);
         return;
     }
 
     if (auto *s = HirCast<const HirContinueStmt>(&stmt)) {
+        const std::uint32_t target = s->label.empty() ? continueTarget : labelTargets.at(s->label).continueTarget;
+        EmitPartialCleanupsInsideLoop(target);
         EmitCleanups(s->cleanups);
-        if (!s->label.empty()) {
-            Jump(labelTargets.at(s->label).continueTarget);
-        }
-        else {
-            Jump(continueTarget);
-        }
+        Jump(target);
         return;
     }
 
@@ -206,6 +200,8 @@ void HirToLirContext::LowerWhile(const HirWhileStmt &s) {
     const std::uint32_t savedContinue = continueTarget;
     breakTarget = afterBlock;
     continueTarget = condBlock;
+    loopPartialDepths[afterBlock] = partialCleanupFrames.size();
+    loopPartialDepths[condBlock] = partialCleanupFrames.size();
     if (!s.label.empty()) {
         labelTargets[s.label] = {afterBlock, condBlock};
     }
@@ -234,6 +230,8 @@ void HirToLirContext::LowerDoWhile(const HirDoWhileStmt &s) {
     const std::uint32_t savedContinue = continueTarget;
     breakTarget = afterBlock;
     continueTarget = condBlock;
+    loopPartialDepths[afterBlock] = partialCleanupFrames.size();
+    loopPartialDepths[condBlock] = partialCleanupFrames.size();
     if (!s.label.empty()) {
         labelTargets[s.label] = {afterBlock, condBlock};
     }
@@ -263,6 +261,8 @@ void HirToLirContext::LowerLoop(const HirLoopStmt &s) {
     const std::uint32_t savedContinue = continueTarget;
     breakTarget = afterBlock;
     continueTarget = bodyBlock;
+    loopPartialDepths[afterBlock] = partialCleanupFrames.size();
+    loopPartialDepths[bodyBlock] = partialCleanupFrames.size();
     if (!s.label.empty()) {
         labelTargets[s.label] = {afterBlock, bodyBlock};
     }
@@ -341,6 +341,8 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         std::uint32_t savedContinue = continueTarget;
         breakTarget = afterBlock;
         continueTarget = stepBlock;
+        loopPartialDepths[afterBlock] = partialCleanupFrames.size();
+        loopPartialDepths[stepBlock] = partialCleanupFrames.size();
         if (!s.label.empty()) {
             labelTargets[s.label] = {afterBlock, stepBlock};
         }
@@ -424,6 +426,8 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         std::uint32_t savedContinue = continueTarget;
         breakTarget = afterBlock;
         continueTarget = stepBlock;
+        loopPartialDepths[afterBlock] = partialCleanupFrames.size();
+        loopPartialDepths[stepBlock] = partialCleanupFrames.size();
         if (!s.label.empty()) {
             labelTargets[s.label] = {afterBlock, stepBlock};
         }

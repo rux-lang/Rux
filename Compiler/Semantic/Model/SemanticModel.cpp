@@ -317,6 +317,26 @@ const ResolvedConstraintWitness *SemanticModel::TryGetConstraintWitness(const st
     return witness == facts.constraintWitnesses.end() ? nullptr : &witness->second;
 }
 
+const ResolvedThrowSite *SemanticModel::TryGetThrowSite(const Expr &expression) const noexcept {
+    const auto site = facts.throwSites.find(&expression);
+    return site == facts.throwSites.end() ? nullptr : &site->second;
+}
+
+const ResolvedThrowSite *SemanticModel::TryGetThrowSite(const FailStmt &statement) const noexcept {
+    const auto site = facts.throwStatements.find(&statement);
+    return site == facts.throwStatements.end() ? nullptr : &site->second;
+}
+
+const ResolvedThrowHandler *SemanticModel::TryGetThrowHandler(const TryStmt &statement) const noexcept {
+    const auto handler = facts.tryBlockHandlers.find(&statement);
+    return handler == facts.tryBlockHandlers.end() ? nullptr : &handler->second;
+}
+
+const ResolvedThrowHandler *SemanticModel::TryGetThrowHandler(const TryMarkExpr &expression) const noexcept {
+    const auto handler = facts.tryExpressionHandlers.find(&expression);
+    return handler == facts.tryExpressionHandlers.end() ? nullptr : &handler->second;
+}
+
 const ResolvedPropagation *SemanticModel::TryGetPropagation(const TryExpr &expression) const noexcept {
     const auto propagation = facts.propagations.find(&expression);
     return propagation == facts.propagations.end() ? nullptr : &propagation->second;

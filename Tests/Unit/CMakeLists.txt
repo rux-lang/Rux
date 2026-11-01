@@ -52,6 +52,9 @@ set(RUX_TEST_SOURCES
     X86_64MachineSelectionTests.cpp
     ThreadLocalTests.cpp
     TestAttributeTests.cpp
+    ThrowsLoweringTests.cpp
+    ThrowsSemanticsTests.cpp
+    ThrowsSyntaxTests.cpp
     TestEntryTests.cpp
     ChecksumTests.cpp
     CliContractTests.cpp

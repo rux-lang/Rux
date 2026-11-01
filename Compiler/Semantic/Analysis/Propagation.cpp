@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <format>
+#include <utility>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -129,7 +130,9 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         EmitExitFromDeferred(expression.location, "?",
                              "handle the failure inside the 'defer', with 'catch' or a 'match' on both channels");
     }
+    const Expr *savedOutcomeOperand = std::exchange(outcomeOperand, expression.operand.get());
     const TypeRef operandType = CheckExpr(*expression.operand);
+    outcomeOperand = savedOutcomeOperand;
     if (operandType.IsUnknown()) {
         return TypeRef::MakeUnknown();
     }

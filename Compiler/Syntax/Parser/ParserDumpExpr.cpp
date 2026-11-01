@@ -429,6 +429,29 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
+    else if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
+        Pad();
+        out << (marked->form == TryMarkExpr::Form::Optional ? "TryMarkExpr try?\n"
+                : marked->form == TryMarkExpr::Form::Catch  ? "TryMarkExpr try catch\n"
+                                                            : "TryMarkExpr try\n");
+        ++indent;
+        if (marked->operand) {
+            Print(*marked->operand);
+        }
+        for (const auto &arm : marked->arms) {
+            Pad();
+            out << "Arm\n";
+            ++indent;
+            if (arm.pattern) {
+                printPattern(*arm.pattern);
+            }
+            if (arm.body) {
+                Print(*arm.body);
+            }
+            --indent;
+        }
+        --indent;
+    }
     else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
         Pad();
         out << "MappedTryExpr '" << mapped->binding << "'\n";
@@ -461,7 +484,8 @@ void ExpressionPrinter::Print(const Expr &expression) {
     else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         Pad();
         static constexpr const char *kKeywords[] = {"return", "fail", "break", "continue"};
-        out << "DivergeExpr '" << kKeywords[static_cast<int>(diverge->kind)] << "'";
+        out << "DivergeExpr '" << (diverge->throwSpelling ? "throw" : kKeywords[static_cast<int>(diverge->kind)])
+            << "'";
         if (!diverge->label.empty()) {
             out << " " << diverge->label;
         }

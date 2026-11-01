@@ -34,6 +34,8 @@ public:
     void EndFunction(FunctionToken token);
     [[nodiscard]] LoopToken BeginLoop(std::string label);
     void EndLoop(LoopToken token);
+    /// Give a loop that is still open the label a `break` written inside a hidden loop nested in it now names it by.
+    void RenameLoop(LoopToken token, std::string label);
 
     /// Register an initialized or potentially initialized named binding. Copy and unresolved values return zero and
     /// never enter the cleanup stack because the semantic model has no destruction recipe for them.

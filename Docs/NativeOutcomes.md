@@ -82,7 +82,9 @@ Signatures name their error channels explicitly. Widening an internal error sum 
 
 ## Non-Goals and Their Equivalents
 
-Deliberately not introduced: optional chaining `?.`, a brace-less `catch fallback`, `try` blocks, inferred error sets, `From`-style implicit error conversion, `if let`/`guard let` (binding `is` takes their place: `if entry is .Some(value) { ... }`), flow narrowing, closures, exceptions, fallible loops, and `extend` or interface implementations on native forms.
+Deliberately not introduced: optional chaining `?.`, a brace-less `catch fallback`, inferred error sets, `From`-style implicit error conversion, `if let`/`guard let` (binding `is` takes their place: `if entry is .Some(value) { ... }`), flow narrowing, closures, exceptions, fallible loops, and `extend` or interface implementations on native forms.
+
+`try` blocks were on that list until typed throws reversed it: `-> T throws E` is the same native fallible spelled as a channel of its own, every call that can throw is marked with `try`, and `try { ... } catch { arms }` hands what a block throws to `match`-style arms (see [Errors: `throws`, `throw` and `try`](Language.md#errors-throws-throw-and-try)). They are still not exceptions: an error leaves a function as an ordinary return of the fallible and reaches a handler by a jump within the function, so nothing unwinds, and every exit stays visible at the `try` that marks it. The forms above remain the older spelling until packages migrate.
 
 | Wanted                              | Write                                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------------- |

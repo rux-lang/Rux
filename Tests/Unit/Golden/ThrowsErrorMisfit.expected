@@ -1,0 +1,1 @@
+10:16: error: call to 'Parse' can throw 'ParseError', but 'Load' throws 'IoError'

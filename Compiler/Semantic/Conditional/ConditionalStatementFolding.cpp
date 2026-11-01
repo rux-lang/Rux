@@ -211,6 +211,17 @@ private:
                 ResolveExpr(arm.body.get());
             }
         }
+        else if (auto *tryStmt = AstCast<TryStmt>(&stmt)) {
+            if (tryStmt->body) {
+                ResolveBlock(*tryStmt->body);
+            }
+            for (auto &arm : tryStmt->arms) {
+                ResolveExpr(arm.body.get());
+            }
+        }
+        else if (auto *failStmt = AstCast<FailStmt>(&stmt)) {
+            ResolveExpr(failStmt->value.get());
+        }
         else if (auto *letStmt = AstCast<LetStmt>(&stmt)) {
             ResolveExpr(letStmt->init.get());
         }
@@ -244,6 +255,12 @@ private:
         else if (auto *matchExpr = AstCast<MatchExpr>(expr)) {
             ResolveExpr(matchExpr->subject.get());
             for (auto &arm : matchExpr->arms) {
+                ResolveExpr(arm.body.get());
+            }
+        }
+        else if (auto *marked = AstCast<TryMarkExpr>(expr)) {
+            ResolveExpr(marked->operand.get());
+            for (auto &arm : marked->arms) {
                 ResolveExpr(arm.body.get());
             }
         }

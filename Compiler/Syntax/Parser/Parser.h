@@ -55,6 +55,10 @@ private:
     /// Whether the then branch of a conditional `c ? a : b` is being read, where `x is name: T` would take the ':'
     /// separating the branches; there `is` keeps reading a type.
     bool inConditionalThen = false;
+    /// Whether the operand of a `try` is being read, where `catch` ends the operand and starts the arms of `try ...
+    /// catch` instead of being a postfix recovery. A nested expression -- an argument, an element, a grouped value --
+    /// is read whole, so it clears this again.
+    bool tryOperandEndsAtCatch = false;
     /// Whether a block so far held a `when` statement or a nested declaration (`Module::bodiesNeedConditionalFolding`).
     bool bodiesNeedConditionalFolding = false;
     /// Whether a block so far declared anything but a constant (`Module::bodiesDeclareItems`).
@@ -275,7 +279,10 @@ private:
     TypeExprPtr ParsePostfixType(std::optional<std::string> help = {}); ///< a type without a range operator after it
     TypeExprPtr ParseBaseType(std::optional<std::string> help = {});    ///< named, path, pointer, tuple, self
     TypeExprPtr ParseFunctionType();                                    ///< func(params) -> T
-    [[nodiscard]] bool CanStartType() const noexcept;                   ///< whether the next token begins a type
+    /// A `throws E` clause after a function's return type, or after its parameters when it has none: it makes
+    /// `returnType` the fallible `T ! E` the clause spells, marked as written with `throws`.
+    void ParseThrowsClause(std::optional<TypeExprPtr> &returnType);
+    [[nodiscard]] bool CanStartType() const noexcept; ///< whether the next token begins a type
 
     // Blocks and statements
     /// A braced block. A value block lets its last expression leave out the ';' to be the value the block yields.
@@ -300,7 +307,12 @@ private:
     [[nodiscard]] static bool PatternMatchesEveryElement(const Pattern &pattern) noexcept;
     std::unique_ptr<MatchStmt> ParseMatchStmt();
     std::unique_ptr<ReturnStmt> ParseReturnStmt();
+    /// `throw error;` or the older `fail error;`.
     std::unique_ptr<FailStmt> ParseFailStmt();
+    /// `try { ... } catch { arms }`.
+    std::unique_ptr<TryStmt> ParseTryStmt();
+    /// Reports `finally`, which Rux does not have, and skips the block after it.
+    void RejectFinally();
     /// Report a `catch`, `?`, or `??` written directly after a match statement, which takes no postfix operator.
     void RejectPostfixAfterMatchStatement();
     std::unique_ptr<DeferStmt> ParseDeferStmt();
@@ -310,6 +322,11 @@ private:
     ExprPtr ParseExprImpl();
     ExprPtr ParseRequiredExpr(std::string_view context = {});
     void EmitMissingExpression(std::string_view context = {});
+    /// An expression that may start with `try`, which covers everything to its right.
+    ExprPtr ParseTryPrefix();
+    /// `try expr`, `try expr catch { arms }` or `try? expr`, with `try` the current token. `misplaced` is a `try` found
+    /// where an operand was expected, to the right of an operator, which is reported.
+    ExprPtr ParseTryExpr(bool misplaced);
     ExprPtr ParseAssign();
     ExprPtr ParseRange();
     ExprPtr ParseTernary();
@@ -333,7 +350,7 @@ private:
     /// The fields of a struct or case literal from its '{' through its '}'. A field written as a name alone takes the
     /// binding of that name, as if written `name: name`.
     void ParseStructInitFields(StructInitExpr &initializer);
-    /// Whether the current token begins `fail`, `return`, `break`, or `continue`.
+    /// Whether the current token begins `fail`, `throw`, `return`, `break`, or `continue`.
     [[nodiscard]] bool CheckDivergingKeyword() const noexcept;
     /// One of the diverging forms in a position that accepts it: a whole arm, mapping, or `??` fallback body.
     ExprPtr ParseDivergingExpr();

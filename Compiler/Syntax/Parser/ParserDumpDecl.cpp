@@ -160,6 +160,15 @@ std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
     return "<type>";
 }
 
+std::string DeclarationPrinter::ReturnClause(const TypeExpr *type) {
+    // A `throws` clause follows the return type, or the parameter list when there is none.
+    if (const auto *fallible = AstCast<const FallibleTypeExpr>(type); fallible && fallible->throwsClause) {
+        return (fallible->success ? " -> " + TypeString(fallible->success.get()) : std::string()) + " throws " +
+               TypeString(fallible->error.get());
+    }
+    return " -> " + TypeString(type);
+}
+
 void DeclarationPrinter::Print(const Decl &decl) {
     if (const auto *function = AstCast<const FuncDecl>(&decl)) {
         PrintFuncDecl(*function);
@@ -261,7 +270,7 @@ void DeclarationPrinter::PrintFuncDecl(const FuncDecl &decl) {
     }
     out << ')';
     if (decl.returnType) {
-        out << " -> " << TypeString(decl.returnType->get());
+        out << ReturnClause(decl.returnType->get());
     }
     if (decl.isAsm) {
         out << '\n';
@@ -602,7 +611,7 @@ void DeclarationPrinter::PrintExternFuncDecl(const ExternFuncDecl &decl) const {
     }
     out << ')';
     if (decl.returnType) {
-        out << " -> " << TypeString(decl.returnType->get());
+        out << ReturnClause(decl.returnType->get());
     }
     out << '\n';
 }

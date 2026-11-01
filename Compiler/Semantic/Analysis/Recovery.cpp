@@ -17,7 +17,9 @@ void AnalysisContext::CheckRecoveryArmsWithoutSubject(const std::vector<MatchExp
 }
 
 TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
+    const Expr *savedOutcomeOperand = std::exchange(outcomeOperand, expression.operand.get());
     const TypeRef operandType = CheckExpr(*expression.operand);
+    outcomeOperand = savedOutcomeOperand;
     const auto checkMapperAlone = [&] {
         const TrackedFlow continuing = SaveTrackedFlow();
         PushScope();
@@ -118,7 +120,9 @@ TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
 }
 
 TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
+    const Expr *savedOutcomeOperand = std::exchange(outcomeOperand, expression.subject.get());
     const TypeRef subjectType = CheckExpr(*expression.subject);
+    outcomeOperand = savedOutcomeOperand;
     if (subjectType.IsUnknown()) {
         CheckRecoveryArmsWithoutSubject(expression.arms);
         return TypeRef::MakeUnknown();

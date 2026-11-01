@@ -54,7 +54,7 @@ A struct keeps declaration order, places each field at the next multiple of its 
 
 A `return expr;` evaluates and preserves `expr` exactly once before running deferred statements. The accepted copy or move into the return value happens during this evaluation. Later changes to source locals do not change the captured value, including fields of an aggregate; a returned pointer still points to its original storage.
 
-On return, registered defers run in reverse registration order, from the innermost active scope outward, followed by the existing ownership cleanup. A transferred value is destroyed by its eventual owner, and a copied source remains subject to normal cleanup. A void return runs the same deferred statements without capturing a value. A `break` or `continue` runs, the same way, the defers registered in the scopes it leaves, up to and including the body of the loop it targets, so a pass of a loop body runs its defers however it ends. A deferred statement cannot itself leave its scope: `return`, `fail`, `?`, and a `break` or `continue` out of it are errors (`'return' cannot leave a deferred statement`); a loop written inside the deferred statement may still be left. Each function has its own defer stack, including instantiated generic functions.
+On return, registered defers run in reverse registration order, from the innermost active scope outward, followed by the existing ownership cleanup. A transferred value is destroyed by its eventual owner, and a copied source remains subject to normal cleanup. A void return runs the same deferred statements without capturing a value. A `break` or `continue` runs, the same way, the defers registered in the scopes it leaves, up to and including the body of the loop it targets, so a pass of a loop body runs its defers however it ends, and so does an error leaving a `try` block for its `catch` arms. A deferred statement is evaluated when its scope exits, not when the `defer` runs, as in Swift: after `var n = 1; defer Print(n); n = 2;` the deferred call prints `2`. A deferred statement cannot itself leave its scope: `return`, `throw`, `fail`, `?`, and a `break` or `continue` out of it are errors (`'return' cannot leave a deferred statement`); a loop written inside the deferred statement may still be left. No error may leave it either, so a call in it that can throw is written `try?` or `try ... catch`, and a bare `try` there is `an error cannot leave a deferred statement` with `help: handle it with 'catch' or discard it with 'try?'`; the same holds in a destructor. Each function has its own defer stack, including instantiated generic functions.
 
 ## Package Visibility
 
@@ -651,7 +651,47 @@ let contextual: uint8[16] = [0; 16];
 
 The element type must be copyable, so it is plain data with nothing to destroy. Construct move-only elements explicitly or initialize mutable array storage in a loop instead. A zero count still evaluates the value once. Repeated arrays use the same fixed-array-to-`T[..]` coercion as ordinary array literals.
 
+## Errors: `throws`, `throw` and `try`
+
+A function that can fail declares the error after its return type, or after its parameters when it returns nothing, and the error may be a sum:
+
+```rux
+variant DigitError { Blank, NotADigit(char) }
+
+func ReadDigit(c: char) -> int throws DigitError {
+    if c == ' ' { throw .Blank; }
+    if c < '0' || c > '9' { throw .NotADigit(c); }
+    return (c as int) - ('0' as int);
+}
+
+func Close(&var self) throws IoError { ... }
+func Load(path: char8[..]) -> Config throws IoError | ParseError { ... }
+```
+
+`-> T throws E` is the same function type as the older `-> T ! E`: the function returns the native fallible, so a throw costs a tag test and a branch, never an unwinding, and a function that does not throw pays nothing. `throws` is part of function types, `func(int32) -> int32 throws Closed`, and of interface requirements, which an implementation matches exactly. `Main` may declare `throws E`; an error that reaches it ends the program with status 1, as a fallible `Main` does.
+
+`throw value;` sends an error to the innermost handler around it, or else out of the function through its `throws` channel, where the value converts to the channel's type as a `return` value converts to the return type. It is also a whole arm body and the right side of `??`, as in `lookup ?? throw NotFound {}`, where it produces no value. A case written without its type takes the error type of where it goes: the `throws` clause, or the errors the `try` block around it has seen so far; when that is a sum, write the owner, as in `throw ParseError::Invalid(at)`. `throw` needs no `try`. `fail` is its older spelling.
+
+Every call that can throw is marked. A call of a `throws` function, of a throwing method, interface requirement or operator, is a _throw site_, and it must be covered by `try`:
+
+| Form                         | Where the error goes                                                                     |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| `try expr`                   | To the innermost handler around it, or out of the function through its `throws` channel. |
+| `try expr catch { arms }`    | To the arms, which produce a value of the operand's type or leave.                       |
+| `try? expr`                  | Dropped: the result is the operand's value made present, `T?`, or `none`.                |
+| `try { ... } catch { arms }` | To the arms. Every statement in the block is covered by the block itself.                |
+
+A `try` block covers every statement in it, those in nested blocks included, but not a deferred statement, which runs as the scope is left, nor the arms of a handler inside it. `try` has the lowest precedence of any operator, so it covers the whole expression to its right: `try ReadDigit(t) * 10 + ReadDigit(u)` marks both calls, and `(try? F()) ?? fallback` needs its parentheses. It is written where an expression starts, including the value of an assignment, `total = try Next();`, and never to the right of another operator (`x + try F()` is `'try' cannot appear to the right of an operator`, with `help: write 'try' at the start of the whole expression`). A call that throws evaluates to its success, so `try MakeCounter().Doubled()` continues on the counter. Evaluation stops at the first throw site that fails; nothing to its right runs. An unmarked call is `call to 'ReadDigit' can throw 'DigitError' but is not marked with 'try'` with `help: write 'try' before the expression`, and a `try` that covers no throw site is the warning `'try' has no call that can throw`.
+
+An error going to the function's channel must fit it by identity, as a member of a sum, or as part of a larger sum; it is never converted. Otherwise it is `call to 'ReadDigit' can throw 'DigitError', but 'Load' throws 'IoError'`, or `... but 'Main' does not throw`, with a help suggesting `catch` or `throws`. A handler takes the sum of the errors thrown to it, and its arms are exactly the arms of `match error { ... }`: patterns, `_`, alternatives, guards, typed patterns over a sum, block arms that yield their last expression, and a trailing comma. They must cover every error, so passing an error on is an arm of its own, `e => throw e`. An arm is outside its handler: an arm's `throw`, or a call it marks with `try`, goes to the next handler out or to the caller. `break`, `continue` and `return` leave a `try` block as they leave any block.
+
+There is no `finally` (`'finally' is not supported`, with `help: use 'defer' inside the try block`). Code after a `try { } catch { }` whose arms do not leave always runs; cleanup that must run on every exit is a `defer` or a destructor. When an error leaves a `try` block, the defers registered inside it run and its locals are destroyed in the order a return runs them, and the completed parts of a value built only in part are destroyed, before the arm runs. Ownership follows every path an error can take: the state of each local at a throw site is the state the arms start from, so a value moved before one call that throws and after another is possibly moved in the arms.
+
+Migration note: the older forms stay accepted while packages migrate, and the two spellings interoperate. New code marks a call of an older `-> T ! E` function with `try`, `try?` or `try ... catch` like any throwing call. Older code applies `?`, `? else` and postfix `catch` to a call of a `throws` function, which hands those operators its outcome as before. Outside every `try`, an unmarked call of an older `-> T ! E` function still returns its outcome as a value, while an unmarked call of a `throws` function is the error above, so its error can never be stored, ignored or matched by accident. A call through a function value carries only its type, which is the same for both spellings, so it follows the older rule.
+
 ## Failure Propagation
+
+This section and the two after it describe the older spelling, which stays accepted until packages have migrated to `throws` and `try`.
 
 `outcome?` evaluates its operand once, extracts its success payload, or returns its failure from the enclosing function. It processes exactly one outer level: whatever the success holds continues unchanged, including an inner fallible, sum, optional, or the unit.
 

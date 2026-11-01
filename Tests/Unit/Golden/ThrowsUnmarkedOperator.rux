@@ -1,0 +1,20 @@
+// An operator a type declares with `throws` is a call like any other, so using it needs `try`.
+struct Overflow {}
+
+struct Money {
+    cents: int64;
+}
+
+extend Money {
+    func +(self: &Money, other: Money) -> Money throws Overflow {
+        if self.cents > 1000000i64 {
+            throw Overflow {};
+        }
+        return Money { cents: self.cents + other.cents };
+    }
+}
+
+func Total(a: Money, b: Money) -> Money throws Overflow {
+    let marked = try a + b;
+    return a + b;
+}

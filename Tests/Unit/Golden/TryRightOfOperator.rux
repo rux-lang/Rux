@@ -1,0 +1,11 @@
+// `try` covers everything to its right, so it is written at the start of the whole expression, never after an
+// operator.
+struct Fault {}
+
+func Read() -> int throws Fault {
+    return 1;
+}
+
+func Sum(x: int) -> int throws Fault {
+    return x + try Read();
+}

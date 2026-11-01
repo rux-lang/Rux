@@ -86,14 +86,37 @@ HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value
     return loweredBlock;
 }
 
-CleanupPlanner::LoopToken AstToHirContext::BeginLoop(const std::string &label) {
+CleanupPlanner::LoopToken AstToHirContext::BeginLoop(std::string &label, const bool handler) {
     loopDeferBases.emplace_back(label, deferStack.size());
-    return cleanupPlanner.BeginLoop(label);
+    const CleanupPlanner::LoopToken token = cleanupPlanner.BeginLoop(label);
+    loopLabelSlots.push_back({&label, handler, token});
+    return token;
 }
 
 void AstToHirContext::EndLoop(const CleanupPlanner::LoopToken token) {
     cleanupPlanner.EndLoop(token);
     loopDeferBases.pop_back();
+    loopLabelSlots.pop_back();
+}
+
+std::string AstToHirContext::LoopExitLabel(const std::string &label) {
+    if (!label.empty() || loopLabelSlots.empty() || !loopLabelSlots.back().handler) {
+        return label;
+    }
+    // An unlabeled jump inside a handler leaves the innermost source loop, which a label then has to name.
+    for (std::size_t index = loopLabelSlots.size(); index > 0; --index) {
+        LoopLabelSlot &slot = loopLabelSlots[index - 1];
+        if (slot.handler) {
+            continue;
+        }
+        if (slot.label->empty()) {
+            *slot.label = std::format("$loop.{}", throwOrdinal++);
+            loopDeferBases[index - 1].first = *slot.label;
+            cleanupPlanner.RenameLoop(slot.token, *slot.label);
+        }
+        return *slot.label;
+    }
+    return label;
 }
 
 HirStmtPtr AstToHirContext::LowerLoopExit(HirStmtPtr jump, const std::string &label, const SourceLocation location) {
@@ -311,7 +334,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->location = statement->location;
         lowered->label = statement->label;
         lowered->condition = LowerExpr(*statement->condition);
-        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(lowered->label);
         lowered->body = LowerBlock(*statement->body);
         EndLoop(cleanupLoop);
         return lowered;
@@ -321,7 +344,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirDoWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
-        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(lowered->label);
         lowered->body = LowerBlock(*statement->body);
         EndLoop(cleanupLoop);
         lowered->condition = LowerExpr(*statement->condition);
@@ -332,7 +355,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirLoopStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
-        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(lowered->label);
         lowered->body = LowerBlock(*statement->body);
         EndLoop(cleanupLoop);
         return lowered;
@@ -362,7 +385,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         HirSymbol *outer = currentScope->Lookup(statement->variable);
         lowered->reusesOuterVar =
             outer != nullptr && outer->kind == HirSymbol::Kind::Var && outer->isMut && outer->type == elementType;
-        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement->label);
+        const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(lowered->label);
         PushScope();
         if (!lowered->reusesOuterVar) {
             HirSymbol variable;
@@ -414,23 +437,29 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = AstCast<const FailStmt>(&stmt)) {
-        return LowerFail(statement->value.get(), statement->location);
+        return LowerFail(statement->value.get(), statement->location, model.TryGetThrowSite(*statement));
+    }
+
+    if (const auto *statement = AstCast<const TryStmt>(&stmt)) {
+        return LowerTryStatement(*statement);
     }
 
     if (const auto *statement = AstCast<const BreakStmt>(&stmt)) {
+        const std::string label = LoopExitLabel(statement->label);
         auto lowered = std::make_unique<HirBreakStmt>();
         lowered->location = stmt.location;
-        lowered->label = statement->label;
-        lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
-        return LowerLoopExit(std::move(lowered), statement->label, stmt.location);
+        lowered->label = label;
+        lowered->cleanups = cleanupPlanner.LoopExitActions(label);
+        return LowerLoopExit(std::move(lowered), label, stmt.location);
     }
 
     if (const auto *statement = AstCast<const ContinueStmt>(&stmt)) {
+        const std::string label = LoopExitLabel(statement->label);
         auto lowered = std::make_unique<HirContinueStmt>();
         lowered->location = stmt.location;
-        lowered->label = statement->label;
-        lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
-        return LowerLoopExit(std::move(lowered), statement->label, stmt.location);
+        lowered->label = label;
+        lowered->cleanups = cleanupPlanner.LoopExitActions(label);
+        return LowerLoopExit(std::move(lowered), label, stmt.location);
     }
 
     if (const auto *statement = AstCast<const DeferStmt>(&stmt)) {

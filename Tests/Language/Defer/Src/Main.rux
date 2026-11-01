@@ -45,6 +45,14 @@ func PerIteration(counter: *var int) {
     }
 }
 
+// A deferred statement is evaluated when its scope exits, not when the `defer` runs, so it reads what its variables
+// hold then: a change made after the `defer` is what the deferred statement sees.
+func EvaluatesAtScopeExit(seen: *var int) {
+    var value = 1;
+    defer *seen = value;
+    value = 2;
+}
+
 // A return reads its value before deferred statements mutate the source.
 func ReturnsOriginalVariable() -> int {
     var value = 1;
@@ -128,6 +136,10 @@ func Main() -> int {
     var iterations: int = 0;
     PerIteration(@iterations);
     Assert(iterations == 33, "three iterations each added ten then one");
+
+    var seen: int = 0;
+    EvaluatesAtScopeExit(@seen);
+    Assert(seen == 2, "a deferred statement reads its variables when the scope exits");
 
     Assert(ReturnsOriginalVariable() == 1, "the return reads the variable before its defer");
     Assert(ReturnsOriginalExpression() == 2, "the return expression is evaluated before deferred mutation");

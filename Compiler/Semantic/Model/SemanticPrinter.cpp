@@ -19,6 +19,15 @@ std::string TypeText(const TypeExpr *type) {
     return UngroupedTypeText(type);
 }
 
+/// What follows a function's parameter list: ` -> T`, ` -> T throws E` or ` throws E`.
+std::string ReturnClause(const TypeExpr *type) {
+    if (const auto *fallible = AstCast<const FallibleTypeExpr>(type); fallible && fallible->throwsClause) {
+        return (fallible->success ? " -> " + TypeText(fallible->success.get()) : std::string()) + " throws " +
+               TypeText(fallible->error.get());
+    }
+    return " -> " + TypeText(type);
+}
+
 std::string UngroupedTypeText(const TypeExpr *type) {
     if (!type) {
         return "?";
@@ -107,7 +116,7 @@ std::string FunctionSignature(const FuncDecl &function) {
     }
     text += ')';
     if (function.returnType) {
-        text += " -> " + TypeText(function.returnType->get());
+        text += ReturnClause(function.returnType->get());
     }
     return text;
 }

@@ -34,6 +34,7 @@ enum class TokenKind : std::uint8_t {
     ExtendKeyword,    // extend
     ExternKeyword,    // extern
     FailKeyword,      // fail
+    FinallyKeyword,   // finally
     ForKeyword,       // for
     FuncKeyword,      // func
     IfKeyword,        // if
@@ -53,6 +54,9 @@ enum class TokenKind : std::uint8_t {
     ReturnKeyword,    // return
     SelfKeyword,      // self
     StructKeyword,    // struct
+    ThrowKeyword,     // throw
+    ThrowsKeyword,    // throws
+    TryKeyword,       // try
     TypeKeyword,      // type
     UnionKeyword,     // union
     VarKeyword,       // var

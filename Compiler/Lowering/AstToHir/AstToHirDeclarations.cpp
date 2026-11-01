@@ -285,6 +285,8 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         currentFunctionName = declModulePath.empty() ? d.name : declModulePath + "::" + d.name;
     }
     auto savedDefers = std::exchange(deferStack, {});
+    auto savedLoopDeferBases = std::exchange(loopDeferBases, {});
+    auto savedLoopLabelSlots = std::exchange(loopLabelSlots, {});
     PushScope();
     const CleanupPlanner::FunctionToken cleanupFunction = cleanupPlanner.BeginFunction();
     if (substitutions.empty()) {
@@ -360,6 +362,8 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     cleanupPlanner.EndFunction(cleanupFunction);
     PopScope();
     deferStack = std::move(savedDefers);
+    loopDeferBases = std::move(savedLoopDeferBases);
+    loopLabelSlots = std::move(savedLoopLabelSlots);
     currentSelfType = savedSelfType;
     currentReturnType = savedRet;
     currentTypeParams = savedTypeParams;

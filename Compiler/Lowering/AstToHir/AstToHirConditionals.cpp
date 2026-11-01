@@ -309,7 +309,7 @@ HirStmtPtr AstToHirContext::LowerBindingWhile(const WhileStmt &statement) {
     auto lowered = std::make_unique<HirLoopStmt>();
     lowered->location = statement.location;
     lowered->label = statement.label;
-    const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(statement.label);
+    const CleanupPlanner::LoopToken cleanupLoop = BeginLoop(lowered->label);
     const SourceLocation location = statement.location;
     const std::string taken = std::format("$while.{}", blockValueOrdinal++);
     HirBlock &body = lowered->body;

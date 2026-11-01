@@ -1,0 +1,122 @@
+// `throw`: an error leaving through the `throws` channel or into the innermost handler.
+// `throws E` follows the return type, or the parameter list when there is none, and `E` may be a sum. `throw value`
+// is a statement, and also a whole arm body or the right side of `??`, where it produces no value. A case written
+// without its type takes the error type of where the error goes: the function's `throws` clause, or the errors a
+// `try` block has seen so far. Inside a `try` block a `throw` goes to the block's `catch` arms; anywhere else it leaves
+// the function. A `throw` needs no `try` of its own, and `fail` is its older spelling.
+
+import Core::Assert;
+
+variant DigitError {
+    Blank,
+    NotADigit(char)
+}
+
+struct NotFound {
+    key: int32;
+}
+
+func ReadDigit(c: char) -> int throws DigitError {
+    if c == ' ' {
+        throw .Blank;
+    }
+    if c < '0' || c > '9' {
+        throw .NotADigit(c);
+    }
+    return (c as int) - ('0' as int);
+}
+
+func Check(ok: bool) throws DigitError {
+    if !ok {
+        throw DigitError::Blank;
+    }
+}
+
+func Lookup(key: int32) -> int32 throws NotFound | DigitError {
+    let found: int32? = key > 0i32 ? key * 2i32 : none;
+    if key == 7i32 {
+        throw DigitError::NotADigit('7');
+    }
+    return found ?? throw NotFound { key: key };
+}
+
+func Classify(c: char) -> int32 throws DigitError {
+    return match c {
+        'a' => 1i32,
+        ' ' => throw .Blank,
+        _ => throw DigitError::NotADigit(c),
+    };
+}
+
+func OlderSpelling(c: char) -> int ! DigitError {
+    if c == ' ' {
+        fail .Blank;
+    }
+    return 1;
+}
+
+func Code(error: DigitError) -> int32 {
+    return match error {
+        .Blank => 1i32,
+        .NotADigit(c) => (c as int32),
+    };
+}
+
+func Main() -> int {
+    Assert((try? ReadDigit('3')) == 3, "a digit is read");
+    Assert((try? ReadDigit(' ')) == none, "a blank throws");
+    var thrown = 0i32;
+    try {
+        Check(true);
+        Check(false);
+        thrown = 99i32;
+    } catch {
+        e => thrown = Code(e),
+    }
+    Assert(thrown == 1i32, "a throws clause without a return type throws through it");
+
+    // A sum error: each member leaves as itself.
+    let found = try Lookup(4i32) catch { _ => -1i32 };
+    Assert(found == 8i32, "a present value is returned");
+    let missing = try Lookup(-3i32) catch {
+        e: NotFound => e.key,
+        _: DigitError => 0i32,
+    };
+    Assert(missing == -3i32, "'?? throw' throws the fallback error");
+    let digit = try Lookup(7i32) catch {
+        _: NotFound => 0i32,
+        e: DigitError => Code(e),
+    };
+    Assert(digit == ('7' as int32), "the other member of the sum is thrown");
+
+    // A `throw` arm body.
+    Assert((try? Classify('a')) == .Some(1i32), "a value arm");
+    Assert((try Classify(' ') catch { e => Code(e) }) == 1i32, "a throw arm");
+
+    // A `throw` inside a `try` block goes to its arms, with its case taking the type the block's calls throw.
+    var caught = 0i32;
+    try {
+        let value = ReadDigit('2');
+        if value == 2 {
+            throw .NotADigit('x');
+        }
+        caught = 50i32;
+    } catch {
+        .NotADigit(c) => caught = (c as int32),
+        .Blank => caught = -1i32,
+    }
+    Assert(caught == ('x' as int32), "a throw in a try block is caught by its arms");
+
+    // A `throw` written with the owner, with no call before it.
+    var owner = 0i32;
+    try {
+        throw DigitError::Blank;
+    } catch {
+        e => owner = Code(e),
+    }
+    Assert(owner == 1i32, "a qualified throw needs no call before it");
+
+    // The older spelling sends its error to the same place.
+    Assert((try? OlderSpelling(' ')) == none, "'fail' still leaves the function");
+    return 0;
+}

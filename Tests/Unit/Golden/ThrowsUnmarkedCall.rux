@@ -1,0 +1,17 @@
+// A call to a function declared with `throws` can leave through its error, so it is marked with `try`.
+variant DigitError {
+    Blank,
+    NotADigit(char)
+}
+
+func ReadDigit(c: char) -> int throws DigitError {
+    if c == ' ' {
+        throw .Blank;
+    }
+    return (c as int) - ('0' as int);
+}
+
+func Main() -> int throws DigitError {
+    let tens = ReadDigit('4');
+    return try tens * 10 + ReadDigit('2');
+}

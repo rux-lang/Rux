@@ -31,6 +31,7 @@ LirFunc HirToLirContext::SynthesizeDropGlueFunc(const DropGluePlan &plan) {
     enumPayloadSlots.clear();
     dropFlags.clear();
     partialCleanupFrames.clear();
+    loopPartialDepths.clear();
 
     LirFunc function;
     function.name = plan.symbol;
@@ -228,6 +229,18 @@ void HirToLirContext::PushPartialCleanupFrame(const std::vector<HirFailureCleanu
 void HirToLirContext::PopPartialCleanupFrame() {
     if (!partialCleanupFrames.empty()) {
         partialCleanupFrames.pop_back();
+    }
+}
+
+void HirToLirContext::EmitPartialCleanupsInsideLoop(const std::uint32_t target) {
+    // A jump from inside an expression -- `?? break`, or a throw to a handler, whose loop an expression may hold --
+    // leaves the aggregates begun since the loop started, and destroys the parts of them already built.
+    const auto depth = loopPartialDepths.find(target);
+    const std::size_t base = depth == loopPartialDepths.end() ? partialCleanupFrames.size() : depth->second;
+    for (std::size_t frame = partialCleanupFrames.size(); frame > base; --frame) {
+        for (const PendingPartialCleanup &cleanup : partialCleanupFrames[frame - 1]) {
+            EmitDropGlueCall(cleanup.glueSymbol, cleanup.address);
+        }
     }
 }
 

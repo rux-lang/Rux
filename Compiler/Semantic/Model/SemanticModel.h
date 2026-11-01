@@ -204,6 +204,32 @@ struct ResolvedPropagation {
     TypeRef returnType;
 };
 
+/// One place an error can leave from under the `throws` model: a call, operator or constructor whose callee throws
+/// and that a `try` marks, or a `throw`. A call evaluates to `payloadType` when it succeeds. Its error goes to the
+/// handler named here -- a `try` block, a `try ... catch` expression or a `try?` -- or, when there is none, leaves the
+/// function through its `throws` channel, injected or widened into it.
+struct ResolvedThrowSite {
+    TypeRef payloadType;
+    TypeRef errorType;
+    const TryStmt *handlerBlock = nullptr;
+    const TryMarkExpr *handlerExpression = nullptr;
+    /// The `try` that marks the site: a `try` expression, or the `try` block the site is written in. A `throw` needs
+    /// no mark and has neither.
+    const TryStmt *markBlock = nullptr;
+    const TryMarkExpr *markExpression = nullptr;
+
+    [[nodiscard]] bool LeavesFunction() const noexcept {
+        return handlerBlock == nullptr && handlerExpression == nullptr;
+    }
+};
+
+/// What one accepted handler receives: the error type, which is the sum of the errors its throw sites throw, and the
+/// value its operand produces when nothing throws, `()` for a `try` block.
+struct ResolvedThrowHandler {
+    TypeRef errorType;
+    TypeRef valueType;
+};
+
 /// What one accepted `option ?? fallback` coalesces. Analysis checks the native optional and fixes the payload type,
 /// so lowering only has to build the lazy match it describes.
 struct ResolvedCoalescing {
@@ -357,6 +383,12 @@ struct SemanticFacts {
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
     std::unordered_map<const MappedTryExpr *, ResolvedPropagation> mappedPropagations;
     std::unordered_map<const BinaryExpr *, ResolvedCoalescing> coalescings;
+    /// Every accepted throw site: a call or operator expression a `try` marks, or a `throw` used as a value.
+    std::unordered_map<const Expr *, ResolvedThrowSite> throwSites;
+    /// Every accepted `throw` or `fail` statement.
+    std::unordered_map<const FailStmt *, ResolvedThrowSite> throwStatements;
+    std::unordered_map<const TryStmt *, ResolvedThrowHandler> tryBlockHandlers;
+    std::unordered_map<const TryMarkExpr *, ResolvedThrowHandler> tryExpressionHandlers;
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
@@ -475,6 +507,15 @@ struct SemanticModel {
     [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const TryExpr &expression) const noexcept;
     /// Returns null for a rejected `? else`, which has no early return to build.
     [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const MappedTryExpr &expression) const noexcept;
+
+    /// Returns null unless `expression` is an accepted throw site: a call or operator a `try` marks, or a `throw`
+    /// written as a value.
+    [[nodiscard]] const ResolvedThrowSite *TryGetThrowSite(const Expr &expression) const noexcept;
+    /// Returns null for a rejected `throw` or `fail` statement.
+    [[nodiscard]] const ResolvedThrowSite *TryGetThrowSite(const FailStmt &statement) const noexcept;
+    /// Returns null for a rejected handler, and for a `try` expression that only marks, which handles nothing.
+    [[nodiscard]] const ResolvedThrowHandler *TryGetThrowHandler(const TryStmt &statement) const noexcept;
+    [[nodiscard]] const ResolvedThrowHandler *TryGetThrowHandler(const TryMarkExpr &expression) const noexcept;
 
     /// Returns null for a rejected `??` and for every ordinary binary expression.
     [[nodiscard]] const ResolvedCoalescing *TryGetCoalescing(const BinaryExpr &expression) const noexcept;

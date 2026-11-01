@@ -106,6 +106,8 @@ private:
     std::uint32_t breakTarget = 0;
     std::uint32_t continueTarget = 0;
     std::unordered_map<std::string, LabelTargets> labelTargets;
+    /// For each loop's break and continue block, how many partial-cleanup frames were open when the loop began.
+    std::unordered_map<std::uint32_t, std::size_t> loopPartialDepths;
     TargetContext targetContext;
     std::unordered_map<std::string, CallingConvention> funcConvs;
     std::unordered_set<std::string> funcNames;
@@ -233,6 +235,8 @@ private:
                                  LirReg aggregateSlot);
     void PopPartialCleanupFrame();
     void EmitActivePartialCleanups();
+    /// Destroys the completed parts of the aggregates a jump to the loop block `target` leaves unfinished.
+    void EmitPartialCleanupsInsideLoop(std::uint32_t target);
 
     /// Lowers a block's statements in a scope of their own: the names they bind are gone once the block ends.
     void LowerBlock(const HirBlock &block);

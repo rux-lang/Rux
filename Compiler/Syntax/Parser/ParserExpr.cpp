@@ -16,7 +16,62 @@ ExprPtr Parser::ParseExpr() {
 }
 
 ExprPtr Parser::ParseExprImpl() {
+    const bool savedEndsAtCatch = std::exchange(tryOperandEndsAtCatch, false);
+    ExprPtr expression = ParseTryPrefix();
+    tryOperandEndsAtCatch = savedEndsAtCatch;
+    return expression;
+}
+
+ExprPtr Parser::ParseTryPrefix() {
+    if (Check(TokenKind::TryKeyword)) {
+        return ParseTryExpr(false);
+    }
     return ParseAssign();
+}
+
+// `try` has the lowest precedence of every operator, so it covers the whole expression to its right, assignment
+// included: `try a() + b()` marks both calls. It is written only where an expression starts, so one to the right of
+// another operator is reported and read as if it were in the right place.
+ExprPtr Parser::ParseTryExpr(const bool misplaced) {
+    auto expression = std::make_unique<TryMarkExpr>();
+    expression->location = CurrentLocation();
+    Advance(); // consume 'try'
+    if (misplaced) {
+        EmitError(expression->location, "'try' cannot appear to the right of an operator",
+                  "write 'try' at the start of the whole expression, as in 'try x + F()'");
+    }
+    if (Check(TokenKind::Question) && !Peek().precededBySpace) {
+        Advance();
+        expression->form = TryMarkExpr::Form::Optional;
+    }
+    const bool savedEndsAtCatch = std::exchange(tryOperandEndsAtCatch, true);
+    expression->operand = misplaced ? ParseUnary() : ParseAssign();
+    tryOperandEndsAtCatch = savedEndsAtCatch;
+    if (!expression->operand) {
+        EmitMissingExpression(expression->form == TryMarkExpr::Form::Optional ? "after 'try?'" : "after 'try'");
+    }
+    if (!Check(TokenKind::CatchKeyword)) {
+        return expression;
+    }
+    if (expression->form == TryMarkExpr::Form::Optional) {
+        EmitError(CurrentLocation(), "'try?' takes no 'catch' arms",
+                  "write 'try ... catch { ... }' to handle the error, or 'try?' alone to turn it into 'none'");
+    }
+    else {
+        expression->form = TryMarkExpr::Form::Catch;
+    }
+    expression->catchLocation = CurrentLocation();
+    Advance(); // consume 'catch'
+    if (Match(TokenKind::LeftBrace)) {
+        ParseArmList(expression->arms, "catch");
+    }
+    else {
+        EmitExpected(CurrentLocation(), "'{' to start the catch arms");
+    }
+    if (expression->form == TryMarkExpr::Form::Optional) {
+        expression->arms.clear();
+    }
+    return expression;
 }
 
 ExprPtr Parser::ParseRequiredExpr(const std::string_view context) {
@@ -63,7 +118,7 @@ ExprPtr Parser::ParseAssign() {
         if (Check(op)) {
             const auto loc = CurrentLocation();
             const std::string opText = Advance().text;
-            auto right = ParseAssign(); // right-associative
+            auto right = ParseTryPrefix(); // right-associative, and `x = try F()` marks the value
             if (!right) {
                 EmitMissingExpression(std::format("after '{}'", opText));
             }
@@ -473,6 +528,9 @@ ExprPtr Parser::ParseMul() {
 }
 
 ExprPtr Parser::ParseUnary() {
+    if (Check(TokenKind::TryKeyword)) {
+        return ParseTryExpr(true);
+    }
     // `move value` transfers ownership out of its operand, and binds as tightly as any other prefix operator: `move
     // a.b` moves the field and `move a + b` is `(move a) + b`. The prefix `<-` is the older spelling of the same node.
     if (CheckAny({TokenKind::MoveKeyword, TokenKind::MoveArrow})) {
@@ -665,7 +723,7 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Postfix recovery: expr catch { pattern => body, ... }. It is part of the postfix chain like `?`, so it
         // attaches to the nearest postfix expression and the chain may continue after its closing brace.
-        if (Match(TokenKind::CatchKeyword)) {
+        if (!tryOperandEndsAtCatch && Match(TokenKind::CatchKeyword)) {
             auto e = std::make_unique<CatchExpr>();
             e->location = loc;
             e->subject = std::move(left);
@@ -958,8 +1016,8 @@ void Parser::ParseStructInitFields(StructInitExpr &initializer) {
 }
 
 bool Parser::CheckDivergingKeyword() const noexcept {
-    return CheckAny(
-        {TokenKind::FailKeyword, TokenKind::ReturnKeyword, TokenKind::BreakKeyword, TokenKind::ContinueKeyword});
+    return CheckAny({TokenKind::FailKeyword, TokenKind::ThrowKeyword, TokenKind::ReturnKeyword, TokenKind::BreakKeyword,
+                     TokenKind::ContinueKeyword});
 }
 
 ExprPtr Parser::ParseDivergingExpr() {
@@ -968,9 +1026,11 @@ ExprPtr Parser::ParseDivergingExpr() {
     const Token keyword = Advance();
     switch (keyword.kind) {
     case TokenKind::FailKeyword:
-        // `fail` always names the failure; a unit error is written `fail ()`.
+    case TokenKind::ThrowKeyword:
+        // `throw` always names the error; a unit error is written `throw ()`. `fail` is its older spelling.
         e->kind = DivergeExpr::Kind::Fail;
-        e->value = ParseRequiredExpr("after 'fail'");
+        e->throwSpelling = keyword.kind == TokenKind::ThrowKeyword;
+        e->value = ParseRequiredExpr(e->throwSpelling ? "after 'throw'" : "after 'fail'");
         break;
     case TokenKind::ReturnKeyword:
         e->kind = DivergeExpr::Kind::Return;

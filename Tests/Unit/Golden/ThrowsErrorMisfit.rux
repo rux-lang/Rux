@@ -1,0 +1,15 @@
+// An error passes on only as itself, as a member of a sum, or as part of a larger sum; it is never converted.
+struct ParseError {}
+struct IoError {}
+
+func Parse() -> int throws ParseError {
+    return 1;
+}
+
+func Load() -> int throws IoError {
+    return try Parse();
+}
+
+func LoadEither() -> int throws IoError | ParseError {
+    return try Parse();
+}

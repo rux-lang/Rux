@@ -290,7 +290,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             CheckReturn(diverge->value.get(), diverge->location);
             break;
         case DivergeExpr::Kind::Fail:
-            CheckFail(diverge->value.get(), diverge->location);
+            if (const std::optional<ResolvedThrowSite> site =
+                    CheckFail(diverge->value.get(), diverge->location, diverge->throwSpelling)) {
+                throwSites.insert_or_assign(diverge, *site);
+            }
             break;
         case DivergeExpr::Kind::Break:
         case DivergeExpr::Kind::Continue:
@@ -331,6 +334,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
     if (const auto *recovery = AstCast<const CatchExpr>(&expr)) {
         return CheckCatchExpression(*recovery);
+    }
+    if (const auto *marked = AstCast<const TryMarkExpr>(&expr)) {
+        return CheckTryMark(*marked);
     }
 
     // `none` has a placeholder type until its context completes it, so its conversion is checked like any other

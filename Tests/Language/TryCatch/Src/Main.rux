@@ -1,0 +1,187 @@
+// `try { ... } catch { arms }` and `try expr catch { arms }`: handling the errors a block or an expression throws.
+// Every call that can throw in a `try` block is marked by the block itself, and its error, or a `throw` in the block,
+// goes to the arms. The arms are exactly the arms of `match error { ... }`: patterns, `_`, `|` alternatives, guards,
+// block arms that yield their last expression, and a trailing comma; they must cover every error. The handler's error
+// type is the sum of what its calls throw. An arm is outside its handler: an arm's `throw`, or a call it marks with
+// `try`, goes to the next handler out or to the caller. `break`, `continue` and `return` leave a `try` block as they
+// leave any block.
+
+import Core::Assert;
+
+variant ParseError {
+    Empty,
+    Invalid(int32),
+    TooLong(int32)
+}
+
+struct IoError {
+    code: int32;
+}
+
+func Parse(text: int32) -> int32 throws ParseError {
+    if text == 0i32 {
+        throw .Empty;
+    }
+    if text < 0i32 {
+        throw .Invalid(-text);
+    }
+    if text > 1000i32 {
+        throw .TooLong(text);
+    }
+    return text;
+}
+
+func Read(code: int32) -> int32 throws IoError {
+    if code != 0i32 {
+        throw IoError { code: code };
+    }
+    return 7i32;
+}
+
+func Describe(text: int32) -> int32 {
+    try {
+        let value = Parse(text);
+        return value;
+    } catch {
+        .Empty => return -1i32,
+        .Invalid(at) if at > 50i32 => return -2i32,
+        .Invalid(_) | .TooLong(_) => return -3i32,
+    }
+}
+
+func Rethrow(text: int32) -> int32 throws ParseError {
+    // Passing an error on is an arm of its own; it goes to the caller, not back into the same arms.
+    return try Parse(text) catch {
+        .Empty => 0i32,
+        e => throw e,
+    };
+}
+
+func Translate(text: int32) -> int32 throws IoError {
+    try {
+        return Parse(text);
+    } catch {
+        _ => throw IoError { code: 9i32 },
+    }
+}
+
+func Main() -> int {
+    Assert(Describe(5i32) == 5i32, "a success returns from the block");
+    Assert(Describe(0i32) == -1i32, "a unit case");
+    Assert(Describe(-60i32) == -2i32, "a guard");
+    Assert(Describe(-6i32) == -3i32, "a failed guard falls to the next arm");
+    Assert(Describe(5000i32) == -3i32, "an alternative");
+
+    Assert((try? Rethrow(0i32)) == .Some(0i32), "a recovered error");
+    Assert((try Rethrow(-4i32) catch { .Invalid(at) => at, _ => 0i32 }) == 4i32, "an arm rethrows to the caller");
+    Assert((try Translate(-1i32) catch { e => e.code }) == 9i32, "an arm throws a new error outward");
+
+    // A block arm yields its last expression; the sum of the errors is matched by type.
+    let value = try Parse(Read(0i32)) catch {
+        e: IoError => e.code,
+        _: ParseError => {
+            let fallback = 40i32;
+            fallback + 2i32
+        }
+    };
+    Assert(value == 7i32, "both calls succeed");
+    let ioFailure = try Parse(Read(3i32)) catch {
+        e: IoError => e.code,
+        _: ParseError => 0i32,
+    };
+    Assert(ioFailure == 3i32, "the inner call's error type is selected");
+    let parseFailure = try Parse(Read(0i32) - 7i32) catch {
+        _: IoError => 0i32,
+        _: ParseError => {
+            let fallback = 40i32;
+            fallback + 2i32
+        }
+    };
+    Assert(parseFailure == 42i32, "a block arm yields its value");
+
+    // A statement-form handler: code after it always runs when no arm leaves.
+    var trace = 0i32;
+    try {
+        trace = trace + Parse(1i32);
+        trace = trace + Parse(0i32) * 100i32;
+        trace = trace + 1000i32;
+    } catch {
+        _ => trace = trace + 10i32,
+    }
+    Assert(trace == 11i32, "the block stops at the throw and the arm runs");
+
+    // Nested handlers: the inner one takes what it can, and its arm's `throw` goes to the outer one.
+    var outer = 0i32;
+    try {
+        try {
+            let parsed = Parse(-2i32);
+            outer = parsed;
+        } catch {
+            .Invalid(at) => throw IoError { code: at * 10i32 },
+            _ => outer = -1i32,
+        }
+        outer = outer + 1i32;
+    } catch {
+        e => outer = e.code,
+    }
+    Assert(outer == 20i32, "an arm's throw goes to the next handler out");
+
+    // A call in an arm needs its own `try`, and its error goes further out.
+    var further = 0i32;
+    try {
+        try {
+            further = Parse(0i32);
+        } catch {
+            _ => further = try Read(5i32),
+        }
+    } catch {
+        e => further = e.code + 100i32,
+    }
+    Assert(further == 105i32, "a call in an arm throws to the next handler out");
+
+    // `break` and `continue` in a `try` block leave the loop around it.
+    var visits = 0i32;
+    var index = 0i32;
+    while index < 10i32 {
+        index = index + 1i32;
+        try {
+            if index == 2i32 {
+                continue;
+            }
+            if index == 5i32 {
+                break;
+            }
+            visits = visits + Parse(index);
+        } catch {
+            _ => {}
+        }
+    }
+    Assert(index == 5i32 && visits == 1i32 + 3i32 + 4i32, "loop jumps leave a try block");
+
+    var labeled = 0i32;
+    outerLoop: for row in 0i32..3i32 {
+        for column in 0i32..3i32 {
+            try {
+                if column == 1i32 {
+                    continue outerLoop;
+                }
+                labeled = labeled + Parse(row + 1i32);
+            } catch {
+                _ => break outerLoop,
+            }
+        }
+    }
+    Assert(labeled == 6i32, "labeled jumps leave a try block");
+
+    var arms = 0i32;
+    for item in 0i32..4i32 {
+        try {
+            arms = arms + Parse(item);
+        } catch {
+            _ => continue,
+        }
+        arms = arms + 100i32;
+    }
+    Assert(arms == 306i32, "an arm's 'continue' leaves the loop around the handler");
+    return 0;
+}

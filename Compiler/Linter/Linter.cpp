@@ -725,6 +725,21 @@ private:
                 VisitExpr(*failStmt->value);
             }
         }
+        else if (const auto *tryStmt = AstCast<const TryStmt>(&stmt)) {
+            if (tryStmt->body) {
+                VisitBlock(*tryStmt->body, scopeNames);
+            }
+            for (const auto &arm : tryStmt->arms) {
+                if (arm.pattern) {
+                    std::vector armNames(scopeNames.begin(), scopeNames.end());
+                    AppendPatternNames(*arm.pattern, armNames);
+                    VisitPattern(*arm.pattern, armNames);
+                }
+                if (arm.body) {
+                    VisitExpr(*arm.body);
+                }
+            }
+        }
         else if (const auto *retStmt = AstCast<const ReturnStmt>(&stmt)) {
             if (retStmt->value && *retStmt->value) {
                 VisitExpr(**retStmt->value);
@@ -953,6 +968,21 @@ private:
                 VisitExpr(*catchExpr->subject);
             }
             for (const auto &arm : catchExpr->arms) {
+                if (arm.pattern) {
+                    std::vector<std::string> names;
+                    AppendPatternNames(*arm.pattern, names);
+                    VisitPattern(*arm.pattern, names);
+                }
+                if (arm.body) {
+                    VisitExpr(*arm.body);
+                }
+            }
+        }
+        else if (const auto *marked = AstCast<const TryMarkExpr>(&expr)) {
+            if (marked->operand) {
+                VisitExpr(*marked->operand);
+            }
+            for (const auto &arm : marked->arms) {
                 if (arm.pattern) {
                     std::vector<std::string> names;
                     AppendPatternNames(*arm.pattern, names);

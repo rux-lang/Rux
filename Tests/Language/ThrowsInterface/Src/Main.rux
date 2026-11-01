@@ -1,0 +1,75 @@
+// `throws` in interface requirements and function types.
+// A requirement may declare `throws E`, and an implementation must declare the same signature, error included. A call
+// through the interface, or through a generic bound, can throw what the requirement declares and is marked with
+// `try`. A function type may also declare `throws E`; it is the same type as `-> T ! E`, so a call through a function
+// value keeps the older reading outside `try` and is a throw site inside one.
+
+import Core::Assert;
+
+struct Closed {
+    reason: int32;
+}
+
+interface Source {
+    func Next(self: &var Self) -> int32 throws Closed;
+    func Reset(self: &var Self) throws Closed;
+}
+
+struct Countdown {
+    left: int32;
+}
+
+extend Countdown : Source {
+    func Next(self: &var Countdown) -> int32 throws Closed {
+        if self.left <= 0i32 {
+            throw Closed { reason: 1i32 };
+        }
+        self.left = self.left - 1i32;
+        return self.left;
+    }
+
+    func Reset(self: &var Countdown) throws Closed {
+        if self.left < 0i32 {
+            throw Closed { reason: 2i32 };
+        }
+        self.left = 3i32;
+    }
+}
+
+func Drain<S: Source>(source: &var S) -> int32 throws Closed {
+    var total = 0i32;
+    loop {
+        let value = try source.Next() catch { _ => break };
+        total = total + value;
+    }
+    try source.Reset();
+    return total;
+}
+
+func Twice(step: func(int32) -> int32 throws Closed, value: int32) -> int32 throws Closed {
+    return try step(value) + step(value + 1i32);
+}
+
+func Halve(value: int32) -> int32 throws Closed {
+    if value % 2i32 != 0i32 {
+        throw Closed { reason: value };
+    }
+    return value / 2i32;
+}
+
+func Main() -> int {
+    var countdown = Countdown { left: 3i32 };
+    Assert((try? Drain(countdown)) == .Some(3i32), "2 + 1 + 0 through the bound");
+    Assert(countdown.left == 3i32, "the source was reset");
+    var negative = Countdown { left: -1i32 };
+    Assert((try Drain(negative) catch { e => e.reason }) == 2i32, "a requirement's error passes through");
+
+    let halve: func(int32) -> int32 throws Closed = Halve;
+    Assert((try Twice(halve, 4i32) catch { e => -e.reason }) == -5i32, "a function value throws");
+    let reason = match halve(3i32) {
+        .Success(_) => 0i32,
+        .Failure(e) => e.reason,
+    };
+    Assert(reason == 3i32, "outside 'try' a function value returns its outcome");
+    return 0;
+}

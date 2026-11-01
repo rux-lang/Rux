@@ -1,0 +1,82 @@
+// `try? expr`: turning an error into `none`.
+// `try?` marks the calls in its operand like `try` and handles their errors itself: the result is the operand's value
+// made present, or `none` when any call throws, so its type is `T?`. Like `try`, it covers the whole expression to its
+// right, so `(try? F()) ?? fallback` needs the parentheses. A value that is already optional gains a level, and a
+// thrown error that owns resources is destroyed where it is dropped.
+
+import Core::Assert;
+
+struct Counter {
+    count: int32;
+}
+
+struct Problem {
+    counter: *var Counter;
+    code: int32;
+}
+
+extend Problem {
+    func ~Problem(self: &var Problem) {
+        self.counter.count = self.counter.count + 1i32;
+    }
+}
+
+struct Small {
+    value: int32;
+}
+
+func Check(counter: *var Counter, value: int32) -> int32 throws Problem {
+    if value < 0i32 {
+        throw Problem { counter: counter, code: value };
+    }
+    return value;
+}
+
+func Touch(counter: *var Counter, fails: bool) throws Small {
+    counter.count = counter.count + 100i32;
+    if fails {
+        throw Small { value: 1i32 };
+    }
+}
+
+func Lookup(key: int32) -> int32? throws Small {
+    if key < 0i32 {
+        throw Small { value: key };
+    }
+    if key == 0i32 {
+        return none;
+    }
+    return key;
+}
+
+func Main() -> int {
+    var counter = Counter { count: 0i32 };
+    Assert((try? Check(@counter, 4i32)) == .Some(4i32), "a success is present");
+    Assert((try? Check(@counter, -4i32)) == none, "an error is none");
+    Assert(counter.count == 1i32, "the dropped error is destroyed once");
+
+    // Several calls under one `try?`: the first that throws ends it.
+    let sum: int32? = try? Check(@counter, 1i32) + Check(@counter, -2i32) + Check(@counter, 3i32);
+    Assert(sum == none && counter.count == 2i32, "one error, destroyed once");
+    let total = (try? Check(@counter, 1i32) + Check(@counter, 2i32)) ?? 0i32;
+    Assert(total == 3i32, "a fallback after the parentheses");
+
+    // A call with no success value gives `()?`.
+    counter.count = 0i32;
+    let ran: ()? = try? Touch(@counter, false);
+    Assert(ran != none && counter.count == 100i32, "a unit success is present");
+    Assert((try? Touch(@counter, true)) == none, "a unit failure is none");
+
+    // An optional result gains a level.
+    let present: int32?? = try? Lookup(5i32);
+    Assert(present == .Some(.Some(5i32)), "present and present");
+    Assert((try? Lookup(0i32)) == .Some(none), "present and absent");
+    Assert((try? Lookup(-1i32)) == none, "thrown");
+    if (try? Lookup(9i32)) is .Some(.Some(found)) {
+        Assert(found == 9i32, "a binding test reads the result");
+    }
+    else {
+        Assert(false, "the binding test matches");
+    }
+    return 0;
+}
