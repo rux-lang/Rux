@@ -34,7 +34,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     var reported = OsString(allocator);
     while true {
         let next = walk.Next() catch { else => Panic("the enumeration ends rather than fails") };
-        match next {
+        match move next {
             entry? => {
                 let view = entry.View();
                 if view.Equals(name) {

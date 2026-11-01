@@ -295,9 +295,8 @@ TEST_CASE("propagation requires explicit transfer of a named move-only outcome")
             return value;
         }
     )");
-    const auto &error =
-        RequireDiagnostic(diagnostics, "move-only value 'input' requires an explicit 'move' in propagation operand");
-    CHECK_EQ(error.help, "write 'move' before the outcome, as in '(move input)?'");
+    const auto &error = RequireDiagnostic(diagnostics, "cannot copy 'int32 ! Token', which prohibits copying");
+    CHECK_EQ(error.help, "write '(move input)?' to transfer it");
 }
 
 TEST_CASE("propagation records an explicit operand transfer for later reads") {

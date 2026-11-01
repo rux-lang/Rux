@@ -318,7 +318,6 @@ private:
     LirReg EmitVariantPayloadsEquality(const std::vector<HirVariantEqualityPayload> &payloads, LirReg left,
                                        LirReg right, const TypeRef &tagType);
     LirReg LowerAssign(const HirAssignExpr &expression);
-    LirReg LowerCopy(const HirCopyExpr &expression);
     LirReg LowerInterfaceCall(const HirInterfaceCallExpr &expression);
     LirReg GlobalStorageAddr(const HirGlobal &global);
     LirReg LowerAtomicBuiltin(const HirCallExpr &e, std::string_view operation);
@@ -336,8 +335,6 @@ private:
     void StoreTernaryInit(const HirTernaryExpr &expression, LirReg slot, const TypeRef &type);
     void StoreExprIntoSlot(const HirExpr &expression, LirReg slot, const TypeRef &type);
     void StoreExprValueIntoSlot(const HirExpr &expression, LirReg slot, const TypeRef &type);
-    void StoreCopyIntoSlot(const HirCopyExpr &expression, LirReg slot);
-    void EmitCopyPlan(const HirCopyPlan &plan, LirReg source, LirReg destination);
     LirReg LowerTernary(const HirTernaryExpr &expression);
     void StoreMatchInit(const HirMatchExpr &expression, LirReg slot, const TypeRef &type);
     LirReg LowerMatchExpr(const HirMatchExpr &expression);

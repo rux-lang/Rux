@@ -103,26 +103,26 @@ struct Copied {
 }
 
 extend Copied {
-    func =(self: &var Copied, other: &Copied) {
-        self.value = other.value;
-        self.tail = other.tail;
-        self.copies = other.copies;
-        self.drops = other.drops;
+    func Clone(&self) -> Copied {
         *self.copies += 1;
+        return Copied { value: self.value, tail: self.tail, copies: self.copies, drops: self.drops };
     }
 
     func ~Copied(self: &var Copied) { *self.drops += 1; }
 }
 
+// The error is a clone of a named value, handed over with `move`; the named source is destroyed as the function
+// leaves.
 func CopyPropagation(copies: *var int, drops: *var int) -> uint ! Copied {
-    let original: ! Copied = .Failure(Copied { value: 19u64, tail: 73u64, copies: copies, drops: drops });
-    original?;
+    let source = Copied { value: 19u64, tail: 73u64, copies: copies, drops: drops };
+    let original: ! Copied = .Failure(source.Clone());
+    (move original)?;
     return 0u;
 }
 
 func OwnCopy(copies: *var int, drops: *var int) {
     let result = CopyPropagation(copies, drops);
-    Assert(*copies == 1 && *drops == 1, "plain propagation copies its named source and cleans the original");
+    Assert(*copies == 1 && *drops == 1, "a cloned error propagates and its named source is cleaned");
     match <-result {
         .Failure(value) => Assert(value.value == 19u64 && value.tail == 73u64, "the copied error retains all fields"),
         .Success(_) => Assert(false, "expected copied error")

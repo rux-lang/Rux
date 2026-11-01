@@ -268,18 +268,6 @@ struct ValueConsumption {
     SourceLocation location;
 };
 
-/// A named place copied into a by-value destination. Generated copies are represented without a declaration; custom
-/// copies in concrete code retain the exact special operation selected by analysis so lowering does not repeat
-/// overload resolution. A record made for a generic body keeps the unsubstituted type and no operation instead,
-/// because it is shared by every instantiation: each one substitutes its own type argument and resolves its own
-/// operation when its copy plan is built.
-struct ValueCopy {
-    ValueConsumptionKind kind;
-    TypeRef targetType;
-    const FuncDecl *customOperation = nullptr;
-    SourceLocation location;
-};
-
 /// Accepted node-keyed facts. The analyzer fills one instance and transfers it into the immutable model.
 /// Node addresses continue to refer to the caller-owned AST throughout analysis and lowering.
 struct EvaluatedAssociatedConstant {
@@ -350,7 +338,6 @@ struct SemanticFacts {
     std::unordered_map<const BinaryExpr *, TypeRef> aggregateEqualityOperandTypes;
     std::unordered_map<std::string, VariantEqualityPayload> aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
-    std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     /// A function named as a value: a generic one with the type arguments the destination's function type gave it,
     /// the overload an overloaded name's destination chose, or the function a module path names.
@@ -445,9 +432,6 @@ struct SemanticModel {
 
     /// Returns null for Copy expressions and expressions that are only borrowed or observed.
     [[nodiscard]] const ValueConsumption *TryGetConsumption(const Expr &expression) const noexcept;
-
-    /// Returns null for direct temporary transfers, moves, borrows, and observations.
-    [[nodiscard]] const ValueCopy *TryGetCopy(const Expr &expression) const noexcept;
 
     /// Returns null for rejected calls and nodes outside the analyzed modules. Returned pointers remain valid for the
     /// lifetime of this model.

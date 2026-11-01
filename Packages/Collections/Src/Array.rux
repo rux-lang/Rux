@@ -75,8 +75,8 @@ extend Array<T> {
     /// An independent array holding a copy of every element of this one.
     /// `self` is borrowed and left alone. The copy has its own storage from the same allocator, so both are released
     /// independently.
-    /// Copying elements is what this does, so an element that owns something ends up owned twice — which is why
-    /// this is only usable where copying an element means what it says.
+    /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
+    /// owning element type is rejected while compiling, at the copy.
     /// Runs in time proportional to the length.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/array#clone

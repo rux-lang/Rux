@@ -415,7 +415,7 @@ extend JsonParser {
         }
         var value = JsonValue::Null(self.allocator);
         value.kind = JsonKind::Text;
-        value.text = held;
+        value.text = move held;
         return <-value;
     }
 
@@ -523,7 +523,7 @@ extend JsonParser {
                 name.Clear();
                 return self.Stop(JsonStop::TooManyEntries);
             }
-            if !object.Insert(name, <-value) { return self.Stop(JsonStop::OutOfMemory); }
+            if !object.Insert(move name, <-value) { return self.Stop(JsonStop::OutOfMemory); }
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {

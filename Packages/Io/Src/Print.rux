@@ -62,7 +62,8 @@ pub func PrintValueLine(value: Display) -> IoError? {
 
 /// Writes a value's text to standard output.
 /// A `String`, a `StringView` or a `char8[..]` is written as the UTF-8 bytes it holds, unchanged: nothing is
-/// substituted and no brace is special, so `Print("{{}}")` writes `{{}}`. Each primitive overload writes its value as
+/// substituted and no brace is special, so `Print("{{}}")` writes `{{}}`. A `String` is borrowed, so printing one
+/// neither copies nor consumes it. Each primitive overload writes its value as
 /// `PrintValue` does, through the type's `Display` conformance, and any other value goes through `PrintValue` itself.
 /// Given arguments after it, the first text is a pattern instead: each `{}` or `{:spec}` takes the next argument in
 /// order, and `{{` and `}}` write a literal brace.
@@ -71,7 +72,7 @@ pub func PrintValueLine(value: Display) -> IoError? {
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: String) -> IoError? {
+pub func Print(value: &String) -> IoError? {
     return FailureOf(PrintBytes((value.data)[..value.length]));
 }
 

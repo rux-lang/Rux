@@ -193,7 +193,6 @@ TEST_CASE("move and the older arrow record the same consumption facts") {
             REQUIRE(fact != nullptr);
             CHECK_EQ(fact->kind, ValueConsumptionKind::ExplicitMove);
             CHECK_EQ(fact->type, TypeRef::MakeNamed("Handle"));
-            CHECK(model.TryGetCopy(*moved) == nullptr);
         }
     }
 }
@@ -381,12 +380,19 @@ TEST_CASE("named move-only values require explicit transfer syntax in every by-v
     )");
 
     REQUIRE_EQ(diagnostics.size(), 3);
-    CHECK_EQ(diagnostics[0].message, "move-only value 'source' requires an explicit 'move' in initialization");
-    CHECK_EQ(diagnostics[0].help, "write 'let destination = move source' to transfer ownership");
-    CHECK_EQ(diagnostics[1].message, "move-only value 'source' requires an explicit 'move' in argument");
-    CHECK_EQ(diagnostics[1].help, "write 'move' before the argument, as in 'Take(move source)'");
-    CHECK_EQ(diagnostics[2].message, "move-only value 'source' requires an explicit 'move' in return");
-    CHECK_EQ(diagnostics[2].help, "write 'move' before the return value, as in 'return move source'");
+    for (const SemanticDiagnostic &diagnostic : diagnostics) {
+        CHECK_EQ(diagnostic.message, "cannot copy 'Handle', which owns resources");
+        CHECK_EQ(diagnostic.help, "write 'move source' to transfer it, or 'source.Clone()' to copy it");
+    }
+    REQUIRE_EQ(diagnostics[0].notes.size(), 1);
+    CHECK_EQ(diagnostics[0].notes[0],
+             "a named value used by value in initialization position is copied, and only plain data copies");
+    REQUIRE_EQ(diagnostics[1].notes.size(), 1);
+    CHECK_EQ(diagnostics[1].notes[0],
+             "a named value used by value in argument position is copied, and only plain data copies");
+    REQUIRE_EQ(diagnostics[2].notes.size(), 1);
+    CHECK_EQ(diagnostics[2].notes[0],
+             "a named value used by value in return position is copied, and only plain data copies");
 }
 
 TEST_CASE("explicit syntax consumes move-only values in every by-value context") {
@@ -640,16 +646,12 @@ TEST_CASE("an explicit move into a match consumes its subject") {
     CHECK(model.TryGetConsumption(subjectOf(5)) == nullptr);
 }
 
-TEST_CASE("a by-value match owns the copy it makes of a named copyable subject") {
-    // The copy is a value nobody else holds, so the arms own it as they own a subject handed over with `<-`: what they
-    // bind is destroyed with the binding and what they leave is destroyed by the arm. A subject that stays with its
-    // owner, because nothing is bound from it or it is read through a borrow, is neither copied nor owned.
+TEST_CASE("a by-value match owns the copy it makes of a named plain-data subject") {
+    // The copy is a value nobody else holds, so the arms own it as they own a subject handed over with `move`. A
+    // subject that stays with its owner, because nothing is bound from it or it is read through a borrow, is not
+    // owned. A copy is the subject's bytes, so no fact beyond the ownership is recorded for it.
     Lexer lexer(R"(
         struct Counted { id: int32; }
-        extend Counted {
-            func =(self: &var Counted, other: &Counted) { self.id = other.id; }
-            func ~Counted(self: &var Counted) {}
-        }
         variant Held { Full(Counted), Empty }
 
         func Make() -> Held { return Held::Empty; }
@@ -715,40 +717,29 @@ TEST_CASE("a by-value match owns the copy it makes of a named copyable subject")
         return *statement->subject;
     };
 
-    const ValueCopy *copy = model.TryGetCopy(subjectOf(4));
-    REQUIRE(copy != nullptr);
-    CHECK_EQ(copy->kind, ValueConsumptionKind::MatchSubject);
-    CHECK(model.IsOwnedMatchSubject(subjectOf(4)));
-
-    CHECK(model.TryGetCopy(subjectOf(5)) == nullptr);
-    CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(5)));
-
-    CHECK(model.TryGetCopy(subjectOf(6)) == nullptr);
+    CHECK(model.IsOwnedMatchSubject(subjectOf(3)));
+    CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(4)));
+    CHECK(model.IsOwnedMatchSubject(subjectOf(5)));
     CHECK(model.IsOwnedMatchSubject(subjectOf(6)));
-
-    CHECK(model.IsOwnedMatchSubject(subjectOf(7)));
-
-    CHECK(model.TryGetCopy(subjectOf(8)) == nullptr);
+    CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(7)));
     CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(8)));
-    CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(9)));
 }
 
-TEST_CASE("copy assignment copies a source that stays with its owner and transfers a fresh temporary") {
-    // A custom `=` copies a named place, borrowed storage, or a reference, all of which keep their value. A fresh
-    // temporary and a value handed over with `<-` have no other owner, so no copy is recorded and the value transfers
-    // into the target as it stands, whether the target is a local or a referent written through `&var`.
-    Lexer lexer(R"(
+TEST_CASE("assignment transfers a fresh temporary and never copies a named owning value") {
+    // A fresh temporary and a value handed over with `move` have no other owner, so they transfer into the target as
+    // they stand, whether the target is a local or a referent written through `&var`. A named place or borrowed
+    // storage keeps its value, and an owning type cannot be copied out of it: the copy is an explicit `Clone`.
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Counted { id: int32; }
         extend Counted {
             func Counted(id: int32) -> Counted { return Counted { id: id }; }
-            func =(self: &var Counted, other: &Counted) { self.id = other.id; }
+            func Clone(&self) -> Counted { return Counted { id: self.id }; }
             func ~Counted(self: &var Counted) {}
         }
         struct Holder { item: Counted; }
         func Make(id: int32) -> Counted { return Counted { id: id }; }
 
-        func Assign(flag: bool, which: int32, named: Counted, holder: Holder, pointer: *Counted, reference: &Counted,
-                    slot: &var Counted) {
+        func Assign(flag: bool, which: int32, named: Counted, holder: Holder, pointer: *Counted, slot: &var Counted) {
             var item = Make(0);
             var moved = Make(9);
             item = Make(1);
@@ -756,50 +747,24 @@ TEST_CASE("copy assignment copies a source that stays with its owner and transfe
             item = Counted(3);
             item = flag ? Make(4) : Make(5);
             item = match which { 6 => Make(6), else => Make(7) };
-            item = <-moved;
+            item = move moved;
             slot = Make(8);
+            item = named.Clone();
+            item = holder.item.Clone();
+            item = (*pointer).Clone();
+            slot = named.Clone();
             item = named;
             item = holder.item;
-            item = *pointer;
-            item = reference;
             slot = named;
         }
-    )",
-                "assignment_copy.rux");
-    auto lexed = lexer.Tokenize();
-    REQUIRE_FALSE(lexed.HasErrors());
-    Parser parser(std::move(lexed.tokens), "assignment_copy.rux");
-    auto parsed = parser.Parse();
-    REQUIRE_FALSE(parsed.HasErrors());
+    )");
 
-    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
-    const SemanticModel model = analyzer.Analyze();
-    REQUIRE_FALSE(model.HasErrors());
-
-    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[4].get());
-    REQUIRE(function != nullptr);
-    REQUIRE(function->body != nullptr);
-    REQUIRE_EQ(function->body->stmts.size(), 14);
-    const auto valueOf = [&](const std::size_t index) -> const Expr & {
-        const auto *statement = dynamic_cast<const ExprStmt *>(function->body->stmts[index].get());
-        REQUIRE(statement != nullptr);
-        const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
-        REQUIRE(assignment != nullptr);
-        CHECK_EQ(assignment->op, TokenKind::Assign);
-        return *assignment->value;
-    };
-
-    for (std::size_t index = 2; index <= 8; ++index) {
-        CAPTURE(index);
-        CHECK(model.TryGetCopy(valueOf(index)) == nullptr);
+    REQUIRE_EQ(diagnostics.size(), 3);
+    for (const SemanticDiagnostic &diagnostic : diagnostics) {
+        CHECK_EQ(diagnostic.message, "cannot copy 'Counted', which owns resources");
     }
-    for (std::size_t index = 9; index <= 13; ++index) {
-        CAPTURE(index);
-        const ValueCopy *copy = model.TryGetCopy(valueOf(index));
-        REQUIRE(copy != nullptr);
-        CHECK_EQ(copy->kind, ValueConsumptionKind::Assignment);
-        CHECK(copy->customOperation != nullptr);
-    }
+    CHECK_EQ(diagnostics[0].help, "write 'move named' to transfer it, or 'named.Clone()' to copy it");
+    CHECK_EQ(diagnostics[1].help, "write 'move holder.item' to transfer it, or 'holder.item.Clone()' to copy it");
 }
 
 TEST_CASE("rejected by-value contexts do not move their operands") {

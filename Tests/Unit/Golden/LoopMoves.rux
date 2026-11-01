@@ -88,8 +88,23 @@ func ReturnsAfterMove(first: Token, done: bool) {
     }
 }
 
-func MovesItsItem(items: Token[2]) {
-    for item in items {
+// Hands out tokens it makes, so the loop owns each item.
+struct Tokens {
+    next: int;
+}
+
+extend Tokens {
+    func Next(&var self) -> Token? {
+        if self.next == 2 {
+            return none;
+        }
+        self.next = self.next + 1;
+        return Token { id: self.next };
+    }
+}
+
+func MovesItsItem() {
+    for item in (Tokens { next: 0 }) {
         Take(<-item);
     }
 }

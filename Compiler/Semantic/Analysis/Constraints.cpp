@@ -265,7 +265,37 @@ namespace {
 bool IsSendableMarker(const InterfaceDecl &interface) {
     return interface.name == "Sendable" && interface.methods.empty() && interface.typeParams.empty();
 }
+
+/// The compiler-known marker generic code copies a value under: an interface named `Copyable` that requires nothing. A
+/// type satisfies it when it is plain data -- no destructor anywhere inside it and no `#NoCopy` -- so `=` copies its
+/// bytes.
+bool IsCopyableMarker(const InterfaceDecl &interface) {
+    return interface.name == "Copyable" && interface.methods.empty() && interface.typeParams.empty();
+}
+
+/// A marker the compiler decides from the type's shape, which a type parameter satisfies only by carrying the bound.
+bool IsDecidedMarker(const InterfaceDecl &interface) {
+    return IsSendableMarker(interface) || IsCopyableMarker(interface);
+}
 } // namespace
+
+bool AnalysisContext::ViolatesCopyableBound(const FuncDecl &declaration,
+                                            const std::unordered_map<std::string, TypeRef> &substitutions) {
+    for (const TypeParameter &parameter : declaration.typeParams) {
+        const auto argument = substitutions.find(parameter.name);
+        if (argument == substitutions.end()) {
+            continue;
+        }
+        for (const ResolvedTypeBound &bound :
+             ResolveTypeParameterBounds(parameter, /*report=*/false, &declaration.typeParams)) {
+            if (bound.interface && IsCopyableMarker(*bound.interface) &&
+                ClassifyTypeProperties(argument->second).IsMoveOnly()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason,
                                          const std::vector<TypeRef> &interfaceArguments) {
@@ -288,9 +318,22 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
         }
         return true;
     }
+    if (IsCopyableMarker(interface) && argument->kind != TypeRef::Kind::TypeParam) {
+        const TypeProperties properties = ClassifyTypeProperties(argument);
+        // A type still written in terms of an enclosing declaration's parameters is decided where that declaration
+        // is instantiated.
+        if (properties.IsCopy() || !properties.IsResolved()) {
+            return true;
+        }
+        reason = properties.OwnsResources()
+                   ? std::format("'{}' owns resources, so it moves instead of copying", argument.DisplayString())
+                   : std::format("'{}' prohibits copying", argument.DisplayString());
+        return false;
+    }
     // An interface that requires nothing is satisfied by everything, so a marker bound costs no conformance work. A
-    // type parameter given for `Sendable` has to carry the bound itself, which the check below asks of it.
-    if (interface.methods.empty() && !(IsSendableMarker(interface) && argument->kind == TypeRef::Kind::TypeParam)) {
+    // type parameter given for `Sendable` or `Copyable` has to carry the bound itself, which the check below asks of
+    // it.
+    if (interface.methods.empty() && !(IsDecidedMarker(interface) && argument->kind == TypeRef::Kind::TypeParam)) {
         return true;
     }
 
@@ -517,6 +560,10 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
             if (argument->second->kind == TypeRef::Kind::TypeParam) {
                 help =
                     std::format("add the bound to the enclosing declaration, as in '{}: {}'", argumentName, bound.name);
+            }
+            else if (IsCopyableMarker(*bound.interface)) {
+                // No extension makes a type copyable: a destructor or '#NoCopy' decides, so the help points at moving.
+                help = "pass a type that is plain data, or move the value and call 'Clone' under a 'Cloneable' bound";
             }
             else if (IsSendableMarker(*bound.interface)) {
                 // No extension makes a type sendable: what it holds decides, so the help points at what to hold.

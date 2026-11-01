@@ -12,44 +12,26 @@
 
 namespace Rux::SemanticDetail {
 namespace {
-std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string &place) {
+/// How the context spells the transfer of `place`: a `move` written where the value is used.
+std::string TransferSpelling(const ValueConsumptionKind kind, const std::string &place) {
     switch (kind) {
-    case ValueConsumptionKind::Initialization:
-        return std::format("write 'let destination = move {}' to transfer ownership", place);
-    case ValueConsumptionKind::Assignment:
-        return std::format("write 'destination = move {}' to transfer ownership", place);
-    case ValueConsumptionKind::Argument:
-        return std::format("write 'move' before the argument, as in 'Take(move {})'", place);
     case ValueConsumptionKind::Receiver:
-        return std::format("write 'move' before the receiver, as in '(move {}).Method()'", place);
-    case ValueConsumptionKind::Return:
-        return std::format("write 'move' before the return value, as in 'return move {}'", place);
-    case ValueConsumptionKind::Aggregate:
-        return std::format("write 'move' before the aggregate value, as in '{{ field: move {} }}'", place);
+        return std::format("(move {}).Method()", place);
     case ValueConsumptionKind::FieldShorthand:
-        // The shorthand never moves on its own, so the help writes the field out with the move.
-        return std::format("write '{}: move {}'", place, place);
-    case ValueConsumptionKind::ArrayRepeat:
-        return "write the elements explicitly or initialize move-only elements in a loop";
-    case ValueConsumptionKind::ConditionalArm:
-        return std::format(
-            "write 'move' before the selected value, as in 'if condition {{ move {} }} else {{ fallback }}'", place);
+        // The shorthand never moves on its own, so the transfer writes the field out with the move.
+        return std::format("{}: move {}", place, place);
     case ValueConsumptionKind::PropagationOperand:
-        return std::format("write 'move' before the outcome, as in '(move {})?'", place);
+        return std::format("(move {})?", place);
     case ValueConsumptionKind::CoalescingOperand:
-        return std::format("write 'move' before the option, as in '(move {}) ?? fallback'", place);
-    case ValueConsumptionKind::CoalescingFallback:
-        return std::format("write 'move' before the fallback, as in 'option ?? move {}'", place);
+        return std::format("(move {}) ?? fallback", place);
     case ValueConsumptionKind::MatchSubject:
-        return std::format("transfer the subject with 'match move {}'", place);
+        return std::format("match move {}", place);
     case ValueConsumptionKind::CatchSubject:
-        return std::format("transfer the subject with '(move {}) catch {{ ... }}'", place);
-    case ValueConsumptionKind::ConstructorOperand:
-        return std::format("write 'move' before the operand, as in '.Success(move {})'", place);
-    case ValueConsumptionKind::ExplicitMove:
+        return std::format("(move {}) catch {{ ... }}", place);
+    default:
         break;
     }
-    return std::format("write 'move' before the value, as in 'move {}'", place);
+    return std::format("move {}", place);
 }
 } // namespace
 
@@ -1058,17 +1040,31 @@ bool AnalysisContext::RejectSelfMove(const Expr &target, const Expr &value, cons
 }
 
 bool AnalysisContext::RejectImplicitMove(const Expr &expression, const TypeRef &type, const ValueConsumptionKind kind,
-                                         const SourceLocation location) {
+                                         const SourceLocation location, const TypeRef *generic) {
     const MovePlace place = AnalyzeMovePlace(expression);
     if (!place.IsNamedStorage() && !place.IsBorrowedStorage()) {
         return false;
     }
     const std::string display = place.Display();
-    EmitError(
-        location,
-        std::format("move-only value '{}' requires an explicit 'move' in {}", display, ValueConsumptionKindName(kind)),
-        {std::format("plain by-value use copies its source, but '{}' prohibits copying", type.ToString())},
-        ExplicitMoveHelp(kind, display));
+    const bool owning = ClassifyTypeProperties(type).OwnsResources();
+    std::vector<std::string> notes;
+    if (generic) {
+        notes.push_back(std::format("the generic code copies a '{}' here, which is '{}' in this instantiation",
+                                    generic->ToString(), type.ToString()));
+    }
+    notes.push_back(std::format("a named value used by value in {} position is copied, and only plain data copies",
+                                ValueConsumptionKindName(kind)));
+    std::string help = std::format("write '{}' to transfer it", TransferSpelling(kind, display));
+    if (owning) {
+        help += std::format(", or '{}.Clone()' to copy it", display);
+    }
+    if (generic) {
+        help += ", or bound the type parameter by 'Copyable'";
+    }
+    EmitError(location,
+              owning ? std::format("cannot copy '{}', which owns resources", type.ToString())
+                     : std::format("cannot copy '{}', which prohibits copying", type.ToString()),
+              std::move(notes), std::move(help));
     return true;
 }
 
@@ -1084,24 +1080,13 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     }
     if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
         // Plain by-value use means copy, but whether a symbolic type permits that is known only at instantiation.
-        // Record the question so a copyable argument receives its copy plan and a move-only one gets the explicit
-        // transfer diagnostic at the generic source location.
+        // Record the question so a move-only argument gets the copy diagnostic at the generic source location.
         deferredConsumptions[currentFunctionDecl].push_back({&expression, kind, type, location});
         return;
     }
     const TypeProperties properties = ClassifyTypeProperties(type);
+    // A copy of plain data is its bytes, which lowering reads as they stand.
     if (properties.IsCopy()) {
-        const MovePlace place = AnalyzeMovePlace(expression);
-        if (IsStoredAggregate(type) && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
-            const FuncDecl *custom = nullptr;
-            if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
-                custom = LookupSourceSpecialOperation(type, "=", location);
-                if (!custom) {
-                    return;
-                }
-            }
-            valueCopies.insert_or_assign(&expression, ValueCopy{kind, type, custom, location});
-        }
         return;
     }
     if (kind == ValueConsumptionKind::ArrayRepeat && properties.IsMoveOnly()) {

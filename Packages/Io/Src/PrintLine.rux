@@ -32,7 +32,7 @@ func Terminate(first: IoError?) -> IoError? {
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(value: String) -> IoError? {
+pub func PrintLine(value: &String) -> IoError? {
     return Terminate(Print(value));
 }
 

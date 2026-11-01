@@ -172,14 +172,9 @@ TEST_CASE("a zero-sized payload writes no data bytes") {
     RequireBackEndsAccept(package);
 }
 
-TEST_CASE("copying a native value copies only the active payload recursively") {
+TEST_CASE("copying a native value of plain data copies its bytes without branching on the tag") {
     const LirPackage package = LowerToLir(R"(
         struct Counted { value: int32; }
-        extend Counted {
-            func =(self: &var Counted, other: &Counted) {
-                self.value = other.value + 1i32;
-            }
-        }
         func Keep(value: Counted?) {}
         func Copy(value: Counted?) {
             Keep(value);
@@ -189,7 +184,7 @@ TEST_CASE("copying a native value copies only the active payload recursively") {
     const LirFunc &copy = RequireFunction(package, "Copy");
     const bool branchesOnTag =
         std::ranges::any_of(copy.blocks, [](const LirBlock &block) { return block.label.starts_with("copy.variant"); });
-    CHECK(branchesOnTag);
+    CHECK_FALSE(branchesOnTag);
     RequireBackEndsAccept(package);
 }
 

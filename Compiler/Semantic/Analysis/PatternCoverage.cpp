@@ -328,11 +328,6 @@ void CollectBindingNames(const Pattern &pattern, std::vector<std::pair<std::stri
 }
 } // namespace
 
-bool AnalysisContext::IsStoredAggregate(const TypeRef &type) noexcept {
-    return type->kind == TypeRef::Kind::Named || type->kind == TypeRef::Kind::Array ||
-           type->kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() || type.IsFallible();
-}
-
 AnalysisContext::PatternBorrow AnalysisContext::MatchSubjectBorrow(const Expr &subject,
                                                                    const TypeRef &expressionType) const {
     if (expressionType->kind == TypeRef::Kind::Reference && !expressionType->inner.empty()) {

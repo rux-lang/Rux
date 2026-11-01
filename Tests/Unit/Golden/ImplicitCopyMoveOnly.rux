@@ -1,0 +1,54 @@
+// A type with a destructor owns resources, so it is move-only: using a named one where a copy is needed is an error
+// in every by-value context, and so is copying a type that holds one. A `#NoCopy` type is move-only without owning
+// anything. Plain data copies, and a temporary or a `move` transfers.
+struct Text {
+    data: *var char8;
+    length: uint;
+}
+
+extend Text {
+    func ~Text(&var self) {}
+}
+
+struct Labeled {
+    text: Text;
+    weight: int32;
+}
+
+#NoCopy
+struct Ticket {
+    number: int32;
+}
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+func Take(text: Text) {}
+
+func Make() -> Text {
+    return Text { data: null, length: 0 };
+}
+
+func Copies(text: Text, labeled: Labeled, ticket: Ticket, pair: (Text, int32)) -> Text {
+    let copied = text;
+    Take(text);
+    let holder = Labeled { text, weight: 1 };
+    let again = labeled;
+    let other = ticket;
+    let tuple = pair;
+    return text;
+}
+
+func Allowed(text: Text, point: Point) -> Text {
+    let first = point;
+    let second = point;
+    let fresh = Make();
+    Take(Make());
+    return move text;
+}
+
+func Main() -> int {
+    return 0;
+}

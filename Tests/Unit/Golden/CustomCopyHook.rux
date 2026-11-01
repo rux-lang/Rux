@@ -1,0 +1,40 @@
+// '=' copies the bytes of plain data and never runs user code, so a copy operator with a body is rejected, whatever
+// its source type; a duplicate an owning type needs is an ordinary 'Clone' method. The bodyless form still prohibits
+// copying, as '#NoCopy' does.
+struct Counter {
+    value: int32;
+}
+
+extend Counter {
+    func =(&var self, other: &Counter) {
+        self.value = other.value + 1;
+    }
+}
+
+struct Seed {
+    value: int32;
+}
+
+struct Grown {
+    value: int32;
+}
+
+extend Grown {
+    func =(self: &var Grown, other: &Seed) {
+        self.value = other.value;
+    }
+}
+
+struct Handle {
+    value: int32;
+}
+
+extend Handle {
+    func =(&var self, other: &Handle);
+}
+
+func Main() -> int {
+    let counter = Counter { value: 1 };
+    let copied = counter;
+    return copied.value as int;
+}

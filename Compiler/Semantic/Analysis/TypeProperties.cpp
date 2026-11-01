@@ -280,7 +280,15 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
         return left == right;
     };
     const bool copy = method.name == "=";
-    if (!copy && method.body) {
+    if (copy && method.body) {
+        // A copy is always a byte copy of plain data; no user code runs for it, and an owning type is move-only.
+        EmitError(method.location, "custom copy hooks are not supported",
+                  {"'=' copies the bytes of plain data and never runs user code"},
+                  std::format("implement 'func Clone(&self) -> Self' on '{}' and call it where a copy is needed",
+                              extendedType.ToString()));
+        return;
+    }
+    if (method.body) {
         // A move is always a byte copy that forgets its source; no user code runs for it.
         EmitError(method.location, "custom move hooks are not supported", {},
                   "a type that must stay in place uses '#NoMove'");
@@ -302,21 +310,16 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
         if (!copy) {
             return other->kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
         }
-        if (other->kind != TypeRef::Kind::Reference || other->inner.empty() || other->inner.front().isMut) {
-            return false;
-        }
-        // A body-bearing copy overload may construct T from another source type. Only the exact T-from-T signature
-        // has the bodyless meaning "copy prohibited".
-        return method.body || sameValueType(other->inner.front(), extendedType);
+        return other->kind == TypeRef::Kind::Reference && !other->inner.empty() && !other->inner.front().isMut &&
+               sameValueType(other->inner.front(), extendedType);
     }();
     if (operationSignature) {
         return;
     }
 
     const std::string &type = extendedType.ToString();
-    const std::string expected = copy && method.body ? std::format("func =(self: &var {0}, other: &Source)", type)
-                               : copy                ? std::format("func =(self: &var {0}, other: &{0})", type)
-                                                     : std::format("func <-(self: &var {0}, other: {0})", type);
+    const std::string expected = copy ? std::format("func =(self: &var {0}, other: &{0})", type)
+                                      : std::format("func <-(self: &var {0}, other: {0})", type);
     EmitError(method.location, std::format("{} special operation for type '{}' must have signature '{}'",
                                            copy ? "copy" : "move", type, expected));
 }
@@ -341,19 +344,6 @@ TypeProperties AnalysisContext::ClassifyTypeProperties(const TypeRef &type) {
         typeProperties.insert_or_assign(key, properties);
     }
     return properties;
-}
-
-const FuncDecl *AnalysisContext::LookupSourceSpecialOperation(const TypeRef &type, const std::string_view operation,
-                                                              const SourceLocation location) {
-    const std::string name(operation);
-    if (const FuncDecl *accessible = LookupMethod(type, name, {type})) {
-        return accessible;
-    }
-    const FuncDecl *declared = LookupMethod(type, name, {type}, false);
-    if (declared && !IsAccessible(*declared)) {
-        EmitPrivacyError(location, *declared, "copy operation", operation);
-    }
-    return nullptr;
 }
 
 void AnalysisContext::RecordResolvedTypeProperties(const std::vector<TypeRef> &recordedTypes) {

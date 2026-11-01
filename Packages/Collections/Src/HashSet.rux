@@ -403,6 +403,8 @@ extend HashSet<T> {
     /// An independent set holding a copy of every element of this one.
     /// `self` is borrowed and left alone. The copy has its own storage from the same allocator and the same seed, so
     /// the two lay their elements out alike.
+    /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
+    /// owning element type is rejected while compiling, at the copy.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#clone
     pub func Clone(self: &HashSet<T>) -> HashSet<T> ! CollectionError {

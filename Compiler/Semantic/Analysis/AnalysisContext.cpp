@@ -161,7 +161,6 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , aggregateEqualityOperandTypes(output.aggregateEqualityOperandTypes)
     , aggregateEqualityPlans(output.aggregateEqualityPlans)
     , valueConsumptions(output.valueConsumptions)
-    , valueCopies(output.valueCopies)
     , callableBindings(output.callableBindings)
     , functionReferenceBindings(output.functionReferenceBindings)
     , asmSymbolDeclarations(output.asmSymbolDeclarations)

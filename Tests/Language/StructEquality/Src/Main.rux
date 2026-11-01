@@ -43,24 +43,15 @@ func DropPayloads(drops: *var int32) {
     let moved <- value;
 }
 
-struct Copied { value: int64; copies: *var int32; }
-extend Copied {
-    func =(self: &var Copied, other: &Copied) {
-        self.value = other.value;
-        self.copies = other.copies;
-        *self.copies = *self.copies * 10 + self.value as int32;
-    }
-}
+struct Copied { value: int64; source: *var int32; }
 variant Transfers { Both(Copied, Copied) }
-// A copy runs each payload's copy operation; a move is the bytes alone and runs none.
-func TransferPayloads(copies: *var int32) -> bool {
-    let value = Transfers::Both(Copied { value: 1, copies: copies }, Copied { value: 2, copies: copies });
-    *copies = 0;
+// Plain data copies its bytes and runs no code, leaving the source usable; a move is the same bytes and runs none.
+func TransferPayloads(source: *var int32) -> bool {
+    let value = Transfers::Both(Copied { value: 1, source: source }, Copied { value: 2, source: source });
     let copied = value;
-    if *copies != 12 { return false; }
     let moved = move copied;
-    if *copies != 12 { return false; }
-    return match moved { .Both(first, second) => first.value == 1 && second.value == 2 };
+    if value != moved { return false; }
+    return match moved { .Both(first, second) => first.value == 1 && second.value == 2 && first.source == source };
 }
 
 func Main() -> int {

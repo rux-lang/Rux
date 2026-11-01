@@ -131,7 +131,7 @@ TEST_CASE("'#NoMove' values are built in place and never moved") {
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0], "a '#NoMove' type, or one holding a '#NoMove' value, stays where it was built");
     CHECK_EQ(diagnostics[0].help, "borrow the value or construct a distinct replacement instead");
-    CHECK_EQ(diagnostics[1].message, "move-only value 'node' requires an explicit 'move' in initialization");
+    CHECK_EQ(diagnostics[1].message, "cannot copy 'Node', which owns resources");
 }
 
 TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
@@ -156,9 +156,8 @@ TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
 
     for (const auto *diagnostics : {&attribute, &operation}) {
         REQUIRE_EQ(diagnostics->size(), 1);
-        CHECK_EQ(diagnostics->front().message,
-                 "move-only value 'target' requires an explicit 'move' in initialization");
-        CHECK_EQ(diagnostics->front().help, "write 'let destination = move target' to transfer ownership");
+        CHECK_EQ(diagnostics->front().message, "cannot copy 'Handle', which prohibits copying");
+        CHECK_EQ(diagnostics->front().help, "write 'move target' to transfer it");
     }
 }
 
@@ -179,130 +178,93 @@ TEST_CASE("prohibited move operations reject explicit ownership transfer") {
     CHECK_EQ(diagnostics[0].message, "moving type 'Pinned' is prohibited");
 }
 
-TEST_CASE("named by-value sources use recursive custom copies while temporaries transfer directly") {
+TEST_CASE("a copy of plain data reads its source as it stands and runs no code") {
+    // A copyable type has no destructor anywhere inside it, so a copy is the value's bytes: nothing wraps the read,
+    // nothing is consumed, and no call is made for it.
     const std::string source = R"(
 
         struct Cell { value: int32; }
-        extend Cell {
-            func ~Cell(self: &var Cell) {}
-            func =(self: &var Cell, other: &Cell) {
-                self.value = other.value;
-            }
-        }
-
         struct Wrapper { cell: Cell; tag: int32; }
+        variant Maybe<T> { Some(T), None }
 
-        func Make(value: int32) -> Wrapper {
-            return Wrapper { cell: Cell { value: value }, tag: value };
-        }
         func Take(value: Wrapper) {}
-        func Clone(source: Wrapper) -> Wrapper {
+        func TakeMaybe(value: Maybe<Cell>) {}
+        func Copy(source: Wrapper, maybe: Maybe<Cell>) -> Wrapper {
             let local = source;
             Take(source);
+            TakeMaybe(maybe);
             return source;
         }
-        func Direct() -> Wrapper {
-            return Make(1);
-        }
     )";
 
     const HirPackage hir = LowerConsumptionHir(source);
-    const HirFunc &clone = RequireFunction(hir, "Clone");
-    REQUIRE(clone.body.has_value());
-    const auto *local = dynamic_cast<const HirLetStmt *>(clone.body->stmts[0].get());
-    const auto *takeStatement = dynamic_cast<const HirExprStmt *>(clone.body->stmts[1].get());
-    const auto *returned = dynamic_cast<const HirReturnStmt *>(clone.body->stmts[2].get());
+    const HirFunc &copy = RequireFunction(hir, "Copy");
+    REQUIRE(copy.body.has_value());
+    const auto *local = dynamic_cast<const HirLetStmt *>(copy.body->stmts[0].get());
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(copy.body->stmts[3].get());
     REQUIRE(local != nullptr);
-    REQUIRE(takeStatement != nullptr);
     REQUIRE(returned != nullptr);
     REQUIRE(returned->value.has_value());
-    const auto *localCopy = dynamic_cast<const HirCopyExpr *>(local->init.get());
-    const auto *take = dynamic_cast<const HirCallExpr *>(takeStatement->expr.get());
-    const auto *returnCopy = dynamic_cast<const HirCopyExpr *>((*returned->value).get());
-    REQUIRE(localCopy != nullptr);
-    REQUIRE(take != nullptr);
-    REQUIRE_EQ(take->args.size(), 1);
-    const auto *argumentCopy = dynamic_cast<const HirCopyExpr *>(take->args.front().get());
-    REQUIRE(argumentCopy != nullptr);
-    REQUIRE(returnCopy != nullptr);
-    CHECK_EQ(localCopy->plan.kind, HirCopyPlan::Kind::Structure);
-    REQUIRE_EQ(localCopy->plan.components.size(), 2);
-    CHECK_EQ(localCopy->plan.components[0].kind, HirCopyPlan::Kind::Custom);
-    const std::string copySymbol = localCopy->plan.components[0].customCallee;
-    CHECK_FALSE(copySymbol.empty());
-    CHECK_EQ(argumentCopy->plan.components[0].customCallee, copySymbol);
-    CHECK_EQ(returnCopy->plan.components[0].customCallee, copySymbol);
-
-    const HirFunc &direct = RequireFunction(hir, "Direct");
-    REQUIRE(direct.body.has_value());
-    const auto *directReturn = dynamic_cast<const HirReturnStmt *>(direct.body->stmts[0].get());
-    REQUIRE(directReturn != nullptr);
-    REQUIRE(directReturn->value.has_value());
-    CHECK(dynamic_cast<const HirCopyExpr *>((*directReturn->value).get()) == nullptr);
+    const auto *localRead = dynamic_cast<const HirVarExpr *>(local->init.get());
+    const auto *returnRead = dynamic_cast<const HirVarExpr *>((*returned->value).get());
+    REQUIRE(localRead != nullptr);
+    REQUIRE(returnRead != nullptr);
+    CHECK_FALSE(localRead->consumption.has_value());
+    CHECK_FALSE(returnRead->consumption.has_value());
 
     const LirPackage lir = LowerConsumptionLir(source);
-    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Clone"), copySymbol), 3);
+    const LirFunc &lowered = RequireLirFunction(lir, "Copy");
+    std::size_t calls = 0;
+    for (const LirBlock &block : lowered.blocks) {
+        calls += static_cast<std::size_t>(std::ranges::count_if(
+            block.instrs, [](const LirInstr &instruction) { return instruction.op == LirOpcode::Call; }));
+    }
+    CHECK_EQ(calls, 2);
+    CHECK_FALSE(std::ranges::any_of(lowered.blocks,
+                                    [](const LirBlock &block) { return block.label.starts_with("copy.variant"); }));
 }
 
-TEST_CASE("cross-source copy assignment constructs scratch before replacing the destination") {
-    const std::string source = R"(
-
+TEST_CASE("a custom copy hook is rejected and copying stays a byte copy or a move-only error") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        struct Plain { value: int32; }
+        extend Plain {
+            func =(&var self, other: &Plain) { self.value = other.value + 1; }
+        }
         struct Seed { value: int32; }
-        struct Cell { value: int32; }
-        extend Cell {
-            func ~Cell(self: &var Cell) {}
-            func =(self: &var Cell, other: &Cell) {
-                self.value = other.value;
-            }
-            func =(self: &var Cell, other: &Seed) {
-                self.value = other.value;
-            }
+        struct Owning { value: int32; }
+        extend Owning {
+            func =(&var self, other: &Seed) { self.value = other.value; }
+            func ~Owning(&var self) {}
         }
-
-        func Replace(source: Seed) {
-            var destination = Cell { value: 0 };
-            destination = source;
+        func Copies(plain: Plain, owning: Owning) -> int32 {
+            let copied = plain;
+            let other = owning;
+            return copied.value;
         }
-    )";
+    )");
 
-    const HirPackage hir = LowerConsumptionHir(source);
-    const HirFunc &replace = RequireFunction(hir, "Replace");
-    REQUIRE(replace.body.has_value());
-    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[1].get());
-    REQUIRE(statement != nullptr);
-    const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
-    REQUIRE(assignment != nullptr);
-    REQUIRE(assignment->overwriteCleanup.has_value());
-    const auto *copy = dynamic_cast<const HirCopyExpr *>(assignment->value.get());
-    REQUIRE(copy != nullptr);
-    CHECK_EQ(copy->type, TypeRef::MakeNamed("Cell"));
-    CHECK_EQ(copy->value->type, TypeRef::MakeNamed("Seed"));
-    CHECK_EQ(copy->plan.kind, HirCopyPlan::Kind::Custom);
-    CHECK_FALSE(copy->plan.customCallee.empty());
-
-    const LirPackage lir = LowerConsumptionLir(source);
-    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Replace"), copy->plan.customCallee), 1);
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[0].message, "custom copy hooks are not supported");
+    CHECK_EQ(diagnostics[0].help,
+             "implement 'func Clone(&self) -> Self' on 'Plain' and call it where a copy is needed");
+    CHECK_EQ(diagnostics[1].message, "custom copy hooks are not supported");
+    CHECK_EQ(diagnostics[2].message, "cannot copy 'Owning', which owns resources");
+    CHECK_EQ(diagnostics[2].help, "write 'move owning' to transfer it, or 'owning.Clone()' to copy it");
 }
 
-TEST_CASE("copy assignment installs a fresh temporary without calling the custom copy") {
+TEST_CASE("an explicit Clone replaces a destination with the value it returns") {
     const std::string source = R"(
 
         struct Cell { value: int32; }
         extend Cell {
-            func ~Cell(self: &var Cell) {}
-            func =(self: &var Cell, other: &Cell) {
-                self.value = other.value;
-            }
+            func Clone(&self) -> Cell { return Cell { value: self.value }; }
+            func ~Cell(&var self) {}
         }
-
-        func Make(value: int32) -> Cell { return Cell { value: value }; }
 
         func Replace(named: Cell, slot: &var Cell) {
-            var item = Make(0);
-            item = Make(1);
-            item = named;
-            slot = Cell { value: 2 };
-            slot = named;
+            var item = named.Clone();
+            item = named.Clone();
+            slot = named.Clone();
         }
     )";
 
@@ -318,61 +280,11 @@ TEST_CASE("copy assignment installs a fresh temporary without calling the custom
             }
         }
     }
-    REQUIRE_EQ(assignments.size(), 4);
-
-    CHECK(dynamic_cast<const HirCopyExpr *>(assignments[0]->value.get()) == nullptr);
-    CHECK(dynamic_cast<const HirCopyExpr *>(assignments[2]->value.get()) == nullptr);
-    CHECK(assignments[2]->overwriteCleanup->destroysTarget);
-    const auto *namedCopy = dynamic_cast<const HirCopyExpr *>(assignments[1]->value.get());
-    REQUIRE(namedCopy != nullptr);
-    REQUIRE(dynamic_cast<const HirCopyExpr *>(assignments[3]->value.get()) != nullptr);
-    CHECK_EQ(namedCopy->plan.kind, HirCopyPlan::Kind::Custom);
-    const std::string copySymbol = namedCopy->plan.customCallee;
-    CHECK_FALSE(copySymbol.empty());
-
-    const LirPackage lir = LowerConsumptionLir(source);
-    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Replace"), copySymbol), 2);
-}
-
-TEST_CASE("generated variant copies recursively copy the active owning payload") {
-    const std::string source = R"(
-
-        struct Cell { value: int32; }
-        extend Cell {
-            func ~Cell(self: &var Cell) {}
-            func =(self: &var Cell, other: &Cell) {
-                self.value = other.value;
-            }
-        }
-
-        variant Maybe<T> { Some(T), None }
-
-        func Take(value: Maybe<Cell>) {}
-        func Clone(source: Maybe<Cell>) {
-            Take(source);
-        }
-    )";
-
-    const HirPackage hir = LowerConsumptionHir(source);
-    const HirFunc &clone = RequireFunction(hir, "Clone");
-    REQUIRE(clone.body.has_value());
-    const auto *statement = dynamic_cast<const HirExprStmt *>(clone.body->stmts[0].get());
-    REQUIRE(statement != nullptr);
-    const auto *call = dynamic_cast<const HirCallExpr *>(statement->expr.get());
-    REQUIRE(call != nullptr);
-    REQUIRE_EQ(call->args.size(), 1);
-    const auto *copy = dynamic_cast<const HirCopyExpr *>(call->args.front().get());
-    REQUIRE(copy != nullptr);
-    CHECK_EQ(copy->plan.kind, HirCopyPlan::Kind::Enum);
-    CHECK_EQ(copy->plan.form, CaseTypeForm::Variant);
-    REQUIRE_EQ(copy->plan.variantComponents.size(), 2);
-    REQUIRE_EQ(copy->plan.variantComponents[0].size(), 1);
-    CHECK_EQ(copy->plan.variantComponents[0][0].kind, HirCopyPlan::Kind::Custom);
-    const std::string copySymbol = copy->plan.variantComponents[0][0].customCallee;
-    CHECK_FALSE(copySymbol.empty());
-
-    const LirPackage lir = LowerConsumptionLir(source);
-    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Clone"), copySymbol), 1);
+    REQUIRE_EQ(assignments.size(), 2);
+    for (const HirAssignExpr *assignment : assignments) {
+        CHECK(dynamic_cast<const HirCallExpr *>(assignment->value.get()) != nullptr);
+    }
+    CHECK(assignments[1]->overwriteCleanup->destroysTarget);
 }
 
 TEST_CASE("variant moves are byte copies with no per-case dispatch") {
@@ -431,7 +343,7 @@ TEST_CASE("scalar enums remain trivial copies and never acquire variant lifecycl
     REQUIRE(copy.body.has_value());
     const auto *binding = dynamic_cast<const HirLetStmt *>(copy.body->stmts[0].get());
     REQUIRE(binding != nullptr);
-    CHECK(dynamic_cast<const HirCopyExpr *>(binding->init.get()) == nullptr);
+    CHECK(dynamic_cast<const HirVarExpr *>(binding->init.get()) != nullptr);
     const LirPackage lir = LowerConsumptionLir(source);
     const LirFunc &lowered = RequireLirFunction(lir, "Copy");
     CHECK_FALSE(std::ranges::any_of(lowered.blocks, [](const LirBlock &block) {

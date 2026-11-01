@@ -232,9 +232,6 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = HirCast<const HirAggregateEqualityExpr>(&expr)) {
         return LowerAggregateEquality(*e);
     }
-    if (auto *e = HirCast<const HirCopyExpr>(&expr)) {
-        return LowerCopy(*e);
-    }
     if (auto *e = HirCast<const HirAssignExpr>(&expr)) {
         return LowerAssign(*e);
     }

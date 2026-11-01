@@ -2,7 +2,7 @@
 // decoded and built.
 
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::{ Assert, Panic };
 import Url::{ Decode, HostKind, Pairs, QueryBuilder, Url, UrlError };
 
 func Same(left: char8[..], right: char8[..]) -> bool {
@@ -176,7 +176,7 @@ func Main() -> int {
     Assert(Resolves(base, "g#s/../x", "http://a/b/c/g#s/../x"), "g#s/../x");
     Assert(Resolves(base, "http:g", "http:g"), "http:g");
 
-    let copy = base;
-    Assert(copy.Equals(base), "a copy is equal");
+    let copy = base.Clone() catch { else => Panic("a URL can be cloned") };
+    Assert(copy.Equals(base) && copy.Text().data != base.Text().data, "a clone is equal, in text of its own");
     return 0;
 }

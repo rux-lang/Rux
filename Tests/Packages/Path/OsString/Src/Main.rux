@@ -18,9 +18,9 @@ func Main() -> int {
     // and five UTF-16 units, and a supplementary character four bytes or one surrogate pair.
     let plain = OsString::FromText(allocator, "hi") catch { else => Panic("ordinary text converts") };
     Assert(plain.Length() == 2, "ASCII is two units either way");
-    var copied = plain;
+    var copied = plain.Clone();
     copied.Clear();
-    Assert(copied.IsEmpty() && plain.Length() == 2, "copying native text produces independent storage");
+    Assert(copied.IsEmpty() && plain.Length() == 2, "cloning native text produces independent storage");
     let accented = OsString::FromText(allocator, "héllo") catch { else => Panic("ordinary text converts") };
     when #target.os == .Windows {
         Assert(accented.Length() == 5, "five UTF-16 units on Windows");

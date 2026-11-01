@@ -399,47 +399,6 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             }
         }
         else if (isAssignable) {
-            const FuncDecl *copyOperation = nullptr;
-            if (assignment->op == TokenKind::Assign && !movedValue && target->kind != TypeRef::Kind::Reference) {
-                const TypeProperties properties = ClassifyTypeProperties(target);
-                if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
-                    copyOperation = LookupSourceSpecialOperation(target, "=", assignment->location);
-                    if (!copyOperation) {
-                        return TypeRef::MakeOpaque();
-                    }
-                }
-                else {
-                    copyOperation = LookupMethod(target, "=", {value});
-                }
-                // A bodyless `=` is the older spelling of `#NoCopy`: the type is move-only, and its assignments
-                // follow the same rules as any other move-only type's.
-                if (copyOperation && !copyOperation->body) {
-                    copyOperation = nullptr;
-                }
-            }
-            if (copyOperation) {
-                // A declared copy operation receives a value of the target's own type, or of a type another declared
-                // `=` takes; without this check a fallible or any other unrelated value reached the operation
-                // unconverted.
-                if (!target.IsUnknown() && !value.IsUnknown() && !CanAssignExprTo(*assignment->value, value, target) &&
-                    !LookupMethod(target, "=", {value})) {
-                    EmitError(assignment->location,
-                              AssignmentErrorMessage(
-                                  *assignment->value, target,
-                                  std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
-                    return TypeRef::MakeOpaque();
-                }
-                // Only a source that stays with another owner — a named place, borrowed storage, or a reference — is
-                // copied. A fresh temporary has no other owner, so it transfers into the target as it stands, the way
-                // it initializes a binding; copying it would leave the temporary itself with no owner to destroy it.
-                if (!IsFreshTemporarySource(*assignment->value, value, target)) {
-                    valueCopies.insert_or_assign(
-                        assignment->value.get(),
-                        ValueCopy{ValueConsumptionKind::Assignment, target, copyOperation, assignment->location});
-                }
-                MarkTrackedAssignment(*assignment->target, assignment->location);
-                return TypeRef::MakeOpaque();
-            }
             const bool nullReference = target->kind == TypeRef::Kind::Reference && IsNullLiteral(*assignment->value);
             const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
                                                        CanAssignExprTo(*assignment->value, value, target));
@@ -619,23 +578,16 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
         }
     }
     if (const auto it = deferredConsumptions.find(&declaration); it != deferredConsumptions.end()) {
+        const bool boundReported = ViolatesCopyableBound(declaration, substitutions);
         for (const DeferredConsumption &deferred : it->second) {
             const TypeRef resolved = SubstituteTypeParameters(deferred.type, substitutions);
             const TypeProperties properties = ClassifyTypeProperties(resolved);
+            // A copy of plain data is its bytes, which lowering reads as they stand.
             if (deferred.kind != ValueConsumptionKind::ExplicitMove && properties.IsCopy()) {
-                const MovePlace place = AnalyzeMovePlace(*deferred.expression);
-                if (IsStoredAggregate(resolved) && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
-                    // Recorded with the unsubstituted type and no resolved operation: the record is keyed by the
-                    // shared generic expression, so every instantiation reads it, and each one must substitute its
-                    // own type argument and resolve its own copy operation when the plan is built. Baking this
-                    // instantiation's resolution in would hand its operation to every other instantiation.
-                    valueCopies.insert_or_assign(deferred.expression,
-                                                 ValueCopy{deferred.kind, deferred.type, nullptr, deferred.location});
-                }
                 continue;
             }
             if (deferred.kind != ValueConsumptionKind::ExplicitMove) {
-                if (properties.IsMoveOnly()) {
+                if (properties.IsMoveOnly() && !boundReported) {
                     if (deferred.kind == ValueConsumptionKind::ArrayRepeat) {
                         EmitError(deferred.location,
                                   std::format("array repeat element type '{}' must be copyable", resolved.ToString()),
@@ -643,8 +595,8 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
                                   "write the elements explicitly or initialize move-only elements in a loop");
                     }
                     else {
-                        static_cast<void>(
-                            RejectImplicitMove(*deferred.expression, resolved, deferred.kind, deferred.location));
+                        static_cast<void>(RejectImplicitMove(*deferred.expression, resolved, deferred.kind,
+                                                             deferred.location, &deferred.type));
                     }
                 }
                 continue;

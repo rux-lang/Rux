@@ -1,0 +1,122 @@
+// A direct loop over an array or a slice gives every pass a copy of its element, so it visits plain data: the copy
+// is the element's bytes, runs no code, and leaves the sequence its own. An element that owns something is move-only,
+// so a loop visits it in place through a reference iterator and destroys nothing, and a pass that wants a copy of its
+// own calls `Clone`, which runs exactly once per pass and whose copy the end of the pass destroys.
+
+import Allocator::SystemAllocator;
+import Collections::{ ReferenceIterator, Vector };
+import Core::Assert;
+import Text::String;
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+struct Counter {
+    clones: int32;
+    drops: int32;
+}
+
+struct Counted {
+    counter: *var Counter;
+    id: int32;
+}
+
+extend Counted {
+    func Clone(&self) -> Counted {
+        self.counter.clones = self.counter.clones + 1;
+        return Counted { counter: self.counter, id: self.id };
+    }
+
+    func ~Counted(&var self) {
+        self.counter.drops = self.counter.drops + 1;
+    }
+}
+
+func SumPoints(points: Point[..]) -> int32 {
+    var sum: int32 = 0;
+    for point in points {
+        sum = sum + point.x * 10 + point.y;
+    }
+    return sum;
+}
+
+// Plain data is copied for each pass, whether the pass ends, breaks or continues, and the sequence keeps its own.
+func LoopOverPlain() {
+    var points: Point[3] = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }, Point { x: 5, y: 6 }];
+    Assert(SumPoints(points[..]) == 102, "a loop over a slice visits every element");
+    var seen: int32 = 0;
+    for point in points {
+        seen = seen + 1;
+        if point.x == 3 {
+            break;
+        }
+    }
+    Assert(seen == 2, "the loop leaves at the second element");
+    for point in points[1..] {
+        if point.x == 3 {
+            continue;
+        }
+        seen = seen + point.y;
+    }
+    Assert(seen == 8, "continue skips to the next element");
+    points[0].x = 7;
+    Assert(SumPoints(points[..]) == 162, "the loop's copies never wrote back into the sequence");
+}
+
+// Owning elements are visited in place, and a pass that needs its own value clones it.
+func LoopOverOwning(counter: *var Counter) {
+    let items: Counted[3] = [Counted { counter: counter, id: 1 }, Counted { counter: counter, id: 2 },
+                             Counted { counter: counter, id: 3 }];
+    var sum: int32 = 0;
+    for item in ReferenceIterator<Counted>(items[..]) {
+        sum = sum + item.id;
+    }
+    Assert(sum == 6, "a reference iterator visits every element");
+    Assert(counter.clones == 0 && counter.drops == 0, "visiting in place copies and destroys nothing");
+
+    for item in ReferenceIterator<Counted>(items[..]) {
+        let copy = (*item).Clone();
+        if copy.id == 2 {
+            break;
+        }
+    }
+    Assert(counter.clones == 2 && counter.drops == 2, "each pass clones once and leaving destroys that pass's clone");
+
+    for item in ReferenceIterator<Counted>(items[1..]) {
+        let copy = (*item).Clone();
+        if copy.id == 2 {
+            continue;
+        }
+        sum = sum + copy.id;
+    }
+    Assert(sum == 9, "continue skips to the next element");
+    Assert(counter.clones == 4 && counter.drops == 4, "continuing destroys that pass's clone");
+}
+
+func Main() -> int {
+    LoopOverPlain();
+    var counter = Counter { clones: 0, drops: 0 };
+    LoopOverOwning(@counter);
+    Assert(counter.drops == 7, "the array destroys its own elements once, after every clone");
+
+    // The shape `Test::RunBenchmarks` loops over: text in a vector, visited in place.
+    let a = String::FromBytes(SystemAllocator(), "hello") catch { else => return 1 };
+    let b = String::FromBytes(SystemAllocator(), "world") catch { else => return 2 };
+    var texts = Vector<String>(SystemAllocator());
+    texts.Push(move a) catch { else => return 3 };
+    texts.Push(move b) catch { else => return 4 };
+    var bytes: uint = 0;
+    for text in texts.References() {
+        bytes = bytes + (*text).Bytes().length;
+    }
+    Assert(bytes == 10u, "every string is visited");
+    let words: String[2] = [String::FromBytes(SystemAllocator(), "one") catch { else => return 5 },
+                            String::FromBytes(SystemAllocator(), "two") catch { else => return 6 }];
+    for word in ReferenceIterator<String>(words[..]) {
+        bytes = bytes + (*word).Bytes().length;
+    }
+    Assert(bytes == 16u, "an array of strings is visited");
+    return 0;
+}

@@ -31,14 +31,13 @@ func Main() -> int {
     Assert(text.Length() == 11, "which spans every byte");
     Assert(text.ScalarCount() == 5, "and holds five characters, which is not the same number");
 
-    // Ordinary language copying is deep: both values remain live and each owns a different block.
-    let automatic = text;
-    Assert(automatic.Equals(text), "an ordinary string copy preserves the text");
-    Assert(automatic.Bytes().data != text.Bytes().data, "in independent storage");
+    // A string owns its block, so it moves: `move` hands the block over without copying a byte, and the source
+    // is gone afterwards.
+    let original = String::FromBytes(allocator, "moved") catch { else => Panic("well-formed bytes make a string") };
+    let block = original.Bytes().data;
     var assigned = String(allocator);
-    assigned = text;
-    Assert(assigned.Equals(text) && assigned.Bytes().data != text.Bytes().data,
-           "copy assignment also installs an independent value");
+    assigned = move original;
+    Assert(assigned.Bytes().data == block && assigned.Length() == 5, "moving a string hands over its block");
 
     // Bytes that are not text make no string, and say why.
     var broken: char8[3];
@@ -48,7 +47,7 @@ func Main() -> int {
     Assert(Refusal(String::FromBytes(allocator, broken[0..3])) == TextError::InvalidUtf8,
            "a surrogate half is refused, and nothing is built from it");
 
-    // Fallible cloning offers the same independent value semantics when allocation failure must be handled.
+    // Copying is explicit: `Clone` makes an independent block and reports a failed allocation instead of hiding it.
     var copy = text.Clone() catch { else => Panic("a string can be copied") };
     Assert(copy.Equals(text), "and the copy holds what the original holds");
     Assert(copy.Bytes().data != text.Bytes().data, "in a block of its own");

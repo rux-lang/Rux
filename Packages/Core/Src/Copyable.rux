@@ -1,0 +1,11 @@
+// Copyable: whether `=` may duplicate a value by copying its bytes.
+// The compiler knows this marker by name and decides it from the type's shape, so no extension implements it. A type
+// is copyable when it is plain data: it has no destructor, everything it holds is copyable, and it is not `#NoCopy`.
+// Every other type moves, and an owning type is duplicated by calling its `Clone` explicitly.
+
+/// A type whose values `=` may copy: the bound generic code writes before it copies a value of its type parameter.
+/// Numbers, `bool`, characters, raw pointers, views, function values, and structures, tuples, variants and fixed
+/// arrays of them are copyable. A type with a destructor, or one holding such a value, owns resources and is
+/// move-only, and so is a type declared `#NoCopy`. A copy is always the value's bytes and never runs user code.
+/// @see https://rux-lang.dev/docs/api/core/copyable
+pub interface Copyable {}

@@ -5,18 +5,18 @@
 // bytes that came from a literal, and a literal lives on a read-only page. A type that promised mutation would have
 // to copy defensively on every write or fault on some of them. `StringBuilder` is where text is assembled; `String`
 // is what assembling it produces.
-// Copying makes an independent block from the same allocator, so strings have value semantics even though each owns
-// storage. A fallible caller can use `Clone`; the language copy operation cannot return an error and therefore
-// terminates if its allocation fails. `StringView` borrows and copies no bytes; `View` creates one for free.
+// A `String` owns its block, so it is move-only: `=` from a named string is an error, `move` hands the block over,
+// and `Clone` makes an independent block from the same allocator, reporting a failed allocation instead of hiding
+// one. `StringView` borrows and copies no bytes; `View` creates one for free.
 // Every `String` this package produces holds well-formed UTF-8, checked once where the bytes enter. Everything
 // downstream may rely on that, which is what makes cutting and indexing cheap.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Ordering, Panic };
+import Core::Ordering;
 import Memory::Copy;
 
 /// Text that owns its bytes.
-/// Copyable with value semantics: each copy owns an independent block and gives it back when it dies.
+/// Move-only: it owns its block and gives it back when it dies. `Clone` makes an independent copy explicitly.
 /// @see https://rux-lang.dev/docs/api/text/string
 pub struct String {
     /// The bytes, or null for text of no length.
@@ -32,25 +32,6 @@ pub struct String {
 }
 
 extend String {
-    /// Deep-copies `other` into independent storage from the same allocator.
-    /// The special copy operation cannot report allocation failure, so it terminates on exhaustion. Use `Clone`
-    /// when failure must be handled. The source remains valid and unchanged.
-    /// @param other the value to compare against
-    /// @see https://rux-lang.dev/docs/api/text/string#copy
-    pub func =(self: &var String, other: &String) {
-        self.data = null;
-        self.length = other.length;
-        self.capacity = other.length;
-        self.allocator = other.allocator;
-        if other.length == 0 { return; }
-
-        let layout = Layout::New(other.length, 1) ?? (Layout { size: other.length, alignment: 1 });
-        var allocator = other.allocator;
-        let block = allocator.Allocate(layout) catch { else => Panic("copying a String requires an allocation") };
-        Copy(block, other.data as *opaque, other.length);
-        self.data = block as *var char8;
-    }
-
     /// Text of no length, which has allocated nothing.
     /// `allocator` is borrowed for the call and kept, so an empty string can still grow into one that allocates.
     /// Cannot fail. Runs in constant time and allocates nothing.

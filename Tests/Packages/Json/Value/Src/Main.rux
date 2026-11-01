@@ -100,13 +100,13 @@ func Main() -> int {
     Assert(object.Kind() == JsonKind::Object && object.Length() == 0, "a new object is empty");
     var zetaName = String::FromBytes(allocator, "zeta") catch { else => Panic("a name is built") };
     var zetaValue = JsonValue::Number(allocator, "1") catch { else => Panic("1 is stored") };
-    Assert(object.Insert(zetaName, <-zetaValue), "a member inserts");
+    Assert(object.Insert(move zetaName, <-zetaValue), "a member inserts");
     var alphaName = String::FromBytes(allocator, "alpha") catch { else => Panic("a name is built") };
     var alphaValue = JsonValue::Number(allocator, "2") catch { else => Panic("2 is stored") };
-    Assert(object.Insert(alphaName, <-alphaValue), "and another");
+    Assert(object.Insert(move alphaName, <-alphaValue), "and another");
     var muName = String::FromBytes(allocator, "mu") catch { else => Panic("a name is built") };
     var muValue = JsonValue::Text(allocator, "found") catch { else => Panic("a string is stored") };
-    Assert(object.Insert(muName, <-muValue), "and a third");
+    Assert(object.Insert(move muName, <-muValue), "and a third");
     Assert(object.Length() == 3, "and the object grows");
 
     let firstMember = object.MemberAt(0);

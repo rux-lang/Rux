@@ -1,9 +1,9 @@
 // Replacing a whole value through a mutable reference.
 // `=` and `<-` through a parameter, receiver, or `let` alias of type `&var T` store into the caller's value, for a
 // struct, tuple, array, or generic referent alike. The assignment follows the rules for `T` that an assignment to a
-// `var` local of type `T` follows: a custom `=` produces the new state, the old value is destroyed, and the result is
-// installed; a move-only value needs `<-`. Each tracked value appends its id to a log as it is destroyed or copied, and
-// each check appends a 0 where it stands, so the log is the exact order of events.
+// `var` local of type `T` follows: the new value is produced, the old value is destroyed, and the result is installed;
+// a move-only value needs `move` or a `Clone`. Each tracked value appends its id to a log as it is destroyed or cloned,
+// and each check appends a 0 where it stands, so the log is the exact order of events.
 
 import Core::Assert;
 
@@ -34,17 +34,16 @@ extend Tracked {
     }
 }
 
-// Destroyed with its id appended to the log, and copied by its own '=' with a 9 appended.
+// Destroyed with its id appended to the log, and cloned by its own `Clone` with a 9 appended.
 struct Copied {
     log: *var Log;
     id: int32;
 }
 
 extend Copied {
-    func =(self: &var Copied, other: &Copied) {
-        other.log.order = other.log.order * 10 + 9;
-        self.log = other.log;
-        self.id = other.id;
+    func Clone(&self) -> Copied {
+        self.log.order = self.log.order * 10 + 9;
+        return Copied { log: self.log, id: self.id };
     }
 
     func ~Copied(self: &var Copied) {
@@ -83,7 +82,7 @@ func ReplaceTuple(tuple: &var (int32, bool)) { tuple = (9i32, true); }
 func ReplaceArray(values: &var int32[3]) { values = [7i32, 8i32, 9i32]; }
 func ReplaceNarrowArray(values: &var int32[2]) { values = [5i32, 6i32]; }
 func ReplaceTracked(slot: &var Tracked, log: *var Log) { slot = Tracked { log: log, id: 2i32 }; }
-func CopyInto(slot: &var Copied, source: &Copied) { slot = source; }
+func CopyInto(slot: &var Copied, source: &Copied) { slot = source.Clone(); }
 func MoveInto(slot: &var Token, token: Token) { slot <- token; }
 func Put<T>(slot: &var T, value: T) { slot <- value; }
 
@@ -99,7 +98,7 @@ func CopyInScope(log: *var Log) {
     let source = Copied { log: log, id: 2i32 };
     CopyInto(slot, source);
     Mark(log);
-    Assert(slot.id == 2i32 && source.id == 2i32, "the custom copy is installed and its source kept");
+    Assert(slot.id == 2i32 && source.id == 2i32, "the clone is installed and its source kept");
 }
 
 func MoveInScope(log: *var Log) {
@@ -155,7 +154,7 @@ func Main() -> int {
 
     log = Log { count: 0i32, order: 0i64 };
     CopyInScope(@log);
-    Assert(log.count == 3i32 && log.order == 91022i64, "a custom '=' copies first, then the old value is destroyed");
+    Assert(log.count == 3i32 && log.order == 91022i64, "the clone is made first, then the old value is destroyed");
 
     log = Log { count: 0i32, order: 0i64 };
     MoveInScope(@log);

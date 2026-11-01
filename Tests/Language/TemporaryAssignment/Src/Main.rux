@@ -1,9 +1,10 @@
-// Assigning a fresh temporary to a type with a custom `=`.
+// Assigning a fresh temporary to a move-only type.
 // A fresh temporary — a call result, a literal, a constructor call, or the value a conditional or `match` produces —
-// has no other owner, so `=` transfers it into the destination as it stands: the custom `=` is not called, the old
-// value is destroyed, and the temporary is destroyed once, with its new owner. A named or borrowed source is still
-// copied through the custom `=`. A copy gets the id of its source plus 10, and each tracked value appends its id to a
-// log as it is destroyed, while each check appends 00 where it stands, so the log is the exact order of events.
+// has no other owner, so `=` transfers it into the destination as it stands: no code runs for it, the old value is
+// destroyed, and the temporary is destroyed once, with its new owner. A named or borrowed source is copied only by an
+// explicit `Clone`, whose result is such a temporary. A clone gets the id of its source plus 10, and each tracked
+// value appends its id to a log as it is destroyed, while each check appends 00 where it stands, so the log is the
+// exact order of events.
 
 import Core::Assert;
 
@@ -23,10 +24,9 @@ extend Tracked {
         return Tracked { log: log, id: id };
     }
 
-    func =(self: &var Tracked, other: &Tracked) {
-        self.log = other.log;
-        self.id = other.id + 10;
+    func Clone(&self) -> Tracked {
         self.log.copies = self.log.copies + 1;
+        return Tracked { log: self.log, id: self.id + 10 };
     }
 
     func ~Tracked(self: &var Tracked) {
@@ -39,7 +39,7 @@ extend Tracked {
     }
 }
 
-// Destroyed like `Tracked`, but copied by the generated `=`.
+// Destroyed like `Tracked`, but with no `Clone` of its own.
 struct Plain {
     log: *var Log;
     id: int32;
@@ -113,13 +113,13 @@ func MatchIntoLocal(log: *var Log, which: int32) {
     Assert(item.id == 2i32, "the match's value is installed as it stands");
 }
 
-// The arm copies its named source once; the value the conditional produces is then a temporary.
+// The arm clones its named source once; the value the conditional produces is then a temporary.
 func ConditionalOfNamed(log: *var Log, pick: bool) {
     var item = Track(log, 1i32);
     let source = Track(log, 2i32);
-    item = pick ? source : source;
+    item = pick ? source.Clone() : source.Clone();
     Mark(log);
-    Assert(item.id == 12i32 && source.id == 2i32, "the arm copies its source once");
+    Assert(item.id == 12i32 && source.id == 2i32, "the arm clones its source once");
 }
 
 func IntoUninitialized(log: *var Log) {
@@ -181,33 +181,33 @@ func MovedSource(log: *var Log) {
 func NamedSource(log: *var Log) {
     var item = Track(log, 1i32);
     let source = Track(log, 2i32);
-    item = source;
+    item = source.Clone();
     Mark(log);
-    Assert(item.id == 12i32 && source.id == 2i32, "a named source is copied through the custom '='");
+    Assert(item.id == 12i32 && source.id == 2i32, "a named source is cloned explicitly");
 }
 
 func FieldSource(log: *var Log) {
     var item = Track(log, 1i32);
     let holder = Holder { item: Track(log, 2i32), count: 0i32 };
-    item = holder.item;
+    item = holder.item.Clone();
     Mark(log);
-    Assert(item.id == 12i32 && holder.item.id == 2i32, "a field source is copied through the custom '='");
+    Assert(item.id == 12i32 && holder.item.id == 2i32, "a field source is cloned explicitly");
 }
 
 func DereferencedSource(log: *var Log) {
     var item = Track(log, 1i32);
     var source = Track(log, 2i32);
     let pointer = @source;
-    item = *pointer;
+    item = (*pointer).Clone();
     Mark(log);
-    Assert(item.id == 12i32 && source.id == 2i32, "a dereferenced source is copied through the custom '='");
+    Assert(item.id == 12i32 && source.id == 2i32, "a dereferenced source is cloned explicitly");
 }
 
-func GeneratedCopy(log: *var Log) {
+func PlainTemporary(log: *var Log) {
     var plain = MakePlain(log, 1i32);
     plain = MakePlain(log, 2i32);
     Mark(log);
-    Assert(plain.id == 2i32, "a temporary with a generated '=' is installed as it stands");
+    Assert(plain.id == 2i32, "a temporary of a type without 'Clone' is installed as it stands");
 }
 
 func Main() -> int {
@@ -234,7 +234,7 @@ func Main() -> int {
 
     Reset(@log);
     ConditionalOfNamed(@log, true);
-    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a conditional arm copies once");
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a conditional arm clones once");
 
     Reset(@log);
     IntoUninitialized(@log);
@@ -266,18 +266,18 @@ func Main() -> int {
 
     Reset(@log);
     NamedSource(@log);
-    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a named source is copied");
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a named source is cloned");
 
     Reset(@log);
     FieldSource(@log);
-    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a field source is copied");
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a field source is cloned");
 
     Reset(@log);
     DereferencedSource(@log);
-    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a dereferenced source is copied");
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a dereferenced source is cloned");
 
     Reset(@log);
-    GeneratedCopy(@log);
-    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a generated '=' copies nothing");
+    PlainTemporary(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "the same holds without 'Clone'");
     return 0;
 }

@@ -265,9 +265,6 @@ protected:
     /// `expression` lowered as a value of the native type `targetType`.
     [[nodiscard]] HirExprPtr LowerNativeAs(const Expr &expression, const TypeRef &targetType);
     [[nodiscard]] HirExprPtr LowerPendingNative(const Expr &expression);
-    /// Copy and move recipes for a native level: one variant case per alternative, its payload copied or moved
-    /// recursively, and nothing when every payload is trivial.
-    [[nodiscard]] HirCopyPlan BuildNativeCopyPlan(const TypeRef &type);
     /// A native case, presence, `none`, typed, or sum-member pattern lowered against `subjectType`, or null for a
     /// pattern the nominal lowering handles.
     [[nodiscard]] HirPatternPtr LowerNativePattern(const Pattern &pattern, const TypeRef &subjectType);
@@ -509,8 +506,6 @@ private:
     [[nodiscard]] static std::string MangleTypeName(const TypeRef &type);
     [[nodiscard]] std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
                                                        const FuncDecl &method);
-    [[nodiscard]] HirCopyPlan BuildCopyPlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
-    [[nodiscard]] HirCopyPlan BuildEnumCopyPlan(const TypeRef &type, const EnumDecl &declaration);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);
     [[nodiscard]] bool TypeIsConcrete(const TypeRef &type);

@@ -1,0 +1,4 @@
+27:26: error: type argument 'Owner' does not satisfy interface bound 'Copyable' on type parameter 'T'
+15:5: error: cannot copy 'Owner', which owns resources
+16:13: error: cannot copy 'Owner', which owns resources
+16:20: error: cannot copy 'Owner', which owns resources

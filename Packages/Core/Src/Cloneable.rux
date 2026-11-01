@@ -1,0 +1,18 @@
+// Cloneable: a type that can make an independent duplicate of a value it owns.
+// An owning type does not copy with `=`; duplicating one is an ordinary method call that may allocate, so the cost
+// is visible where it is paid. A type whose duplication can fail keeps a fallible `Clone` of its own until typed
+// errors arrive, and does not satisfy this bound.
+
+/// A type whose values can be duplicated by calling `Clone`: the bound generic code writes before it duplicates an
+/// owning value of its type parameter.
+/// A clone is independent of its source: each owns what it holds and releases it on its own, and changing one never
+/// changes the other. A handle that shares one value, such as `Rc`, clones by adding another owner of that value.
+/// @see https://rux-lang.dev/docs/api/core/cloneable
+pub interface Cloneable {
+    /// An independent duplicate of this value.
+    /// Borrows the source and leaves it unchanged. An implementation that allocates terminates the program when its
+    /// allocation fails, because the duplicate it promises cannot be made.
+    /// @returns a value equal to this one that owns its own resources
+    /// @see https://rux-lang.dev/docs/api/core/cloneable#clone
+    func Clone(&self) -> Self;
+}

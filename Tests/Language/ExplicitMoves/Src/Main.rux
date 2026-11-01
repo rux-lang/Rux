@@ -2,19 +2,10 @@ func Take(value: int32) -> int32 {
     return value;
 }
 
+// Plain data: `=` copies its bytes, runs no user code, and leaves the source usable.
 struct CopyOnly {
     value: int32;
-    copies: *var int32;
-}
-
-extend CopyOnly {
-    func =(self: &var CopyOnly, other: &CopyOnly) {
-        self.value = other.value;
-        self.copies = other.copies;
-        *self.copies += 1i32;
-    }
-
-    func <-(self: &var CopyOnly, other: CopyOnly);
+    flag: bool;
 }
 
 struct MoveOnly {
@@ -46,10 +37,11 @@ func MoveNamed() -> int32 {
     return moved.value;
 }
 
-// A custom '=' takes its source by reference, so a reference is copied from as it stands.
-func CopyFrom(source: &CopyOnly) -> int32 {
-    var local = CopyOnly { value: 0i32, copies: source.copies };
+// A copy through a by-value parameter is the caller's bytes; changing it leaves the caller's value alone.
+func CopyFrom(source: CopyOnly) -> int32 {
+    var local = CopyOnly { value: 0i32, flag: false };
     local = source;
+    local.flag = !local.flag;
     return local.value;
 }
 
@@ -62,10 +54,9 @@ func Main() -> int {
         return 1;
     }
 
-    var copies = 0i32;
-    let original = CopyOnly { value: 11i32, copies: @copies };
+    let original = CopyOnly { value: 11i32, flag: true };
     let copied = original;
-    if copied.value != 11i32 || original.value != 11i32 || copies != 1i32 {
+    if copied.value != 11i32 || original.value != 11i32 || !copied.flag {
         return 2;
     }
 
@@ -78,7 +69,7 @@ func Main() -> int {
     if sizeof(Immovable) != sizeof(int32) {
         return 5;
     }
-    if CopyFrom(original) != 11i32 || copies != 2i32 {
+    if CopyFrom(original) != 11i32 || !original.flag {
         return 6;
     }
     return 0;

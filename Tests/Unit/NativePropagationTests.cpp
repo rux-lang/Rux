@@ -192,7 +192,7 @@ TEST_CASE("'?' consumes its operand and moves both payloads") {
             return owned.handle;
         }
     )");
-    CHECK(AnyContains(implicit, "requires an explicit 'move' in propagation operand"));
+    CHECK(AnyContains(implicit, "cannot copy 'Owned ! ParseError', which prohibits copying"));
 
     const auto borrowed = ErrorsIn(R"(
         func Borrowed(outcome: &(int32 ! ParseError)) -> int32 ! ParseError {

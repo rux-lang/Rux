@@ -145,7 +145,7 @@ extend TomlValue {
         var held = TomlValue::Table(allocator);
         held.kind = TomlKind::Text;
         held.text.Clear();
-        held.text = value;
+        held.text = move value;
         return <-held;
     }
 
@@ -355,7 +355,7 @@ extend TomlValue {
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#insert
     pub func Insert(self: &var TomlValue, key: String, value: TomlValue) -> bool {
         if self.kind != TomlKind::Table { return false; }
-        var entry = TomlEntry { key: key, value: <-value };
+        var entry = TomlEntry { key: move key, value: <-value };
         return Succeeded(self.entries.Push(<-entry));
     }
 

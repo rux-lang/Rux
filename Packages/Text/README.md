@@ -40,7 +40,7 @@ func Main() -> ! TextError {
 }
 ```
 
-Use `String(allocator)`, `StringBuilder(allocator)`, and `StringView()` for empty values. Move builders and C strings explicitly with `<-`. Ordinary `String` copy syntax is infallible and terminates on allocation failure; use `Clone()`, which returns `String ! TextError`, in recoverable paths.
+Use `String(allocator)`, `StringBuilder(allocator)`, and `StringView()` for empty values. A `String` owns its block, so it is move-only like builders and C strings: hand one over with `move`, and copy it with `Clone()`, which returns `String ! TextError` so a failed allocation is reported rather than hidden. `Io::Print` and `PrintLine` borrow a `String`, so printing one neither copies nor consumes it.
 
 ## Documentation
 

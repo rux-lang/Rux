@@ -194,8 +194,6 @@ bool SemanticPrinter::Dump(const SemanticModel &result, const std::filesystem::p
         switch (state) {
         case TypeProperties::SpecialOperationState::Generated:
             return "generated";
-        case TypeProperties::SpecialOperationState::Custom:
-            return "custom";
         case TypeProperties::SpecialOperationState::Prohibited:
             return "prohibited";
         case TypeProperties::SpecialOperationState::Unresolved:

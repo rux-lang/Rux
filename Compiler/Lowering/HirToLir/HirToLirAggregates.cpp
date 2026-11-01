@@ -806,10 +806,6 @@ void HirToLirContext::StoreTernaryInit(const HirTernaryExpr &e, LirReg slot, con
 }
 
 void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, const TypeRef &type) {
-    if (auto *copy = HirCast<const HirCopyExpr>(&expr)) {
-        StoreCopyIntoSlot(*copy, slot);
-        return;
-    }
     if (auto *init = HirCast<const HirStructInitExpr>(&expr)) {
         StoreStructInit(*init, slot);
         return;
@@ -899,108 +895,6 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         return;
     }
     EmitStore(EmitCastIfNeeded(val, expr.type, type), slot, type);
-}
-
-void HirToLirContext::EmitCopyPlan(const HirCopyPlan &plan, const LirReg source, const LirReg destination) {
-    if (plan.kind == HirCopyPlan::Kind::Custom) {
-        LirInstr call;
-        call.op = LirOpcode::Call;
-        call.type = TypeRef::MakeOpaque();
-        call.srcs = {destination, source};
-        call.strArg = plan.customCallee;
-        if (const auto convention = funcConvs.find(plan.customCallee); convention != funcConvs.end()) {
-            call.callConv = convention->second;
-        }
-        Emit(std::move(call));
-        return;
-    }
-    if (plan.kind == HirCopyPlan::Kind::Structure || plan.kind == HirCopyPlan::Kind::Tuple) {
-        for (std::size_t index = 0; index < plan.components.size(); ++index) {
-            const std::string name =
-                plan.kind == HirCopyPlan::Kind::Structure ? plan.componentNames[index] : std::to_string(index);
-            const HirCopyPlan &component = plan.components[index];
-            EmitCopyPlan(component, EmitFieldPtr(source, name, component.type),
-                         EmitFieldPtr(destination, name, component.type));
-        }
-        return;
-    }
-    if (plan.kind == HirCopyPlan::Kind::Array && !plan.components.empty()) {
-        const HirCopyPlan &element = plan.components.front();
-        for (std::uint64_t index = 0; index < plan.type->arrayLength.value_or(0); ++index) {
-            const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
-            EmitCopyPlan(element, EmitIndexPtr(source, offset, element.type),
-                         EmitIndexPtr(destination, offset, element.type));
-        }
-        return;
-    }
-    if (plan.kind == HirCopyPlan::Kind::Enum) {
-        if (plan.form != CaseTypeForm::Variant) {
-            BuilderFailure("scalar enum reached variant copy-plan lowering");
-        }
-        // Preserve the tag, inactive storage, and every trivial payload first. The active variant then replaces only
-        // the payloads that require a recursive or custom copy. Custom copy operations initialize scratch storage, so
-        // the shallow bits temporarily present in the destination are never observed or destroyed.
-        EmitStore(EmitLoad(source, plan.type), destination, plan.type);
-        const TypeRef tagType = EnumTagType(plan.type);
-        const LirReg tag = EmitLoad(source, tagType);
-        const std::size_t variantCount = std::min(
-            {plan.variantDiscriminants.size(), plan.variantPayloadTypes.size(), plan.variantComponents.size()});
-        for (std::size_t variantIndex = 0; variantIndex < variantCount; ++variantIndex) {
-            const auto &payloadTypes = plan.variantPayloadTypes[variantIndex];
-            const auto &payloadPlans = plan.variantComponents[variantIndex];
-            if (std::ranges::none_of(payloadPlans, [](const HirCopyPlan &component) {
-                    return component.kind != HirCopyPlan::Kind::Trivial;
-                })) {
-                continue;
-            }
-
-            const std::uint32_t payloadBlock = NewBlock("copy.variant");
-            const std::uint32_t afterBlock = NewBlock("copy.variant.after");
-            Branch(EmitBinary(LirOpcode::CmpEq, tag, EmitConst(plan.variantDiscriminants[variantIndex], tagType),
-                              TypeRef::MakeBool()),
-                   payloadBlock, afterBlock);
-            SetBlock(payloadBlock);
-            std::uint64_t offset = tagType.SizeInBytes().value_or(8);
-            const std::size_t payloadCount = std::min(payloadTypes.size(), payloadPlans.size());
-            for (std::size_t payloadIndex = 0; payloadIndex < payloadCount; ++payloadIndex) {
-                const TypeRef &payloadType = payloadTypes[payloadIndex];
-                const auto [size, alignment] = TypeLayoutOf(payloadType);
-                offset = (offset + alignment - 1) / alignment * alignment;
-                const HirCopyPlan &component = payloadPlans[payloadIndex];
-                if (component.kind != HirCopyPlan::Kind::Trivial) {
-                    const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
-                    const LirReg sourceBytes = EmitIndexPtr(source, byteOffset, TypeRef::MakeChar8());
-                    const LirReg destinationBytes = EmitIndexPtr(destination, byteOffset, TypeRef::MakeChar8());
-                    EmitCopyPlan(component,
-                                 EmitCast(sourceBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
-                                          TypeRef::MakePointer(payloadType)),
-                                 EmitCast(destinationBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
-                                          TypeRef::MakePointer(payloadType)));
-                }
-                offset += size;
-            }
-            if (!IsTerminated()) {
-                Jump(afterBlock);
-            }
-            SetBlock(afterBlock);
-        }
-        return;
-    }
-    EmitStore(EmitLoad(source, plan.type), destination, plan.type);
-}
-
-void HirToLirContext::StoreCopyIntoSlot(const HirCopyExpr &expression, const LirReg slot) {
-    // A custom `=` takes its source as `other: &T`, so a reference is a source as it stands: its value is already the
-    // address the copy reads, where the slot holding the reference is not.
-    const LirReg source = expression.value->type->kind == TypeRef::Kind::Reference ? LowerExpr(*expression.value)
-                                                                                   : LowerLValue(*expression.value);
-    EmitCopyPlan(expression.plan, source, slot);
-}
-
-LirReg HirToLirContext::LowerCopy(const HirCopyExpr &expression) {
-    const LirReg slot = EmitAlloca(expression.type);
-    StoreCopyIntoSlot(expression, slot);
-    return expression.type->kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
 }
 
 LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
@@ -1293,7 +1187,8 @@ void HirToLirContext::StoreArrayInit(const HirArrayExpr &e, LirReg slot) {
         }
 
         if (e.repeatCount == 1) {
-            EmitCopyPlan(e.repeatCopyPlan, source, EmitIndexPtr(slot, EmitConst("0", TypeRef::MakeUInt64()), elemType));
+            EmitStore(EmitLoad(source, elemType), EmitIndexPtr(slot, EmitConst("0", TypeRef::MakeUInt64()), elemType),
+                      elemType);
             if (!e.repeatElementDropGlue.empty()) {
                 EmitDropGlueCall(e.repeatElementDropGlue, source);
             }
@@ -1316,7 +1211,7 @@ void HirToLirContext::StoreArrayInit(const HirArrayExpr &e, LirReg slot) {
                bodyBlock, afterBlock);
 
         SetBlock(bodyBlock);
-        EmitCopyPlan(e.repeatCopyPlan, source, EmitIndexPtr(slot, index, elemType));
+        EmitStore(EmitLoad(source, elemType), EmitIndexPtr(slot, index, elemType), elemType);
         if (!IsTerminated()) {
             Jump(stepBlock);
         }

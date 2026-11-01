@@ -1,6 +1,6 @@
 // Discarding a whole value with `let _`.
 // `_` names nothing, so `let _ <- value;` and `let _ = value;` keep nothing: the value is destroyed at the statement,
-// before the next one runs, like a temporary nobody kept. A copy discarded this way leaves its source with its owner.
+// before the next one runs, like a temporary nobody kept. A clone discarded this way leaves its source with its owner.
 // Each tracked value appends its id to a log as it is destroyed and each check appends a 0 where it stands, so the log
 // is the exact order of events.
 
@@ -17,9 +17,8 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked) {
-        self.log = other.log;
-        self.id = other.id + 5;
+    func Clone(&self) -> Tracked {
+        return Tracked { log: self.log, id: self.id + 5 };
     }
 
     func ~Tracked(self: &var Tracked) {
@@ -60,12 +59,12 @@ func DiscardsTemporary(log: *var Log) {
     Mark(log);
 }
 
-// The copy is discarded at once; the source stays with its owner until the end of the scope.
-func DiscardsCopy(log: *var Log) {
+// The clone is discarded at once; the source stays with its owner until the end of the scope.
+func DiscardsClone(log: *var Log) {
     let tracked = Track(log, 3);
-    let _ = tracked;
+    let _ = tracked.Clone();
     Mark(log);
-    Assert(tracked.id == 3, "the source of a discarded copy is unchanged");
+    Assert(tracked.id == 3, "the source of a discarded clone is unchanged");
 }
 
 func DiscardsHandle(log: *var Log) {
@@ -97,8 +96,8 @@ func Main() -> int {
     Assert(log.count == 1 && log.order == 20, "a temporary is destroyed at 'let _'");
 
     log = Log { count: 0, order: 0 };
-    DiscardsCopy(@log);
-    Assert(log.count == 2 && log.order == 803, "a discarded copy is destroyed at 'let _', its source at scope end");
+    DiscardsClone(@log);
+    Assert(log.count == 2 && log.order == 803, "a discarded clone is destroyed at 'let _', its source at scope end");
 
     log = Log { count: 0, order: 0 };
     DiscardsHandle(@log);

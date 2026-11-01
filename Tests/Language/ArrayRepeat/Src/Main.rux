@@ -7,26 +7,6 @@ struct Cell {
     value: int;
 }
 
-extend Cell {
-    func =(self: &var Cell, other: &Cell) {
-        self.value = other.value + 1;
-    }
-}
-
-struct Tracked {
-    drops: *var int;
-}
-
-extend Tracked {
-    func =(self: &var Tracked, other: &Tracked) {
-        self.drops = other.drops;
-    }
-
-    func ~Tracked(self: &var Tracked) {
-        *self.drops = *self.drops + 1;
-    }
-}
-
 func Next(counter: *var int) -> int {
     *counter = *counter + 1;
     return *counter;
@@ -53,8 +33,7 @@ func Main() -> int {
     Assert(nested[0][1] == 1 && nested[2][0] == 1, "repetition recursively copies nested arrays");
 
     let cells = [Cell { value: 10 }; 3];
-    Assert(cells[0].value == 11 && cells[2].value == 11,
-           "every repeated element is initialized through the custom copy operation");
+    Assert(cells[0].value == 10 && cells[2].value == 10, "every repeated element is a byte copy of plain data");
 
     var calls = 0;
     let values = [Next(@calls); 4];
@@ -65,10 +44,8 @@ func Main() -> int {
     Assert(calls == 2, "a zero-length repeat still evaluates its expression exactly once");
     Assert(empty.length == 0, "a zero-length repeat produces a zero-length inline array");
 
-    var drops = 0;
-    let emptyTracked = [Tracked { drops: @drops }; 0];
-    Assert(emptyTracked.length == 0, "a zero-length repeat preserves its element type");
-    Assert(drops == 1, "a zero-length repeat destroys its evaluated temporary");
+    let emptyCells = [Cell { value: Next(@calls) }; 0];
+    Assert(emptyCells.length == 0 && calls == 3, "a zero-length repeat preserves its element type");
 
     Assert(Sum([3; 4]) == 12, "a repeated inline array coerces to a slice view");
     Assert(Zeros[0] == 0 && Zeros[3] == 0, "constant arrays support repeated initialization");

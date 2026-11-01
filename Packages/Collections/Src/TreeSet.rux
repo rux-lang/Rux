@@ -350,6 +350,8 @@ extend TreeSet<T> {
 
     /// A set holding what this one holds, ordered the same way and allocating from the same allocator.
     /// A failed clone hands back nothing rather than half of a set.
+    /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
+    /// owning element type is rejected while compiling, at the copy.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#clone
     pub func Clone(self: &TreeSet<T>) -> TreeSet<T> ! CollectionError {

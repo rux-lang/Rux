@@ -52,7 +52,7 @@ extend JsonNumber {
         // The bytes of a number are always ASCII, so the validated constructor is sound here and cheaper than
         // re-checking them.
         var held = String::FromBytes(allocator, text)?;
-        return JsonNumber { text: held };
+        return JsonNumber { text: move held };
     }
 
     /// The number exactly as written.
@@ -293,7 +293,7 @@ extend JsonValue {
     /// @see https://rux-lang.dev/docs/api/json/json-value#insert
     pub func Insert(self: &var JsonValue, name: String, value: JsonValue) -> bool {
         if self.kind != JsonKind::Object { return false; }
-        var member = JsonMember { name: name, value: <-value };
+        var member = JsonMember { name: move name, value: <-value };
         return Succeeded(self.members.Push(<-member));
     }
 

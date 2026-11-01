@@ -10,11 +10,11 @@ rux add Rux/Url
 
 ## What it provides
 
-| Module      | Covers                                                                                                   |
-| ----------- | -------------------------------------------------------------------------------------------------------- |
-| `Url`       | `Url` with `Parse`, `Resolve`, component accessors, `SetPath`, `SetQuery` and `SetFragment`, and `HostKind` |
-| `Query`     | `Pairs` for walking a query's `QueryPair`s, `Decode` for turning a component into text, and `QueryBuilder` |
-| `Error`     | `UrlError`, why text is not a URL                                                                        |
+| Module  | Covers                                                                                                               |
+| ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `Url`   | `Url` with `Parse`, `Resolve`, component accessors, `SetPath`, `SetQuery`, `SetFragment` and `Clone`, and `HostKind` |
+| `Query` | `Pairs` for walking a query's `QueryPair`s, `Decode` for turning a component into text, and `QueryBuilder`           |
+| `Error` | `UrlError`, why text is not a URL                                                                                    |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 

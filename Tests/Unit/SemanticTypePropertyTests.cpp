@@ -160,7 +160,7 @@ TEST_CASE("an interface named Drop has no lifecycle semantics") {
     CHECK(model.TryGetDropGlue(TypeRef::MakeNamed("Plain")) == nullptr);
 }
 
-TEST_CASE("special operations and lifecycle attributes classify generated custom and prohibited capabilities") {
+TEST_CASE("special operations and lifecycle attributes classify generated and prohibited capabilities") {
     Lexer lexer(R"(
         interface Assignable {
             func =(self: &var Self, other: &Self);
@@ -182,11 +182,11 @@ TEST_CASE("special operations and lifecycle attributes classify generated custom
             value: T;
         }
 
-        struct CustomCopy {
-            handle: Handle;
+        struct Owning {
+            value: int32;
         }
-        extend CustomCopy {
-            func =(self: &var CustomCopy, other: &CustomCopy) {}
+        extend Owning {
+            func ~Owning(&var self) {}
         }
 
         struct Pinned {
@@ -220,7 +220,7 @@ TEST_CASE("special operations and lifecycle attributes classify generated custom
         variant Spelled { Only }
 
         func Observe(generated: Generated, genericCopy: Wrapper<int32>, genericMove: Wrapper<Handle>,
-                     customCopy: CustomCopy, pinned: Pinned, nested: ContainsPinned, raw: Raw, anchored: Anchored,
+                     owning: Owning, pinned: Pinned, nested: ContainsPinned, raw: Raw, anchored: Anchored,
                      holdsAnchored: ContainsAnchored, spelled: Spelled) {}
     )",
                 "special_operations.rux");
@@ -275,12 +275,14 @@ TEST_CASE("special operations and lifecycle attributes classify generated custom
     CHECK_EQ(genericMove.copyOperation, Operation::Prohibited);
     CHECK_EQ(genericMove.moveOperation, Operation::Generated);
 
-    const TypeProperties &customCopy = propertiesOf(3);
-    CHECK(customCopy.IsCopy());
-    CHECK(customCopy.IsMovable());
-    CHECK(customCopy.IsDroppable());
-    CHECK_EQ(customCopy.copyOperation, Operation::Custom);
-    CHECK_EQ(customCopy.moveOperation, Operation::Generated);
+    // A destructor alone makes a type move-only: it owns resources, so it moves and never copies.
+    const TypeProperties &owning = propertiesOf(3);
+    CHECK(owning.IsMoveOnly());
+    CHECK(owning.IsMovable());
+    CHECK(owning.IsDroppable());
+    CHECK(owning.OwnsResources());
+    CHECK_EQ(owning.copyOperation, Operation::Prohibited);
+    CHECK_EQ(owning.moveOperation, Operation::Generated);
 
     for (const std::size_t parameter : {4U, 5U}) {
         const TypeProperties &properties = propertiesOf(parameter);
@@ -296,6 +298,7 @@ TEST_CASE("special operations and lifecycle attributes classify generated custom
     CHECK(raw.IsMoveOnly());
     CHECK(raw.IsMovable());
     CHECK_FALSE(raw.IsDroppable());
+    CHECK_FALSE(raw.OwnsResources());
     CHECK_EQ(raw.copyOperation, Operation::Prohibited);
     CHECK_EQ(raw.moveOperation, Operation::Generated);
 
@@ -307,6 +310,135 @@ TEST_CASE("special operations and lifecycle attributes classify generated custom
         CHECK_EQ(properties.copyOperation, Operation::Prohibited);
         CHECK_EQ(properties.moveOperation, Operation::Prohibited);
     }
+}
+
+TEST_CASE("only plain data is copyable, and a destructor anywhere inside makes a type move-only") {
+    Lexer lexer(R"(
+        struct Owner { value: int32; }
+        extend Owner {
+            func ~Owner(&var self) {}
+        }
+
+        struct Point { x: int32; y: int32; }
+        struct Holds { owner: Owner; tag: int32; }
+        variant Shape { Dot(Point), Line(Point, Point), Empty }
+        variant Carries { Held(Owner), Empty }
+        union Word { signed: int32, unsigned: uint32 }
+
+        #NoCopy
+        struct Handle { fd: int32; }
+
+        func Observe(number: int64, flag: bool, letter: char32, point: Point, points: Point[4], pair: (Point, bool),
+                     shape: Shape, word: Word, view: Owner[..], pointer: *var Owner, callback: func(int32) -> int32,
+                     maybe: Point?, owner: Owner, holds: Holds, owners: Owner[2], tuple: (Owner, int32),
+                     carries: Carries, optional: Owner?, handle: Handle) {}
+    )",
+                "copyability.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "copyability.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const FuncDecl *observe = nullptr;
+    for (const auto &item : parsed.module.items) {
+        if (const auto *function = dynamic_cast<const FuncDecl *>(item.get());
+            function && function->name == "Observe") {
+            observe = function;
+        }
+    }
+    REQUIRE(observe != nullptr);
+    REQUIRE_EQ(observe->params.size(), 19);
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto propertiesOf = [&](const std::size_t parameter) -> const TypeProperties & {
+        const TypeProperties *properties = model.TryGetProperties(*observe->params[parameter].type);
+        REQUIRE(properties != nullptr);
+        return *properties;
+    };
+
+    // Numbers, bool, characters, plain structures, fixed arrays, tuples, variants and unions of them, views, raw
+    // pointers, function values and optionals of plain data copy their bytes. A view or a pointer to an owning value
+    // owns nothing itself.
+    for (std::size_t parameter = 0; parameter < 12; ++parameter) {
+        CAPTURE(parameter);
+        const TypeProperties &properties = propertiesOf(parameter);
+        CHECK(properties.IsCopy());
+        CHECK_FALSE(properties.IsDroppable());
+        CHECK_EQ(properties.copyOperation, TypeProperties::SpecialOperationState::Generated);
+    }
+    // A destructor, on the type or on anything it holds, makes it move-only because it owns resources.
+    for (std::size_t parameter = 12; parameter < 18; ++parameter) {
+        CAPTURE(parameter);
+        const TypeProperties &properties = propertiesOf(parameter);
+        CHECK(properties.IsMoveOnly());
+        CHECK(properties.IsMovable());
+        CHECK(properties.OwnsResources());
+    }
+    // `#NoCopy` plain data is move-only without owning anything.
+    const TypeProperties &handle = propertiesOf(18);
+    CHECK(handle.IsMoveOnly());
+    CHECK_FALSE(handle.OwnsResources());
+}
+
+TEST_CASE("Copyable is decided by the compiler and bounds what generic code may copy") {
+    Lexer lexer(R"(
+        interface Copyable {}
+
+        struct Owner { value: int32; }
+        extend Owner {
+            func ~Owner(&var self) {}
+        }
+        struct Point { x: int32; y: int32; }
+        #NoCopy
+        struct Handle { fd: int32; }
+
+        func Twice<T: Copyable>(value: T) -> (T, T) {
+            return (value, value);
+        }
+        func Forward<U: Copyable>(value: U) -> (U, U) {
+            return Twice<U>(value);
+        }
+        func Unbound<V>(value: V) -> (V, V) {
+            return Twice<V>(value);
+        }
+
+        func Uses() -> int32 {
+            let numbers = Twice<int32>(4);
+            let points = Twice<Point>(Point { x: 1, y: 2 });
+            let forwarded = Forward<(Point, bool)>((Point { x: 3, y: 4 }, true));
+            let owners = Twice<Owner>(Owner { value: 1 });
+            let handles = Twice<Handle>(Handle { fd: 2 });
+            return numbers.0 + points.1.y;
+        }
+    )",
+                "copyable_bound.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "copyable_bound.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    std::vector<const Diagnostic *> errors;
+    for (const Diagnostic &diagnostic : model.diagnostics) {
+        if (diagnostic.IsError()) {
+            errors.push_back(&diagnostic);
+        }
+    }
+    REQUIRE_EQ(errors.size(), 3);
+    CHECK_EQ(errors[0]->message, "type argument 'V' does not satisfy interface bound 'Copyable' on type parameter 'T'");
+    CHECK_EQ(errors[1]->message,
+             "type argument 'Owner' does not satisfy interface bound 'Copyable' on type parameter 'T'");
+    REQUIRE_FALSE(errors[1]->notes.empty());
+    CHECK_EQ(errors[1]->notes.front(), "'Owner' owns resources, so it moves instead of copying");
+    CHECK_EQ(errors[2]->message,
+             "type argument 'Handle' does not satisfy interface bound 'Copyable' on type parameter 'T'");
+    REQUIRE_FALSE(errors[2]->notes.empty());
+    CHECK_EQ(errors[2]->notes.front(), "'Handle' prohibits copying");
 }
 
 TEST_CASE("special operations require canonical implementation signatures") {
@@ -575,7 +707,6 @@ TEST_CASE("scalar enums stay trivial while variants combine every payload owners
 
         struct Copier { value: int32; }
         extend Copier {
-            func =(self: &var Copier, other: &Copier) { self.value = other.value; }
             func ~Copier(self: &var Copier) {}
         }
 
@@ -624,11 +755,13 @@ TEST_CASE("scalar enums stay trivial while variants combine every payload owners
     CHECK(owner.IsDroppable());
     CHECK_EQ(owner.copyOperation, TypeProperties::SpecialOperationState::Prohibited);
     CHECK_EQ(owner.moveOperation, TypeProperties::SpecialOperationState::Generated);
+    // A destructor alone makes the payload, and so the variant, move-only.
     const TypeProperties &copier = properties(4);
-    CHECK(copier.IsCopy());
+    CHECK(copier.IsMoveOnly());
     CHECK(copier.IsMovable());
     CHECK(copier.IsDroppable());
-    CHECK_EQ(copier.copyOperation, TypeProperties::SpecialOperationState::Generated);
+    CHECK(copier.OwnsResources());
+    CHECK_EQ(copier.copyOperation, TypeProperties::SpecialOperationState::Prohibited);
     CHECK_EQ(copier.moveOperation, TypeProperties::SpecialOperationState::Generated);
     const TypeProperties &nested = properties(5);
     CHECK(nested.IsMoveOnly());

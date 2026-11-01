@@ -1,0 +1,29 @@
+// Generic code copies a value of its type parameter only under 'T: Copyable'. Without the bound the copy is checked
+// for each instantiation and reported where the generic code copies; with it, a move-only type argument is refused
+// where it is passed, and the copies in the body are not reported again.
+interface Copyable {}
+
+struct Owner {
+    value: int32;
+}
+
+extend Owner {
+    func ~Owner(&var self) {}
+}
+
+func Duplicate<T>(value: T) -> (T, T) {
+    let first = value;
+    return (first, value);
+}
+
+func Bounded<T: Copyable>(value: T) -> (T, T) {
+    return (value, value);
+}
+
+func Main() -> int {
+    let numbers = Duplicate<int32>(1);
+    let owners = Duplicate<Owner>(Owner { value: 2 });
+    let bounded = Bounded<int32>(3);
+    let refused = Bounded<Owner>(Owner { value: 4 });
+    return numbers.0 + bounded.1;
+}

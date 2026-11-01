@@ -430,15 +430,8 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         SetBlock(bodyBlock);
         LirReg elemPtr = EmitIndexPtr(dataPtr, idx, elemType);
-        // The loop variable owns a copy of the element, which the end of each pass destroys; a bitwise copy of an
-        // element with its own `=` would have that pass destroy what the sequence still holds.
-        if (s.elementCopy.kind != HirCopyPlan::Kind::Trivial) {
-            EmitCopyPlan(s.elementCopy, elemPtr, slot);
-        }
-        else {
-            LirReg elemVal = EmitLoad(elemPtr, elemType);
-            EmitStore(elemVal, slot, elemType);
-        }
+        // The loop variable holds a copy of the element, which is plain data and so its bytes.
+        EmitStore(EmitLoad(elemPtr, elemType), slot, elemType);
         if (s.bindingId != 0) {
             MarkBindingLive(s.bindingId, true);
         }

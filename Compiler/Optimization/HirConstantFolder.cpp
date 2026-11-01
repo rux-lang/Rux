@@ -392,10 +392,6 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         InvalidatePlace(*postfix->operand);
         InvalidateAll();
     }
-    else if (auto *copy = HirCast<HirCopyExpr>(expr.get())) {
-        OptimizeExpr(copy->value, false);
-        InvalidateAll();
-    }
     else if (auto *assignment = HirCast<HirAssignExpr>(expr.get())) {
         OptimizeExpr(assignment->target, false);
         OptimizeExpr(assignment->value, allowSubstitution);
@@ -458,8 +454,7 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
     else if (auto *array = HirCast<HirArrayExpr>(expr.get())) {
         if (array->repeatedElement) {
             OptimizeExpr(array->repeatedElement, allowSubstitution);
-            if ((array->repeatCount > 0 && array->repeatCopyPlan.kind != HirCopyPlan::Kind::Trivial) ||
-                !array->repeatElementDropGlue.empty()) {
+            if (!array->repeatElementDropGlue.empty()) {
                 InvalidateAll();
             }
         }
@@ -616,10 +611,7 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
                                    [](const HirStructInitField &field) { return IsDiscardable(*field.value); });
     }
     if (const auto *array = HirCast<const HirArrayExpr>(&expr)) {
-        const bool repeatHasEffects =
-            array->repeatedElement &&
-            ((array->repeatCount > 0 && array->repeatCopyPlan.kind != HirCopyPlan::Kind::Trivial) ||
-             !array->repeatElementDropGlue.empty());
+        const bool repeatHasEffects = array->repeatedElement && !array->repeatElementDropGlue.empty();
         return !repeatHasEffects && (!array->repeatedElement || IsDiscardable(*array->repeatedElement)) &&
                std::ranges::all_of(array->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });
     }

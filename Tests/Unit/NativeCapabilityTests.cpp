@@ -61,8 +61,7 @@ TEST_CASE("a native value holding a move-only payload is move-only") {
         }
     )";
     const auto errors = Errors(source);
-    CHECK_EQ(std::ranges::count_if(errors, [](const std::string &error) { return error.contains("explicit 'move'"); }),
-             3);
+    CHECK_EQ(std::ranges::count_if(errors, [](const std::string &error) { return error.contains("cannot copy"); }), 3);
 }
 
 TEST_CASE("unit is copyable wherever a type parameter can be") {

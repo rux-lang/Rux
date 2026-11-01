@@ -3,29 +3,8 @@ import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, CollectionError };
 import Core::{ Assert, Panic };
 
-// An array owns its storage and its elements, so the questions worth asking are about ownership: does destroying one
-// destroy what it holds, exactly once, and does a failed construction leave anything behind. Counting destructions is
-// the only way to see that, so the element type counts them.
-
-// The counter lives where the test put it. The element only points at it, so destroying an element is observable and
-// the count survives the element.
-struct Tracked {
-    counter: *var int32;
-    value: int32;
-}
-
-extend Tracked {
-    func =(self: &var Tracked, other: &Tracked) {
-        self.counter = other.counter;
-        self.value = other.value;
-    }
-
-    func ~Tracked(self: &var Tracked) {
-        if self.counter != null {
-            *self.counter = *self.counter + 1;
-        }
-    }
-}
+// An array owns its storage and its elements, so the questions worth asking are about ownership and failure: what
+// each constructor copies in, and whether a failed construction leaves anything behind.
 
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
 /// cannot pass by accident.
@@ -34,12 +13,6 @@ func Refusal<T, E>(outcome: T ! E) -> E {
         .Failure(error) => error,
         .Success(_) => Panic("the operation was expected to fail")
     };
-}
-
-// A scope for an array, so its destruction happens somewhere observable.
-func FillAndDrop(allocator: Allocator, counter: *var int32, length: uint) -> ! CollectionError {
-    var array = Array::Filled<Tracked>(allocator, length, Tracked { counter: counter, value: 5 })?;
-    Assert(array.Length() == length, "the array is the length it was asked for");
 }
 
 func SumOf(allocator: Allocator) -> int32 {
@@ -100,28 +73,8 @@ func Main() -> int {
     Assert(Refusal(Array::Filled<int32>(allocator, uint::Max, 0)) == CollectionError::CapacityOverflow,
         "a length that cannot be sized is refused");
 
-    // Destruction: every element of an array is destroyed exactly once when the array's life ends.
-    // `Filled` copies its value into every position, then destroys the source parameter when the call ends.
-    // rather than copied and destroyed, so the count is the length exactly. An element type that owns something
-    // could not be filled this way at all — the copies would each claim what one of them owns — which is why the
-    // element here owns nothing but a pointer to the counter.
-    var destroyed: int32 = 0;
-    FillAndDrop(allocator, @destroyed, 5) catch { else => Panic("an array of tracked elements is made") };
-    Assert(destroyed == 6, "and destroys every element plus the source parameter exactly once");
-
-    destroyed = 0;
-    FillAndDrop(allocator, @destroyed, 1) catch { else => Panic("a single-element array is made") };
-    Assert(destroyed == 2, "and destroys its element and source parameter once");
-
-    // One for a length of zero: the value was handed over and never copied anywhere, so `Filled` destroys its
-    // parameter rather than leaving it to nobody.
-    destroyed = 0;
-    FillAndDrop(allocator, @destroyed, 0) catch { else => Panic("an empty array of them is made") };
-    Assert(destroyed == 1, "and destroys the value it was given but never stored");
-
-    destroyed = 0;
-    FillAndDrop(allocator, @destroyed, 32) catch { else => Panic("a longer array is made") };
-    Assert(destroyed == 33, "with one destruction per element plus the source parameter");
-
+    // Every constructor copies its elements, so an element type must be plain data: one with a destructor is
+    // move-only, and filling an array with it is rejected while compiling rather than leaving several elements
+    // owning what one of them owns.
     return 0;
 }

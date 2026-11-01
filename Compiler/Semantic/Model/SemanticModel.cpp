@@ -262,11 +262,6 @@ const ValueConsumption *SemanticModel::TryGetConsumption(const Expr &expression)
     return consumption == facts.valueConsumptions.end() ? nullptr : &consumption->second;
 }
 
-const ValueCopy *SemanticModel::TryGetCopy(const Expr &expression) const noexcept {
-    const auto copy = facts.valueCopies.find(&expression);
-    return copy == facts.valueCopies.end() ? nullptr : &copy->second;
-}
-
 const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallExpr &call) const noexcept {
     const auto binding = facts.callableBindings.find(&call);
     return binding == facts.callableBindings.end() ? nullptr : &binding->second;

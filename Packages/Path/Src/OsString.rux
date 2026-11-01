@@ -8,7 +8,7 @@
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target, Panic };
+import Core::{ #target, Cloneable, Panic };
 import Memory::Copy;
 import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
 
@@ -130,7 +130,7 @@ extend OsStringView {
 }
 
 /// Native text that owns its units.
-/// Copyable with value semantics: each copy owns an independent native-unit block.
+/// Move-only: it owns its native-unit block and gives it back when it dies. `Clone` makes an independent copy.
 /// @see https://rux-lang.dev/docs/api/path/os-string
 pub struct OsString {
     /// The units, or null for no length.
@@ -142,22 +142,6 @@ pub struct OsString {
 }
 
 extend OsString {
-    /// Deep-copies native units into independent storage from the same allocator.
-    /// @param other the value to compare against
-    /// @see https://rux-lang.dev/docs/api/path/os-string#copy
-    pub func =(self: &var OsString, other: &OsString) {
-        self.data = null;
-        self.length = other.length;
-        self.allocator = other.allocator;
-        if other.length == 0 { return; }
-        let bytes = other.length * (sizeof(OsUnit) as uint);
-        let layout = Layout::New(bytes, alignof(OsUnit) as uint) ?? (Layout { size: bytes, alignment: 1 });
-        var allocator = other.allocator;
-        let block = allocator.Allocate(layout) catch { else => Panic("copying an OsString requires an allocation") };
-        Copy(block, other.data as *opaque, bytes);
-        self.data = block as *var OsUnit;
-    }
-
     /// Native text of no length, which has allocated nothing.
     /// @param allocator where the storage comes from
     /// @returns an empty owned string that has taken no storage yet
@@ -308,6 +292,24 @@ extend OsString {
             // Bytes are bytes: the copy is the conversion.
             return OsString::FromView(allocator, OsStringView { units: text });
         }
+    }
+}
+
+extend OsString : Cloneable {
+    /// An independent copy in a block of its own from the same allocator.
+    /// Borrows the source and leaves it unchanged. Terminates the program when the allocator refuses, since the copy
+    /// it promises cannot be made.
+    /// Runs in time proportional to the length.
+    /// @returns a copy that owns its own units
+    /// @see https://rux-lang.dev/docs/api/path/os-string#clone
+    pub func Clone(self: &OsString) -> OsString {
+        if self.length == 0 { return OsString { data: null, length: 0, allocator: self.allocator }; }
+        let bytes = self.length * (sizeof(OsUnit) as uint);
+        let layout = Layout::New(bytes, alignof(OsUnit) as uint) ?? (Layout { size: bytes, alignment: 1 });
+        var allocator = self.allocator;
+        let block = allocator.Allocate(layout) catch { else => Panic("copying an OsString requires an allocation") };
+        Copy(block, self.data as *opaque, bytes);
+        return OsString { data: block as *var OsUnit, length: self.length, allocator: self.allocator };
     }
 }
 

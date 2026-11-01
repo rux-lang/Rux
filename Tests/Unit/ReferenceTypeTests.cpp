@@ -69,7 +69,6 @@ TEST_CASE("borrowed scalar reads retain reference types in semantic facts and lo
     REQUIRE(model.TryGetType(*copy->init) != nullptr);
     CHECK_EQ((*model.TryGetType(*copy->init))->kind, TypeRef::Kind::Reference);
     CHECK(model.TryGetConsumption(*copy->init) == nullptr);
-    CHECK(model.TryGetCopy(*copy->init) == nullptr);
 
     HirPackage hir = AstToHirLowering(model).Generate();
     REQUIRE_EQ(hir.modules.size(), 1);

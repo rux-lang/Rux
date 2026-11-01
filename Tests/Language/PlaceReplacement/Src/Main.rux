@@ -1,10 +1,10 @@
 // Replacing a droppable value that lives inside another one.
 // `=` and `<-` into a field, a tuple element, or an array or slice element replace the value already there, exactly
-// as an assignment to a `var` local does: the new value is produced first — by a custom `=` when it copies — then the
+// as an assignment to a `var` local does: the new value is produced first — by `Clone` when it is a copy — then the
 // old value is destroyed once, then the new one is installed. That holds however the place is reached: from a local,
 // through a `&var` parameter, receiver, or alias, or inside a generic body. A write through a raw pointer initializes
 // storage that may hold nothing yet, so it destroys nothing. Each tracked value appends its id to a log as it is
-// destroyed or copied, and each check appends a 0 where it stands, so the log is the exact order of events.
+// destroyed or cloned, and each check appends a 0 where it stands, so the log is the exact order of events.
 
 import Core::Assert;
 import Memory::{ Alloc, Free };
@@ -27,17 +27,16 @@ extend Tracked {
     }
 }
 
-// Destroyed with its id appended to the log, and copied by its own '=' with a 9 appended.
+// Destroyed with its id appended to the log, and cloned by its own `Clone` with a 9 appended.
 struct Copied {
     log: *var Log;
     id: int32;
 }
 
 extend Copied {
-    func =(self: &var Copied, other: &Copied) {
-        other.log.order = other.log.order * 10 + 9;
-        self.log = other.log;
-        self.id = other.id;
+    func Clone(&self) -> Copied {
+        self.log.order = self.log.order * 10 + 9;
+        return Copied { log: self.log, id: self.id };
     }
 
     func ~Copied(self: &var Copied) {
@@ -90,9 +89,9 @@ func FieldMove(log: *var Log) {
 func FieldCopy(log: *var Log) {
     var holder = CopyHolder { copied: Copied { log: log, id: 1i32 } };
     let source = Copied { log: log, id: 2i32 };
-    holder.copied = source;
+    holder.copied = source.Clone();
     Mark(log);
-    Assert(holder.copied.id == 2i32 && source.id == 2i32, "the copy is installed and its source kept");
+    Assert(holder.copied.id == 2i32 && source.id == 2i32, "the clone is installed and its source kept");
 }
 
 func NestedField(log: *var Log) {
@@ -163,7 +162,7 @@ func RepeatedCopies(log: *var Log) {
     let source = Copied { log: log, id: 2i32 };
     var round = 0;
     while round < 2 {
-        holder.copied = source;
+        holder.copied = source.Clone();
         round++;
     }
     Mark(log);

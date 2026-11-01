@@ -246,7 +246,7 @@ Everything is borrowed. A container owns its elements and hands out no copy of a
 
 ## Guarantees and limitations
 
-- **Owners are move-only.** Their copy operation is prohibited and their canonical destructor releases elements and storage. `Clone` is explicit and copies elements, so it is available only when the instantiated element operations permit it.
+- **Owners are move-only.** Their canonical destructor releases elements and storage, which makes them move-only. `Clone` is explicit and copies elements byte for byte, so it is available only for a copyable element type, plain data that `Core::Copyable` describes; `Vector<String>::Clone` is rejected at the element copy where the container's code makes it.
 - **Raw storage remains deliberate.** Allocator blocks, tree links, stored iterator addresses, pointer-returning element borrows, and scalar output slots cannot be references. They never transfer ownership merely by being passed.
 - **Views borrow, never own.** Growth, rehashing, destruction, and `Deque::MakeContiguous` invalidate relevant views and raw element pointers. The compiler tracks reference loans, but deliberately raw addresses remain the caller's responsibility.
 - **Relocation uses the raw-storage compatibility boundary.** Explicit moves are used for named owners and elements; internal relocation through allocator memory remains an intentional raw operation until ownership-aware raw places are expressible.

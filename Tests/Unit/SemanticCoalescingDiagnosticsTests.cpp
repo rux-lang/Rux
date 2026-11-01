@@ -90,7 +90,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
             let selected = option ?? <-fallback;
         }
     )");
-    CHECK(HasCoalescingError(implicitOperand, "requires an explicit 'move' in coalescing operand"));
+    CHECK(HasCoalescingError(implicitOperand, "cannot copy 'Handle?', which owns resources"));
 
     const auto implicitFallback = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
@@ -102,7 +102,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
             let selected = (<-option) ?? fallback;
         }
     )");
-    CHECK(HasCoalescingError(implicitFallback, "requires an explicit 'move' in coalescing fallback"));
+    CHECK(HasCoalescingError(implicitFallback, "cannot copy 'Handle', which owns resources"));
 
     const auto conditionalMove = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }

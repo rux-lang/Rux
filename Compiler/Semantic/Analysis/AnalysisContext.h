@@ -365,8 +365,6 @@ private:
     [[nodiscard]] bool ValidateMoveSource(const Expr &expression, SourceLocation location);
     [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, SourceLocation location);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
-    [[nodiscard]] const FuncDecl *LookupSourceSpecialOperation(const TypeRef &type, std::string_view operation,
-                                                               SourceLocation location);
     [[nodiscard]] static bool IsSpecialOperationName(std::string_view name);
     [[nodiscard]] static bool IsDestructorName(std::string_view name);
     void ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType);
@@ -490,6 +488,10 @@ private:
     [[nodiscard]] std::vector<ResolvedTypeBound>
     ResolveTypeParameterBounds(const TypeParameter &parameter, bool report,
                                const std::vector<TypeParameter> *declaringParameters = nullptr);
+    /// Whether an instantiation of `declaration` gives a parameter bound by `Copyable` a type argument that moves. The
+    /// call that made it is reported for the bound, so the copies its body makes are not reported again.
+    [[nodiscard]] bool ViolatesCopyableBound(const FuncDecl &declaration,
+                                             const std::unordered_map<std::string, TypeRef> &substitutions);
     /// Fills in type parameters that appear only in the type arguments of another parameter's generic interface bound,
     /// such as `T` in `I: Cursor<T>`, from the method the bounded type argument already deduced provides.
     void DeduceTypeArgumentsFromBounds(const std::vector<TypeParameter> &parameters,
@@ -621,8 +623,10 @@ private:
                                          const std::string &methodName) const;
     void RecordConstrainedBinding(const CallExpr &call, const ConstrainedOperation &operation,
                                   const TypeRef &receiverType);
+    /// Reports a named or borrowed move-only value used where a copy is needed. `generic` is the type the generic body
+    /// wrote, when the copy is checked for one instantiation of it.
     [[nodiscard]] bool RejectImplicitMove(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind,
-                                          SourceLocation location);
+                                          SourceLocation location, const TypeRef *generic = nullptr);
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
     /// Whether an assigned `T` value is a fresh temporary — a call result, literal, constructor call, or the value a
     /// conditional or `match` produces — or a value handed over with `<-`, rather than a named place, borrowed storage,
@@ -771,9 +775,6 @@ private:
         Exclusive,
     };
 
-    /// Whether a copy of this type out of named or borrowed storage needs a recorded copy plan: a declared type, an
-    /// array, a tuple, or a native sum, optional, or fallible.
-    [[nodiscard]] static bool IsStoredAggregate(const TypeRef &type) noexcept;
     /// Whether an argument of an unsuffixed literal's default type can reach a native parameter, by the literal rule
     /// of the native conversions; overload resolution asks before the argument's own conversion is checked.
     [[nodiscard]] static bool DefaultLiteralReachesNative(const TypeRef &argument, const TypeRef &parameter);
@@ -1045,7 +1046,6 @@ private:
     std::unordered_map<const BinaryExpr *, TypeRef> &aggregateEqualityOperandTypes;
     std::unordered_map<std::string, VariantEqualityPayload> &aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
-    std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     std::unordered_map<const Expr *, ResolvedCallableBinding> &functionReferenceBindings;
     std::unordered_map<const AsmOperand *, const Decl *> &asmSymbolDeclarations;

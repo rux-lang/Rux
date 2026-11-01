@@ -277,19 +277,18 @@ namespace {
 constexpr const char *kCounted = R"(
     struct Counted { id: int32; }
     extend Counted {
-        func =(self: &var Counted, other: &Counted) { self.id = other.id; }
         func ~Counted(self: &var Counted) {}
     }
 )";
 } // namespace
 
-TEST_CASE("a by-value match of a named copyable value takes the copy it makes") {
+TEST_CASE("a match of a named move-only value handed over with move owns it") {
     const std::string source = std::string(kCounted) + R"(
         func First(pair: (Counted, int32)) -> int32 {
-            return match pair { (item, _) => item.id };
+            return match move pair { (item, _) => item.id };
         }
         func Count(pair: (Counted, int32)) -> int32 {
-            return match pair { (_, count) => count };
+            return match move pair { (_, count) => count };
         }
         func Look(pair: (Counted, int32)) -> int32 {
             return match pair { (_, 2) => 1i32, else => 0i32 };
@@ -310,18 +309,15 @@ TEST_CASE("a by-value match of a named copyable value takes the copy it makes") 
         throw std::runtime_error("no returned match");
     };
 
-    // The arms own the copy, so the binding is destroyed with its arm.
-    const HirExpr &copied = subjectOf("First");
-    CHECK(dynamic_cast<const HirCopyExpr *>(&copied) != nullptr);
-    REQUIRE(copied.consumption.has_value());
-    CHECK_EQ(*copied.consumption, ValueConsumptionKind::MatchSubject);
+    // The arms own the value handed over, so the binding is destroyed with its arm.
+    const HirExpr &moved = subjectOf("First");
+    REQUIRE(moved.consumption.has_value());
     const auto &arms = ReturnedMatchArms(RequireFunction(package, "First"));
     REQUIRE_EQ(arms.size(), 1);
     CHECK_EQ(arms.front().cleanups.size(), 1);
 
-    // Nothing is bound from the subject, so it stays with its owner: no copy, nothing owned.
+    // Nothing is bound from the subject, so it stays with its owner: nothing is owned.
     const HirExpr &kept = subjectOf("Look");
-    CHECK(dynamic_cast<const HirCopyExpr *>(&kept) == nullptr);
     CHECK_FALSE(kept.consumption.has_value());
 
     // The element an arm leaves is destroyed at the top of that arm.
@@ -336,7 +332,7 @@ TEST_CASE("a by-value match of a named copyable value takes the copy it makes") 
 TEST_CASE("a default arm destroys an owned subject the other arms leave") {
     const LirPackage lir = LowerToLir(LowerSource(std::string(kCounted) + R"(
         func Guarded(pair: (Counted, int32)) {
-            match pair {
+            match move pair {
                 (item, count) if count > 5 => {}
                 _ => {}
             }
@@ -348,7 +344,7 @@ TEST_CASE("a default arm destroys an owned subject the other arms leave") {
             }
         }
         func Covered(pair: (Counted, int32)) {
-            match pair {
+            match move pair {
                 (item, count) => {}
             }
         }

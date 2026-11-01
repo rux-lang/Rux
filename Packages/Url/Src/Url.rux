@@ -27,7 +27,8 @@ pub enum HostKind: uint8 {
 
 /// An absolute URL in normalized form.
 /// Read it with `Parse` and resolve references against it with `Resolve`. Every component is a view of the URL's own
-/// text, still percent-encoded; `Decode` turns one into text. Copying a URL copies its text.
+/// text, still percent-encoded; `Decode` turns one into text.
+/// A URL owns its text, so it is move-only, and `Clone` makes an independent copy.
 /// @see https://rux-lang.dev/docs/api/url/url#url
 pub struct Url {
     text: String;
@@ -179,7 +180,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
         none => {}
     }
     url.text = String::FromValidated(allocator, out.View()) catch { else => fail UrlError::OutOfMemory };
-    return url;
+    return move url;
 }
 
 // Whether an optional piece of text is there.
@@ -395,6 +396,16 @@ extend Url {
     /// @see https://rux-lang.dev/docs/api/url/url#equals
     pub func Equals(self: &Url, other: &Url) -> bool {
         return self.text.Equals(other.text);
+    }
+
+    /// An independent copy, with text of its own from the same allocator.
+    /// A URL owns its text, so `=` cannot copy it; this is how to keep two. The copy is equal to this URL and
+    /// changing either leaves the other as it was.
+    /// @returns the copy, or fails with `OutOfMemory` when its text cannot be stored
+    /// @see https://rux-lang.dev/docs/api/url/url#clone
+    pub func Clone(self: &Url) -> Url ! UrlError {
+        let pieces = self.Pieces();
+        return Compose(self.allocator, pieces);
     }
 
     // This URL's components as pieces, to compose a changed copy from.

@@ -118,13 +118,10 @@ struct CopyValue {
 }
 
 extend CopyValue {
-    func =(self: &var CopyValue, other: &CopyValue) {
-        self.value = other.value;
-        self.copies = other.copies;
-        self.drops = other.drops;
-        self.log = other.log;
+    func Clone(&self) -> CopyValue {
         *self.copies += 1;
         *self.log = *self.log * 10 + 1;
+        return CopyValue { value: self.value, copies: self.copies, drops: self.drops, log: self.log };
     }
 
     func <-(self: &var CopyValue, other: CopyValue);
@@ -139,13 +136,13 @@ func CopiedReturn(copies: *var int, drops: *var int, log: *var int) -> CopyValue
     var value = CopyValue { value: 41, copies: copies, drops: drops, log: log };
     defer *log = *log * 10 + 2;
     defer value.value = 99;
-    return value;
+    return value.Clone();
 }
 
 func OwnReturnedCopy(copies: *var int, drops: *var int, log: *var int) {
     let value = CopiedReturn(copies, drops, log);
-    Assert(value.value == 41, "the custom copy happens before the deferred mutation");
-    Assert(*copies == 1, "capturing the result does not invoke another user copy");
+    Assert(value.value == 41, "the returned clone is made before the deferred mutation");
+    Assert(*copies == 1, "capturing the result does not clone again");
     Assert(*drops == 1, "the callee destroyed only its original value");
     Assert(*log == 123, "return copy precedes defer and original destruction");
 }

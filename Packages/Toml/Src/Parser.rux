@@ -419,7 +419,7 @@ extend TomlParser {
             if bad {
                 self.Stop(TomlStop::BadText);
             }
-            return TomlValue::FromString(self.allocator, decoded);
+            return TomlValue::FromString(self.allocator, move decoded);
         }
         if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4); }
         if token.kind == TomlTokenKind::Integer {
@@ -579,7 +579,7 @@ extend TomlParser {
                 part.Clear();
                 return false;
             }
-            if Failed(parts.Push(part)) {
+            if Failed(parts.Push(move part)) {
                 self.Stop(TomlStop::OutOfMemory);
                 return false;
             }
@@ -627,7 +627,7 @@ extend TomlParser {
             return;
         }
         var owned = String::FromView(self.allocator, finalName) catch { else => String(self.allocator) };
-        if !(*target).Insert(owned, <-value) {
+        if !(*target).Insert(move owned, <-value) {
             self.Stop(TomlStop::OutOfMemory);
         }
         parts.Clear();
@@ -641,7 +641,7 @@ extend TomlParser {
             var fresh = TomlValue::Table(self.allocator);
             fresh.dotted = true;
             var owned = String::FromView(self.allocator, copy) catch { else => String(self.allocator) };
-            if !(*target).Insert(owned, <-fresh) {
+            if !(*target).Insert(move owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }
@@ -725,7 +725,7 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
-            if !(*target).Insert(owned, <-fresh) {
+            if !(*target).Insert(move owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }
@@ -762,7 +762,7 @@ extend TomlParser {
             var fresh = TomlValue::Table(self.allocator);
             fresh.defined = true;
             var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
-            if !(*target).Insert(owned, <-fresh) {
+            if !(*target).Insert(move owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }
@@ -797,7 +797,7 @@ extend TomlParser {
             var fresh = TomlValue::Array(self.allocator);
             fresh.tableArray = true;
             var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
-            if !(*target).Insert(owned, <-fresh) {
+            if !(*target).Insert(move owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }

@@ -258,34 +258,6 @@ struct HirAggregateEqualityExpr : HirExpr {
     bool negated = false;
 };
 
-/// Recursive recipe for constructing an independent value from a named source place. Trivial leaves are copied as
-/// bits; custom leaves call the selected `=` operation; aggregate nodes visit their components in declaration order.
-struct HirCopyPlan {
-    enum class Kind {
-        Trivial,
-        Custom,
-        Structure,
-        Array,
-        Tuple,
-        Enum,
-    };
-
-    Kind kind = Kind::Trivial;
-    CaseTypeForm form = CaseTypeForm::Enumeration;
-    TypeRef type;
-    std::string customCallee;
-    std::vector<std::string> componentNames;
-    std::vector<HirCopyPlan> components;
-    std::vector<std::string> variantDiscriminants;
-    std::vector<std::vector<TypeRef>> variantPayloadTypes;
-    std::vector<std::vector<HirCopyPlan>> variantComponents;
-};
-
-struct HirCopyExpr : HirExpr {
-    HirExprPtr value;
-    HirCopyPlan plan;
-};
-
 /// a = b, a <- b, a += b, etc.
 struct HirAssignExpr : HirExpr {
     TokenKind op;
@@ -382,12 +354,11 @@ struct HirStructInitExpr : HirExpr {
 struct HirArrayExpr : HirExpr {
     TypeRef elementType;
     std::vector<HirExprPtr> elements;
-    /// Compact representation of `[value; count]`. The value is evaluated into temporary storage exactly once and the
-    /// recursive copy plan initializes every element from it. `repeatElementDropGlue` releases the temporary when the
-    /// element type owns resources, including when the repeated array has zero elements.
+    /// Compact representation of `[value; count]`. The value is evaluated into temporary storage exactly once and its
+    /// bytes initialize every element, which is why the element type must be copyable. `repeatElementDropGlue` releases
+    /// the temporary when the element type owns resources, including when the repeated array has zero elements.
     HirExprPtr repeatedElement;
     std::uint64_t repeatCount = 0;
-    HirCopyPlan repeatCopyPlan;
     std::string repeatElementDropGlue;
     /// Entry i destroys elements [0, i) in reverse order if element i does not finish initialization.
     std::vector<HirFailureCleanup> failureCleanups;
@@ -521,9 +492,6 @@ struct HirForStmt : HirStmt {
     HirBlock body;
     /// Nonzero for an owned induction value; every iteration marks this flag live before entering the body.
     std::uint64_t bindingId = 0;
-    /// How an array or slice element is copied into the induction variable, which then owns its copy: a custom `=`
-    /// for a type that declares one, a bitwise copy otherwise.
-    HirCopyPlan elementCopy;
     /// True when `variable` names a mutable variable already in scope, which the loop reuses as its induction variable
     /// rather than introducing a fresh binding. The loop then mutates that outer variable, so its final value persists
     /// after the loop (e.g. `for k in k..7` leaves k == 7).

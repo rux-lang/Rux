@@ -1,9 +1,10 @@
-// Destroying the copy a by-value match makes of its subject.
-// A match whose arms bind from a named copyable value matches a copy of it: the original stays with its owner and the
-// arms own the copy, exactly as if it had been handed over with `<-`. Each binding is destroyed when its arm ends, a
-// part the arm leaves is destroyed at the top of the arm, and a copy no arm takes is destroyed as the match ends. A
-// copy gets the id of its source plus 10, and each tracked value appends its id to a log as it is destroyed, while
-// each check appends 00 where it stands, so the log is the exact order of events.
+// Destroying the subject a match owns when it is a clone of a named value.
+// A value with a destructor is move-only, so a match that binds from a named one either takes it with `move` or
+// matches a clone made with `Clone`: the original stays with its owner and the arms own the clone, exactly as if it
+// had been handed over. Each binding is destroyed when its arm ends, a part the arm leaves is destroyed at the top of
+// the arm, and a clone no arm takes is destroyed as the match ends. A clone gets the id of its source plus 10, and
+// each tracked value appends its id to a log as it is destroyed, while each check appends 00 where it stands, so the
+// log is the exact order of events.
 
 import Core::Assert;
 
@@ -19,10 +20,9 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked) {
-        self.log = other.log;
-        self.id = other.id + 10;
+    func Clone(&self) -> Tracked {
         self.log.copies = self.log.copies + 1;
+        return Tracked { log: self.log, id: self.id + 10 };
     }
 
     func ~Tracked(self: &var Tracked) {
@@ -55,6 +55,22 @@ func MakePair(log: *var Log) -> (Tracked, int32) {
     return (Track(log, 1), 2i32);
 }
 
+func ClonePair(pair: &(Tracked, int32)) -> (Tracked, int32) {
+    return (pair.0.Clone(), pair.1);
+}
+
+func CloneHolder(holder: &Holder) -> Holder {
+    return Holder { item: holder.item.Clone(), count: holder.count };
+}
+
+func CloneParcel(parcel: &Parcel) -> Parcel {
+    return match parcel {
+        .Single(item) => Parcel::Single(item.Clone()),
+        .Double(first, second) => Parcel::Double(first.Clone(), second.Clone()),
+        .Empty => Parcel::Empty
+    };
+}
+
 func Fail(log: *var Log, id: int32) -> int32 ! Tracked {
     fail Track(log, id);
 }
@@ -67,10 +83,10 @@ func Reset(log: *var Log) {
 
 func TupleStatement(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match pair {
+    match ClonePair(pair) {
         (item, count) => {
             Mark(log);
-            Assert(item.id == 11 && count == 2, "the arm binds the copy");
+            Assert(item.id == 11 && count == 2, "the arm binds the clone");
         }
     }
     Mark(log);
@@ -78,14 +94,14 @@ func TupleStatement(log: *var Log) {
 
 func TupleExpression(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    let id = match pair { (item, _) => item.id };
+    let id = match ClonePair(pair) { (item, _) => item.id };
     Mark(log);
-    Assert(id == 11, "the arm reads the copy");
+    Assert(id == 11, "the arm reads the clone");
 }
 
 func TupleLeavesPart(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match pair {
+    match ClonePair(pair) {
         (_, count) => {
             Mark(log);
             Assert(count == 2, "the arm binds the count");
@@ -95,17 +111,17 @@ func TupleLeavesPart(log: *var Log) {
 
 func StructBindsField(log: *var Log) {
     let holder = Holder { item: Track(log, 1), count: 2i32 };
-    match holder {
+    match CloneHolder(holder) {
         Holder { item: item, count: count } => {
             Mark(log);
-            Assert(item.id == 11 && count == 2, "the arm binds both fields of the copy");
+            Assert(item.id == 11 && count == 2, "the arm binds both fields of the clone");
         }
     }
 }
 
 func StructOmitsField(log: *var Log) {
     let holder = Holder { item: Track(log, 1), count: 2i32 };
-    match holder {
+    match CloneHolder(holder) {
         Holder { count: count } => {
             Mark(log);
             Assert(count == 2, "the arm binds the count");
@@ -115,70 +131,72 @@ func StructOmitsField(log: *var Log) {
 
 func VariantPayload(log: *var Log) {
     let parcel = Parcel::Double(Track(log, 1), Track(log, 2));
-    match parcel {
+    match CloneParcel(parcel) {
         .Single(_) => Assert(false, "the parcel holds two items"),
         .Double(first, _) => {
             Mark(log);
-            Assert(first.id == 11, "the arm binds the copy of the first payload");
+            Assert(first.id == 11, "the arm binds the clone of the first payload");
         },
         .Empty => Assert(false, "the parcel holds two items")
     }
 }
 
 func OptionalPayload(log: *var Log) {
-    let maybe: Tracked? = Track(log, 1);
-    match maybe {
+    let source = Track(log, 1);
+    let maybe: Tracked? = source.Clone();
+    match move maybe {
         item? => {
             Mark(log);
-            Assert(item.id == 11, "the arm binds the copy of the payload");
+            Assert(item.id == 11, "the arm binds the payload handed over");
         },
         none => Assert(false, "the optional is present")
     }
 }
 
 func SumMember(log: *var Log) {
-    let either: Tracked | int32 = Track(log, 1);
-    match either {
+    let source = Track(log, 1);
+    let either: Tracked | int32 = source.Clone();
+    match move either {
         item: Tracked => {
             Mark(log);
-            Assert(item.id == 11, "the arm binds the copy of the member");
+            Assert(item.id == 11, "the arm binds the member handed over");
         },
         _: int32 => Assert(false, "the sum holds a tracked value")
     }
 }
 
-// The guard refutes the first arm after it bound the copy; only the arm that is taken destroys it.
+// The guard refutes the first arm after it bound the clone; only the arm that is taken destroys it.
 func GuardRefutesArm(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match pair {
+    match ClonePair(pair) {
         (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the first arm"),
         (item, _) => {
             Mark(log);
-            Assert(item.id == 11, "the second arm binds the copy");
+            Assert(item.id == 11, "the second arm binds the clone");
         }
     }
 }
 
-// No arm takes the copy, so the match destroys it as it ends.
+// No arm takes the clone, so the match destroys it as it ends.
 func GuardRefutesEveryArm(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match pair {
+    match ClonePair(pair) {
         (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the only binding arm"),
         _ => {}
     }
     Mark(log);
 }
 
-// An arm that binds nothing from the copy destroys it whole at its top.
+// An arm that binds nothing from the clone destroys it whole at its top.
 func ArmBindsNothing(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match pair {
+    match ClonePair(pair) {
         (item, 7) => Assert(item.id < 0, "the count is not 7"),
         else => Mark(log)
     }
 }
 
-// A match that binds nothing makes no copy, and the subject stays with its owner.
+// A match that binds nothing takes nothing from a named subject, which stays with its owner.
 func NothingBound(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
     match pair {
@@ -187,7 +205,7 @@ func NothingBound(log: *var Log) {
     }
 }
 
-// A temporary has no other owner, so the match takes it without a copy.
+// A temporary has no other owner, so the match takes it as it stands.
 func TemporarySubject(log: *var Log) {
     match MakePair(log) {
         (item, _) => {
@@ -207,11 +225,11 @@ func MovedSubjectNotTaken(log: *var Log) {
     Mark(log);
 }
 
-func CatchNamed(log: *var Log) {
+func CatchMoved(log: *var Log) {
     let outcome = Fail(log, 1);
-    let id = outcome catch { error => error.id };
+    let id = (move outcome) catch { error => error.id };
     Mark(log);
-    Assert(id == 11, "the arm binds the copy of the error");
+    Assert(id == 1, "the arm binds the error handed over");
 }
 
 func CatchTemporary(log: *var Log) {
@@ -224,35 +242,35 @@ func Main() -> int {
     var log = Log { copies: 0, drops: 0, order: 1 };
 
     TupleStatement(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 100110001, "a bound copy is destroyed as the arm ends");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 100110001, "a bound clone is destroyed as the arm ends");
 
     Reset(@log);
     TupleExpression(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "a match expression destroys its copy");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "a match expression destroys its clone");
 
     Reset(@log);
     TupleLeavesPart(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "an unbound part of the copy is destroyed");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "an unbound part of the clone is destroyed");
 
     Reset(@log);
     StructBindsField(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1001101, "a bound field of the copy is destroyed");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1001101, "a bound field of the clone is destroyed");
 
     Reset(@log);
     StructOmitsField(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "an omitted field of the copy is destroyed");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "an omitted field of the clone is destroyed");
 
     Reset(@log);
     VariantPayload(@log);
-    Assert(log.copies == 2 && log.drops == 4 && log.order == 11200110201, "the copied payloads are destroyed");
+    Assert(log.copies == 2 && log.drops == 4 && log.order == 11200110201, "the cloned payloads are destroyed");
 
     Reset(@log);
     OptionalPayload(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1001101, "a copied optional payload is destroyed");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1001101, "an optional payload handed over is destroyed");
 
     Reset(@log);
     SumMember(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1001101, "a copied sum member is destroyed");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1001101, "a sum member handed over is destroyed");
 
     Reset(@log);
     GuardRefutesArm(@log);
@@ -260,27 +278,27 @@ func Main() -> int {
 
     Reset(@log);
     GuardRefutesEveryArm(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "a copy no arm takes is destroyed");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "a clone no arm takes is destroyed");
 
     Reset(@log);
     ArmBindsNothing(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "an arm that binds nothing destroys the copy");
+    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "an arm that binds nothing destroys the clone");
 
     Reset(@log);
     NothingBound(@log);
-    Assert(log.copies == 0 && log.drops == 1 && log.order == 10001, "a match that binds nothing makes no copy");
+    Assert(log.copies == 0 && log.drops == 1 && log.order == 10001, "a match that binds nothing takes nothing");
 
     Reset(@log);
     TemporarySubject(@log);
-    Assert(log.copies == 0 && log.drops == 1 && log.order == 10001, "a temporary subject is taken without a copy");
+    Assert(log.copies == 0 && log.drops == 1 && log.order == 10001, "a temporary subject is taken as it stands");
 
     Reset(@log);
     MovedSubjectNotTaken(@log);
     Assert(log.copies == 0 && log.drops == 1 && log.order == 10100, "a subject no arm takes is destroyed");
 
     Reset(@log);
-    CatchNamed(@log);
-    Assert(log.copies == 1 && log.drops == 2 && log.order == 1110001, "a caught copy is destroyed");
+    CatchMoved(@log);
+    Assert(log.copies == 0 && log.drops == 1 && log.order == 10100, "a caught error handed over is destroyed");
 
     Reset(@log);
     CatchTemporary(@log);

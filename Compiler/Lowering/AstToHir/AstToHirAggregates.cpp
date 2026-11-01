@@ -83,20 +83,10 @@ HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression, const Valu
     if (lowered->type->kind != TypeRef::Kind::Reference || lowered->type->inner.empty()) {
         // The arms own a subject analysis handed them. A transfer already says so; a temporary, or the copy a by-value
         // match makes of a named copyable value, is marked here, which is what gives the bindings their cleanups and
-        // the arms the duty to destroy what they leave.
+        // the arms the duty to destroy what they leave. A copyable value is plain data, so its copy is its bytes and
+        // leaves the arms nothing its owner still holds.
         if (lowered->consumption || !model.IsOwnedMatchSubject(expression)) {
             return lowered;
-        }
-        // A copy whose plan is a plain load would leave the subject reading the named storage itself, and the arms
-        // would destroy parts its owner still holds. A droppable value gets storage of its own.
-        if (const ValueCopy *copy = model.TryGetCopy(expression);
-            copy && !HirCast<const HirCopyExpr>(lowered.get()) && model.TryGetDropGlue(lowered->type)) {
-            auto copied = std::make_unique<HirCopyExpr>();
-            copied->location = lowered->location;
-            copied->type = lowered->type;
-            copied->plan.type = lowered->type;
-            copied->value = std::move(lowered);
-            lowered = std::move(copied);
         }
         lowered->consumption = kind;
         return lowered;
@@ -915,7 +905,6 @@ std::unique_ptr<HirArrayExpr> AstToHirContext::LowerArrayRepeatAs(const ArrayRep
     lowered->type = arrayType;
     lowered->elementType = elementType;
     lowered->repeatCount = arrayType->arrayLength.value_or(0);
-    lowered->repeatCopyPlan = BuildCopyPlan(elementType);
     lowered->repeatedElement = LowerExprAs(*expression.value, elementType);
     if (const DropGluePlan *glue = model.TryGetDropGlue(elementType)) {
         lowered->repeatElementDropGlue = glue->symbol;

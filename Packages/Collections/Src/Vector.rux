@@ -95,6 +95,8 @@ extend Vector<T> {
     /// An independent vector holding a copy of every element of this one.
     /// `self` is borrowed and left alone. The copy takes exactly the room it needs rather than matching this one's
     /// capacity, since the spare holds nothing worth reproducing.
+    /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
+    /// owning element type is rejected while compiling, at the copy.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/vector#clone
     pub func Clone(self: &Vector<T>) -> Vector<T> ! CollectionError {

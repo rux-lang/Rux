@@ -93,6 +93,8 @@ extend Deque<T> {
 
     /// An independent deque holding a copy of every element of this one, in order.
     /// `self` is borrowed and left alone. The copy starts contiguous whatever this one's elements were doing.
+    /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
+    /// owning element type is rejected while compiling, at the copy.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/deque#clone
     pub func Clone(self: &Deque<T>) -> Deque<T> ! CollectionError {

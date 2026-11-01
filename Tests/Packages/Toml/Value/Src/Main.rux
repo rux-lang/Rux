@@ -65,11 +65,11 @@ func Main() -> int {
     // recognisably rather than alphabetically.
     var table = TomlValue::Table(allocator);
     var zebra = String::FromBytes(allocator, "zebra") catch { else => Panic("the key is made") };
-    table.Insert(zebra, TomlValue::Integer(allocator, 1));
+    table.Insert(move zebra, TomlValue::Integer(allocator, 1));
     var apple = String::FromBytes(allocator, "apple") catch { else => Panic("the key is made") };
-    table.Insert(apple, TomlValue::Integer(allocator, 2));
+    table.Insert(move apple, TomlValue::Integer(allocator, 2));
     var middle = String::FromBytes(allocator, "middle") catch { else => Panic("the key is made") };
-    table.Insert(middle, TomlValue::Integer(allocator, 3));
+    table.Insert(move middle, TomlValue::Integer(allocator, 3));
     Assert(table.Length() == 3, "a table holds what it was given");
     Assert(table.EntryAt(0).key.View().Length() == 5, "the first entry is the first one added");
     var firstKey = table.EntryAt(0).key.View();
@@ -100,7 +100,7 @@ func Main() -> int {
     Assert(table.At(0) == null, "and a table has no elements");
     Assert(!table.Push(TomlValue::Integer(allocator, 1)), "pushing onto a table is refused");
     var stray = String::FromBytes(allocator, "stray") catch { else => Panic("the key is made") };
-    Assert(!array.Insert(stray, TomlValue::Integer(allocator, 1)), "and inserting into an array is too");
+    Assert(!array.Insert(move stray, TomlValue::Integer(allocator, 1)), "and inserting into an array is too");
 
     // Ownership is the whole difficulty of a document tree: a table holding a table holding an array must
     // release all of it exactly once, and it is released when the outermost value dies at the end of this scope.
@@ -110,9 +110,9 @@ func Main() -> int {
     nested.Push(TomlValue::Text(allocator, "held") catch { else => Panic("a nested string value is made") });
     nested.Push(TomlValue::Text(allocator, "also held") catch { else => Panic("a nested string value is made") });
     var nestedKey = String::FromBytes(allocator, "list") catch { else => Panic("the key is made") };
-    inner.Insert(nestedKey, <-nested);
+    inner.Insert(move nestedKey, <-nested);
     var innerKey = String::FromBytes(allocator, "inner") catch { else => Panic("the key is made") };
-    outer.Insert(innerKey, <-inner);
+    outer.Insert(move innerKey, <-inner);
     Assert((*(*outer.Find(View("inner"))).Find(View("list"))).Length() == 2,
            "a nested tree is reachable all the way down");
 
