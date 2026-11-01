@@ -114,13 +114,16 @@ func Main() -> int {
     Assert(prettyEmpties.View().Equals(expectEmpties),
            "an empty container is not spread over three lines, since a line holding a bracket says nothing");
 
-    // A non-finite number cannot be written, because JSON cannot spell one.
+    // A non-finite number cannot be made, because JSON cannot spell one, and the writer refuses whatever number text
+    // reaches it anyway. Setting the kind by hand is the one way left to give a value number text JSON cannot spell:
+    // none at all.
     let outOfRange = FormatError::ValueOutOfRange;
-    var notANumber = JsonValue::Number(allocator, "NaN") catch { else => Panic("a NaN is stored") };
-    Assert(RefusedAs(allocator, notANumber, JsonStyle::Compact(), outOfRange),
-           "a NaN is refused as a value the requested form cannot hold");
-    var infinite = JsonValue::Number(allocator, "Infinity") catch { else => Panic("an infinity is stored") };
-    Assert(RefusedAs(allocator, infinite, JsonStyle::Compact(), outOfRange), "and so is an infinity");
+    Assert(!Succeeded(JsonValue::Number(allocator, "NaN")), "a NaN is not a number that can be made");
+    Assert(!Succeeded(JsonValue::Number(allocator, "Infinity")), "and neither is an infinity");
+    var forged = JsonValue::Null(allocator);
+    forged.kind = JsonKind::Number;
+    Assert(RefusedAs(allocator, forged, JsonStyle::Compact(), outOfRange),
+           "a number with no text is refused as a value the requested form cannot hold");
     var ordinary = JsonValue::Number(allocator, "1e999") catch { else => Panic("1e999 is stored") };
     var written999 = Written(allocator, ordinary, JsonStyle::Compact(), @wrote);
     Assert(wrote,

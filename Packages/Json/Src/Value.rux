@@ -7,13 +7,71 @@
 // So a number here keeps its text, and answers questions about itself from that. It reports whether it fits an
 // integer, whether it fits a float, and what it is exactly; a caller asks for the shape it needs and is told if
 // the value does not fit rather than being handed something close. The text is also what makes round-tripping
-// exact: a document read and written back keeps its numbers as they were written.
+// exact: a document read and written back keeps its numbers as they were written. That text is always one the
+// grammar allows: a number built by hand is checked when it is made, and one the lexer read was checked there.
 
 import Allocator::Allocator;
 import Collections::Vector;
 import Core::{ Ordering, Succeeded };
 import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
+
+/// Why a JSON value could not be built.
+/// @see https://rux-lang.dev/docs/api/json/json-value#json-error
+pub enum JsonError: int32 {
+    /// The allocator could not supply the storage.
+    OutOfMemory = 1,
+    /// Text that JSON's number grammar does not allow, such as `01`, `+1`, `.5`, `1e` or `NaN`.
+    MalformedNumber = 2
+}
+
+// Whether `text` is a whole number as RFC 8259 spells it: an optional minus, an integer part that is a lone zero or
+// starts with a nonzero digit, an optional fraction of at least one digit, and an optional exponent with an optional
+// sign and at least one digit. A plus sign, a leading zero, a bare `.5` or `5.`, `NaN`, `Infinity` and anything
+// around the number are JavaScript or worse, and none of them is JSON.
+func IsJsonNumberText(text: char8[..]) -> bool {
+    var at: uint = 0;
+    if at < text.length && (text.data[at] as uint8) == 0x2D {
+        at = at + 1;
+    }
+    if at >= text.length { return false; }
+    let first = text.data[at] as uint8;
+    if first == 0x30 {
+        at = at + 1;
+    }
+    else if first >= 0x31 && first <= 0x39 {
+        at = DigitRunEnd(text, at);
+    }
+    else {
+        return false;
+    }
+    if at < text.length && (text.data[at] as uint8) == 0x2E {
+        let fractionEnd = DigitRunEnd(text, at + 1);
+        if fractionEnd == at + 1 { return false; }
+        at = fractionEnd;
+    }
+    if at < text.length && ((text.data[at] as uint8) == 0x65 || (text.data[at] as uint8) == 0x45) {
+        at = at + 1;
+        if at < text.length && ((text.data[at] as uint8) == 0x2B || (text.data[at] as uint8) == 0x2D) {
+            at = at + 1;
+        }
+        let exponentEnd = DigitRunEnd(text, at);
+        if exponentEnd == at { return false; }
+        at = exponentEnd;
+    }
+    return at == text.length;
+}
+
+// Where the run of ASCII digits starting at `at` ends, which is `at` itself when there is none.
+func DigitRunEnd(text: char8[..], at: uint) -> uint {
+    var index = at;
+    while index < text.length {
+        let c = text.data[index] as uint8;
+        if c < 0x30 || c > 0x39 { break; }
+        index = index + 1;
+    }
+    return index;
+}
 
 /// Which kind of JSON value this is.
 /// @see https://rux-lang.dev/docs/api/json/json-value#json-kind
@@ -43,14 +101,23 @@ pub struct JsonNumber {
 }
 
 extend JsonNumber {
-    /// A number from its text, which is copied.
+    /// A number from its text, which is checked against JSON's number grammar and copied.
+    /// The text must be the whole number as RFC 8259 spells it: an optional minus, an integer part with no leading
+    /// zero, and an optional fraction and exponent, each with at least one digit. Anything else, such as `01`, `+1`,
+    /// `.5`, `5.`, `1e`, `NaN` or an empty text, is refused with `MalformedNumber` before anything is allocated, so a
+    /// number that exists is one every JSON reader accepts. Reports `OutOfMemory` when the allocator refused.
     /// @param allocator where the storage comes from
-    /// @param text the text to act on
-    /// @returns the number, holding the text it was given
+    /// @param text the number's text, borrowed for the call
+    /// @returns the number, holding a copy of the text; `MalformedNumber` or `OutOfMemory` when it could not be made
     /// @see https://rux-lang.dev/docs/api/json/json-number#new
-    pub func New(allocator: Allocator, text: char8[..]) -> JsonNumber ! TextError {
-        // The bytes of a number are always ASCII, so the validated constructor is sound here and cheaper than
-        // re-checking them.
+    pub func New(allocator: Allocator, text: char8[..]) -> JsonNumber ! JsonError {
+        if !IsJsonNumberText(text) { fail JsonError::MalformedNumber; }
+        return JsonNumber::Lexed(allocator, text) catch { else => fail JsonError::OutOfMemory };
+    }
+
+    // A number from text the lexer has already held to the grammar, so it is not checked a second time. The bytes
+    // of such a text are ASCII, so the only refusal left is the allocator's.
+    func Lexed(allocator: Allocator, text: char8[..]) -> JsonNumber ! TextError {
         var held = String::FromBytes(allocator, text)?;
         return JsonNumber { text: move held };
     }
@@ -179,15 +246,26 @@ extend JsonValue {
         return <-held;
     }
 
-    /// A number, from the text it was written with.
+    /// A number, from the text it is written with, checked against JSON's number grammar as `JsonNumber::New` does.
+    /// Text the grammar refuses, such as `01`, `1e` or `NaN`, is `MalformedNumber`, and a refusal of the allocator is
+    /// `OutOfMemory`; either way no value is made.
     /// @param allocator where the storage comes from
-    /// @param text the text to act on
-    /// @returns that text as a number value, or the null value when the allocator refused
+    /// @param text the number's text, borrowed for the call
+    /// @returns that text as a number value; `MalformedNumber` or `OutOfMemory` when it could not be made
     /// @see https://rux-lang.dev/docs/api/json/json-value#number
-    pub func Number(allocator: Allocator, text: char8[..]) -> JsonValue ! TextError {
+    pub func Number(allocator: Allocator, text: char8[..]) -> JsonValue ! JsonError {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Number;
         held.number = JsonNumber::New(allocator, text)?;
+        return <-held;
+    }
+
+    // A number value from a token the lexer has already held to the grammar, which the parser builds its numbers
+    // with so that each is checked once.
+    func LexedNumber(allocator: Allocator, text: char8[..]) -> JsonValue ! TextError {
+        var held = JsonValue::Null(allocator);
+        held.kind = JsonKind::Number;
+        held.number = JsonNumber::Lexed(allocator, text)?;
         return <-held;
     }
 

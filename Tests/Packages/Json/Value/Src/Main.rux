@@ -4,11 +4,38 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic };
-import Json::{ JsonKind, JsonValue };
+import Json::{ JsonError, JsonKind, JsonNumber, JsonValue };
 import Text::{ String, StringView };
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView();
+}
+
+// Whether `text` is refused as a number by both public constructors, each for the grammar's reason.
+func RefusedNumber(allocator: Allocator, text: char8[..]) -> bool {
+    let number = match JsonNumber::New(allocator, text) {
+        .Success(_) => false,
+        .Failure(error) => error == JsonError::MalformedNumber
+    };
+    let value = match JsonValue::Number(allocator, text) {
+        .Success(_) => false,
+        .Failure(error) => error == JsonError::MalformedNumber
+    };
+    return number && value;
+}
+
+// Whether `text` is accepted as a number by both public constructors, keeping exactly the text it was given.
+func AcceptedNumber(allocator: Allocator, text: char8[..]) -> bool {
+    let want = View(text);
+    let number = match JsonNumber::New(allocator, text) {
+        .Success(made) => made.Text().Equals(want),
+        .Failure(_) => false
+    };
+    let value = match JsonValue::Number(allocator, text) {
+        .Success(made) => made.Kind() == JsonKind::Number && (*made.AsNumber()).Text().Equals(want),
+        .Failure(_) => false
+    };
+    return number && value;
 }
 
 func Main() -> int {
@@ -66,6 +93,40 @@ func Main() -> int {
            "the most negative signed integer reads back exactly");
     var negativeAsUnsigned: uint64 = 0;
     Assert(!(*negative.AsNumber()).AsUint64(@negativeAsUnsigned), "and does not read as unsigned");
+
+    // A number made by hand is held to the grammar a parsed one is, so nothing the tree holds is a number only this
+    // package would read.
+    Assert(RefusedNumber(allocator, "01"), "a leading zero is refused");
+    Assert(RefusedNumber(allocator, "-01"), "after a minus too");
+    Assert(RefusedNumber(allocator, "1e"), "an exponent with no digits is refused");
+    Assert(RefusedNumber(allocator, "1e+"), "and so is one with only a sign");
+    Assert(RefusedNumber(allocator, "1E-"), "in either case");
+    Assert(RefusedNumber(allocator, "-"), "a lone minus is refused");
+    Assert(RefusedNumber(allocator, "+1"), "a leading plus is refused");
+    Assert(RefusedNumber(allocator, "--1"), "a doubled minus is refused");
+    Assert(RefusedNumber(allocator, "--"), "and so is a pair of them alone");
+    Assert(RefusedNumber(allocator, "e"), "an exponent with no number is refused");
+    Assert(RefusedNumber(allocator, "e5"), "even with digits after it");
+    Assert(RefusedNumber(allocator, ".5"), "a fraction with no integer part is refused");
+    Assert(RefusedNumber(allocator, "5."), "and an integer part with an empty fraction");
+    Assert(RefusedNumber(allocator, "5.e3"), "even when an exponent follows");
+    Assert(RefusedNumber(allocator, ""), "empty text is refused");
+    Assert(RefusedNumber(allocator, "NaN"), "a NaN is refused");
+    Assert(RefusedNumber(allocator, "Infinity"), "and so is an infinity");
+    Assert(RefusedNumber(allocator, "-Infinity"), "of either sign");
+    Assert(RefusedNumber(allocator, "0x10"), "hexadecimal is refused");
+    Assert(RefusedNumber(allocator, " 1"), "space before a number is refused");
+    Assert(RefusedNumber(allocator, "1 "), "and after it");
+    Assert(RefusedNumber(allocator, "1.5.2"), "a second fraction is refused");
+    Assert(RefusedNumber(allocator, "1e5e5"), "and a second exponent");
+    Assert(AcceptedNumber(allocator, "0"), "a lone zero is a number");
+    Assert(AcceptedNumber(allocator, "-0"), "and so is a negative zero");
+    Assert(AcceptedNumber(allocator, "0.5"), "a zero integer part takes a fraction");
+    Assert(AcceptedNumber(allocator, "1e10"), "an exponent needs no sign");
+    Assert(AcceptedNumber(allocator, "1E-5"), "may be upper case with a minus");
+    Assert(AcceptedNumber(allocator, "-1.25e+3"), "and every part together is a number");
+    Assert(AcceptedNumber(allocator, "0e0"), "a zero takes an exponent directly");
+    Assert(AcceptedNumber(allocator, "10"), "and a zero after the first digit is no leading zero");
 
     // Strings.
     var text = JsonValue::Text(allocator, "hello") catch { else => Panic("a string is stored") };

@@ -126,21 +126,6 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
     return sink.Write(quote[0..1]);
 }
 
-// Whether a number's text is something JSON can carry. The tree holds numbers as text, so the only way a
-// non-finite value gets in is a caller writing one there deliberately — and this is where it is caught.
-func IsFiniteNumberText(text: char8[..]) -> bool {
-    if text.length == 0 { return false; }
-    var index: uint = 0;
-    while index < text.length {
-        let c = text.data[index] as uint8;
-        let allowed = (c >= 0x30 && c <= 0x39) || c == 0x2D || c == 0x2B || c == 0x2E ||
-                      c == 0x65 || c == 0x45;
-        if !allowed { return false; }
-        index = index + 1;
-    }
-    return true;
-}
-
 // One run of bytes to the destination, reporting exactly what the destination said. Named apart from Text's
 // `WriteBytes` deliberately: a name that shadows an imported one is a name that will be reached for by accident.
 func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) -> ! FormatError {
@@ -199,10 +184,11 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
     }
     if kind == JsonKind::Number {
         let text = (*value.AsNumber()).Text().Bytes();
-        if !IsFiniteNumberText(text) {
-            // JSON has no way to spell a NaN or an infinity, so this refuses rather than emitting something
-            // other parsers will reject. The value is not wrong; the form asked for cannot hold it, which is
-            // exactly what `ValueOutOfRange` says.
+        // Every way of making a number checks its text against the grammar, but a value whose kind was set by hand
+        // can still carry text that is not one, such as none at all. JSON has no way to spell that, so this refuses
+        // rather than emitting something other parsers will reject. The value is not wrong; the form asked for
+        // cannot hold it, which is exactly what `ValueOutOfRange` says.
+        if !IsJsonNumberText(text) {
             fail FormatError::ValueOutOfRange;
         }
         return WriteJsonBytes(writer, text);
