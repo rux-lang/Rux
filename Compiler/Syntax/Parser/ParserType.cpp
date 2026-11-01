@@ -247,6 +247,12 @@ TypeExprPtr Parser::ParseBaseType(std::optional<std::string> help) {
         return t;
     }
 
+    // `Self`: the extended type inside `extend`, the implementing type inside an interface.
+    if (Check(TokenKind::Ident) && Peek().text == "Self" && !Peek(1).Is(TokenKind::ColonColon)) {
+        Advance();
+        return SelfTypeAt(loc);
+    }
+
     if (Check(TokenKind::Ident)) {
         const std::string first = Advance().text;
 

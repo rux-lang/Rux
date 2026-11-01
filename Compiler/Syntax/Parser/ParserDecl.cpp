@@ -290,6 +290,8 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
     if (!ConsumeBodyStart("the interface body")) {
         return decl;
     }
+    // A requirement's `Self` and shorthand receiver name the implementing type.
+    SelfScope enclosing = std::exchange(selfScope, SelfScope{SelfScope::Kind::Interface, {}});
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         Syntax::Documentation documentation = ParseDocumentation();
         if (Check(TokenKind::RightBrace)) {
@@ -307,6 +309,7 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
             decl->methods.push_back(std::move(method));
         }
     }
+    selfScope = std::move(enclosing);
     ExpectBefore(TokenKind::RightBrace, "'}' to close the interface body");
     return decl;
 }
@@ -322,7 +325,8 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
     // extend Type  or  extend Type : InterfaceName  or  extend InterfaceName
     // for Type. The leading item is parsed as a full type expression so that
     // compound receivers such as `int[]` are supported.
-    TypeExprPtr firstType = ParseType("add the extended type after 'extend'");
+    TypeExprPtr firstType;
+    std::vector<Token> extendedTokens = ParseExtendedType(firstType, "add the extended type after 'extend'");
     const std::string firstName = firstType ? ImplTypeName(*firstType) : "?";
     if (Match(TokenKind::Colon)) {
         decl->extendedType = std::move(firstType);
@@ -338,7 +342,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             decl->interfaceName = named->name;
             decl->interfaceTypeArgs = std::move(named->typeArgs);
         }
-        decl->extendedType = ParseType("add the extended type after 'for'");
+        extendedTokens = ParseExtendedType(decl->extendedType, "add the extended type after 'for'");
         decl->typeName = decl->extendedType ? ImplTypeName(*decl->extendedType) : "?";
     }
     else {
@@ -349,6 +353,8 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
     if (!ConsumeBodyStart("the extension body")) {
         return decl;
     }
+    // `Self` and a shorthand receiver name the extended type throughout the body.
+    SelfScope enclosing = std::exchange(selfScope, SelfScope{SelfScope::Kind::Extend, std::move(extendedTokens)});
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         Syntax::Documentation documentation = ParseDocumentation();
         if (Check(TokenKind::RightBrace)) {
@@ -410,6 +416,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             decl->methods.emplace_back(methodDecl);
         }
     }
+    selfScope = std::move(enclosing);
     ExpectBefore(TokenKind::RightBrace, "'}' to close the extension body");
     return decl;
 }

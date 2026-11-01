@@ -198,6 +198,7 @@ set(RUX_TEST_SOURCES
     SemanticTypeFactsTests.cpp
     SemanticBindingFactsTests.cpp
     SemanticTests.cpp
+    SelfShorthandTests.cpp
     SemanticModelTests.cpp
     SemanticVisibilityTests.cpp
     SemanticTypePropertyTests.cpp

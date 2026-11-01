@@ -472,7 +472,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .postUsage = {},
                .footer =
                    "Runs every executable package under Tests/, and every package whose sources mark functions "
-                   "'#Test()', with a generated runner; arguments after '--' go to each test program, where the "
+                   "'#Test', with a generated runner; arguments after '--' go to each test program, where the "
                    "runner reads them as name filters. In a workspace, a registry dependency in a namespace that a "
                    "member declares resolves only from members; any other comes from the package cache."sv,
                .examples = Data::test_exs,

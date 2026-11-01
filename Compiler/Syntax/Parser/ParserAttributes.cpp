@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -90,12 +91,27 @@ std::string Parser::DecodeStringLiteralText(const std::string &text) {
     return out;
 }
 
-/// Parses one `#Name(...)` attribute call, with the '#' already consumed. `#Error` and `#Warn` act at each use of the
-/// declaration, `#Allow` suppresses a named lint rule for one declaration, `#Link` describes how an extern declaration
-/// is imported (`#Library` and `#Symbol` are retained as compatibility spellings), and `#When` conditionally includes
-/// the declaration at compile time, `#Abi(...)` selects a calling convention, `#NoReturn()` marks a function that
-/// never returns to its caller, `#Test()` marks a function that a test build of its package runs, and `#Unsendable()`
-/// marks a type whose values stay on the thread that made them.
+/// The parentheses after an attribute that takes no arguments may be left out, so `#Test` and `#Test()` are the same
+/// attribute. Whatever is written inside them is reported and skipped.
+void Parser::ParseEmptyAttributeArguments(const std::string_view name) {
+    if (!Match(TokenKind::LeftParen)) {
+        return;
+    }
+    if (!Check(TokenKind::RightParen)) {
+        EmitError(CurrentLocation(), std::format("'#{}' does not accept arguments", name));
+        while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+            Advance();
+        }
+    }
+    ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+}
+
+/// Parses one `#Name` or `#Name(...)` attribute, with the '#' already consumed. `#Error` and `#Warn` act at each use of
+/// the declaration, `#Allow` suppresses a named lint rule for one declaration, `#Link` describes how an extern
+/// declaration is imported (`#Library` and `#Symbol` are retained as compatibility spellings), `#Abi(...)` selects a
+/// calling convention, `#NoReturn` marks a function that never returns to its caller, `#Test` marks a function that a
+/// test build of its package runs, and `#Unsendable` marks a type whose values stay on the thread that made them. An
+/// attribute that takes no arguments is written without parentheses; empty ones are still accepted.
 void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();
@@ -120,20 +136,13 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         return;
     }
 
-    ExpectBefore(TokenKind::LeftParen, std::format("'(' after '#{}'", name));
     if (name == "NoReturn") {
         if (attrs.usedNoReturn) {
             EmitError(nameLoc, "duplicate '#NoReturn' attribute");
         }
         attrs.usedNoReturn = true;
         attrs.noReturnLocation = attributeLoc;
-        if (!Check(TokenKind::RightParen)) {
-            EmitError(CurrentLocation(), "'#NoReturn' does not accept arguments");
-            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                Advance();
-            }
-        }
-        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        ParseEmptyAttributeArguments(name);
         return;
     }
 
@@ -143,13 +152,7 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         }
         attrs.usedTest = true;
         attrs.testLocation = attributeLoc;
-        if (!Check(TokenKind::RightParen)) {
-            EmitError(CurrentLocation(), "'#Test' does not accept arguments");
-            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                Advance();
-            }
-        }
-        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        ParseEmptyAttributeArguments(name);
         return;
     }
 
@@ -159,16 +162,11 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         }
         attrs.usedUnsendable = true;
         attrs.unsendableLocation = attributeLoc;
-        if (!Check(TokenKind::RightParen)) {
-            EmitError(CurrentLocation(), "'#Unsendable' does not accept arguments");
-            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                Advance();
-            }
-        }
-        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        ParseEmptyAttributeArguments(name);
         return;
     }
 
+    ExpectBefore(TokenKind::LeftParen, std::format("'(' after '#{}'", name));
     if (name == "Abi") {
         if (attrs.usedAbi) {
             EmitError(nameLoc, "duplicate '#Abi' attribute");
@@ -344,7 +342,7 @@ void Parser::ParseParameterAttribute(Param &parameter) {
     const std::string name = Advance().text;
     if (name != "Format") {
         EmitError(nameLoc, std::format("unknown parameter attribute '#{}'", name),
-                  "a parameter accepts only '#Format()', which marks a format string");
+                  "a parameter accepts only '#Format', which marks a format string");
         if (Match(TokenKind::LeftParen)) {
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
@@ -354,19 +352,12 @@ void Parser::ParseParameterAttribute(Param &parameter) {
         return;
     }
 
-    ExpectBefore(TokenKind::LeftParen, "'(' after '#Format'");
     if (parameter.isFormat) {
         EmitError(nameLoc, "duplicate '#Format' attribute");
     }
     parameter.isFormat = true;
     parameter.formatLocation = attributeLoc;
-    if (!Check(TokenKind::RightParen)) {
-        EmitError(CurrentLocation(), "'#Format' does not accept arguments");
-        while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-            Advance();
-        }
-    }
-    ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+    ParseEmptyAttributeArguments(name);
 }
 
 void Parser::ValidateFormatParameters(const std::vector<Param> &params) {
@@ -402,14 +393,14 @@ void Parser::ValidateFormatParameters(const std::vector<Param> &params) {
     }
 }
 
-/// Parses the attributes that precede a declaration. A declaration may carry any number of `#Name(...)` calls. The
-/// removed `#{...}` metadata form is consumed only for recovery and always produces an error.
+/// Parses the attributes that precede a declaration. A declaration may carry any number of `#Name` and `#Name(...)`
+/// attributes. The removed `#{...}` metadata form is consumed only for recovery and always produces an error.
 Parser::ParsedAttrs Parser::ParseAttrs() {
     ParsedAttrs attrs;
     while (Check(TokenKind::Hash)) {
         Advance(); // consume '#'
 
-        // #Name("...") — attribute call
+        // #Name or #Name("...")
         if (Check(TokenKind::Ident)) {
             ParseAttributeCall(attrs);
             continue;

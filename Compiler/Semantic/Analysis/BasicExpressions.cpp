@@ -1541,7 +1541,7 @@ std::optional<std::string> AnalysisContext::ImmutableBindingHelp(const Symbol &b
     }
     const std::string writable = std::format("&var {}", binding.type.ToString());
     if (binding.name == "self") {
-        return std::format("take the receiver as 'self: {}' to change the caller's value", writable);
+        return "take the receiver as '&var self' to change the caller's value";
     }
     return std::format("take '{}' as '{}' to change the caller's value, or move it into a 'var' local", binding.name,
                        writable);

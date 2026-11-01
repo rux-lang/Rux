@@ -426,6 +426,9 @@ struct StructInitExpr : Expr {
         SourceLocation location;
         std::string name;
         ExprPtr value;
+        /// Written as the name alone, `Point { x }`: `value` is the binding of that name, read as any other use of it,
+        /// so a move-only binding still has to be moved explicitly.
+        bool shorthand = false;
     };
 
     std::vector<Field> fields;
@@ -666,7 +669,7 @@ struct Decl {
     /// Lint rules explicitly suppressed for this declaration. A type-level suppression also covers the fields and
     /// variants owned by that type.
     std::vector<std::string> allowedLints;
-    /// Written `#Unsendable()` before a type declaration: a value of the type, or of anything holding one, belongs to
+    /// Written `#Unsendable` before a type declaration: a value of the type, or of anything holding one, belongs to
     /// the thread that made it and is no `Sendable` type argument.
     bool isUnsendable = false;
     virtual ~Decl() = default;
@@ -680,15 +683,19 @@ struct Param {
     TypeExprPtr type;
     bool isVariadic = false; // for extern ...
     std::optional<ExprPtr> defaultValue;
-    /// Written `#Format()` before the name: this parameter is the format string whose placeholders the variadic
+    /// Written `#Format` before the name: this parameter is the format string whose placeholders the variadic
     /// arguments after it fill. A call that passes a string literal here has its placeholders counted against those
     /// arguments while compiling. The attribute is all the compiler knows; it recognizes no package by name.
     bool isFormat = false;
-    /// Where the `#Format()` attribute was written, when `isFormat` is set.
+    /// Where the `#Format` attribute was written, when `isFormat` is set.
     SourceLocation formatLocation;
+    /// A receiver written in its short form, `self`, `&self`, `&var self`, `*self` or `*var self`. The parser has
+    /// already given it the type that form names, so only a signature printed back for a reader looks at this.
+    bool shorthandReceiver = false;
 
-    /// The method receiver, written `self: T`, `self: *T` or `self: *var T`. A first parameter spelled this way is what
-    /// makes a `func` inside an `extend` block a method rather than an associated function.
+    /// The method receiver, written `&self`, `&var self`, `self`, `*self` or `*var self`, or in the long form
+    /// `self: &T`. A first parameter spelled this way is what makes a `func` inside an `extend` block a method rather
+    /// than an associated function.
     [[nodiscard]] bool IsReceiver() const {
         return name == "self";
     }
@@ -760,7 +767,7 @@ struct WhenDecl : Decl {
 struct FuncDecl : Decl {
     bool isAsm = false;
     bool isNoReturn = false;
-    /// Marked `#Test()`: a test that a test build of its package runs.
+    /// Marked `#Test`: a test that a test build of its package runs.
     bool isTest = false;
     CallingConvention callConv = CallingConvention::Default;
     /// Where the `#Abi` attribute is written, when there is one.

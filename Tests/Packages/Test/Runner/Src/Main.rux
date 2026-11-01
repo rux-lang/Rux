@@ -1,4 +1,4 @@
-// A package of `#Test()` functions and no `Main`: a test build generates the runner. The tests check every check's
+// A package of `#Test` functions and no `Main`: a test build generates the runner. The tests check every check's
 // passing case and the message of its failing one, a skip, a test that returns nothing, a test inside a module, and
 // how a run filters and counts.
 
@@ -45,13 +45,13 @@ func OutcomeChecks() -> ! TestFailure {
     Expect(skip.IsSkip() && !TestFailure::Of("x").IsSkip(), "skips are told apart")?;
 }
 
-#Test()
+#Test
 func ReturnsNothing() {
     let value = 2 * 21;
     if value != 42 { return; }
 }
 
-#Test()
+#Test
 func Skipped() -> ! TestFailure {
     fail TestFailure::Skip("shows how a skip is reported");
 }
@@ -59,7 +59,7 @@ func Skipped() -> ! TestFailure {
 module Nested {
     import Test::{ ExpectEqual, TestFailure };
 
-    #Test()
+    #Test
     func Inner() -> ! TestFailure {
         ExpectEqual(Twice(4), 8)?;
     }

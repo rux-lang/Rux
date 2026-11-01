@@ -1,0 +1,129 @@
+// Receiver shorthand: inside `extend T` a receiver is written `self`, `&self`, `&var self`, `*self` or `*var self`, and
+// means `self: T`, `self: &T`, `self: &var T`, `self: *T` or `self: *var T`, with T's own type arguments in a generic
+// block. In an interface requirement it names the implementing type, so `&var self` is `self: &var Self`. A destructor
+// takes `&var self` like any method, and the long form `self: &T` stays accepted beside the shorthand.
+
+import Core::Assert;
+
+struct Counter {
+    count: int32;
+}
+
+extend Counter {
+    func Read(&self) -> int32 {
+        return self.count;
+    }
+
+    func Bump(&var self) {
+        self.count += 1;
+    }
+
+    func Peek(*self) -> int32 {
+        return self.count;
+    }
+
+    func Reset(*var self) {
+        self.count = 0;
+    }
+
+    func Into(self) -> int32 {
+        return self.count * 10;
+    }
+
+    func LongForm(self: &Counter) -> int32 {
+        return self.count + 100;
+    }
+}
+
+struct Log {
+    drops: int32;
+}
+
+struct Guard {
+    log: *var Log;
+}
+
+extend Guard {
+    func =(&var self, other: &Guard);
+
+    func ~Guard(&var self) {
+        self.log.drops += 1;
+    }
+}
+
+struct Stack<T> {
+    items: T[4];
+    length: uint;
+}
+
+extend Stack<T> {
+    func Push(&var self, item: T) {
+        self.items[self.length] = item;
+        self.length += 1;
+    }
+
+    func Top(&self) -> T {
+        return self.items[self.length - 1];
+    }
+
+    func Length(self) -> uint {
+        return self.length;
+    }
+}
+
+interface Dial {
+    func Level(&self) -> int32;
+    func Turn(&var self, amount: int32);
+}
+
+struct Knob {
+    level: int32;
+}
+
+extend Knob : Dial {
+    func Level(&self) -> int32 {
+        return self.level;
+    }
+
+    func Turn(&var self, amount: int32) {
+        self.level += amount;
+    }
+}
+
+func Spin<T: Dial>(dial: &var T) -> int32 {
+    dial.Turn(2);
+    return dial.Level();
+}
+
+func Observe(dial: &Dial) -> int32 {
+    return dial.Level();
+}
+
+func DropGuard(log: *var Log) {
+    let guard = Guard { log: log };
+}
+
+func Main() -> int {
+    var counter = Counter { count: 1 };
+    counter.Bump();
+    Assert(counter.Read() == 2, "'&self' reads and '&var self' writes the receiver");
+    Assert(counter.Peek() == 2, "'*self' reads through a pointer to the receiver");
+    Assert(counter.LongForm() == 102, "the long form 'self: &Counter' is still accepted");
+    Assert(counter.Into() == 20, "'self' takes the receiver by value");
+    counter.Reset();
+    Assert(counter.Read() == 0, "'*var self' writes through a pointer to the receiver");
+
+    var log = Log { drops: 0 };
+    DropGuard(@log);
+    Assert(log.drops == 1, "a destructor declared with '&var self' runs once");
+
+    var stack = Stack<int64> { items: [0i64, 0i64, 0i64, 0i64], length: 0 };
+    stack.Push(7);
+    stack.Push(9);
+    Assert(stack.Top() == 9 && stack.Length() == 2, "a generic block's shorthand carries its type arguments");
+
+    var knob = Knob { level: 1 };
+    Assert(Spin(knob) == 3, "an interface requirement's '&var self' is 'self: &var Self'");
+    Assert(Observe(knob) == 3, "an interface requirement's '&self' is 'self: &Self'");
+    return 0;
+}

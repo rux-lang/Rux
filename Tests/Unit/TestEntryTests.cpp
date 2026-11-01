@@ -35,7 +35,7 @@ func Main() -> int {
 )");
     std::vector<Diagnostic> diagnostics;
     CHECK_FALSE(BuildForTests(fixture, diagnostics).ok);
-    CHECK(Reports(diagnostics, "declares 'Main' and '#Test()' functions"));
+    CHECK(Reports(diagnostics, "declares 'Main' and '#Test' functions"));
 }
 
 TEST_CASE("a test build refuses tests without a Test dependency") {
@@ -46,7 +46,7 @@ func Checks() {}
 )");
     std::vector<Diagnostic> diagnostics;
     CHECK_FALSE(BuildForTests(fixture, diagnostics).ok);
-    CHECK(Reports(diagnostics, "has '#Test()' functions but does not depend on 'Test'"));
+    CHECK(Reports(diagnostics, "has '#Test' functions but does not depend on 'Test'"));
 }
 
 TEST_CASE("a test build of a library needs tests to run") {
@@ -59,7 +59,7 @@ pub func Helper() -> int32 {
 )");
     std::vector<Diagnostic> diagnostics;
     CHECK_FALSE(BuildForTests(fixture, diagnostics).ok);
-    CHECK(Reports(diagnostics, "has no '#Test()' functions to run"));
+    CHECK(Reports(diagnostics, "has no '#Test' functions to run"));
 }
 
 TEST_CASE("a test build refuses tests it cannot call") {

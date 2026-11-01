@@ -1,0 +1,4 @@
+6:12: error: 'Self' is only available inside an 'extend' block or an interface
+9:18: error: 'Self' is only available inside an 'extend' block or an interface
+10:12: error: 'Self' is only available inside an 'extend' block or an interface
+15:26: error: 'Self' is only available inside an 'extend' block or an interface

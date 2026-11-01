@@ -26,6 +26,9 @@ std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string 
         return std::format("prefix the return value with '<-', as in 'return <-{}'", place);
     case ValueConsumptionKind::Aggregate:
         return std::format("prefix the aggregate value with '<-', as in '{{ field: <-{} }}'", place);
+    case ValueConsumptionKind::FieldShorthand:
+        // The shorthand never moves on its own, so the help writes the field out with the move.
+        return std::format("write '{}: <-{}'", place, place);
     case ValueConsumptionKind::ArrayRepeat:
         return "write the elements explicitly or initialize move-only elements in a loop";
     case ValueConsumptionKind::ConditionalArm:

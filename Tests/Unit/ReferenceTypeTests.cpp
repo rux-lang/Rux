@@ -234,7 +234,7 @@ TEST_CASE("a write to a parameter never suggests declaring it with 'var'") {
     });
     REQUIRE_EQ(errors.size(), 4);
     CHECK_EQ(errors[0].message, "cannot modify immutable receiver 'self'");
-    CHECK_EQ(errors[0].help, "take the receiver as 'self: &var Pair' to change the caller's value");
+    CHECK_EQ(errors[0].help, "take the receiver as '&var self' to change the caller's value");
     CHECK_EQ(errors[1].message, "cannot modify 'pair' through immutable reference '&Pair'");
     CHECK_EQ(errors[1].help, "declare 'pair' as '&var Pair' to write through it");
     CHECK_EQ(errors[2].message, "cannot modify parameter 'pair'");

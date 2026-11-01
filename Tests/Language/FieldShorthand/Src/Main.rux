@@ -1,7 +1,9 @@
-// Field shorthand and omitted fields in structure and case patterns.
+// Field shorthand in construction and in patterns, and omitted fields in structure and case patterns.
 // `Point { x, y }` binds each field to a variable of the same name, in a match arm and in `let`, as `.Circle { radius }`
 // does for a case payload. A payload written with field names may leave fields out, as a structure pattern may; an
-// omitted field matches anything, and over a consumed subject it is destroyed at the top of the arm.
+// omitted field matches anything, and over a consumed subject it is destroyed at the top of the arm. A struct or case
+// literal reads the same way: `Point { x, y }` is `Point { x: x, y: y }`, and a move-only binding is still moved with
+// `<-` written out.
 
 import Core::Assert;
 
@@ -45,7 +47,25 @@ func Mark(log: *var Log) {
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
-    return Tracked { log: log, id: id };
+    return Tracked { log, id };
+}
+
+func Make(x: int32, y: int32) -> Point {
+    return Point { y, x };
+}
+
+func Box(width: int32, height: int32) -> Shape {
+    return Shape::Rectangle { width, height };
+}
+
+func Pack(log: *var Log) -> Parcel {
+    let label = Track(log, 3);
+    let contents = Track(log, 4);
+    return Parcel::Boxed { label: <-label, contents: <-contents };
+}
+
+func DropPacked(log: *var Log) {
+    let parcel = Pack(log);
 }
 
 func OnAxis(p: Point) -> int32 {
@@ -98,6 +118,18 @@ func Main() -> int {
     Assert(Width(Shape::Circle { radius: 3 }) == 6, "the case shorthand still binds its field");
     Assert(Tall(Shape::Rectangle { width: 1, height: 2 }), "a case pattern may test one named field");
     Assert(!Tall(Shape::Rectangle { width: 1, height: 0 }), "the tested field selects the first arm");
+
+    let built = Make(3, 4);
+    Assert(built.x == 3 && built.y == 4, "a struct literal takes each field from the binding of its name");
+    let rebuilt = Point { x, y };
+    Assert(rebuilt.x == 3 && rebuilt.y == 4, "a literal rebuilds what a destructuring let took apart");
+    let mixed = Point { x: 8, y };
+    Assert(mixed.x == 8 && mixed.y == 4, "a literal may mix shorthand and written-out fields");
+    Assert(Width(Box(5, 2)) == 5, "a case literal takes each named field from the binding of its name");
+
+    var packed = Log { count: 0, order: 0 };
+    DropPacked(@packed);
+    Assert(packed.count == 2, "move-only bindings are moved into a case literal with '<-' written out");
 
     var log = Log { count: 0, order: 0 };
     MatchOmitsCaseField(@log);

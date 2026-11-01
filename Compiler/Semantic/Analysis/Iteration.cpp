@@ -255,7 +255,7 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
                       std::format("iterator method 'Next' on '{}' must take a mutable receiver",
                                   currentExtendedType.ToString()),
                       {"advancing an iterator writes it, so 'Next' cannot borrow its receiver read-only"},
-                      std::format("write the receiver as 'self: &var {}'", NamedBaseTypeName(currentExtendedType)));
+                      "write the receiver as '&var self'");
         }
         return;
     }

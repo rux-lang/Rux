@@ -11,6 +11,8 @@ enum class ValueConsumptionKind {
     Return,
     Assignment,
     Aggregate,
+    /// A field written as a name alone, `Holder { buffer }`, whose value is the binding of that name.
+    FieldShorthand,
     ArrayRepeat,
     ConditionalArm,
     PropagationOperand,

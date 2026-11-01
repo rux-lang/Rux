@@ -128,7 +128,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
 
     std::filesystem::path projectRoot;
     std::vector<TestRoot> testRoots;
-    // Packages whose own sources hold '#Test()' functions, run beside the packages under Tests/.
+    // Packages whose own sources hold '#Test' functions, run beside the packages under Tests/.
     std::vector<TestPackage> sourceTestPackages;
     std::vector<std::filesystem::path> localPackageRoots;
     std::set<std::string> localNamespaces;

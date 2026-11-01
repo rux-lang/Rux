@@ -1,0 +1,129 @@
+// `Self` inside `extend T` names T with its type arguments: in a signature, a binding's type, a struct literal
+// `Self { ... }`, a type-named constructor call `Self(...)`, a pattern, and a path such as `Self::Origin` or
+// `Self::Of(...)`, which passes the block's type arguments first. In a block implementing an interface it is the
+// implementing type. It is an alias for the type written out, so it changes neither dispatch nor layout.
+
+import Core::Assert;
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+extend Point {
+    const Origin: Self = Self { x: 0, y: 0 };
+
+    func Point(x: int32, y: int32) -> Self {
+        return Self { x: x, y: y };
+    }
+
+    func Diagonal(n: int32) -> Self {
+        return Self(n, n);
+    }
+
+    func Shifted(&self, by: int32) -> Self {
+        let moved: Self = Self { x: self.x + by, y: self.y + by };
+        return moved;
+    }
+
+    func Distance(&self) -> int32 {
+        return (self.x - Self::Origin.x) + (self.y - Self::Origin.y);
+    }
+
+    func IsOrigin(&self) -> bool {
+        return match self {
+            Self { x: 0, y: 0 } => true,
+            _ => false,
+        };
+    }
+
+    func Same(&self, other: &Self) -> bool {
+        return self.x == other.x && self.y == other.y;
+    }
+}
+
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+extend Pair<T> {
+    func Pair(first: T, second: T) -> Self {
+        return Self { first: first, second: second };
+    }
+
+    func Of(first: T, second: T) -> Self {
+        return Self(first, second);
+    }
+
+    func Swapped(&self) -> Self {
+        return Self::Of(self.second, self.first);
+    }
+
+    func Widen<U>(&self, extra: U) -> U {
+        return extra;
+    }
+
+    func Repeat(&self) -> Self {
+        let copy: Self = Self::Of(self.first, self.first);
+        return copy;
+    }
+}
+
+interface Measured {
+    func Larger(&self, other: &Self) -> bool;
+}
+
+struct Rod {
+    length: int32;
+}
+
+extend Rod : Measured {
+    func Larger(&self, other: &Self) -> bool {
+        return self.length > other.length;
+    }
+}
+
+func Largest<T: Measured>(a: &T, b: &T) -> bool {
+    return a.Larger(b);
+}
+
+variant Shape {
+    Dot,
+    Square(int32),
+}
+
+extend Shape {
+    func Unit() -> Self {
+        return Self::Square(1);
+    }
+
+    func Side(&self) -> int32 {
+        return match self {
+            Self::Square(side) => side,
+            Self::Dot => 0,
+        };
+    }
+}
+
+func Main() -> int {
+    let p = Point(1, 2);
+    let expected = Point(4, 5);
+    Assert(p.Shifted(3).Same(expected), "'Self' is the extended type in a signature and a literal");
+    Assert(Point::Diagonal(4).Distance() == 8, "'Self(...)' calls the type-named constructor");
+    Assert(Point::Origin.IsOrigin() && !p.IsOrigin(), "'Self { ... }' matches as a structure pattern");
+
+    let pair = Pair::Of<int64>(1, 2);
+    let swapped = pair.Swapped();
+    Assert(swapped.first == 2 && swapped.second == 1, "'Self::Of(...)' carries the block's type arguments");
+    Assert(pair.Repeat().second == 1, "a binding typed 'Self' in a generic block");
+    Assert(pair.Widen<int32>(5) == 5, "a method's own type arguments follow the block's");
+
+    let long = Rod { length: 5 };
+    let short = Rod { length: 2 };
+    Assert(Largest(long, short) && !Largest(short, long), "an implementation's 'Self' is the implementing type");
+
+    Assert(Shape::Unit().Side() == 1, "'Self::Square(...)' constructs a case");
+    Assert(Shape::Dot.Side() == 0, "'Self::Dot' matches a case");
+    return 0;
+}

@@ -198,8 +198,7 @@ TEST_CASE("a requirement's receiver decides whether an interface call may write"
     CHECK_EQ(errors[0].message,
              "method 'Adjust' of 'Knob' writes through its receiver, but requirement 'Adjust' of interface 'Gauge' "
              "only reads it");
-    CHECK_EQ(errors[0].help, "declare 'self: &var Self' on requirement 'Adjust' in interface 'Gauge', or take "
-                             "'self: &Knob'");
+    CHECK_EQ(errors[0].help, "declare '&var self' on requirement 'Adjust' in interface 'Gauge', or take '&self'");
     CHECK_EQ(errors[1].message, "cannot call 'Turn' through immutable reference '&Dial'");
     REQUIRE_EQ(errors[1].notes.size(), 1);
     CHECK_EQ(errors[1].notes[0], "'Turn' declares a writable receiver '&var Self'");

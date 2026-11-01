@@ -1,0 +1,29 @@
+// A shorthand receiver takes its type from the enclosing 'extend' block or interface, so a function outside both has
+// no type to give it. Each form is reported where it is written.
+
+struct Vector {
+    x: float64;
+}
+
+func Length(&self) -> float64 {
+    return 0.0;
+}
+
+func Grow(&var self, factor: float64) {}
+
+func Consume(self) {}
+
+func Raw(*self) {}
+
+func Write(*var self) {}
+
+extend Vector {
+    func Inner(&self) -> float64 {
+        func Nested(&self) {}
+        return self.x;
+    }
+}
+
+func Main() -> int {
+    return 0;
+}

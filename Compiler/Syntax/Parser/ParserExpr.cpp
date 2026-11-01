@@ -4,6 +4,7 @@
 
 #include <format>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -590,33 +591,7 @@ ExprPtr Parser::ParsePostfix() {
                     }
                     e->typeName += path->segments[i];
                 }
-                Advance(); // consume '{'
-                while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-                    StructInitExpr::Field field;
-                    field.location = CurrentLocation();
-                    field.name = ExpectBefore(TokenKind::Ident, "a field name in the initializer").text;
-                    ExpectBefore(TokenKind::Colon, "':' after the initializer field name");
-                    field.value = ParseRequiredExpr("after ':' in the initializer field");
-                    const bool validField = !field.name.empty() && field.value != nullptr;
-                    e->fields.push_back(std::move(field));
-                    if (!validField) {
-                        if (RecoverDelimitedList(TokenKind::RightBrace)) {
-                            continue;
-                        }
-                        break;
-                    }
-                    if (Match(TokenKind::Comma)) {
-                        continue;
-                    }
-                    if (!Check(TokenKind::RightBrace)) {
-                        EmitExpected(CurrentLocation(), "',' between initializer fields");
-                        continue;
-                    }
-                    else {
-                        break;
-                    }
-                }
-                ExpectBefore(TokenKind::RightBrace, "'}' to close the initializer");
+                ParseStructInitFields(*e);
                 left = std::move(e);
                 continue;
             }
@@ -891,6 +866,11 @@ ExprPtr Parser::ParsePrimary() {
         ExpectBefore(TokenKind::RightParen, "')' to close the grouped expression");
         return first;
     }
+    // `Self` inside `extend`: the extended type in a literal, a call, or a path.
+    if (Check(TokenKind::Ident) && Peek().text == "Self") {
+        Advance();
+        return ParseSelfExpr(loc);
+    }
     // Identifier, possible struct init, or path expression
     if (Check(TokenKind::Ident)) {
         const std::string name = Advance().text;
@@ -905,35 +885,7 @@ ExprPtr Parser::ParsePrimary() {
             e->location = loc;
             e->typeName = name;
             e->typeArgs = std::move(typeArgs);
-            Advance(); // consume '{'
-            while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-                StructInitExpr::Field field;
-                field.location = CurrentLocation();
-                field.name = Check(TokenKind::ModuleKeyword)
-                               ? Advance().text
-                               : ExpectBefore(TokenKind::Ident, "a field name in the initializer").text;
-                ExpectBefore(TokenKind::Colon, "':' after the initializer field name");
-                field.value = ParseRequiredExpr("after ':' in the initializer field");
-                const bool validField = !field.name.empty() && field.value != nullptr;
-                e->fields.push_back(std::move(field));
-                if (!validField) {
-                    if (RecoverDelimitedList(TokenKind::RightBrace)) {
-                        continue;
-                    }
-                    break;
-                }
-                if (Match(TokenKind::Comma)) {
-                    continue;
-                }
-                if (!Check(TokenKind::RightBrace)) {
-                    EmitExpected(CurrentLocation(), "',' between initializer fields");
-                    continue;
-                }
-                else {
-                    break;
-                }
-            }
-            ExpectBefore(TokenKind::RightBrace, "'}' to close the initializer");
+            ParseStructInitFields(*e);
             return e;
         }
         auto e = std::make_unique<IdentExpr>();
@@ -942,6 +894,47 @@ ExprPtr Parser::ParsePrimary() {
         return e;
     }
     return nullptr;
+}
+
+void Parser::ParseStructInitFields(StructInitExpr &initializer) {
+    Advance(); // consume '{'
+    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        StructInitExpr::Field field;
+        field.location = CurrentLocation();
+        const bool keywordName = Check(TokenKind::ModuleKeyword);
+        field.name =
+            keywordName ? Advance().text : ExpectBefore(TokenKind::Ident, "a field name in the initializer").text;
+        // `Point { x, y }` is `Point { x: x, y: y }`: a name alone is the binding of that name, read as any other use
+        // of it, so construction reads the way the matching structure pattern does.
+        if (!keywordName && !field.name.empty() && CheckAny({TokenKind::Comma, TokenKind::RightBrace})) {
+            auto value = std::make_unique<IdentExpr>();
+            value->location = field.location;
+            value->name = field.name;
+            field.value = std::move(value);
+            field.shorthand = true;
+        }
+        else {
+            ExpectBefore(TokenKind::Colon, "':' after the initializer field name");
+            field.value = ParseRequiredExpr("after ':' in the initializer field");
+        }
+        const bool validField = !field.name.empty() && field.value != nullptr;
+        initializer.fields.push_back(std::move(field));
+        if (!validField) {
+            if (RecoverDelimitedList(TokenKind::RightBrace)) {
+                continue;
+            }
+            break;
+        }
+        if (Match(TokenKind::Comma)) {
+            continue;
+        }
+        if (!Check(TokenKind::RightBrace)) {
+            EmitExpected(CurrentLocation(), "',' between initializer fields");
+            continue;
+        }
+        break;
+    }
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the initializer");
 }
 
 bool Parser::CheckDivergingKeyword() const noexcept {
@@ -1381,11 +1374,19 @@ PatternPtr Parser::ParsePrimaryPattern() {
     // Identifier-started patterns: ident, EnumName::Variant(args), TypeName
     // { fields }
     if (Check(TokenKind::Ident)) {
-        const std::string name = Advance().text;
+        std::string name = Advance().text;
+        // `Self { ... }` and `Self::Case` inside `extend` name the extended type, as its own name would.
+        std::vector<std::string> selfPath;
+        if (name == "Self" && CheckAny({TokenKind::LeftBrace, TokenKind::ColonColon})) {
+            if (std::optional<SelfName> self = SelfNameAt(loc)) {
+                name = self->Joined();
+                selfPath = std::move(self->segments);
+            }
+        }
 
         // Enum pattern: Event::Click(x, y)
         if (Check(TokenKind::ColonColon) && Peek(1).Is(TokenKind::Ident)) {
-            std::vector<std::string> path = {name};
+            std::vector<std::string> path = selfPath.empty() ? std::vector<std::string>{name} : std::move(selfPath);
             while (Match(TokenKind::ColonColon)) {
                 path.push_back(ExpectBefore(TokenKind::Ident, "a variant name after '::'").text);
             }

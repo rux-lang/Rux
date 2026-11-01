@@ -1,0 +1,6 @@
+8:13: error: receiver '&self' is only allowed in an 'extend' block or an interface requirement
+12:11: error: receiver '&var self' is only allowed in an 'extend' block or an interface requirement
+14:14: error: receiver 'self' is only allowed in an 'extend' block or an interface requirement
+16:10: error: receiver '*self' is only allowed in an 'extend' block or an interface requirement
+18:12: error: receiver '*var self' is only allowed in an 'extend' block or an interface requirement
+22:21: error: receiver '&self' is only allowed in an 'extend' block or an interface requirement

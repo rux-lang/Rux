@@ -5,6 +5,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace Rux {
@@ -136,7 +137,11 @@ StmtPtr Parser::ParseStmt() {
         auto ds = std::make_unique<DeclStmt>();
         ds->location = loc;
         bodiesNeedConditionalFolding = true;
+        // A declaration nested in a method body is not a member of the type being extended, so `Self` does not name
+        // that type inside it.
+        SelfScope enclosing = std::exchange(selfScope, SelfScope{});
         ds->decl = ParseDecl();
+        selfScope = std::move(enclosing);
         bodiesDeclareItems = bodiesDeclareItems || (ds->decl && !AstCast<const ConstDecl>(ds->decl.get()));
         return ds;
     }

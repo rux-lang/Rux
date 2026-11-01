@@ -1,6 +1,8 @@
 #include "Cli/Testing/TestPackages.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstddef>
 #include <fstream>
 #include <iterator>
 #include <utility>
@@ -19,8 +21,12 @@ bool SourcesDeclareTests(const std::filesystem::path &packageDir) {
         }
         std::ifstream file(it->path(), std::ios::binary);
         const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-        if (text.find("#Test(") != std::string::npos) {
-            return true;
+        // `#Test` or `#Test()`, but not a longer name such as `#Tests`.
+        for (std::size_t at = text.find("#Test"); at != std::string::npos; at = text.find("#Test", at + 1)) {
+            const std::size_t next = at + 5;
+            if (next == text.size() || (!std::isalnum(static_cast<unsigned char>(text[next])) && text[next] != '_')) {
+                return true;
+            }
         }
     }
     return false;
@@ -60,7 +66,7 @@ TestDiscovery DiscoverTestPackages(const std::span<const TestRoot> roots) {
                         continue;
                     }
                     // An Executable package has an entry point to run; any other package runs only when a test build
-                    // can generate one for its '#Test()' functions.
+                    // can generate one for its '#Test' functions.
                     if (pkgManifest.manifest->package.type != ManifestPackageType::Executable &&
                         !SourcesDeclareTests(entry.path())) {
                         continue;

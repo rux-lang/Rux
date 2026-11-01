@@ -1,0 +1,43 @@
+// Attributes that take no arguments are written without parentheses: `#NoReturn`, `#Unsendable`, and `#Format` before a
+// parameter, as `#Test` is before a test. Empty parentheses are still accepted beside them, and an attribute with
+// arguments keeps its parentheses.
+
+import Core::Assert;
+
+#Unsendable
+struct Local {
+    value: int32;
+}
+
+#Unsendable()
+struct Older {
+    value: int32;
+}
+
+#NoReturn
+func Halt() {
+    while true {}
+}
+
+func Count(#Format format: char8[..], values: int32...) -> uint {
+    return values.length;
+}
+
+func CountOlder(#Format() format: char8[..], values: int32...) -> uint {
+    return values.length;
+}
+
+#Allow("naming.const")
+const lower_case: int32 = 3;
+
+func Main() -> int {
+    let local = Local { value: 1 };
+    let older = Older { value: 2 };
+    Assert(local.value + older.value == lower_case, "bare and parenthesized attributes leave the declaration as is");
+    Assert(Count("{} and {}", 1, 2) == 2, "a bare '#Format' parameter counts its placeholders");
+    Assert(CountOlder("{}", 1) == 1, "'#Format()' with empty parentheses is still accepted");
+    if local.value == 0 {
+        Halt();
+    }
+    return 0;
+}

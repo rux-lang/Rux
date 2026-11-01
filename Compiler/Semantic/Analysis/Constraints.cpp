@@ -261,7 +261,7 @@ std::optional<std::string> AnalysisContext::UnsendablePart(const TypeRef &type) 
 
 namespace {
 /// The compiler-known marker a thread's context and result are bound by: an interface named `Sendable` that requires
-/// nothing. A type satisfies it unless it is or holds a type declared `#Unsendable()`, or a reference.
+/// nothing. A type satisfies it unless it is or holds a type declared `#Unsendable`, or a reference.
 bool IsSendableMarker(const InterfaceDecl &interface) {
     return interface.name == "Sendable" && interface.methods.empty() && interface.typeParams.empty();
 }
@@ -277,12 +277,12 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
                 reason = std::format("'{}' is a reference, which cannot leave the call that borrowed it", *part);
             }
             else if (itself) {
-                reason = std::format("'{}' is declared '#Unsendable()', so it stays on the thread that made it",
+                reason = std::format("'{}' is declared '#Unsendable', so it stays on the thread that made it",
                                      argument.DisplayString());
             }
             else {
                 reason =
-                    std::format("'{}' holds '{}', which is declared '#Unsendable()'", argument.DisplayString(), *part);
+                    std::format("'{}' holds '{}', which is declared '#Unsendable'", argument.DisplayString(), *part);
             }
             return false;
         }

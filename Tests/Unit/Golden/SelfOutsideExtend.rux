@@ -1,0 +1,22 @@
+// 'Self' names the extended type inside an 'extend' block and the implementing type inside an interface. Anywhere
+// else it names nothing, in a type or in an expression, and a declaration nested in a method body is not a member.
+
+struct Point {
+    x: int32;
+    next: *Self;
+}
+
+func Origin() -> Self {
+    return Self { x: 0, next: null };
+}
+
+extend Point {
+    func Make() -> Self {
+        func Helper() -> Self {}
+        return Self { x: 0, next: null };
+    }
+}
+
+func Main() -> int {
+    return 0;
+}

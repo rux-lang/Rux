@@ -8,6 +8,11 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+/// A field written as a name alone transfers its binding by the ordinary rules, so only the help it is given differs.
+[[nodiscard]] ValueConsumptionKind FieldConsumption(const StructInitExpr::Field &field) {
+    return field.shorthand ? ValueConsumptionKind::FieldShorthand : ValueConsumptionKind::Aggregate;
+}
+
 [[nodiscard]] const TypeRef &ReferencedValue(const TypeRef &type) {
     return type->kind == TypeRef::Kind::Reference && !type->inner.empty() ? type->inner.front() : type;
 }
@@ -433,7 +438,7 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
                                      expectedField->location.line, expectedField->location.column)});
                 }
                 else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
-                    ConsumeValue(*field.value, valueType, ValueConsumptionKind::Aggregate, field.location);
+                    ConsumeValue(*field.value, valueType, FieldConsumption(field), field.location);
                 }
             }
             return;
@@ -505,7 +510,7 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
                                      expectedField->second->location.line, expectedField->second->location.column)});
                 }
                 else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
-                    ConsumeValue(*field.value, valueType, ValueConsumptionKind::Aggregate, field.location);
+                    ConsumeValue(*field.value, valueType, FieldConsumption(field), field.location);
                 }
             }
 
@@ -604,7 +609,7 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
                                    expectedField->second->location.line, expectedField->second->location.column)});
         }
         else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
-            ConsumeValue(*field.value, valueType, ValueConsumptionKind::Aggregate, field.location);
+            ConsumeValue(*field.value, valueType, FieldConsumption(field), field.location);
         }
     }
 

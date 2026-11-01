@@ -65,7 +65,7 @@ void AnalysisContext::CheckReceiverType(const FuncDecl &declaration, const Param
         EmitError(receiver.location,
                   std::format("receiver type '{}' does not name the extended type '{}'", declared.ToString(),
                               currentExtendedType.ToString()),
-                  {}, std::format("write the receiver as 'self: &var {}'", currentExtendedType.ToString()));
+                  {}, "write the receiver as '&self' or '&var self', which name the extended type");
         return;
     }
     if (currentImpl->interfaceName && !isReference) {
@@ -74,7 +74,7 @@ void AnalysisContext::CheckReceiverType(const FuncDecl &declaration, const Param
                               "interface '{}'",
                               declaration.name, *currentImpl->interfaceName),
                   {"a method reached through an interface receives its receiver by reference"},
-                  std::format("write the receiver as 'self: &{}'", currentExtendedType.ToString()));
+                  "write the receiver as '&self'");
     }
 }
 
@@ -228,8 +228,7 @@ void AnalysisContext::ValidateRequirementReceiver(const FuncDecl &requirement, c
               std::format("receiver of requirement '{}' in interface '{}' must be '&Self' or '&var Self'",
                           requirement.name, interfaceName),
               {"a requirement reaches the implementing value through the data half of an interface view"},
-              std::format("write 'self: &var Self' if '{}' writes through its receiver, or 'self: &Self' if it only "
-                          "reads it",
+              std::format("write '&var self' if '{}' writes through its receiver, or '&self' if it only reads it",
                           requirement.name));
 }
 
@@ -246,8 +245,8 @@ void AnalysisContext::CheckImplementationReceiver(const FuncDecl &implementation
               std::format("method '{}' of '{}' writes through its receiver, but requirement '{}' of interface '{}' "
                           "only reads it",
                           implementation.name, typeName, requirement.name, interfaceName),
-              {"a requirement without a receiver, or with 'self: &Self', is callable through a read-only view"},
-              std::format("declare 'self: &var Self' on requirement '{}' in interface '{}', or take 'self: &{}'",
-                          requirement.name, interfaceName, typeName));
+              {"a requirement without a receiver, or with '&self', is callable through a read-only view"},
+              std::format("declare '&var self' on requirement '{}' in interface '{}', or take '&self'",
+                          requirement.name, interfaceName));
 }
 } // namespace Rux::SemanticDetail

@@ -1,0 +1,15 @@
+// A field written as a name alone reads the binding of that name, so a name with no binding in scope is reported as
+// any unknown name is, at the field.
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+func Make(x: int32) -> Point {
+    return Point { x, y };
+}
+
+func Main() -> int {
+    return 0;
+}

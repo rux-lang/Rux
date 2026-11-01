@@ -116,6 +116,19 @@ std::string TypeParams(const std::vector<TypeParameter> &parameters) {
     return text + ">";
 }
 
+namespace {
+/// A receiver printed the way it was written: `&self`, `&var self`, `*self`, `*var self` or `self`.
+std::string ShorthandReceiverText(const TypeExpr &type) {
+    if (const auto *reference = AstCast<const ReferenceTypeExpr>(&type)) {
+        return reference->pointeeMut ? "&var self" : "&self";
+    }
+    if (const auto *pointer = AstCast<const PointerTypeExpr>(&type)) {
+        return pointer->pointeeMut ? "*var self" : "*self";
+    }
+    return "self";
+}
+} // namespace
+
 std::string FunctionSignature(const FuncDecl &function) {
     std::string text = function.isPublic ? "pub " : "";
     text += "func " + function.name + TypeParams(function.typeParams) + "(";
@@ -125,8 +138,10 @@ std::string FunctionSignature(const FuncDecl &function) {
         const auto &parameter = function.params[i];
         if (parameter.isVariadic)
             text += "...";
+        else if (parameter.shorthandReceiver)
+            text += ShorthandReceiverText(*parameter.type);
         else
-            text += (parameter.isFormat ? "#Format() " : "") + parameter.name + ": " + TypeText(parameter.type.get());
+            text += (parameter.isFormat ? "#Format " : "") + parameter.name + ": " + TypeText(parameter.type.get());
     }
     text += ')';
     if (function.returnType)

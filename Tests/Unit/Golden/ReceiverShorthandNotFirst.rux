@@ -1,0 +1,28 @@
+// The shorthand receiver is still the receiver: it comes first, as the long form does, and it names the extended
+// type, so the rules for a receiver apply to it unchanged.
+
+struct Vector {
+    x: float64;
+}
+
+interface Shape {
+    func Area(&self) -> float64;
+}
+
+extend Vector {
+    func Late(factor: float64, &self) -> float64 {
+        return factor;
+    }
+
+    func Twice(&self, &var self) {}
+}
+
+extend Vector : Shape {
+    func Area(self) -> float64 {
+        return self.x;
+    }
+}
+
+func Main() -> int {
+    return 0;
+}

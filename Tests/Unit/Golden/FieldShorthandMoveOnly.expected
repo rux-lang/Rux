@@ -1,0 +1,2 @@
+26:21: error: move-only value 'buffer' requires an explicit '<-' in field shorthand
+30:25: error: move-only value 'buffer' requires an explicit '<-' in field shorthand

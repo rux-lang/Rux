@@ -186,6 +186,11 @@ Param Parser::ParseParam(const bool allowVariadic) {
         return parameter;
     }
 
+    if (CheckShorthandReceiver()) {
+        ParseShorthandReceiver(parameter);
+        return parameter;
+    }
+
     if (Match(TokenKind::VarKeyword)) {
         const std::string name = Check(TokenKind::SelfKeyword) ? "self"
                                : Check(TokenKind::Ident)       ? Peek().text
@@ -195,15 +200,13 @@ Param Parser::ParseParam(const bool allowVariadic) {
                       ": &var T' to mutate caller storage");
     }
 
-    // The receiver is an ordinary parameter that happens to be named `self`; its type says whether the method takes its
-    // receiver by value, by read-only reference or by writable reference. It is written out like any other parameter's,
-    // because it is the one thing about a method a reader cannot otherwise tell.
+    // The long form of a receiver, `self: &Vector`, names the type the short form takes from the `extend` block. It
+    // stays accepted while sources move to the short form.
     if (Match(TokenKind::SelfKeyword)) {
         parameter.name = "self";
         if (!Match(TokenKind::Colon)) {
-            EmitExpected(CurrentLocation(), "':' and the receiver type after 'self'",
-                         "write '*var Vector' to write through the receiver, '*Vector' to read it, or 'Vector' to take "
-                         "a copy");
+            EmitExpected(CurrentLocation(), "',' or ')' after the receiver 'self'",
+                         "write '&self' to read the receiver, '&var self' to write it, or 'self' to take it by value");
             parameter.type = std::make_unique<SelfTypeExpr>();
             return parameter;
         }

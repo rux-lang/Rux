@@ -11,6 +11,7 @@ rux_add_component(RuxSyntax
     Parser/ParserDecl.cpp
     Parser/ParserAttributes.cpp
     Parser/ParserDeclDispatch.cpp
+    Parser/ParserSelf.cpp
     Parser/ParserType.cpp
     Parser/ParserStmt.cpp
     Parser/ParserExpr.cpp

@@ -5,7 +5,7 @@ Version = 1
 Name = "Runner"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Test: #Test() functions gathered into a generated runner, every check's passing and failing messages, skips, and filtering."
+Description = "Package test for Test: #Test functions gathered into a generated runner, every check's passing and failing messages, skips, and filtering."
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }

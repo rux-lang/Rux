@@ -163,7 +163,7 @@ TEST_CASE("a Next that cannot advance its receiver is rejected at its declaratio
     CHECK_EQ(diagnostics[0].notes[0],
              "advancing an iterator writes it, so 'Next' cannot borrow its receiver read-only");
     REQUIRE(diagnostics[0].help.has_value());
-    CHECK_EQ(*diagnostics[0].help, "write the receiver as 'self: &var Counter'");
+    CHECK_EQ(*diagnostics[0].help, "write the receiver as '&var self'");
 }
 
 TEST_CASE("a Next taking arguments is rejected at its declaration") {

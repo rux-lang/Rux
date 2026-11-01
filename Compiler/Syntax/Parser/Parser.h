@@ -4,9 +4,11 @@
 #include "Lexer/Lexer.h"
 #include "Syntax/ParseResult.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Rux {
@@ -51,6 +53,25 @@ private:
     bool bodiesNeedConditionalFolding = false;
     /// Whether a block so far declared anything but a constant (`Module::bodiesDeclareItems`).
     bool bodiesDeclareItems = false;
+
+    /// What `Self` and a shorthand receiver such as `&self` stand for where the parser is. Inside `extend T` both name
+    /// `T` with its type arguments, read again from the tokens the header spelled it with, so every later stage sees
+    /// the type written out; inside an interface they name the implementing type, which only a bound supplies, so they
+    /// stay `Self`; anywhere else they name nothing.
+    struct SelfScope {
+        enum class Kind : std::uint8_t {
+            None,
+            Interface,
+            Extend,
+        };
+
+        Kind kind = Kind::None;
+        /// Inside `extend`: the extended type's tokens and an end-of-file token after them. Empty when the header did
+        /// not parse, whose error has then already been reported.
+        std::vector<Token> typeTokens;
+    };
+
+    SelfScope selfScope;
 
     // Token helpers, defined here because every level of every expression asks them, from every parser file.
     [[nodiscard]] const Token &Peek(const std::size_t ahead = 0) const noexcept {
@@ -158,14 +179,17 @@ private:
         SourceLocation allowLocation;
     };
 
-    /// Parses `#Name(...)` attribute calls before a declaration. The former `#{...}` metadata-block form is rejected.
+    /// Parses the `#Name` and `#Name(...)` attributes before a declaration. The former `#{...}` metadata-block form is
+    /// rejected.
     ParsedAttrs ParseAttrs();
     static std::string DecodeStringLiteralText(const std::string &text);
     void ParseAttributeCall(ParsedAttrs &attrs);
-    /// Parses one `#Name()` attribute written before a parameter, with the current token on its '#'. `#Format()` is
-    /// the only parameter attribute.
+    /// The optional `()` after an attribute that takes no arguments, such as `#Test`: reports anything written inside.
+    void ParseEmptyAttributeArguments(std::string_view name);
+    /// Parses one `#Name` attribute written before a parameter, with the current token on its '#'. `#Format` is the
+    /// only parameter attribute.
     void ParseParameterAttribute(Param &parameter);
-    /// Checks where `#Format()` was written in one parameter list: once, on a parameter that is neither the receiver
+    /// Checks where `#Format` was written in one parameter list: once, on a parameter that is neither the receiver
     /// nor variadic, in a list whose last parameter is variadic.
     void ValidateFormatParameters(const std::vector<Param> &params);
     DeclPtr ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs);
@@ -200,6 +224,32 @@ private:
     /// next tokens are not one.
     void ParseAsmShift(AsmOperand &op);
     std::int64_t ParseAsmInt();
+
+    /// Parses the type an `extend` header names into `type` and returns its tokens for `Self` to read again: empty
+    /// when the type did not parse cleanly.
+    std::vector<Token> ParseExtendedType(TypeExprPtr &type, std::string_view help);
+    /// The type `Self` names at `location` in the current scope: the extended type, `Self` itself in an interface,
+    /// and, reported as an error, `Self` anywhere else.
+    TypeExprPtr SelfTypeAt(SourceLocation location);
+
+    /// `Self` read as the name of the extended type in an expression or pattern: its path and, for a generic type,
+    /// its type arguments. Reports an error and returns nothing where `Self` cannot be spelled as a name.
+    struct SelfName {
+        std::vector<std::string> segments;
+        std::vector<TypeExprPtr> typeArgs;
+
+        [[nodiscard]] std::string Joined() const;
+    };
+
+    std::optional<SelfName> SelfNameAt(SourceLocation location);
+    /// The expression `Self` starts, with `Self` already consumed: a struct literal `Self { ... }`, a constructor call
+    /// `Self(...)`, or a path such as `Self::Function(...)`, each written as if the extended type were spelled out.
+    ExprPtr ParseSelfExpr(SourceLocation location);
+    /// Whether the current tokens are a shorthand receiver: `self`, `&self`, `&var self`, `*self` or `*var self`
+    /// followed by ',' or ')'.
+    [[nodiscard]] bool CheckShorthandReceiver() const noexcept;
+    /// Parses a shorthand receiver into `parameter`, giving it the type its form names in the current scope.
+    void ParseShorthandReceiver(Param &parameter);
 
     // Shared declaration helpers
     Param ParseParam(bool allowVariadic = false);
@@ -256,6 +306,9 @@ private:
     ExprPtr ParseUnary();
     ExprPtr ParsePostfix();
     ExprPtr ParsePrimary();
+    /// The fields of a struct or case literal from its '{' through its '}'. A field written as a name alone takes the
+    /// binding of that name, as if written `name: name`.
+    void ParseStructInitFields(StructInitExpr &initializer);
     /// Whether the current token begins `fail`, `return`, `break`, or `continue`.
     [[nodiscard]] bool CheckDivergingKeyword() const noexcept;
     /// One of the diverging forms in a position that accepts it: a whole arm, mapping, or `??` fallback body.

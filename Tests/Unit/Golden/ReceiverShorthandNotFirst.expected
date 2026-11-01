@@ -1,0 +1,3 @@
+13:32: error: receiver 'self' must be the first parameter of method 'Late'
+17:23: error: receiver 'self' must be the first parameter of method 'Twice'
+21:15: error: method 'Area' cannot take its receiver by value because this block implements interface 'Shape'

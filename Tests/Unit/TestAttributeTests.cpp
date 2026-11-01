@@ -1,4 +1,4 @@
-// `#Test()` marks a function a test build runs; the parser records it and refuses it where no runner could call it.
+// `#Test` marks a function a test build runs; the parser records it and refuses it where no runner could call it.
 
 #include "Lexer/Lexer.h"
 #include "Syntax/Ast/Ast.h"
@@ -27,29 +27,35 @@ bool Reports(const ParseResult &parsed, const std::string &message) {
 }
 } // namespace
 
-TEST_CASE("#Test() marks a function as a test") {
+TEST_CASE("#Test marks a function as a test, with or without empty parentheses") {
     const auto parsed = ParseSource(R"(
-        #Test()
+        #Test
         func Adds() -> ! TestFailure {}
+
+        #Test()
+        func Older() {}
 
         func Helper() {}
     )");
     REQUIRE_FALSE(parsed.HasErrors());
-    REQUIRE(parsed.module.items.size() == 2);
+    REQUIRE(parsed.module.items.size() == 3);
     const auto *test = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
-    const auto *helper = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
+    const auto *older = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
+    const auto *helper = dynamic_cast<const FuncDecl *>(parsed.module.items[2].get());
     REQUIRE(test != nullptr);
+    REQUIRE(older != nullptr);
     REQUIRE(helper != nullptr);
     CHECK(test->isTest);
+    CHECK(older->isTest);
     CHECK_FALSE(helper->isTest);
 }
 
-TEST_CASE("#Test() refuses arguments, duplicates, non-functions, parameters and generics") {
+TEST_CASE("#Test refuses arguments, duplicates, non-functions, parameters and generics") {
     const auto parsed = ParseSource(R"(
         #Test("named")
         func WithArgument() {}
 
-        #Test()
+        #Test
         #Test()
         func Twice() {}
 
@@ -70,7 +76,7 @@ TEST_CASE("#Test() refuses arguments, duplicates, non-functions, parameters and 
     CHECK(Reports(parsed, "a '#Test' function cannot be generic"));
 }
 
-TEST_CASE("#Test() refuses methods") {
+TEST_CASE("#Test refuses methods") {
     const auto parsed = ParseSource(R"(
         struct Counter { value: int32; }
         extend Counter {

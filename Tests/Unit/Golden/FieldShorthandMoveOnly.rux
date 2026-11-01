@@ -1,0 +1,35 @@
+// A field written as a name alone is an ordinary use of that binding. It never moves on its own, so a move-only
+// binding is reported with the field written out and moved, and a copyable one is copied as it would be in full.
+
+struct Buffer {
+    size: int32;
+}
+
+extend Buffer {
+    func =(&var self, other: &Buffer);
+
+    func ~Buffer(&var self) {}
+}
+
+struct Holder {
+    buffer: Buffer;
+    size: int32;
+}
+
+variant Slot {
+    Empty,
+    Full { buffer: Buffer; },
+}
+
+func Hold(buffer: Buffer) -> Holder {
+    let size = buffer.size;
+    return Holder { buffer, size };
+}
+
+func Fill(buffer: Buffer) -> Slot {
+    return Slot::Full { buffer };
+}
+
+func Main() -> int {
+    return 0;
+}
