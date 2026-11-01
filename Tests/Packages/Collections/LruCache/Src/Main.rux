@@ -17,6 +17,32 @@ func Order(cache: &LruCache<int32, int32>, expected: int32[..]) -> bool {
     return true;
 }
 
+// A value that counts its own destruction, so a value the cache replaces or evicts is seen to be released once.
+struct Tracked {
+    counter: *var int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1;
+        }
+    }
+}
+
+// Replaces one cached value and evicts another, then lets the cache go.
+func ReplaceAndEvict(destroyed: *var int32, kept: *var int32) -> bool {
+    var cache = LruCache<int32, Tracked>(SystemAllocator(), 1, HashInt32, EqualsInt32);
+    cache.Put(1, Tracked { counter: destroyed }) catch { else => return false };
+    cache.Put(1, Tracked { counter: destroyed }) catch { else => return false };
+    if *destroyed != 1 { return false; }
+    cache.Put(2, Tracked { counter: kept }) catch { else => return false };
+    if *destroyed != 2 || *kept != 0 { return false; }
+    return true;
+}
+
 func Main() -> int {
     var cache = LruCache<int32, int32>(SystemAllocator(), 3, HashInt32, EqualsInt32);
     Assert(cache.Capacity() == 3u && cache.Length() == 0u && cache.Get(1) == none, "an empty cache");
@@ -44,5 +70,10 @@ func Main() -> int {
     one.Put(1, 1) catch { else => return 6 };
     Assert(one.Capacity() == 1u && (one.Put(2, 2) catch { else => none } ?? 0) == 1 && Order(one, [2i32]),
            "a cache of one keeps only the latest");
+
+    var destroyed: int32 = 0;
+    var kept: int32 = 0;
+    Assert(ReplaceAndEvict(@destroyed, @kept), "a replaced value and an evicted one are each destroyed once");
+    Assert(destroyed == 2 && kept == 1, "and the value still cached goes with the cache");
     return 0;
 }

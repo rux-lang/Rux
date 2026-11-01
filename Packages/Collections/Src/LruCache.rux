@@ -115,6 +115,8 @@ extend LruCache<K, V> {
 
     /// Caches `value` for `key` as the most recently used, replacing its value if it has one, and evicting the least
     /// recently used entry when the cache is full.
+    /// `value` is moved in. A value it replaces, and the value of an evicted entry, are destroyed once the new one is
+    /// in place.
     /// @param key the key
     /// @param value the value
     /// @returns the key that was evicted, if one was, or why there was no room
@@ -122,7 +124,10 @@ extend LruCache<K, V> {
     pub func Put(self: &var LruCache<K, V>, key: K, value: V) -> K? ! CollectionError {
         match self.index.Get(key) {
             .Some(at) => {
-                self.entries.AsMutableSlice()[at].value <- value;
+                // Moved into a local, the old value is destroyed when the local's life ends rather than leaked.
+                let entry: *var CacheEntry<K, V> = @self.entries.AsMutableSlice()[at];
+                let replaced <- entry.value;
+                entry.value <- value;
                 if at != self.newest {
                     self.Unlink(at);
                     self.LinkNewest(at);
@@ -150,7 +155,9 @@ extend LruCache<K, V> {
         self.Unlink(at);
         let entries = self.entries.AsMutableSlice();
         entries[at].key = key;
-        entries[at].value <- value;
+        let entry: *var CacheEntry<K, V> = @entries[at];
+        let displaced <- entry.value;
+        entry.value <- value;
         self.LinkNewest(at);
         return evicted;
     }

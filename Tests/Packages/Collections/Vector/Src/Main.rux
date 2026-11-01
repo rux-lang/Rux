@@ -257,6 +257,29 @@ func Main() -> ! CollectionError {
     tracked.Clear();
     Assert(destroyed == 6, "and clearing destroys the two that were left");
 
+    // Setting destroys the element it replaces, once, and keeps the new one; replacing hands the old one back.
+    destroyed = 0;
+    var replacedCount: int32 = 0;
+    tracked.Push(Tracked { counter: @destroyed, value: 1 })?;
+    tracked.Push(Tracked { counter: @destroyed, value: 2 })?;
+    tracked.Set(0, Tracked { counter: @replacedCount, value: 10 })?;
+    Assert(destroyed == 1, "setting destroys the element it replaces");
+    Assert(replacedCount == 0, "and not the one it stores");
+    var stored = tracked.Reference(0) ?? Panic("the set element is there");
+    Assert(stored.value == 10, "which now sits at the index");
+    Assert(Refusal(tracked.Set(5, Tracked { counter: @replacedCount, value: 99 })) == CollectionError::IndexOutOfRange,
+        "setting past the length is refused");
+    Assert(replacedCount == 1, "destroying the refused value rather than leaking it");
+    Assert(destroyed == 1, "and touching no element");
+    var previous = tracked.Replace(1, Tracked { counter: @replacedCount, value: 20 }) catch {
+        else => Panic("replacing an element succeeds")
+    };
+    Assert(previous.value == 2, "replacing hands back the element that was there");
+    Assert(destroyed == 1, "without destroying it");
+    tracked.Clear();
+    Assert(replacedCount == 3, "and the vector destroys the two it was given, once each");
+    Assert(destroyed == 1, "while the handed-back element is still alive");
+
     // Insertion moves elements along and keeps order.
     var ordered = Vector<int32>(allocator);
     index = 0;

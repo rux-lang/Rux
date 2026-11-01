@@ -42,7 +42,7 @@ There are no linked lists. They cost a pointer chase per element and an allocati
 
 `AsSlice` and `AsMutableSlice` hand out a borrowed view of a container's elements without copying them, which is how a container reaches [`Rux/Algorithms`](../Algorithms). A `Vector` view covers its initialized elements only, never its spare capacity.
 
-Both read-only and writable slices support `values[i]` and `values[1..3]` directly. Containers use bounds-checked `Get`, `Set`, and `Reference` methods and provide iterator values for `for` loops.
+Both read-only and writable slices support `values[i]` and `values[1..3]` directly. Containers use bounds-checked `Get`, `Set`, `Replace`, and `Reference` methods and provide iterator values for `for` loops. `Set` destroys the element it overwrites once the new one is stored, and `Replace` hands that element back instead, so an element that owns something is never leaked by either.
 
 ## Failure model
 

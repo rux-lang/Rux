@@ -123,18 +123,35 @@ extend Array<T> {
         return @self.data[index];
     }
 
-    /// Replaces the element at `index` with `value`.
-    /// `self` is borrowed mutably; `value` is read by value. Reports `IndexOutOfRange` and changes nothing when
-    /// there is no such index.
-    /// The old element is overwritten rather than destroyed. For an element that owns something, take it out first.
+    /// Replaces the element at `index` with `value`, destroying the element that was there.
+    /// `self` is borrowed mutably; `value` is moved in. The old element is destroyed once the new one is in place,
+    /// so an element that owns something is released rather than leaked; `Replace` hands it back instead. Reports
+    /// `IndexOutOfRange` and changes nothing when there is no such index, and `value` is then destroyed here.
     /// @param index which one, counting from zero
-    /// @param value the value to act on
+    /// @param value the element to store
     /// @returns nothing when the element was written, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/array#set
     pub func Set(self: &var Array<T>, index: uint, value: T) -> ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
+        // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
+        let previous <- self.data[index];
         self.data[index] <- value;
         return;
+    }
+
+    /// Replaces the element at `index` with `value` and hands back the element that was there.
+    /// `self` is borrowed mutably; `value` is moved in and the old element is moved out to the caller rather than
+    /// destroyed. Reports `IndexOutOfRange` and changes nothing when there is no such index, and `value` is then
+    /// destroyed here.
+    /// @param index which one, counting from zero
+    /// @param value the element to store
+    /// @returns the element that was at `index`, or `IndexOutOfRange`
+    /// @see https://rux-lang.dev/docs/api/collections/array#replace
+    pub func Replace(self: &var Array<T>, index: uint, value: T) -> T ! CollectionError {
+        if index >= self.length { fail CollectionError::IndexOutOfRange; }
+        let previous <- self.data[index];
+        self.data[index] <- value;
+        return <-previous;
     }
 
     /// The whole array as a borrowed read-only view.

@@ -205,5 +205,23 @@ func Main() -> int {
     owning.Clear();
     Assert(destroyed == 20, "clearing destroys exactly what it held");
 
+    // Setting destroys the element it replaces, wherever the ring has put it; replacing hands it back instead.
+    destroyed = 0;
+    var replacements: int32 = 0;
+    owning.PushBack(Tracked { counter: @destroyed, value: 1 }) catch { else => Panic("an element goes in at the back") };
+    owning.PushFront(Tracked { counter: @destroyed, value: 0 }) catch { else => Panic("and one at the front") };
+    owning.Set(0, Tracked { counter: @replacements, value: 10 }) catch { else => Panic("setting an element succeeds") };
+    Assert(destroyed == 1, "setting destroys the element it replaces");
+    Assert(replacements == 0, "and not the one it stores");
+    Assert(Refusal(owning.Set(2, Tracked { counter: @replacements, value: 99 })) == CollectionError::IndexOutOfRange,
+        "setting past the end is refused");
+    Assert(replacements == 1, "destroying the refused value rather than leaking it");
+    var previous = owning.Replace(1, Tracked { counter: @replacements, value: 20 }) catch {
+        else => Panic("replacing an element succeeds")
+    };
+    Assert(previous.value == 1 && destroyed == 1, "replacing hands back the element without destroying it");
+    owning.Clear();
+    Assert(replacements == 3, "and the deque destroys the two it was given, once each");
+
     return 0;
 }
