@@ -383,11 +383,6 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
             case LirOpcode::Div:
                 if (rightIsOne)
                     return KnownValue{std::nullopt, leftReg};
-                if (leftIsZero && !rightIsZero) {
-                    if (auto zero = ParseConstant("0", instruction.type)) {
-                        return KnownValue{zero, std::nullopt};
-                    }
-                }
                 break;
             case LirOpcode::And:
                 if (rightIsZero || leftIsZero) {

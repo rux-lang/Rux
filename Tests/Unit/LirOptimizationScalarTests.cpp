@@ -164,3 +164,21 @@ TEST_CASE("CFG verifier rejects unsupported rotate widths and counts") {
     auto verifier = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Debug);
     CHECK(verifier.RunLir(package).HasErrors());
 }
+
+TEST_CASE("Constant propagation preserves dynamic integer division traps with zero numerators") {
+    const auto source = R"(
+        func Signed(divisor: int64) -> int64 { return 0i64 / divisor; }
+        func Unsigned(divisor: uint64) -> uint64 { return 0u64 / divisor; }
+        func Narrow(divisor: uint8) -> uint8 { return 0u8 / divisor; }
+        func KnownNonzero() -> uint64 { return 0u64 / 7u64; }
+        func Remainder(divisor: uint64) -> uint64 { return 0u64 % divisor; }
+    )";
+    auto package = CompileToLir(source, BuildProfile::Debug);
+    REQUIRE_EQ(Count(package, LirOpcode::Div), 4U);
+    REQUIRE_EQ(Count(package, LirOpcode::Mod), 1U);
+
+    Optimization::LirConstantPropagation propagation;
+    static_cast<void>(propagation.Run(package, {}));
+    CHECK_EQ(Count(package, LirOpcode::Div), 3U);
+    CHECK_EQ(Count(package, LirOpcode::Mod), 1U);
+}
