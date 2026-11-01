@@ -481,7 +481,7 @@ TEST_CASE("removed mutable parameters provide final binding and reference syntax
     CHECK_EQ(parsed.diagnostics[0].message, "mutable parameter syntax 'var value: T' has been removed");
     REQUIRE(parsed.diagnostics[0].help.has_value());
     CHECK(parsed.diagnostics[0].help->contains("value: T"));
-    CHECK(parsed.diagnostics[0].help->contains("var local <- value"));
+    CHECK(parsed.diagnostics[0].help->contains("var local = move value"));
     CHECK(parsed.diagnostics[0].help->contains("value: &var T"));
 
     CHECK_EQ(parsed.diagnostics[1].message, "mutable parameter syntax 'var self: T' has been removed");

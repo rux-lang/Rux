@@ -352,6 +352,14 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         if (simpleAssignment) {
             ExpectContextualCaseArgument(assignment->value.get(), target);
         }
+        // `a = move b` is the same transfer as the older `a <- b`: the destination is replaced and never copied into.
+        // Moving a place into itself is caught before the operand is consumed, so it is reported once.
+        const auto *movedValue =
+            assignment->op == TokenKind::Assign ? AstCast<const MoveExpr>(assignment->value.get()) : nullptr;
+        if (movedValue && movedValue->operand &&
+            RejectSelfMove(*assignment->target, *movedValue->operand, assignment->location)) {
+            return TypeRef::MakeOpaque();
+        }
         TypeRef value = CheckExpr(*assignment->value);
         // `a = b = 7` reads as a chain, but the inner assignment is a statement-like expression with no value.
         if (const auto *inner = AstCast<const AssignExpr>(assignment->value.get())) {
@@ -392,7 +400,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         else if (isAssignable) {
             const FuncDecl *copyOperation = nullptr;
-            if (assignment->op == TokenKind::Assign && target->kind != TypeRef::Kind::Reference) {
+            if (assignment->op == TokenKind::Assign && !movedValue && target->kind != TypeRef::Kind::Reference) {
                 const TypeProperties properties = ClassifyTypeProperties(target);
                 if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
                     copyOperation = LookupSourceSpecialOperation(target, "=", assignment->location);
@@ -402,6 +410,11 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                 }
                 else {
                     copyOperation = LookupMethod(target, "=", {value});
+                }
+                // A bodyless `=` is the older spelling of `#NoCopy`: the type is move-only, and its assignments
+                // follow the same rules as any other move-only type's.
+                if (copyOperation && !copyOperation->body) {
+                    copyOperation = nullptr;
                 }
             }
             if (copyOperation) {
@@ -414,12 +427,6 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                               AssignmentErrorMessage(
                                   *assignment->value, target,
                                   std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
-                    return TypeRef::MakeOpaque();
-                }
-                if (!copyOperation->body) {
-                    EmitError(assignment->location, std::format("copying type '{}' is prohibited", target.ToString()),
-                              {"the type declares its canonical copy operation without a body"},
-                              "use '<-' if ownership should move instead");
                     return TypeRef::MakeOpaque();
                 }
                 // Only a source that stays with another owner — a named place, borrowed storage, or a reference — is
@@ -443,20 +450,22 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                               std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
             }
             else if (simpleAssignment) {
-                const bool explicitMove = assignment->op == TokenKind::MoveArrow;
+                const bool arrowMove = assignment->op == TokenKind::MoveArrow;
+                const bool explicitMove = arrowMove || movedValue;
                 if (explicitMove && target->kind == TypeRef::Kind::Reference) {
                     EmitError(assignment->location, "cannot move ownership into a reference",
                               {"a reference target stores a non-owning alias"},
                               "write '=' to assign or reborrow the reference");
                     return TypeRef::MakeOpaque();
                 }
-                if (explicitMove && RejectSelfMove(*assignment->target, *assignment->value, assignment->location)) {
+                if (arrowMove && RejectSelfMove(*assignment->target, *assignment->value, assignment->location)) {
                     return TypeRef::MakeOpaque();
                 }
-                if (explicitMove) {
+                if (arrowMove) {
                     ConsumeExplicitValue(*assignment->value, value, assignment->location);
                 }
                 else if (target->kind != TypeRef::Kind::Reference) {
+                    // A `move` operand recorded its own transfer, which this leaves alone.
                     ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
                 }
                 if (!writtenReference) {
@@ -647,9 +656,7 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
                 continue;
             }
             if (!properties.IsMovable()) {
-                EmitError(deferred.location, std::format("moving type '{}' is prohibited", resolved.ToString()),
-                          {"the type declares its canonical move operation without a body"},
-                          "borrow the value or construct a distinct replacement instead");
+                ReportProhibitedMove(resolved, deferred.location);
                 continue;
             }
             // Recorded without asking whether the source was a legal place to move from. That question is answered
@@ -658,13 +665,10 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
             // pointer from a borrowed one, so a container moving out of its own block and a caller moving out of a
             // borrowed slice look alike. Diagnosing the second without forbidding the first needs a way to say which
             // is which; until there is one, this records what to consume and leaves the legality alone.
-            const MovePlace place = AnalyzeMovePlace(*deferred.expression);
-            const bool constructsDestination = place.IsNamedStorage();
             // The unsubstituted type for the same reason as the copy record above: lowering substitutes the
-            // instantiation's own type argument and resolves its own move operation.
-            valueConsumptions.insert_or_assign(
-                deferred.expression,
-                ValueConsumption{deferred.kind, deferred.type, deferred.location, nullptr, constructsDestination});
+            // instantiation's own type argument.
+            valueConsumptions.insert_or_assign(deferred.expression,
+                                               ValueConsumption{deferred.kind, deferred.type, deferred.location});
         }
     }
 }

@@ -57,10 +57,9 @@ Type = "Executable"
 Output = "Artifacts"
 )");
     WriteTextFile(root / "Src" / "Nested" / "Main.rux", R"(func Main() -> int { return 0; }
+#NoMove
 struct Cell { value: int32; }
 extend Cell {
-    func =(self: &var Cell, other: &Cell);
-    func <-(self: &var Cell, other: Cell) {}
     func ~Cell(self: &var Cell) {}
 }
 func Borrow(shared: &Cell, exclusive: &var Cell) -> int { return shared.value; }
@@ -130,7 +129,7 @@ func ReadResult(value: Result<int32, State>) -> int32 {
     CHECK(ast.contains("VariantDecl 'Result'<T, E>"));
     CHECK(ast.contains("Case 'Success' (T)"));
     CHECK(sema.contains("func Borrow(shared: &Cell, exclusive: &var Cell) -> int"));
-    CHECK(sema.contains("Cell                          copy=prohibited move=custom drop=yes"));
+    CHECK(sema.contains("Cell                          copy=prohibited move=prohibited drop=yes"));
     CHECK(hir.starts_with("=== High-level Intermediate Representation ==="));
     CHECK(hir.contains("enum State: uint8"));
     CHECK(hir.contains("variant Result<T, E>"));

@@ -139,11 +139,11 @@ TEST_CASE("AST dumps spell references and lifecycle operations canonically") {
 struct Cell { value: int32; }
 extend Cell {
     func =(self: &var Cell, other: &Cell);
-    func <-(self: &var Cell, other: Cell) {}
+    func <-(self: &var Cell, other: Cell);
     func ~Cell(self: &var Cell) {}
 }
 func Transfer(source: Cell) -> Cell {
-    let result <- source;
+    let result = move source;
     return <- result;
 }
 )";
@@ -163,11 +163,11 @@ func Transfer(source: Cell) -> Cell {
     std::filesystem::remove(path);
 
     CHECK(output.contains("FuncDecl '=' (self: &var Cell, other: &Cell) [signature]"));
-    CHECK(output.contains("FuncDecl '<-' (self: &var Cell, other: Cell)"));
+    CHECK(output.contains("FuncDecl '<-' (self: &var Cell, other: Cell) [signature]"));
     CHECK(output.contains("FuncDecl '~Cell' (self: &var Cell)"));
-    const std::size_t firstMove = output.find("MoveExpr <-");
+    const std::size_t firstMove = output.find("MoveExpr move");
     REQUIRE_NE(firstMove, std::string::npos);
-    CHECK_NE(output.find("MoveExpr <-", firstMove + 1), std::string::npos);
+    CHECK_NE(output.find("MoveExpr move", firstMove + 1), std::string::npos);
 }
 
 TEST_CASE("AST dumps spell slices and ranges with the punctuation they are written in") {

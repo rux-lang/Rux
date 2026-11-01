@@ -1,0 +1,26 @@
+// 'move' consumes an owning value, so a name that only borrows cannot be moved, and an owner cannot be moved while a
+// borrow of it is still in use.
+struct Buffer {
+    size: int32;
+}
+
+extend Buffer {
+    func =(&var self, other: &Buffer);
+
+    func ~Buffer(&var self) {}
+}
+
+func FromReference(buffer: &Buffer) -> int32 {
+    let local = move buffer;
+    return local.size;
+}
+
+func WhileBorrowed(buffer: Buffer) -> int32 {
+    let view: &Buffer = buffer;
+    let moved = move buffer;
+    return view.size;
+}
+
+func Main() -> int {
+    return 0;
+}

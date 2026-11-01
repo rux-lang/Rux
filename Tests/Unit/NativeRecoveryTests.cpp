@@ -169,7 +169,7 @@ TEST_CASE("catch consumes its subject and moves the error it binds") {
             return owned.handle;
         }
     )");
-    CHECK(AnyContains(implicit, "requires an explicit '<-' in catch subject"));
+    CHECK(AnyContains(implicit, "requires an explicit 'move' in catch subject"));
 
     const auto pinned = ErrorsIn(R"(
         func MakePinned() -> int32 ! Pinned { return 1i32; }

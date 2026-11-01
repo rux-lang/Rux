@@ -147,23 +147,21 @@ TEST_CASE("coalescing lowers to one presence match with a lazy fallback arm") {
     CHECK(dynamic_cast<const HirCallExpr *>(match.arms[1].body.get()) != nullptr);
 }
 
-TEST_CASE("coalescing uses the payload custom move plan") {
+TEST_CASE("coalescing moves a move-only payload out as a plain read of its binding") {
     const HirPackage package = LowerCoalescingSource(R"(
         struct Handle { value: int32; }
         extend Handle {
             func =(self: &var Handle, other: &Handle);
-            func <-(self: &var Handle, other: Handle) { self.value = other.value; }
             func ~Handle(self: &var Handle) {}
         }
         func Fallback() -> Handle { return Handle { value: 9i32 }; }
         func Pick(option: Handle?) -> int32 {
-            let value = (<-option) ?? Fallback();
+            let value = (move option) ?? Fallback();
             return value.value;
         }
     )");
 
+    // A move is the payload's bytes and runs no code, so the arm reads the hidden binding as it stands.
     const HirMatchExpr &match = RequireCoalescingMatch(RequireCoalescingFunction(package, "Pick"));
-    const auto *moved = dynamic_cast<const HirMoveExpr *>(match.arms[0].body.get());
-    REQUIRE(moved != nullptr);
-    CHECK_EQ(moved->plan.kind, HirMovePlan::Kind::Custom);
+    CHECK(dynamic_cast<const HirVarExpr *>(match.arms[0].body.get()) != nullptr);
 }

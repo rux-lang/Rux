@@ -1,0 +1,2 @@
+18:20: error: value 'a' is used after it was moved
+23:18: error: cannot move field 'buffer' out of droppable value 'holder'

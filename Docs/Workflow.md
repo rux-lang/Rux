@@ -67,7 +67,7 @@ Changes to values, references, constructors, special operations, or cleanup cros
 - Lowering tests cover interface views, scratch-copy replacement, source invalidation, drop flags, partial construction, and cleanup on every control-flow exit. Backend tests cover concrete and interface-reference ABI shapes rather than re-deciding ownership.
 - A user-visible behavior change gets an executable package under `Tests/Language/`; a rejected legacy spelling stays as a focused negative or golden diagnostic fixture.
 - Safe call-time parameters and receivers use `&T` or `&var T`. Keep `*T` and `*var T` only for FFI, nullable values, stored addresses, pointer arithmetic, raw storage, or an intentionally unsafe API, and state that boundary in the affected package README.
-- Named ownership transfers use `<-`; copyable values use `=`. Resource owners prohibit copying and provide `~Type`; infallible exact-type construction uses `Type(...)`, while fallible or descriptive factories keep their names.
+- Named ownership transfers use `move` (`let x = move y;`, `Take(move value)`); copyable values use `=`. The older `<-` spelling is still accepted while packages migrate. Resource owners prohibit copying and provide `~Type`, and a type that must stay in place is `#NoMove`; infallible exact-type construction uses `Type(...)`, while fallible or descriptive factories keep their names.
 
 When a diagnostic changes, regenerate and review every affected golden file. When a package API changes, update its tests, README, API comments, and examples in the same change.
 

@@ -286,34 +286,6 @@ struct HirCopyExpr : HirExpr {
     HirCopyPlan plan;
 };
 
-/// Recursive recipe for relocating a named value into fresh destination storage. Generated aggregate nodes move each
-/// component; custom leaves invoke the selected `<-` operation with the source value exactly once.
-struct HirMovePlan {
-    enum class Kind {
-        Trivial,
-        Custom,
-        Structure,
-        Array,
-        Tuple,
-        Variant,
-    };
-
-    Kind kind = Kind::Trivial;
-    CaseTypeForm form = CaseTypeForm::Enumeration;
-    TypeRef type;
-    std::string customCallee;
-    std::vector<std::string> componentNames;
-    std::vector<HirMovePlan> components;
-    std::vector<std::string> variantDiscriminants;
-    std::vector<std::vector<TypeRef>> variantPayloadTypes;
-    std::vector<std::vector<HirMovePlan>> variantComponents;
-};
-
-struct HirMoveExpr : HirExpr {
-    HirExprPtr value;
-    HirMovePlan plan;
-};
-
 /// a = b, a <- b, a += b, etc.
 struct HirAssignExpr : HirExpr {
     TokenKind op;

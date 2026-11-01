@@ -46,6 +46,7 @@ enum class TokenKind : std::uint8_t {
     LoopKeyword,      // loop
     MatchKeyword,     // match
     ModuleKeyword,    // module
+    MoveKeyword,      // move
     NoneKeyword,      // none
     NullKeyword,      // null
     PubKeyword,       // pub

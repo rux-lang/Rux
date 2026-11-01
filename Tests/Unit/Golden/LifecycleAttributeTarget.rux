@@ -1,0 +1,22 @@
+// '#NoCopy' and '#NoMove' describe a type's values, so they apply only to a struct, variant or union, once each.
+#NoCopy
+func Copy() {}
+
+#NoMove
+const Limit: int32 = 4i32;
+
+#NoCopy
+#NoCopy
+struct Twice {
+    value: int32;
+}
+
+#NoMove(1)
+union Bits {
+    word: uint32,
+    bytes: uint8[4],
+}
+
+func Main() -> int {
+    return 0;
+}

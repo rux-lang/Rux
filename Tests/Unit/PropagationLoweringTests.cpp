@@ -250,30 +250,26 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
     CHECK_EQ(returned->cleanups.front().name, "guard");
 }
 
-TEST_CASE("propagation invokes custom moves for both active payload channels") {
+TEST_CASE("propagation moves both active payload channels as plain reads of their bindings") {
     const HirPackage package = LowerSource(R"(
         struct Handle { value: int32; }
         extend Handle {
             func =(self: &var Handle, other: &Handle);
-            func <-(self: &var Handle, other: Handle) { self.value = other.value; }
             func ~Handle(self: &var Handle) {}
         }
         func Forward(input: Handle ! Handle) -> Handle ! Handle {
-            let value = (<-input)?;
-            return .Success(<-value);
+            let value = (move input)?;
+            return .Success(move value);
         }
     )");
+    // A move is the payload's bytes and runs no code, so each channel reads its hidden binding as it stands.
     const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Forward"), 0);
-    const auto *success = dynamic_cast<const HirMoveExpr *>(match.arms[0].body.get());
-    REQUIRE(success != nullptr);
-    CHECK_EQ(success->plan.kind, HirMovePlan::Kind::Custom);
+    CHECK(dynamic_cast<const HirVarExpr *>(match.arms[0].body.get()) != nullptr);
     const HirReturnStmt &returned = RequireEarlyReturn(match);
     const auto *constructed = dynamic_cast<const HirEnumConstructExpr *>(returned.value->get());
     REQUIRE(constructed != nullptr);
     REQUIRE_EQ(constructed->payloads.size(), 1);
-    const auto *failure = dynamic_cast<const HirMoveExpr *>(constructed->payloads.front().get());
-    REQUIRE(failure != nullptr);
-    CHECK_EQ(failure->plan.kind, HirMovePlan::Kind::Custom);
+    CHECK(dynamic_cast<const HirVarExpr *>(constructed->payloads.front().get()) != nullptr);
 }
 
 TEST_CASE("generic propagation emits only concrete function instantiations") {

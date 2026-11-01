@@ -157,34 +157,34 @@ func EmptyError() -> uint ! () {
 
 struct Relocated {
     value: uint64;
-    moves: *var int;
+    drops: *var int;
 }
 
 extend Relocated {
     func =(self: &var Relocated, other: &Relocated);
-    func <-(self: &var Relocated, other: Relocated) {
-        self.value = other.value;
-        self.moves = other.moves;
-        *self.moves += 1;
+    func ~Relocated(&var self) {
+        *self.drops += 1;
     }
 }
 
-func RelocatedError(moves: *var int) -> ! Relocated {
-    fail Relocated { value: 991u64, moves: moves };
+func RelocatedError(drops: *var int) -> ! Relocated {
+    fail Relocated { value: 991u64, drops: drops };
 }
 
-func RelocatedForward(moves: *var int) -> uint ! Relocated {
-    RelocatedError(moves)?;
+func RelocatedForward(drops: *var int) -> uint ! Relocated {
+    RelocatedError(drops)?;
     return 0u;
 }
 
-func OwnRelocated(moves: *var int) {
-    let result = RelocatedForward(moves);
-    Assert(*moves == 1, "propagation invokes the error payload's custom move exactly once");
-    match <-result {
-        .Failure(value) => Assert(value.value == 991u64 && *moves == 2, "explicit matching performs its separate move"),
+// A move is the payload's bytes and runs no code, so neither transfer destroys or touches the error.
+func OwnRelocated(drops: *var int) {
+    let result = RelocatedForward(drops);
+    Assert(*drops == 0, "propagation moves the error payload without destroying it");
+    match move result {
+        .Failure(value) => Assert(value.value == 991u64 && *drops == 0, "explicit matching moves the payload whole"),
         .Success(_) => Assert(false, "expected relocated error")
     }
+    Assert(*drops == 1, "the moved error payload is destroyed exactly once");
 }
 
 func Main() -> int {
@@ -272,8 +272,8 @@ func Main() -> int {
         .Failure(_) => {},
         .Success(_) => Assert(false, "zero-sized error payload still propagates")
     }
-    var moves = 0;
-    OwnRelocated(@moves);
-    Assert(moves == 2, "custom relocation runs only at the two explicit transfer boundaries");
+    var relocatedDrops = 0;
+    OwnRelocated(@relocatedDrops);
+    Assert(relocatedDrops == 1, "the relocated error is destroyed once, by its last owner");
     return 0;
 }

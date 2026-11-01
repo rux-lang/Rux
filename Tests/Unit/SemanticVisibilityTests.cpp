@@ -406,21 +406,19 @@ TEST_CASE("generated lifecycle operations and private destructors remain compile
     CHECK(diagnostics.empty());
 }
 
-TEST_CASE("custom copy and move operations require pub but private capability prohibitions still apply") {
+TEST_CASE("custom copy operations require pub but private capability prohibitions still apply") {
     const std::string dependency = R"(
         pub struct CustomCopy { pub value: int; }
         extend CustomCopy {
             func =(self: &var CustomCopy, other: &CustomCopy) { self.value = other.value; }
         }
-        pub struct CustomMove { pub value: int; }
-        extend CustomMove {
-            func <-(self: &var CustomMove, other: CustomMove) { self.value = other.value; }
-        }
         pub struct NoCopy { pub value: int; }
         extend NoCopy { func =(self: &var NoCopy, other: &NoCopy); }
+        #NoCopy
+        pub struct Marked { pub value: int; }
         pub func CopyValue() -> CustomCopy { return CustomCopy { value: 1 }; }
-        pub func MoveValue() -> CustomMove { return CustomMove { value: 2 }; }
         pub func NoCopyValue() -> NoCopy { return NoCopy { value: 3 }; }
+        pub func MarkedValue() -> Marked { return Marked { value: 4 }; }
     )";
 
     const auto customCopy = AnalyzePackages({{"main.rux", R"(
@@ -430,20 +428,22 @@ TEST_CASE("custom copy and move operations require pub but private capability pr
                                             {{"api.rux", dependency}});
     CHECK_MESSAGE(HasMessage(customCopy, "copy operation '=' is private to package 'Library'"), Messages(customCopy));
 
-    const auto customMove = AnalyzePackages({{"main.rux", R"(
-        import Library::MoveValue;
-        func Main() { let value = MoveValue(); let moved <- value; }
-    )"}},
-                                            {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(customMove, "move operation '<-' is private to package 'Library'"), Messages(customMove));
-
     const auto prohibited = AnalyzePackages({{"main.rux", R"(
         import Library::NoCopyValue;
         func Main() { let value = NoCopyValue(); let copied = value; }
     )"}},
                                             {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(prohibited, "move-only value 'value' requires an explicit '<-'"), Messages(prohibited));
+    CHECK_MESSAGE(HasMessage(prohibited, "move-only value 'value' requires an explicit 'move'"), Messages(prohibited));
     CHECK_FALSE(HasMessage(prohibited, "private to package"));
+
+    // An attribute belongs to the type, so it applies wherever the type is used.
+    const auto marked = AnalyzePackages({{"main.rux", R"(
+        import Library::MarkedValue;
+        func Main() { let value = MarkedValue(); let copied = value; let moved = move value; }
+    )"}},
+                                        {{"api.rux", dependency}});
+    CHECK_MESSAGE(HasMessage(marked, "move-only value 'value' requires an explicit 'move'"), Messages(marked));
+    CHECK_FALSE(HasMessage(marked, "private to package"));
 }
 
 TEST_CASE("effective public API closure rejects private types in every exposed position") {

@@ -196,7 +196,7 @@ Param Parser::ParseParam(const bool allowVariadic) {
                                : Check(TokenKind::Ident)       ? Peek().text
                                                                : "value";
         EmitError(Previous().location, "mutable parameter syntax 'var " + name + ": T' has been removed",
-                  "write '" + name + ": T' and create 'var local <- " + name + "' in the body, or write '" + name +
+                  "write '" + name + ": T' and create 'var local = move " + name + "' in the body, or write '" + name +
                       ": &var T' to mutate caller storage");
     }
 

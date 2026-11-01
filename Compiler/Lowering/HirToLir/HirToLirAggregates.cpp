@@ -810,10 +810,6 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         StoreCopyIntoSlot(*copy, slot);
         return;
     }
-    if (auto *move = HirCast<const HirMoveExpr>(&expr)) {
-        StoreMoveIntoSlot(*move, slot);
-        return;
-    }
     if (auto *init = HirCast<const HirStructInitExpr>(&expr)) {
         StoreStructInit(*init, slot);
         return;
@@ -1004,104 +1000,6 @@ void HirToLirContext::StoreCopyIntoSlot(const HirCopyExpr &expression, const Lir
 LirReg HirToLirContext::LowerCopy(const HirCopyExpr &expression) {
     const LirReg slot = EmitAlloca(expression.type);
     StoreCopyIntoSlot(expression, slot);
-    return expression.type->kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
-}
-
-void HirToLirContext::EmitMovePlan(const HirMovePlan &plan, const LirReg source, const LirReg destination) {
-    if (plan.kind == HirMovePlan::Kind::Custom) {
-        LirInstr call;
-        call.op = LirOpcode::Call;
-        call.type = TypeRef::MakeOpaque();
-        call.srcs = {destination, EmitLoad(source, plan.type)};
-        call.strArg = plan.customCallee;
-        if (const auto convention = funcConvs.find(plan.customCallee); convention != funcConvs.end()) {
-            call.callConv = convention->second;
-        }
-        Emit(std::move(call));
-        return;
-    }
-    if (plan.kind == HirMovePlan::Kind::Structure || plan.kind == HirMovePlan::Kind::Tuple) {
-        for (std::size_t index = 0; index < plan.components.size(); ++index) {
-            const std::string name =
-                plan.kind == HirMovePlan::Kind::Structure ? plan.componentNames[index] : std::to_string(index);
-            const HirMovePlan &component = plan.components[index];
-            EmitMovePlan(component, EmitFieldPtr(source, name, component.type),
-                         EmitFieldPtr(destination, name, component.type));
-        }
-        return;
-    }
-    if (plan.kind == HirMovePlan::Kind::Array && !plan.components.empty()) {
-        const HirMovePlan &element = plan.components.front();
-        for (std::uint64_t index = 0; index < plan.type->arrayLength.value_or(0); ++index) {
-            const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
-            EmitMovePlan(element, EmitIndexPtr(source, offset, element.type),
-                         EmitIndexPtr(destination, offset, element.type));
-        }
-        return;
-    }
-    if (plan.kind == HirMovePlan::Kind::Variant) {
-        if (plan.form != CaseTypeForm::Variant) {
-            BuilderFailure("scalar enum reached variant move-plan lowering");
-        }
-        // Relocate all trivial bytes first. The active case then replaces only payload fields whose own move has
-        // behavior, leaving inactive storage untouched and never invoking a move operation for the wrong case.
-        EmitStore(EmitLoad(source, plan.type), destination, plan.type);
-        const TypeRef tagType = EnumTagType(plan.type);
-        const LirReg tag = EmitLoad(source, tagType);
-        const std::size_t variantCount = std::min(
-            {plan.variantDiscriminants.size(), plan.variantPayloadTypes.size(), plan.variantComponents.size()});
-        for (std::size_t variantIndex = 0; variantIndex < variantCount; ++variantIndex) {
-            const auto &payloadTypes = plan.variantPayloadTypes[variantIndex];
-            const auto &payloadPlans = plan.variantComponents[variantIndex];
-            if (std::ranges::none_of(payloadPlans, [](const HirMovePlan &component) {
-                    return component.kind != HirMovePlan::Kind::Trivial;
-                })) {
-                continue;
-            }
-
-            const std::uint32_t payloadBlock = NewBlock("move.variant");
-            const std::uint32_t afterBlock = NewBlock("move.variant.after");
-            Branch(EmitBinary(LirOpcode::CmpEq, tag, EmitConst(plan.variantDiscriminants[variantIndex], tagType),
-                              TypeRef::MakeBool()),
-                   payloadBlock, afterBlock);
-            SetBlock(payloadBlock);
-            std::uint64_t offset = tagType.SizeInBytes().value_or(8);
-            const std::size_t payloadCount = std::min(payloadTypes.size(), payloadPlans.size());
-            for (std::size_t payloadIndex = 0; payloadIndex < payloadCount; ++payloadIndex) {
-                const TypeRef &payloadType = payloadTypes[payloadIndex];
-                const auto [size, alignment] = TypeLayoutOf(payloadType);
-                offset = (offset + alignment - 1) / alignment * alignment;
-                const HirMovePlan &component = payloadPlans[payloadIndex];
-                if (component.kind != HirMovePlan::Kind::Trivial) {
-                    const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
-                    const LirReg sourceBytes = EmitIndexPtr(source, byteOffset, TypeRef::MakeChar8());
-                    const LirReg destinationBytes = EmitIndexPtr(destination, byteOffset, TypeRef::MakeChar8());
-                    EmitMovePlan(component,
-                                 EmitCast(sourceBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
-                                          TypeRef::MakePointer(payloadType)),
-                                 EmitCast(destinationBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
-                                          TypeRef::MakePointer(payloadType)));
-                }
-                offset += size;
-            }
-            if (!IsTerminated()) {
-                Jump(afterBlock);
-            }
-            SetBlock(afterBlock);
-        }
-        return;
-    }
-    EmitStore(EmitLoad(source, plan.type), destination, plan.type);
-}
-
-void HirToLirContext::StoreMoveIntoSlot(const HirMoveExpr &expression, const LirReg slot) {
-    const LirReg source = LowerLValue(*expression.value);
-    EmitMovePlan(expression.plan, source, slot);
-}
-
-LirReg HirToLirContext::LowerMove(const HirMoveExpr &expression) {
-    const LirReg slot = EmitAlloca(expression.type);
-    StoreMoveIntoSlot(expression, slot);
     return expression.type->kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
 }
 

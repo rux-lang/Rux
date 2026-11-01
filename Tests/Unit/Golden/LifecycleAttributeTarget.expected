@@ -1,0 +1,4 @@
+2:1: error: '#NoCopy' can only be applied to a struct, variant or union
+5:1: error: '#NoMove' can only be applied to a struct, variant or union
+9:2: error: duplicate '#NoCopy' attribute
+14:9: error: '#NoMove' does not accept arguments

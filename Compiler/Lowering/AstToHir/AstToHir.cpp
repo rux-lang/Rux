@@ -484,19 +484,9 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
                 lowered = std::move(read);
             }
             if (const ValueConsumption *consumption = model.TryGetConsumption(expr)) {
+                // A move is the value's bytes and nothing else, so the source is read as it stands; the consumption
+                // only stops the source from being destroyed as well.
                 const std::uint64_t bindingId = ConsumedBindingId(*lowered);
-                if (consumption->constructsDestination) {
-                    const TypeRef targetType = SubstituteCurrentType(consumption->type);
-                    HirMovePlan plan = BuildMovePlan(targetType, consumption->customOperation);
-                    if (plan.kind != HirMovePlan::Kind::Trivial) {
-                        auto moved = std::make_unique<HirMoveExpr>();
-                        moved->location = lowered->location;
-                        moved->type = targetType;
-                        moved->plan = std::move(plan);
-                        moved->value = std::move(lowered);
-                        lowered = std::move(moved);
-                    }
-                }
                 lowered->consumption = consumption->kind;
                 lowered->consumedBindingId = bindingId;
             }

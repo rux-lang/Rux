@@ -15,40 +15,41 @@ namespace {
 std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string &place) {
     switch (kind) {
     case ValueConsumptionKind::Initialization:
-        return std::format("write 'let destination <- {}' to transfer ownership", place);
+        return std::format("write 'let destination = move {}' to transfer ownership", place);
     case ValueConsumptionKind::Assignment:
-        return std::format("write 'destination <- {}' to transfer ownership", place);
+        return std::format("write 'destination = move {}' to transfer ownership", place);
     case ValueConsumptionKind::Argument:
-        return std::format("prefix the argument with '<-', as in 'Take(<-{})'", place);
+        return std::format("write 'move' before the argument, as in 'Take(move {})'", place);
     case ValueConsumptionKind::Receiver:
-        return std::format("prefix the receiver with '<-', as in '(<-{}).Method()'", place);
+        return std::format("write 'move' before the receiver, as in '(move {}).Method()'", place);
     case ValueConsumptionKind::Return:
-        return std::format("prefix the return value with '<-', as in 'return <-{}'", place);
+        return std::format("write 'move' before the return value, as in 'return move {}'", place);
     case ValueConsumptionKind::Aggregate:
-        return std::format("prefix the aggregate value with '<-', as in '{{ field: <-{} }}'", place);
+        return std::format("write 'move' before the aggregate value, as in '{{ field: move {} }}'", place);
     case ValueConsumptionKind::FieldShorthand:
         // The shorthand never moves on its own, so the help writes the field out with the move.
-        return std::format("write '{}: <-{}'", place, place);
+        return std::format("write '{}: move {}'", place, place);
     case ValueConsumptionKind::ArrayRepeat:
         return "write the elements explicitly or initialize move-only elements in a loop";
     case ValueConsumptionKind::ConditionalArm:
-        return std::format("prefix the selected value with '<-', as in 'condition ? <-{} : fallback'", place);
+        return std::format(
+            "write 'move' before the selected value, as in 'if condition {{ move {} }} else {{ fallback }}'", place);
     case ValueConsumptionKind::PropagationOperand:
-        return std::format("prefix the outcome with '<-', as in '(<-{})?'", place);
+        return std::format("write 'move' before the outcome, as in '(move {})?'", place);
     case ValueConsumptionKind::CoalescingOperand:
-        return std::format("prefix the option with '<-', as in '(<-{}) ?? fallback'", place);
+        return std::format("write 'move' before the option, as in '(move {}) ?? fallback'", place);
     case ValueConsumptionKind::CoalescingFallback:
-        return std::format("prefix the fallback with '<-', as in 'option ?? <-{}'", place);
+        return std::format("write 'move' before the fallback, as in 'option ?? move {}'", place);
     case ValueConsumptionKind::MatchSubject:
-        return std::format("transfer the subject with 'match <-{}'", place);
+        return std::format("transfer the subject with 'match move {}'", place);
     case ValueConsumptionKind::CatchSubject:
-        return std::format("transfer the subject with '(<-{}) catch {{ ... }}'", place);
+        return std::format("transfer the subject with '(move {}) catch {{ ... }}'", place);
     case ValueConsumptionKind::ConstructorOperand:
-        return std::format("prefix the operand with '<-', as in '.Success(<-{})'", place);
+        return std::format("write 'move' before the operand, as in '.Success(move {})'", place);
     case ValueConsumptionKind::ExplicitMove:
         break;
     }
-    return std::format("prefix the value with '<-', as in '<-{}'", place);
+    return std::format("write 'move' before the value, as in 'move {}'", place);
 }
 } // namespace
 
@@ -1065,7 +1066,7 @@ bool AnalysisContext::RejectImplicitMove(const Expr &expression, const TypeRef &
     const std::string display = place.Display();
     EmitError(
         location,
-        std::format("move-only value '{}' requires an explicit '<-' in {}", display, ValueConsumptionKindName(kind)),
+        std::format("move-only value '{}' requires an explicit 'move' in {}", display, ValueConsumptionKindName(kind)),
         {std::format("plain by-value use copies its source, but '{}' prohibits copying", type.ToString())},
         ExplicitMoveHelp(kind, display));
     return true;
@@ -1117,19 +1118,19 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     }
     // A fresh temporary has no named source whose later use could hide an ownership transfer, but lowering still
     // needs the consumption fact to transfer its drop flag into the destination instead of destroying both values.
-    if (!properties.IsMovable()) {
-        EmitError(location, std::format("moving type '{}' is prohibited", type.ToString()),
-                  {"the type declares its canonical move operation without a body"},
-                  "borrow the value or construct a distinct replacement instead");
-        return;
-    }
+    // Nothing can have taken the temporary's address yet, so it is built where it lands even for a `#NoMove` type.
     if (!ValidateMoveSource(expression, location)) {
         return;
     }
     if (!MoveTrackedExpression(expression, location)) {
-        valueConsumptions.insert_or_assign(
-            &expression, ValueConsumption{kind, type, location, nullptr, /*constructsDestination=*/false});
+        valueConsumptions.insert_or_assign(&expression, ValueConsumption{kind, type, location});
     }
+}
+
+void AnalysisContext::ReportProhibitedMove(const TypeRef &type, const SourceLocation location) {
+    EmitError(location, std::format("moving type '{}' is prohibited", type.ToString()),
+              {"a '#NoMove' type, or one holding a '#NoMove' value, stays where it was built"},
+              "borrow the value or construct a distinct replacement instead");
 }
 
 bool AnalysisContext::IsFreshTemporarySource(const Expr &expression, const TypeRef &type,
@@ -1155,7 +1156,7 @@ void AnalysisContext::ConsumeExplicitValue(const Expr &expression, const TypeRef
     if (type->kind == TypeRef::Kind::Reference) {
         EmitError(location, "cannot move a non-owning reference",
                   {"references borrow storage but do not own the value they address"},
-                  "pass or assign the reference without '<-', or move the owning value instead");
+                  "pass or assign the reference without 'move', or move the owning value instead");
         return;
     }
     if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
@@ -1169,26 +1170,15 @@ void AnalysisContext::ConsumeExplicitValue(const Expr &expression, const TypeRef
     }
     const TypeProperties properties = ClassifyTypeProperties(type);
     if (!properties.IsMovable()) {
-        EmitError(location, std::format("moving type '{}' is prohibited", type.ToString()),
-                  {"the type declares its canonical move operation without a body"},
-                  "borrow the value or construct a distinct replacement instead");
+        ReportProhibitedMove(type, location);
         return;
     }
     if (!ValidateMoveSource(expression, location)) {
         return;
     }
     if (!MoveTrackedExpression(expression, location)) {
-        const MovePlace place = AnalyzeMovePlace(expression);
-        const bool constructsDestination = place.IsNamedStorage();
-        const FuncDecl *custom = nullptr;
-        if (constructsDestination && properties.moveOperation == TypeProperties::SpecialOperationState::Custom) {
-            custom = LookupSourceSpecialOperation(type, "<-", location);
-            if (!custom) {
-                return;
-            }
-        }
-        valueConsumptions.insert_or_assign(&expression, ValueConsumption{ValueConsumptionKind::ExplicitMove, type,
-                                                                         location, custom, constructsDestination});
+        valueConsumptions.insert_or_assign(&expression,
+                                           ValueConsumption{ValueConsumptionKind::ExplicitMove, type, location});
     }
 }
 

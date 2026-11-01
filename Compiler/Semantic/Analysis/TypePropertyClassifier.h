@@ -47,6 +47,8 @@ private:
     [[nodiscard]] TypeProperties ClassifyEnum(const EnumDecl &declaration, const std::vector<TypeRef> &arguments);
     [[nodiscard]] TypeProperties ClassifyUnion(const UnionDecl &declaration);
     [[nodiscard]] bool DeclaresDestructor(const TypeRef &type, const std::vector<TypeRef> &arguments) const;
+    /// The copy (`=`) or move (`<-`) operation the type declares for itself: prohibited by `#NoCopy` or `#NoMove` (or
+    /// by the equivalent bodyless operator), custom for a copy operation with a body, or nothing when it is generated.
     [[nodiscard]] std::optional<TypeProperties::SpecialOperationState>
     DeclaredSpecialOperation(const TypeRef &type, const std::vector<TypeRef> &arguments, std::string_view name) const;
     [[nodiscard]] bool IsCanonicalSpecialOperation(const FuncDecl &method, const TypeRef &type,

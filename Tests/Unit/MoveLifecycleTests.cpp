@@ -3,84 +3,74 @@
 using namespace Rux;
 using namespace Rux::Testing::MoveConsumptionTestSupport;
 
-TEST_CASE("named moves invoke recursive custom operations while temporaries transfer directly") {
+TEST_CASE("named moves read their source as it stands and run no code") {
+    // A move is the value's bytes followed by forgetting the source, so nothing wraps the read: no copy and no hook.
+    // The consumption fact is what keeps the source's destructor from running as well.
     const std::string source = R"(
 
         struct Cell { value: int32; }
         extend Cell {
             func =(self: &var Cell, other: &Cell);
             func ~Cell(self: &var Cell) {}
-            func <-(self: &var Cell, other: Cell) {
-                self.value = other.value;
-            }
         }
 
         struct Wrapper { cell: Cell; tag: int32; }
 
         func Move(source: Wrapper) -> Wrapper {
-            let local <- source;
-            return <- local;
+            let local = move source;
+            return move local;
         }
-        func Fresh() -> Wrapper {
-            return Wrapper { cell: Cell { value: 1 }, tag: 2 };
+        func Older(source: Wrapper) -> Wrapper {
+            let local <- source;
+            return <-local;
         }
     )";
 
     const HirPackage hir = LowerConsumptionHir(source);
-    const HirFunc &move = RequireFunction(hir, "Move");
-    REQUIRE(move.body.has_value());
-    const auto *local = dynamic_cast<const HirLetStmt *>(move.body->stmts[0].get());
-    const auto *returned = dynamic_cast<const HirReturnStmt *>(move.body->stmts[1].get());
-    REQUIRE(local != nullptr);
-    REQUIRE(returned != nullptr);
-    REQUIRE(returned->value.has_value());
-    const auto *localMove = dynamic_cast<const HirMoveExpr *>(local->init.get());
-    const auto *returnMove = dynamic_cast<const HirMoveExpr *>((*returned->value).get());
-    REQUIRE(localMove != nullptr);
-    REQUIRE(returnMove != nullptr);
-    CHECK_EQ(localMove->consumedBindingId, move.params[0].bindingId);
-    CHECK_EQ(returnMove->consumedBindingId, local->bindingId);
-    CHECK_EQ(localMove->plan.kind, HirMovePlan::Kind::Structure);
-    REQUIRE_EQ(localMove->plan.components.size(), 2);
-    CHECK_EQ(localMove->plan.components[0].kind, HirMovePlan::Kind::Custom);
-    const std::string moveSymbol = localMove->plan.components[0].customCallee;
-    CHECK_FALSE(moveSymbol.empty());
-    CHECK_EQ(returnMove->plan.components[0].customCallee, moveSymbol);
-
-    const HirFunc &fresh = RequireFunction(hir, "Fresh");
-    REQUIRE(fresh.body.has_value());
-    const auto *freshReturn = dynamic_cast<const HirReturnStmt *>(fresh.body->stmts[0].get());
-    REQUIRE(freshReturn != nullptr);
-    REQUIRE(freshReturn->value.has_value());
-    CHECK(dynamic_cast<const HirMoveExpr *>((*freshReturn->value).get()) == nullptr);
-
-    const LirPackage lir = LowerConsumptionLir(source);
-    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Move"), moveSymbol), 2);
+    for (const std::string name : {"Move", "Older"}) {
+        CAPTURE(name);
+        const HirFunc &move = RequireFunction(hir, name);
+        REQUIRE(move.body.has_value());
+        const auto *local = dynamic_cast<const HirLetStmt *>(move.body->stmts[0].get());
+        const auto *returned = dynamic_cast<const HirReturnStmt *>(move.body->stmts[1].get());
+        REQUIRE(local != nullptr);
+        REQUIRE(returned != nullptr);
+        REQUIRE(returned->value.has_value());
+        const auto *localRead = dynamic_cast<const HirVarExpr *>(local->init.get());
+        const auto *returnRead = dynamic_cast<const HirVarExpr *>((*returned->value).get());
+        REQUIRE(localRead != nullptr);
+        REQUIRE(returnRead != nullptr);
+        CHECK_EQ(localRead->consumption, ValueConsumptionKind::ExplicitMove);
+        CHECK_EQ(localRead->consumedBindingId, move.params[0].bindingId);
+        CHECK_EQ(returnRead->consumedBindingId, local->bindingId);
+    }
 }
 
-TEST_CASE("custom move assignment reuses conditional destination cleanup") {
+TEST_CASE("move assignment destroys the replaced destination through its conditional cleanup") {
     const std::string source = R"(
         struct Cell { value: int32; }
         extend Cell {
             func =(self: &var Cell, other: &Cell);
             func ~Cell(self: &var Cell) {}
-            func <-(self: &var Cell, other: Cell) {
-                self.value = other.value;
-            }
         }
 
         func Replace(destination: Cell, source: Cell) {
-            var target <- destination;
-            target <- source;
+            var target = move destination;
+            target = move source;
         }
         func Initialize(source: Cell) {
             var destination: Cell;
-            destination <- source;
+            destination = move source;
+        }
+        func Older(destination: Cell, source: Cell) {
+            var target <- destination;
+            target <- source;
         }
     )";
 
     const HirPackage hir = LowerConsumptionHir(source);
-    for (const std::string name : {"Replace", "Initialize"}) {
+    for (const std::string name : {"Replace", "Initialize", "Older"}) {
+        CAPTURE(name);
         const HirFunc &function = RequireFunction(hir, name);
         REQUIRE(function.body.has_value());
         const auto *statement = dynamic_cast<const HirExprStmt *>(function.body->stmts[1].get());
@@ -89,10 +79,86 @@ TEST_CASE("custom move assignment reuses conditional destination cleanup") {
         REQUIRE(assignment != nullptr);
         REQUIRE(assignment->overwriteCleanup.has_value());
         CHECK_NE(assignment->overwriteCleanup->bindingId, 0);
-        const auto *move = dynamic_cast<const HirMoveExpr *>(assignment->value.get());
-        REQUIRE(move != nullptr);
-        CHECK_EQ(move->plan.kind, HirMovePlan::Kind::Custom);
-        CHECK_FALSE(move->plan.customCallee.empty());
+        const auto *read = dynamic_cast<const HirVarExpr *>(assignment->value.get());
+        REQUIRE(read != nullptr);
+        CHECK_EQ(read->consumption, ValueConsumptionKind::ExplicitMove);
+        CHECK_NE(read->consumedBindingId, 0);
+    }
+}
+
+TEST_CASE("custom move hooks are rejected and the type keeps its generated move") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        struct Cursor { position: int32; }
+        extend Cursor {
+            func <-(&var self, other: Cursor) { self.position = other.position; }
+        }
+        func Transfer(source: Cursor) -> Cursor {
+            let moved = move source;
+            return move moved;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "custom move hooks are not supported");
+    CHECK_EQ(diagnostics[0].help, "a type that must stay in place uses '#NoMove'");
+}
+
+TEST_CASE("'#NoMove' values are built in place and never moved") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        #NoMove
+        struct Node { next: *var Node; }
+        extend Node {
+            func ~Node(&var self) {}
+        }
+        func Build() -> Node { return Node { next: null }; }
+        func Accept(node: Node) {}
+        func InPlace() -> int32 {
+            let built = Build();
+            let literal = Node { next: null };
+            Accept(Build());
+            return 0;
+        }
+        func Moves(node: Node) {
+            let moved = move node;
+        }
+        func Copies(node: Node) {
+            let copied = node;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "moving type 'Node' is prohibited");
+    REQUIRE_EQ(diagnostics[0].notes.size(), 1);
+    CHECK_EQ(diagnostics[0].notes[0], "a '#NoMove' type, or one holding a '#NoMove' value, stays where it was built");
+    CHECK_EQ(diagnostics[0].help, "borrow the value or construct a distinct replacement instead");
+    CHECK_EQ(diagnostics[1].message, "move-only value 'node' requires an explicit 'move' in initialization");
+}
+
+TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
+    const std::string body = R"(
+        func Make() -> Handle { return Handle { value: 1 }; }
+        func Uses(source: Handle) -> int32 {
+            var target = Make();
+            target = Make();
+            target = move source;
+            let copied = target;
+            return 0;
+        }
+    )";
+    const std::vector<SemanticDiagnostic> attribute = AnalyzeConsumptionDiagnostics(R"(
+        #NoCopy
+        struct Handle { value: int32; }
+    )" + body);
+    const std::vector<SemanticDiagnostic> operation = AnalyzeConsumptionDiagnostics(R"(
+        struct Handle { value: int32; }
+        extend Handle { func =(&var self, other: &Handle); }
+    )" + body);
+
+    for (const auto *diagnostics : {&attribute, &operation}) {
+        REQUIRE_EQ(diagnostics->size(), 1);
+        CHECK_EQ(diagnostics->front().message,
+                 "move-only value 'target' requires an explicit 'move' in initialization");
+        CHECK_EQ(diagnostics->front().help, "write 'let destination = move target' to transfer ownership");
     }
 }
 
@@ -309,12 +375,11 @@ TEST_CASE("generated variant copies recursively copy the active owning payload")
     CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Clone"), copySymbol), 1);
 }
 
-TEST_CASE("variant move plans dispatch custom moves for only the active case") {
+TEST_CASE("variant moves are byte copies with no per-case dispatch") {
     const std::string source = R"(
         struct Handle { value: int32; }
         extend Handle {
             func =(self: &var Handle, other: &Handle);
-            func <-(self: &var Handle, other: Handle) { self.value = other.value; }
             func ~Handle(self: &var Handle) {}
         }
 
@@ -324,81 +389,30 @@ TEST_CASE("variant move plans dispatch custom moves for only the active case") {
             Pair(int32, Handle),
             Named { sequence: uint64; handle: Handle; }
         }
+        variant Maybe<T> { None, Some(T) }
+        variant Envelope<T> { Empty, Direct(T), Nested(Maybe<T>) }
 
         func Take(value: Choice) {}
         func Transfer(source: Choice) {
-            let moved <- source;
-            Take(<-moved);
+            let moved = move source;
+            Take(move moved);
+        }
+        func Nested(source: Envelope<Handle>) {
+            let moved = move source;
         }
     )";
 
     const HirPackage hir = LowerConsumptionHir(source);
-    const HirFunc &transfer = RequireFunction(hir, "Transfer");
-    REQUIRE(transfer.body.has_value());
-    REQUIRE_GE(transfer.body->stmts.size(), 2);
-    const auto *binding = dynamic_cast<const HirLetStmt *>(transfer.body->stmts[0].get());
-    REQUIRE(binding != nullptr);
-    const auto *move = dynamic_cast<const HirMoveExpr *>(binding->init.get());
-    REQUIRE(move != nullptr);
-    CHECK_EQ(move->plan.kind, HirMovePlan::Kind::Variant);
-    CHECK_EQ(move->plan.form, CaseTypeForm::Variant);
-    CHECK_EQ(move->plan.variantDiscriminants, std::vector<std::string>{"0", "1", "2", "3"});
-    REQUIRE_EQ(move->plan.variantPayloadTypes.size(), 4);
-    CHECK(move->plan.variantPayloadTypes[0].empty());
-    CHECK_EQ(move->plan.variantPayloadTypes[1], std::vector<TypeRef>{TypeRef::MakeNamed("Handle")});
-    CHECK_EQ(move->plan.variantPayloadTypes[2],
-             std::vector<TypeRef>{TypeRef::MakeInt32(), TypeRef::MakeNamed("Handle")});
-    CHECK_EQ(move->plan.variantPayloadTypes[3],
-             std::vector<TypeRef>{TypeRef::MakeUInt64(), TypeRef::MakeNamed("Handle")});
-    REQUIRE_EQ(move->plan.variantComponents.size(), 4);
-    CHECK(move->plan.variantComponents[0].empty());
-    REQUIRE_EQ(move->plan.variantComponents[1].size(), 1);
-    CHECK_EQ(move->plan.variantComponents[1][0].kind, HirMovePlan::Kind::Custom);
-    REQUIRE_EQ(move->plan.variantComponents[2].size(), 2);
-    CHECK_EQ(move->plan.variantComponents[2][0].kind, HirMovePlan::Kind::Trivial);
-    CHECK_EQ(move->plan.variantComponents[2][1].kind, HirMovePlan::Kind::Custom);
-    REQUIRE_EQ(move->plan.variantComponents[3].size(), 2);
-    CHECK_EQ(move->plan.variantComponents[3][1].kind, HirMovePlan::Kind::Custom);
-    const std::string moveSymbol = move->plan.variantComponents[1][0].customCallee;
-    CHECK_FALSE(moveSymbol.empty());
-
-    const LirPackage lir = LowerConsumptionLir(source);
-    const LirFunc &lowered = RequireLirFunction(lir, "Transfer");
-    CHECK_GE(LirCallCount(lowered, moveSymbol), 3);
-    CHECK_GE(std::ranges::count_if(lowered.blocks,
-                                   [](const LirBlock &block) { return block.label.starts_with("move.variant"); }),
-             3);
-}
-
-TEST_CASE("nested generic variant move plans preserve substituted active-case structure") {
-    const std::string source = R"(
-        struct Handle { value: int32; }
-        extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func <-(self: &var Handle, other: Handle) { self.value = other.value; }
-            func ~Handle(self: &var Handle) {}
-        }
-        variant Maybe<T> { None, Some(T) }
-        variant Envelope<T> { Empty, Direct(T), Nested(Maybe<T>) }
-        func Transfer(source: Envelope<Handle>) {
-            let moved <- source;
-        }
-    )";
-
-    const HirPackage hir = LowerConsumptionHir(source);
-    const HirFunc &transfer = RequireFunction(hir, "Transfer");
-    REQUIRE(transfer.body.has_value());
-    const auto *binding = dynamic_cast<const HirLetStmt *>(transfer.body->stmts.front().get());
-    REQUIRE(binding != nullptr);
-    const auto *move = dynamic_cast<const HirMoveExpr *>(binding->init.get());
-    REQUIRE(move != nullptr);
-    CHECK_EQ(move->plan.kind, HirMovePlan::Kind::Variant);
-    REQUIRE_EQ(move->plan.variantPayloadTypes.size(), 3);
-    CHECK_EQ(move->plan.variantPayloadTypes[1], std::vector<TypeRef>{TypeRef::MakeNamed("Handle")});
-    CHECK_EQ(move->plan.variantPayloadTypes[2], std::vector<TypeRef>{TypeRef::MakeNamed("Maybe<Handle>")});
-    REQUIRE_EQ(move->plan.variantComponents[2].size(), 1);
-    CHECK_EQ(move->plan.variantComponents[2][0].kind, HirMovePlan::Kind::Variant);
-    CHECK_EQ(move->plan.variantComponents[2][0].form, CaseTypeForm::Variant);
+    for (const std::string name : {"Transfer", "Nested"}) {
+        CAPTURE(name);
+        const HirFunc &transfer = RequireFunction(hir, name);
+        REQUIRE(transfer.body.has_value());
+        const auto *binding = dynamic_cast<const HirLetStmt *>(transfer.body->stmts.front().get());
+        REQUIRE(binding != nullptr);
+        const auto *read = dynamic_cast<const HirVarExpr *>(binding->init.get());
+        REQUIRE(read != nullptr);
+        CHECK_EQ(read->consumption, ValueConsumptionKind::ExplicitMove);
+    }
 }
 
 TEST_CASE("scalar enums remain trivial copies and never acquire variant lifecycle plans") {

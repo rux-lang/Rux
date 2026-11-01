@@ -176,11 +176,15 @@ private:
         bool usedNoReturn = false;
         bool usedTest = false;
         bool usedUnsendable = false;
+        bool usedNoCopy = false;
+        bool usedNoMove = false;
         bool usedAbi = false;
         SourceLocation linkLocation;
         SourceLocation noReturnLocation;
         SourceLocation testLocation;
         SourceLocation unsendableLocation;
+        SourceLocation noCopyLocation;
+        SourceLocation noMoveLocation;
         SourceLocation abiLocation;
         SourceLocation allowLocation;
     };

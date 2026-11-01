@@ -35,6 +35,7 @@ const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"loop", TokenKind::LoopKeyword},
     {"match", TokenKind::MatchKeyword},
     {"module", TokenKind::ModuleKeyword},
+    {"move", TokenKind::MoveKeyword},
     {"none", TokenKind::NoneKeyword},
     {"null", TokenKind::NullKeyword},
     {"pub", TokenKind::PubKeyword},
@@ -140,6 +141,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "ExtendKeyword";
     case TokenKind::ModuleKeyword:
         return "ModuleKeyword";
+    case TokenKind::MoveKeyword:
+        return "MoveKeyword";
     case TokenKind::ImportKeyword:
         return "ImportKeyword";
     case TokenKind::PubKeyword:

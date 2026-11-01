@@ -319,7 +319,6 @@ private:
                                        LirReg right, const TypeRef &tagType);
     LirReg LowerAssign(const HirAssignExpr &expression);
     LirReg LowerCopy(const HirCopyExpr &expression);
-    LirReg LowerMove(const HirMoveExpr &expression);
     LirReg LowerInterfaceCall(const HirInterfaceCallExpr &expression);
     LirReg GlobalStorageAddr(const HirGlobal &global);
     LirReg LowerAtomicBuiltin(const HirCallExpr &e, std::string_view operation);
@@ -339,8 +338,6 @@ private:
     void StoreExprValueIntoSlot(const HirExpr &expression, LirReg slot, const TypeRef &type);
     void StoreCopyIntoSlot(const HirCopyExpr &expression, LirReg slot);
     void EmitCopyPlan(const HirCopyPlan &plan, LirReg source, LirReg destination);
-    void StoreMoveIntoSlot(const HirMoveExpr &expression, LirReg slot);
-    void EmitMovePlan(const HirMovePlan &plan, LirReg source, LirReg destination);
     LirReg LowerTernary(const HirTernaryExpr &expression);
     void StoreMatchInit(const HirMatchExpr &expression, LirReg slot, const TypeRef &type);
     LirReg LowerMatchExpr(const HirMatchExpr &expression);

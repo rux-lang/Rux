@@ -1,0 +1,32 @@
+// A '#NoMove' value stays where it was built: it is created in place from a temporary, but a named one cannot be
+// moved by 'move', by the older '<-', or as part of a value that holds it.
+#NoMove
+struct Node {
+    next: *var Node;
+}
+
+struct Holder {
+    node: Node;
+}
+
+func Take(node: Node) {}
+
+func Build() -> Node {
+    return Node { next: null };
+}
+
+func Moves() {
+    let first = Build();
+    let second = move first;
+    let third <- first;
+    Take(move first);
+}
+
+func Nested() -> Holder {
+    let holder = Holder { node: Node { next: null } };
+    return move holder;
+}
+
+func Main() -> int {
+    return 0;
+}

@@ -249,7 +249,7 @@ protected:
     [[nodiscard]] std::unique_ptr<HirEnumPattern> NativeCasePattern(const TypeRef &type, std::uint64_t tag,
                                                                     const std::optional<TypeRef> &payloadType,
                                                                     HirPatternPtr payload, SourceLocation location);
-    /// A hidden binding read as the value it holds, moved out when its type needs a move plan.
+    /// A hidden binding read as the value it holds. Moving it out is a byte copy, so the read is the whole transfer.
     [[nodiscard]] HirExprPtr TransferredBinding(const std::string &name, const TypeRef &type, SourceLocation location);
     /// A match over `value` that rebuilds every alternative as `destination`, converting payloads that differ.
     [[nodiscard]] HirExprPtr
@@ -268,7 +268,6 @@ protected:
     /// Copy and move recipes for a native level: one variant case per alternative, its payload copied or moved
     /// recursively, and nothing when every payload is trivial.
     [[nodiscard]] HirCopyPlan BuildNativeCopyPlan(const TypeRef &type);
-    [[nodiscard]] HirMovePlan BuildNativeMovePlan(const TypeRef &type);
     /// A native case, presence, `none`, typed, or sum-member pattern lowered against `subjectType`, or null for a
     /// pattern the nominal lowering handles.
     [[nodiscard]] HirPatternPtr LowerNativePattern(const Pattern &pattern, const TypeRef &subjectType);
@@ -512,8 +511,6 @@ private:
                                                        const FuncDecl &method);
     [[nodiscard]] HirCopyPlan BuildCopyPlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] HirCopyPlan BuildEnumCopyPlan(const TypeRef &type, const EnumDecl &declaration);
-    [[nodiscard]] HirMovePlan BuildEnumMovePlan(const TypeRef &type, const EnumDecl &declaration);
-    [[nodiscard]] HirMovePlan BuildMovePlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);
     [[nodiscard]] bool TypeIsConcrete(const TypeRef &type);

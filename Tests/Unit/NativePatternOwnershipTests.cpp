@@ -211,7 +211,7 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
             }
         }
     )");
-    CHECK(AnyContains(implicit, "move-only value 'value' requires an explicit '<-' in match subject"));
+    CHECK(AnyContains(implicit, "move-only value 'value' requires an explicit 'move' in match subject"));
 
     const auto twice = ErrorsIn(R"(
         func Twice(value: Owned?) {
@@ -273,7 +273,7 @@ TEST_CASE("constructor operands transfer by value exactly once") {
             let present: Owned? = .Some(owned);
         }
     )");
-    CHECK(AnyContains(implicit, "move-only value 'owned' requires an explicit '<-' in native constructor"));
+    CHECK(AnyContains(implicit, "move-only value 'owned' requires an explicit 'move' in native constructor"));
 
     const auto twice = ErrorsIn(R"(
         func Construct(owned: Owned) {
@@ -306,7 +306,7 @@ TEST_CASE("return and fail require explicit transfers of move-only values") {
             fail owned;
         }
     )");
-    CHECK_EQ(CountContaining(implicit, "requires an explicit '<-' in return"), 2);
+    CHECK_EQ(CountContaining(implicit, "requires an explicit 'move' in return"), 2);
 }
 
 TEST_CASE("arms merge the ownership states they leave") {

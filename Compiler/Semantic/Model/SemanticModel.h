@@ -259,14 +259,13 @@ struct ResolvedTypeLayout {
     std::uint64_t alignment = 1;
 };
 
-/// A by-value expression whose ownership transfers to a new storage location or callable. Lowering uses this fact to
-/// avoid treating a move as an implicit clone and later cleanup passes use it to suppress destruction of the source.
+/// A by-value expression whose ownership transfers to a new storage location or callable. The transfer itself is always
+/// a byte copy that runs no user code; lowering uses this fact to avoid treating a move as an implicit clone, and later
+/// cleanup passes use it to suppress destruction of the source.
 struct ValueConsumption {
     ValueConsumptionKind kind;
     TypeRef type;
     SourceLocation location;
-    const FuncDecl *customOperation = nullptr;
-    bool constructsDestination = false;
 };
 
 /// A named place copied into a by-value destination. Generated copies are represented without a declaration; custom

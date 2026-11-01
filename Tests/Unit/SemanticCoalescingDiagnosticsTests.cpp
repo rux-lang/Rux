@@ -90,7 +90,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
             let selected = option ?? <-fallback;
         }
     )");
-    CHECK(HasCoalescingError(implicitOperand, "requires an explicit '<-' in coalescing operand"));
+    CHECK(HasCoalescingError(implicitOperand, "requires an explicit 'move' in coalescing operand"));
 
     const auto implicitFallback = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
@@ -102,7 +102,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
             let selected = (<-option) ?? fallback;
         }
     )");
-    CHECK(HasCoalescingError(implicitFallback, "requires an explicit '<-' in coalescing fallback"));
+    CHECK(HasCoalescingError(implicitFallback, "requires an explicit 'move' in coalescing fallback"));
 
     const auto conditionalMove = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }

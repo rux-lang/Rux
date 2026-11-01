@@ -1,0 +1,33 @@
+// A move is always a byte copy that forgets its source, so a type cannot run code when it moves. A move operator
+// with a body is rejected, in either receiver spelling; the bodyless form still prohibits moving, as '#NoMove' does.
+struct Cursor {
+    position: int32;
+}
+
+extend Cursor {
+    func <-(&var self, other: Cursor) {
+        self.position = other.position;
+    }
+}
+
+struct Relocated {
+    value: int32;
+}
+
+extend Relocated {
+    func <-(self: &var Relocated, other: Relocated) {}
+}
+
+struct Pinned {
+    value: int32;
+}
+
+extend Pinned {
+    func <-(&var self, other: Pinned);
+}
+
+func Main() -> int {
+    let cursor = Cursor { position: 1i32 };
+    let moved = move cursor;
+    return moved.position as int;
+}

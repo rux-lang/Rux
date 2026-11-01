@@ -296,8 +296,8 @@ TEST_CASE("propagation requires explicit transfer of a named move-only outcome")
         }
     )");
     const auto &error =
-        RequireDiagnostic(diagnostics, "move-only value 'input' requires an explicit '<-' in propagation operand");
-    CHECK_EQ(error.help, "prefix the outcome with '<-', as in '(<-input)?'");
+        RequireDiagnostic(diagnostics, "move-only value 'input' requires an explicit 'move' in propagation operand");
+    CHECK_EQ(error.help, "write 'move' before the outcome, as in '(move input)?'");
 }
 
 TEST_CASE("propagation records an explicit operand transfer for later reads") {

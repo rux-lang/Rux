@@ -280,6 +280,12 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
         return left == right;
     };
     const bool copy = method.name == "=";
+    if (!copy && method.body) {
+        // A move is always a byte copy that forgets its source; no user code runs for it.
+        EmitError(method.location, "custom move hooks are not supported", {},
+                  "a type that must stay in place uses '#NoMove'");
+        return;
+    }
     const auto operationSignature = [&] {
         if (!method.typeParams.empty() || method.params.size() != 2 || method.returnType ||
             method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isVariadic ||
@@ -345,7 +351,7 @@ const FuncDecl *AnalysisContext::LookupSourceSpecialOperation(const TypeRef &typ
     }
     const FuncDecl *declared = LookupMethod(type, name, {type}, false);
     if (declared && !IsAccessible(*declared)) {
-        EmitPrivacyError(location, *declared, operation == "=" ? "copy operation" : "move operation", operation);
+        EmitPrivacyError(location, *declared, "copy operation", operation);
     }
     return nullptr;
 }

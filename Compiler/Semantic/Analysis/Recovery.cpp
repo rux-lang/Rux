@@ -81,7 +81,7 @@ TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
                 expression.bindingLocation,
                 std::format("the error '{}' cannot be discarded with '_' because it is move-only", error.ToString()),
                 {"the mapper owns the error, and a move-only value is never dropped silently"},
-                "bind the error and transfer it, as in '? else (e => Wrap(<-e))'");
+                "bind the error and transfer it, as in '? else (e => Wrap(move e))'");
         }
     }
     else {
@@ -166,7 +166,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
                       std::format("'catch' cannot bind error payload '{}' by value because moving it is prohibited",
                                   error.ToString()),
                       {"a catch arm owns the error it binds, which moves it out of the subject"},
-                      "match the subject with a non-binding pattern, or permit the canonical move operation");
+                      "match the subject with a non-binding pattern, or remove '#NoMove' from the error type");
         }
         // A block arm yields its last expression written without a ';', or `()`, which only a unit success takes.
         ExpectArmValue(*arm.body, success);

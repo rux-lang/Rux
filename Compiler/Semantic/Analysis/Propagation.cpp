@@ -194,7 +194,7 @@ bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const Sourc
                   std::format("'{}' cannot extract payload type '{}' because moving it is prohibited", operation,
                               payload.ToString()),
                   {"extracting an outcome transfers its active payload into the result"},
-                  "use an explicit match and copy the payload, or permit the canonical move operation");
+                  "use an explicit match and copy the payload, or remove '#NoMove' from the payload type");
         return false;
     }
     return true;

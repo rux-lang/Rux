@@ -46,6 +46,191 @@ TEST_CASE("explicit move syntax parses in bindings assignments calls and returns
     CHECK(dynamic_cast<const MoveExpr *>(call->args[0].get()) != nullptr);
 }
 
+TEST_CASE("the move keyword is a unary prefix with ordinary precedence in every position") {
+    Lexer lexer(R"(
+        func Positions(a: int32, b: int32, pair: (int32, int32), holder: Holder, opt: int32?) -> int32 {
+            let sum = move a + b;
+            let field = move holder.size;
+            let (left, right) = move pair;
+            let propagated = (move opt)?;
+            sum = move b;
+            match move opt { _ => {} }
+            if move opt is .Some(v) {}
+            return move left;
+        }
+    )",
+                "move_keyword.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "move_keyword.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto &statements = function->body->stmts;
+    REQUIRE_EQ(statements.size(), 8);
+    const auto initializer = [&](const std::size_t index) -> const Expr * {
+        const auto *binding = dynamic_cast<const LetStmt *>(statements[index].get());
+        REQUIRE(binding != nullptr);
+        return binding->init.get();
+    };
+    const auto movedOperand = [](const Expr *expression) -> const Expr * {
+        const auto *move = dynamic_cast<const MoveExpr *>(expression);
+        REQUIRE(move != nullptr);
+        return move->operand.get();
+    };
+
+    // `move a + b` is `(move a) + b`.
+    const auto *sum = dynamic_cast<const BinaryExpr *>(initializer(0));
+    REQUIRE(sum != nullptr);
+    CHECK(dynamic_cast<const IdentExpr *>(movedOperand(sum->left.get())) != nullptr);
+    CHECK(dynamic_cast<const IdentExpr *>(sum->right.get()) != nullptr);
+    // `move holder.size` moves the field.
+    const auto *field = dynamic_cast<const FieldExpr *>(movedOperand(initializer(1)));
+    REQUIRE(field != nullptr);
+    CHECK_EQ(field->field, "size");
+    // A destructuring binding takes the moved tuple.
+    CHECK(dynamic_cast<const IdentExpr *>(movedOperand(initializer(2))) != nullptr);
+    // `(move opt)?` moves before propagating.
+    const auto *propagated = dynamic_cast<const TryExpr *>(initializer(3));
+    REQUIRE(propagated != nullptr);
+    CHECK(dynamic_cast<const MoveExpr *>(propagated->operand.get()) != nullptr);
+    // `a = move b` is an ordinary assignment whose value is moved.
+    const auto *statement = dynamic_cast<const ExprStmt *>(statements[4].get());
+    REQUIRE(statement != nullptr);
+    const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
+    REQUIRE(assignment != nullptr);
+    CHECK_EQ(assignment->op, TokenKind::Assign);
+    CHECK(dynamic_cast<const MoveExpr *>(assignment->value.get()) != nullptr);
+    const auto *match = dynamic_cast<const MatchStmt *>(statements[5].get());
+    REQUIRE(match != nullptr);
+    CHECK(dynamic_cast<const MoveExpr *>(match->subject.get()) != nullptr);
+    // `move opt is .Some(v)` tests the moved subject.
+    const auto *test = dynamic_cast<const IfStmt *>(statements[6].get());
+    REQUIRE(test != nullptr);
+    const auto *is = dynamic_cast<const IsExpr *>(test->condition.get());
+    REQUIRE(is != nullptr);
+    CHECK(dynamic_cast<const MoveExpr *>(is->operand.get()) != nullptr);
+    const auto *returned = dynamic_cast<const ReturnStmt *>(statements[7].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    CHECK(dynamic_cast<const MoveExpr *>(returned->value->get()) != nullptr);
+}
+
+TEST_CASE("move is a reserved keyword that cannot name a binding") {
+    Lexer lexer("func Bind() { let move = 1; }", "move_binding.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "move_binding.rux");
+    const auto parsed = parser.Parse();
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(parsed.diagnostics[0].message, "'move' is a reserved keyword and cannot name a binding");
+    CHECK_EQ(parsed.diagnostics[0].help, "choose another name, such as 'moved'");
+}
+
+TEST_CASE("move and the older arrow record the same consumption facts") {
+    const std::string source = R"(
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
+        func Take(handle: Handle) {}
+        func Keyword(source: Handle, other: Handle) {
+            let bound = move source;
+            var target = move other;
+            target = move bound;
+            Take(move target);
+        }
+        func Arrow(source: Handle, other: Handle) {
+            let bound <- source;
+            var target <- other;
+            target <- bound;
+            Take(<-target);
+        }
+    )";
+    Lexer lexer(source, "move_facts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "move_facts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    // Each function moves four named places. Whatever the spelling, each one is consumed as an explicit move of a
+    // 'Handle', and nothing is copied.
+    for (const std::size_t item : {3U, 4U}) {
+        CAPTURE(item);
+        const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[item].get());
+        REQUIRE(function != nullptr);
+        std::vector<const Expr *> sources;
+        for (const auto &statement : function->body->stmts) {
+            const Expr *value = nullptr;
+            if (const auto *binding = dynamic_cast<const LetStmt *>(statement.get())) {
+                value = binding->init.get();
+            }
+            else if (const auto *expression = dynamic_cast<const ExprStmt *>(statement.get())) {
+                if (const auto *assignment = dynamic_cast<const AssignExpr *>(expression->expr.get())) {
+                    value = assignment->value.get();
+                }
+                else if (const auto *call = dynamic_cast<const CallExpr *>(expression->expr.get())) {
+                    value = call->args[0].get();
+                }
+            }
+            REQUIRE(value != nullptr);
+            if (const auto *move = dynamic_cast<const MoveExpr *>(value)) {
+                value = move->operand.get();
+            }
+            sources.push_back(value);
+        }
+        REQUIRE_EQ(sources.size(), 4);
+        for (const Expr *moved : sources) {
+            const ValueConsumption *fact = model.TryGetConsumption(*moved);
+            REQUIRE(fact != nullptr);
+            CHECK_EQ(fact->kind, ValueConsumptionKind::ExplicitMove);
+            CHECK_EQ(fact->type, TypeRef::MakeNamed("Handle"));
+            CHECK(model.TryGetCopy(*moved) == nullptr);
+        }
+    }
+}
+
+TEST_CASE("move keeps every ownership guarantee of the older arrow") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
+        func Take(handle: Handle) {}
+        func UseAfter(source: Handle) -> int32 {
+            Take(move source);
+            return source.value;
+        }
+        func Copyable(count: int32) -> int32 {
+            let moved = move count;
+            return count;
+        }
+        func SelfMove(source: Handle) {
+            var target = move source;
+            target = move target;
+        }
+        func FromReference(handle: &Handle) {
+            let owned = move handle;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "value 'source' is used after it was moved");
+    CHECK_EQ(diagnostics[1].message, "value 'count' is used after it was moved");
+    CHECK_EQ(diagnostics[2].message, "cannot move 'target' into itself");
+    CHECK_EQ(diagnostics[3].message, "cannot move a non-owning reference");
+    CHECK_EQ(diagnostics[3].help, "pass or assign the reference without 'move', or move the owning value instead");
+}
+
 TEST_CASE("explicit moves invalidate copyable places and reject invalid ownership sources") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Pair { first: int32; second: int32; }
@@ -196,12 +381,12 @@ TEST_CASE("named move-only values require explicit transfer syntax in every by-v
     )");
 
     REQUIRE_EQ(diagnostics.size(), 3);
-    CHECK_EQ(diagnostics[0].message, "move-only value 'source' requires an explicit '<-' in initialization");
-    CHECK_EQ(diagnostics[0].help, "write 'let destination <- source' to transfer ownership");
-    CHECK_EQ(diagnostics[1].message, "move-only value 'source' requires an explicit '<-' in argument");
-    CHECK_EQ(diagnostics[1].help, "prefix the argument with '<-', as in 'Take(<-source)'");
-    CHECK_EQ(diagnostics[2].message, "move-only value 'source' requires an explicit '<-' in return");
-    CHECK_EQ(diagnostics[2].help, "prefix the return value with '<-', as in 'return <-source'");
+    CHECK_EQ(diagnostics[0].message, "move-only value 'source' requires an explicit 'move' in initialization");
+    CHECK_EQ(diagnostics[0].help, "write 'let destination = move source' to transfer ownership");
+    CHECK_EQ(diagnostics[1].message, "move-only value 'source' requires an explicit 'move' in argument");
+    CHECK_EQ(diagnostics[1].help, "write 'move' before the argument, as in 'Take(move source)'");
+    CHECK_EQ(diagnostics[2].message, "move-only value 'source' requires an explicit 'move' in return");
+    CHECK_EQ(diagnostics[2].help, "write 'move' before the return value, as in 'return move source'");
 }
 
 TEST_CASE("explicit syntax consumes move-only values in every by-value context") {
@@ -392,7 +577,6 @@ TEST_CASE("an explicit generic store retains ownership transfer for its instanti
     REQUIRE(fact != nullptr);
     CHECK_EQ(fact->kind, ValueConsumptionKind::ExplicitMove);
     CHECK_EQ(fact->type, TypeRef::MakeTypeParam("T"));
-    CHECK_EQ(fact->customOperation, nullptr);
 }
 
 TEST_CASE("an explicit move into a match consumes its subject") {

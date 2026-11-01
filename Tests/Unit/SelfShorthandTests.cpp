@@ -303,9 +303,9 @@ TEST_CASE("field shorthand of a move-only binding asks for the move written out"
     )");
     CAPTURE(Messages(diagnostics));
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "move-only value 'buffer' requires an explicit '<-' in field shorthand");
+    CHECK_EQ(diagnostics.front().message, "move-only value 'buffer' requires an explicit 'move' in field shorthand");
     REQUIRE(diagnostics.front().help.has_value());
-    CHECK_EQ(*diagnostics.front().help, "write 'buffer: <-buffer'");
+    CHECK_EQ(*diagnostics.front().help, "write 'buffer: move buffer'");
 }
 
 TEST_CASE("field shorthand of an unknown name reports the name") {

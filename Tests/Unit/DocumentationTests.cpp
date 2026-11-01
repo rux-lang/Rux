@@ -118,8 +118,8 @@ TEST_CASE("documentation renders reference and lifecycle signatures as source sy
         extend Cell {
             /// Copy is intentionally unavailable.
             func =(self: &var Cell, other: &Cell);
-            /// Move a cell.
-            func <-(self: &var Cell, other: Cell) {}
+            /// Moving is intentionally unavailable.
+            func <-(self: &var Cell, other: Cell);
             /// Destroy a cell.
             func ~Cell(self: &var Cell) {}
         }

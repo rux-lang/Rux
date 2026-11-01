@@ -68,7 +68,7 @@ The required counterexample is `R = int32 ! E` converted to `(int32 | R) ! E`: f
 - Every native level is a tagged aggregate with an 8-byte tag at offset 0 and each case's payload at `AlignUp(8, payloadAlign)`. Absent is tag 0 and present tag 1; success is 0 and failure 1; a sum member's tag is its canonical index. Tags are not a stable public ABI.
 - A zero-sized payload reserves no bytes anywhere: `sizeof(())` is 0 with alignment 1, `! E` is a tag plus `E`, and `()?` is the tag alone. Semantic layout, code-generation layout, both frame planners, and both call emitters read the same record.
 - A borrowed subject is matched in place: bindings alias the payloads where they lie, and a subset binding reads the original tag through the recorded mapping. Such a view can be read and matched but not re-borrowed, passed by reference, stored, or moved; only a single-member binding writes through. An owned subset binding remaps tags, copying or moving with its subject.
-- `?`, mapped `?`, `catch`, and `??` consume their evaluated operand. A named copyable operand is copied and a named move-only one is written `(<-value)?`; a borrowed outcome is never an operand. The continuing payload and the outgoing error move with their move operations, so a payload whose move is prohibited is rejected at the operator, or at instantiation for a type parameter. Propagation, mapping, and `fail` capture the outgoing payload before running defers.
+- `?`, mapped `?`, `catch`, and `??` consume their evaluated operand. A named copyable operand is copied and a named move-only one is written `(move value)?`; a borrowed outcome is never an operand. The continuing payload and the outgoing error move with their move operations, so a payload whose move is prohibited is rejected at the operator, or at instantiation for a type parameter. Propagation, mapping, and `fail` capture the outgoing payload before running defers.
 - A mapper's path always leaves through the failure exit, so a local moved only inside the mapper is still owned on the continuing path; the move only suppresses its destruction on that exit.
 - Equality compares tags level by level, then the active payload. A comparison supplies an expected type only to an operand without one of its own (`none`, a native constructor, an unsuffixed literal), so `opt == 5i32` and `sum == member` are rejected.
 
@@ -134,7 +134,7 @@ Idioms that worked well during the first-party migration:
 
   ```rux
   func Refusal<T, E>(outcome: T ! E) -> E {
-      return match <-outcome {
+      return match move outcome {
           .Success(_) => Panic("expected a failure"),
           .Failure(error) => error
       };
@@ -148,7 +148,7 @@ Pitfalls:
 
 - `==` binds tighter than `??`: write `a == (b ?? c)`.
 - `opt == none` and `opt == .Some(v)` need `==` on the payload; where the payload has none, test `opt is T` or match.
-- A named move-only value as a `match` or `catch` subject is written `<-name`.
+- A named move-only value as a `match` or `catch` subject is written `move name`.
 - A block arm `{ ... }` yields its last expression written without a ';', and `()` otherwise, so it recovers a non-unit success only with such a value or by leaving.
 - A helper taking `&(T ! E)` needs a place to borrow from: call it on a named local, or take the fallible by value.
 

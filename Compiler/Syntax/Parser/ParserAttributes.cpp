@@ -110,15 +110,17 @@ void Parser::ParseEmptyAttributeArguments(const std::string_view name) {
 /// the declaration, `#Allow` suppresses a named lint rule for one declaration, `#Link` describes how an extern
 /// declaration is imported (`#Library` and `#Symbol` are retained as compatibility spellings), `#Abi(...)` selects a
 /// calling convention, `#NoReturn` marks a function that never returns to its caller, `#Test` marks a function that a
-/// test build of its package runs, and `#Unsendable` marks a type whose values stay on the thread that made them. An
-/// attribute that takes no arguments is written without parentheses; empty ones are still accepted.
+/// test build of its package runs, `#Unsendable` marks a type whose values stay on the thread that made them, and
+/// `#NoCopy` and `#NoMove` mark a type whose values are never duplicated or never leave their storage. An attribute
+/// that takes no arguments is written without parentheses; empty ones are still accepted.
 void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();
     const std::string name = Advance().text;
 
     if (name != "Error" && name != "Warn" && name != "Allow" && name != "Link" && name != "Library" &&
-        name != "Symbol" && name != "NoReturn" && name != "Test" && name != "Unsendable" && name != "Abi") {
+        name != "Symbol" && name != "NoReturn" && name != "Test" && name != "Unsendable" && name != "NoCopy" &&
+        name != "NoMove" && name != "Abi") {
         // `#Intrinsic("Name")` became the `intrinsic` keyword, which takes its
         // name from the declaration instead of repeating it in a string.
         EmitError(nameLoc, name == "Intrinsic"
@@ -162,6 +164,18 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         }
         attrs.usedUnsendable = true;
         attrs.unsendableLocation = attributeLoc;
+        ParseEmptyAttributeArguments(name);
+        return;
+    }
+
+    if (name == "NoCopy" || name == "NoMove") {
+        const bool noMove = name == "NoMove";
+        bool &used = noMove ? attrs.usedNoMove : attrs.usedNoCopy;
+        if (used) {
+            EmitError(nameLoc, std::format("duplicate '#{}' attribute", name));
+        }
+        used = true;
+        (noMove ? attrs.noMoveLocation : attrs.noCopyLocation) = attributeLoc;
         ParseEmptyAttributeArguments(name);
         return;
     }
@@ -496,6 +510,23 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
         }
         else {
             EmitError(attrs.unsendableLocation, "'#Unsendable' can only be applied to a struct, variant or union");
+        }
+    }
+
+    // The lifecycle attributes take a capability away from every value of the type. `#NoMove` implies `#NoCopy`: a
+    // value that may not leave its storage may not be duplicated into another either.
+    if (attrs.usedNoCopy || attrs.usedNoMove) {
+        if (AstCast<StructDecl>(decl.get()) || AstCast<EnumDecl>(decl.get()) || AstCast<UnionDecl>(decl.get())) {
+            decl->isNoCopy = true;
+            decl->isNoMove = attrs.usedNoMove;
+        }
+        else {
+            if (attrs.usedNoCopy) {
+                EmitError(attrs.noCopyLocation, "'#NoCopy' can only be applied to a struct, variant or union");
+            }
+            if (attrs.usedNoMove) {
+                EmitError(attrs.noMoveLocation, "'#NoMove' can only be applied to a struct, variant or union");
+            }
         }
     }
 

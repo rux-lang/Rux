@@ -160,6 +160,7 @@ const std::map<std::string_view, std::string_view> kKeywordOwners = {
     {"loop", "Loop"},
     {"match", "Match"},
     {"module", "ModuleScope"},
+    {"move", "MoveExpression"},
     {"none", "None"},
     {"null", "Pointers"},
     {"pub", "Visibility"},

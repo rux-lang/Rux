@@ -340,7 +340,8 @@ struct UnaryExpr : Expr {
     ExprPtr operand;
 };
 
-/// `<-value` -- an explicit ownership transfer used where the destination is supplied by the surrounding expression.
+/// `move value` (or the older `<-value`) -- an explicit ownership transfer used where the destination is supplied by
+/// the surrounding expression.
 struct MoveExpr : Expr {
     ExprPtr operand;
 };
@@ -691,6 +692,10 @@ struct Decl {
     /// Written `#Unsendable` before a type declaration: a value of the type, or of anything holding one, belongs to
     /// the thread that made it and is no `Sendable` type argument.
     bool isUnsendable = false;
+    /// Written `#NoCopy` before a type declaration: a value of the type is never duplicated, so it moves instead.
+    bool isNoCopy = false;
+    /// Written `#NoMove` before a type declaration: a value stays where it was built, and so is never copied either.
+    bool isNoMove = false;
     virtual ~Decl() = default;
     /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
     mutable const std::type_info *cachedType = nullptr;

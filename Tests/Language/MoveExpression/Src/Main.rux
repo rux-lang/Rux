@@ -1,0 +1,154 @@
+// `move value` transfers ownership out of a named place, in every position a value can go: a binding, an assignment,
+// an argument, a return, a destructuring `let`, a match subject, an `is` test and a propagated optional. It is an
+// ordinary prefix operator, so `move a + b` is `(move a) + b`. A move is the value's bytes followed by forgetting the
+// source: no user code runs, the source's destructor does not run, and the value's last owner destroys it exactly
+// once. The older `<-` spelling means the same thing.
+
+import Core::Assert;
+
+var drops: int = 0;
+var order: int = 0;
+
+#NoCopy
+struct Token {
+    id: int;
+}
+
+extend Token {
+    func ~Token(&var self) {
+        drops += 1;
+        order = order * 10 + self.id;
+    }
+}
+
+struct Holder {
+    token: Token;
+    size: int;
+}
+
+func Consume(token: Token) -> int {
+    return token.id;
+}
+
+func Pass(token: Token) -> Token {
+    return move token;
+}
+
+func Forward(token: Token?) -> Token? {
+    let present = (move token)?;
+    return move present;
+}
+
+func Reset() {
+    drops = 0;
+    order = 0;
+}
+
+func BindingScope() {
+    let first = Token { id: 1 };
+    let second = move first;
+    Assert(drops == 0, "a move does not destroy its source");
+    Assert(second.id == 1, "the moved value arrives whole");
+}
+
+func Bindings() {
+    Reset();
+    BindingScope();
+    Assert(drops == 1, "the destination is destroyed exactly once");
+}
+
+func AssignmentScope() {
+    var destination = Token { id: 1 };
+    let source = Token { id: 2 };
+    destination = move source;
+    Assert(drops == 1 && order == 1, "replacing a value destroys the old one, never the moved source");
+    Assert(destination.id == 2, "the destination holds the moved value");
+}
+
+func Assignments() {
+    Reset();
+    AssignmentScope();
+    Assert(drops == 2 && order == 12, "the moved value is destroyed once, by its new owner");
+}
+
+func Arguments() {
+    Reset();
+    let token = Token { id: 3 };
+    Assert(Consume(move token) == 3, "an argument moves into the callee");
+    Assert(drops == 1, "the callee destroys the argument once");
+    let returned = Pass(Token { id: 4 });
+    Assert(returned.id == 4 && drops == 1, "a returned move destroys nothing on the way out");
+}
+
+func DestructuringScope() {
+    let pair = (Token { id: 5 }, Token { id: 6 });
+    let (left, right) = move pair;
+    Assert(left.id == 5 && right.id == 6 && drops == 0, "destructuring a moved tuple takes both parts");
+}
+
+func Destructuring() {
+    Reset();
+    DestructuringScope();
+    Assert(drops == 2, "each part is destroyed once");
+}
+
+func Subjects() {
+    Reset();
+    let held: Token? = Token { id: 7 };
+    let id = match move held {
+        .Some(token) => token.id,
+        none => 0,
+    };
+    Assert(id == 7 && drops == 1, "a moved match subject is taken apart and destroyed once");
+
+    let maybe: Token? = Token { id: 8 };
+    if move maybe is .Some(token) {
+        Assert(token.id == 8, "a moved 'is' subject binds its payload");
+    }
+    Assert(drops == 2, "the bound payload is destroyed once");
+
+    let forwarded = Forward(Token { id: 9 });
+    Assert(forwarded is .Some(_) && drops == 2, "'(move value)?' moves before propagating");
+}
+
+func AggregateScope() {
+    let token = Token { id: 1 };
+    let holder = Holder { token: move token, size: 2 };
+    let moved = move holder;
+    Assert(moved.token.id == 1 && moved.size == 2 && drops == 0, "a moved aggregate keeps its parts");
+}
+
+func Aggregates() {
+    Reset();
+    AggregateScope();
+    Assert(drops == 1, "the moved aggregate's part is destroyed once");
+}
+
+func Precedence() {
+    let a = 2;
+    let b = 3;
+    let sum = move a + b;
+    Assert(sum == 5 && b == 3, "'move a + b' moves only 'a'");
+}
+
+func OlderSpelling() {
+    Reset();
+    let first = Token { id: 1 };
+    let second <- first;
+    var third = Token { id: 2 };
+    third <- second;
+    Assert(Consume(<-third) == 1, "the arrow spelling still moves");
+    Assert(drops == 2 && order == 21, "the arrow spelling destroys each value once");
+}
+
+func Main() -> int {
+    Bindings();
+    Assignments();
+    Arguments();
+    Destructuring();
+    Subjects();
+    Aggregates();
+    Precedence();
+    OlderSpelling();
+    return 0;
+}

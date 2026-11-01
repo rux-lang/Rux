@@ -31,13 +31,9 @@ extend MoveOnly {
     func ~MoveOnly(self: &var MoveOnly) {}
 }
 
+#NoMove
 struct Immovable {
     value: int32;
-}
-
-extend Immovable {
-    func =(self: &var Immovable, other: &Immovable);
-    func <-(self: &var Immovable, other: Immovable);
 }
 
 func Consume(value: MoveOnly) -> int32 {

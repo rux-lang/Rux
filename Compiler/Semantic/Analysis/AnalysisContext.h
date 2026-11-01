@@ -630,6 +630,8 @@ private:
     [[nodiscard]] bool IsFreshTemporarySource(const Expr &expression, const TypeRef &type,
                                               const TypeRef &targetType) const;
     void ConsumeExplicitValue(const Expr &expression, const TypeRef &type, SourceLocation location);
+    /// Reports a move of a value whose type, or a part of it, is `#NoMove`.
+    void ReportProhibitedMove(const TypeRef &type, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
     void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,

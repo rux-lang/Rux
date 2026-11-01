@@ -1,0 +1,111 @@
+// `#NoCopy` and `#NoMove` take a capability away from every value of a type. A `#NoCopy` value is never duplicated,
+// so it moves instead, even when it is plain data with no destructor. A `#NoMove` value stays where it was built,
+// which is what a value pointing into itself needs; it implies `#NoCopy`, and it is created in place from a
+// temporary and shared through a pointer. The bodyless `func =(...);` and `func <-(...);` are older spellings.
+
+import Core::Assert;
+
+#NoCopy
+struct RawHandle {
+    fd: int;
+}
+
+#NoCopy()
+variant Slot {
+    Empty,
+    Held(int),
+}
+
+#NoCopy
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+#NoMove
+struct Node {
+    value: int;
+    next: *var Node;
+}
+
+#NoMove()
+union Bits {
+    word: uint32,
+    bytes: uint8[4],
+}
+
+struct Older {
+    value: int;
+}
+
+extend Older {
+    func =(&var self, other: &Older);
+}
+
+var closed: int = 0;
+
+#NoMove
+struct Guard {
+    id: int;
+}
+
+extend Guard {
+    func ~Guard(&var self) {
+        closed += self.id;
+    }
+}
+
+func Close(handle: RawHandle) -> int {
+    return handle.fd;
+}
+
+func Take(slot: Slot) -> int {
+    return match move slot {
+        .Held(value) => value,
+        .Empty => 0,
+    };
+}
+
+func Sum(pair: Pair<int>) -> int {
+    return pair.first + pair.second;
+}
+
+func Read(node: *Node) -> int {
+    return (*node).value + (*(*node).next).value;
+}
+
+func MakeNode(value: int) -> Node {
+    return Node { value: value, next: null };
+}
+
+func GuardScope() {
+    let guard = Guard { id: 7 };
+    Assert(guard.id == 7, "a '#NoMove' value with a destructor is built in place");
+}
+
+func Main() -> int {
+    let handle = RawHandle { fd: 3 };
+    let moved = move handle;
+    Assert(Close(move moved) == 3, "a '#NoCopy' value moves");
+
+    let slot: Slot = .Held(4);
+    Assert(Take(move slot) == 4, "a '#NoCopy' variant moves");
+
+    let pair = Pair<int> { first: 1, second: 2 };
+    Assert(Sum(move pair) == 3, "a generic '#NoCopy' type moves");
+
+    var node = MakeNode(5);
+    node.next = @node;
+    Assert(Read(@node) == 10, "a '#NoMove' value that points into itself stays where it was built");
+
+    let bits = Bits { word: 0x01020304u32 };
+    Assert(bits.word == 0x01020304u32, "a '#NoMove' union is built in place");
+
+    let older = Older { value: 6 };
+    let olderMoved = move older;
+    Assert(olderMoved.value == 6, "a bodyless copy operator still makes the type move-only");
+
+    GuardScope();
+    Assert(closed == 7, "a '#NoMove' value is destroyed exactly once, where it lives");
+    return 0;
+}

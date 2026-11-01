@@ -1,0 +1,29 @@
+// 'move' binds like any prefix operator: 'move a + b' is '(move a) + b', so only 'a' is consumed, and 'move a.b'
+// names the field rather than the whole value, which is reported as a partial move.
+struct Buffer {
+    size: int32;
+}
+
+extend Buffer {
+    func =(&var self, other: &Buffer);
+}
+
+struct Holder {
+    buffer: Buffer;
+    size: int32;
+}
+
+func Sum(a: int32, b: int32) -> int32 {
+    let total = move a + b;
+    return total + a + b;
+}
+
+func Field(size: int32) -> int32 {
+    let holder = Holder { buffer: Buffer { size: size }, size: size };
+    let buffer = move holder.buffer;
+    return buffer.size + holder.size;
+}
+
+func Main() -> int {
+    return 0;
+}

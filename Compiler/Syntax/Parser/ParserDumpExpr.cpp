@@ -174,7 +174,7 @@ void ExpressionPrinter::Print(const Expr &expression) {
     }
     else if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         Pad();
-        out << "MoveExpr <-\n";
+        out << "MoveExpr move\n";
         ++indent;
         if (move->operand) {
             Print(*move->operand);

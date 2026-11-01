@@ -473,12 +473,14 @@ ExprPtr Parser::ParseMul() {
 }
 
 ExprPtr Parser::ParseUnary() {
-    if (Check(TokenKind::MoveArrow)) {
+    // `move value` transfers ownership out of its operand, and binds as tightly as any other prefix operator: `move
+    // a.b` moves the field and `move a + b` is `(move a) + b`. The prefix `<-` is the older spelling of the same node.
+    if (CheckAny({TokenKind::MoveKeyword, TokenKind::MoveArrow})) {
         const auto loc = CurrentLocation();
-        Advance();
+        const Token opToken = Advance();
         auto operand = ParseUnary();
         if (!operand) {
-            EmitMissingExpression("after '<-'");
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
         }
         auto expression = std::make_unique<MoveExpr>();
         expression->location = loc;

@@ -85,7 +85,7 @@ TEST_CASE("linter accepts lifecycle operation names") {
         struct Cell { value: int32; }
         extend Cell {
             func =(self: &var Cell, other: &Cell);
-            func <-(self: &var Cell, other: Cell) {}
+            func <-(self: &var Cell, other: Cell);
             func ~Cell(self: &var Cell) {}
         }
     )",

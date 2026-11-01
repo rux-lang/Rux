@@ -160,7 +160,7 @@ TEST_CASE("an interface named Drop has no lifecycle semantics") {
     CHECK(model.TryGetDropGlue(TypeRef::MakeNamed("Plain")) == nullptr);
 }
 
-TEST_CASE("special operations classify generated custom and prohibited capabilities") {
+TEST_CASE("special operations and lifecycle attributes classify generated custom and prohibited capabilities") {
     Lexer lexer(R"(
         interface Assignable {
             func =(self: &var Self, other: &Self);
@@ -201,15 +201,27 @@ TEST_CASE("special operations classify generated custom and prohibited capabilit
             value: Pinned;
         }
 
-        struct CustomMove {
-            value: Pinned;
-        }
-        extend CustomMove {
-            func <-(self: &var CustomMove, other: CustomMove) {}
+        #NoCopy
+        struct Raw {
+            fd: int32;
         }
 
+        #NoMove
+        struct Anchored {
+            next: *var Anchored;
+        }
+
+        struct ContainsAnchored {
+            anchor: Anchored;
+        }
+
+        #NoMove()
+        #NoCopy
+        variant Spelled { Only }
+
         func Observe(generated: Generated, genericCopy: Wrapper<int32>, genericMove: Wrapper<Handle>,
-                     customCopy: CustomCopy, pinned: Pinned, nested: ContainsPinned, customMove: CustomMove) {}
+                     customCopy: CustomCopy, pinned: Pinned, nested: ContainsPinned, raw: Raw, anchored: Anchored,
+                     holdsAnchored: ContainsAnchored, spelled: Spelled) {}
     )",
                 "special_operations.rux");
     auto lexed = lexer.Tokenize();
@@ -278,11 +290,23 @@ TEST_CASE("special operations classify generated custom and prohibited capabilit
         CHECK_EQ(properties.moveOperation, Operation::Prohibited);
     }
 
-    const TypeProperties &customMove = propertiesOf(6);
-    CHECK(customMove.IsMoveOnly());
-    CHECK(customMove.IsMovable());
-    CHECK_EQ(customMove.copyOperation, Operation::Prohibited);
-    CHECK_EQ(customMove.moveOperation, Operation::Custom);
+    // `#NoCopy` makes plain data move-only without a destructor; `#NoMove` takes the move away too, and implies
+    // `#NoCopy`, for the type and anything holding it.
+    const TypeProperties &raw = propertiesOf(6);
+    CHECK(raw.IsMoveOnly());
+    CHECK(raw.IsMovable());
+    CHECK_FALSE(raw.IsDroppable());
+    CHECK_EQ(raw.copyOperation, Operation::Prohibited);
+    CHECK_EQ(raw.moveOperation, Operation::Generated);
+
+    for (const std::size_t parameter : {7U, 8U, 9U}) {
+        CAPTURE(parameter);
+        const TypeProperties &properties = propertiesOf(parameter);
+        CHECK(properties.IsMoveOnly());
+        CHECK_FALSE(properties.IsMovable());
+        CHECK_EQ(properties.copyOperation, Operation::Prohibited);
+        CHECK_EQ(properties.moveOperation, Operation::Prohibited);
+    }
 }
 
 TEST_CASE("special operations require canonical implementation signatures") {

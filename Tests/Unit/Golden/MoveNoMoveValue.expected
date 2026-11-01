@@ -1,0 +1,4 @@
+20:18: error: moving type 'Node' is prohibited
+21:15: error: moving type 'Node' is prohibited
+22:10: error: moving type 'Node' is prohibited
+27:12: error: moving type 'Holder' is prohibited
