@@ -183,6 +183,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , indexOperators(output.indexOperators)
     , indexAssignments(output.indexAssignments)
     , iterations(output.iterations)
+    , borrowReturns(output.borrowReturns)
     , exhaustiveMatchExpressions(output.exhaustiveMatchExpressions)
     , exhaustiveMatchStatements(output.exhaustiveMatchStatements)
     , ownedMatchSubjects(output.ownedMatchSubjects)

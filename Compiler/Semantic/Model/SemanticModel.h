@@ -261,6 +261,20 @@ struct ResolvedIteration {
     bool advancesInPlace = false;
 };
 
+/// What the reference a function returns, `&T`, `&var T` or `&T?`, borrows from: the receiver when the function takes
+/// one by reference, otherwise its one reference or slice parameter. Analysis holds every call's result to the
+/// argument passed for that parameter, which stays borrowed while the result is in use, and every `return` to a
+/// reference derived from that parameter; lowering returns the reference as an address and needs nothing else.
+struct ResolvedBorrowReturn {
+    /// The parameter the result borrows from, in declaration order with the receiver counted.
+    const Param *source = nullptr;
+    std::size_t parameterIndex = 0;
+    /// `&var T`: the source is borrowed exclusively while the result is in use.
+    bool exclusive = false;
+    /// `&T?`: the result may be absent.
+    bool optional = false;
+};
+
 /// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation
 /// reduce to the type that owns the methods, so `*Cell<int>` and `Cell<int>` name the same witness.
 [[nodiscard]] std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef &type);
@@ -392,6 +406,8 @@ struct SemanticFacts {
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
+    /// Every accepted function that returns a reference, with the parameter the reference borrows from.
+    std::unordered_map<const FuncDecl *, ResolvedBorrowReturn> borrowReturns;
     /// Every accepted `match` whose arms cover each value of its subject's type, so no value can leave it unmatched.
     std::unordered_set<const MatchExpr *> exhaustiveMatchExpressions;
     std::unordered_set<const MatchStmt *> exhaustiveMatchStatements;
@@ -528,6 +544,9 @@ struct SemanticModel {
 
     /// Returns null for a `for` loop whose subject analysis rejected as not iterable.
     [[nodiscard]] const ResolvedIteration *TryGetIteration(const ForStmt &statement) const noexcept;
+
+    /// Returns null for a function that returns no reference, and for one whose signature analysis rejected.
+    [[nodiscard]] const ResolvedBorrowReturn *TryGetBorrowReturn(const FuncDecl &function) const noexcept;
 
     /// Whether analysis accepted this `match` as covering every value of its subject's type. A value outside those
     /// the type declares, such as an integer converted to an enum with `as`, then has no arm to fall to.

@@ -632,8 +632,7 @@ void AnalysisContext::FinishBorrowAnalysis() {
 
 void AnalysisContext::ExpireBorrowAtLastUse(const Symbol &symbol, const SourceLocation location) {
     // A reference, or a name an `is` test bound from a subject it borrows, holds its borrow until its last use.
-    if (!currentBorrowStatement ||
-        (symbol.type->kind != TypeRef::Kind::Reference && !activeBorrows.contains(&symbol))) {
+    if (!currentBorrowStatement || (!HoldsBorrow(symbol.type) && !activeBorrows.contains(&symbol))) {
         return;
     }
     const auto live = borrowLiveAfter.find(currentBorrowStatement);
@@ -670,6 +669,10 @@ void AnalysisContext::EndBorrowScope(const Scope &scope) {
 }
 
 const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) const {
+    // A reference a call returned reaches what its source argument reaches.
+    if (const Expr *source = BorrowResultSource(expression)) {
+        return ReferenceSourceAlias(*source);
+    }
     const Expr *root = &expression;
     while (true) {
         if (const auto *field = AstCast<const FieldExpr>(root)) {
@@ -688,16 +691,31 @@ const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) cons
     }
     if (const auto *identifier = AstCast<const IdentExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
-        return symbol && symbol->type->kind == TypeRef::Kind::Reference ? symbol : nullptr;
+        return symbol && HoldsBorrow(symbol->type) ? symbol : nullptr;
     }
     if (AstCast<const SelfExpr>(root)) {
         const Symbol *symbol = currentScope->Lookup("self");
-        return symbol && symbol->type->kind == TypeRef::Kind::Reference ? symbol : nullptr;
+        return symbol && HoldsBorrow(symbol->type) ? symbol : nullptr;
     }
     return nullptr;
 }
 
 std::optional<AnalysisContext::BorrowPlace> AnalysisContext::ResolveBorrowPlace(const Expr &expression) const {
+    // A reference a call returned lies somewhere in its source argument's storage, which is all that is known of it.
+    if (const Expr *source = BorrowResultSource(expression)) {
+        std::optional<BorrowPlace> place = ResolveBorrowPlace(*source);
+        // `??` may yield its fallback instead, so it borrows a place only when both operands borrow the same one; a
+        // fallback that leaves, such as `?? return`, yields nothing.
+        if (const auto *coalescing = AstCast<const BinaryExpr>(&expression);
+            place && coalescing && coalescing->op == TokenKind::QuestionQuestion &&
+            !IsDivergingExpression(*coalescing->right)) {
+            const std::optional<BorrowPlace> fallback = ResolveBorrowPlace(*coalescing->right);
+            if (!fallback || !SameBorrowPlace(*place, *fallback)) {
+                return BorrowPlace{};
+            }
+        }
+        return place;
+    }
     const MovePlace analyzed = AnalyzeMovePlace(expression);
     const Symbol *root = nullptr;
     if (analyzed.rootKind == MovePlace::RootKind::Named) {
@@ -714,7 +732,7 @@ std::optional<AnalysisContext::BorrowPlace> AnalysisContext::ResolveBorrowPlace(
     }
 
     BorrowPlace place{root, analyzed.projections};
-    if (root->type->kind == TypeRef::Kind::Reference) {
+    if (HoldsBorrow(root->type)) {
         if (const auto provenance = activeBorrows.find(root); provenance != activeBorrows.end()) {
             place = provenance->second.place;
             place.projections.insert(place.projections.end(), analyzed.projections.begin(), analyzed.projections.end());
@@ -1015,6 +1033,17 @@ bool AnalysisContext::TypeStoresReference(const TypeRef &type) {
 
 void AnalysisContext::ValidateStoredType(const TypeRef &type, const SourceLocation location,
                                          const std::string_view subject) {
+    if (IsOptionalReference(type)) {
+        TypeRef referent = BorrowedReference(type)->inner.front();
+        const bool writable = referent.isMut;
+        referent.isMut = false;
+        EmitError(location, std::format("{} cannot be optional reference '{}'", subject, type.ToString()),
+                  {"an optional reference is what a function returning a borrow that may be absent returns, and it "
+                   "lives only in a return value or a local"},
+                  std::format("write '&{}({}?)' for a reference to an optional", writable ? "var " : "",
+                              referent.ToString()));
+        return;
+    }
     if (TypeStoresReference(type)) {
         EmitError(location, std::format("{} cannot store reference type '{}'", subject, type.ToString()),
                   {"references are non-owning aliases and cannot escape into aggregate storage"},

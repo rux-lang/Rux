@@ -1,0 +1,34 @@
+struct Pair { first: int32; second: int32; }
+
+extend Pair {
+    func First(&self) -> &int32 { return self.first; }
+    func SecondMutable(&var self) -> &var int32 { return self.second; }
+    func Find(&self, present: bool) -> &int32? {
+        if present { return self.first; }
+        return none;
+    }
+}
+
+func Consume(pair: Pair) {}
+
+func Main() -> int {
+    var pair = Pair { first: 1i32, second: 2i32 };
+    let first = pair.First();
+    pair.first = 3i32;
+    let read: int32 = first;
+
+    let second = pair.SecondMutable();
+    let peek: int32 = pair.first;
+    second = 4i32;
+
+    let found = pair.Find(true);
+    let writer = pair.SecondMutable();
+    if found is .Some(value) {
+        let copy: int32 = value;
+    }
+
+    let held = pair.First();
+    Consume(move pair);
+    let last: int32 = held;
+    return 0;
+}

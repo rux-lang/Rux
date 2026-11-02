@@ -161,6 +161,7 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     own.indexOperators = OwnEntries(mine.indexOperators, base.indexOperators);
     own.indexAssignments = OwnEntries(mine.indexAssignments, base.indexAssignments);
     own.iterations = OwnEntries(mine.iterations, base.iterations);
+    own.borrowReturns = OwnEntries(mine.borrowReturns, base.borrowReturns);
     own.exhaustiveMatchExpressions = OwnElements(mine.exhaustiveMatchExpressions, base.exhaustiveMatchExpressions);
     own.exhaustiveMatchStatements = OwnElements(mine.exhaustiveMatchStatements, base.exhaustiveMatchStatements);
     own.ownedMatchSubjects = OwnElements(mine.ownedMatchSubjects, base.ownedMatchSubjects);
@@ -329,6 +330,7 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
             MergeLaterWins(facts.indexAssignments, records, [](R &r) -> auto & { return r.facts.indexAssignments; });
         },
         [&] { MergeLaterWins(facts.iterations, records, [](R &r) -> auto & { return r.facts.iterations; }); },
+        [&] { MergeLaterWins(facts.borrowReturns, records, [](R &r) -> auto & { return r.facts.borrowReturns; }); },
         [&] {
             MergeSet(facts.exhaustiveMatchExpressions, records,
                      [](R &r) -> auto & { return r.facts.exhaustiveMatchExpressions; });

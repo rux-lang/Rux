@@ -67,7 +67,7 @@ TEST_CASE("a borrowed subject is inspected in place and stays with its owner") {
             Read(value);
             Read(value);
         }
-        func Read(value: &Owned?) -> bool {
+        func Read(value: &(Owned?)) -> bool {
             return match value {
                 owned? => Look(owned),
                 none => false
@@ -101,7 +101,7 @@ TEST_CASE("an exclusive subject is written through single-member bindings only")
                 else => {}
             }
         }
-        func WritePresent(value: &var Count?) {
+        func WritePresent(value: &var (Count?)) {
             match value {
                 count? => { count.value = 3i32; },
                 none => {}

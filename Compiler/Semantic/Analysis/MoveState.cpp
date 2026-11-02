@@ -632,6 +632,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         CheckPattern(*arm.pattern, subjectType);
         currentPatternTakesParts = savedTakesParts;
         currentPatternBorrow = savedBorrow;
+        if (IsOptionalReference(subjectType) && trackedFlowReachable) {
+            RegisterBorrowedPayloadBindings(*arm.pattern, *expression.subject, subjectType);
+        }
         if (expectedOutcome) {
             expectedExpressionTypes.insert_or_assign(arm.body.get(), *expectedOutcome);
         }

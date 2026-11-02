@@ -89,13 +89,13 @@ TEST_CASE("a native type holding a reference stores that reference") {
     const auto diagnostics = AnalyzeSource(R"(
         struct A {}
         struct E {}
+        struct Holder { optional: (&int32)?; }
         func F(value: int32) {
-            let optional: (&int32)? = none;
             let sum: (&A) | int32 = value;
             let failure: int32 ! (&E) = value;
         }
     )");
-    CHECK(CountContaining(diagnostics, "cannot store reference type '(&int32)?'") > 0);
+    CHECK(CountContaining(diagnostics, "cannot be optional reference '&int32?'") > 0);
     CHECK(CountContaining(diagnostics, "cannot store reference type '&A | int32'") > 0);
     CHECK(CountContaining(diagnostics, "cannot store reference type 'int32 ! &E'") > 0);
 }

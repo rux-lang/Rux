@@ -185,7 +185,7 @@ TEST_CASE("a reference is no type argument, deduced or written") {
     CHECK_EQ(rejected, 2);
 }
 
-TEST_CASE("references cannot escape into storage or returns") {
+TEST_CASE("references cannot escape into storage, or out of a function except from its source") {
     const auto diagnostics = AnalyzeBorrows(R"(
         struct Item { value: int32; }
         struct Box<T> { value: T; }
@@ -193,7 +193,10 @@ TEST_CASE("references cannot escape into storage or returns") {
         struct BadStruct { item: &Item; }
         variant BadEnum { Some(&Item) }
         union BadUnion { item: &Item }
-        func Escape(item: &Item) -> &Item {
+        func Escape(first: &Item, second: &Item) -> &Item {
+            return first;
+        }
+        func Copy(item: &Item) -> Item {
             return item;
         }
         func StoreGeneric(box: Box<SharedItem>) {}
@@ -206,7 +209,7 @@ TEST_CASE("references cannot escape into storage or returns") {
     CHECK(HasErrorContaining(diagnostics, "field 'item' in struct 'BadStruct' cannot store reference"));
     CHECK(HasErrorContaining(diagnostics, "payload in variant case 'BadEnum::Some' cannot store reference"));
     CHECK(HasErrorContaining(diagnostics, "field 'item' in union 'BadUnion' cannot store reference"));
-    CHECK(HasErrorContaining(diagnostics, "function return type cannot store reference"));
+    CHECK(HasErrorContaining(diagnostics, "cannot tell what the returned reference borrows from"));
     CHECK(HasErrorContaining(diagnostics, "function parameter cannot store reference type 'Box<&Item>'"));
     CHECK(HasErrorContaining(diagnostics, "cannot escape through a return"));
     CHECK(HasErrorContaining(diagnostics, "array value cannot store reference"));

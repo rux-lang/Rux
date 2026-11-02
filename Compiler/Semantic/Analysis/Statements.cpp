@@ -435,7 +435,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                           "remove defaults so exactly one constructor accepts no arguments");
             }
         }
-        if (declarationType->kind != TypeRef::Kind::Reference) {
+        if (!HoldsBorrow(declarationType)) {
             ValidateStoredType(declarationType, letStatement->location, "local variable");
         }
         // `=` through a reference always writes through it, so a reference is never pointed at other storage.
@@ -490,7 +490,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                                              std::format("cannot assign '{}' to '{}'", initializerType.DisplayString(),
                                                          declarationType.ToString())));
         }
-        if (initializerAccepted && !nullReferenceInitializer && declarationType->kind != TypeRef::Kind::Reference) {
+        if (initializerAccepted && !nullReferenceInitializer && !HoldsBorrow(declarationType)) {
             ConsumeValue(*letStatement->init, initializerType, ValueConsumptionKind::Initialization,
                          letStatement->location);
         }
@@ -539,8 +539,8 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (defined && defined->type.IsFallible()) {
             fallibleLocals.push_back({defined, currentScope});
         }
-        if (defined && initializerAccepted && declarationType->kind == TypeRef::Kind::Reference) {
-            RegisterReferenceBinding(*defined, *letStatement->init, declarationType);
+        if (defined && initializerAccepted && HoldsBorrow(declarationType)) {
+            RegisterReferenceBinding(*defined, *letStatement->init, BorrowedReference(declarationType));
         }
     }
     else if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
@@ -748,6 +748,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             CheckPattern(*arm.pattern, subjectType);
             currentPatternTakesParts = savedTakesParts;
             currentPatternBorrow = savedBorrow;
+            if (IsOptionalReference(subjectType) && trackedFlowReachable) {
+                RegisterBorrowedPayloadBindings(*arm.pattern, *matchStatement->subject, subjectType);
+            }
             // A bare-expression arm of a match statement is an expression statement: its value is discarded. A block
             // arm yields nothing, so a value it ends with is reported as an `if` branch's would be.
             if (const auto *block = AstCast<const BlockExpr>(arm.body.get())) {
@@ -863,7 +866,22 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
             expectedExpressionTypes.insert_or_assign(value, currentReturnType);
         }
         TypeRef valueType = CheckExpr(*value);
-        if (valueType->kind == TypeRef::Kind::Reference && !valueType.CanReadScalarTo(currentReturnType)) {
+        // A function returning a reference returns one derived from what its signature borrows; a value that is not
+        // one is reported for where it comes from rather than for its type.
+        const bool borrowReturn = IsBorrowReturnType(currentReturnType);
+        const std::size_t diagnosticStart = diags.size();
+        if (borrowReturn && !valueType.IsUnknown()) {
+            CheckBorrowReturnValue(*value, location);
+        }
+        const bool borrowRejected = diags.size() != diagnosticStart;
+        if (borrowRejected) {
+            valueType = TypeRef::MakeUnknown();
+        }
+        else if (borrowReturn && RejectImmutableBorrowReturn(*value, valueType, location)) {
+            valueType = TypeRef::MakeUnknown();
+        }
+        else if (valueType->kind == TypeRef::Kind::Reference && !borrowReturn &&
+                 !valueType.CanReadScalarTo(currentReturnType)) {
             EmitError(location,
                       std::format("reference value '{}' cannot escape through a return", valueType.ToString()),
                       {"references are restricted to parameters, receivers, and local aliases"},
@@ -923,7 +941,8 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
              !CompletesWithoutValue(currentReturnType)) {
         EmitError(location, std::format("'return' requires a value of type '{}'", currentReturnType.ToString()));
     }
-    if (returnAccepted) {
+    // A returned reference borrows its value where it is, so nothing is consumed or copied.
+    if (returnAccepted && !IsBorrowReturnType(currentReturnType)) {
         // A view the result holds is converted to the success or present value it travels in.
         TypeRef viewTarget = currentReturnType;
         if (viewTarget.IsFallible()) {

@@ -1,0 +1,9 @@
+6:9: error: cannot return a reference to local 'copy'
+10:9: error: cannot return a reference to a temporary value
+15:22: error: cannot return a reference to local 'copy'
+20:9: error: cannot return a part of immutable 'self' as '&var int32'
+24:9: error: cannot return a reference borrowed from 'other'
+30:9: error: cannot return a reference to local 'local'
+35:5: error: cannot return a reference to parameter 'count'
+40:5: error: cannot return a reference to local 'local'
+48:25: error: the returned reference would borrow from a temporary value

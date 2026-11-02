@@ -391,6 +391,9 @@ TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
         if (type.IsUnknown() || hasNewError) {
             callableBindings.erase(call);
         }
+        else {
+            CheckBorrowReturnCall(*call, type);
+        }
     }
     CheckUnsafeOperation(expr, type);
     // A call whose callee throws evaluates to its success where a `try` marks it.

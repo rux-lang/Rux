@@ -653,11 +653,14 @@ std::string Spell(const TypeNode &type) {
             return "??";
         }
         // The suffix binds to the type immediately before it, so a payload whose own operator is looser, or whose
-        // prefix would otherwise swallow the suffix, is grouped: `(A | B)?`, `(*T)?`, `(var T[..])?`.
+        // prefix would otherwise swallow the suffix, is grouped: `(A | B)?`, `(*T)?`, `(var T[..])?`. A reference is
+        // the exception: `&T?` is read as an optional reference, so only a function referent needs the group.
         const TypeRef &payload = inner[0];
+        const bool groupedReference =
+            payload->kind == Kind::Reference && !payload->inner.empty() && payload->inner[0]->kind == Kind::Func;
         return Grouped(payload.ToString(), IsLooseNativeForm(payload) || payload->kind == Kind::Pointer ||
-                                               payload->kind == Kind::Reference || payload->kind == Kind::Func ||
-                                               payload.IsRange() || payload.IsWritableSlice()) +
+                                               groupedReference || payload->kind == Kind::Func || payload.IsRange() ||
+                                               payload.IsWritableSlice()) +
                "?";
     }
     case Kind::Fallible: {

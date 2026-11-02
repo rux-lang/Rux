@@ -269,7 +269,7 @@ TEST_CASE("absence never becomes an error or reaches a deeper level") {
             let value = count?;
             return .Success(.Success(value));
         }
-        func Borrowed(count: &int32?) -> int32? {
+        func Borrowed(count: &(int32?)) -> int32? {
             return count?;
         }
     )");
@@ -305,7 +305,7 @@ TEST_CASE("coalescing takes the payload or a fallback that converts or leaves") 
         func Fallible(outcome: int32 ! ParseError) -> int32 {
             return outcome ?? 0i32;
         }
-        func Borrowed(count: &int32?) -> int32 {
+        func Borrowed(count: &(int32?)) -> int32 {
             return count ?? 0i32;
         }
         func Pinned(value: Pinned?, fallback: Pinned) -> int32 {

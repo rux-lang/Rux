@@ -1,0 +1,6 @@
+3:36: error: cannot tell what the returned reference borrows from
+7:50: error: cannot tell what the returned reference borrows from
+11:28: error: cannot tell what the returned reference borrows from
+15:35: error: cannot tell what the returned reference borrows from
+24:44: error: cannot tell what the returned reference borrows from
+32:36: error: operator '[]' cannot return a reference

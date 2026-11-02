@@ -471,6 +471,40 @@ private:
     [[nodiscard]] bool ReportBorrowConflict(const BorrowPlace &place, bool exclusive, const Symbol *parentAlias,
                                             SourceLocation location, std::string_view action) const;
 
+    /// Whether `type` is what a function returning a borrow returns: `&T`, `&var T`, or the optional reference `&T?`.
+    [[nodiscard]] static bool IsBorrowReturnType(const TypeRef &type) noexcept;
+    /// Whether `type` is the optional reference `&T?`, an optional whose payload is a reference.
+    [[nodiscard]] static bool IsOptionalReference(const TypeRef &type) noexcept;
+
+    /// Whether a binding of `type` holds a borrow: a reference, or an optional reference.
+    [[nodiscard]] static bool HoldsBorrow(const TypeRef &type) noexcept {
+        return IsBorrowReturnType(type);
+    }
+
+    /// The reference a borrow result carries: `type` itself, or the payload of the optional reference `&T?`.
+    [[nodiscard]] static TypeRef BorrowedReference(const TypeRef &type);
+    /// What `function`'s result borrows from, read from its signature as written: nothing when it returns no
+    /// reference, and a fact whose `source` is null when neither its receiver nor one parameter can be the source.
+    [[nodiscard]] static std::optional<ResolvedBorrowReturn> BorrowReturnOf(const FuncDecl &function);
+    /// Reports a function returning a reference whose signature names no source, and records the source otherwise.
+    void CheckBorrowReturnSignature(const FuncDecl &function, SourceLocation location);
+    /// Holds a `return` in a function returning a reference to a reference derived from the borrowed source.
+    void CheckBorrowReturnValue(const Expr &value, SourceLocation location);
+    /// Reports a `return` of a place that cannot be written from a function returning `&var T`, and answers whether
+    /// it did.
+    [[nodiscard]] bool RejectImmutableBorrowReturn(const Expr &value, const TypeRef &valueType,
+                                                   SourceLocation location);
+    /// Holds a call returning a reference to a source argument it can borrow: a place or a reference, never a
+    /// temporary, and the callee to one named directly, never a function value.
+    void CheckBorrowReturnCall(const CallExpr &call, const TypeRef &type);
+    /// Holds each name `pattern` binds from an optional reference `subject` to what the subject borrows.
+    void RegisterBorrowedPayloadBindings(const Pattern &pattern, const Expr &subject, const TypeRef &subjectType);
+    /// The argument whose storage the result of `call` borrows, or null when the callee returns no reference.
+    [[nodiscard]] const Expr *BorrowReturnSourceArgument(const CallExpr &call) const;
+    /// The expression a borrow result reached through `expression` comes from: the source argument of a call returning
+    /// a reference, followed through further such calls and through `??`, or null when `expression` is no such result.
+    [[nodiscard]] const Expr *BorrowResultSource(const Expr &expression) const;
+
     /// One interface bound written on a generic parameter, resolved to the interface it names. `interface` is null when
     /// the bound named nothing, or named something that is not an interface; the declaration site reports that, and
     /// every use site then skips the bound rather than reporting the same mistake at each call.
@@ -1188,6 +1222,7 @@ private:
     const IndexExpr *indexAssignmentTarget = nullptr;
     /// One entry per accepted `for`, so lowering drives the subject the way analysis decided it is driven.
     std::unordered_map<const ForStmt *, ResolvedIteration> &iterations;
+    std::unordered_map<const FuncDecl *, ResolvedBorrowReturn> &borrowReturns;
     /// One entry per accepted `match` that covers its subject, so lowering stops a value no arm matches.
     std::unordered_set<const MatchExpr *> &exhaustiveMatchExpressions;
     std::unordered_set<const MatchStmt *> &exhaustiveMatchStatements;
@@ -1200,6 +1235,8 @@ private:
     const SemanticProgramIndex::PackageScopes &packageModuleScopes;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     bool currentFunctionNoReturn = false;
+    /// The parameter, or receiver, the reference the current function returns borrows from.
+    const Symbol *currentBorrowSource = nullptr;
     int loopDepth = 0;
     std::unordered_multiset<std::string> activeLabels;
 

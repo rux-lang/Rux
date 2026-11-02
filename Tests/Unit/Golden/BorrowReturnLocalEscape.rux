@@ -1,0 +1,50 @@
+struct Pair { first: int32; second: int32; }
+
+extend Pair {
+    func Local(&self) -> &int32 {
+        let copy = self.first;
+        return copy;
+    }
+
+    func Temporary(&self) -> &int32 {
+        return self.first + 1i32;
+    }
+
+    func Optional(&self, present: bool) -> &int32? {
+        let copy = Pair { first: self.first, second: self.second };
+        if present { return copy.second; }
+        return none;
+    }
+
+    func Writable(&self) -> &var int32 {
+        return self.second;
+    }
+
+    func Other(&self, other: &Pair) -> &int32 {
+        return other.first;
+    }
+
+    func Alias(&self) -> &int32 {
+        var local = Pair { first: 1i32, second: 2i32 };
+        let alias: &Pair = local;
+        return alias.first;
+    }
+}
+
+func Parameter(pair: &Pair, count: int32) -> &int32 {
+    return count;
+}
+
+func Through(pair: &Pair) -> &int32 {
+    var local = Pair { first: 1i32, second: 2i32 };
+    return local.Local();
+}
+
+func MakePair() -> Pair {
+    return Pair { first: 1i32, second: 2i32 };
+}
+
+func Main() -> int {
+    let first = MakePair().Local();
+    return 0;
+}

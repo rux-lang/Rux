@@ -156,7 +156,25 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
         reference->location = loc;
         reference->pointeeMut = pointeeMut;
         reference->pointee = ParseRangeType("add the referent type after '&'");
+        // A `?` written after the referent makes the reference optional, `&T?` being `(&T)?`, the shape a function
+        // returning a borrow that may be absent has; a reference to an optional is written `&(T?)`.
+        std::size_t optionalLevels = 0;
+        while (reference->pointee && !reference->pointee->parenthesized) {
+            auto *optional = AstCast<OptionalTypeExpr>(reference->pointee.get());
+            if (!optional) {
+                break;
+            }
+            ++optionalLevels;
+            TypeExprPtr payload = std::move(optional->payload);
+            reference->pointee = std::move(payload);
+        }
         base = std::move(reference);
+        for (std::size_t level = 0; level < optionalLevels; ++level) {
+            auto optional = std::make_unique<OptionalTypeExpr>();
+            optional->location = loc;
+            optional->payload = std::move(base);
+            base = std::move(optional);
+        }
     }
     // Grouped type or tuple: (T) or (T, U, ...)
     else if (Check(TokenKind::LeftParen)) {

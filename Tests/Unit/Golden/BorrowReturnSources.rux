@@ -1,0 +1,35 @@
+struct Pair { first: int32; second: int32; }
+
+func Longer(a: &Pair, b: &Pair) -> &int32 {
+    return a.first;
+}
+
+func Spans(left: int32[..], right: int32[..]) -> &int32? {
+    return none;
+}
+
+func Owned(value: Pair) -> &int32 {
+    return value.first;
+}
+
+func Counted(values: int32...) -> &int32 {
+    return values[0];
+}
+
+extend Pair {
+    func ByValue(self, other: &Pair) -> &int32 {
+        return other.first;
+    }
+
+    func Pick(self, a: &Pair, b: &Pair) -> &int32 {
+        return a.first;
+    }
+}
+
+struct Row { cells: int32[4]; }
+
+extend Row {
+    func [](&self, index: uint) -> &int32 {
+        return self.cells[index];
+    }
+}

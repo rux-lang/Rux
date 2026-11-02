@@ -60,7 +60,12 @@ std::string UngroupedTypeText(const TypeExpr *type) {
         return std::string("*") + (pointer->pointeeMut ? "var " : "") + TypeText(pointer->pointee.get());
     }
     if (const auto *reference = AstCast<const ReferenceTypeExpr>(type)) {
-        return std::string("&") + (reference->pointeeMut ? "var " : "") + TypeText(reference->pointee.get());
+        // `&T?` is an optional reference, so a reference to an optional keeps its group.
+        std::string referent = TypeText(reference->pointee.get());
+        if (AstCast<const OptionalTypeExpr>(reference->pointee.get())) {
+            referent = "(" + referent + ")";
+        }
+        return std::string("&") + (reference->pointeeMut ? "var " : "") + referent;
     }
     if (const auto *tuple = AstCast<const TupleTypeExpr>(type)) {
         std::string text = "(";

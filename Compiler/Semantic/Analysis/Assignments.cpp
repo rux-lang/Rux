@@ -62,6 +62,20 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         construct && !contextualCases.contains(&expr)) {
         return CanConstructNative(*construct, targetType);
     }
+    // An optional reference holds a borrow of a place or a reference, present, or another optional reference whose
+    // referent it may only make read-only; a native conversion would copy the value instead of borrowing it.
+    if (IsOptionalReference(targetType)) {
+        const TypeRef target = BorrowedReference(targetType);
+        if (IsOptionalReference(exprType)) {
+            const TypeRef source = BorrowedReference(exprType);
+            return source.CanImplicitlyBorrowTo(target) &&
+                   (!target->inner.front().isMut || source->inner.front().isMut);
+        }
+        if (!exprType.IsOptional() && !exprType.IsSum() && !exprType.IsFallible() && !exprType.IsNoneValue() &&
+            !exprType.IsUnknown()) {
+            return CanAssignExprTo(expr, exprType, target);
+        }
+    }
     if (targetType->kind == TypeRef::Kind::Reference) {
         TypeRef targetReferent = targetType->inner.front();
         TypeRef sourceReferent =

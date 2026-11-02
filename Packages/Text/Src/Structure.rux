@@ -31,7 +31,7 @@
 /// @param spec what to show the payload under
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/debug#write-optional-debug
-pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &T?,
+pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
                                     spec: FormatSpec) -> ! FormatError {
     match value {
         .Some(payload) => {

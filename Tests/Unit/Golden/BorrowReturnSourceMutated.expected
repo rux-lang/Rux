@@ -1,0 +1,4 @@
+17:9: error: cannot modify 'pair.first' while it is immutably borrowed
+21:27: error: cannot read 'pair.first' while 'second' holds an exclusive borrow
+25:18: error: cannot borrow exclusively 'pair' while it is immutably borrowed
+31:13: error: cannot move 'pair' while it is immutably borrowed

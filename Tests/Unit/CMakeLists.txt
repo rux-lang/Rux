@@ -41,6 +41,7 @@ set(RUX_TEST_SOURCES
     BuiltinAssertTests.cpp
     BuiltinPanicTests.cpp
     BorrowCheckerTests.cpp
+    BorrowReturnTests.cpp
     BuildPlanTests.cpp
     BuildReportTests.cpp
     CheckedLirBuilderTests.cpp

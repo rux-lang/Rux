@@ -83,7 +83,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 }
 
 // Each shape rendered into a buffer of its own and compared, so one case cannot read another's output.
-func ShownOptional(value: &StringView?, spec: FormatSpec, expected: char8[..]) -> bool {
+func ShownOptional(value: &(StringView?), spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     if Failed(WriteOptionalDebug<StringView>(writer, value, spec)) { return false; }

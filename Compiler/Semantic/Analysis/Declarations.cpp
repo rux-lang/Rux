@@ -75,7 +75,10 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         ValidateArrayType(*d.returnType->get());
     }
     TypeRef retType = d.returnType ? ResolveType(*d.returnType->get()) : TypeRef::MakeOpaque();
-    if (!retType.IsOpaque() && !retType.IsUnknown()) {
+    // A reference may be returned when the signature says what it borrows from, which is checked once the
+    // parameters are declared.
+    const bool borrowReturn = IsBorrowReturnType(retType);
+    if (!retType.IsOpaque() && !retType.IsUnknown() && !borrowReturn) {
         ValidateStoredType(retType, d.returnType ? d.returnType->get()->location : d.location, "function return type");
     }
     // A function with an explicit '#Abi' is called from foreign code, so its signature is held to the C mapping too.
@@ -172,6 +175,14 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         }
     }
 
+    const Symbol *savedBorrowSource = std::exchange(currentBorrowSource, nullptr);
+    if (borrowReturn && d.returnType) {
+        CheckBorrowReturnSignature(d, d.returnType->get()->location);
+        if (const std::optional<ResolvedBorrowReturn> borrow = BorrowReturnOf(d); borrow && borrow->source) {
+            currentBorrowSource = currentScope->Lookup(borrow->source->name);
+        }
+    }
+
     if (d.isAsm) {
         // An asm function's body is raw machine instructions, not Rux
         // statements, so it is validated when the assembler encodes it —
@@ -194,6 +205,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
     }
 
     PopScope();
+    currentBorrowSource = savedBorrowSource;
     currentSelfType = savedSelfType;
     currentReturnType = savedRet;
     currentFunctionNoReturn = savedNoReturn;

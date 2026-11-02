@@ -183,6 +183,10 @@ bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const Sourc
     if (payload.IsUnknown() || (!ClassifyTypeProperties(payload).IsResolved() && MentionsTypeParameter(payload))) {
         return true;
     }
+    // `??` on an optional reference yields the reference, which borrows what the optional borrowed.
+    if (payload->kind == TypeRef::Kind::Reference && !propagation) {
+        return true;
+    }
     if (payload->kind == TypeRef::Kind::Reference) {
         EmitError(location,
                   std::format("'{}' cannot extract reference payload type '{}' from {}", operation, payload.ToString(),
@@ -227,7 +231,7 @@ TypeRef AnalysisContext::CheckNativeCoalesce(const BinaryExpr &expression, const
                                                      "'{}'",
                                                      rightType.ToString(), payload.ToString())));
     }
-    else if (!rightType.IsUnknown()) {
+    else if (!rightType.IsUnknown() && payload->kind != TypeRef::Kind::Reference) {
         ConsumeValue(*expression.right, rightType, ValueConsumptionKind::CoalescingFallback,
                      expression.right->location);
     }

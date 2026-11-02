@@ -362,6 +362,11 @@ const ResolvedIteration *SemanticModel::TryGetIteration(const ForStmt &statement
     return iteration == facts.iterations.end() ? nullptr : &iteration->second;
 }
 
+const ResolvedBorrowReturn *SemanticModel::TryGetBorrowReturn(const FuncDecl &function) const noexcept {
+    const auto found = facts.borrowReturns.find(&function);
+    return found == facts.borrowReturns.end() ? nullptr : &found->second;
+}
+
 bool SemanticModel::IsExhaustiveMatch(const MatchExpr &expression) const noexcept {
     return facts.exhaustiveMatchExpressions.contains(&expression);
 }

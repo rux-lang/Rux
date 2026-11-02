@@ -440,8 +440,12 @@ TypeRef AnalysisContext::CheckIsPattern(const IsExpr &expression, const bool rec
     otherwise.location = expression.location;
     ValidateMatchPatterns({expression.pattern.get(), &otherwise}, subjectType);
 
-    // A binding of a subject the test does not own borrows the subject while it is in use.
-    if (binds && !owned && trackedFlowReachable) {
+    // A binding of a subject the test does not own borrows the subject while it is in use; the reference an optional
+    // reference holds borrows what the optional borrowed, however the subject is held.
+    if (binds && IsOptionalReference(subjectType) && trackedFlowReachable) {
+        RegisterBorrowedPayloadBindings(*expression.pattern, *expression.operand, subjectType);
+    }
+    else if (binds && !owned && trackedFlowReachable) {
         std::vector<std::string> names;
         CollectBoundNames(*expression.pattern, names);
         for (const std::string &name : names) {
@@ -454,5 +458,17 @@ TypeRef AnalysisContext::CheckIsPattern(const IsExpr &expression, const bool rec
         PopScope();
     }
     return TypeRef::MakeBool();
+}
+
+void AnalysisContext::RegisterBorrowedPayloadBindings(const Pattern &pattern, const Expr &subject,
+                                                      const TypeRef &subjectType) {
+    std::vector<std::string> names;
+    CollectBoundNames(pattern, names);
+    const TypeRef reference = BorrowedReference(subjectType);
+    for (const std::string &name : names) {
+        if (const Symbol *symbol = currentScope->Lookup(name); symbol && HoldsBorrow(symbol->type)) {
+            RegisterReferenceBinding(*symbol, subject, reference);
+        }
+    }
 }
 } // namespace Rux::SemanticDetail

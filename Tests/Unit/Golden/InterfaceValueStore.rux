@@ -29,7 +29,7 @@ extend Holder {
 
 var Saved: Named? = none;
 
-func Keep(out: &var Named?) {
+func Keep(out: &var (Named?)) {
     let value: Named = Plain { id: 1 };
     out = value;
 }

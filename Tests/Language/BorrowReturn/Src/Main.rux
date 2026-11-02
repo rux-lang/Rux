@@ -1,0 +1,179 @@
+// Functions return references that borrow from their receiver or their one reference or slice parameter.
+import Core::{ Assert, Panic };
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+extend Pair {
+    func First(&self) -> &int32 { return self.first; }
+    func SecondMutable(&var self) -> &var int32 { return self.second; }
+    func Larger(&self) -> &int32 {
+        if self.first > self.second { return self.first; }
+        return self.second;
+    }
+}
+
+/// Counts its destructions, so a reference that copied or moved the value would show.
+struct Named {
+    id: int32;
+    drops: *var int32;
+}
+
+extend Named {
+    func ~Named(&var self) {
+        // Safety: every `Named` in this test points `drops` at a local of `Main` that outlives it.
+        unsafe { *self.drops += 1; }
+    }
+
+    func Id(&self) -> &int32 { return self.id; }
+}
+
+struct Slots<T> {
+    items: T[4];
+    count: uint;
+}
+
+extend Slots<T> {
+    func At(&self, index: uint) -> &T { return self.items[index]; }
+    func AtMutable(&var self, index: uint) -> &var T { return self.items[index]; }
+    func Find(&self, index: uint) -> &T? {
+        if index >= self.count { return none; }
+        return self.items[index];
+    }
+    func FindMutable(&var self, index: uint) -> &var T? {
+        if index >= self.count { return none; }
+        return .Some(self.items[index]);
+    }
+    func Last(&self) -> &T? {
+        if self.count == 0 { return none; }
+        return self.Find(self.count - 1);
+    }
+    func Must(&self, index: uint) -> &T {
+        return self.Find(index) ?? Panic("the index is in range");
+    }
+    func Front(&self) -> &T {
+        let front = self.At(0);
+        return front;
+    }
+}
+
+/// Lends elements of storage it reaches through a raw pointer, as a container lends what its allocation holds.
+struct Window {
+    data: *var int32;
+    count: uint;
+}
+
+extend Window {
+    func At(&self, index: uint) -> &int32 {
+        // Safety: every `Window` in this test points `data` at `count` initialized elements of a local of `Main`.
+        unsafe { return self.data[index]; }
+    }
+
+    func AtMutable(&var self, index: uint) -> &var int32 {
+        // Safety: every `Window` in this test points `data` at `count` initialized elements of a local of `Main`.
+        unsafe { return self.data[index]; }
+    }
+
+    func Find(&self, index: uint) -> &int32? {
+        if index >= self.count { return none; }
+        // Safety: `index < count`, checked above, so the element is one of the initialized ones.
+        unsafe { return self.data[index]; }
+    }
+}
+
+func Larger(pair: &Pair) -> &int32 {
+    if pair.first > pair.second { return pair.first; }
+    return pair.second;
+}
+
+func FirstOf<T>(items: T[..]) -> &T { return items[0]; }
+
+func Inner(pair: &var Pair, count: int32) -> &var int32 {
+    if count > 0 { return pair.first; }
+    return pair.SecondMutable();
+}
+
+func People(drops: *var int32) {
+    var people = Slots<Named> {
+        items: [Named { id: 1i32, drops: drops }, Named { id: 2i32, drops: drops }, Named { id: 3i32, drops: drops },
+                Named { id: 4i32, drops: drops }],
+        count: 4,
+    };
+    let person = people.At(2);
+    Assert(person.id == 3i32 && person.Id() == 3i32, "an owning element is read through the returned reference");
+    Assert(people.At(3).Id() == 4i32, "a reference returned from a returned reference reads its source");
+    let renamed = people.AtMutable(0);
+    renamed.id = 11i32;
+    Assert(people.items[0].id == 11i32, "a field is written through a returned mutable reference");
+    people.AtMutable(1).id = 12i32;
+    Assert(people.At(1).id == 12i32, "a field of a call's returned mutable reference is a place");
+    // Safety: `drops` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { *drops } == 0i32, "borrowing an owning element neither copies nor destroys it");
+}
+
+func Read(value: &int32) -> int32 { return value; }
+
+func Bump(value: &var int32) { value += 1i32; }
+
+func Main() -> int {
+    var pair = Pair { first: 3i32, second: 9i32 };
+    let first = pair.First();
+    Assert(first == 3i32, "a returned reference reads its source");
+    let second = pair.SecondMutable();
+    second = 12i32;
+    Assert(pair.second == 12i32, "a returned mutable reference writes its source");
+    Assert(Larger(pair) == 12i32 && pair.Larger() == 12i32, "a reference parameter or the receiver is the source");
+    Assert(Read(pair.First()) == 3i32, "a returned reference is passed on to a reference parameter");
+    Bump(pair.SecondMutable());
+    Assert(pair.second == 13i32, "a returned mutable reference is passed on to a mutable reference parameter");
+    let inner = Inner(pair, 0i32);
+    inner += 2i32;
+    Assert(pair.second == 15i32, "a reference returned from a call is returned again");
+
+    var numbers = Slots<int32> { items: [1i32, 2i32, 3i32, 4i32], count: 3 };
+    Assert(numbers.At(1) == 2i32 && FirstOf<int32>(numbers.items[..]) == 1i32, "an element is borrowed in place");
+    let slot = numbers.AtMutable(2);
+    slot = 30i32;
+    Assert(numbers.items[2] == 30i32, "a mutable element reference writes the element");
+    Assert(numbers.Front() == 1i32, "a local holding a returned reference is returned");
+
+    let missing = numbers.Find(5);
+    Assert(missing is none, "an optional reference is absent");
+    let found = numbers.Find(1);
+    if found is .Some(value) {
+        Assert(value == 2i32, "binding 'is' takes the reference an optional reference holds");
+    }
+    else {
+        Assert(false, "an element in range is found");
+    }
+    match numbers.Last() {
+        .Some(last) => Assert(last == 30i32, "a match binds the reference an optional reference holds"),
+        none => Assert(false, "a non-empty collection has a last element"),
+    }
+    let fallback = 77i32;
+    Assert((numbers.Find(9) ?? fallback) == 77i32, "'??' yields the fallback borrowed");
+    Assert((numbers.Find(0) ?? fallback) == 1i32, "'??' yields the reference an optional reference holds");
+    if numbers.FindMutable(0) is .Some(written) {
+        written = 10i32;
+    }
+    Assert(numbers.items[0] == 10i32, "a mutable optional reference writes the element");
+    let present = numbers.Find(2) ?? return 1;
+    Assert(present == 30i32 && numbers.Must(1) == 2i32, "a fallback that leaves borrows nothing");
+    numbers.items[1] = 20i32;
+    Assert(numbers.At(1) == 20i32, "the source is written once the returned reference is no longer used");
+
+    var storage = [5i32, 6i32, 7i32];
+    var window = Window { data: @storage[0], count: 3 };
+    Assert(window.At(2) == 7i32, "a reference into raw storage reads the element");
+    let middle = window.AtMutable(1);
+    middle += 10i32;
+    Assert(storage[1] == 16i32, "a mutable reference into raw storage writes the element");
+    Assert(window.Find(3) is none && (window.Find(0) ?? fallback) == 5i32, "an optional reference into raw storage");
+
+    var drops = 0i32;
+    People(@drops);
+    Assert(drops == 4i32, "each owning element is destroyed once, by its owner");
+    return 0;
+}

@@ -354,6 +354,22 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
         return lowered;
     }
 
+    // An optional reference is a present borrow of a place or a reference, or another optional reference whose
+    // referent analysis let it make read-only, which has the same representation.
+    if (targetType.IsOptional() && targetType->inner.size() == 1 &&
+        targetType->inner.front()->kind == TypeRef::Kind::Reference) {
+        const TypeRef *sourceType = model.TryGetType(expression);
+        if (sourceType && sourceType->IsOptional()) {
+            HirExprPtr lowered = LowerExpr(expression);
+            lowered->type = targetType;
+            return lowered;
+        }
+        if (sourceType && !IsNativeType(*sourceType)) {
+            return MakeNativeCase(targetType, NativePresentTag, LowerExprAs(expression, targetType->inner.front()),
+                                  expression.location);
+        }
+    }
+
     HirExprPtr lowered = LowerExpr(expression);
     return ConvertNative(std::move(lowered), targetType, expression.location);
 }

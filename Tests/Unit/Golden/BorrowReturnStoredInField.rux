@@ -1,0 +1,23 @@
+struct Pair { first: int32; second: int32; }
+
+struct Holder {
+    value: &int32;
+    maybe: &int32?;
+}
+
+struct Copied { pair: Pair; }
+
+extend Pair {
+    func First(&self) -> &int32 { return self.first; }
+    func Whole(&self) -> &Pair { return self; }
+}
+
+func Main() -> int {
+    let pair = Pair { first: 1i32, second: 2i32 };
+    let holder = Holder { value: pair.First(), maybe: none };
+    let copied = Copied { pair: pair.Whole() };
+    let copies = (pair.First(), [pair.First()]);
+    let both = (pair.Whole(), 1i32);
+    let items = [pair.Whole()];
+    return 0;
+}

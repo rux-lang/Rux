@@ -143,10 +143,14 @@ TEST_CASE("an optional sum member must be grouped") {
     CHECK(Reports("func F(value: A? | B) {}", "an optional sum member must be grouped"));
 }
 
-TEST_CASE("pointer and reference operands include suffixes and stop before a sum or fallible") {
+TEST_CASE("pointer and reference operands include suffixes and stop before a sum or fallible, and `&T?` is optional") {
     CHECK_EQ(ParameterShape("*A?"), "ptr(opt(A))");
     CHECK_EQ(ParameterShape("(*A)?"), "opt(ptr(A))");
-    CHECK_EQ(ParameterShape("&A?"), "ref(opt(A))");
+    CHECK_EQ(ParameterShape("&A?"), "opt(ref(A))");
+    CHECK_EQ(ParameterShape("&var A?"), "opt(ref(A))");
+    CHECK_EQ(ParameterShape("&(A?)"), "ref(opt(A))");
+    CHECK_EQ(ParameterShape("&A[..]?"), "opt(ref(slice(A)))");
+    CHECK_EQ(ParameterShape("&A??"), "opt(opt(ref(A)))");
     CHECK_EQ(ParameterShape("*A | B"), "sum(ptr(A), B)");
     CHECK_EQ(ParameterShape("&(A | B)"), "ref(sum(A, B))");
     CHECK_EQ(ParameterShape("*A ! E"), "fal(ptr(A), E)");

@@ -132,14 +132,35 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
     CHECK(borrowMerge.empty());
 }
 
-TEST_CASE("coalescing rejects reference payloads after concrete and generic substitution") {
+TEST_CASE("coalescing an optional reference borrows, and a generic payload is never a reference") {
     const auto concrete = AnalyzeCoalescing(R"(
+        struct Item { value: int32; }
+        extend Item {
+            func Find(&self, present: bool) -> &int32? {
+                if present { return self.value; }
+                return none;
+            }
+        }
         func Take(value: &int32) {}
-        func Test(value: (&int32)?, fallback: &int32) {
-            Take((<-value) ?? fallback);
+        func Test(item: &Item, fallback: &int32) {
+            Take(item.Find(true) ?? fallback);
+            let held = item.Find(false) ?? fallback;
+            Take(held);
         }
     )");
-    CHECK(HasCoalescingError(concrete, "cannot extract reference payload type '&int32' from an optional"));
+    CHECK(concrete.empty());
+
+    const auto temporary = AnalyzeCoalescing(R"(
+        struct Item { value: int32; }
+        extend Item {
+            func Find(&self) -> &int32? { return self.value; }
+        }
+        func Test(item: &Item) -> int32 {
+            let held = item.Find() ?? 3i32;
+            return held;
+        }
+    )");
+    CHECK(HasCoalescingError(temporary, "coalescing fallback has type 'int32', but the optional payload is '&int32'"));
 
     const auto generic = AnalyzeCoalescing(R"(
         func Generic<T>(option: T?, fallback: T) -> T {
@@ -150,7 +171,7 @@ TEST_CASE("coalescing rejects reference payloads after concrete and generic subs
             Take(Generic<&int32>(none, value));
         }
     )");
-    CHECK(HasCoalescingError(generic, "cannot extract reference payload type '&int32' from an optional"));
+    CHECK(HasCoalescingError(generic, "cannot be or hold a reference"));
 
     const auto prohibited = AnalyzeCoalescing(R"(
         struct Pinned { value: int32; }
