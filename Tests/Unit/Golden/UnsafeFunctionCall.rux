@@ -1,0 +1,29 @@
+// An unsafe function puts an obligation on its caller, and an asm function is always unsafe to call.
+struct Cell {
+    value: int;
+}
+
+extend Cell {
+    unsafe func Read(self: *Cell) -> int {
+        return self.value;
+    }
+}
+
+// Safety: `pointer` must address a live `int`.
+unsafe func Load(pointer: *int) -> int {
+    return *pointer;
+}
+
+asm func Nothing() {
+    ret
+}
+
+func Main() -> int {
+    var value = 2;
+    let loaded = Load(@value);
+    var cell = Cell { value: 1 };
+    let read = Cell::Read(@cell);
+    Nothing();
+    let function = Load;
+    return loaded + read;
+}

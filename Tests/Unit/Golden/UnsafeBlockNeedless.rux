@@ -1,0 +1,24 @@
+// An unsafe block with nothing unsafe in it, or inside another unsafe context, only hides where the risk is.
+// Safety: `pointer` must address a live `int`.
+unsafe func Load(pointer: *int) -> int {
+    unsafe {
+        return *pointer;
+    }
+}
+
+func Main() -> int {
+    var value = 1;
+    let pointer: *int = @value;
+    // Safety: nothing here needs it.
+    let sum = unsafe { value + 1 };
+    // Safety: `pointer` is `@value`, a live local.
+    unsafe {
+        let outer = *pointer;
+        // Safety: the same.
+        unsafe {
+            value = outer;
+        }
+    }
+    // Safety: `pointer` is `@value`, a live local.
+    return sum + unsafe { Load(pointer) };
+}

@@ -1,0 +1,15 @@
+// Reading or writing through a raw pointer needs an unsafe context; taking an address and testing for null do not.
+func Main() -> int {
+    var value = 4;
+    let pointer: *var int = @value;
+    let read = *pointer;
+    *pointer = read + 1;
+    *pointer += 1;
+    if pointer == null {
+        return 1;
+    }
+    let copied = pointer;
+    // Safety: `pointer` is `@value`, a live local.
+    let fine = unsafe { *copied };
+    return fine;
+}

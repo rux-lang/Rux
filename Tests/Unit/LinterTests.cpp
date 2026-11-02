@@ -542,12 +542,74 @@ pub func Open() -> int32 { return 0i32; }
 
     REQUIRE(result.HasErrors());
     CHECK_EQ(result.diagnostics.front().message,
-             "unknown lint rule 'docs.mising'; valid rules are: naming.type, naming.const, docs.missing");
+             "unknown lint rule 'docs.mising'; valid rules are: naming.type, naming.const, docs.missing, "
+             "unsafe.comment");
 }
 
 TEST_CASE("the removed docs API URL allowance is rejected") {
     const auto result = Rux::Linting::Lint("#Allow(\"docs.api-url\")\npub func Open() {}\n", "allow.rux");
     REQUIRE(result.HasErrors());
     CHECK_EQ(result.diagnostics.front().message,
-             "unknown lint rule 'docs.api-url'; valid rules are: naming.type, naming.const, docs.missing");
+             "unknown lint rule 'docs.api-url'; valid rules are: naming.type, naming.const, docs.missing, "
+             "unsafe.comment");
+}
+
+TEST_CASE("unsafe.comment requires a Safety comment directly above an unsafe block") {
+    const std::string source = R"(func Read(pointer: *int) -> int {
+    let first = unsafe { *pointer };
+    // Safety: `pointer` addresses a live `int`, as `Read` documents.
+    let second = unsafe { *pointer };
+    // Safety: the comment may run over several lines, and the
+    // line that starts with the tag can be any of them.
+    let third = unsafe { *pointer };
+    // Safety: a comment separated by a blank line does not count.
+
+    unsafe {
+        let fourth = *pointer;
+    }
+    return first + second + third;
+}
+)";
+    const auto result = Rux::Linting::Lint(source, "unsafe.rux");
+    REQUIRE(result.diagnostics.size() == 2);
+    for (const Diagnostic &diagnostic : result.diagnostics) {
+        CHECK_EQ(diagnostic.message, "'unsafe' block has no '// Safety:' comment on the line above it");
+        REQUIRE(diagnostic.help.has_value());
+    }
+    CHECK_EQ(result.diagnostics[0].location.line, 2u);
+    CHECK_EQ(result.diagnostics[0].location.column, 17u);
+    CHECK_EQ(result.diagnostics[1].location.line, 10u);
+}
+
+TEST_CASE("unsafe.comment requires an unsafe function to state its callers' obligation") {
+    const std::string source = R"(unsafe func Bare(pointer: *int) -> int {
+    return *pointer;
+}
+
+/// Reads the value at `pointer`.
+/// Safety: `pointer` must address a live `int`.
+/// @param pointer what to read
+/// @returns the value
+#Abi(.C)
+unsafe func Documented(pointer: *int) -> int {
+    return *pointer;
+}
+
+// Safety: `pointer` must address a live `int`.
+unsafe func Commented(pointer: *int) -> int {
+    return *pointer;
+}
+)";
+    const auto messages = Messages(Rux::Linting::Lint(source, "unsafe.rux"));
+    REQUIRE(messages.size() == 1);
+    CHECK_EQ(messages.front(), "unsafe function 'Bare' has no 'Safety:' comment stating what its callers must uphold");
+}
+
+TEST_CASE("unsafe.comment can be allowed for one function") {
+    const std::string source = R"(#Allow("unsafe.comment")
+func Read(pointer: *int) -> int {
+    return unsafe { *pointer };
+}
+)";
+    CHECK(Messages(Rux::Linting::Lint(source, "unsafe.rux")).empty());
 }

@@ -1,0 +1,11 @@
+// Indexing or slicing a raw pointer is unchecked, so it needs an unsafe context; a slice of an array is checked.
+func Main() -> int {
+    var values: int[3] = [1, 2, 3];
+    let pointer: *var int = @values[0];
+    let second = pointer[1];
+    pointer[2] = 7;
+    let view = pointer[0..2];
+    let checked = values[0..2];
+    let address = @pointer[1];
+    return second + view[0] + checked[1] + (address as int);
+}

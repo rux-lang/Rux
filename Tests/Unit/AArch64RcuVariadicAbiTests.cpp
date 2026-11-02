@@ -52,7 +52,8 @@ TEST_CASE("Apple AArch64 variadic calls keep fixed arguments in registers and pr
             func Format(format: *char8, scale: float64, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run, so `Format` never reads its null format
+        unsafe func Main() -> int {
             var narrow: int16 = -2i16;
             var byte: uint8 = 3u8;
             var wide = Wide { first: 4i64, second: 5i64 };
@@ -114,7 +115,8 @@ TEST_CASE("Apple AArch64 variadic boundary follows packed fixed stack arguments"
                          small: uint8, medium: uint16, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run; `Collect` takes only values
+        unsafe func Main() -> int {
             var wide = Wide { first: 11i64, second: 12i64 };
             Collect(1i64, 2i64, 3i64, 4i64, 5i64, 6i64, 7i64, 8i64, 9u8, 10u16, wide);
             return 0;
@@ -158,7 +160,8 @@ TEST_CASE("Apple AArch64 zero-fixed variadic calls restart their stack layout") 
         #Link("libSystem.B.dylib")
         extern func Log(...) -> int32;
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run; `Log` takes only values
+        unsafe func Main() -> int {
             Log(1, 2.5);
             Log(3, 4.5);
             return 0;
@@ -199,7 +202,8 @@ TEST_CASE("FreeBSD AArch64 variadic calls promote their tail and retain generic 
             func Collect(tag: *char8, scale: float64, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: `tag` is a NUL-terminated literal, and the program is only compiled, never run
+        unsafe func Main() -> int {
             var tag = "values";
             var fraction: float32 = 2.5f32;
             var negative: int8 = -3i8;
@@ -284,7 +288,8 @@ TEST_CASE("AArch64 emitter rejects inconsistent C variadic call metadata") {
             #Link("libSystem.B.dylib")
             extern func Log(value: int32, ...) -> int32;
 
-            func Main() -> int {
+            // Safety: the program is only compiled, never run; `Log` takes only values
+            unsafe func Main() -> int {
                 Log(1, 2);
                 return 0;
             }
@@ -327,7 +332,8 @@ TEST_CASE("Windows AArch64 sprintf-style variadic calls use consecutive general-
             func sprintf(buffer: *char8, format: *char8, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run, so `sprintf` never writes into `buffer`
+        unsafe func Main() -> int {
             var buffer = "result";
             var format = "values";
             var written = sprintf(buffer.data, format.data, 2.5, 7, 3.5f32);
@@ -382,7 +388,8 @@ TEST_CASE("Windows AArch64 variadic aggregates straddle the register window and 
             func Collect(first: int, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run; `Collect` takes only values
+        unsafe func Main() -> int {
             var floats = FloatPair { x: 1.5, y: 2.5 };
             var integers = IntPair { x: 8i64, y: 9i64 };
             var result = Collect(1, 2, 3, 4, 5, 6, 7, floats, integers);
@@ -432,7 +439,8 @@ TEST_CASE("Windows AArch64 variadic calls copy large aggregates and keep indirec
             func Transform(scale: float64, ...) -> Big;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run; `Transform` takes only values
+        unsafe func Main() -> int {
             var input = Big { a: 1i64, b: 2i64, c: 3i64 };
             var output = Transform(2.5, input);
             return 0;
@@ -479,7 +487,8 @@ TEST_CASE("AArch64 RCU emitter passes an anonymous float argument in a vector re
             func printf(format: *char8, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: `text` is a NUL-terminated literal, and the program is only compiled, never run
+        unsafe func Main() -> int {
             var text = "value";
             var written = printf(text.data, 2.5, 7);
             return 0;
@@ -515,7 +524,8 @@ TEST_CASE("Apple AArch64 variadic calls through a function value keep fixed argu
             func Format(format: *char8, scale: float64, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run, so `Format` never reads its null format
+        unsafe func Main() -> int {
             var narrow: int16 = -2i16;
             var byte: uint8 = 3u8;
             var wide = Wide { first: 4i64, second: 5i64 };
@@ -577,7 +587,8 @@ TEST_CASE("Windows AArch64 variadic calls through a function value use consecuti
             func sprintf(buffer: *char8, format: *char8, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run, so `sprintf` never writes into `buffer`
+        unsafe func Main() -> int {
             var buffer = "result";
             var format = "values";
             let print: func(*char8, *char8, ...) -> int32 = sprintf;
@@ -631,7 +642,8 @@ TEST_CASE("Linux AArch64 variadic calls through a function value keep generic re
             func printf(format: *char8, ...) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: `text` is a NUL-terminated literal, and the program is only compiled, never run
+        unsafe func Main() -> int {
             var text = "value";
             let print: func(*char8, ...) -> int32 = printf;
             var written = print(text.data, 2.5, 7, 1.5f32);
@@ -675,7 +687,8 @@ TEST_CASE("AArch64 function values of a fixed-arity type carry no C variadic met
             func Scale(value: float64) -> int32;
         }
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run; `Scale` takes only a value
+        unsafe func Main() -> int {
             let scale: func(float64) -> int32 = Scale;
             var result = scale(1.5);
             return 0;
@@ -693,7 +706,8 @@ TEST_CASE("AArch64 emitter checks C variadic metadata on a call through a functi
             #Link("libSystem.B.dylib")
             extern func Log(value: int32, ...) -> int32;
 
-            func Main() -> int {
+            // Safety: the program is only compiled, never run; `Log` takes only values
+            unsafe func Main() -> int {
                 let log: func(int32, ...) -> int32 = Log;
                 log(1, 2);
                 return 0;

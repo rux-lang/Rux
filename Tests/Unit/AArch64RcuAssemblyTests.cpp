@@ -26,7 +26,8 @@ TEST_CASE("AArch64 RCU emitter emits an asm func as a raw blob") {
             ret
         }
 
-        func Main() -> int {
+        // Safety: `Add` reads only its two register arguments and touches no memory
+        unsafe func Main() -> int {
             return Add(40, 2) as int;
         }
     )");
@@ -73,7 +74,8 @@ TEST_CASE("AArch64 RCU emitter relocates a symbol an asm func names") {
             ret
         }
 
-        func Main() -> int {
+        // Safety: `TripleThenAdd` reads only its register argument and restores the stack it uses
+        unsafe func Main() -> int {
             return TripleThenAdd(10) as int;
         }
     )");

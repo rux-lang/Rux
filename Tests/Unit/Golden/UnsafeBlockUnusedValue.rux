@@ -1,0 +1,16 @@
+// An unsafe block written as a statement yields nothing, so a value it ends with is reported as an `if` branch's is.
+func Main() -> int {
+    var value = 1;
+    let pointer: *int = @value;
+    // Safety: `pointer` is `@value`, a live local.
+    unsafe {
+        *pointer
+    }
+    // Safety: `pointer` is `@value`, a live local.
+    let used = unsafe { *pointer };
+    // Safety: `pointer` is `@value`, a live local.
+    unsafe {
+        *pointer + used
+    }
+    return used;
+}

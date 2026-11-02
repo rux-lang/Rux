@@ -447,6 +447,34 @@ The package surface keeps raw pointers only where the address itself is part of 
 
 Package READMEs identify these retained boundaries beside the APIs that expose them. A new safe parameter or receiver uses a reference unless it has one of the address-level contracts above.
 
+## Unsafe Code
+
+The compiler checks references, bounds, ownership and borrows, but it cannot check what a raw pointer addresses, what a foreign function does, or what an `unsafe func` expects of its caller. The operations that depend on such facts are allowed only in an unsafe context — an `unsafe { ... }` block or the body of an `unsafe func` — so a reader finds every place the program's soundness rests on a promise by searching for `unsafe`.
+
+These operations need an unsafe context:
+
+- reading or writing through a raw pointer: `*p`, `*p = v`, `p[i]`, a range `p[a..b]`, and a field `p.x` reached through a `*T` or `*var T`, including `self.x` where the receiver is `self: *T`, and `@p.x` or `@p[i]`, which compute an address from one;
+- pointer arithmetic that produces a pointer: `p + n`, `n + p`, `p - n`, `p += n` and `p -= n`;
+- a cast that gives an address a type it did not have: an integer to a typed pointer, `*opaque` to `*T`, `*A` to `*B`, and an address to a function type;
+- calling an `extern` function, an `asm` function or an `unsafe func`, and naming one as a function value, since a call through the value is not marked;
+- reading or writing an `extern` variable.
+
+Everything else about raw pointers is safe: taking an address with `@`, `@` of an extern variable, copying, comparing and null-testing pointers, converting a pointer to an integer, and a cast that only weakens what a pointer says — `*var T` to `*T`, the same pointee, or anything to `*opaque`. Each operation outside an unsafe context is an error that names it, with a help pointing at the block:
+
+```text
+Src/Main.rux:5:12: error: dereferencing a raw pointer requires 'unsafe'
+  note: the compiler cannot prove that a raw pointer addresses a live value of its type
+  help: wrap it in 'unsafe { ... }' and say why it holds in a '// Safety:' comment above it
+```
+
+The others read `call to extern function 'write' requires 'unsafe'`, `call to unsafe function 'Copy' requires 'unsafe'`, `call to 'asm' function 'Syscall3' requires 'unsafe'`, `accessing field 'next' through a raw pointer requires 'unsafe'`, `indexing a raw pointer requires 'unsafe'`, `pointer arithmetic requires 'unsafe'`, `casting '*opaque' to '*var Node' requires 'unsafe'` and `access to extern variable 'opterr' requires 'unsafe'`.
+
+`unsafe { ... }` is a value block, by the rules of [`if` Values and Value Blocks](#if-values-and-value-blocks): in value position it yields its last expression written without a `;`, so a single read is `let first = unsafe { *p };` and a block can end a value block as its value. At the start of a statement it is the statement and ends at its `}`, as an `if` statement does, so it yields nothing and a value it ends with is an error (`this 'unsafe' block yields a value of type 'int' that is not used`); write `unsafe { F()?; }` rather than following the block with `?` or `catch`, or put the whole expression in parentheses. A block is otherwise exactly the statements it holds: its locals are destroyed at its end, `return`, `break` and `continue` inside it leave as they would anywhere, and `defer unsafe { ... }` defers it. Nothing about a program's behavior changes; the block only grants permission. An `unsafe` block that holds no operation needing it, or one written inside another unsafe context, is a warning, `unnecessary 'unsafe' block`.
+
+`unsafe func` declares a function whose caller carries an obligation the compiler cannot check, such as `Memory::Copy`, whose ranges must be readable and writable for `length` bytes. A call needs an unsafe context, and the body is one. The keyword stands directly before `func`: `pub unsafe func`, a method in an `extend` block, and `pub intrinsic unsafe func`, as the `Core` atomic intrinsics and `Zeroize` are declared. An `extern` declaration and an `asm` function are always unsafe to call, so `unsafe` on one is an error, as it is on anything but a function or a block. A destructor, an operator and an interface requirement or its implementation cannot be `unsafe`, because each is called where no call is written or through an interface that does not show which implementation it reaches: `destructor '~Holder' cannot be 'unsafe', because nothing marks where it is called`, `interface requirement 'Area' cannot be 'unsafe'`. A function whose safety does not depend on its caller stays safe and keeps its raw operations in `unsafe` blocks inside its body.
+
+`rux lint` asks for the reason. Rule `unsafe.comment` warns about an `unsafe` block unless a comment run ending on the line directly above the line holding `unsafe` has a line starting `Safety:`, and about an `unsafe func` unless one does above its declaration, attributes in between allowed — usually a `/// Safety:` line of its documentation, which states what a caller must uphold. A comment at the end of the previous line, or one separated by a blank line, does not count. The comment says why the operation is sound at that place, such as `// Safety: index is below self.length, checked above`, and `#Allow("unsafe.comment")` on a function silences the rule for its body.
+
 ## Strings and Text
 
 ### Primitive types and associated constants
@@ -800,7 +828,7 @@ An `if` at the start of a statement is the statement: its value is not used, so 
 
 ## Indexing
 
-Built-in indexing of an array or a slice is bounds-checked on every target and in every build profile. `a[i]`, as a read, a write, or a compound assignment, stops the program with `Panic: index out of range`, followed by the function, file, line, and column of the subscript, unless `i` names an element; a negative index is never in range. A range subscript is checked the same way: `a[start..end]` requires `start <= end <= a.length`, and an inclusive end must be below the length. A constant index into a fixed array is checked when the program is compiled instead, so `primes[7]` on an `int32[4]` is an error, and so are constant slice bounds past its end, as in `primes[1..9]` (`slice end 9 is out of range for an array of 4 elements`). Indexing or slicing a raw pointer is not checked, because a pointer carries no length; the caller vouches for what it addresses. An array type always has a length: `T[]` is rejected wherever it is written (`an array type needs a length between '[' and ']'`) with the help `use 'Vector<T>' for a growable array or 'T[..]' for a view`. A release build removes a check it proves always passes.
+Built-in indexing of an array or a slice is bounds-checked on every target and in every build profile. `a[i]`, as a read, a write, or a compound assignment, stops the program with `Panic: index out of range`, followed by the function, file, line, and column of the subscript, unless `i` names an element; a negative index is never in range. A range subscript is checked the same way: `a[start..end]` requires `start <= end <= a.length`, and an inclusive end must be below the length. A constant index into a fixed array is checked when the program is compiled instead, so `primes[7]` on an `int32[4]` is an error, and so are constant slice bounds past its end, as in `primes[1..9]` (`slice end 9 is out of range for an array of 4 elements`). Indexing or slicing a raw pointer is not checked, because a pointer carries no length; the caller vouches for what it addresses, which is why it needs an [unsafe context](#unsafe-code). An array type always has a length: `T[]` is rejected wherever it is written (`an array type needs a length between '[' and ']'`) with the help `use 'Vector<T>' for a growable array or 'T[..]' for a view`. A release build removes a check it proves always passes.
 
 A type indexes itself by declaring the indexing operators in an `extend` block, the same way it declares `==` or `<`. `[]` reads one element and `[]=` writes one:
 

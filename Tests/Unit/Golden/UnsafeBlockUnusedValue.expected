@@ -1,0 +1,2 @@
+7:9: error: this 'unsafe' block yields a value of type 'int' that is not used
+13:9: error: this 'unsafe' block yields a value of type 'int' that is not used

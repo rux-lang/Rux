@@ -1,0 +1,12 @@
+// Moving a pointer by an offset makes an address nothing vouches for; converting one to an integer does not.
+func Main() -> int {
+    var values: int[4] = [1, 2, 3, 4];
+    var pointer: *int = @values[0];
+    let third = pointer + 2;
+    let back = third - 1;
+    let ahead = 1 + pointer;
+    pointer += 1;
+    pointer -= 1;
+    let address = pointer as uint;
+    return (address + (third as uint) + (back as uint) + (ahead as uint)) as int;
+}

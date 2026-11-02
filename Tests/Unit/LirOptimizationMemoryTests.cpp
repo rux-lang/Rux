@@ -220,8 +220,10 @@ TEST_CASE("Memory promotion preserves volatile and mismatched storage and zeroes
 
 TEST_CASE("Memory promotion leaves escaped storage visible to calls") {
     auto package = CompileToLir(R"(
-        func Set(value: *var int) { *value = 42; }
-        func Main() -> int { var value = 1; Set(@value); return value; }
+        // Safety: `value` must address a live, writable `int`
+        unsafe func Set(value: *var int) { *value = 42; }
+        // Safety: `@value` addresses a live local
+        unsafe func Main() -> int { var value = 1; Set(@value); return value; }
     )",
                                 BuildProfile::Debug);
     Optimization::LirMemoryPromotion promotion;
@@ -289,8 +291,10 @@ TEST_CASE("Scalar replacement preserves snapshots in private struct and tuple co
 TEST_CASE("Scalar replacement propagates representation escapes through aggregate copies") {
     auto package = CompileToLir(R"(
         struct Pair { small: int8; large: int64; }
-        func Inspect(value: *Pair) -> int8 { return *(value as *int8); }
-        func Work(input: int64) -> int64 {
+        // Safety: `value` must address a live `Pair`, whose first byte is `small`
+        unsafe func Inspect(value: *Pair) -> int8 { return *(value as *int8); }
+        // Safety: `@second` addresses a live local `Pair`
+        unsafe func Work(input: int64) -> int64 {
             let first = Pair { small: 3i8, large: input };
             let second = first;
             return second.large + (Inspect(@second) as int64);

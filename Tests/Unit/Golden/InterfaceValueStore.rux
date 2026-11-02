@@ -34,7 +34,7 @@ func Keep(out: &var Named?) {
     out = value;
 }
 
-func KeepThrough(out: *var Named) {
+unsafe func KeepThrough(out: *var Named) {
     *out = Plain { id: 2 };
 }
 

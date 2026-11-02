@@ -10,6 +10,16 @@
 #include <vector>
 
 namespace Rux {
+namespace {
+bool BlockYieldsValue(const Block *block) noexcept {
+    if (!block || block->stmts.empty()) {
+        return false;
+    }
+    const auto *last = AstCast<const ExprStmt>(block->stmts.back().get());
+    return last && last->yieldsValue;
+}
+} // namespace
+
 // Block and statements
 std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role, const bool valueBlock) {
     const auto loc = CurrentLocation();
@@ -45,6 +55,14 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role, const boo
 
     ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close {}", role));
     block->end = CurrentLocation();
+    return block;
+}
+
+std::unique_ptr<BlockExpr> Parser::ParseUnsafeBlock() {
+    auto block = std::make_unique<BlockExpr>();
+    block->location = Advance().location; // 'unsafe'
+    block->isUnsafe = true;
+    block->block = ParseBlock("the 'unsafe' block", true);
     return block;
 }
 
@@ -157,11 +175,28 @@ StmtPtr Parser::ParseStmt() {
         return s;
     }
 
+    // `unsafe { ... }` at the start of a statement is the statement, ended by its '}' as an `if` is. When it ends a
+    // value block and yields a value, it is that block's value.
+    if (Check(TokenKind::UnsafeKeyword) && Peek(1).Is(TokenKind::LeftBrace)) {
+        auto statement = std::make_unique<ExprStmt>();
+        statement->location = loc;
+        auto block = ParseUnsafeBlock();
+        if (tailAllowed && Check(TokenKind::RightBrace) && BlockYieldsValue(block->block.get())) {
+            statement->yieldsValue = true;
+        }
+        else if (Check(TokenKind::Semicolon)) {
+            statement->semicolon = CurrentLocation();
+            Advance();
+        }
+        statement->expr = std::move(block);
+        return statement;
+    }
+
     // Allow nested declarations inside blocks
-    if (CheckAny({TokenKind::PubKeyword, TokenKind::FuncKeyword, TokenKind::StructKeyword, TokenKind::EnumKeyword,
-                  TokenKind::VariantKeyword, TokenKind::UnionKeyword, TokenKind::InterfaceKeyword,
-                  TokenKind::ExtendKeyword, TokenKind::ModuleKeyword, TokenKind::ConstKeyword, TokenKind::TypeKeyword,
-                  TokenKind::ExternKeyword})) {
+    if (CheckFuncStart() || CheckAny({TokenKind::PubKeyword, TokenKind::FuncKeyword, TokenKind::StructKeyword,
+                                      TokenKind::EnumKeyword, TokenKind::VariantKeyword, TokenKind::UnionKeyword,
+                                      TokenKind::InterfaceKeyword, TokenKind::ExtendKeyword, TokenKind::ModuleKeyword,
+                                      TokenKind::ConstKeyword, TokenKind::TypeKeyword, TokenKind::ExternKeyword})) {
         auto ds = std::make_unique<DeclStmt>();
         ds->location = loc;
         bodiesNeedConditionalFolding = true;
@@ -454,13 +489,6 @@ ExprPtr ConditionalMatch(const SourceLocation location, ExprPtr condition, ExprP
     return match;
 }
 
-bool BlockYieldsValue(const Block *block) noexcept {
-    if (!block || block->stmts.empty()) {
-        return false;
-    }
-    const auto *last = AstCast<const ExprStmt>(block->stmts.back().get());
-    return last && last->yieldsValue;
-}
 } // namespace
 
 bool Parser::IfYieldsValue(const IfStmt &statement) noexcept {

@@ -38,8 +38,10 @@ TEST_CASE("Inlining named data addresses stays within their defining module") {
     for (const bool crossModule : {false, true}) {
         auto package = CompileToLir(R"(
             const Value: uint = 17u;
-            func Read() -> uint { return *@Value; }
-            func Use() -> uint { return Read(); }
+            // Safety: no caller obligation; `@Value` addresses a constant that lives for the whole program
+            unsafe func Read() -> uint { return *@Value; }
+            // Safety: `Read` only reads the constant `Value`
+            unsafe func Use() -> uint { return Read(); }
         )",
                                     BuildProfile::Debug);
         auto &module = package.modules[0];
@@ -85,7 +87,8 @@ TEST_CASE("Reusing global addresses does not reuse loads across mutable writes")
     auto package = CompileToLir(R"(
         var Value: uint = 17u;
         func Read() -> uint { return Value; }
-        func Use(pointer: *var uint) -> uint {
+        // Safety: `pointer` must address a live, writable `uint`
+        unsafe func Use(pointer: *var uint) -> uint {
             let before = Read();
             *pointer += 1u;
             return before + Read();

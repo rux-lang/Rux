@@ -1,0 +1,2 @@
+6:5: error: access to extern variable 'opterr' requires 'unsafe'
+7:16: error: access to extern variable 'opterr' requires 'unsafe'

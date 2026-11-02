@@ -1,0 +1,175 @@
+// `unsafe`: the operations a raw pointer, an extern declaration or an `unsafe func` needs, in an unsafe context.
+// An `unsafe { ... }` block in value position yields its last expression, as an `if` branch does; at the start of a
+// statement it is the statement, ended by its '}'. An `unsafe func` body is an unsafe context throughout, and a call
+// to one needs an unsafe context of its own. A block runs exactly as the statements it holds would: its locals are
+// destroyed at its end, a `return` or `break` inside it leaves as it would anywhere, and a `defer` can hold one.
+
+import Core::{ Assert, AtomicFetchAdd, AtomicLoad, MemoryOrder, Zeroize, #target };
+
+when #target.os {
+    .FreeBSD => const CLibrary = "libc.so.7";
+    .Linux => const CLibrary = "libc.so.6";
+    .macOS => const CLibrary = "libSystem.B.dylib";
+    .Windows => const CLibrary = "ucrtbase.dll";
+    else => #Error("Unsupported operating system")
+}
+
+#Link(CLibrary)
+extern func abs(value: int32) -> int32;
+
+struct Node {
+    value: int32;
+    next: *var Node;
+}
+
+extend Node {
+    /// The value of the node `self` addresses.
+    /// Safety: `self` must address a live `Node`.
+    unsafe func ValueAt(self: *Node) -> int32 {
+        return self.value;
+    }
+}
+
+var Destroyed: int32 = 0;
+
+struct Counted {
+    id: int32;
+}
+
+extend Counted {
+    func ~Counted(&var self) {
+        Destroyed += 1;
+    }
+}
+
+// Safety: `values` must address at least `count` live elements.
+unsafe func Sum(values: *int32, count: uint) -> int32 {
+    var total: int32 = 0;
+    var index: uint = 0;
+    while index < count {
+        total += values[index];
+        index += 1;
+    }
+    return total;
+}
+
+// A safe function whose body keeps the one raw read in the smallest block.
+func Second(values: int32[..]) -> int32 {
+    if values.length < 2 {
+        return 0;
+    }
+    // Safety: the length is at least two, checked above, so index 1 is inside the view.
+    return unsafe { values.data[1] };
+}
+
+// The yielded value leaves before the block's locals are destroyed, and they are destroyed when it ends.
+func Yielded() -> int32 {
+    var source: int32 = 5;
+    let pointer: *int32 = @source;
+    // Safety: `pointer` is `@source`, a live local.
+    let read = unsafe {
+        let counted = Counted { id: 1 };
+        *pointer + counted.id
+    };
+    Assert(Destroyed == 1, "Expected the block's local to be destroyed when the block ended");
+    return read;
+}
+
+// A `return` inside a statement block leaves the function, and a `break` leaves the loop around it.
+func FirstAbove(values: *int32, count: uint, floor: int32) -> int32 {
+    var index: uint = 0;
+    loop {
+        if index == count {
+            break;
+        }
+        // Safety: `index < count`, checked above, and the caller passes `count` live elements.
+        unsafe {
+            if values[index] > floor {
+                return values[index];
+            }
+        }
+        index += 1;
+    }
+    return -1;
+}
+
+// A deferred block runs at scope exit, after the statements before it.
+func ClearLater(pointer: *var int32) {
+    // Safety: `pointer` addresses the caller's live local for the whole call.
+    defer unsafe { *pointer = 0; }
+    // Safety: the same.
+    unsafe { *pointer = 9; }
+}
+
+// Generic code dereferences a `*T` the same way.
+func ReadThrough<T>(pointer: *T) -> T {
+    // Safety: callers pass the address of a live `T`.
+    return unsafe { *pointer };
+}
+
+func Main() -> int {
+    // A value block and a statement block over the same pointer.
+    var value: int32 = 3;
+    let pointer: *var int32 = @value;
+    // Safety: `pointer` is `@value`, a live local.
+    unsafe {
+        *pointer = *pointer + 1;
+    }
+    // Safety: the same.
+    let read = unsafe { *pointer };
+    Assert(read == 4, "Expected the statement block to write through the pointer");
+
+    // Pointer arithmetic and indexing over an array.
+    var numbers: int32[4] = [1, 2, 3, 4];
+    let first: *int32 = @numbers[0];
+    // Safety: `first` addresses `numbers`, so `first + 2` is its third element.
+    let third = unsafe { *(first + 2) };
+    Assert(third == 3, "Expected pointer arithmetic to reach the third element");
+    // Safety: `numbers` has four elements.
+    Assert(unsafe { Sum(first, 4) } == 10, "Expected the unsafe function to sum four elements");
+    Assert(Second(numbers[..]) == 2, "Expected the safe wrapper to read the second element");
+    Assert(FirstAbove(first, 4, 2) == 3, "Expected the return inside the block to leave the function");
+    Assert(FirstAbove(first, 4, 9) == -1, "Expected the break inside the block to leave the loop");
+
+    // Fields through a raw pointer, and an unsafe method.
+    var tail = Node { value: 7, next: null };
+    var head = Node { value: 6, next: @tail };
+    let node: *var Node = @head;
+    // Safety: `node` is `@head`, whose `next` is `@tail`; both are live locals.
+    let linked = unsafe { node.value + node.next.value };
+    Assert(linked == 13, "Expected field access through two raw pointers");
+    // Safety: `node` is `@head`, a live local.
+    Assert(unsafe { Node::ValueAt(node) } == 6, "Expected the unsafe method to read its receiver");
+
+    // A cast from untyped memory back to the type it holds.
+    let untyped = pointer as *opaque;
+    // Safety: `untyped` is `@value`, an `int32`, given back its own type.
+    let typed = unsafe { untyped as *int32 };
+    Assert(ReadThrough(typed) == 4, "Expected the retyped pointer to read the same value");
+
+    // An extern function, and an `unsafe` arm body.
+    // Safety: `abs` reads only its argument.
+    let magnitude = unsafe { abs(-5i32) };
+    let picked = match magnitude {
+        // Safety: `pointer` is `@value`, a live local.
+        5 => unsafe { *pointer },
+        _ => 0,
+    };
+    Assert(picked == 4, "Expected the arm block to read through the pointer");
+
+    // Atomic and zeroizing intrinsics are unsafe functions.
+    var counter: uint32 = 1;
+    // Safety: `counter` is a live, aligned local only this thread touches.
+    unsafe { AtomicFetchAdd<uint32>(@counter, 2u32, MemoryOrder::SequentiallyConsistent); }
+    // Safety: the same.
+    Assert(unsafe { AtomicLoad<uint32>(@counter, MemoryOrder::Acquire) } == 3u32, "Expected the atomic add to land");
+    var secret: uint8[2] = [7u8, 7u8];
+    // Safety: `secret` is a live local array of two bytes.
+    unsafe { Zeroize(@secret[0], 2u64); }
+    Assert(secret[0] == 0u8 && secret[1] == 0u8, "Expected both bytes cleared");
+
+    Assert(Yielded() == 6, "Expected the block to yield its last expression");
+    ClearLater(pointer);
+    Assert(value == 0, "Expected the deferred block to run after the write");
+    return 0;
+}

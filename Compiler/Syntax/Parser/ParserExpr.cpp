@@ -758,6 +758,14 @@ ExprPtr Parser::ParsePrimary() {
     if (Check(TokenKind::IfKeyword)) {
         return ParseIfExpr();
     }
+    // `unsafe { ... }` in value position yields its last expression, as any value block does.
+    if (Check(TokenKind::UnsafeKeyword)) {
+        if (!Peek(1).Is(TokenKind::LeftBrace)) {
+            RejectMisplacedUnsafe();
+            return nullptr;
+        }
+        return ParseUnsafeBlock();
+    }
     if (Match(TokenKind::MatchKeyword)) {
         auto e = std::make_unique<MatchExpr>();
         e->location = loc;

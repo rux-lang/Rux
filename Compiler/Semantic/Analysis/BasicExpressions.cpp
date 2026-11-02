@@ -223,7 +223,10 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
         checkingPlainAssignmentTarget = checkingPlainAssignmentTarget || unary->op == TokenKind::At;
+        const Expr *savedAddressOperand =
+            std::exchange(addressOperand, unary->op == TokenKind::At ? unary->operand.get() : nullptr);
         TypeRef operandType = CheckExpr(*unary->operand);
+        addressOperand = savedAddressOperand;
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
             if (const Symbol *reference = ReferenceWriteTarget(*unary->operand, false)) {

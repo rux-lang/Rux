@@ -157,13 +157,20 @@ void AnalysisContext::EmitError(const SourceLocation location, std::string messa
                      {}});
 }
 
-void AnalysisContext::EmitWarning(const SourceLocation location, std::string message) const {
+void AnalysisContext::EmitWarning(const SourceLocation location, std::string message, std::vector<std::string> notes,
+                                  std::optional<std::string> help) const {
+    for (std::string &note : notes) {
+        note = DiagnosticTypeNames(std::move(note));
+    }
+    if (help) {
+        help = DiagnosticTypeNames(std::move(*help));
+    }
     diags.push_back({SemanticDiagnostic::Severity::Warning,
                      currentFile,
                      location,
                      DiagnosticTypeNames(std::move(message)),
-                     {},
-                     {},
+                     std::move(notes),
+                     std::move(help),
                      {}});
 }
 
@@ -277,6 +284,9 @@ void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &func
     // it, and none leaves a destructor.
     auto savedHandlers = std::exchange(throwHandlerFrames, {});
     auto savedMarks = std::exchange(throwMarkFrames, {});
+    // A body is an unsafe context only by its own declaration, whatever was being checked when it was reached.
+    auto savedUnsafeBlocks = std::exchange(unsafeBlockFrames, {});
+    const FuncDecl *savedUnsafeFunction = std::exchange(unsafeFunction, function.isUnsafe ? &function : nullptr);
     if (function.name.starts_with('~')) {
         CheckBehindThrowBarrier(ThrowHandlerFrame::Kind::Destructor, [&] { CheckBlock(block); });
     }
@@ -285,6 +295,8 @@ void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &func
     }
     throwHandlerFrames = std::move(savedHandlers);
     throwMarkFrames = std::move(savedMarks);
+    unsafeBlockFrames = std::move(savedUnsafeBlocks);
+    unsafeFunction = savedUnsafeFunction;
     if (function.isNoReturn) {
         // A caller of a function that never returns goes on into code marked unreachable, so its body must not end.
         if (!function.isAsm && !BlockDefinitelyReturns(block)) {
@@ -350,7 +362,11 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
 
 void AnalysisContext::CheckStatement(const Stmt &statement) {
     if (const auto *expressionStatement = AstCast<const ExprStmt>(&statement)) {
-        CheckFallibleDiscard(CheckExpr(*expressionStatement->expr), expressionStatement->location);
+        const TypeRef type = CheckExpr(*expressionStatement->expr);
+        if (const auto *block = AstCast<const BlockExpr>(expressionStatement->expr.get()); block && block->isUnsafe) {
+            ReportUnusedUnsafeBlockValue(*block, type);
+        }
+        CheckFallibleDiscard(type, expressionStatement->location);
         if (const auto *call = AstCast<const CallExpr>(expressionStatement->expr.get());
             call && CallNeverReturns(*call)) {
             trackedFlowReachable = false;
@@ -735,7 +751,13 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             // A bare-expression arm of a match statement is an expression statement: its value is discarded. A block
             // arm yields nothing, so a value it ends with is reported as an `if` branch's would be.
             if (const auto *block = AstCast<const BlockExpr>(arm.body.get())) {
+                if (block->isUnsafe) {
+                    BeginUnsafeBlock(*block);
+                }
                 CheckStatementBranch(*block->block);
+                if (block->isUnsafe) {
+                    EndUnsafeBlock(*block);
+                }
             }
             else {
                 const TypeRef armType = CheckExpr(*arm.body);
@@ -1620,6 +1642,13 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
             }
             else if (const auto *nestedFor = AstCast<const ForStmt>(inner.get())) {
                 if (containsBreak(*nestedFor->body, label, false)) {
+                    return true;
+                }
+            }
+            else if (const auto *expression = AstCast<const ExprStmt>(inner.get())) {
+                // An `unsafe` block written as a statement leaves its loop as the statements it holds would.
+                const auto *block = AstCast<const BlockExpr>(expression->expr.get());
+                if (block && block->block && containsBreak(*block->block, label, allowUnlabeled)) {
                     return true;
                 }
             }

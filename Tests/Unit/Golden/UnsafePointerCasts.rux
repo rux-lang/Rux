@@ -1,0 +1,18 @@
+// A cast that gives an address a type it did not have needs an unsafe context; one that only forgets is safe.
+func Twice(value: int) -> int {
+    return value * 2;
+}
+
+func Main() -> int {
+    var value = 3;
+    let pointer: *var int = @value;
+    let untyped = pointer as *opaque;
+    let readable = pointer as *int;
+    let address = pointer as uint;
+    let typed = untyped as *var int;
+    let retyped = pointer as *uint8;
+    let invented = address as *int;
+    let function = untyped as func(int) -> int;
+    let entry = Twice as *opaque;
+    return (address + (typed as uint) + (retyped as uint) + (invented as uint) + (readable as uint)) as int;
+}

@@ -25,7 +25,7 @@ func Use(point: Point) -> int32 {
     return point.x;
 }
 
-func Main() -> int {
+unsafe func Main() -> int {
     var q: Point;
     q.x = 1;
     let early = q.y;

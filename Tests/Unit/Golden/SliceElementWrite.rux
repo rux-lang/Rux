@@ -1,5 +1,5 @@
 // View writability is independent of descriptor binding mutability.
-func Main() -> int {
+unsafe func Main() -> int {
     var values: int32[3] = [1, 2, 3];
 
     // A fixed array owns its elements, so writing one is fine.

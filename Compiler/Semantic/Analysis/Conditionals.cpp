@@ -176,7 +176,13 @@ TypeRef AnalysisContext::CheckValueBlock(const BlockExpr &expression) {
         }
     }
     TypeRef yielded = TypeRef::MakeUnit();
+    if (expression.isUnsafe) {
+        BeginUnsafeBlock(expression);
+    }
     CheckBlock(block, tail, &yielded);
+    if (expression.isUnsafe) {
+        EndUnsafeBlock(expression);
+    }
     if (BlockCannotComplete(block)) {
         return TypeRef::MakeUnknown();
     }

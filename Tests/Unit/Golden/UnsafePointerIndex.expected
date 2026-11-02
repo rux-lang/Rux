@@ -1,0 +1,4 @@
+5:25: error: indexing a raw pointer requires 'unsafe'
+6:12: error: indexing a raw pointer requires 'unsafe'
+7:23: error: indexing a raw pointer requires 'unsafe'
+9:27: error: indexing a raw pointer requires 'unsafe'

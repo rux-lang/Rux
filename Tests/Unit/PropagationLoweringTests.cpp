@@ -221,9 +221,13 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
         struct Guard { count: *var int32; }
         extend Guard {
             func =(self: &var Guard, other: &Guard);
-            func ~Guard(self: &var Guard) { *self.count += 1i32; }
+            func ~Guard(self: &var Guard) {
+                // Safety: `Guarded` points `count` at its caller's `int32`, which outlives the guard
+                unsafe { *self.count += 1i32; }
+            }
         }
-        func Guarded(count: *var int32) -> int32 ! ParseError {
+        // Safety: `count` must address a writable `int32` that outlives the call
+        unsafe func Guarded(count: *var int32) -> int32 ! ParseError {
             let guard = Guard { count: count };
             defer *count += 10i32;
             let value = Read(false)?;

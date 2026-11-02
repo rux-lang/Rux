@@ -1,0 +1,20 @@
+// A field reached through a raw pointer is read or written without proof that the pointer is live.
+struct Pair {
+    first: int;
+    second: int;
+}
+
+extend Pair {
+    func Sum(self: *Pair) -> int {
+        return self.first + self.second;
+    }
+}
+
+func Main() -> int {
+    var pair = Pair { first: 1, second: 2 };
+    let pointer: *var Pair = @pair;
+    pointer.first = 5;
+    let address = @pointer.second;
+    let total = pointer.Sum();
+    return pointer.second + total + (address as int);
+}

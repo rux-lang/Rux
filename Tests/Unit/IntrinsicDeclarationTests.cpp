@@ -246,8 +246,7 @@ TEST_CASE("only float32 and float64 of the floats cross a C ABI boundary") {
 }
 
 TEST_CASE("C ABI signatures accept native floats and reject other widths as C-variadic arguments") {
-    auto parsed = ParseIntrinsicSource(R"(
-#Link("msvcrt.dll")
+    auto parsed = ParseIntrinsicSource(R"(#Link("msvcrt.dll")
 extern {
     func printf(format: *char8, ...) -> int32;
     func ldexp(value: float64, exponent: int32) -> float64;
@@ -255,7 +254,8 @@ extern {
 }
 #Abi(.C)
 func Callback(value: float32) -> float64 { return value as float64; }
-func Main() {
+// Safety: the calls are only analyzed, never run, so the null format is never read
+unsafe func Main() {
     printf(null, 1.5f32, 2.5, ldexp(1.0, 2i32), ldexpf(1.0f32, 2i32));
     printf(null, 1.0f16);
 }

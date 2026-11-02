@@ -1,4 +1,4 @@
-func Main() -> int {
+unsafe func Main() -> int {
     // Writing through a read-only pointer '*T' (from a plain '@') is forbidden.
     let a = 10;
     let p = @a;

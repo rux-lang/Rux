@@ -1,0 +1,4 @@
+12:25: error: casting '*opaque' to '*var int' requires 'unsafe'
+13:27: error: casting '*var int' to '*uint8' requires 'unsafe'
+14:28: error: casting 'uint' to '*int' requires 'unsafe'
+15:28: error: casting '*opaque' to 'func(int) -> int' requires 'unsafe'

@@ -526,12 +526,14 @@ TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") 
 
 TEST_CASE("array repeats remain compact in HIR and evaluate their operand once") {
     const HirPackage hir = CompileToHir(R"(
-        func Next(counter: *var int) -> int {
+        // Safety: `counter` must address a live, writable `int`
+        unsafe func Next(counter: *var int) -> int {
             *counter = *counter + 1;
             return *counter;
         }
 
-        func Main() -> int {
+        // Safety: `@counter` addresses a live local
+        unsafe func Main() -> int {
             var counter = 0;
             let values = [Next(@counter); 4];
             return values[3];
@@ -551,12 +553,14 @@ TEST_CASE("array repeats remain compact in HIR and evaluate their operand once")
     CHECK_EQ(repeat->repeatCount, 4);
 
     const LirPackage lir = CompileToLir(R"(
-        func Next(counter: *var int) -> int {
+        // Safety: `counter` must address a live, writable `int`
+        unsafe func Next(counter: *var int) -> int {
             *counter = *counter + 1;
             return *counter;
         }
 
-        func Main() -> int {
+        // Safety: `@counter` addresses a live local
+        unsafe func Main() -> int {
             var counter = 0;
             let values = [Next(@counter); 4];
             return values[3];
@@ -655,7 +659,8 @@ TEST_CASE("extern C calls follow the target's ABI rather than the host's") {
         #Link("hostlib")
         extern func Emit(text: *uint8) -> int32;
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run, so `Emit` never reads the null text
+        unsafe func Main() -> int {
             Emit(null);
             return 0;
         }
@@ -954,7 +959,8 @@ TEST_CASE("codegen generates correct calling convention for extern functions") {
             hTemplateFile: *uint8
         ) -> *uint8;
 
-        func Main() -> int {
+        // Safety: the program is only compiled, never run, so `CreateFileA` never reads the null name
+        unsafe func Main() -> int {
             let handle = OpenFile(
                 null,
                 1073741824u32,

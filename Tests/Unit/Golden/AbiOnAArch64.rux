@@ -21,6 +21,6 @@ extern {
 #Link("libc.so.6")
 extern func llabs(value: int64) -> int64;
 
-func Main() -> int {
+unsafe func Main() -> int {
     return (Callback(1) + Native(2) + abs(-3)) as int;
 }

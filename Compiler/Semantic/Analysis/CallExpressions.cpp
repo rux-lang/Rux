@@ -898,7 +898,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         NoteDeclarationUse(*calleeSymbol->externDecl, CallSiteLocation(*e));
     }
 
+    const Expr *savedCallee = std::exchange(calleeBeingChecked, e->callee.get());
     TypeRef calleeType = CheckExpr(*e->callee);
+    calleeBeingChecked = savedCallee;
     const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
     if (calleeType->kind == TypeRef::Kind::Func && !calleeType->inner.empty()) {

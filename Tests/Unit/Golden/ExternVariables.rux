@@ -11,7 +11,7 @@ extern Half: float16;
 #Link("libc.so.6")
 extern opterr: int32;
 
-func Main() -> int {
+unsafe func Main() -> int {
     opterr = 0;
     return opterr as int;
 }

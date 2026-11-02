@@ -174,6 +174,7 @@ const std::map<std::string_view, std::string_view> kKeywordOwners = {
     {"try", "TryCatch"},
     {"type", "TypeAlias"},
     {"union", "Union"},
+    {"unsafe", "Unsafe"},
     {"var", "Var"},
     {"variant", "Variant"},
     {"when", "When"},

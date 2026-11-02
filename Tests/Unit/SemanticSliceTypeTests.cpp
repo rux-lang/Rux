@@ -116,7 +116,8 @@ TEST_CASE("every spelling reads back from an instantiation name unchanged") {
 
 TEST_CASE("a view is as writable as the place or pointer it was built from") {
     ParseResult parsed = Parse(R"(
-        func Main(read: *int, write: *var int, shared: &int[4], exclusive: &var int[4], fixed: int[4]) {
+        // Safety: `read` and `write` must each address at least two elements
+        unsafe func Main(read: *int, write: *var int, shared: &int[4], exclusive: &var int[4], fixed: int[4]) {
             var open: int[4] = [1, 2, 3, 4];
             let a = read[..2];
             let b = write[..2];
@@ -150,7 +151,8 @@ TEST_CASE("a view is as writable as the place or pointer it was built from") {
 
 TEST_CASE("a pointer is sliced only with an end bound") {
     const auto messages = Messages(R"(
-        func Main(pointer: *int) {
+        // Safety: `pointer` must address at least three elements
+        unsafe func Main(pointer: *int) {
             let whole = pointer[..];
             let tail = pointer[1..];
             let bounded = pointer[1..3];
@@ -212,7 +214,8 @@ TEST_CASE("all literal encodings reject writable destinations") {
 
 TEST_CASE("element addresses preserve slice writability through immutable descriptor bindings") {
     CHECK(Messages(R"(
-        func Address(view: var int[..], borrowed: &(var int[..])) {
+        // Safety: `view` must hold at least three elements
+        unsafe func Address(view: var int[..], borrowed: &(var int[..])) {
             let first: *var int = @view[0];
             let second: *var int = @borrowed[0];
             let nested: var int[..] = (@view[1])[..2];

@@ -43,7 +43,7 @@ func ByValueParameter(options: int32[2]) -> int32[..] {
     return options[..];
 }
 
-func ThroughPointer(spec: *var Spec) {
+unsafe func ThroughPointer(spec: *var Spec) {
     let options: int32[2] = [1, 2];
     spec.options = options[..];
 }

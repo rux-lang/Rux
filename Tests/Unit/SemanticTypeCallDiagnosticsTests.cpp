@@ -546,7 +546,8 @@ TEST_CASE("a generic struct's field keeps the type parameter it was declared wit
         }
 
         func Store<T>(view: View<T>, value: T) {
-            view.data[0] = value;
+            // Safety: callers build `view` with `data` addressing at least one writable element
+            unsafe { view.data[0] = value; }
         }
 
         func Rebox<T>(box: Box<T>) -> Box<T> {
@@ -614,7 +615,10 @@ TEST_CASE("a cast naming a type parameter is checked at each instantiation") {
             return (value & (zero + 255)) as byte;
         }
         func ZeroOf<T>(sample: T) -> T { return 0 as T; }
-        func Narrow<From, To>(value: From, result: *var To) { *result = value as To; }
+        func Narrow<From, To>(value: From, result: *var To) {
+            // Safety: callers pass `result` addressing their writable `To`
+            unsafe { *result = value as To; }
+        }
         func Main() {
             var out = 0u8;
             LowByte<uint32>(7u32);
@@ -629,7 +633,10 @@ TEST_CASE("a cast naming a type parameter is checked at each instantiation") {
 TEST_CASE("an instantiation that cannot perform its cast is reported against the cast") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Point { x: int32; }
-        func Narrow<From, To>(value: From, result: *var To) { *result = value as To; }
+        func Narrow<From, To>(value: From, result: *var To) {
+            // Safety: callers pass `result` addressing their writable `To`
+            unsafe { *result = value as To; }
+        }
         func Main() {
             var out = Point { x: 0i32 };
             Narrow<int32, Point>(5i32, @out);

@@ -14,8 +14,11 @@ TEST_CASE("let and var independently control binding and pointee mutability") {
             let weakened: *int = @mutable;
 
             immutable = 11;
-            *readOnly = 12;
-            *writable = 21;
+            // Safety: both pointers address the live locals above
+            unsafe {
+                *readOnly = 12;
+                *writable = 21;
+            }
             mutable = 22;
 
             let bad: *var int = @immutable;
@@ -34,7 +37,8 @@ TEST_CASE("function parameters are immutable") {
         func Immutable(x: int, ptr: *var int) {
             x = 1;
             ptr = ptr;
-            *ptr = 2;
+            // Safety: callers pass `ptr` addressing a live, writable `int`
+            unsafe { *ptr = 2; }
         }
     )");
 
@@ -61,8 +65,11 @@ TEST_CASE("pointer binding mutability is independent of pointee mutability") {
             mutableReadOnly = immutableReadOnly;
             mutableWritable = immutableWritable;
 
-            *immutableWritable = 21;
-            *mutableWritable = 22;
+            // Safety: both pointers address the live local `b`
+            unsafe {
+                *immutableWritable = 21;
+                *mutableWritable = 22;
+            }
         }
     )");
 
@@ -82,7 +89,8 @@ TEST_CASE("byte is a canonical alias of uint8") {
             let numeric: uint8 = raw;
             var storage: byte[2] = [raw, numeric];
             let ptr: *var byte = @storage[0];
-            *ptr = Read(1u8);
+            // Safety: `ptr` addresses the first element of the live local `storage`
+            unsafe { *ptr = Read(1u8); }
         }
     )");
 
@@ -102,8 +110,11 @@ TEST_CASE("extern function call attributes emit direct and qualified diagnostics
         }
 
         func Main() -> int {
-            Beep(1000u32, 500u32);
-            Native::Sleep(1u32);
+            // Safety: `Beep` and `Sleep` take only integers
+            unsafe {
+                Beep(1000u32, 500u32);
+                Native::Sleep(1u32);
+            }
             return 0;
         }
     )");

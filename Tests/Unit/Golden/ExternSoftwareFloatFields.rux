@@ -29,7 +29,7 @@ func Callback(value: Nested) -> Samples {
     return Samples { count: 0i32, values: [0.0f80, 0.0f80, 0.0f80, 0.0f80] };
 }
 
-func Main() {
+unsafe func Main() {
     let nested = Nested { count: 1i32, inner: Half { value: 1.0f16 } };
     printf(null, nested, Plain { x: 1.0f32, y: 2.0, samples: [3.0, 4.0] }, @nested);
 }

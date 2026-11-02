@@ -651,14 +651,18 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
 
         struct Holder<T> { pair: *var Pair<T>; }
         extend Holder<T> {
-            func ~Holder(self: &var Holder<T>) { Take<T>(self.pair); }
+            func ~Holder(self: &var Holder<T>) {
+                // Safety: `pair` addresses the `Pair<T>` this holder owns
+                unsafe { Take<T>(self.pair); }
+            }
         }
 
         func Make<T>(first: T, second: T) {
             let pair = Pair<T> { first: <-first, second: <-second };
         }
 
-        func Take<T>(pair: *var Pair<T>) {
+        // Safety: `pair` must address a live `Pair<T>` that the caller gives up
+        unsafe func Take<T>(pair: *var Pair<T>) {
             let taken <- pair[0];
         }
 

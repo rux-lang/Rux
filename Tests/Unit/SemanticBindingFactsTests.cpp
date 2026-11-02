@@ -24,7 +24,8 @@ TEST_CASE("semantic model retains resolved callable bindings") {
         #Link("native.dll", "native_actual")
         extern func Native(value: int32, ...) -> int32;
 
-        func Main() {
+        // Safety: `Native` takes only scalar arguments
+        unsafe func Main() {
             let number = Number { value: 7i32 };
             let reader: Reader = number;
             let chosen = Choose(1i32);
@@ -214,7 +215,8 @@ TEST_CASE("semantic model records final linker symbol identities") {
         #Link("native.dll", "native_actual")
         extern func Native(value: int32) -> int32;
 
-        func Main() {
+        // Safety: `Native` takes only an integer
+        unsafe func Main() {
             let number = Number { value: 1i32 };
             let box = Box<int64> { value: 2i64 };
             let generic = Identity<int64>(2i64);

@@ -84,7 +84,8 @@ const std::string kTracked = R"(
     extend Tracked {
         func =(self: &var Tracked, other: &Tracked);
         func ~Tracked(self: &var Tracked) {
-            self.counter.count = self.counter.count + 1;
+            // Safety: every `Tracked` the tests build points `counter` at a `Counter` that outlives it
+            unsafe { self.counter.count = self.counter.count + 1; }
         }
     }
     struct E {}

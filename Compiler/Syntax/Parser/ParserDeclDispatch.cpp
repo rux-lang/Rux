@@ -105,8 +105,12 @@ DeclPtr Parser::ParseDecl() {
         return AttachDocumentation(ApplyAttrs(ParseFuncDecl(isPublic, true, attrs.callConv), attrs));
     }
 
-    if (Check(TokenKind::FuncKeyword)) {
+    if (CheckFuncStart()) {
         return AttachDocumentation(ApplyAttrs(ParseFuncDecl(isPublic, false, attrs.callConv), attrs));
+    }
+    if (Check(TokenKind::UnsafeKeyword)) {
+        RejectMisplacedUnsafe();
+        return AttachDocumentation(ParseDecl());
     }
     if (Check(TokenKind::StructKeyword)) {
         return AttachDocumentation(ApplyAttrs(ParseStructDecl(isPublic), attrs));
@@ -256,6 +260,9 @@ std::vector<Param> Parser::ParseParamList(const bool allowVariadic) {
 
 std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool isAsm,
                                                 const CallingConvention callConv) {
+    // `unsafe func` puts an obligation on every caller, which is all the keyword changes about the declaration.
+    const std::optional<SourceLocation> unsafeLocation =
+        Check(TokenKind::UnsafeKeyword) ? std::optional{Advance().location} : std::nullopt;
     const auto loc = CurrentLocation();
     ExpectBefore(TokenKind::FuncKeyword, "'func' to start the function declaration");
 
@@ -263,6 +270,10 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
     decl->location = loc;
     decl->isPublic = isPublic;
     decl->isAsm = isAsm;
+    if (unsafeLocation) {
+        decl->isUnsafe = true;
+        decl->unsafeLocation = *unsafeLocation;
+    }
     decl->callConv = callConv;
     if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
         // A compile-time intrinsic function: `intrinsic func #Error(...)`. The
@@ -334,6 +345,27 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
     }
 
     return decl;
+}
+
+bool Parser::CheckFuncStart() const noexcept {
+    return Check(TokenKind::FuncKeyword) || (Check(TokenKind::UnsafeKeyword) && Peek(1).Is(TokenKind::FuncKeyword));
+}
+
+void Parser::RejectMisplacedUnsafe() {
+    const SourceLocation location = Advance().location;
+    // The two kinds of declaration that are unsafe to use are so already, and say so when written that way.
+    if (Check(TokenKind::ExternKeyword)) {
+        EmitError(location, "'unsafe' cannot mark an extern declaration, which is always unsafe to use",
+                  "remove 'unsafe'; a call to an extern function already needs an 'unsafe' context");
+        return;
+    }
+    if (Check(TokenKind::Ident) && Peek().text == "asm" && Peek(1).Is(TokenKind::FuncKeyword)) {
+        EmitError(location, "'unsafe' cannot mark an 'asm' function, which is always unsafe to call",
+                  "remove 'unsafe'; a call to an 'asm' function already needs an 'unsafe' context");
+        return;
+    }
+    EmitError(location, "expected 'func' or '{' after 'unsafe'",
+              "write 'unsafe func' to declare an unsafe function, or 'unsafe { ... }' for an unsafe block");
 }
 
 } // namespace Rux

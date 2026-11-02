@@ -290,7 +290,8 @@ private:
 
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
                    std::optional<std::string> help = {}) const;
-    void EmitWarning(SourceLocation location, std::string message) const;
+    void EmitWarning(SourceLocation location, std::string message, std::vector<std::string> notes = {},
+                     std::optional<std::string> help = {}) const;
     void EmitUndefinedName(SourceLocation location, const std::string &name) const;
     [[nodiscard]] bool IsAccessible(const Symbol &symbol) const;
     [[nodiscard]] bool IsAccessible(const Decl &declaration) const;
@@ -795,6 +796,42 @@ private:
     /// The operand of an older `?`, `? else` or postfix `catch` being checked, which consumes the outcome a call
     /// returns as a value, so that call is not a throw site whatever its callee's spelling.
     const Expr *outcomeOperand = nullptr;
+
+    // Unsafe operations (UnsafeOperations.cpp).
+
+    /// An `unsafe` block being checked, and how many operations that need it were found inside it so far.
+    struct UnsafeBlockFrame {
+        const BlockExpr *block = nullptr;
+        std::size_t operations = 0;
+        /// How many diagnostics there were when the block was entered, so a block whose contents failed to check is
+        /// not also called unnecessary.
+        std::size_t diagnosticStart = 0;
+        /// Written inside another unsafe context, and already reported as unnecessary for it.
+        bool nested = false;
+    };
+
+    std::vector<UnsafeBlockFrame> unsafeBlockFrames;
+    /// The `unsafe func` whose body is being checked, which is an unsafe context from start to end.
+    const FuncDecl *unsafeFunction = nullptr;
+    /// The callee of the call being checked: a function named there is called, which the call itself answers for,
+    /// rather than used as a value.
+    const Expr *calleeBeingChecked = nullptr;
+    /// The operand of the `@` being checked. Taking an extern variable's address neither reads nor writes it.
+    const Expr *addressOperand = nullptr;
+
+    /// Reports `expression`, just checked as `type`, when it is an operation only an unsafe context may perform and
+    /// none encloses it, and counts it toward the innermost `unsafe` block otherwise.
+    void CheckUnsafeOperation(const Expr &expression, const TypeRef &type);
+    /// What `expression` does that needs an unsafe context, as the diagnostic names it, or nothing when it is safe.
+    [[nodiscard]] std::optional<std::string> UnsafeOperationOf(const Expr &expression, const TypeRef &type);
+    /// The function a call reaches when calling it needs an unsafe context: an extern function, an `asm` function, or
+    /// an `unsafe func`, as "extern function 'write'".
+    [[nodiscard]] std::optional<std::string> UnsafeCalleeOf(const CallExpr &call);
+    [[nodiscard]] bool InUnsafeContext() const noexcept;
+    void BeginUnsafeBlock(const BlockExpr &expression);
+    void EndUnsafeBlock(const BlockExpr &expression);
+    /// An `unsafe` block written as a statement yields nothing, so a value its last expression leaves is unused.
+    void ReportUnusedUnsafeBlockValue(const BlockExpr &expression, const TypeRef &yielded);
 
     [[nodiscard]] ThrowingCallee ThrowingCalleeOf(const Expr &expression);
     /// A call or operator whose type is the fallible `outcome`: a throw site when a `try` covers it, whose value is

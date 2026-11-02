@@ -1,0 +1,6 @@
+3:5: error: interface requirement 'Area' cannot be 'unsafe'
+11:9: error: method 'Area' implements interface 'Shape' and cannot be 'unsafe'
+21:5: error: destructor '~Holder' cannot be 'unsafe', because nothing marks where it is called
+25:5: error: operator '==' cannot be 'unsafe', because nothing marks where it is called
+31:1: error: 'unsafe' cannot mark an extern declaration, which is always unsafe to use
+33:1: error: expected 'func' or '{' after 'unsafe'

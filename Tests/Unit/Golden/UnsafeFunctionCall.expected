@@ -1,0 +1,4 @@
+23:18: error: call to unsafe function 'Load' requires 'unsafe'
+25:16: error: call to unsafe method 'Read' requires 'unsafe'
+26:5: error: call to 'asm' function 'Nothing' requires 'unsafe'
+27:20: error: using unsafe function 'Load' as a value requires 'unsafe'

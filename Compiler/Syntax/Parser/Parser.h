@@ -211,8 +211,16 @@ private:
     DeclPtr ParseIntrinsicDecl(bool isPublic, ParsedAttrs &attrs, SourceLocation intrinsicLoc);
 
     // Declarations
+    /// A function declaration from its `func`, or from an `unsafe` written before it.
     std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm,
                                             CallingConvention callConv = CallingConvention::Default);
+    /// Whether a function declaration starts here: `func`, or `unsafe func`.
+    [[nodiscard]] bool CheckFuncStart() const noexcept;
+    /// Consumes an `unsafe` that no `func` follows and reports it, naming the extern or `asm` declaration it was
+    /// written before, which is unsafe to use already.
+    void RejectMisplacedUnsafe();
+    /// Reports `unsafe` on a method nothing calls by name: a destructor, an operator, or an interface implementation.
+    void RejectImplicitlyCalledUnsafe(const FuncDecl &method, const std::optional<std::string> &interfaceName);
     std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);
     std::unique_ptr<EnumDecl> ParseEnumDecl(bool isPublic);
     std::unique_ptr<UnionDecl> ParseUnionDecl(bool isPublic);
@@ -288,6 +296,8 @@ private:
     /// A braced block. A value block lets its last expression leave out the ';' to be the value the block yields.
     std::unique_ptr<Block> ParseBlock(std::string_view role = "the block", bool valueBlock = false);
     StmtPtr ParseStmt();
+    /// `unsafe { ... }`, with the current token on `unsafe`: a value block in which unsafe operations are allowed.
+    std::unique_ptr<BlockExpr> ParseUnsafeBlock();
     std::unique_ptr<LetStmt> ParseLetStmt();
     std::unique_ptr<IfStmt> ParseIfStmt();
     /// An `if` in value position: an `if` statement read whole and written as the match on its condition that

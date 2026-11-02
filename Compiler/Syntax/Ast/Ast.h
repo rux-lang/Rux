@@ -481,6 +481,9 @@ struct IsExpr : Expr {
 struct BlockExpr : Expr {
     ~BlockExpr() override;
     std::unique_ptr<Block> block;
+    /// Written `unsafe { ... }`, as a value or as a statement: the operations a raw pointer, an extern declaration or
+    /// an `unsafe func` needs are allowed inside it. The expression's location is the `unsafe` keyword.
+    bool isUnsafe = false;
 };
 
 // match expr { pat => expr, ... }
@@ -824,6 +827,11 @@ struct WhenDecl : Decl {
 /// func [asm] Name<T>(params) -> Type { body } body is null for interface method signatures
 struct FuncDecl : Decl {
     bool isAsm = false;
+    /// Written `unsafe func`: a caller upholds what the documentation states, so a call needs an `unsafe` context,
+    /// and the body is one.
+    bool isUnsafe = false;
+    /// Where the `unsafe` keyword is written, when `isUnsafe` is set.
+    SourceLocation unsafeLocation;
     bool isNoReturn = false;
     /// Marked `#Test`: a test that a test build of its package runs.
     bool isTest = false;

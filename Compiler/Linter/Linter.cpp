@@ -312,10 +312,56 @@ bool IsDestructorName(const std::string_view name) {
     return name.size() > 1 && name.front() == '~';
 }
 
+/// The source split into lines, without their line endings, so a rule can look at the text around a node.
+std::vector<std::string_view> SourceLines(const std::string_view source) {
+    std::vector<std::string_view> lines;
+    std::size_t offset = 0;
+    while (offset <= source.size()) {
+        const std::size_t end = source.find('\n', offset);
+        std::string_view line = source.substr(offset, (end == std::string_view::npos ? source.size() : end) - offset);
+        if (!line.empty() && line.back() == '\r') {
+            line.remove_suffix(1);
+        }
+        lines.push_back(line);
+        if (end == std::string_view::npos) {
+            break;
+        }
+        offset = end + 1;
+    }
+    return lines;
+}
+
+std::string_view TrimmedLine(const std::string_view line) {
+    const std::size_t start = line.find_first_not_of(" \t");
+    return start == std::string_view::npos ? std::string_view{} : line.substr(start);
+}
+
+/// Whether the comment written directly above `line` (1-based) states why an unsafe operation holds: the run of `//`
+/// or `///` lines that ends on the line above, past any attribute lines between, has one that starts with `Safety:`.
+bool HasSafetyCommentAbove(const std::span<const std::string_view> lines, const std::uint32_t line) {
+    std::size_t index = line >= 1 ? line - 1 : 0; // the 0-based index of the line itself
+    while (index > 0 && TrimmedLine(lines[index - 1]).starts_with('#')) {
+        --index;
+    }
+    while (index > 0) {
+        std::string_view comment = TrimmedLine(lines[index - 1]);
+        if (!comment.starts_with("//")) {
+            return false;
+        }
+        comment.remove_prefix(comment.starts_with("///") ? 3 : 2);
+        if (TrimmedLine(comment).starts_with("Safety:")) {
+            return true;
+        }
+        --index;
+    }
+    return false;
+}
+
 class LinterVisitor {
 public:
-    explicit LinterVisitor(std::string inputSourceName)
-        : sourceName(std::move(inputSourceName)) {
+    LinterVisitor(std::string inputSourceName, std::vector<std::string_view> inputLines)
+        : sourceName(std::move(inputSourceName))
+        , lines(std::move(inputLines)) {
     }
 
     std::vector<Diagnostic> diagnostics;
@@ -334,7 +380,10 @@ public:
 
 private:
     std::string sourceName;
+    std::vector<std::string_view> lines;
     bool containingModulesPublic = true;
+    /// Whether the function being visited carries `#Allow("unsafe.comment")`, which covers the blocks in its body.
+    bool allowsUnsafeComment = false;
 
     void Warn(SourceLocation loc, std::string message, std::optional<std::string> help = std::nullopt) {
         Diagnostic d;
@@ -481,9 +530,18 @@ private:
                     WarnNaming(p.location, "parameter name", p.name, NamingConvention::CamelCase, parameterNames);
                 }
             }
+            const bool savedAllowsUnsafeComment = allowsUnsafeComment;
+            allowsUnsafeComment = allowsUnsafeComment || Allows(decl, "unsafe.comment");
+            if (fn->isUnsafe && !allowsUnsafeComment && !HasSafetyCommentAbove(lines, fn->unsafeLocation.line)) {
+                Warn(fn->unsafeLocation,
+                     std::format("unsafe function '{}' has no 'Safety:' comment stating what its callers must uphold",
+                                 fn->name),
+                     "add a '/// Safety:' line to its documentation");
+            }
             if (fn->body) {
                 VisitBlock(*fn->body, parameterNames);
             }
+            allowsUnsafeComment = savedAllowsUnsafeComment;
         }
         else if (const auto *st = AstCast<const StructDecl>(&decl)) {
             CheckDocumentation(decl, "struct", st->name);
@@ -944,6 +1002,12 @@ private:
             }
         }
         else if (const auto *blockExpr = AstCast<const BlockExpr>(&expr)) {
+            // `unsafe.comment`: a block says, in a comment directly above it, why what it does is sound.
+            if (blockExpr->isUnsafe && !allowsUnsafeComment &&
+                !HasSafetyCommentAbove(lines, blockExpr->location.line)) {
+                Warn(blockExpr->location, "'unsafe' block has no '// Safety:' comment on the line above it",
+                     "say why the operations inside are sound in a '// Safety:' comment directly above it");
+            }
             if (blockExpr->block) {
                 VisitBlock(*blockExpr->block);
             }
@@ -1067,6 +1131,8 @@ bool LintResult::HasErrors() const noexcept {
 
 LintResult Lint(std::string source, std::string sourceName) {
     std::vector<Diagnostic> commentWidths = CheckCommentWidths(source, sourceName);
+    // The lexer takes the text, and the unsafe rule reads the comments the tree leaves out, so a copy stays here.
+    const std::string text = source;
     Lexer lexer(std::move(source), sourceName);
     auto lexed = lexer.Tokenize();
     LintResult result{std::move(lexed.diagnostics)};
@@ -1084,7 +1150,7 @@ LintResult Lint(std::string source, std::string sourceName) {
     }
 
     // Run style checks if there are no parsing errors
-    LinterVisitor styleVisitor(parsed.module.name);
+    LinterVisitor styleVisitor(parsed.module.name, SourceLines(text));
     styleVisitor.VisitModule(parsed.module);
 
     result.diagnostics.insert(result.diagnostics.end(), std::make_move_iterator(styleVisitor.diagnostics.begin()),

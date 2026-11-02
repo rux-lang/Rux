@@ -49,6 +49,7 @@ const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"try", TokenKind::TryKeyword},
     {"type", TokenKind::TypeKeyword},
     {"union", TokenKind::UnionKeyword},
+    {"unsafe", TokenKind::UnsafeKeyword},
     {"var", TokenKind::VarKeyword},
     {"variant", TokenKind::VariantKeyword},
     {"when", TokenKind::WhenKeyword},
@@ -139,6 +140,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "VariantKeyword";
     case TokenKind::UnionKeyword:
         return "UnionKeyword";
+    case TokenKind::UnsafeKeyword:
+        return "UnsafeKeyword";
     case TokenKind::InterfaceKeyword:
         return "InterfaceKeyword";
     case TokenKind::ExtendKeyword:

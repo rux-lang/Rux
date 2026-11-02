@@ -1,0 +1,12 @@
+// An extern variable is storage another library owns, so reading or writing it needs unsafe; its address does not.
+#Link("libc.so.6")
+extern opterr: int32;
+
+func Main() -> int {
+    opterr = 0;
+    let read = opterr;
+    let address = @opterr;
+    // Safety: `opterr` is libc's own `int`, which only this thread touches here.
+    let fine = unsafe { opterr };
+    return (read + fine) as int + (address as int);
+}

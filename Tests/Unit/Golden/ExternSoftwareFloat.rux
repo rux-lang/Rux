@@ -18,6 +18,6 @@ func Callback(value: float16) -> float128 {
     return 0.0f128;
 }
 
-func Main() {
+unsafe func Main() {
     printf(null, 1.0f8, 2.0f16, 3.0f80, 4.0f128, 5.0f256, 6.0f512, 7.0f32, 8.0);
 }

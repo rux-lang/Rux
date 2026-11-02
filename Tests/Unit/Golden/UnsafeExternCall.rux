@@ -1,0 +1,11 @@
+// An extern function runs code the compiler cannot check, so calling it or taking it as a value needs unsafe.
+#Link("libc.so.6")
+extern func abs(value: int32) -> int32;
+
+func Main() -> int {
+    let direct = abs(-3i32);
+    let function = abs;
+    // Safety: `abs` reads only its argument.
+    let checked = unsafe { abs(-4i32) };
+    return (direct + checked) as int;
+}

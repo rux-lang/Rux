@@ -150,9 +150,10 @@ const char *const CVariadicSource = R"(
     #Link("c")
     extern func Collect(format: *char8, ...) -> int32;
 
-    func Main(format: *char8, small: int8, short: int16, byte: uint8, word: uint16, flag: bool8, wide: bool16,
-              unit: char8, pair: char16, single: float32, scalar: char32, count: int64, mask: bool32,
-              exact: float64) -> int32 {
+    // Safety: `format` must be a NUL-terminated format whose conversions match the arguments that follow it
+    unsafe func Main(format: *char8, small: int8, short: int16, byte: uint8, word: uint16, flag: bool8, wide: bool16,
+                     unit: char8, pair: char16, single: float32, scalar: char32, count: int64, mask: bool32,
+                     exact: float64) -> int32 {
         return Collect(format, small, short, byte, word, flag, wide, unit, pair, single, scalar, count, mask, exact);
     }
 )";
@@ -589,7 +590,8 @@ TEST_SUITE("VariadicWideningLowering") {
             #Link("c")
             extern func Scale(factor: float64, ...) -> int32;
 
-            func Main(factor: float64, extra: float32) -> int32 {
+            // Safety: the program is only lowered, never run, so `Scale` never reads its arguments
+            unsafe func Main(factor: float64, extra: float32) -> int32 {
                 return Scale(factor, extra);
             }
         )",

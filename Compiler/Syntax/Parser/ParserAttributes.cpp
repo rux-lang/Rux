@@ -18,7 +18,7 @@ std::string ImplTypeName(const TypeExpr &type);
 
 /// Every rule `#Allow` accepts. Naming one the linter does not have is a typo that would otherwise silence nothing, so
 /// the list lives beside the parse rather than in the linter: a source is rejected before it is ever linted.
-constexpr std::array<std::string_view, 3> kLintRules{"naming.type", "naming.const", "docs.missing"};
+constexpr std::array<std::string_view, 4> kLintRules{"naming.type", "naming.const", "docs.missing", "unsafe.comment"};
 
 [[nodiscard]] static std::string LintRuleList() {
     std::string list;
@@ -594,7 +594,7 @@ DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, cons
         ExpectBefore(TokenKind::Semicolon, "';' after the intrinsic value declaration");
         return ApplyAttrs(std::move(decl), attrs);
     }
-    if (Check(TokenKind::FuncKeyword)) {
+    if (CheckFuncStart()) {
         auto func = ParseFuncDecl(isPublic, false, attrs.callConv);
         if (func) {
             func->intrinsicName = func->name;

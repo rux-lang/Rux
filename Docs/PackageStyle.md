@@ -62,6 +62,15 @@ A local declared from a lone integer literal takes its type from an annotation r
 
 A literal beside a typed operand needs no suffix either, because it takes that operand's type: `year % 4 != 0` with an `int32` year. A suffix stays only where a literal has nothing else to take its type from, such as an argument that decides a generic type parameter. `Tests/Language` is exempt, since its tests exercise literal typing itself.
 
+## Unsafe code
+
+Raw operations follow the [unsafe boundary](Language.md#unsafe-code), and each one is written so a reviewer can check it where it stands:
+
+- Wrap each operation in the smallest `unsafe { ... }` that reads well. A single read is the expression form, `let value = unsafe { self.data[index] };`; operations that rest on the same reasoning, such as the writes that initialize one fresh node, may share a block. Keep a whole function body in one block only when the function is nothing but raw operations under one obligation, and prefer making it an `unsafe func` when that obligation is its caller's.
+- Every `unsafe` block has a `// Safety:` comment whose run ends on the line directly above the line holding `unsafe` (`rux lint` rule `unsafe.comment`). It says why the operation is sound at that place — "`index < self.length`, checked above", "`block` comes from `Allocate` with room for `capacity` elements and is live until `Release`" — never only that it is safe. Several blocks resting on one invariant name it, as "the ring invariant", and the type's documentation or the file header states it once.
+- A public `unsafe func` states the caller's obligation in a `Safety:` sentence of its `///` documentation, usually the existing "must" sentence prefixed with `Safety:`, and the package README names it beside the API it belongs to.
+- A function stays safe when its safety does not depend on its caller. Interface requirements and their implementations, destructors and operators cannot be `unsafe`; their blocks cite the documented contract they rely on.
+
 ## Declaration documentation
 
 Maintained package APIs use `///` throughout.

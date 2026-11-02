@@ -385,8 +385,16 @@ void ExpressionPrinter::Print(const Expr &expression) {
         --indent;
     }
     else if (const auto *block = AstCast<const BlockExpr>(&expression)) {
+        if (block->isUnsafe) {
+            Pad();
+            out << "UnsafeBlockExpr\n";
+            ++indent;
+        }
         if (block->block) {
             printBlock(*block->block);
+        }
+        if (block->isUnsafe) {
+            --indent;
         }
     }
     else if (const auto *match = AstCast<const MatchExpr>(&expression)) {

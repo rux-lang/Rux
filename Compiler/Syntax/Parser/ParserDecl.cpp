@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <format>
 #include <memory>
 #include <optional>
@@ -298,13 +299,20 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
             RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
             break;
         }
-        if (!Check(TokenKind::FuncKeyword)) {
+        if (!CheckFuncStart()) {
             RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), "'func' to start an interface method");
             Recover();
             continue;
         }
         if (auto method = ParseFuncDecl(false, false)) {
+            // A call through the interface cannot see which implementation it reaches, so no requirement can put an
+            // obligation on its caller.
+            if (method->isUnsafe) {
+                EmitError(method->unsafeLocation,
+                          std::format("interface requirement '{}' cannot be 'unsafe'", method->name),
+                          "remove 'unsafe'; an implementation that needs one calls an 'unsafe func' from its body");
+            }
             method->documentation = std::move(documentation);
             decl->methods.push_back(std::move(method));
         }
@@ -312,6 +320,28 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
     selfScope = std::move(enclosing);
     ExpectBefore(TokenKind::RightBrace, "'}' to close the interface body");
     return decl;
+}
+
+void Parser::RejectImplicitlyCalledUnsafe(const FuncDecl &method, const std::optional<std::string> &interfaceName) {
+    // These are called where no call is written, by a destructor's scope end, by an operator, or through an interface
+    // whose caller cannot see which implementation it reaches, so nothing could carry the caller's obligation.
+    const bool destructor = method.name.starts_with('~');
+    const bool operation =
+        !method.name.empty() && !destructor && std::ranges::none_of(method.name, [](const char character) {
+            return std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_';
+        });
+    if (destructor || operation) {
+        EmitError(method.unsafeLocation,
+                  std::format("{} '{}' cannot be 'unsafe', because nothing marks where it is called",
+                              destructor ? "destructor" : "operator", method.name),
+                  "remove 'unsafe' and wrap the operations that need it in 'unsafe { ... }' inside the body");
+    }
+    else if (interfaceName) {
+        EmitError(
+            method.unsafeLocation,
+            std::format("method '{}' implements interface '{}' and cannot be 'unsafe'", method.name, *interfaceName),
+            "remove 'unsafe' and wrap the operations that need it in 'unsafe { ... }' inside the body");
+    }
 }
 
 // extend
@@ -393,7 +423,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             }
             continue;
         }
-        if (!Check(TokenKind::FuncKeyword)) {
+        if (!CheckFuncStart()) {
             RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), isIntrinsic ? "'func' after 'intrinsic' in the extension body"
                                                         : "'func' to start a method in the extension body");
@@ -402,6 +432,9 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         }
         if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
             method->documentation = std::move(documentation);
+            if (method->isUnsafe) {
+                RejectImplicitlyCalledUnsafe(*method, decl->interfaceName);
+            }
             if (isIntrinsic) {
                 // A method's intrinsic is namespaced by the type it extends, so
                 // `extend Target { intrinsic func HasFeature }` is

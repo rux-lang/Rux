@@ -59,6 +59,7 @@ enum class TokenKind : std::uint8_t {
     TryKeyword,       // try
     TypeKeyword,      // type
     UnionKeyword,     // union
+    UnsafeKeyword,    // unsafe
     VarKeyword,       // var
     VariantKeyword,   // variant
     WhenKeyword,      // when

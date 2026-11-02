@@ -1,0 +1,2 @@
+6:18: error: call to extern function 'abs' requires 'unsafe'
+7:20: error: using extern function 'abs' as a value requires 'unsafe'

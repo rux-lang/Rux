@@ -1,6 +1,6 @@
 // A view is as writable as what it was built from: a read-only array, a literal and a read-only view give read-only
 // views, and a pointer has no length to view without an end bound.
-func Main() {
+unsafe func Main() {
     let fixed: int[3] = [1, 2, 3];
     var open: int[3] = [4, 5, 6];
     let frozen: var int[..] = fixed[..];

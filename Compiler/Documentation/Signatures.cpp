@@ -140,6 +140,9 @@ std::string ShorthandReceiverText(const TypeExpr &type) {
 
 std::string FunctionSignature(const FuncDecl &function) {
     std::string text = function.isPublic ? "pub " : "";
+    if (function.isUnsafe) {
+        text += "unsafe ";
+    }
     text += "func " + function.name + TypeParams(function.typeParams) + "(";
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         if (i != 0)

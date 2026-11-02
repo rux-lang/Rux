@@ -251,7 +251,8 @@ TEST_CASE("a pointer to a variant or enum casts by the pointer rules") {
         enum Color { Red, Green }
         union Bits { word: uint64, half: uint32 }
         struct Point { x: int32; }
-        func Casts(value: *var Value, color: *Color, bits: *Bits, pair: *(int32, int32), address: uint) {
+        // Safety: no caller obligation; the casts only retype pointers and nothing reads through them
+        unsafe func Casts(value: *var Value, color: *Color, bits: *Bits, pair: *(int32, int32), address: uint) {
             let a: uint = value as uint;
             let b: *opaque = value as *opaque;
             let c: *uint8 = value as *uint8;
@@ -381,7 +382,8 @@ TEST_CASE("assignment diagnostics distinguish constants bindings and read-only d
             let fixed = 1;
             fixed = 2;
             let pointer: *int = @fixed;
-            *pointer = 3;
+            // Safety: `pointer` addresses the live local `fixed`
+            unsafe { *pointer = 3; }
             let box = Box { value: 1 };
             box.value = 2;
             let values: int[1] = [1];
@@ -408,7 +410,8 @@ TEST_CASE("mutable dereferences fields and indexes remain assignable") {
         func Main() {
             var number = 1;
             let pointer: *var int = @number;
-            *pointer = 2;
+            // Safety: `pointer` addresses the live local `number`
+            unsafe { *pointer = 2; }
             var box = Box { value: 1 };
             box.value = 2;
             var values: int[1] = [1];
@@ -489,7 +492,8 @@ TEST_CASE("constant char casts are checked whatever the constant's spelling") {
 
 TEST_CASE("function values cast to and from pointers but not to scalars") {
     const auto diagnostics = AnalyzeSource(R"(
-        func Load(address: *opaque) {
+        // Safety: `address` must be the address of a `func() -> int`
+        unsafe func Load(address: *opaque) {
             let callable = address as func() -> int;
             let back = callable as *opaque;
             let invalidTarget = 1 as func() -> int;

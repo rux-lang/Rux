@@ -495,7 +495,8 @@ TEST_CASE("generic returned variants decode using substituted payload widths") {
 TEST_CASE("borrowed variant subjects use the same tag-gated payload offsets") {
     const LirPackage package = VariantLir(R"(
         variant Packet { Empty, Pair(int32, int64) }
-        func Decode(value: *Packet) -> int64 {
+        // Safety: `value` must address a live `Packet`
+        unsafe func Decode(value: *Packet) -> int64 {
             return match *value { .Empty => -1i64, .Pair(first, second) => (first as int64) + second };
         }
     )");

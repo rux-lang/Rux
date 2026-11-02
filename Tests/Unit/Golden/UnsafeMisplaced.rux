@@ -1,0 +1,39 @@
+// `unsafe` marks a function a caller names or a block; nothing that is called implicitly can carry an obligation.
+interface Shape {
+    unsafe func Area(&self) -> int;
+}
+
+struct Square {
+    side: int;
+}
+
+extend Square : Shape {
+    pub unsafe func Area(&self) -> int {
+        return self.side * self.side;
+    }
+}
+
+struct Holder {
+    value: *var int;
+}
+
+extend Holder {
+    unsafe func ~Holder(&var self) {
+        *self.value = 0;
+    }
+
+    unsafe func ==(&self, other: &Holder) -> bool {
+        return self.value == other.value;
+    }
+}
+
+#Link("libc.so.6")
+unsafe extern func abs(value: int32) -> int32;
+
+unsafe struct Wrapped {
+    value: int;
+}
+
+func Main() -> int {
+    return 0;
+}

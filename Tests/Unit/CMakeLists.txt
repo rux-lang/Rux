@@ -55,6 +55,7 @@ set(RUX_TEST_SOURCES
     ThrowsLoweringTests.cpp
     ThrowsSemanticsTests.cpp
     ThrowsSyntaxTests.cpp
+    UnsafeBoundaryTests.cpp
     TestEntryTests.cpp
     ChecksumTests.cpp
     CliContractTests.cpp

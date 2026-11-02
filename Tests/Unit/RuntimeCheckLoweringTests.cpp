@@ -446,7 +446,8 @@ func Main() -> int {
 }
 
 TEST_CASE("pointer indexing stays unchecked and proven indexes lose their checks") {
-    const LirPackage debug = CompileChecks(R"(func Through(values: *int32, at: uint) -> int32 {
+    const LirPackage debug = CompileChecks(R"(// Safety: `values` must address an array with an element at index `at`
+unsafe func Through(values: *int32, at: uint) -> int32 {
     return values[at];
 }
 

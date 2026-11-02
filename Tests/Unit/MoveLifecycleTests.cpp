@@ -366,7 +366,8 @@ TEST_CASE("consuming a move-only variant reports later use while borrowed inspec
             value;
         }
 
-        func Inspect(value: *Held) {
+        // Safety: `value` must address a live `Held`
+        unsafe func Inspect(value: *Held) {
             match *value { .Empty => {}, .Full(handle) => {} }
             match *value { .Empty => {}, .Full(_) => {} }
         }

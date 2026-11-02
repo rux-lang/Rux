@@ -1,0 +1,3 @@
+5:16: error: dereferencing a raw pointer requires 'unsafe'
+6:5: error: dereferencing a raw pointer requires 'unsafe'
+7:5: error: dereferencing a raw pointer requires 'unsafe'

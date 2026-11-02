@@ -1,0 +1,5 @@
+9:20: error: accessing field 'first' through a raw pointer requires 'unsafe'
+9:33: error: accessing field 'second' through a raw pointer requires 'unsafe'
+16:12: error: accessing field 'first' through a raw pointer requires 'unsafe'
+17:27: error: accessing field 'second' through a raw pointer requires 'unsafe'
+19:19: error: accessing field 'second' through a raw pointer requires 'unsafe'

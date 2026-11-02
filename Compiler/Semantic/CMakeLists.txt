@@ -47,6 +47,7 @@ rux_add_component(RuxSemantic
     Analysis/Propagation.cpp
     Analysis/Recovery.cpp
     Analysis/Throws.cpp
+    Analysis/UnsafeOperations.cpp
     Analysis/PublicApi.cpp
     Analysis/Receivers.cpp
     Analysis/TypeProperties.cpp
