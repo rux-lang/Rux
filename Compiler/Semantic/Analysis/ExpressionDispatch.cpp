@@ -151,7 +151,22 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                     if (!variant->fields.empty() || !variant->namedFields.empty()) {
                         return EnumVariantConstructorType(*resolved->declaration, *variant);
                     }
-                    // A unit case of a generic variant takes its type arguments from where it goes.
+                    // A unit case of a generic variant takes its type arguments from the instantiation or the alias
+                    // it is named through, or else from where it goes.
+                    if (const std::size_t count = resolved->declaration->typeParams.size();
+                        count != 0 && e->typeArgs.size() == count) {
+                        std::vector<TypeRef> written;
+                        for (const TypeExprPtr &argument : e->typeArgs) {
+                            written.push_back(ResolveType(*argument));
+                        }
+                        if (std::ranges::any_of(written, [](const TypeRef &type) { return type.IsUnknown(); })) {
+                            return TypeRef::MakeUnknown();
+                        }
+                        return EnumType(*resolved->declaration, written);
+                    }
+                    if (auto aliased = AliasCaseTypeArguments(*first, *resolved->declaration)) {
+                        return EnumType(*resolved->declaration, *aliased);
+                    }
                     if (auto expected = ExpectedCaseTypeArguments(*e, *resolved->declaration)) {
                         return EnumType(*resolved->declaration, *expected);
                     }
@@ -319,6 +334,21 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         // A user variant that is the expected type and declares the case builds its own case instead.
         if (const std::optional<TypeRef> contextual = CheckContextualNativeCase(*construct)) {
             return *contextual;
+        }
+        // The level the context expects names what the operand is, so a case written without its type takes that.
+        if (const auto expected = expectedExpressionTypes.find(construct);
+            construct->operand && expected != expectedExpressionTypes.end()) {
+            TypeRef level = expected->second;
+            if (level->kind == TypeRef::Kind::Reference && !level->inner.empty()) {
+                level = level->inner.front();
+            }
+            const bool optional = construct->kind == NativeConstructExpr::Kind::Some;
+            if (optional ? level.IsOptional() && !level->inner.empty()
+                         : level.IsFallible() && level->inner.size() == 2) {
+                const TypeRef &payload =
+                    construct->kind == NativeConstructExpr::Kind::Failure ? level->inner[1] : level->inner[0];
+                ExpectContextualCaseArgument(construct->operand.get(), payload);
+            }
         }
         const TypeRef operand = construct->operand ? CheckExpr(*construct->operand) : TypeRef::MakeUnknown();
         if (operand.IsUnknown()) {

@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ContextualCaseArguments"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: a case written without its type takes it from a generic parameter and from inside '.Some(...)'"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

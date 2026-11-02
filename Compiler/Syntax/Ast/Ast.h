@@ -277,6 +277,9 @@ struct SelfExpr : Expr {};
 // a::b::c
 struct PathExpr : Expr {
     std::vector<std::string> segments;
+    /// The type arguments written on the type a member is named through, `Maybe<int>::Nothing`; a call through such a
+    /// path takes them as its leading type arguments instead.
+    std::vector<TypeExprPtr> typeArgs;
 };
 
 // sizeof(T)

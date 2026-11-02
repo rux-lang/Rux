@@ -825,7 +825,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
                 if (const EnumDecl *enumeration = EnumNamed(path->segments[0])) {
                     if (const auto resolved = LookupCase(path->segments[0], path->segments[1])) {
-                        return checkCaseCall(*enumeration, *resolved->selectedCase, std::nullopt);
+                        // An alias of an instantiation, such as `type Kept = Result<int, Error>`, supplies its type
+                        // arguments as written ones would.
+                        return checkCaseCall(*enumeration, *resolved->selectedCase,
+                                             AliasCaseTypeArguments(*first, *enumeration));
                     }
                 }
                 TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;

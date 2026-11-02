@@ -278,15 +278,25 @@ bool Parser::NextBraceIsMatchArms() const noexcept {
 }
 
 bool Parser::IsGenericCallAhead() const noexcept {
+    const std::optional<std::size_t> after = ClosedTypeArgumentsAhead();
+    return after && Peek(*after).kind == TokenKind::LeftParen;
+}
+
+bool Parser::IsTypeQualifiedMemberAhead() const noexcept {
+    const std::optional<std::size_t> after = ClosedTypeArgumentsAhead();
+    return after && Peek(*after).kind == TokenKind::ColonColon && Peek(*after + 1).kind == TokenKind::Ident;
+}
+
+std::optional<std::size_t> Parser::ClosedTypeArgumentsAhead() const noexcept {
     if (!Check(TokenKind::Less)) {
-        return false;
+        return std::nullopt;
     }
 
     int angleDepth = 0;
     for (std::size_t ahead = 0;; ++ahead) {
         const TokenKind kind = Peek(ahead).kind;
         if (kind == TokenKind::EndOfFile || kind == TokenKind::LeftBrace || kind == TokenKind::Semicolon) {
-            return false;
+            return std::nullopt;
         }
 
         if (kind == TokenKind::Less) {
@@ -297,10 +307,10 @@ bool Parser::IsGenericCallAhead() const noexcept {
         if (const int closers = CloseAngleCount(kind); closers > 0) {
             angleDepth -= closers;
             if (angleDepth == 0) {
-                return Peek(ahead + 1).kind == TokenKind::LeftParen;
+                return ahead + 1;
             }
             if (angleDepth < 0) {
-                return false;
+                return std::nullopt;
             }
         }
     }

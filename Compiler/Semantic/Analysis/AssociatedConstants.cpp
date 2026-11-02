@@ -118,15 +118,25 @@ AnalysisContext::AssociatedConstantLookup AnalysisContext::LookupAssociatedConst
             typeOwner = info->second.ownerPackage;
         }
     }
-    for (const ImplDecl *implementation : implDecls) {
-        const auto owner = declarationInfos.find(implementation);
-        if (owner == declarationInfos.end() || owner->second.ownerPackage != typeOwner ||
-            implementation->typeName != typeName) {
-            continue;
-        }
-        for (const auto &constant : implementation->constants) {
-            if (constant->name == name) {
-                return {constant.get(), {}};
+    // A generic type's constants are declared in `extend Buffer<T>`, written for every instantiation: `Buffer`,
+    // `Buffer<int>` and, inside that block, `Self` all name them. An extension of the exact type is asked first.
+    const auto extendsEveryInstantiation = [&](const ImplDecl &implementation) {
+        const auto *extended = AstCast<const NamedTypeExpr>(implementation.extendedType.get());
+        return extended && !extended->typeArgs.empty() &&
+               BaseTypeName(implementation.typeName) == BaseTypeName(typeName) &&
+               ImplTypeParams(implementation).size() == extended->typeArgs.size();
+    };
+    for (const bool generic : {false, true}) {
+        for (const ImplDecl *implementation : implDecls) {
+            const auto owner = declarationInfos.find(implementation);
+            if (owner == declarationInfos.end() || owner->second.ownerPackage != typeOwner ||
+                (generic ? !extendsEveryInstantiation(*implementation) : implementation->typeName != typeName)) {
+                continue;
+            }
+            for (const auto &constant : implementation->constants) {
+                if (constant->name == name) {
+                    return {constant.get(), {}};
+                }
             }
         }
     }

@@ -676,6 +676,41 @@ ExprPtr Parser::ParsePostfix() {
                 continue;
             }
         }
+        // A member named through an instantiation: `Result<int, E>::Failure(e)` is `Result::Failure<int, E>(e)`, the
+        // type's arguments before any the member adds, and `Maybe<int>::Nothing` keeps them on the path.
+        if ((AstCast<const IdentExpr>(left.get()) || AstCast<const PathExpr>(left.get())) &&
+            IsTypeQualifiedMemberAhead()) {
+            auto path = std::make_unique<PathExpr>();
+            path->location = loc;
+            if (const auto *identifier = AstCast<const IdentExpr>(left.get())) {
+                path->segments.push_back(identifier->name);
+            }
+            else {
+                path->segments = AstCast<const PathExpr>(left.get())->segments;
+            }
+            std::vector<TypeExprPtr> typeArgs = ParseTypeArgs();
+            while (Match(TokenKind::ColonColon)) {
+                path->segments.push_back(ExpectBefore(TokenKind::Ident, "a path segment after '::'").text);
+            }
+            if (!IsGenericCallAhead() && !Check(TokenKind::LeftParen)) {
+                path->typeArgs = std::move(typeArgs);
+                left = std::move(path);
+                continue;
+            }
+            if (IsGenericCallAhead()) {
+                for (TypeExprPtr &argument : ParseTypeArgs()) {
+                    typeArgs.push_back(std::move(argument));
+                }
+            }
+            auto call = std::make_unique<CallExpr>();
+            ++callsRead;
+            call->location = loc;
+            call->callee = std::move(path);
+            call->typeArgs = std::move(typeArgs);
+            call->args = ParseArgList(&call->labels);
+            left = std::move(call);
+            continue;
+        }
         // Generic function call: expr<T1, T2>(args)
         if (IsGenericCallAhead()) {
             auto typeArgs = ParseTypeArgs();

@@ -1,0 +1,55 @@
+// Members named through a type: `Self::Capacity` inside `extend Buffer<T>`, `Buffer<int>::Capacity` and
+// `Buffer<int>::Make(...)` through an instantiation, `Result<int, E>::Failure(...)` with the type's arguments written
+// before the member's, and `Kept::Success(...)` through an alias of an instantiation, whose arguments the case takes.
+
+import Core::{ Assert, Result };
+
+struct Buffer<T> {
+    count: uint;
+}
+
+extend Buffer<T> {
+    const Capacity: uint = 16;
+
+    func Make(count: uint) -> Self {
+        return Self { count };
+    }
+
+    func Room(&self) -> uint {
+        return Self::Capacity - self.count;
+    }
+}
+
+variant Maybe<T> {
+    Some(T),
+    Nothing,
+}
+
+type Kept = Result<int, bool>;
+type MaybeInt = Maybe<int>;
+type IntBuffer = Buffer<int>;
+
+func Refuse<E>(error: E) -> Result<int, E> {
+    return Result<int, E>::Failure(error);
+}
+
+func Main() -> int {
+    Assert(Buffer<int> { count: 3 }.Room() == 13u, "'Self::Capacity' in a generic extension");
+    Assert(Buffer<int>::Capacity == 16u && IntBuffer::Capacity == 16u, "through an instantiation and an alias");
+    Assert(Buffer<int>::Make(3).count == 3u, "an associated function through an instantiation");
+
+    let kept = Kept::Success(3);
+    Assert(kept is .Success(3), "a case through an alias of an instantiation");
+    let refused: Kept = Kept::Failure(true);
+    Assert(refused is .Failure(true), "with an annotation");
+    let nothing = MaybeInt::Nothing;
+    Assert(nothing is .Nothing, "a unit case through an alias");
+
+    let written = Result<int, bool>::Success(5);
+    Assert(written is .Success(5), "a case through an instantiation");
+    Assert(Refuse(true) is .Failure(true), "with a type parameter");
+    let empty = Maybe<uint8>::Nothing;
+    Assert(empty is .Nothing, "a unit case through an instantiation");
+    Assert(3 < 4 && 5 > 2, "a comparison still reads as one");
+    return 0;
+}

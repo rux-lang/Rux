@@ -682,6 +682,11 @@ private:
     /// Reports a move of a value whose type, or a part of it, is `#NoMove`.
     void ReportProhibitedMove(const TypeRef &type, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
+    /// The type of parameter `index` of a generic function, as far as the call's written type arguments and the
+    /// arguments checked before it decide it; nullopt while it still names a type parameter.
+    [[nodiscard]] std::optional<TypeRef> GenericParameterType(const FuncDecl &declaration, const CallExpr &call,
+                                                              std::size_t index,
+                                                              const std::vector<TypeRef> &checkedTypes);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
     void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
                               const std::vector<TypeRef> *parameterTypes = nullptr);
@@ -1682,9 +1687,13 @@ private:
     [[nodiscard]] std::optional<TypeRef> ExpectedArrayElementType(const ArrayExpr &array) const;
 
     // Cases written without their type (ContextualCases.cpp).
-    /// Whether `expression` names a case without its type: `.Case`, `.Case(...)`, or a native constructor that a user
-    /// case of the same name may take over.
+    /// Whether `expression` names a case without its type: `.Case`, `.Case(...)`, a native constructor that a user
+    /// case of the same name may take over, or a `try` marking one.
     [[nodiscard]] static bool IsContextualCaseExpression(const Expr &expression) noexcept;
+    /// The type arguments an alias of an instantiation of `declaration` supplies to a case named through it, as
+    /// `Kept::Success(...)` with `type Kept = Result<int, Error>`; nullopt for any other type name.
+    [[nodiscard]] std::optional<std::vector<TypeRef>> AliasCaseTypeArguments(const Symbol &type,
+                                                                             const EnumDecl &declaration);
     /// Gives each argument that names a case without its type the parameter type it is passed as.
     void ExpectContextualCaseArguments(const CallExpr &call, const std::vector<TypeRef> &parameterTypes);
     /// Gives `expression` the type `type` its destination expects, when it names a case without its type.

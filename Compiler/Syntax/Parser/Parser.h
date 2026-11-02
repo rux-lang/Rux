@@ -154,6 +154,11 @@ private:
     /// than an ordinary `when`/block body, i.e. a top-level '=>' appears before any top-level ';' or the closing '}'.
     [[nodiscard]] bool NextBraceIsMatchArms() const noexcept;
     [[nodiscard]] bool IsGenericCallAhead() const noexcept;
+    /// `Type<Args>::Member` ahead, with the current token on the '<': a member named through an instantiation.
+    [[nodiscard]] bool IsTypeQualifiedMemberAhead() const noexcept;
+    /// With the current token on '<', how far ahead the token after the angle that closes it is, or nullopt when
+    /// nothing closes it before a '{' or ';'.
+    [[nodiscard]] std::optional<std::size_t> ClosedTypeArgumentsAhead() const noexcept;
     [[nodiscard]] bool IsTypeArgListAhead() const noexcept;
 
     // Diagnostics

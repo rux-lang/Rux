@@ -17,6 +17,10 @@ bool AnalysisContext::IsContextualCaseExpression(const Expr &expression) noexcep
     if (AstCast<const EnumShorthandExpr>(&expression) || AstCast<const NativeConstructExpr>(&expression)) {
         return true;
     }
+    // A `try` passes the type it is expected to have on to its operand, so one marking such a case wants it too.
+    if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
+        return marked->operand && IsContextualCaseExpression(*marked->operand);
+    }
     const auto *call = AstCast<const CallExpr>(&expression);
     return call && AstCast<const EnumShorthandExpr>(call->callee.get());
 }
@@ -66,6 +70,23 @@ std::vector<TypeRef> AnalysisContext::ExpectedCaseTypeArgumentsOf(const TypeRef 
     std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(expected->name);
     if (arguments.size() != declaration.typeParams.size()) {
         return {};
+    }
+    return arguments;
+}
+
+std::optional<std::vector<TypeRef>> AnalysisContext::AliasCaseTypeArguments(const Symbol &type,
+                                                                            const EnumDecl &declaration) {
+    const auto *alias = AstCast<const TypeAliasDecl>(type.declaration);
+    if (!alias || declaration.typeParams.empty()) {
+        return std::nullopt;
+    }
+    const TypeRef aliased = type.type.IsUnknown() ? ResolveType(*alias->type) : type.type;
+    if (aliased->kind != TypeRef::Kind::Named || BaseTypeName(aliased->name) != BaseTypeName(declaration.name)) {
+        return std::nullopt;
+    }
+    std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(aliased->name);
+    if (arguments.size() != declaration.typeParams.size()) {
+        return std::nullopt;
     }
     return arguments;
 }

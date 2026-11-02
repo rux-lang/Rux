@@ -1150,17 +1150,30 @@ std::vector<TypeRef> AnalysisContext::CheckCallArgumentValues(const CallExpr &ca
     // parameter is. A function named as an argument for a function-typed parameter takes its overload or type
     // arguments from that parameter's type.
     std::optional<TypeRef> calleeType;
+    const FuncDecl *generic = nullptr;
     if (const auto *callee = AstCast<const IdentExpr>(call.callee.get())) {
         if (const Symbol *symbol = currentScope->Lookup(callee->name);
-            symbol && symbol->kind == Symbol::Kind::Func && symbol->funcOverloads.size() == 1 &&
-            symbol->funcOverloads.front()->typeParams.empty()) {
-            calleeType = FunctionType(*symbol->funcOverloads.front());
+            symbol && symbol->kind == Symbol::Kind::Func && symbol->funcOverloads.size() == 1) {
+            if (symbol->funcOverloads.front()->typeParams.empty()) {
+                calleeType = FunctionType(*symbol->funcOverloads.front());
+            }
+            else {
+                generic = symbol->funcOverloads.front();
+            }
         }
     }
     std::vector<TypeRef> types;
     types.reserve(call.args.size());
     for (std::size_t index = 0; index < call.args.size(); ++index) {
         const auto &argument = call.args[index];
+        // A case written without its type, passed to a generic function, takes the parameter's type once the type
+        // arguments written at the call and the arguments before it decide that type.
+        if (generic && call.labels.empty() && IsContextualCaseExpression(*argument) &&
+            !expectedExpressionTypes.contains(argument.get())) {
+            if (const std::optional<TypeRef> parameter = GenericParameterType(*generic, call, index, types)) {
+                expectedExpressionTypes.insert_or_assign(argument.get(), *parameter);
+            }
+        }
         if (calleeType && (*calleeType)->kind == TypeRef::Kind::Func && index + 1 < (*calleeType)->inner.size() &&
             (*calleeType)->inner[index]->kind == TypeRef::Kind::Func &&
             (AstCast<const IdentExpr>(argument.get()) || AstCast<const PathExpr>(argument.get()) ||
@@ -1173,6 +1186,35 @@ std::vector<TypeRef> AnalysisContext::CheckCallArgumentValues(const CallExpr &ca
         types.push_back(type);
     }
     return types;
+}
+
+std::optional<TypeRef> AnalysisContext::GenericParameterType(const FuncDecl &declaration, const CallExpr &call,
+                                                             const std::size_t index,
+                                                             const std::vector<TypeRef> &checkedTypes) {
+    // Only a guess at what the call will decide, so nothing it reports is kept: the call is resolved and reported in
+    // full once every argument is checked.
+    const std::size_t diagnosticCount = diags.size();
+    std::unordered_map<std::string, TypeRef> substitutions;
+    const std::size_t written = std::min(declaration.typeParams.size(), call.typeArgs.size());
+    for (std::size_t parameter = 0; parameter < written; ++parameter) {
+        substitutions.emplace(declaration.typeParams[parameter].name, ResolveType(*call.typeArgs[parameter]));
+    }
+    if (substitutions.size() < declaration.typeParams.size()) {
+        std::vector<TypeRef> argumentTypes = checkedTypes;
+        argumentTypes.resize(call.args.size(), TypeRef::MakeUnknown());
+        static_cast<void>(DeduceTypeArguments(declaration, argumentTypes, substitutions, &call));
+    }
+    const TypeRef function = MakeFuncTypeWithSubstitution(declaration.params, declaration.returnType, substitutions,
+                                                          TypeParameterNames(declaration.typeParams));
+    diags.resize(diagnosticCount);
+    if (function->kind != TypeRef::Kind::Func || index + 1 >= function->inner.size()) {
+        return std::nullopt;
+    }
+    const TypeRef &parameter = function->inner[index];
+    if (parameter.IsUnknown() || MentionsTypeParameter(parameter)) {
+        return std::nullopt;
+    }
+    return parameter;
 }
 
 void AnalysisContext::ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
