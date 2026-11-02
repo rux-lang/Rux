@@ -1,0 +1,14 @@
+// Computing a constant takes a bounded number of steps, so a loop that never ends is an error rather than a compiler
+// that never finishes.
+
+func Spin(start: uint64) -> uint64 {
+    var value = start;
+    while value != 0u64 {
+        value = value | 1u64;
+    }
+    return value;
+}
+
+func Settle() -> uint64 { return Spin(1u64); }
+
+const Forever = Settle();

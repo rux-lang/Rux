@@ -617,6 +617,7 @@ ExprPtr Parser::ParsePostfix() {
                 field->object = std::move(left);
                 field->field = name;
                 auto call = std::make_unique<CallExpr>();
+                ++callsRead;
                 call->location = loc;
                 call->callee = std::move(field);
                 call->args = std::move(args);
@@ -675,6 +676,7 @@ ExprPtr Parser::ParsePostfix() {
             auto typeArgs = ParseTypeArgs();
             auto args = ParseArgList();
             auto e = std::make_unique<CallExpr>();
+            ++callsRead;
             e->location = loc;
             e->callee = std::move(left);
             e->typeArgs = std::move(typeArgs);
@@ -686,6 +688,7 @@ ExprPtr Parser::ParsePostfix() {
         if (Check(TokenKind::LeftParen)) {
             auto args = ParseArgList();
             auto e = std::make_unique<CallExpr>();
+            ++callsRead;
             e->location = loc;
             e->callee = std::move(left);
             e->args = std::move(args);

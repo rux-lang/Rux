@@ -1,0 +1,44 @@
+// Integer arithmetic that leaves its type, a division by zero, an index past the end, an invalid character and an
+// error that is thrown are each an error at the constant whose computation reached them.
+
+enum DigitError {
+    NotADigit,
+}
+
+func Square(value: int32) -> int32 { return value * value; }
+func Sum(count: uint8) -> uint8 {
+    var total = 0u8;
+    for step in 0u8..count {
+        total += step;
+    }
+    return total;
+}
+func Negate(value: int8) -> int8 { return -value; }
+func Divide(left: int, right: int) -> int { return left / right; }
+func Pick(index: int) -> int {
+    let values = [1, 2, 3];
+    return values[index];
+}
+func Letter(code: uint32) -> char32 { return code as char32; }
+
+func Digit(c: char) -> int throws DigitError {
+    if c < '0' || c > '9' {
+        throw .NotADigit;
+    }
+    return (c as int) - ('0' as int);
+}
+
+func DigitOrZero(c: char) -> int {
+    return try Digit(c) catch {
+        _ => 0,
+    };
+}
+
+const Squared = Square(46341i32);
+const Total = Sum(30u8);
+const Negated = Negate(-128i8);
+const Quotient = Divide(7, 0);
+const Picked = Pick(3);
+const Surrogate = Letter(0xD800u32);
+const Parsed = DigitOrZero('x');
+const InRange = Square(46340i32);

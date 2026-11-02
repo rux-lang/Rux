@@ -173,6 +173,10 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     records.checkedConstantTypes = OwnEntries(checkedConstantTypes, shared.checkedConstantTypes);
     records.checkedGlobalTypes = OwnEntries(checkedGlobalTypes, shared.checkedGlobalTypes);
     records.localConstants = OwnElements(localConstants, shared.localConstants);
+    // A context copies the Begin phases' queue, so its own entries are the ones after it.
+    records.constantsToEvaluate.assign(constantsToEvaluate.begin() +
+                                           static_cast<std::ptrdiff_t>(shared.constantsToEvaluate.size()),
+                                       constantsToEvaluate.end());
     for (const ConstDecl *constant : records.localConstants) {
         if (const auto info = declarationInfos.find(constant); info != declarationInfos.end())
             records.localConstantInfos.emplace_back(constant, info->second);
@@ -347,6 +351,12 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
         [&] { MergeFirstWins(checkedConstantTypes, records, [](R &r) -> auto & { return r.checkedConstantTypes; }); },
         [&] { MergeFirstWins(checkedGlobalTypes, records, [](R &r) -> auto & { return r.checkedGlobalTypes; }); },
         [&] { MergeSet(localConstants, records, [](R &r) -> auto & { return r.localConstants; }); },
+        [&] {
+            for (auto &record : records)
+                for (const ConstDecl *constant : record.constantsToEvaluate)
+                    if (queuedConstantEvaluations.insert(constant).second)
+                        constantsToEvaluate.push_back(constant);
+        },
         [&] {
             for (auto &record : records)
                 for (auto &[declaration, info] : record.localConstantInfos)

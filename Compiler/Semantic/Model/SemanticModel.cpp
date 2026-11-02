@@ -35,6 +35,11 @@ const EvaluatedAssociatedConstant *SemanticModel::TryGetConstantValue(const Cons
     return found == facts.evaluatedAssociatedConstants.end() ? nullptr : &found->second;
 }
 
+const ComputedConstant *SemanticModel::TryGetEvaluatedConstant(const ConstDecl &declaration) const noexcept {
+    const auto found = facts.evaluatedConstants.find(&declaration);
+    return found == facts.evaluatedConstants.end() ? nullptr : &found->second;
+}
+
 namespace {
 bool IdentityCharacter(const char character) {
     return std::isalnum(static_cast<unsigned char>(character)) || character == '_';

@@ -613,7 +613,9 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     }
 
     ExpectBefore(TokenKind::Assign, "'=' before the constant value");
+    const std::size_t callsBefore = callsRead;
     decl->value = ParseRequiredExpr("after '=' in the constant declaration");
+    constantsCall = constantsCall || callsRead != callsBefore;
 
     ExpectBefore(TokenKind::Semicolon, "';' after the constant declaration");
     return decl;

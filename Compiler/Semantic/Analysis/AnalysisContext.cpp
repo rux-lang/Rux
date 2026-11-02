@@ -1007,6 +1007,8 @@ std::vector<TypeRef> AnalysisContext::DistinctRecordedTypes() const {
 }
 
 void AnalysisContext::Finish() {
+    // First, because checking a reused module's bodies for a constant can name instantiations validated below.
+    EvaluateConstantCalls();
     // Gathered again only when a pass recorded more types: validating instantiations checks their bodies.
     std::vector<TypeRef> recordedTypes;
     std::size_t recordedCount = 0;

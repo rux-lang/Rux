@@ -1,0 +1,35 @@
+// A constant may call a function only when the function, and everything it calls, uses nothing that depends on the
+// running program. The error names the first such operation and the calls that lead to it, even on a path the
+// arguments never take.
+
+#Link("libc.so.6")
+extern func abs(value: int32) -> int32;
+
+var Counter: int = 0;
+thread var PerThread: int = 0;
+
+func ReadsCounter() -> int { return Counter + 1; }
+func Indirect() -> int { return ReadsCounter() * 2; }
+func ReadsThreadLocal() -> int { return PerThread; }
+
+func CallsExtern(flag: bool) -> int32 {
+    if flag {
+        // Safety: 'abs' is defined for every value but the minimum.
+        return unsafe { abs(-3i32) };
+    }
+    return 0i32;
+}
+
+func TakesAddress() -> int {
+    var local = 4;
+    let address = @local;
+    return local;
+}
+
+func Fine(value: int) -> int { return value + 1; }
+
+const FromCounter = Indirect();
+const FromThreadLocal = ReadsThreadLocal();
+const FromExtern = CallsExtern(false);
+const FromAddress = TakesAddress();
+const Allowed = Fine(1);

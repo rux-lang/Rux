@@ -7,6 +7,9 @@ rux_add_component(RuxSemantic
     Analysis/Intrinsics.cpp
     Analysis/TypeResolution.cpp
     Analysis/ConstantChecking.cpp
+    Analysis/ConstantCallEvaluator.cpp
+    Analysis/ConstantCallPurity.cpp
+    Analysis/ConstantCallStatements.cpp
     Analysis/ContextualCases.cpp
     Analysis/Assignments.cpp
     Analysis/CallableResolution.cpp
@@ -53,4 +56,4 @@ rux_add_component(RuxSemantic
     Analysis/Receivers.cpp
     Analysis/TypeProperties.cpp
 )
-target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics RuxParallel)
+target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxEvaluation RuxNumeric RuxSyntax RuxDiagnostics RuxParallel)

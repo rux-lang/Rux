@@ -482,6 +482,8 @@ private:
     [[nodiscard]] HirImplBlock LowerImpl(const ImplDecl &decl);
     [[nodiscard]] HirConst LowerConst(const ConstDecl &decl);
     [[nodiscard]] HirConst LowerConstValue(const ConstDecl &decl);
+    /// The literal initializer that spells a value analysis computed, laid out as that initializer would be.
+    [[nodiscard]] HirExprPtr LowerCompileTimeValue(const ComputedConstant &value, SourceLocation location);
     [[nodiscard]] HirExternFunc LowerExternFunc(const ExternFuncDecl &decl);
     [[nodiscard]] HirGlobal LowerGlobal(const GlobalDecl &decl);
     [[nodiscard]] HirExprPtr LowerProcessStartFrame(const CallExpr &call);

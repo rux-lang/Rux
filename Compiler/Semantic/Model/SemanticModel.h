@@ -315,6 +315,31 @@ struct EvaluatedAssociatedConstant {
     std::string literal;
 };
 
+/// The value the compiler computed for a constant whose initializer calls a function. It is made only of compile-time
+/// values, so lowering lays it out as the literal initializer that spells it would be laid out, and never runs the
+/// call.
+struct ComputedConstant {
+    enum class Kind : std::uint8_t {
+        /// A number, a bool or a character, spelled in `literal`: a decimal integer or code point, `true` or `false`,
+        /// or a float's exact encoding as `TypedConstant::ToLiteral` writes it.
+        Scalar,
+        /// A struct, whose field values are `elements` in declaration order, named by `fieldNames`.
+        Struct,
+        Tuple,
+        Array,
+        /// A case of an enum or a variant, with its payload values in `elements`.
+        Case,
+    };
+
+    Kind kind = Kind::Scalar;
+    TypeRef type;
+    std::string literal;
+    std::vector<std::string> fieldNames;
+    std::vector<ComputedConstant> elements;
+    const EnumDecl *caseDeclaration = nullptr;
+    const EnumDecl::Variant *selectedCase = nullptr;
+};
+
 /// Where the old value an assignment replaces lives, and so whether it is certain to be there.
 struct PlaceReplacement {
     /// The name of the local whose storage contains the place, when the place is part of a value a binding owns: the
@@ -340,6 +365,8 @@ struct SemanticFacts {
     /// The module variable or extern variable an identifier or path names, keyed by that expression.
     std::unordered_map<const Expr *, const Decl *> globalReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> evaluatedAssociatedConstants;
+    /// Each accepted constant whose initializer calls a function, with the value evaluating it computed.
+    std::unordered_map<const ConstDecl *, ComputedConstant> evaluatedConstants;
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     /// Accepted implicit loads of Copy primitive scalars. The expression's type still describes its reference.
     std::unordered_set<const Expr *> borrowedScalarReads;
@@ -436,6 +463,8 @@ struct SemanticModel {
     [[nodiscard]] const GlobalDecl *TryGetGlobalReference(const Expr &expression) const noexcept;
     [[nodiscard]] const ExternVarDecl *TryGetExternVariableReference(const Expr &expression) const noexcept;
     [[nodiscard]] const EvaluatedAssociatedConstant *TryGetConstantValue(const ConstDecl &declaration) const noexcept;
+    /// The value computed for a constant whose initializer calls a function, or null for any other constant.
+    [[nodiscard]] const ComputedConstant *TryGetEvaluatedConstant(const ConstDecl &declaration) const noexcept;
     std::vector<SemanticDiagnostic> diagnostics;
     std::vector<SemanticSymbol> symbols;
     std::vector<const Module *> modules;

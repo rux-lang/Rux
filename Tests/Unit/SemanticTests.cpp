@@ -328,20 +328,27 @@ TEST_CASE("constant initializers are compile-time values") {
     )")
               .empty());
 
-    const auto diagnostics = AnalyzeSource(R"(
+    // A call is computed by running it, so only its arguments must be compile-time values.
+    CHECK(AnalyzeSource(R"(
         func Seven() -> int { return 7; }
         const FromCall = Seven();
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource(R"(
+        func Twice(value: int) -> int { return value * 2; }
 
         func Main(parameter: int) {
             var counter = 1;
             counter = 5;
+            const FromCall = Twice(counter);
             const FromVariable = counter;
             const FromParameter = parameter + 1;
             const Address = @counter;
         }
     )");
     REQUIRE_EQ(diagnostics.size(), 4);
-    CHECK_EQ(diagnostics[0].message, "call to 'Seven' is not a compile-time value");
+    CHECK_EQ(diagnostics[0].message, "'counter' is not a compile-time constant");
     CHECK_EQ(diagnostics[1].message, "'counter' is not a compile-time constant");
     CHECK_EQ(diagnostics[2].message, "'parameter' is not a compile-time constant");
     CHECK_EQ(diagnostics[3].message, "a reference or an address is not a compile-time value");

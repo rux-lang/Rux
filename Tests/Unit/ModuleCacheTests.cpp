@@ -247,6 +247,45 @@ func Main() -> int {{
     CHECK(diagnostics.empty());
 }
 
+TEST_CASE("a constant computed by a call is computed again when a body it reaches changes") {
+    DependencyFixture fixture;
+    std::vector<Diagnostic> diagnostics;
+    const auto table = [](const int factor) {
+        return std::format(R"(
+module App::Table {{
+    pub func Scaled(value: int) -> int {{
+        return value * {};
+    }}
+}}
+)",
+                           factor);
+    };
+    fixture.SetApplicationFile("Table.rux", table(2));
+    fixture.SetApplicationSource(R"(
+import App::Table::Scaled;
+
+const Scaled6 = Scaled(6);
+
+func Main() -> int {
+    return Scaled6 - 12;
+}
+)");
+    auto options = fixture.Options(false, diagnostics);
+    REQUIRE(CompilerDriver(options).Compile().ok);
+    // The module holding the constant is unchanged, but the body its value comes from is not, so nothing is reused.
+    fixture.SetApplicationFile("Table.rux", table(3));
+    const auto edited = CompilerDriver(options).Compile();
+    REQUIRE(edited.ok);
+    CHECK(edited.stats.localReusedFiles == 0);
+    const auto incremental = ReadBinaryFile(edited.primaryArtifactPath);
+    auto uncached = options;
+    uncached.useBuildCache = false;
+    const auto full = CompilerDriver(uncached).Compile();
+    REQUIRE(full.ok);
+    CHECK(ReadBinaryFile(full.primaryArtifactPath) == incremental);
+    CHECK(diagnostics.empty());
+}
+
 TEST_CASE("compiler driver never keeps a module that holds the build's time") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto root = TempDirectory() / ("rux-build-time-test-" + std::to_string(nonce));

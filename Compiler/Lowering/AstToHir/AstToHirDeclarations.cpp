@@ -589,7 +589,13 @@ HirConst AstToHirContext::LowerConstValue(const ConstDecl &d) {
     hc.isExported = hc.isPublic && model.IsExported(d);
     const std::optional<TypeRef> explicitType =
         d.type ? std::optional<TypeRef>(ResolveType(*d.type->get())) : std::nullopt;
-    hc.value = explicitType ? LowerExprAs(*d.value, *explicitType) : LowerExpr(*d.value);
+    // A constant computed by calling a function is the value analysis computed; the call never runs.
+    if (const ComputedConstant *computed = model.TryGetEvaluatedConstant(d)) {
+        hc.value = LowerCompileTimeValue(*computed, d.value->location);
+    }
+    else {
+        hc.value = explicitType ? LowerExprAs(*d.value, *explicitType) : LowerExpr(*d.value);
+    }
     hc.type = explicitType ? *explicitType : hc.value->type;
     if (HirSymbol *sym = currentScope->Lookup(d.name)) {
         sym->type = hc.type;

@@ -1,0 +1,7 @@
+37:17: error: constant 'Squared' cannot be computed at compile time: '*' overflows 'int32' (in 'Square')
+38:15: error: constant 'Total' cannot be computed at compile time: '+' overflows 'uint8' (in 'Sum')
+39:17: error: constant 'Negated' cannot be computed at compile time: '-' overflows 'int8' (in 'Negate')
+40:18: error: constant 'Quotient' cannot be computed at compile time: '/' divides by zero (in 'Divide')
+41:16: error: constant 'Picked' cannot be computed at compile time: index 3 is out of range for an array of 3 elements (in 'Pick')
+42:19: error: constant 'Surrogate' cannot be computed at compile time: cast from 'uint32' to 'char32' uses invalid surrogate code point U+D800 (in 'Letter')
+43:16: error: constant 'Parsed' cannot be computed at compile time: 'Digit' throws an error of type 'DigitError' (in 'DigitOrZero' -> 'Digit')

@@ -143,6 +143,13 @@ void CompilerDriver::Impl::PrepareModuleReuse() {
     for (const auto &parsed : parseResults)
         modules.push_back(&parsed.module);
     moduleReuse.pack = ModulePack::Read(ModulePackPath());
+    // A constant whose initializer calls a function holds what the bodies it reaches compute, and those bodies may be
+    // in any module its package can call: its own or a dependency. Every such module's whole source then counts as
+    // what it declares, so editing one of those bodies compiles again whatever holds the constant or reads it.
+    const auto calls = [](const auto &parsed) { return parsed.module.constantsCall; };
+    const bool ownCall = std::ranges::any_of(parseResults, calls);
+    const bool anyCall = ownCall || std::ranges::any_of(depParseResults, calls);
+    const std::size_t dependencyCount = depParseResults.size();
     // A file whose size and modification time are what the pack recorded keeps the digests recorded with it, as an
     // up-to-date build record trusts them; any other file is hashed.
     std::vector<ModuleReuse::SourceDigests> digests(modules.size());
@@ -164,7 +171,9 @@ void CompilerDriver::Impl::PrepareModuleReuse() {
             return;
         }
         digest.source = HashText(text->second.Text());
-        digest.interface = HashText(ModuleInterface(*modules[index], text->second.Text()));
+        const bool wholeSource = index < dependencyCount ? anyCall : ownCall;
+        digest.interface = wholeSource ? HashText(std::format("source\n{}", digest.source))
+                                       : HashText(ModuleInterface(*modules[index], text->second.Text()));
     });
     // The program's interface: what every module declares, in name order, under the request this build serves.
     std::vector<std::size_t> byName(modules.size());

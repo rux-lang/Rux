@@ -7,8 +7,8 @@ func Seven() -> int {
     return 7;
 }
 
-// A constant is computed by the compiler, so a call that runs at run time is
-// not one, whether at module level or inside a function.
+// A constant is computed by the compiler: it may call a function, which runs
+// then, but it may not read a variable or a parameter, in a function or not.
 const FromCall = Seven();
 const Limit: uint = 4;
 const Origin = Point { x: 0, y: 0 };

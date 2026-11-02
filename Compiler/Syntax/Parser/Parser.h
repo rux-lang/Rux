@@ -63,6 +63,10 @@ private:
     bool bodiesNeedConditionalFolding = false;
     /// Whether a block so far declared anything but a constant (`Module::bodiesDeclareItems`).
     bool bodiesDeclareItems = false;
+    /// How many calls have been read, so a constant can tell whether its initializer holds one.
+    std::size_t callsRead = 0;
+    /// Whether a constant's initializer so far held a call (`Module::constantsCall`).
+    bool constantsCall = false;
 
     /// What `Self` and a shorthand receiver such as `&self` stand for where the parser is. Inside `extend T` both name
     /// `T` with its type arguments, read again from the tokens the header spelled it with, so every later stage sees

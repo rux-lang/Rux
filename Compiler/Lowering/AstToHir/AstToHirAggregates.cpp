@@ -78,6 +78,56 @@ bool TargetHasFeature(const CompileTimeContext &context, const std::string_view 
 
 } // namespace
 
+HirExprPtr AstToHirContext::LowerCompileTimeValue(const ComputedConstant &value, const SourceLocation location) {
+    switch (value.kind) {
+    case ComputedConstant::Kind::Scalar:
+        return CompilerLiteral(location, value.type, value.literal);
+    case ComputedConstant::Kind::Struct: {
+        auto lowered = std::make_unique<HirStructInitExpr>();
+        lowered->location = location;
+        lowered->type = value.type;
+        lowered->typeName = value.type->name;
+        for (std::size_t index = 0; index < value.elements.size(); ++index)
+            lowered->fields.push_back(
+                {value.fieldNames[index], LowerCompileTimeValue(value.elements[index], location)});
+        return lowered;
+    }
+    case ComputedConstant::Kind::Tuple: {
+        auto lowered = std::make_unique<HirTupleExpr>();
+        lowered->location = location;
+        lowered->type = value.type;
+        for (const ComputedConstant &element : value.elements)
+            lowered->elements.push_back(LowerCompileTimeValue(element, location));
+        return lowered;
+    }
+    case ComputedConstant::Kind::Array: {
+        auto lowered = std::make_unique<HirArrayExpr>();
+        lowered->location = location;
+        lowered->type = value.type;
+        lowered->elementType = value.type->inner.empty() ? TypeRef::MakeUnknown() : value.type->inner.front();
+        for (const ComputedConstant &element : value.elements)
+            lowered->elements.push_back(LowerCompileTimeValue(element, location));
+        return lowered;
+    }
+    case ComputedConstant::Kind::Case: {
+        const EnumDecl &declaration = *value.caseDeclaration;
+        const std::string discriminant =
+            LookupEnumVariantDiscriminant(NominalName(declaration), value.selectedCase->name).value_or("0");
+        if (!declaration.IsVariant())
+            return CompilerLiteral(location, EnumType(declaration), discriminant);
+        auto lowered = std::make_unique<HirEnumConstructExpr>();
+        lowered->location = location;
+        lowered->form = CaseTypeForm::Variant;
+        lowered->type = value.type;
+        lowered->discriminant = discriminant;
+        for (const ComputedConstant &payload : value.elements)
+            lowered->payloads.push_back(LowerCompileTimeValue(payload, location));
+        return lowered;
+    }
+    }
+    return CompilerLiteral(location, value.type, value.literal);
+}
+
 HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression, const ValueConsumptionKind kind) {
     HirExprPtr lowered = LowerExpr(expression);
     if (lowered->type->kind != TypeRef::Kind::Reference || lowered->type->inner.empty()) {

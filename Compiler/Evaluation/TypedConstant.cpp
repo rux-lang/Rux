@@ -1,4 +1,4 @@
-#include "Optimization/ConstantEvaluator.h"
+#include "Evaluation/TypedConstant.h"
 
 #include "Numeric/FloatParsing.h"
 #include "Numeric/IntegerLiteral.h"
@@ -7,7 +7,7 @@
 
 #include <utility>
 
-namespace Rux::Optimization {
+namespace Rux::Evaluation {
 class TypedConstantFactory {
 public:
     static TypedConstant Make(const TypeRef &type, const TypedConstant::Kind kind, const WideInteger bits) {
@@ -374,4 +374,99 @@ std::optional<TypedConstant> CastConstant(const TypedConstant &value, const Type
     const bool sourceSigned = value.GetKind() == TypedConstant::Kind::SignedInteger;
     return Make(targetType, value.Bits().ConvertedWrapping(target->width, sourceSigned));
 }
-} // namespace Rux::Optimization
+
+namespace {
+bool IsInteger(const TypedConstant &value) {
+    return value.GetKind() == TypedConstant::Kind::SignedInteger ||
+           value.GetKind() == TypedConstant::Kind::UnsignedInteger;
+}
+
+CheckedConstant Checked(std::optional<TypedConstant> value) {
+    return CheckedConstant{std::move(value), CheckedFailure::Unsupported};
+}
+
+CheckedConstant Failed(const CheckedFailure failure) {
+    return CheckedConstant{std::nullopt, failure};
+}
+
+/// Whether `result`, computed with wrapping, is not the exact sum or difference of `left` and `right`.
+bool AdditionOverflows(const TokenKind op, const WideInteger &left, const WideInteger &right, const WideInteger &result,
+                       const bool isSigned) {
+    if (!isSigned) {
+        // An unsigned sum wraps below its left operand, and an unsigned difference wraps when the right one is larger.
+        return op == TokenKind::Plus ? result.Compare(left, false) == std::strong_ordering::less
+                                     : left.Compare(right, false) == std::strong_ordering::less;
+    }
+    // A signed sum overflows when both operands share a sign the result lost; a difference, when they differ and the
+    // result lost the left one's.
+    const bool leftNegative = left.IsNegative();
+    const bool rightNegative = right.IsNegative();
+    const bool resultNegative = result.IsNegative();
+    if (op == TokenKind::Plus) {
+        return leftNegative == rightNegative && resultNegative != leftNegative;
+    }
+    return leftNegative != rightNegative && resultNegative != leftNegative;
+}
+} // namespace
+
+CheckedConstant EvaluateUnaryChecked(const TokenKind op, const TypedConstant &operand) {
+    if (op == TokenKind::Minus && IsInteger(operand) && !operand.Bits().IsZero()) {
+        // Only zero negates to itself in an unsigned type, and the signed minimum has no positive counterpart.
+        const bool isSigned = operand.GetKind() == TypedConstant::Kind::SignedInteger;
+        if (!isSigned || operand.Bits() == WideInteger::MinMagnitude(operand.Width(), true).Negated()) {
+            return Failed(CheckedFailure::Overflow);
+        }
+    }
+    return Checked(EvaluateUnary(op, operand));
+}
+
+CheckedConstant EvaluateBinaryChecked(const TokenKind op, const TypedConstant &left, const TypedConstant &right) {
+    if (!IsInteger(left) || !IsInteger(right)) {
+        return Checked(EvaluateBinary(op, left, right));
+    }
+    const bool isSigned = left.GetKind() == TypedConstant::Kind::SignedInteger;
+    switch (op) {
+    case TokenKind::Plus:
+    case TokenKind::Minus: {
+        auto result = EvaluateBinary(op, left, right);
+        if (result && AdditionOverflows(op, left.Bits(), right.Bits(), result->Bits(), isSigned)) {
+            return Failed(CheckedFailure::Overflow);
+        }
+        return Checked(std::move(result));
+    }
+    case TokenKind::Star: {
+        if (left.GetKind() != right.GetKind() || left.Width() != right.Width()) {
+            return Failed(CheckedFailure::Unsupported);
+        }
+        if (!left.Bits().MultipliedChecked(right.Bits(), isSigned)) {
+            return Failed(CheckedFailure::Overflow);
+        }
+        return Checked(EvaluateBinary(op, left, right));
+    }
+    case TokenKind::Slash:
+    case TokenKind::Percent: {
+        if (right.Bits().IsZero()) {
+            return Failed(CheckedFailure::DivisionByZero);
+        }
+        // The signed minimum divided by -1 has no quotient in the type, and its remainder traps with it.
+        const WideInteger minimum = WideInteger::MinMagnitude(left.Width(), true).Negated();
+        if (isSigned && left.Bits() == minimum && right.Bits() == WideInteger::AllOnes(right.Width())) {
+            return Failed(CheckedFailure::Overflow);
+        }
+        return Checked(EvaluateBinary(op, left, right));
+    }
+    case TokenKind::LessLess:
+    case TokenKind::GreaterGreater:
+    case TokenKind::GreaterGreaterGreater: {
+        const bool negative = right.GetKind() == TypedConstant::Kind::SignedInteger && right.Bits().IsNegative();
+        const auto amount = right.Bits().ToUnsigned();
+        if (negative || !amount || *amount >= left.Width()) {
+            return Failed(CheckedFailure::ShiftOutOfRange);
+        }
+        return Checked(EvaluateBinary(op, left, right));
+    }
+    default:
+        return Checked(EvaluateBinary(op, left, right));
+    }
+}
+} // namespace Rux::Evaluation

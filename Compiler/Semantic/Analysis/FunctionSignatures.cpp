@@ -372,7 +372,8 @@ void AnalysisContext::CheckModule(const Module &module) {
     currentFile = module.name;
     Scope *const savedScope = currentScope;
     currentScope = &programIndex.FileScopeFor(module.name, *currentScope);
-    checkingDeclarationsOnly = declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
+    checkingDeclarationsOnly =
+        !checkingReusedBodies && declarationOnlyModules != nullptr && declarationOnlyModules->contains(&module);
     for (const auto &declaration : module.items) {
         CheckDecl(*declaration);
     }

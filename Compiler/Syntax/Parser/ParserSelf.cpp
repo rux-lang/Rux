@@ -166,6 +166,7 @@ ExprPtr Parser::ParseSelfExpr(const SourceLocation location) {
         }
     }
     auto call = std::make_unique<CallExpr>();
+    ++callsRead;
     call->location = location;
     call->callee = std::move(callee);
     call->typeArgs = std::move(typeArgs);

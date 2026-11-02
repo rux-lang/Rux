@@ -191,6 +191,7 @@ set(RUX_TEST_SOURCES
     SemanticProgramIndexTests.cpp
     SemanticPropagationDiagnosticsTests.cpp
     SemanticConstraintDiagnosticsTests.cpp
+    SemanticConstantCallTests.cpp
     SemanticControlFlowDiagnosticsTests.cpp
     SemanticGenericInstantiationTests.cpp
     SemanticIterationDiagnosticsTests.cpp

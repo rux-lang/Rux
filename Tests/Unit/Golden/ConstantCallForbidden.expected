@@ -1,0 +1,4 @@
+31:21: error: constant 'FromCounter' cannot be computed at compile time: 'ReadsCounter' reads module variable 'Counter' (in 'Indirect' -> 'ReadsCounter')
+32:25: error: constant 'FromThreadLocal' cannot be computed at compile time: 'ReadsThreadLocal' reads thread-local variable 'PerThread' (in 'ReadsThreadLocal')
+33:20: error: constant 'FromExtern' cannot be computed at compile time: 'CallsExtern' uses an 'unsafe' block (in 'CallsExtern')
+34:21: error: constant 'FromAddress' cannot be computed at compile time: 'TakesAddress' uses a raw pointer of type '*var int' (in 'TakesAddress')

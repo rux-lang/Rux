@@ -1,0 +1,230 @@
+// A constant may call a function: the compiler runs the call once and lays out what it returns, as it would the
+// literal that spells the same value. The function needs no marker; it only has to use nothing that depends on the
+// running program.
+
+import Core::Assert;
+
+// A lookup table built by a loop rather than written out by hand.
+func BuildCrc32Table(polynomial: uint32) -> uint32[256] {
+    var table: uint32[256] = [0u32; 256];
+    for index in 0..256 {
+        var crc = index as uint32;
+        for _ in 0..8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ polynomial;
+            }
+            else {
+                crc >>= 1;
+            }
+        }
+        table[index] = crc;
+    }
+    return table;
+}
+
+const Crc32Table: uint32[256] = BuildCrc32Table(0xEDB88320);
+
+// A function passed as a value is called through it.
+func Square(value: int) -> int { return value * value; }
+
+func Tabulate(entry: func(int) -> int) -> int[10] {
+    var values: int[10] = [0; 10];
+    var index = 0;
+    while index < 10 {
+        values[index] = entry(index);
+        index++;
+    }
+    return values;
+}
+
+const Squares: int[10] = Tabulate(Square);
+
+// Recursion, early returns and integers of every width.
+func Factorial(n: uint64) -> uint64 {
+    if n <= 1 { return 1; }
+    return n * Factorial(n - 1);
+}
+
+func Fibonacci(n: int32) -> int32 {
+    var previous = 0i32;
+    var current = 1i32;
+    var step = 0i32;
+    loop {
+        if step == n { break; }
+        let next = previous + current;
+        previous = current;
+        current = next;
+        step++;
+    }
+    return previous;
+}
+
+const Twenty: uint64 = Factorial(20);
+const Fib30 = Fibonacci(30);
+const Wide: uint128 = (Factorial(20) as uint128) * (Factorial(20) as uint128);
+
+// A module variable calls nothing itself, but may start from a computed constant.
+var Running: int32 = Fib30;
+
+// A struct built by a method that writes through '&var self'.
+struct Counter {
+    total: int32;
+    steps: int32;
+}
+
+extend Counter {
+    func Counter() -> Counter { return Counter { total: 0i32, steps: 0i32 }; }
+
+    func Add(self: &var Counter, amount: int32) {
+        self.total += amount;
+        self.steps += 1i32;
+    }
+
+    func Mean(self: &Counter) -> int32 { return self.total / self.steps; }
+}
+
+func Count(limit: int32) -> Counter {
+    var counter = Counter();
+    var value = 1i32;
+    while value <= limit {
+        counter.Add(value);
+        value += 1i32;
+    }
+    return counter;
+}
+
+const Counted = Count(10i32);
+const CountedMean = Count(9i32).Mean();
+
+// Reference parameters write the caller's storage.
+func Swap(left: &var int, right: &var int) {
+    let held: int = left;
+    left = right;
+    right = held;
+}
+
+func Ordered(first: int, second: int) -> (int, int) {
+    var low = first;
+    var high = second;
+    if low > high {
+        Swap(low, high);
+    }
+    return (low, high);
+}
+
+const Pair = Ordered(9, 4);
+
+// Cases, matches and labeled loops.
+enum Weekday: uint8 {
+    Monday,
+    Tuesday,
+    Wednesday,
+}
+
+variant Shape {
+    Empty,
+    Circle(int32),
+    Rectangle(int32, int32),
+}
+
+func Area(shape: Shape) -> int32 {
+    return match shape {
+        Shape::Empty => 0i32,
+        Shape::Circle(radius) => 3i32 * radius * radius,
+        Shape::Rectangle(width, height) => width * height,
+    };
+}
+
+func Largest(size: int32) -> Shape {
+    if size == 0i32 { return Shape::Empty; }
+    if size % 2i32 == 0i32 { return Shape::Rectangle(size, size + 1i32); }
+    return Shape::Circle(size);
+}
+
+func After(day: Weekday) -> Weekday {
+    return match day {
+        Weekday::Monday => Weekday::Tuesday,
+        _ => Weekday::Wednesday,
+    };
+}
+
+func FirstPair(limit: int) -> int {
+    var found = 0;
+    outer: for a in 1..limit {
+        for b in 1..limit {
+            if b > a { continue outer; }
+            if a * b == 42 {
+                found = a * 100 + b;
+                break outer;
+            }
+        }
+    }
+    return found;
+}
+
+const Biggest = Largest(6i32);
+const BiggestArea = Area(Largest(6i32));
+const CircleArea = Area(Largest(5i32));
+const Next = After(Weekday::Monday);
+const Product = FirstPair(20);
+
+// Floats are computed at their own width, `float80` and the narrow ones included.
+func Halves(value: float64, count: int) -> float64 {
+    var result = value;
+    for _ in 0..count { result = result / 2.0; }
+    return result;
+}
+
+func Tenth() -> float80 { return (1 as float80) / (10 as float80); }
+func Third() -> float16 { return (1 as float16) / (3 as float16); }
+
+const Eighth = Halves(1.0, 3);
+const TenthWide: float80 = Tenth();
+const ThirdNarrow: float16 = Third();
+
+// Characters, constants that read computed ones, and defaults.
+func Shift(letter: char32, by: uint32) -> char32 { return ((letter as uint32) + by) as char32; }
+func Scaled(value: int, factor: int = 3) -> int { return value * factor; }
+
+const Letter = Shift('a', 2u32);
+const FromComputed = Fib30 + 1i32;
+const Defaulted = Scaled(7);
+
+// A generic function is computed for the types it is called with.
+func Choose<T>(first: bool, left: T, right: T) -> T {
+    if first { return left; }
+    return right;
+}
+
+const Chosen = Choose<int16>(false, 1i16, 2i16);
+
+func Main() -> int {
+    Assert(Crc32Table[0] == 0x00000000u32, "the first CRC-32 entry is zero");
+    Assert(Crc32Table[1] == 0x77073096u32, "the second CRC-32 entry matches the published table");
+    Assert(Crc32Table[255] == 0x2D02EF8Du32, "the last CRC-32 entry matches the published table");
+    Assert(Squares[0] == 0 && Squares[3] == 9 && Squares[9] == 81, "a function value fills the table");
+    Assert(Twenty == 2432902008176640000u64, "recursion computes 20!");
+    Assert(Fib30 == 832040i32, "a loop computes the 30th Fibonacci number");
+    Running += 1i32;
+    Assert(Running == 832041i32, "a module variable starts from a computed constant");
+    Assert(Wide == 5919012181389927685417441689600000000u128, "a 128-bit product is exact");
+    Assert(Counted.total == 55i32 && Counted.steps == 10i32, "a method writes through '&var self'");
+    Assert(CountedMean == 5i32, "a method of a temporary is called");
+    Assert(Pair.0 == 4 && Pair.1 == 9, "reference parameters swap the caller's values");
+    Assert(BiggestArea == 42i32 && CircleArea == 75i32, "cases and matches are evaluated");
+    Assert(Area(Biggest) == 42i32, "a computed case is laid out with its payload");
+    Assert(Next == Weekday::Tuesday, "an enum case is computed");
+    Assert(Product == 706, "labeled loops break and continue");
+    Assert(Eighth == 0.125, "float64 arithmetic matches the target");
+    Assert(TenthWide == (1 as float80) / (10 as float80), "float80 arithmetic matches the target");
+    Assert(ThirdNarrow == (1 as float16) / (3 as float16), "float16 arithmetic matches the target");
+    Assert(Letter == 'c', "a character is computed");
+    Assert(FromComputed == 832041i32, "a constant reads a computed one");
+    Assert(Defaulted == 21, "a default argument is evaluated");
+    Assert(Chosen == 2i16, "a generic function is evaluated");
+
+    // A constant inside a function may call one too.
+    const Local = Fibonacci(10);
+    Assert(Local == 55i32, "a local constant is computed");
+    return 0;
+}

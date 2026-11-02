@@ -1045,6 +1045,10 @@ struct Module {
     /// package's declaration indexes when it is checked, so modules holding one cannot be checked independently. True
     /// unless the parser saw none.
     bool bodiesDeclareItems = true;
+    /// Whether a constant's initializer calls something: its value then depends on the bodies of the functions it
+    /// reaches, which may be in any module, so a build caching modules by what they declare has to count those bodies
+    /// too. True unless the parser saw no such constant.
+    bool constantsCall = true;
     std::vector<Syntax::DocumentationIssue> documentationIssues;
 };
 

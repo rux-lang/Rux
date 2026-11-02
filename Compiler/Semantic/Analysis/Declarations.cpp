@@ -17,6 +17,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace Rux::SemanticDetail {
 using Layout::AlignUp;
@@ -1068,6 +1069,16 @@ bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const 
             compileTime = root && root->kind == Symbol::Kind::Const && !root->intrinsicName.empty();
             callee = std::format("'{}'", method->field);
         }
+        // A constant may call a function: its value is computed once every body is checked, by running the call. A
+        // module variable's initial value may not.
+        if (!compileTime && AstCast<const ConstDecl>(&owner) && callableBindings.contains(call)) {
+            initializerCallsFunction = true;
+            // The callee is evaluated too: a receiver or a function value must itself be compile-time.
+            if (!check(call->callee.get())) {
+                return false;
+            }
+            return checkAll(call->args);
+        }
         if (!compileTime) {
             return reject(*call->callee, std::format("call to {} is not a compile-time value", callee));
         }
@@ -1152,8 +1163,15 @@ void AnalysisContext::CheckConstDeclValue(const ConstDecl &d) {
                                          std::format("cannot assign '{}' to constant of type '{}'",
                                                      valueType.DisplayString(), constType.ToString())));
     }
+    initializerCallsFunction = false;
     const bool compileTime = valueType.IsUnknown() || CheckCompileTimeInitializer(*d.value, d);
-    if (compileTime && (constType.IsSlice() || constType->kind == TypeRef::Kind::Array)) {
+    const bool computed = std::exchange(initializerCallsFunction, false);
+    if (compileTime && computed && !valueType.IsUnknown() && !constType.IsUnknown() &&
+        queuedConstantEvaluations.insert(&d).second) {
+        constantsToEvaluate.push_back(&d);
+    }
+    // A computed value is laid out from what evaluating it produced, so only a written one has a shape to check.
+    if (compileTime && !computed && (constType.IsSlice() || constType->kind == TypeRef::Kind::Array)) {
         const auto *array = AstCast<const ArrayExpr>(d.value.get());
         const auto *repeat = AstCast<const ArrayRepeatExpr>(d.value.get());
         const bool isText = AstCast<const LiteralExpr>(d.value.get()) != nullptr;

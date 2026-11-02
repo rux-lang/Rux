@@ -183,6 +183,10 @@ struct AnalysisState {
     std::unordered_map<const GlobalDecl *, TypeRef> checkedGlobalTypes;
     /// Constants declared by a statement inside a function body rather than at module level.
     std::unordered_set<const ConstDecl *> localConstants;
+    /// Constants whose initializers call a function, in the order they were checked. Finish computes their values once
+    /// every body is checked, since evaluating a call reads what checking its callee recorded.
+    std::vector<const ConstDecl *> constantsToEvaluate;
+    std::unordered_set<const ConstDecl *> queuedConstantEvaluations;
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
@@ -907,6 +911,19 @@ private:
 
     // Native patterns and membership tests (PatternCoverage.cpp).
     friend class NativePatternTranslator;
+
+    // Constants computed by calling functions (ConstantCall*.cpp).
+    friend class ConstantCallEvaluator;
+    /// Compute the value of every constant in `constantsToEvaluate`.
+    void EvaluateConstantCalls();
+    /// Check the bodies of the reused module `sourceName`, which its declarations alone did not need, so a constant can
+    /// call into it. Done once per module, and only for a module whose bodies were skipped.
+    void CheckReusedModuleBodies(const std::string &sourceName);
+    /// Set by `CheckCompileTimeInitializer` when the constant it checks calls a function its value is computed from.
+    bool initializerCallsFunction = false;
+    /// Set while `CheckReusedModuleBodies` checks a module whose bodies are otherwise skipped.
+    bool checkingReusedBodies = false;
+    std::unordered_set<std::string> recheckedReusedModules;
 
     /// How the subject of the native match whose patterns are being checked is held: bindings of a borrowed subject
     /// refer to its storage, and only an exclusively borrowed one can be written through them.
@@ -1714,6 +1731,7 @@ public:
         std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
         std::unordered_map<const GlobalDecl *, TypeRef> checkedGlobalTypes;
         std::unordered_set<const ConstDecl *> localConstants;
+        std::vector<const ConstDecl *> constantsToEvaluate;
         /// Where each of `localConstants` was declared; its scope belongs to the context that checked it.
         std::vector<std::pair<const Decl *, SemanticProgramIndex::DeclarationInfo>> localConstantInfos;
         std::unordered_map<const Expr *, TypeRef> expectedExpressionTypes;

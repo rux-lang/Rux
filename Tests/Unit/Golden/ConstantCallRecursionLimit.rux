@@ -1,0 +1,8 @@
+// Calls made while computing a constant nest to a bounded depth, so recursion without a base case is an error that
+// names the chain of calls rather than a crash.
+
+func Down(depth: int) -> int { return Down(depth + 1) + 1; }
+
+func Start() -> int { return Down(0); }
+
+const Bottomless = Start();
