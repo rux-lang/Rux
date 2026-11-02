@@ -1,7 +1,8 @@
 // `if` as a value: a branch yields the expression it ends with when that is written without its ';'.
 // Covers the forms the language now accepts: an `if` in a binding, a return, an argument and an arm, `else if`
-// chains, branches of different literal and native types unified as a match's arms are, blocks that run statements
-// before their value, branches that leave, owned values moved out of a branch, and a value block ending a match arm.
+// chains, branches of different literal, native and pointer types unified as a match's arms are and in either order,
+// blocks that run statements before their value, branches that leave, owned values moved out of a branch, and a value
+// block ending a match arm.
 
 import Core::Assert;
 
@@ -104,6 +105,24 @@ func Make(flag: bool) -> int {
     return token.id;
 }
 
+func Grow(empty: bool, length: uint) -> uint {
+    // A literal branch takes the type of a later branch, so the order the branches are written in decides nothing.
+    let capacity = if empty { 0 } else { length };
+    return capacity;
+}
+
+func Wide(flag: bool, nested: bool) -> int128 {
+    // A wide context reaches the literals of a nested branch and a literal under a minus.
+    return if flag { -18446744073709551616 } else if nested { 18446744073709551616 } else { 7 };
+}
+
+func Units(data: *uint16, length: uint) -> *uint16 {
+    // A `null` branch has the pointer type of the other branch or of the annotation, in either position.
+    let first: *uint16 = if length == 0 { null } else { data };
+    let last = if length != 0 { data } else { null };
+    return if first == last { first } else { null };
+}
+
 func Main() -> int {
     Assert(Largest(3, 9) == 9, "the larger value is chosen");
     Assert(Largest(12, 4) == 12, "the then branch yields its value");
@@ -122,6 +141,12 @@ func Main() -> int {
     Assert(Pick(false).second == 4i32, "a structure value");
     Assert(Make(true) == 1 && drops == 1, "an owned value leaves its branch and is destroyed once");
     Assert(Make(false) == 2 && drops == 2, "an owned temporary yielded by a branch is destroyed once");
+    Assert(Grow(true, 5) == 0 && Grow(false, 0xFFFF_FFFF_FFFF) == 0xFFFF_FFFF_FFFF, "a later branch decides the type");
+    Assert(Wide(true, false) == -18446744073709551616 && Wide(false, true) == 18446744073709551616,
+           "wide literals keep their high words");
+    Assert(Wide(false, false) == 7, "a narrow literal widens");
+    var unit: uint16 = 3;
+    Assert(Units(@unit, 1) == @unit && Units(@unit, 0) == null, "a null branch is a pointer");
     // An `if` statement whose branches end in unit calls needs no ';' after them.
     var count = 0;
     if count == 0 { count += 1 } else { count -= 1 }

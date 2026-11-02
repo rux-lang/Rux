@@ -622,6 +622,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         unification.expected = expected->second;
         unification.result = expected->second;
     }
+    else if (expected != expectedExpressionTypes.end() && expected->second.IsNumeric()) {
+        unification.contextualNumber = expected->second;
+    }
     const std::optional<TypeRef> &expectedOutcome = unification.expected;
 
     for (const auto &arm : expression.arms) {

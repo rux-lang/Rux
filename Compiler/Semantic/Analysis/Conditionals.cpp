@@ -260,6 +260,14 @@ void AnalysisContext::UnifyArm(ArmUnification &unification, const Expr &body, co
     else if (CanAssignExprTo(body, armType, resultType)) {
         // The arm fits the type the earlier arms settled on.
     }
+    else if (!armType.MentionsIncompleteNative() && !unification.accepted.empty() &&
+             std::ranges::all_of(unification.accepted, [&](const ArmUnification::Arm &earlier) {
+                 return CanAssignExprTo(*earlier.body, earlier.type, armType);
+             })) {
+        // Every earlier arm converts to this one's type, as an unsuffixed literal does, so the order the arms are
+        // written in does not decide the type: `if c { 0 } else { length }` is a `uint` when `length` is.
+        resultType = armType;
+    }
     else if (resultType.MentionsIncompleteNative() && !armType.MentionsIncompleteNative()) {
         // `none`, `.Success(v)` and `.Failure(e)` leave part of their type open, so the first arm that has a whole
         // type decides the match, and the open arms before it are checked against that type.
@@ -269,6 +277,10 @@ void AnalysisContext::UnifyArm(ArmUnification &unification, const Expr &body, co
                 reportMismatch(*earlier.body, earlier.type, resultType, earlier.location);
             }
         }
+    }
+    else if (unification.contextualNumber &&
+             ((resultType.IsInteger() && armType.IsInteger()) || (resultType.IsFloat() && armType.IsFloat()))) {
+        // The context converts every arm to its own numeric type, and reports an arm that does not fit it.
     }
     else if (!resultType.MentionsIncompleteNative() && !armType.MentionsIncompleteNative()) {
         reportMismatch(body, armType, resultType, location);
@@ -323,6 +335,9 @@ TypeRef AnalysisContext::CheckIfExpression(const MatchExpr &expression) {
             !expected->second.MentionsIncompleteNative()) {
             unification.expected = expected->second;
             unification.result = expected->second;
+        }
+        else if (expected->second.IsNumeric()) {
+            unification.contextualNumber = expected->second;
         }
     }
 

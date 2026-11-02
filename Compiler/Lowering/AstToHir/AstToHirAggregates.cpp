@@ -627,9 +627,10 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     // A block that yields a value builds it at the type the context wants, inside the block.
     if (const auto *block = AstCast<const BlockExpr>(&expression); block && block->block) {
         const TypeRef *recorded = model.TryGetType(expression);
-        if (recorded && !recorded->IsUnit() && !block->block->stmts.empty()) {
+        if ((!recorded || !recorded->IsUnit()) && !block->block->stmts.empty()) {
             const auto *last = AstCast<const ExprStmt>(block->block->stmts.back().get());
-            if (last && last->yieldsValue) {
+            // A block yielding `null` has no type of its own; the pointer the context wants is its type.
+            if (last && last->yieldsValue && (recorded || IsNullLiteral(*last->expr))) {
                 return LowerValueBlock(*block, targetType);
             }
         }
@@ -1194,6 +1195,10 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             const bool scalar = lowered->type.IsNumeric() || lowered->type.IsBool() || lowered->type.IsChar();
             if ((IsNativeType(lowered->type) || scalar) && !AstCast<const DivergeExpr>(arm.body.get())) {
                 loweredArm.body = ConvertScalar(LowerExprAs(*arm.body, lowered->type), lowered->type);
+            }
+            else if (lowered->type->kind == TypeRef::Kind::Pointer && !AstCast<const DivergeExpr>(arm.body.get())) {
+                // A `null` arm is the match's pointer type, as it is in any other pointer context.
+                loweredArm.body = LowerExprAs(*arm.body, lowered->type);
             }
             else {
                 loweredArm.body = LowerExpr(*arm.body);

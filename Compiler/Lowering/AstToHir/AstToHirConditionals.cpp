@@ -155,8 +155,9 @@ HirExprPtr AstToHirContext::LowerValueBlock(const BlockExpr &expression, const s
     lowered->location = expression.location;
     const ExprStmt *tail = YieldedStatement(*expression.block);
     const TypeRef *recorded = model.TryGetType(expression);
-    // A block that yields `()` or cannot complete is the statements it holds.
-    if (!tail || !recorded || recorded->IsUnit()) {
+    // A block that yields `()` or cannot complete is the statements it holds. One yielding `null` has no recorded
+    // type and takes the one its context wants.
+    if (!tail || (!recorded && !target) || (recorded && recorded->IsUnit())) {
         lowered->block = LowerBlock(*expression.block);
         return lowered;
     }

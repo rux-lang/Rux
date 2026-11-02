@@ -738,6 +738,9 @@ private:
         std::string_view construct = "match arm";
         /// An optional, fallible or sum annotation the context gives, which every arm converts to.
         std::optional<TypeRef> expected;
+        /// A numeric type the context expects, which converts each arm on its own, so two integer arms or two
+        /// floating-point arms may differ here: an unsuffixed literal can fit only the context's type.
+        std::optional<TypeRef> contextualNumber;
         TypeRef result = TypeRef::MakeUnknown();
         std::vector<Arm> accepted;
         std::vector<Arm> unitBlocks;
