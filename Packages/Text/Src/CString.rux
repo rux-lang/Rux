@@ -20,9 +20,9 @@ import Memory::Copy;
 pub struct CString {
     /// The bytes, ending with the one zero byte the text does not contain. Null only for a `CString` that was
     /// consumed by a move; every constructor allocates, since even empty C text is one byte long.
-    pub data: *var char8;
+    data: *var char8;
     /// How many bytes of text come before the terminator.
-    pub length: uint;
+    length: uint;
     /// Where the block came from, and where it goes back to.
     pub allocator: Allocator;
 }

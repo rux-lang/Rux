@@ -105,17 +105,15 @@ func VerifyEntryHashes(allocator: Allocator) {
         let capacity = map.Capacity();
         let previousLength = map.Length();
         hashes = 0;
-        var stored: *var int32 = null;
-        var inserted = false;
-        map.GetOrInsert(CountedKey { value, hashes: @hashes }, value * 3, @stored, @inserted);
+        let stored = map.GetOrInsert(CountedKey { value, hashes: @hashes }, value * 3);
+        Assert(stored == value * 3, "the returned value survives displacement and growth");
         let expectedHashes = if capacity == map.Capacity() { 1 } else { (previousLength as int32) + 1 };
         Assert(hashes == expectedHashes, "hash the requested key once, plus existing entries when growing");
-        // Safety: `GetOrInsert` pointed `stored` at the value it holds for the key.
-        Assert(unsafe { inserted && *stored == value * 3 }, "the returned slot survives displacement and growth");
+        Assert(map.Length() == previousLength + 1, "and the map grew by the one entry");
         hashes = 0;
-        map.GetOrInsert(CountedKey { value, hashes: @hashes }, 999, @stored, @inserted);
-        // Safety: `GetOrInsert` pointed `stored` at the value it holds for the key.
-        Assert(unsafe { hashes == 1 && !inserted && *stored == value * 3 }, "an existing key is hashed once");
+        let existing = map.GetOrInsert(CountedKey { value, hashes: @hashes }, 999);
+        Assert(existing == value * 3, "an existing key keeps its value");
+        Assert(hashes == 1 && map.Length() == previousLength + 1, "is hashed once, and the map does not grow");
     }
     for value in 0i32..40i32 {
         Assert(map.Get(CountedKey { value, hashes: @hashes }) == .Some(value * 3),
@@ -263,13 +261,11 @@ func Main() -> int {
 
     // Walking the slots reaches every entry exactly once.
     var cursor: uint = 0;
-    var seenKey: int32 = 0;
-    var seenValue: int32 = 0;
     var walked: uint = 0;
     var total: int64 = 0;
-    while map.TryNextEntry(@cursor, @seenKey, @seenValue) {
-        Assert(seenValue == seenKey * 3, "every entry a walk reports is one that was put in");
-        total = total + (seenKey as int64);
+    while map.NextEntry(cursor) is .Some(seen) {
+        Assert(seen.value == seen.key * 3, "every entry a walk reports is one that was put in");
+        total = total + (seen.key as int64);
         walked = walked + 1;
     }
     Assert(walked == 200, "and a walk reaches every entry");
@@ -312,15 +308,14 @@ func Main() -> int {
 
     var firstCursor: uint = 0;
     var secondCursor: uint = 0;
-    var firstKey: int32 = 0;
-    var secondKey: int32 = 0;
     var differed = false;
-    while first.TryNextEntry(@firstCursor, @firstKey, null) {
-        if !second.TryNextEntry(@secondCursor, @secondKey, null) {
+    while first.NextEntry(firstCursor) is .Some(firstEntry) {
+        let secondEntry = second.NextEntry(secondCursor);
+        if secondEntry is none {
             differed = true;
             break;
         }
-        if firstKey != secondKey {
+        if secondEntry is .Some(entry) && firstEntry.key != entry.key {
             differed = true;
         }
     }
@@ -337,13 +332,13 @@ func Main() -> int {
     firstCursor = 0;
     var sameCursor: uint = 0;
     var matched = true;
-    while first.TryNextEntry(@firstCursor, @firstKey, null) {
-        var sameKey: int32 = 0;
-        if !same.TryNextEntry(@sameCursor, @sameKey, null) {
+    while first.NextEntry(firstCursor) is .Some(firstEntry) {
+        let sameEntry = same.NextEntry(sameCursor);
+        if sameEntry is none {
             matched = false;
             break;
         }
-        if firstKey != sameKey {
+        if sameEntry is .Some(entry) && firstEntry.key != entry.key {
             matched = false;
         }
     }
@@ -367,20 +362,14 @@ func Main() -> int {
 
     // One operation where a lookup and an insertion would have been two, and the key named once.
     var lookup = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
-    var existing: *var int32 = null;
-    var inserted = false;
-    lookup.GetOrInsert(5, 50, @existing, @inserted);
-    Assert(inserted, "reporting that the map grew");
-    // Safety: `GetOrInsert` pointed `existing` at the value it stored.
-    Assert(unsafe { *existing == 50 }, "and pointing at the value it put there");
-    // Safety: `existing` still points at the stored value; the map has not changed since.
-    unsafe { *existing = 55; }
+    let stored = lookup.GetOrInsert(5, 50);
+    Assert(stored == 50, "the map lends the value it put there");
+    stored = 55;
+    Assert(lookup.Length() == 1, "having grown by the one entry");
     Assert(lookup.Get(5) == .Some(55), "which is the stored value, not a copy of it");
 
-    lookup.GetOrInsert(5, 999, @existing, @inserted);
-    Assert(!inserted, "reporting that the map did not grow");
-    // Safety: `GetOrInsert` pointed `existing` at the value already stored.
-    Assert(unsafe { *existing == 55 }, "and pointing at what was already there rather than what was offered");
+    let kept = lookup.GetOrInsert(5, 999);
+    Assert(kept == 55, "a present key lends what was already there rather than what was offered");
     Assert(lookup.Length() == 1, "with the map still holding one entry");
 
     // Replacement hands the old value back, where Insert throws it away.
@@ -395,7 +384,7 @@ func Main() -> int {
     let entry = lookup.RemoveEntry(5) ?? Panic("removing an entry finds it");
     Assert(entry.key == 5 && entry.value == 60, "and hands back the key as well as the value");
     Assert(!lookup.ContainsKey(5), "leaving the map without it");
-    Assert(!(lookup.RemoveEntry(5) is KeyValue<int32, int32>), "and a second removal finds nothing");
+    Assert(lookup.RemoveEntry(5) is none, "and a second removal finds nothing");
 
     // Iterating with a `for` loop reaches every entry exactly once.
     var loops = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);

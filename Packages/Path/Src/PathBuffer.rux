@@ -14,9 +14,9 @@ import Memory::Copy;
 /// @see https://rux-lang.dev/docs/api/path/path-buffer
 pub struct PathBuffer {
     /// The units, or null before the first push.
-    pub data: *var OsUnit;
+    data: *var OsUnit;
     /// How many units are in use.
-    pub length: uint;
+    length: uint;
     /// How many units the block holds.
     capacity: uint;
     /// Where the block came from, and where it goes back to.

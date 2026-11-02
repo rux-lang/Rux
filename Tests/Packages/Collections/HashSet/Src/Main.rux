@@ -88,10 +88,9 @@ func Main() -> int {
 
     // Walking reaches every element exactly once.
     var cursor: uint = 0;
-    var seen: int32 = 0;
     var walked: uint = 0;
     var total: int64 = 0;
-    while set.TryNext(@cursor, @seen) {
+    while set.NextElement(cursor) is .Some(seen) {
         Assert(seen % 2 == 1, "every element a walk reports is one still in the set");
         total = total + (seen as int64);
         walked = walked + 1;
@@ -122,14 +121,14 @@ func Main() -> int {
     }
     var firstCursor: uint = 0;
     var secondCursor: uint = 0;
-    var firstValue: int32 = 0;
-    var secondValue: int32 = 0;
     var differed = false;
-    while first.TryNext(@firstCursor, @firstValue) {
-        if !second.TryNext(@secondCursor, @secondValue) {
+    while first.NextElement(firstCursor) is .Some(firstValue) {
+        let secondNext = second.NextElement(secondCursor);
+        if secondNext is none {
             differed = true;
             break;
         }
+        let secondValue = secondNext ?? firstValue;
         if firstValue != secondValue {
             differed = true;
         }

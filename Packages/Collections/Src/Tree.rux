@@ -49,9 +49,9 @@ pub struct TreeNode<K, V> {
 /// @see https://rux-lang.dev/docs/api/collections/tree
 pub struct Tree<K, V> {
     /// The topmost node, or null for an empty tree. Always black.
-    pub root: *var TreeNode<K, V>;
+    root: *var TreeNode<K, V>;
     /// How many nodes the tree holds.
-    pub length: uint;
+    length: uint;
     /// Where nodes come from, and where they go back to.
     allocator: Allocator;
 }
@@ -73,6 +73,15 @@ extend Tree<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/tree#length
     pub func Length(&self) -> uint {
         return self.length;
+    }
+
+    /// The topmost node, or null for an empty tree, for code that walks the shape itself.
+    /// `self` is borrowed. Reading through the pointer needs `unsafe`, and it is valid until the tree next changes;
+    /// the field it reads stays private, so only the tree's own operations can move it.
+    /// @returns the root node, or null when the tree is empty
+    /// @see https://rux-lang.dev/docs/api/collections/tree#root
+    pub func Root(&self) -> *var TreeNode<K, V> {
+        return self.root;
     }
 
     /// Whether the tree holds no entries.

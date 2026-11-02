@@ -63,7 +63,7 @@ enum CollectionError: uint8 {
 }
 ```
 
-An operation that reports an ordinary miss does it with an optional — `Get`, `Remove`, `Pop`, and `PopFront` return `T?`, and the accessors that lend an element in place, `At`, `Find`, `First`, `Front` and their kin, return a reference `&T?` — or, for the iteration cursors `HashMap::TryNextEntry` and `HashSet::TryNext`, with a `bool` and out-parameters. So a missing key is never confused with a rejected index — the distinction is in the type, not in the documentation.
+An operation that reports an ordinary miss does it with an optional — `Get`, `Remove`, `Pop`, and `PopFront` return `T?`, and the accessors that lend an element in place, `At`, `Find`, `First`, `Front` and their kin, return a reference `&T?` — and so do the iteration cursors `HashMap::NextEntry` and `HashSet::NextElement`, which advance a `&var uint` cursor. So a missing key is never confused with a rejected index — the distinction is in the type, not in the documentation.
 
 ```rux
 import Allocator::{ Allocator, SystemAllocator };
@@ -141,10 +141,8 @@ A table's iteration order is its seed's, so it differs between two tables in one
 There is no `Entry` type. An entry API is closure-shaped, and Rux has no closures — so the operation it exists for is offered directly instead:
 
 ```rux
-var count: *var int32 = null;
-var inserted = false;
-counts.GetOrInsert(word, 0, @count, @inserted);
-*count = *count + 1;
+let count = counts.GetOrInsert(word, 0);
+count = count + 1;
 ```
 
 One probe when the key is present, and the key named once. `Replace` is the other half: it stores a value and hands back the one that was there, where `Insert` throws it away.
@@ -250,7 +248,7 @@ Everything is borrowed. A container owns its elements and hands out no copy of a
 
 - **Owners are move-only.** Their canonical destructor releases elements and storage, which makes them move-only. `Clone` is explicit and copies elements byte for byte, so it is available only for a copyable element type, plain data that `Core::Copyable` describes; `Vector<String>::Clone` is rejected at the element copy where the container's code makes it.
 - **Elements are lent by reference.** `At`, `AtMutable`, `First`, `Last`, `Front`, `Back`, `Peek`, `Find` and `FindMutable` return `&T?` or `&var T?`, which keeps the container borrowed while the reference is in use: a shared one blocks growth, removal and every write, a mutable one every other use, so no element moves under a reference to it.
-- **Raw storage remains deliberate.** Allocator blocks, tree links, stored iterator addresses, `GetOrInsert`'s out-parameters, and scalar output slots cannot be references. They never transfer ownership merely by being passed.
+- **Raw storage remains deliberate.** Allocator blocks, tree links, stored iterator addresses, and scalar output slots cannot be references. They never transfer ownership merely by being passed.
 - **Views borrow, never own.** Growth, rehashing, destruction, and `Deque::MakeContiguous` invalidate relevant views and raw element pointers. The compiler tracks reference loans, but deliberately raw addresses remain the caller's responsibility.
 - **Relocation uses the raw-storage compatibility boundary.** Explicit moves are used for named owners and elements; internal relocation through allocator memory remains an intentional raw operation until ownership-aware raw places are expressible.
 - **Kernel functions that take a raw node or slot count are `unsafe func`.** The tree kernel's `Tree::Minimum`, `Maximum`, `Successor` and `Predecessor` take a node pointer they cannot check: the caller must pass null or a live node of a tree whose links all point at live nodes of it. `Tree::Detach` must be given a live node of that very tree, and frees it, so nothing may read through the pointer afterwards. The hash-table kernel's `Table::Rehash` must be given a power of two no smaller than `MinimumTableCapacity`, which is what `Table::CapacityFor` returns, because every slot index is masked by it. Each call therefore sits in an `unsafe` block whose `// Safety:` comment says why that holds. The containers built on the kernels call them only that way, so nothing a container offers needs `unsafe`.

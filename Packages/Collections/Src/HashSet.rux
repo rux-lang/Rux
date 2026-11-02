@@ -151,32 +151,24 @@ extend HashSet<T> {
         self.table.Clear();
     }
 
-    /// Walks to the next occupied slot at or after `cursor`, reporting the element it holds.
-    /// `self` is borrowed; `cursor` is read and advanced past whatever is reported. The order is the table's, which
-    /// is the seed's and not the insertion's, and nothing may be inserted or removed while a walk is in progress.
+    /// The element in the next occupied slot at or after `cursor`, by copy, or `none` at the end.
+    /// `self` is borrowed; `cursor` is advanced past whatever is reported. The order is the table's, which is the
+    /// seed's and not the insertion's, and nothing may be inserted or removed while a walk is in progress.
     /// @param cursor the position to resume from, advanced past what was read
-    /// @param value receives the element
-    /// @returns whether an element was read; false at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-set#try-next
-    pub func TryNext(&self, cursor: *var uint, value: *var T) -> bool {
-        // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
-        var index = unsafe { *cursor };
+    /// @returns the next element, or `none` once every slot has been looked at
+    /// @see https://rux-lang.dev/docs/api/collections/hash-set#next-element
+    pub func NextElement(&self, cursor: &var uint) -> T? {
+        var index: uint = cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
-                if value != null {
-                    // Safety: the documented contract makes a non-null `value` a pointer to the caller's writable
-                    // `T`, and by the table invariant the slot, occupied and below the capacity, holds a key.
-                    unsafe { *value = self.table.keys[index]; }
-                }
-                // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
-                unsafe { *cursor = index + 1; }
-                return true;
+                cursor = index + 1;
+                // Safety: by the table invariant the slot, occupied and below the capacity, holds a key.
+                return .Some(unsafe { self.table.keys[index] });
             }
             index++;
         }
-        // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
-        unsafe { *cursor = index; }
-        return false;
+        cursor = index;
+        return none;
     }
 
     /// An iterator over the elements, by copy.
@@ -468,7 +460,7 @@ pub struct HashSetIterator<T> {
 extend HashSetIterator<T> : Iterator {
     /// The next element, or `none` once every slot has been looked at.
     /// `self` is borrowed mutably and advanced. The element is a copy; a set of things that own something is walked
-    /// with `TryNext` instead.
+    /// with `NextElement` instead.
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#hash-set-iterator-next
     pub func Next(&var self) -> T? {

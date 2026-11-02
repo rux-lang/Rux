@@ -119,7 +119,7 @@ extend HashMap<K, V> {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its value is
         // initialized.
-        return unsafe { self.table.values[slot] };
+        unsafe { return self.table.values[slot]; }
     }
 
     /// The value stored under `key`, borrowed where it sits, or `none` when there is no such entry.
@@ -250,85 +250,53 @@ extend HashMap<K, V> {
         self.table.Clear();
     }
 
-    /// Walks to the next occupied slot at or after `cursor`, reporting the entry it holds.
-    /// `self` is borrowed; `cursor` is read and advanced past whatever is reported, so a caller starts it at zero
-    /// and keeps calling. `key` and `value` receive copies and are left alone when this reports false.
-    /// The order is the table's, which is the seed's and not the insertion's. Nothing may be inserted or removed
-    /// while a walk is in progress: either moves entries between slots, and a cursor is a slot.
+    /// The entry in the next occupied slot at or after `cursor`, or `none` at the end.
+    /// `self` is borrowed; `cursor` is advanced past whatever is reported, so a caller starts it at zero and keeps
+    /// calling. The key and value are copies. The order is the table's, which is the seed's and not the insertion's.
+    /// Nothing may be inserted or removed while a walk is in progress: either moves entries between slots, and a
+    /// cursor is a slot.
     /// @param cursor the position to resume from, advanced past what was read
-    /// @param key receives the key
-    /// @param value receives the value
-    /// @returns whether an entry was read; false at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-next-entry
-    pub func TryNextEntry(&self, cursor: *var uint, key: *var K, value: *var V) -> bool {
-        // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
-        var index = unsafe { *cursor };
+    /// @returns the next entry, or `none` once every slot has been looked at
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#next-entry
+    pub func NextEntry(&self, cursor: &var uint) -> KeyValue<K, V>? {
+        var index: uint = cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
-                if key != null {
-                    // Safety: the documented contract makes a non-null `key` a pointer to the caller's writable `K`,
-                    // and by the table invariant the slot, occupied and below the capacity, holds a key.
-                    unsafe { *key = self.table.keys[index]; }
-                }
-                if value != null {
-                    // Safety: the documented contract makes a non-null `value` a pointer to the caller's writable
-                    // `V`, and by the table invariant the slot, occupied and below the capacity, holds a value.
-                    unsafe { *value = self.table.values[index]; }
-                }
-                // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
-                unsafe { *cursor = index + 1; }
-                return true;
+                cursor = index + 1;
+                // Safety: by the table invariant the slot, occupied and below the capacity, holds a key and a value.
+                return .Some(unsafe { KeyValue<K, V> { key: self.table.keys[index], value: self.table.values[index] } });
             }
             index++;
         }
-        // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
-        unsafe { *cursor = index; }
-        return false;
+        cursor = index;
+        return none;
     }
 
-    /// Points `existing` at the value stored under `key`, inserting `value` first when there is none.
-    /// `self` is borrowed mutably; `key` and `value` are moved in only when there was no entry, and destroyed
-    /// otherwise — the map keeps what it already had. `existing` receives a pointer to the stored value either way,
-    /// and `inserted` receives whether the map grew; both may be null.
+    /// The value stored under `key`, inserting `value` first when there is none.
+    /// `self` is borrowed mutably and stays borrowed while the reference is in use; `key` and `value` are moved in
+    /// only when there was no entry, and destroyed otherwise — the map keeps what it already had. A caller that needs
+    /// to know whether the map grew compares `Length` before and after.
     /// This is what an entry API is for, without pretending Rux has closures: a caller that wants to read a value or
     /// put one there gets one operation instead of a lookup followed by an insertion, and does not have to name the
     /// key twice.
     /// Terminates the program when the table cannot grow.
-    /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
     /// @param key the key to look up
-    /// @param value the value to act on
-    /// @param existing receives the value already stored under that key
-    /// @param inserted receives whether the value given was the one stored
+    /// @param value the value stored when the key is absent
+    /// @returns the value stored under `key`, borrowed for writing
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#get-or-insert
-    pub func GetOrInsert(&var self, key: K, value: V, existing: *var *var V,
-                     inserted: *var bool) {
+    pub func GetOrInsert(&var self, key: K, value: V) -> &var V {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
-        match self.table.FindHashed(key, hashed, self.equals) {
-            .Some(slot) => {
-                if existing != null {
-                    // Safety: the documented contract makes a non-null `existing` a pointer to the caller's writable
-                    // `*var V`, and by the table invariant `FindHashed` names only an occupied slot.
-                    unsafe { *existing = @self.table.values[slot]; }
-                }
-                if inserted != null {
-                    // Safety: the documented contract makes a non-null `inserted` a pointer to the caller's `bool`.
-                    unsafe { *inserted = false; }
-                }
-                return;
-            },
-            none => {}
+        let found = self.table.FindHashed(key, hashed, self.equals);
+        var slot: uint = 0;
+        if found is .Some(present) {
+            slot = present;
         }
-
-        let placed = try self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
-        if existing != null {
-            // Safety: the documented contract makes a non-null `existing` a pointer to the caller's writable
-            // `*var V`, and `PlaceHashed` names the occupied slot the entry landed in.
-            unsafe { *existing = @self.table.values[placed]; }
+        else {
+            slot = try self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
         }
-        if inserted != null {
-            // Safety: the documented contract makes a non-null `inserted` a pointer to the caller's `bool`.
-            unsafe { *inserted = true; }
-        }
+        // Safety: by the table invariant `FindHashed` and `Place` name only an occupied slot below the capacity, and
+        // the reference borrows `self`, so nothing can move the slot while it is in use.
+        unsafe { return self.table.values[slot]; }
     }
 
     /// Stores `value` under `key` and hands back the value that was there.
@@ -462,8 +430,7 @@ pub struct HashMapIterator<K, V> {
 
 extend HashMapIterator<K, V> : Iterator {
     /// The next entry, or `none` once every slot has been looked at.
-    /// `self` is borrowed mutably and advanced. The key and value are copies; a map of things that own something is
-    /// walked with `TryNextEntry` and a pointer instead.
+    /// `self` is borrowed mutably and advanced. The key and value are copies.
     /// @returns the next entry, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#hash-map-iterator-next
     pub func Next(&var self) -> KeyValue<K, V>? {

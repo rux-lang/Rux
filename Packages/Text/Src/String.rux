@@ -22,10 +22,11 @@ import Memory::Copy;
 /// `allocator` whose first `length` bytes are initialized, well-formed UTF-8.
 /// @see https://rux-lang.dev/docs/api/text/string
 pub struct String {
-    /// The bytes, or null for text of no length.
-    pub data: *var char8;
-    /// How many bytes there are. Not how many characters.
-    pub length: uint;
+    /// The bytes, or null for text of no length. Private, so nothing outside this package can break the invariant;
+    /// `Bytes` and `View` lend them.
+    data: *var char8;
+    /// How many bytes there are. Not how many characters; `Length` reads it.
+    length: uint;
     /// How large the block is. An allocator is given back the layout it handed out, and a string built by handing
     /// a builder's block over gets one with room to spare, so what was allocated and what is used are not always
     /// the same number.
