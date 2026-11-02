@@ -1,0 +1,23 @@
+// A function literal captures nothing: a local, a parameter or the receiver of the function it is written in is out of
+// its reach, while a module-level constant is not.
+const Threshold: int32 = 100i32;
+
+struct Box {
+    value: int32;
+}
+
+extend Box {
+    func Getter(&self) -> func() -> int32 {
+        return func() -> int32 { return self.value; };
+    }
+}
+
+func Above(limit: int32) -> func(int32) -> bool {
+    return func(x: int32) -> bool { return x > limit; };
+}
+
+func Main() -> int {
+    let offset = 3i32;
+    let shift = func(x: int32) -> int32 { return x + offset + Threshold; };
+    return 0;
+}

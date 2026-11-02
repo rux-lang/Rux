@@ -19,6 +19,7 @@ struct Pattern;
 struct Expr;
 struct Stmt;
 struct Decl;
+struct FuncDecl;
 struct Block;
 
 using TypeExprPtr = std::unique_ptr<TypeExpr>;
@@ -102,6 +103,11 @@ struct FunctionTypeExpr : TypeExpr {
     std::optional<TypeExprPtr> returnType; // nullopt => no return value (opaque)
     bool isVariadic = false;               // trailing C-style ...
 };
+
+/// The type of a function literal's parameter or result written without one, as in `func(x) { ... }`. The function
+/// type the literal is expected to have supplies it, and semantic analysis records what it supplied as this node's
+/// type.
+struct InferredTypeExpr : TypeExpr {};
 
 /// A sum type `A | B | C`. The members are kept in source order; semantic analysis normalizes the set.
 struct SumTypeExpr : TypeExpr {
@@ -569,6 +575,15 @@ struct DivergeExpr : Expr {
     std::string label;
     /// A `Fail` written with the `throw` keyword. Both spellings send the error to the same place.
     bool throwSpelling = false;
+};
+
+/// `func(x: int) -> bool { return x > 100; }` written as a value. It captures nothing: its body sees module-level names
+/// but no local or parameter of the function it is written in, so it is an ordinary function with an address and no
+/// environment. Parameter and result types may be left out (`InferredTypeExpr`) where an expected function type
+/// supplies them.
+struct FuncLiteralExpr : Expr {
+    ~FuncLiteralExpr() override;
+    std::unique_ptr<FuncDecl> function;
 };
 
 // Statements
@@ -1070,4 +1085,5 @@ inline ArrayTypeExpr::~ArrayTypeExpr() = default;
 inline BlockExpr::~BlockExpr() = default;
 inline DeclStmt::~DeclStmt() = default;
 inline GuardedPattern::~GuardedPattern() = default;
+inline FuncLiteralExpr::~FuncLiteralExpr() = default;
 } // namespace Rux

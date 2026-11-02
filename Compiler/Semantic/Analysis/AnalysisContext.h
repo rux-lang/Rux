@@ -852,6 +852,26 @@ private:
         bool nested = false;
     };
 
+    // Function literals (FunctionLiterals.cpp).
+
+    /// Where a function literal being checked is written: the scope its enclosing body had there, which its own body
+    /// does not see, and whether that body was a method's.
+    struct LiteralSite {
+        Scope *scope = nullptr;
+        bool inImpl = false;
+    };
+
+    std::vector<LiteralSite> literalSites;
+    /// The function literal whose body is being checked, innermost.
+    const FuncLiteralExpr *currentFunctionLiteral = nullptr;
+    /// Checks a function literal as a function of its own and records the name it is emitted under.
+    [[nodiscard]] TypeRef CheckFunctionLiteral(const FuncLiteralExpr &literal);
+    /// The linker name of a literal written in the body being checked.
+    [[nodiscard]] std::string FunctionLiteralName(const FuncLiteralExpr &literal) const;
+    /// Reports a name a function literal's body reads from the body around it, which it cannot capture. Returns
+    /// whether it did.
+    bool ReportCapture(SourceLocation location, const std::string &name);
+
     std::vector<UnsafeBlockFrame> unsafeBlockFrames;
     /// The `unsafe func` whose body is being checked, which is an unsafe context from start to end.
     const FuncDecl *unsafeFunction = nullptr;
@@ -1210,6 +1230,7 @@ private:
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     std::unordered_map<const Expr *, ResolvedCallableBinding> &functionReferenceBindings;
+    std::unordered_map<const FuncLiteralExpr *, std::string> &functionLiterals;
     std::unordered_map<const AsmOperand *, const Decl *> &asmSymbolDeclarations;
     std::unordered_map<const Expr *, InterfaceHolderSite> &interfaceHolderSites;
     std::unordered_map<const LetStmt *, std::vector<InterfaceHolderSite>> &interfaceHolders;

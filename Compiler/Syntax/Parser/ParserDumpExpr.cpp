@@ -396,6 +396,21 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
+    else if (const auto *functionLiteral = AstCast<const FuncLiteralExpr>(&expression)) {
+        Pad();
+        out << "FuncLiteralExpr (";
+        if (functionLiteral->function) {
+            for (std::size_t index = 0; index < functionLiteral->function->params.size(); ++index) {
+                out << (index == 0 ? "" : ", ") << functionLiteral->function->params[index].name;
+            }
+        }
+        out << ")\n";
+        ++indent;
+        if (functionLiteral->function && functionLiteral->function->body) {
+            printBlock(*functionLiteral->function->body);
+        }
+        --indent;
+    }
     else if (const auto *block = AstCast<const BlockExpr>(&expression)) {
         if (block->isUnsafe) {
             Pad();

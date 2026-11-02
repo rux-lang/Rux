@@ -42,6 +42,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     if (const std::optional<TypeRef> basicType = CheckBasicExpression(expr)) {
         return *basicType;
     }
+    if (const auto *literal = AstCast<const FuncLiteralExpr>(&expr)) {
+        return CheckFunctionLiteral(*literal);
+    }
 
     if (auto *e = AstCast<const IdentExpr>(&expr)) {
         if (defaultValueParameters.contains(e->name)) {
@@ -77,7 +80,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             }
             return ReadTrackedSymbol(*sym, e->location);
         }
-        EmitUndefinedName(e->location, e->name);
+        if (!ReportCapture(e->location, e->name)) {
+            EmitUndefinedName(e->location, e->name);
+        }
         return TypeRef::MakeUnknown();
     }
 
@@ -87,6 +92,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             return TypeRef::MakeUnknown();
         }
         if (!inImpl) {
+            if (ReportCapture(expr.location, "self")) {
+                return TypeRef::MakeUnknown();
+            }
             EmitError(expr.location, "'self' used outside of an extend block");
         }
         return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
@@ -98,7 +106,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
         Symbol *first = currentScope->Lookup(e->segments[0]);
         if (!first) {
-            EmitUndefinedName(e->location, e->segments[0]);
+            if (!ReportCapture(e->location, e->segments[0])) {
+                EmitUndefinedName(e->location, e->segments[0]);
+            }
             return TypeRef::MakeUnknown();
         }
         if (e->segments.size() >= 2 && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {

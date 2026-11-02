@@ -1196,7 +1196,8 @@ std::vector<TypeRef> AnalysisContext::CheckCallArgumentValues(const CallExpr &ca
         const auto &argument = call.args[index];
         if (calleeType && (*calleeType)->kind == TypeRef::Kind::Func && index + 1 < (*calleeType)->inner.size() &&
             (*calleeType)->inner[index]->kind == TypeRef::Kind::Func &&
-            (AstCast<const IdentExpr>(argument.get()) || AstCast<const PathExpr>(argument.get())) &&
+            (AstCast<const IdentExpr>(argument.get()) || AstCast<const PathExpr>(argument.get()) ||
+             AstCast<const FuncLiteralExpr>(argument.get())) &&
             !expectedExpressionTypes.contains(argument.get())) {
             expectedExpressionTypes.insert_or_assign(argument.get(), (*calleeType)->inner[index]);
         }

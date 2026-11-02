@@ -276,6 +276,12 @@ TypeRef AnalysisContext::ResolveRangeType(const RangeTypeExpr &range,
 }
 
 TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
+    // A function literal's type left out is whatever the literal's expected type supplied, recorded when it was
+    // checked.
+    if (AstCast<const InferredTypeExpr>(&expr)) {
+        const auto supplied = typeNodeTypes.find(&expr);
+        return supplied == typeNodeTypes.end() ? TypeRef::MakeUnknown() : supplied->second;
+    }
     if (const auto *t = AstCast<const NamedTypeExpr>(&expr)) {
         for (const auto &tp : currentTypeParams) {
             if (tp == t->name) {

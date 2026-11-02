@@ -163,6 +163,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , valueConsumptions(output.valueConsumptions)
     , callableBindings(output.callableBindings)
     , functionReferenceBindings(output.functionReferenceBindings)
+    , functionLiterals(output.functionLiterals)
     , asmSymbolDeclarations(output.asmSymbolDeclarations)
     , interfaceHolderSites(output.interfaceHolderSites)
     , interfaceHolders(output.interfaceHolders)

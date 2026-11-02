@@ -213,6 +213,22 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
+    if (const auto *literal = AstCast<const FuncLiteralExpr>(&expression)) {
+        // A function literal is a private function of the module it is written in, emitted the first time its value
+        // is lowered, and the value is that function's address.
+        const std::string *recorded = model.TryGetFunctionLiteralName(*literal);
+        assert(recorded && "function literal is missing its semantic name");
+        const std::string name = recorded ? *recorded : std::string("$literal");
+        if (generatedMonomorphizedFuncNames.insert(name).second) {
+            monomorphizedFuncs.push_back(LowerFunc(*literal->function, false, {}, name));
+        }
+        auto lowered = std::make_unique<HirVarExpr>();
+        lowered->location = literal->location;
+        lowered->name = name;
+        lowered->type = ResolvedExpressionType(*literal);
+        return lowered;
+    }
+
     if (AstCast<const SelfExpr>(&expression)) {
         auto lowered = std::make_unique<HirSelfExpr>();
         lowered->location = expression.location;

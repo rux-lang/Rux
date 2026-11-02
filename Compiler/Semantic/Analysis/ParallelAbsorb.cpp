@@ -144,6 +144,7 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     own.valueConsumptions = OwnEntries(mine.valueConsumptions, base.valueConsumptions);
     own.callableBindings = OwnEntries(mine.callableBindings, base.callableBindings);
     own.functionReferenceBindings = OwnEntries(mine.functionReferenceBindings, base.functionReferenceBindings);
+    own.functionLiterals = OwnEntries(mine.functionLiterals, base.functionLiterals);
     own.asmSymbolDeclarations = OwnEntries(mine.asmSymbolDeclarations, base.asmSymbolDeclarations);
     own.interfaceHolderSites = OwnEntries(mine.interfaceHolderSites, base.interfaceHolderSites);
     own.interfaceHolders = OwnEntries(mine.interfaceHolders, base.interfaceHolders);
@@ -288,6 +289,9 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
         [&] {
             MergeLaterWins(facts.functionReferenceBindings, records,
                            [](R &r) -> auto & { return r.facts.functionReferenceBindings; });
+        },
+        [&] {
+            MergeLaterWins(facts.functionLiterals, records, [](R &r) -> auto & { return r.facts.functionLiterals; });
         },
         [&] {
             MergeLaterWins(facts.asmSymbolDeclarations, records,

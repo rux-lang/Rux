@@ -301,6 +301,12 @@ private:
                 ResolveExpr(arg.get());
             }
         }
+        else if (auto *literal = AstCast<FuncLiteralExpr>(expr)) {
+            // A function literal's body is folded with the function it is written in, whose name `#source` reports.
+            if (literal->function && literal->function->body) {
+                ResolveBlock(*literal->function->body);
+            }
+        }
     }
 };
 } // namespace

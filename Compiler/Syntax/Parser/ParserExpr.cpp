@@ -758,6 +758,51 @@ ExprPtr Parser::ParsePostfix() {
     return left;
 }
 
+ExprPtr Parser::ParseFunctionLiteral() {
+    auto literal = std::make_unique<FuncLiteralExpr>();
+    literal->location = CurrentLocation();
+    auto function = std::make_unique<FuncDecl>();
+    function->location = literal->location;
+    // Analysis names the function after the one it is written in; this spelling is what diagnostics show until then.
+    function->name = "function literal";
+    Advance(); // 'func'
+    Advance(); // '('
+    bool inferred = false;
+    while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+        Param parameter;
+        parameter.location = CurrentLocation();
+        parameter.name = ExpectBefore(TokenKind::Ident, "a parameter name").text;
+        if (Match(TokenKind::Colon)) {
+            parameter.type = ParseType("add the parameter type after ':'");
+        }
+        else {
+            parameter.type = std::make_unique<InferredTypeExpr>();
+            parameter.type->location = parameter.location;
+            inferred = true;
+        }
+        function->params.push_back(std::move(parameter));
+        if (!Match(TokenKind::Comma)) {
+            break;
+        }
+    }
+    ExpectBefore(TokenKind::RightParen, "')' to close the function literal's parameters");
+    if (Match(TokenKind::Arrow)) {
+        function->returnType = ParseType("add the function literal's result type after '->'");
+    }
+    else if (inferred) {
+        // A literal that leaves its parameter types to its context leaves its result type there too.
+        auto result = std::make_unique<InferredTypeExpr>();
+        result->location = literal->location;
+        function->returnType = std::move(result);
+    }
+    ParseThrowsClause(function->returnType);
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, true);
+    function->body = ParseBlock("the function literal's body");
+    structInitAllowed = savedStructInitAllowed;
+    literal->function = std::move(function);
+    return literal;
+}
+
 ExprPtr Parser::ParsePrimary() {
     const auto loc = CurrentLocation();
     // `if` in value position; at the start of a statement it is the statement.
@@ -771,6 +816,9 @@ ExprPtr Parser::ParsePrimary() {
             return nullptr;
         }
         return ParseUnsafeBlock();
+    }
+    if (Check(TokenKind::FuncKeyword) && Peek(1).Is(TokenKind::LeftParen)) {
+        return ParseFunctionLiteral();
     }
     if (Match(TokenKind::MatchKeyword)) {
         auto e = std::make_unique<MatchExpr>();

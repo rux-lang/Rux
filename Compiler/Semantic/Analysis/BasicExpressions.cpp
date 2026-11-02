@@ -391,7 +391,8 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         // A function named as the value takes its overload or type arguments from the function type it is stored as.
         if (simpleAssignment && target->kind == TypeRef::Kind::Func &&
-            (AstCast<const IdentExpr>(assignment->value.get()) || AstCast<const PathExpr>(assignment->value.get()))) {
+            (AstCast<const IdentExpr>(assignment->value.get()) || AstCast<const PathExpr>(assignment->value.get()) ||
+             AstCast<const FuncLiteralExpr>(assignment->value.get()))) {
             expectedExpressionTypes.insert_or_assign(assignment->value.get(), target);
         }
         // A case written without its type takes the type of the place it is stored in.

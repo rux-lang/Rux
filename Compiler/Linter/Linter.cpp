@@ -1001,6 +1001,11 @@ private:
                 VisitExpr(*isExpr->operand);
             }
         }
+        else if (const auto *literal = AstCast<const FuncLiteralExpr>(&expr)) {
+            if (literal->function && literal->function->body) {
+                VisitBlock(*literal->function->body);
+            }
+        }
         else if (const auto *blockExpr = AstCast<const BlockExpr>(&expr)) {
             // `unsafe.comment`: a block says, in a comment directly above it, why what it does is sound.
             if (blockExpr->isUnsafe && !allowsUnsafeComment &&

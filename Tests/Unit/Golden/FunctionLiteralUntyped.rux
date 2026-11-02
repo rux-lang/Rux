@@ -1,0 +1,7 @@
+// A function literal may leave its parameter types out only where an expected function type supplies them: an
+// unannotated binding supplies nothing, and an expected type with another number of parameters supplies nothing either.
+func Main() -> int {
+    let identity = func(x) { return x; };
+    let pair: func(int32) -> int32 = func(x, y) { return x + y; };
+    return 0;
+}

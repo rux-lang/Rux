@@ -1,0 +1,101 @@
+// Function literals: `func(params) -> R { body }` written where a value is expected. A literal captures nothing, so it
+// is an ordinary function with an address and no environment: it reads module-level constants and calls module-level
+// functions, but no local or parameter of the function it is written in. Parameter and result types may be left out
+// where the expected function type supplies them. A literal is a value like a named function: passed, stored,
+// returned, called on the spot, and handed to a generic function, which deduces its type parameters from it.
+
+import Core::Assert;
+
+const Limit: int = 100;
+
+struct Counter {
+    total: int;
+}
+
+extend Counter {
+    func Scaled(&self, factor: int) -> int {
+        // A literal inside a method is a plain function too: the receiver reaches it as an argument.
+        let scale = func(value: int, by: int) -> int { return value * by; };
+        return scale(self.total, factor);
+    }
+}
+
+func CountWhere(items: int[..], test: func(int) -> bool) -> int {
+    var count = 0;
+    for item in items {
+        if test(item) { count += 1; }
+    }
+    return count;
+}
+
+func Apply<T>(value: T, f: func(T) -> T) -> T {
+    return f(value);
+}
+
+func Square(x: int) -> int { return x * x; }
+
+func Identity<T>(value: T) -> T {
+    // A literal written in a generic body is emitted once, whatever the body is instantiated with.
+    let step = func(x: int) -> int { return x + 1; };
+    Assert(step(1) == 2, "a literal in a generic body");
+    return value;
+}
+
+func Pick(large: bool) -> func(int) -> int {
+    if large { return func(x: int) -> int { return x * 10; }; }
+    // The return type supplies the parameter and result types.
+    return func(x) { return x + 1; };
+}
+
+func CheckPassed() {
+    let items = [5, 150, 300, 7];
+    Assert(CountWhere(items[..], func(x: int) -> bool { return x > Limit; }) == 2, "a literal reads a module constant");
+    Assert(CountWhere(items[..], func(x) { return x < 10; }) == 2, "the parameter type supplies the literal's types");
+    Assert(CountWhere(items[..], func(x) { return Square(x) > 1000; }) == 2, "a literal calls a module function");
+}
+
+func CheckStored() {
+    let double: func(int) -> int = func(x) { return x * 2; };
+    Assert(double(21) == 42, "a literal stored in a typed binding");
+    var current: func(int) -> int = Square;
+    current = func(x) { return x - 1; };
+    Assert(current(5) == 4, "a literal assigned over a named function");
+    let both = [func(x: int) -> int { return x + 1; }, func(x: int) -> int { return x * 3; }];
+    Assert(both[0](2) == 3 && both[1](2) == 6, "literals in an array");
+}
+
+func CheckReturned() {
+    Assert(Pick(true)(4) == 40 && Pick(false)(4) == 5, "a literal returned from a function");
+    Assert(func(x: int) -> int { return x * 7; }(6) == 42, "a literal called where it is written");
+}
+
+func CheckGeneric() {
+    Assert(Apply<int>(3, func(x: int) -> int { return x * x; }) == 9, "a literal for an explicit instantiation");
+    Assert(Apply(2.5, func(x: float64) -> float64 { return x * 2.0; }) == 5.0, "a literal deduces the type argument");
+    Assert(Identity<int>(4) == 4 && Identity<bool>(true), "a generic body holding a literal");
+}
+
+func CheckNested() {
+    let outer = func(limit: int) -> int {
+        // A literal inside a literal sees what the outer literal sees: module-level names, not `limit`.
+        let decrement = func(y: int) -> int { return y - 1; };
+        var sum = 0;
+        for index in 0..limit {
+            if index == 3 { break; }
+            sum += decrement(index);
+        }
+        return sum;
+    };
+    Assert(outer(10) == 0, "a literal with its own loop and its own nested literal");
+    let counter = Counter { total: 7 };
+    Assert(counter.Scaled(3) == 21, "a literal in a method");
+}
+
+func Main() -> int {
+    CheckPassed();
+    CheckStored();
+    CheckReturned();
+    CheckGeneric();
+    CheckNested();
+    return 0;
+}

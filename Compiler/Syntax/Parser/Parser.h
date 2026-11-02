@@ -307,6 +307,9 @@ private:
     /// An `if` in value position: an `if` statement read whole and written as the match on its condition that
     /// `MatchExpr::Form::If` describes. It needs an `else`.
     ExprPtr ParseIfExpr();
+    /// `func(x: int) -> bool { ... }` in value position: a function literal, whose parameter and result types may be
+    /// left out for the expected function type to supply.
+    ExprPtr ParseFunctionLiteral();
     /// The match `MatchExpr::Form::If` describes for a run-time `if` chain, which `statement` gives up its parts to.
     static ExprPtr IfAsExpression(IfStmt &statement);
     /// Whether a run-time `if` that ends a value block yields a value: it has an `else` and a branch ends with an

@@ -277,6 +277,11 @@ const ResolvedCallableBinding *SemanticModel::TryGetFunctionReferenceBinding(con
     return binding == facts.functionReferenceBindings.end() ? nullptr : &binding->second;
 }
 
+const std::string *SemanticModel::TryGetFunctionLiteralName(const FuncLiteralExpr &literal) const noexcept {
+    const auto name = facts.functionLiterals.find(&literal);
+    return name == facts.functionLiterals.end() ? nullptr : &name->second;
+}
+
 const InterfaceHolderSite *SemanticModel::TryGetInterfaceHolderSite(const Expr &value) const noexcept {
     const auto site = facts.interfaceHolderSites.find(&value);
     return site == facts.interfaceHolderSites.end() ? nullptr : &site->second;
