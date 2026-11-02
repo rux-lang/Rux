@@ -52,6 +52,9 @@ private:
     /// Whether the statement being read is in a value block (an `if` branch, or a match or catch arm block), where the
     /// last expression may leave out its ';' to be the value the block yields.
     bool blockYieldsValue = false;
+    /// An operand already read, which the next `ParsePrimary` returns instead of reading one: a statement that turned
+    /// out to continue as an expression, such as `unsafe { ... }?;`.
+    ExprPtr parsedPrimary;
     /// Whether the then branch of a conditional `c ? a : b` is being read, where `x is name: T` would take the ':'
     /// separating the branches; there `is` keeps reading a type.
     bool inConditionalThen = false;
@@ -302,6 +305,9 @@ private:
     StmtPtr ParseStmt();
     /// `unsafe { ... }`, with the current token on `unsafe`: a value block in which unsafe operations are allowed.
     std::unique_ptr<BlockExpr> ParseUnsafeBlock();
+    /// Whether the current token continues an expression a statement-start block has just completed, as `?`, `.` or a
+    /// binary operator does. A token that could also begin the next statement, such as `*` or `(`, does not.
+    [[nodiscard]] bool ContinuesBlockOperand() const;
     std::unique_ptr<LetStmt> ParseLetStmt();
     std::unique_ptr<IfStmt> ParseIfStmt();
     /// An `if` in value position: an `if` statement read whole and written as the match on its condition that
@@ -315,6 +321,10 @@ private:
     /// Whether a run-time `if` that ends a value block yields a value: it has an `else` and a branch ends with an
     /// expression written without its ';'.
     [[nodiscard]] static bool IfYieldsValue(const IfStmt &statement) noexcept;
+    /// Makes the `match` or run-time `if` statement that ends a block in value position the value the block yields, as
+    /// the expression it would be there, and reports whether the block now yields one. A statement's arms and branches
+    /// read alike in either position, so only where the block stands tells them apart.
+    static bool PromoteValueTail(Block &block);
     std::unique_ptr<WhileStmt> ParseWhileStmt();
     std::unique_ptr<DoWhileStmt> ParseDoWhileStmt();
     std::unique_ptr<LoopStmt> ParseLoopStmt();

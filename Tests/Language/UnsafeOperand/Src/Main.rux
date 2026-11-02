@@ -1,0 +1,53 @@
+// A statement that starts with `unsafe { ... }` ends at its '}', unless a tight `?`, `.`, `??`, `as`, `is` or a binary
+// or assignment operator follows. Then the block is the first operand of an expression statement and is in value
+// position, so it yields its last expression. A token that could start the next statement, such as `*`, `-` or `(`,
+// ends the block as before.
+
+import Core::Assert;
+
+struct Pair {
+    left: int;
+    right: int;
+}
+
+func Positive(value: int) -> int? {
+    if value > 0 { return value; }
+    return none;
+}
+
+func Count(address: *int, total: &var int) -> int? {
+    // Safety: the caller passes the address of a live `int`.
+    unsafe { Positive(*address) }?;
+    total += 1;
+    return 0;
+}
+
+func Compare(address: *int, pair: *Pair) -> bool {
+    var same = false;
+    // Safety: the caller passes the addresses of a live `int` and a live `Pair`.
+    unsafe { *address } + 1 == 6 && unsafe { pair.left } == 3;
+    // Safety: as above.
+    unsafe { *pair }.right == 4;
+    // Safety: as above.
+    same = unsafe { *address } == unsafe { pair.left } + 2;
+    return same;
+}
+
+func Main() -> int {
+    var five = 5;
+    var negative = -1;
+    var total = 0;
+    Assert(Count(@five, total) == .Some(0) && total == 1, "a block then '?'");
+    Assert(Count(@negative, total) is none && total == 1, "'?' leaves the function");
+    var pair = Pair { left: 3, right: 4 };
+    Assert(Compare(@five, @pair), "a block then an operator");
+    var after = 0;
+    let address = @five;
+    // Safety: `address` is the address of `five`, which is live.
+    unsafe {
+        after = *address;
+    }
+    -after;
+    Assert(after == 5, "'-' starts the next statement");
+    return 0;
+}

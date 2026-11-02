@@ -148,8 +148,8 @@ ExprPtr Parser::ParseRange() {
         return ParseConditionalOperator();
     };
 
-    // Prefix and full ranges: `..end`, `..=end`, and `..`.
-    if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
+    // Prefix and full ranges: `..end`, `..=end`, and `..`. An operand already read starts the range instead.
+    if (!parsedPrimary && (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual))) {
         const auto loc = CurrentLocation();
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         RejectEllipsisRange();
@@ -525,6 +525,9 @@ ExprPtr Parser::ParseMul() {
 }
 
 ExprPtr Parser::ParseUnary() {
+    if (parsedPrimary) {
+        return ParsePostfix();
+    }
     if (Check(TokenKind::TryKeyword)) {
         return ParseTryExpr(true);
     }
@@ -807,6 +810,9 @@ ExprPtr Parser::ParseFunctionLiteral() {
 }
 
 ExprPtr Parser::ParsePrimary() {
+    if (parsedPrimary) {
+        return std::move(parsedPrimary);
+    }
     const auto loc = CurrentLocation();
     // `if` in value position; at the start of a statement it is the statement.
     if (Check(TokenKind::IfKeyword)) {
@@ -818,7 +824,9 @@ ExprPtr Parser::ParsePrimary() {
             RejectMisplacedUnsafe();
             return nullptr;
         }
-        return ParseUnsafeBlock();
+        auto block = ParseUnsafeBlock();
+        static_cast<void>(PromoteValueTail(*block->block));
+        return block;
     }
     if (Check(TokenKind::FuncKeyword) && Peek(1).Is(TokenKind::LeftParen)) {
         return ParseFunctionLiteral();
@@ -1137,6 +1145,10 @@ void Parser::ParseArmList(std::vector<Arm> &arms, const std::string_view constru
         }
         ExpectBefore(TokenKind::FatArrow, std::format("'=>' after the {} arm pattern", construct));
         arm.body = ParseArmBody(construct);
+        // An arm of a `match` or `catch` used as a value is in value position; a statement's arm is not.
+        if (auto *body = AstCast<BlockExpr>(arm.body.get()); body && body->block && form == "expression") {
+            static_cast<void>(PromoteValueTail(*body->block));
+        }
         const bool blockBody = AstCast<const BlockExpr>(arm.body.get()) != nullptr;
         arms.push_back(std::move(arm));
         // A comma separates arms and may follow the last one; a block body ends where its brace closes.

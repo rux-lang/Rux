@@ -1,0 +1,107 @@
+// A `match` that ends a block in value position is the value the block yields, as the `match` expression it would be
+// there: in an `if` branch used as a value, in the block of a `match` or `catch` arm used as a value, and in an
+// `unsafe` block used as a value. Its arms unify and take the expected type like any match's. Ending a statement's
+// block it stays a statement, whose arms' values are not used.
+
+import Core::Assert;
+
+variant Shape {
+    Dot,
+    Circle(int),
+}
+
+func Doubled(value: int, known: bool) -> int {
+    let doubled = if known {
+        let base = value * 2;
+        match base {
+            0 => 100,
+            _ => base,
+        }
+    } else {
+        if value > 10 {
+            match value {
+                11 => 1,
+                _ => 2,
+            }
+        } else {
+            0
+        }
+    };
+    return doubled;
+}
+
+func Measure(shape: Shape) -> int {
+    return match shape {
+        .Dot => {
+            let base = 4;
+            match base {
+                4 => 40,
+                _ => 0,
+            }
+        }
+        .Circle(radius) => radius,
+    };
+}
+
+func Pick(round: bool) -> Shape {
+    let shape: Shape = if round {
+        match 3 {
+            3 => .Circle(3),
+            _ => .Dot,
+        }
+    } else {
+        .Dot
+    };
+    return shape;
+}
+
+func Parse(value: int) -> int throws int {
+    if value < 0 { throw value; }
+    return value;
+}
+
+func Recover(value: int) -> int {
+    return try Parse(value) catch {
+        error => {
+            let magnitude = -error;
+            match magnitude {
+                1 => 10,
+                _ => magnitude,
+            }
+        }
+    };
+}
+
+func Read(value: int) -> int {
+    let address = @value;
+    // Safety: `address` is the address of the parameter, which lives for the whole call.
+    return unsafe {
+        let read = *address;
+        match read {
+            1 => 10,
+            _ => read,
+        }
+    };
+}
+
+func Count(value: int) -> int {
+    var total = 0;
+    if value > 0 {
+        match value {
+            1 => total += 1,
+            _ => total += 2,
+        }
+    }
+    return total;
+}
+
+func Main() -> int {
+    Assert(Doubled(0, true) == 100 && Doubled(3, true) == 6, "an 'if' branch");
+    Assert(Doubled(11, false) == 1 && Doubled(12, false) == 2 && Doubled(1, false) == 0, "a nested 'if' value");
+    Assert(Measure(.Dot) == 40 && Measure(.Circle(5)) == 5, "the block of a match arm");
+    Assert(Pick(true) is .Circle(3) && Pick(false) is .Dot, "the arms take the expected type");
+    Assert(Recover(-1) == 10 && Recover(-7) == 7 && Recover(3) == 3, "the block of a catch arm");
+    Assert(Read(1) == 10 && Read(7) == 7, "an 'unsafe' block");
+    Assert(Count(1) == 1 && Count(5) == 2 && Count(0) == 0, "a statement's block keeps a match statement");
+    return 0;
+}

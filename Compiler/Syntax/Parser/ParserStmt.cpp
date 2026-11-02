@@ -3,6 +3,7 @@
 #include "Syntax/Parser/Parser.h"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <memory>
 #include <optional>
@@ -56,6 +57,55 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role, const boo
     ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close {}", role));
     block->end = CurrentLocation();
     return block;
+}
+
+bool Parser::ContinuesBlockOperand() const {
+    static constexpr std::array kContinuing = {TokenKind::Dot,
+                                               TokenKind::QuestionQuestion,
+                                               TokenKind::CatchKeyword,
+                                               TokenKind::AsKeyword,
+                                               TokenKind::IsKeyword,
+                                               TokenKind::DotDot,
+                                               TokenKind::DotDotEqual,
+                                               TokenKind::Plus,
+                                               TokenKind::Slash,
+                                               TokenKind::Percent,
+                                               TokenKind::PlusPercent,
+                                               TokenKind::MinusPercent,
+                                               TokenKind::StarPercent,
+                                               TokenKind::Amp,
+                                               TokenKind::Pipe,
+                                               TokenKind::Caret,
+                                               TokenKind::LessLess,
+                                               TokenKind::GreaterGreater,
+                                               TokenKind::GreaterGreaterGreater,
+                                               TokenKind::AmpAmp,
+                                               TokenKind::PipePipe,
+                                               TokenKind::Equal,
+                                               TokenKind::BangEqual,
+                                               TokenKind::Less,
+                                               TokenKind::LessEqual,
+                                               TokenKind::Greater,
+                                               TokenKind::GreaterEqual,
+                                               TokenKind::Assign,
+                                               TokenKind::PlusAssign,
+                                               TokenKind::MinusAssign,
+                                               TokenKind::StarAssign,
+                                               TokenKind::SlashAssign,
+                                               TokenKind::PercentAssign,
+                                               TokenKind::PlusPercentAssign,
+                                               TokenKind::MinusPercentAssign,
+                                               TokenKind::StarPercentAssign,
+                                               TokenKind::AmpAssign,
+                                               TokenKind::PipeAssign,
+                                               TokenKind::CaretAssign,
+                                               TokenKind::LessLessAssign,
+                                               TokenKind::GreaterGreaterAssign,
+                                               TokenKind::GreaterGreaterGreaterAssign};
+    if (Check(TokenKind::Question)) {
+        return !Peek().precededBySpace;
+    }
+    return std::ranges::contains(kContinuing, Peek().kind);
 }
 
 std::unique_ptr<BlockExpr> Parser::ParseUnsafeBlock() {
@@ -176,20 +226,28 @@ StmtPtr Parser::ParseStmt() {
     }
 
     // `unsafe { ... }` at the start of a statement is the statement, ended by its '}' as an `if` is. When it ends a
-    // value block and yields a value, it is that block's value.
+    // value block and yields a value, it is that block's value. Followed by `?`, `.`, `catch` or a binary operator, it
+    // is the first operand of an expression statement instead.
     if (Check(TokenKind::UnsafeKeyword) && Peek(1).Is(TokenKind::LeftBrace)) {
         auto statement = std::make_unique<ExprStmt>();
         statement->location = loc;
         auto block = ParseUnsafeBlock();
-        if (tailAllowed && Check(TokenKind::RightBrace) && BlockYieldsValue(block->block.get())) {
-            statement->yieldsValue = true;
+        if (ContinuesBlockOperand()) {
+            // An operand's value is used, so the block is in value position.
+            static_cast<void>(PromoteValueTail(*block->block));
+            parsedPrimary = std::move(block);
         }
-        else if (Check(TokenKind::Semicolon)) {
-            statement->semicolon = CurrentLocation();
-            Advance();
+        else {
+            if (tailAllowed && Check(TokenKind::RightBrace) && BlockYieldsValue(block->block.get())) {
+                statement->yieldsValue = true;
+            }
+            else if (Check(TokenKind::Semicolon)) {
+                statement->semicolon = CurrentLocation();
+                Advance();
+            }
+            statement->expr = std::move(block);
+            return statement;
         }
-        statement->expr = std::move(block);
-        return statement;
     }
 
     // Allow nested declarations inside blocks
@@ -495,6 +553,83 @@ ExprPtr ConditionalMatch(const SourceLocation location, ExprPtr condition, ExprP
 
 } // namespace
 
+namespace {
+bool TailMayYield(const Block &block) noexcept;
+
+/// Whether a run-time `if` with an `else` has a branch that yields, or would once its own tail is promoted.
+bool IfMayYield(const IfStmt &statement) noexcept {
+    if (statement.isCompileTime || !statement.elseBlock) {
+        return false;
+    }
+    return TailMayYield(*statement.thenBlock) || TailMayYield(*statement.elseBlock) ||
+           std::ranges::any_of(statement.elseIfs, [](const IfStmt::ElseIf &branch) {
+               return branch.block && TailMayYield(*branch.block);
+           });
+}
+
+bool TailMayYield(const Block &block) noexcept {
+    if (block.stmts.empty()) {
+        return false;
+    }
+    const Stmt &last = *block.stmts.back();
+    if (const auto *statement = AstCast<const ExprStmt>(&last)) {
+        if (statement->yieldsValue) {
+            return true;
+        }
+        const auto *unsafeBlock = AstCast<const BlockExpr>(statement->expr.get());
+        return !statement->semicolon && unsafeBlock && unsafeBlock->isUnsafe && TailMayYield(*unsafeBlock->block);
+    }
+    if (AstCast<const MatchStmt>(&last)) {
+        return true;
+    }
+    const auto *conditional = AstCast<const IfStmt>(&last);
+    return conditional && IfMayYield(*conditional);
+}
+} // namespace
+
+bool Parser::PromoteValueTail(Block &block) {
+    if (block.stmts.empty()) {
+        return false;
+    }
+    StmtPtr &last = block.stmts.back();
+    if (auto *statement = AstCast<ExprStmt>(last.get())) {
+        if (statement->yieldsValue) {
+            return true;
+        }
+        // `unsafe { ... }` ending the block is a value block of its own, which yields what its tail yields.
+        auto *unsafeBlock = AstCast<BlockExpr>(statement->expr.get());
+        if (!statement->semicolon && unsafeBlock && unsafeBlock->isUnsafe && PromoteValueTail(*unsafeBlock->block)) {
+            statement->yieldsValue = true;
+            return true;
+        }
+        return false;
+    }
+    if (auto *match = AstCast<MatchStmt>(last.get())) {
+        auto value = std::make_unique<MatchExpr>();
+        value->location = match->location;
+        value->subject = std::move(match->subject);
+        value->arms.reserve(match->arms.size());
+        for (MatchStmt::Arm &arm : match->arms) {
+            value->arms.push_back({arm.location, std::move(arm.pattern), std::move(arm.body)});
+        }
+        auto tail = std::make_unique<ExprStmt>();
+        tail->location = match->location;
+        tail->expr = std::move(value);
+        tail->yieldsValue = true;
+        last = std::move(tail);
+        return true;
+    }
+    if (auto *conditional = AstCast<IfStmt>(last.get()); conditional && IfMayYield(*conditional)) {
+        auto tail = std::make_unique<ExprStmt>();
+        tail->location = conditional->location;
+        tail->expr = IfAsExpression(*conditional);
+        tail->yieldsValue = true;
+        last = std::move(tail);
+        return true;
+    }
+    return false;
+}
+
 bool Parser::IfYieldsValue(const IfStmt &statement) noexcept {
     if (statement.isCompileTime || !statement.elseBlock) {
         return false;
@@ -505,6 +640,19 @@ bool Parser::IfYieldsValue(const IfStmt &statement) noexcept {
 }
 
 ExprPtr Parser::IfAsExpression(IfStmt &statement) {
+    // Every branch of an `if` value is in value position, so a `match` or `if` that ends one is its value.
+    if (!statement.isCompileTime) {
+        for (Block *branch : {statement.thenBlock.get(), statement.elseBlock.get()}) {
+            if (branch) {
+                static_cast<void>(PromoteValueTail(*branch));
+            }
+        }
+        for (IfStmt::ElseIf &branch : statement.elseIfs) {
+            if (branch.block) {
+                static_cast<void>(PromoteValueTail(*branch.block));
+            }
+        }
+    }
     ExprPtr elseBranch;
     SourceLocation elseLocation = statement.elseBlock ? statement.elseBlock->location : statement.location;
     if (statement.elseBlock) {
