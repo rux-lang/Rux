@@ -4,7 +4,7 @@
 import Allocator::SystemAllocator;
 import Collections::Vector;
 import Compress::{ Compress, Decompress, Format, Level };
-import Core::Assert;
+import Core::{ Assert, uint32 };
 import Io::IoErrorKind;
 
 // Streams made by Python's zlib from the same text, for checking this decoder against zlib's encoder.
@@ -71,8 +71,8 @@ func Noise(count: uint) -> Vector<byte> {
     var state: uint32 = 12345;
     var index: uint = 0;
     while index < count {
-        state = state * 1103515245u32 + 12345u32;
-        bytes.Push((state >> 16) as byte);
+        state = state *% 1103515245u32 +% 12345u32;
+        bytes.Push((state >> 16).Truncate<byte>());
         index = index + 1;
     }
     return <-bytes;
@@ -85,7 +85,7 @@ func Prose(count: uint) -> Vector<byte> {
     var index: uint = 0;
     var state: uint32 = 7;
     while index < count {
-        state = state * 1664525u32 + 1013904223u32;
+        state = state *% 1664525u32 +% 1013904223u32;
         let start = ((state >> 8) % 60u32) as uint;
         bytes.Push(words[start] as byte);
         if index % 1000u < 500u { bytes.Push(words[index % words.length] as byte); }

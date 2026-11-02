@@ -88,20 +88,20 @@ extend SipState {
         var fourth = self.fourth;
         var remaining = count;
         while remaining > 0 {
-            first = first + second;
+            first = first +% second;
             second = RotateLeft<uint64>(second, 13);
             second = second ^ first;
             first = RotateLeft<uint64>(first, 32);
 
-            third = third + fourth;
+            third = third +% fourth;
             fourth = RotateLeft<uint64>(fourth, 16);
             fourth = fourth ^ third;
 
-            first = first + fourth;
+            first = first +% fourth;
             fourth = RotateLeft<uint64>(fourth, 21);
             fourth = fourth ^ first;
 
-            third = third + second;
+            third = third +% second;
             second = RotateLeft<uint64>(second, 17);
             second = second ^ third;
             third = RotateLeft<uint64>(third, 32);
@@ -205,7 +205,7 @@ extend SipHash24 : Hasher {
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#write
     pub func Write(self: &var SipHash24, bytes: *byte, length: uint) {
         if length == 0 { return; }
-        self.total = self.total + (length as uint64);
+        self.total = self.total +% (length as uint64);
 
         var offset: uint = 0;
         if self.buffered > 0 {

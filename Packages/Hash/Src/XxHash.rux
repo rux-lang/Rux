@@ -88,7 +88,7 @@ pub unsafe func ReadLittleEndian32(bytes: *byte) -> uint32 {
 /// @returns the lane's new value
 /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-round
 pub func XxRound(accumulator: uint64, lane: uint64) -> uint64 {
-    return RotateLeft<uint64>(accumulator + lane * XxPrime2, 31) * XxPrime1;
+    return RotateLeft<uint64>(accumulator +% lane *% XxPrime2, 31) *% XxPrime1;
 }
 
 /// Folds one finished accumulator into the running hash.
@@ -101,7 +101,7 @@ pub func XxRound(accumulator: uint64, lane: uint64) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-merge
 pub func XxMerge(hash: uint64, accumulator: uint64) -> uint64 {
     let mixed = XxRound(0, accumulator);
-    return (hash ^ mixed) * XxPrime1 + XxPrime4;
+    return (hash ^ mixed) *% XxPrime1 +% XxPrime4;
 }
 
 /// The final mixing step, which spreads every input bit across the whole result.
@@ -114,9 +114,9 @@ pub func XxMerge(hash: uint64, accumulator: uint64) -> uint64 {
 pub func XxAvalanche(hash: uint64) -> uint64 {
     var value = hash;
     value = value ^ (value >> 33);
-    value = value * XxPrime2;
+    value = value *% XxPrime2;
     value = value ^ (value >> 29);
-    value = value * XxPrime3;
+    value = value *% XxPrime3;
     value = value ^ (value >> 32);
     return value;
 }
@@ -160,10 +160,10 @@ extend XxHash64 {
     pub func WithSeed(seed: uint64) -> XxHash64 {
         return XxHash64 {
             seed: seed,
-            first: seed + XxPrime1 + XxPrime2,
-            second: seed + XxPrime2,
+            first: seed +% XxPrime1 +% XxPrime2,
+            second: seed +% XxPrime2,
             third: seed,
-            fourth: seed - XxPrime1,
+            fourth: seed -% XxPrime1,
             total: 0,
             pending: [0; 32],
             buffered: 0
@@ -176,10 +176,10 @@ extend XxHash64 {
     /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#reset
     pub func Reset(self: &var XxHash64) {
         let seed = self.seed;
-        self.first = seed + XxPrime1 + XxPrime2;
-        self.second = seed + XxPrime2;
+        self.first = seed +% XxPrime1 +% XxPrime2;
+        self.second = seed +% XxPrime2;
         self.third = seed;
-        self.fourth = seed - XxPrime1;
+        self.fourth = seed -% XxPrime1;
         self.total = 0;
         self.buffered = 0;
     }
@@ -206,7 +206,7 @@ extend XxHash64 : Hasher {
     /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#write
     pub func Write(self: &var XxHash64, bytes: *byte, length: uint) {
         if length == 0 { return; }
-        self.total = self.total + (length as uint64);
+        self.total = self.total +% (length as uint64);
 
         var offset: uint = 0;
 
@@ -266,8 +266,8 @@ extend XxHash64 : Hasher {
         var hash: uint64 = 0;
         if self.total >= (XxBlockSize as uint64) {
             // At least one block ran, so the four accumulators hold the answer and are folded together.
-            hash = RotateLeft<uint64>(self.first, 1) + RotateLeft<uint64>(self.second, 7)
-                   + RotateLeft<uint64>(self.third, 12) + RotateLeft<uint64>(self.fourth, 18);
+            hash = RotateLeft<uint64>(self.first, 1) +% RotateLeft<uint64>(self.second, 7)
+                   +% RotateLeft<uint64>(self.third, 12) +% RotateLeft<uint64>(self.fourth, 18);
             hash = XxMerge(hash, self.first);
             hash = XxMerge(hash, self.second);
             hash = XxMerge(hash, self.third);
@@ -275,27 +275,27 @@ extend XxHash64 : Hasher {
         }
         else {
             // Nothing ever filled a block, so the accumulators were never touched and the seed starts the hash.
-            hash = self.seed + XxPrime5;
+            hash = self.seed +% XxPrime5;
         }
-        hash = hash + self.total;
+        hash = hash +% self.total;
 
         // The tail, eight then four then one byte at a time. Held input is the only thing left by construction.
         var offset: uint = 0;
         while self.buffered - offset >= 8 {
             // Safety: `offset + 8` is at most `self.buffered`, checked by the loop, which is within `pending`.
             hash = hash ^ XxRound(0, unsafe { ReadLittleEndian64(@self.pending[offset] as *byte) });
-            hash = RotateLeft<uint64>(hash, 27) * XxPrime1 + XxPrime4;
+            hash = RotateLeft<uint64>(hash, 27) *% XxPrime1 +% XxPrime4;
             offset = offset + 8;
         }
         if self.buffered - offset >= 4 {
             // Safety: `offset + 4` is at most `self.buffered`, checked above, which is within `pending`.
-            hash = hash ^ ((unsafe { ReadLittleEndian32(@self.pending[offset] as *byte) } as uint64) * XxPrime1);
-            hash = RotateLeft<uint64>(hash, 23) * XxPrime2 + XxPrime3;
+            hash = hash ^ ((unsafe { ReadLittleEndian32(@self.pending[offset] as *byte) } as uint64) *% XxPrime1);
+            hash = RotateLeft<uint64>(hash, 23) *% XxPrime2 +% XxPrime3;
             offset = offset + 4;
         }
         while offset < self.buffered {
-            hash = hash ^ ((self.pending[offset] as uint64) * XxPrime5);
-            hash = RotateLeft<uint64>(hash, 11) * XxPrime1;
+            hash = hash ^ ((self.pending[offset] as uint64) *% XxPrime5);
+            hash = RotateLeft<uint64>(hash, 11) *% XxPrime1;
             offset = offset + 1;
         }
 

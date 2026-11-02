@@ -119,7 +119,7 @@ func NextRandom(state: &var uint64) -> uint64 {
     x = x ^ (x << 25);
     x = x ^ (x >> 27);
     state = x;
-    return x * 2685821657736338717;
+    return x *% 2685821657736338717;
 }
 
 // Sorts one copy with the comparator overload and another with the reference,

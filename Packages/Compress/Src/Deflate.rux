@@ -8,6 +8,7 @@
 // finishing leaves a stream a decompressor reports as truncated.
 
 import Allocator::{ Allocator, Layout };
+import Core::{ uint32, uint64 };
 import Hash::{ Adler32, Crc32, Hasher };
 import Io::{ IoError, IoErrorKind, Writer };
 import Compress::{
@@ -120,9 +121,9 @@ extend CompressWriter {
         if self.format == Format::Zlib {
             let value = self.adler.Value();
             self.PutByte((value >> 24) as uint8)?;
-            self.PutByte((value >> 16) as uint8)?;
-            self.PutByte((value >> 8) as uint8)?;
-            self.PutByte(value as uint8)?;
+            self.PutByte((value >> 16).Truncate<uint8>())?;
+            self.PutByte((value >> 8).Truncate<uint8>())?;
+            self.PutByte(value.Truncate<uint8>())?;
         }
         else if self.format == Format::Gzip {
             self.PutWord(self.crc.Value())?;
@@ -171,7 +172,7 @@ extend CompressWriter {
         while self.bitCount >= 8u {
             if self.outputLength == OutputCapacity { self.SendOutput()?; }
             // Safety: `outputLength` is below `OutputCapacity`: a full buffer was just sent, which empties it.
-            unsafe { self.output[self.outputLength] = self.bits as uint8; }
+            unsafe { self.output[self.outputLength] = self.bits.Truncate<uint8>(); }
             self.outputLength = self.outputLength + 1;
             self.bits = self.bits >> 8u64;
             self.bitCount = self.bitCount - 8;
@@ -202,7 +203,7 @@ extend CompressWriter {
     unsafe func HashAt(self: &CompressWriter, position: uint) -> uint {
         let value = (self.data[position] as uint32 << 16) | (self.data[position + 1u] as uint32 << 8) |
                     self.data[position + 2u] as uint32;
-        return ((value * 2654435761u32) >> (32u32 - HashBits as uint32)) as uint;
+        return ((value *% 2654435761u32) >> (32u32 - HashBits as uint32)) as uint;
     }
 
     // Records that the three bytes at `position` start there.

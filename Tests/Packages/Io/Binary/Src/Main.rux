@@ -1,7 +1,7 @@
 // The caller names the format's byte order, and the host's own never enters into it: the same value writes to
 // mirrored bytes under the two orders, and each order reads back exactly what it wrote.
 
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, uint512 };
 import Io::{ Endian, IoError, IoErrorKind, Reader, Writer };
 import Io::{ ReadFloat32, ReadFloat64, ReadInt16, ReadInt64, ReadInt8, ReadUint128, ReadUint16, ReadUint256, ReadUint32,
              ReadUint512, ReadUint64, ReadUint8 };
@@ -99,8 +99,8 @@ func Main() -> int {
         WriteUint16(record, order, 0xBEEF) catch { else => Panic("u16 writes") };
         WriteUint32(record, order, 0xDEADBEEF) catch { else => Panic("u32 writes") };
         WriteUint64(record, order, 0x0123456789ABCDEF) catch { else => Panic("u64 writes") };
-        WriteUint128(record, order, wideValue as uint128) catch { else => Panic("u128 writes") };
-        WriteUint256(record, order, (hugeValue as uint256) | 1) catch { else => Panic("u256 writes") };
+        WriteUint128(record, order, wideValue.Truncate<uint128>()) catch { else => Panic("u128 writes") };
+        WriteUint256(record, order, hugeValue.Truncate<uint256>() | 1) catch { else => Panic("u256 writes") };
         WriteUint512(record, order, hugeValue) catch { else => Panic("u512 writes") };
         WriteInt8(record, order, -100) catch { else => Panic("i8 writes") };
         WriteInt16(record, order, -32768) catch { else => Panic("the most negative i16 writes") };
@@ -112,8 +112,8 @@ func Main() -> int {
         Assert(Expect(ReadUint16(record, order), "u16 reads") == 0xBEEF, "u16 returns");
         Assert(Expect(ReadUint32(record, order), "u32 reads") == 0xDEADBEEF, "u32 returns");
         Assert(Expect(ReadUint64(record, order), "u64 reads") == 0x0123456789ABCDEF, "u64 returns");
-        Assert(Expect(ReadUint128(record, order), "u128 reads") == (wideValue as uint128), "u128 returns");
-        Assert(Expect(ReadUint256(record, order), "u256 reads") == ((hugeValue as uint256) | 1),
+        Assert(Expect(ReadUint128(record, order), "u128 reads") == wideValue.Truncate<uint128>(), "u128 returns");
+        Assert(Expect(ReadUint256(record, order), "u256 reads") == (hugeValue.Truncate<uint256>() | 1),
                "u256 returns");
         Assert(Expect(ReadUint512(record, order), "u512 reads") == hugeValue, "u512 returns");
         Assert(Expect(ReadInt8(record, order), "i8 reads") == -100i8, "i8 returns");

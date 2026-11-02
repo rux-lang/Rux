@@ -6,7 +6,7 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::{ #target };
+import Core::{ #target, uint16, uint32, uint64 };
 import Io::{ IoError, IoErrorKind, ReadExact, WriteAll };
 import Net::{
     IpAddress, Ipv4Address, Ipv6Address, SocketAddress, TcpStream, UdpSocket
@@ -264,7 +264,7 @@ func Decimal(text: char8[..]) -> uint {
 // cannot be written as one.
 func WriteQuery(host: char8[..], kind: uint16, id: uint16, into: var uint8[..]) -> uint {
     into[0] = (id >> 8) as uint8;
-    into[1] = id as uint8;
+    into[1] = id.Truncate<uint8>();
     // Recursion desired, one question.
     into[2] = 0x01;
     into[3] = 0x00;
@@ -294,7 +294,7 @@ func WriteQuery(host: char8[..], kind: uint16, id: uint16, into: var uint8[..]) 
     if at - 12u > 254u { return 0; }
     into[at] = 0;
     into[at + 1] = (kind >> 8) as uint8;
-    into[at + 2] = kind as uint8;
+    into[at + 2] = kind.Truncate<uint8>();
     into[at + 3] = 0;
     into[at + 4] = 1;
     return at + 5;
@@ -423,11 +423,11 @@ var QueryCounter: uint32 = 0;
 // An identifier for the next query: the count mixed with where this call's frame is, which the system places at a
 // different address in each run. It tells a reply from a stray datagram; it is no defence against a forger.
 func NextQueryId() -> uint16 {
-    QueryCounter = QueryCounter + 1u32;
+    QueryCounter = QueryCounter +% 1u32;
     let probe: uint8 = 0;
     let place = (@probe) as uint64;
-    let mixed = (QueryCounter * 0x9E3779B1u32) ^ (place as uint32) ^ ((place >> 32) as uint32);
-    return (mixed ^ (mixed >> 16)) as uint16;
+    let mixed = (QueryCounter *% 0x9E3779B1u32) ^ place.Truncate<uint32>() ^ (place >> 32).Truncate<uint32>();
+    return (mixed ^ (mixed >> 16)).Truncate<uint16>();
 }
 
 // The addresses of `host` from the hosts file, or else from the name servers: IPv4 addresses first, then IPv6.

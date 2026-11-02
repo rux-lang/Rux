@@ -3,6 +3,7 @@
 // protocol to be usable rather than merely callable, and a raw binding to them would be an invitation to get all
 // three wrong; that belongs above this package.
 
+import Core::int32;
 import Linux::{ ProcessId, SysExitGroup, SysGetPid, Syscall0, Syscall1 };
 
 /// Ends the calling thread's process with `code`.
@@ -16,7 +17,7 @@ import Linux::{ ProcessId, SysExitGroup, SysGetPid, Syscall0, Syscall1 };
 /// @see https://rux-lang.dev/docs/api/linux/process#exit
 pub func Exit(code: int32) {
     // Safety: exit_group takes only a status number and touches no memory of the caller's.
-    unsafe { Syscall1(SysExitGroup, (code as int64) as uint64); }
+    unsafe { Syscall1(SysExitGroup, code.Truncate<uint64>()); }
 }
 
 /// The calling process's own identifier.

@@ -4,6 +4,8 @@
 // The digits go into a cursor over a stack buffer rather than into anything that allocates: a `uint64` is at most
 // twenty digits, which is known before the loop starts, so there is nothing to grow and nothing that can fail.
 
+import Core::int64;
+
 /// The most digits a `uint64` ever needs, for 18446744073709551615.
 /// @see https://rux-lang.dev/docs/api/format/integer-text#max-decimal-digits
 pub const MaxDecimalDigits: uint = 20;
@@ -45,7 +47,7 @@ pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
 pub func WriteInt(cursor: &var ByteCursor, value: int64) {
     if value < 0 {
         cursor.Push(c8'-');
-        WriteUint(cursor, ~(value as uint64) + 1);
+        WriteUint(cursor, ~value.Truncate<uint64>() + 1);
         return;
     }
     WriteUint(cursor, value as uint64);

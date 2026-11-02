@@ -6,7 +6,7 @@
 // A raw result from these wrappers is already normalized to Linux's convention — a value, or a small negative error
 // number — which is what `Errors::IsError` and `Errors::Errno` read.
 
-import Core::{ #Error, #target };
+import Core::{ #Error, #target, int32 };
 
 // The call numbers, which both architectures share. FreeBSD assigns a call its number once, in `syscalls.master`,
 // and every architecture uses it — unlike Linux, where the two tables agree on nothing.
@@ -279,5 +279,5 @@ when #target.arch {
 /// @returns it sign-extended, so a negative one stays negative
 /// @see https://rux-lang.dev/docs/api/freebsd/syscalls#sign-extend-fd
 pub func SignExtendFd(fd: int32) -> uint64 {
-    return (fd as int64) as uint64;
+    return fd.Truncate<uint64>();
 }

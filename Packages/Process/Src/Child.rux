@@ -3,7 +3,7 @@
 // an `Io::Reader` from its standard output or error. Each owns its end of the pipe and closes it when dropped, which
 // is how a child reading its input learns that no more will come.
 
-import Core::{ #Error, #target };
+import Core::{ #Error, #target, uint32 };
 import Io::{ IoError, IoErrorKind, Reader, Writer };
 import Process::FailureOf;
 
@@ -337,7 +337,7 @@ extend Child {
             var code: uint32 = 0;
             // Safety: `self.process` is the process handle this child owns, and `code` is a local the call writes.
             if unsafe { GetExitCodeProcess(self.process as *opaque, @code) } == 0 { fail FailureOf(LastError()); }
-            self.status = ExitStatus { code: code as int32, signal: 0 };
+            self.status = ExitStatus { code: code.Truncate<int32>(), signal: 0 };
             self.finished = true;
         }
     }

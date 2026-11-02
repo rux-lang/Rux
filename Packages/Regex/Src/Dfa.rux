@@ -202,7 +202,7 @@ extend Dfa {
     func Find(self: &var Dfa, roots: uint32[..], flags: uint8) -> uint32 {
         var hash: uint64 = 0xCBF29CE484222325u64 ^ flags as uint64;
         for root in roots {
-            hash = (hash ^ root as uint64) * 0x100000001B3u64;
+            hash = (hash ^ root as uint64) *% 0x100000001B3u64;
         }
         let mask = BucketCount - 1;
         var bucket = (hash ^ (hash >> 29)) as uint & mask;

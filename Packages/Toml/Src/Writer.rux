@@ -20,6 +20,7 @@
 // larger had no way to know that was the problem. A header path that will not fit the buffer is `ValueOutOfRange`,
 // which is what that case is for: the document is good and the form asked for cannot hold it.
 
+import Core::int64;
 import Format::{ ByteCursor, ParseFloat64, WriteDecimal };
 import Text::{ FormatError, TextWriter };
 
@@ -183,7 +184,7 @@ func EmitInteger(writer: &var TextWriter, value: int64) -> ! FormatError {
     var length: uint = 0;
     var negative = value < 0;
     // The most negative integer has no positive counterpart, so the magnitude is taken unsigned.
-    var rest = negative ? (~(value as uint64) + 1) : value as uint64;
+    var rest = negative ? ~value.Truncate<uint64>() + 1 : value as uint64;
     if rest == 0 {
         storage[0] = c8'0';
         length = 1;

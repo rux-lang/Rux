@@ -6,7 +6,7 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::Panic;
+import Core::{ Panic, uint64 };
 import Time::{ DateTime, OffsetDateTime, Timestamp, UtcOffset };
 import TimeZone::{ NoRule, ParseRule, Rule, RuleTypeAt, TimeZoneError, ZoneType };
 
@@ -69,8 +69,8 @@ func BigEndian(bytes: byte[..], at: uint, width: uint) -> int64 {
         value = (value << 8u64) | bytes[at + index] as uint64;
         index = index + 1;
     }
-    if width == 4u { return (value as uint32 as int32) as int64; }
-    return value as int64;
+    if width == 4u { return value.Truncate<int32>() as int64; }
+    return value.Truncate<int64>();
 }
 
 extend TimeZone {

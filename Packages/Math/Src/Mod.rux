@@ -58,7 +58,7 @@ pub func Mod(x: float64, y: float64) -> float64 {
     // x mod y, one bit of quotient at a time. A borrow out of the top means the divisor did not fit, and the
     // subtraction is thrown away.
     while ex > ey {
-        let d = uxi - uy;
+        let d = uxi -% uy;
         if (d >> 63) == 0 {
             if d == 0 { return 0.0 * x; }
             uxi = d;
@@ -66,7 +66,7 @@ pub func Mod(x: float64, y: float64) -> float64 {
         uxi <<= 1;
         ex--;
     }
-    let d = uxi - uy;
+    let d = uxi -% uy;
     if (d >> 63) == 0 {
         if d == 0 { return 0.0 * x; }
         uxi = d;

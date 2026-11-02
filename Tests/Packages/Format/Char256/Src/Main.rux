@@ -164,7 +164,7 @@ func Main() -> int {
     let top256 = AsChar256(1u256 << 255);
     Shown<char256>(top256, plain, "\u{FFFD}");
     Inspected<char256>(top256, "'\\u{8000000000000000000000000000000000000000000000000000000000000000}'");
-    let all256 = AsChar256(0u256 - 1u256);
+    let all256 = AsChar256(0u256 -% 1u256);
     Shown<char256>(all256, plain, "\u{FFFD}");
     Inspected<char256>(all256, "'\\u{ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff}'");
     Shown<char256>(word1, Spec("*<3"), "\u{FFFD}**");

@@ -132,7 +132,7 @@ extend TomlLexer {
     func Make(self: &TomlLexer, kind: TomlTokenKind, form: TomlTextForm, start: uint, end: uint) -> TomlToken {
         return TomlToken {
             kind: kind, form: form, start: start, end: end, line: self.line,
-            column: start - self.lineStart + 1, error: TomlLexError::None
+            column: start +% 1 -% self.lineStart, error: TomlLexError::None
         };
     }
 

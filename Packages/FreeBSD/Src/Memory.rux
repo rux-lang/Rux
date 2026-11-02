@@ -2,6 +2,7 @@
 // Nothing here tracks what it hands out: an address from `Mmap` is valid until `Munmap` releases exactly the range
 // that was mapped.
 
+import Core::int32;
 import FreeBSD::{ EINVAL, IsError, SignExtendFd, SysBrk, SysMadvise, SysMmap, SysMprotect, SysMunmap, SysSysctl,
                   Syscall1, Syscall2, Syscall3, Syscall6 };
 
@@ -130,7 +131,7 @@ pub const AdviseFree: int32 = 5;
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#mprotect
 pub unsafe func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
-    return Syscall3(SysMprotect, address as uint64, length as uint64, (protection as int64) as uint64);
+    return Syscall3(SysMprotect, address as uint64, length as uint64, protection.Truncate<uint64>());
 }
 
 /// Tells the kernel how the pages covering a range are about to be used.
@@ -143,7 +144,7 @@ pub unsafe func Mprotect(address: *opaque, length: uint, protection: int32) -> i
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#madvise
 pub unsafe func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
-    return Syscall3(SysMadvise, address as uint64, length as uint64, (advice as int64) as uint64);
+    return Syscall3(SysMadvise, address as uint64, length as uint64, advice.Truncate<uint64>());
 }
 /// `CTL_HW`: the sysctl branch describing the machine.
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#ctl-hw

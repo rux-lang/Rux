@@ -58,7 +58,7 @@ extend Xoshiro256 : RandomGenerator {
     /// @returns the next 64 bits
     /// @see https://rux-lang.dev/docs/api/random/xoshiro256#next-uint64
     pub func NextUint64(self: &var Xoshiro256) -> uint64 {
-        let result = RotateLeft64(self.state[1] * 5, 7) * 9;
+        let result = RotateLeft64(self.state[1] *% 5, 7) *% 9;
         let t = self.state[1] << 17;
         self.state[2] = self.state[2] ^ self.state[0];
         self.state[3] = self.state[3] ^ self.state[1];

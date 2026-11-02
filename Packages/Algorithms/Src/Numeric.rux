@@ -5,6 +5,8 @@
 // `Midpoint` is defined per numeric type rather than generically, because the overflow-free formula depends on the
 // representation: integers take the difference in the unsigned type of their width, and floats halve before they add.
 
+import Core::{ int32, int64 };
+
 
 /// Writes the running sums of `items` into `into`: element `i` becomes the sum of the first `i + 1` elements.
 /// `into` may be `items` itself. Requires `+` on the element type, with whatever overflow it has.
@@ -114,8 +116,8 @@ pub func Iota<T>(into: var T[..], start: T, step: T) {
 /// @returns the midpoint
 /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
 pub func Midpoint(a: int64, b: int64) -> int64 {
-    if a <= b { return a + ((b as uint64 - a as uint64) / 2u64) as int64; }
-    return a - ((a as uint64 - b as uint64) / 2u64) as int64;
+    if a <= b { return a + ((b.Truncate<uint64>() -% a.Truncate<uint64>()) / 2u64) as int64; }
+    return a - ((a.Truncate<uint64>() -% b.Truncate<uint64>()) / 2u64) as int64;
 }
 
 /// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
@@ -124,8 +126,8 @@ pub func Midpoint(a: int64, b: int64) -> int64 {
 /// @returns the midpoint
 /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
 pub func Midpoint(a: int32, b: int32) -> int32 {
-    if a <= b { return a + ((b as uint32 - a as uint32) / 2u32) as int32; }
-    return a - ((a as uint32 - b as uint32) / 2u32) as int32;
+    if a <= b { return a + ((b.Truncate<uint32>() -% a.Truncate<uint32>()) / 2u32) as int32; }
+    return a - ((a.Truncate<uint32>() -% b.Truncate<uint32>()) / 2u32) as int32;
 }
 
 /// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.

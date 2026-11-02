@@ -9,6 +9,7 @@
 // first `2^64 mod bound` values is the answer possibly from the short block, and only then is a word rejected
 // and another drawn. The rejection test is exact and the expected number of extra draws is far below one.
 
+import Core::{ int64, uint128, uint64 };
 import Math::{ IsInfinite, NextDown };
 
 /// A uniform value in `[0, bound)`.
@@ -22,14 +23,14 @@ import Math::{ IsInfinite, NextDown };
 pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> uint64 {
     if bound == 0 { return 0u64; }
     var product = (generator.NextUint64() as uint128) * (bound as uint128);
-    var low = product as uint64;
+    var low = product.Truncate<uint64>();
     if low < bound {
         // The only region where a short final block could bias the result. The threshold is 2^64 mod bound,
         // computed without a 2^64 that does not fit: the negation of bound in 64-bit arithmetic is 2^64 - bound.
-        let threshold = (0u64 - bound) % bound;
+        let threshold = (0u64 -% bound) % bound;
         while low < threshold {
             product = (generator.NextUint64() as uint128) * (bound as uint128);
-            low = product as uint64;
+            low = product.Truncate<uint64>();
         }
     }
     return (product >> 64) as uint64;
@@ -67,9 +68,9 @@ pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high
 /// @see https://rux-lang.dev/docs/api/random/uniform#uniform-in-signed-range
 pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64, high: int64) -> int64 {
     if high < low { return low; }
-    let span = (high as uint64) - (low as uint64);
-    if span == 0xFFFFFFFFFFFFFFFFu64 { return generator.NextUint64() as int64; }
-    return ((low as uint64) + UniformBelow<G>(generator, span + 1u64)) as int64;
+    let span = high.Truncate<uint64>() -% low.Truncate<uint64>();
+    if span == 0xFFFFFFFFFFFFFFFFu64 { return generator.NextUint64().Truncate<int64>(); }
+    return (low.Truncate<uint64>() +% UniformBelow<G>(generator, span + 1u64)).Truncate<int64>();
 }
 
 /// A uniform `float64` in `[low, high)`.

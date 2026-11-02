@@ -175,14 +175,15 @@ extend Table<K, V> {
         return index < self.capacity && unsafe { self.states[index] } != SlotEmpty;
     }
 
-    // Where a hash starts probing.
+    // Where a hash starts probing. The capacity is a power of two, so the arithmetic is modular: the mask keeps the low
+    // bits whatever the step before it did.
     func HomeOf(self: &Table<K, V>, hashed: uint64) -> uint {
-        return (hashed as uint) & (self.capacity - 1);
+        return (hashed as uint) & (self.capacity -% 1);
     }
 
     // The slot after `index`, wrapping. The mask is why the capacity is a power of two.
     func NextOf(self: &Table<K, V>, index: uint) -> uint {
-        return (index + 1) & (self.capacity - 1);
+        return (index +% 1) & (self.capacity -% 1);
     }
 
     /// The slot holding `key`, or `none` when the table does not have it.

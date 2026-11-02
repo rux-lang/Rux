@@ -5,7 +5,7 @@
 // `epoll_event` is packed to twelve bytes on x86-64 and laid out naturally in sixteen on AArch64, so it is handled as
 // bytes with the size and the offset of its word given per architecture.
 
-import Core::{ #Error, #target };
+import Core::{ #Error, #target, int32 };
 import Linux::{ FileDescriptor, SignExtendFd, Syscall6 };
 
 when #target.arch {
@@ -110,7 +110,7 @@ pub const EPOLLRDHUP: uint32 = 0x2000;
 /// @see https://rux-lang.dev/docs/api/linux/poll#fcntl-int
 /// @see https://man7.org/linux/man-pages/man2/fcntl.2.html
 pub unsafe func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) -> int64 {
-    return Syscall6(SysFcntl, SignExtendFd(fd), command as int64 as uint64, argument as uint64, 0, 0, 0);
+    return Syscall6(SysFcntl, SignExtendFd(fd), command.Truncate<uint64>(), argument as uint64, 0, 0, 0);
 }
 
 /// Opens an epoll instance.
@@ -120,7 +120,7 @@ pub unsafe func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) ->
 /// @see https://man7.org/linux/man-pages/man2/epoll_create1.2.html
 pub func EpollCreate1(flags: int32) -> int64 {
     // Safety: epoll_create1 takes only flags and returns a new descriptor.
-    return unsafe { Syscall6(SysEpollCreate1, flags as int64 as uint64, 0, 0, 0, 0, 0) };
+    return unsafe { Syscall6(SysEpollCreate1, flags.Truncate<uint64>(), 0, 0, 0, 0, 0) };
 }
 
 /// Adds, changes or removes the registration of `fd` with an epoll instance.
@@ -134,7 +134,7 @@ pub func EpollCreate1(flags: int32) -> int64 {
 /// @see https://rux-lang.dev/docs/api/linux/poll#epoll-control
 /// @see https://man7.org/linux/man-pages/man2/epoll_ctl.2.html
 pub unsafe func EpollControl(epoll: FileDescriptor, operation: int32, fd: FileDescriptor, event: *opaque) -> int64 {
-    return Syscall6(SysEpollControl, SignExtendFd(epoll), operation as int64 as uint64, SignExtendFd(fd),
+    return Syscall6(SysEpollControl, SignExtendFd(epoll), operation.Truncate<uint64>(), SignExtendFd(fd),
                     event as uint64, 0, 0);
 }
 
@@ -148,6 +148,6 @@ pub unsafe func EpollControl(epoll: FileDescriptor, operation: int32, fd: FileDe
 /// @see https://rux-lang.dev/docs/api/linux/poll#epoll-wait
 /// @see https://man7.org/linux/man-pages/man2/epoll_wait.2.html
 pub unsafe func EpollWait(epoll: FileDescriptor, events: *var opaque, capacity: int32, timeout: int32) -> int64 {
-    return Syscall6(SysEpollWait, SignExtendFd(epoll), events as uint64, capacity as int64 as uint64,
-                    timeout as int64 as uint64, 0, 8);
+    return Syscall6(SysEpollWait, SignExtendFd(epoll), events as uint64, capacity.Truncate<uint64>(),
+                    timeout.Truncate<uint64>(), 0, 8);
 }

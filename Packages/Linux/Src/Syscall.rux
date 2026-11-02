@@ -6,7 +6,7 @@
 // A raw result is not yet an answer. It is either a value or a small negative error number, which `Errors::IsError`
 // and `Errors::Errno` are for.
 
-import Core::{ #Error, #target };
+import Core::{ #Error, #target, int32 };
 
 // Nothing here guards on the operating system. The declarations resolve for any target so that a program can import
 // them and put the `when #target.os == .Linux` around its own use, which is what a cross-platform caller needs; the
@@ -293,5 +293,5 @@ when #target.arch {
 /// @returns it sign-extended, so a negative one stays negative
 /// @see https://rux-lang.dev/docs/api/linux/syscalls#sign-extend-fd
 pub func SignExtendFd(fd: int32) -> uint64 {
-    return (fd as int64) as uint64;
+    return fd.Truncate<uint64>();
 }

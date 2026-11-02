@@ -3,6 +3,7 @@
 // event; reading and writing are separate filters, so a descriptor wanted for both is registered twice. The
 // registrations here are level-triggered: a descriptor is reported for as long as it is ready.
 
+import Core::int32;
 import FreeBSD::{ FileDescriptor, SignExtendFd, Syscall6, Timespec };
 
 const SysFcntl: uint64 = 92;
@@ -102,7 +103,7 @@ extend Kevent {
 /// @see https://rux-lang.dev/docs/api/freebsd/poll#fcntl-int
 /// @see https://man.freebsd.org/cgi/man.cgi?query=fcntl&sektion=2
 pub unsafe func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) -> int64 {
-    return Syscall6(SysFcntl, SignExtendFd(fd), command as int64 as uint64, argument as uint64, 0, 0, 0);
+    return Syscall6(SysFcntl, SignExtendFd(fd), command.Truncate<uint64>(), argument as uint64, 0, 0, 0);
 }
 
 /// Opens a kqueue.
@@ -128,6 +129,6 @@ pub func Kqueue() -> int64 {
 /// @see https://man.freebsd.org/cgi/man.cgi?query=kevent&sektion=2
 pub unsafe func KeventCall(queue: FileDescriptor, changes: *Kevent, changeCount: int32, events: *var Kevent,
                            eventCount: int32, timeout: *Timespec) -> int64 {
-    return Syscall6(SysKevent, SignExtendFd(queue), changes as uint64, changeCount as int64 as uint64, events as uint64,
-                    eventCount as int64 as uint64, timeout as uint64);
+    return Syscall6(SysKevent, SignExtendFd(queue), changes as uint64, changeCount.Truncate<uint64>(), events as uint64,
+                    eventCount.Truncate<uint64>(), timeout as uint64);
 }

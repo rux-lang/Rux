@@ -33,7 +33,7 @@ func ByteSize(count: uint, elementSize: uint) -> uint throws AllocError {
 // `Reserve(uint::Max)` on a non-empty container into a reported error instead
 // of a silently tiny capacity.
 func AddLength(current: uint, additional: uint) -> uint throws AllocError {
-    let sum = current + additional;
+    let sum = current +% additional;
     if sum < current { throw AllocError::Unsupported; }
     return sum;
 }
@@ -53,7 +53,7 @@ func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uin
     }
 
     while grown < required {
-        let doubled = grown * 2;
+        let doubled = grown *% 2;
         if doubled < grown {
             grown = required;
             break;
@@ -77,7 +77,7 @@ func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uin
 func PowerOfTwoCapacity(required: uint, minimum: uint, elementSize: uint) -> uint throws AllocError {
     var grown = minimum;
     while grown < required {
-        let doubled = grown * 2;
+        let doubled = grown *% 2;
         if doubled < grown { throw AllocError::Unsupported; }
         grown = doubled;
     }

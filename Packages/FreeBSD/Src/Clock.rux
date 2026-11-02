@@ -4,6 +4,7 @@
 // FreeBSD numbers its clocks differently from Linux — monotonic is 4 here and 1 there — which is why an identifier
 // must never be carried between the two packages.
 
+import Core::int32;
 import FreeBSD::{ SysClockGetRes, SysClockGetTime, SysNanosleep, Syscall2, Timespec };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
@@ -22,7 +23,7 @@ pub const ClockMonotonic: int32 = 4;
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-get-time
 pub unsafe func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
-    return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
+    return Syscall2(SysClockGetTime, clockId.Truncate<uint64>(), time as uint64);
 }
 
 /// Suspends the caller for the requested duration.
@@ -60,5 +61,5 @@ pub const ClockProcessCpuTime: int32 = 15;
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-get-resolution
 pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
-    return Syscall2(SysClockGetRes, (clockId as int64) as uint64, resolution as uint64);
+    return Syscall2(SysClockGetRes, clockId.Truncate<uint64>(), resolution as uint64);
 }

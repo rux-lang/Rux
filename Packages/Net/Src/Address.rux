@@ -5,6 +5,7 @@
 // dotted-decimal form.
 
 import Allocator::Allocator;
+import Core::uint16;
 import Text::{ Display, FormatError, FormatSpec, RejectStyle, String, TextError, TextWriter, WriteAligned };
 
 /// An IPv4 address. `Copy`.
@@ -287,7 +288,7 @@ extend Ipv6Address {
         var group: uint = 0;
         while group < 8u {
             octets[group * 2u] = (groups[group] >> 8) as uint8;
-            octets[group * 2u + 1u] = groups[group] as uint8;
+            octets[group * 2u + 1u] = groups[group].Truncate<uint8>();
             group = group + 1;
         }
         return Ipv6Address { octets: octets };

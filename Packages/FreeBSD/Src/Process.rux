@@ -2,6 +2,7 @@
 // Nothing here creates a process: a raw binding to `fork` and `execve` without signal handling, descriptor
 // inheritance and a wait protocol would be an invitation to get all three wrong.
 
+import Core::int32;
 import FreeBSD::{ ProcessId, SysExit, SysGetPid, SysSysctl, Syscall0, Syscall1, Syscall6 };
 
 /// Ends the calling process with `code`.
@@ -11,7 +12,7 @@ import FreeBSD::{ ProcessId, SysExit, SysGetPid, SysSysctl, Syscall0, Syscall1, 
 /// @see https://rux-lang.dev/docs/api/freebsd/process#exit
 pub func Exit(code: int32) {
     // Safety: exit takes only a status number and touches no memory of the caller's.
-    unsafe { Syscall1(SysExit, (code as int64) as uint64); }
+    unsafe { Syscall1(SysExit, code.Truncate<uint64>()); }
 }
 
 /// The calling process's own identifier.

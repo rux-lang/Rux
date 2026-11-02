@@ -8,7 +8,7 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::{ #Error, #target };
+import Core::{ #Error, #target, uint32 };
 import Io::{ IoError, IoErrorKind };
 import Net::{ FailureOf, LastFailure, NoSocket };
 import Time::Duration;
@@ -415,10 +415,10 @@ func ReadWord64(bytes: uint8[..], at: uint) -> uint64 {
 }
 
 func WriteWord32(bytes: var uint8[..], at: uint, value: uint32) {
-    bytes[at] = value as uint8;
-    bytes[at + 1] = (value >> 8) as uint8;
-    bytes[at + 2] = (value >> 16) as uint8;
-    bytes[at + 3] = (value >> 24) as uint8;
+    bytes[at] = value.Truncate<uint8>();
+    bytes[at + 1] = (value >> 8).Truncate<uint8>();
+    bytes[at + 2] = (value >> 16).Truncate<uint8>();
+    bytes[at + 3] = (value >> 24).Truncate<uint8>();
 }
 
 func WriteWord64(bytes: var uint8[..], at: uint, value: uint64) {

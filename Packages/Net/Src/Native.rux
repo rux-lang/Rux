@@ -4,7 +4,7 @@
 // with a length byte and a one-byte family, Linux and Windows with a two-byte family, and every system puts the port
 // in network order. Errors become `IoError`s with the system's own code kept beside the meaning.
 
-import Core::{ #Error, #target, AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder, SpinHint };
+import Core::{ #Error, #target, AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder, SpinHint, uint16 };
 import Io::{ IoError, IoErrorKind };
 import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
 
@@ -175,14 +175,14 @@ func Encode(address: SocketAddress) -> RawAddress {
     let family = address.ip.IsIpv6() ? AF_INET6 : AF_INET;
     when #target.os == .macOS || #target.os == .FreeBSD {
         raw.bytes[0] = address.ip.IsIpv6() ? 28u8 : 16u8;
-        raw.bytes[1] = family as uint8;
+        raw.bytes[1] = family.Truncate<uint8>();
     }
     else {
-        raw.bytes[0] = family as uint8;
-        raw.bytes[1] = (family >> 8) as uint8;
+        raw.bytes[0] = family.Truncate<uint8>();
+        raw.bytes[1] = (family >> 8).Truncate<uint8>();
     }
     raw.bytes[2] = (address.port >> 8) as uint8;
-    raw.bytes[3] = address.port as uint8;
+    raw.bytes[3] = address.port.Truncate<uint8>();
     match address.ip.AsIpv4() {
         .Some(v4) => {
             var index: uint = 0;

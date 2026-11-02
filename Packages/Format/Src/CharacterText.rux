@@ -98,8 +98,8 @@ pub func IsScalarValue512(value: uint512) -> bool {
 pub func WriteWideInvalidEscape(writer: &var TextWriter, value: uint512) -> ! FormatError {
     if value <= (0xFFFFFFFFFFFFFFFFu64 as uint512) { return WriteInvalidEscape(writer, value as uint64); }
     var count: uint = 32;
-    if value > ((0u128 - 1u128) as uint512) { count = 64; }
-    if value > ((0u256 - 1u256) as uint512) { count = 128; }
+    if value > ((0u128 -% 1u128) as uint512) { count = 64; }
+    if value > ((0u256 -% 1u256) as uint512) { count = 128; }
     WriteBytes(writer, "\\u{")?;
     let digits = "0123456789abcdef";
     var shift = count * 4;

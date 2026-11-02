@@ -105,7 +105,7 @@ pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, resu
     unsafe { *result = zero; }
     if IsNan(value) || IsInfinite(value) { return true; }
     let rounded = RoundTo(value, mode);
-    let signed = (zero - 1) < zero;
+    let signed = (zero -% 1) < zero;
     // Both bounds are compared in floating point, where the integer limits are exactly representable only up to 53
     // bits. Comparing against the next power of two instead is exact at every width: a rounded value is in range
     // exactly when it is strictly below 2^(bits-1) for a signed type, or below 2^bits for an unsigned one.

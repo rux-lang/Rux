@@ -186,7 +186,7 @@ func Main() -> int {
     InspectedEscape<char512>(top512,
                              "8000000000000000000000000000000000000000000000000000000000000000",
                              "0000000000000000000000000000000000000000000000000000000000000000");
-    let all512 = AsChar512(0u512 - 1u512);
+    let all512 = AsChar512(0u512 -% 1u512);
     Shown<char512>(all512, plain, "\u{FFFD}");
     InspectedEscape<char512>(all512,
                              "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",

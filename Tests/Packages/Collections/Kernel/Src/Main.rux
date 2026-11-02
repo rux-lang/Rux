@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ EqualsInt32, HashInt32, HashMap, HashSet, TableSeed };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, int32 };
 
 // The kernel both tables are built on, exercised where it is hardest: a table run right up against its load factor,
 // and one churned in an order nothing about the hash makes convenient.
@@ -12,7 +12,7 @@ import Core::{ Assert, Panic };
 // A deliberately poor hash: every key collides into one of four homes, so almost every insertion displaces something
 // and probe distances grow long. This is the input Robin Hood exists for.
 func CrowdedHash(value: int32, low: uint64, high: uint64) -> uint64 {
-    return ((value % 4) as uint64) ^ (low & 0);
+    return (value % 4).Truncate<uint64>() ^ (low & 0);
 }
 
 func Main() -> int {

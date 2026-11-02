@@ -163,7 +163,7 @@ extend Uuid {
         var index: uint = 0;
         while index < 16 {
             accumulated = accumulated ^ (self.bytes[index] as uint64);
-            accumulated = accumulated * 0x100000001B3;
+            accumulated = accumulated *% 0x100000001B3;
             index = index + 1;
         }
         return accumulated;

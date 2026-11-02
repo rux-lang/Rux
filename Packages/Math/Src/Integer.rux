@@ -26,7 +26,7 @@ pub func AbsChecked<T>(value: T, result: *var T) -> bool {
     var magnitude = value;
     if value < zero {
         // Negating the most negative value wraps back to itself, which is exactly the overflow to report.
-        magnitude = zero - value;
+        magnitude = zero -% value;
     }
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
     unsafe { *result = magnitude; }

@@ -157,7 +157,7 @@ func Main() -> int {
     let top128 = AsChar128(1u128 << 127);
     Shown<char128>(top128, plain, "\u{FFFD}");
     Inspected<char128>(top128, "'\\u{80000000000000000000000000000000}'");
-    let all128 = AsChar128(0u128 - 1u128);
+    let all128 = AsChar128(0u128 -% 1u128);
     Shown<char128>(all128, plain, "\u{FFFD}");
     Inspected<char128>(all128, "'\\u{ffffffffffffffffffffffffffffffff}'");
     Shown<char128>(word1, Spec("*<3"), "\u{FFFD}**");

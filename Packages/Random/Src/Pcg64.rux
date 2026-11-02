@@ -10,6 +10,8 @@
 // **Not suitable for anything that must resist an adversary.** The output function is not invertible in one
 // step, but nothing here is designed against an attacker who is trying.
 
+import Core::uint128;
+
 /// The multiplier used by both the state step and the output function.
 /// PCG's "cheap" 64-bit multiplier, which the DXSM variant uses in the 128-bit step as well.
 /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm#pcg-multiplier
@@ -57,14 +59,14 @@ extend Pcg64Dxsm {
         // The published initialization: start at the increment, take one step, add the seed, take another.
         generator.state = generator.increment;
         generator.Step();
-        generator.state = generator.state + ((stateHigh << 64) | stateLow);
+        generator.state = generator.state +% ((stateHigh << 64) | stateLow);
         generator.Step();
         return generator;
     }
 
     // One state advance: the linear congruential step in 128 bits, wrapping as it must.
     func Step(self: &var Pcg64Dxsm) {
-        self.state = self.state * (PcgMultiplier as uint128) + self.increment;
+        self.state = self.state *% (PcgMultiplier as uint128) +% self.increment;
     }
 }
 
@@ -77,11 +79,11 @@ extend Pcg64Dxsm : RandomGenerator {
     /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm#next-uint64
     pub func NextUint64(self: &var Pcg64Dxsm) -> uint64 {
         var high = (self.state >> 64) as uint64;
-        let low = ((self.state as uint64) | 1);
+        let low = self.state.Truncate<uint64>() | 1;
         high = high ^ (high >> 32);
-        high = high * PcgMultiplier;
+        high = high *% PcgMultiplier;
         high = high ^ (high >> 48);
-        high = high * low;
+        high = high *% low;
         self.Step();
         return high;
     }

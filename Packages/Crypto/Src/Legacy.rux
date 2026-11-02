@@ -124,23 +124,23 @@ extend LegacyMd5 {
             let temp = d;
             d = c;
             c = b;
-            let sum = a + mixed + Md5Constants[index] + words[which];
-            b = b + Md5Rotate(sum, Md5Shifts[index]);
+            let sum = a +% mixed +% Md5Constants[index] +% words[which];
+            b = b +% Md5Rotate(sum, Md5Shifts[index]);
             a = temp;
             index = index + 1;
         }
 
-        self.state[0] = self.state[0] + a;
-        self.state[1] = self.state[1] + b;
-        self.state[2] = self.state[2] + c;
-        self.state[3] = self.state[3] + d;
+        self.state[0] = self.state[0] +% a;
+        self.state[1] = self.state[1] +% b;
+        self.state[2] = self.state[2] +% c;
+        self.state[3] = self.state[3] +% d;
     }
 
     /// Adds `bytes` to the message.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5#update
     pub func Update(self: &var LegacyMd5, bytes: char8[..]) {
-        self.length = self.length + (bytes.length as uint64);
+        self.length = self.length +% (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
             self.buffer[self.buffered] = bytes[index];
@@ -159,7 +159,7 @@ extend LegacyMd5 {
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5#finish
     pub func Finish(self: &var LegacyMd5, into: var char8[..]) {
-        let bitLength = self.length * 8;
+        let bitLength = self.length *% 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1;
         if self.buffered > 56 {
@@ -280,7 +280,7 @@ extend LegacySha1 {
                 mixed = b ^ c ^ d;
                 constant = 0xCA62C1D6;
             }
-            let temp = Md5Rotate(a, 5) + mixed + e + constant + schedule[index];
+            let temp = Md5Rotate(a, 5) +% mixed +% e +% constant +% schedule[index];
             e = d;
             d = c;
             c = Md5Rotate(b, 30);
@@ -289,18 +289,18 @@ extend LegacySha1 {
             index = index + 1;
         }
 
-        self.state[0] = self.state[0] + a;
-        self.state[1] = self.state[1] + b;
-        self.state[2] = self.state[2] + c;
-        self.state[3] = self.state[3] + d;
-        self.state[4] = self.state[4] + e;
+        self.state[0] = self.state[0] +% a;
+        self.state[1] = self.state[1] +% b;
+        self.state[2] = self.state[2] +% c;
+        self.state[3] = self.state[3] +% d;
+        self.state[4] = self.state[4] +% e;
     }
 
     /// Adds `bytes` to the message.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1#update
     pub func Update(self: &var LegacySha1, bytes: char8[..]) {
-        self.length = self.length + (bytes.length as uint64);
+        self.length = self.length +% (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
             self.buffer[self.buffered] = bytes[index];
@@ -318,7 +318,7 @@ extend LegacySha1 {
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1#finish
     pub func Finish(self: &var LegacySha1, into: var char8[..]) {
-        let bitLength = self.length * 8;
+        let bitLength = self.length *% 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1;
         if self.buffered > 56 {

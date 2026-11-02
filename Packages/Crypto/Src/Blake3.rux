@@ -43,13 +43,13 @@ func Blake3Rotate(value: uint32, amount: uint32) -> uint32 {
 // The mixing function, applied to four words of the state with two message words.
 // Safety: `state` must address sixteen writable words, and `a`, `b`, `c` and `d` must each be below sixteen.
 unsafe func Blake3Mix(state: *var uint32, a: uint, b: uint, c: uint, d: uint, first: uint32, second: uint32) {
-    state[a] = state[a] + state[b] + first;
+    state[a] = state[a] +% state[b] +% first;
     state[d] = Blake3Rotate(state[d] ^ state[a], 16);
-    state[c] = state[c] + state[d];
+    state[c] = state[c] +% state[d];
     state[b] = Blake3Rotate(state[b] ^ state[c], 12);
-    state[a] = state[a] + state[b] + second;
+    state[a] = state[a] +% state[b] +% second;
     state[d] = Blake3Rotate(state[d] ^ state[a], 8);
-    state[c] = state[c] + state[d];
+    state[c] = state[c] +% state[d];
     state[b] = Blake3Rotate(state[b] ^ state[c], 7);
 }
 

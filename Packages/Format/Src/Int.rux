@@ -5,6 +5,7 @@
 // `int` is a type of its own rather than a name for `int64`, so it needs its own implementation even where
 // the two happen to be the same width. Widening to `int64` first is what makes that implementation one line.
 
+import Core::int64;
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend int : Display {
@@ -20,7 +21,7 @@ extend int : Display {
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
         let negative = wide < 0;
-        let magnitude = negative ? ~(wide as uint64) + 1 : wide as uint64;
+        let magnitude = negative ? ~wide.Truncate<uint64>() + 1 : wide as uint64;
         return WriteIntegerSpec(writer, spec, magnitude, negative);
     }
 }

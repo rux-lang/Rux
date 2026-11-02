@@ -3,6 +3,7 @@
 // and never jumps, while `ClockRealtime` tracks wall time and can move in either direction when something sets it.
 // A duration is measured with the first; a timestamp anyone else will see is taken from the second.
 
+import Core::int32;
 import Linux::{ SysClockGetRes, SysClockGetTime, SysClockNanosleep, SysNanosleep, Syscall2, Syscall4, Timespec };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
@@ -24,7 +25,7 @@ pub const ClockMonotonic: int32 = 1;
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-time
 pub unsafe func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
-    return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
+    return Syscall2(SysClockGetTime, clockId.Truncate<uint64>(), time as uint64);
 }
 
 /// Suspends the caller for the requested duration.
@@ -70,7 +71,7 @@ pub const TimerAbsolute: int32 = 1;
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-resolution
 pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
-    return Syscall2(SysClockGetRes, (clockId as int64) as uint64, resolution as uint64);
+    return Syscall2(SysClockGetRes, clockId.Truncate<uint64>(), resolution as uint64);
 }
 
 /// Suspends the caller against a named clock, optionally until an absolute time.
@@ -87,6 +88,6 @@ pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) ->
 /// @returns zero, or a positive error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-nanosleep
 pub unsafe func ClockNanosleep(clockId: int32, flags: int32, request: *Timespec, remaining: *var Timespec) -> int64 {
-    return Syscall4(SysClockNanosleep, (clockId as int64) as uint64, (flags as int64) as uint64,
+    return Syscall4(SysClockNanosleep, clockId.Truncate<uint64>(), flags.Truncate<uint64>(),
                     request as uint64, remaining as uint64);
 }

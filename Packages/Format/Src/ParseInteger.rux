@@ -6,6 +6,7 @@
 // The bound is one larger for a negative value, because the most negative value of every signed width has no
 // positive counterpart: `-128` fits an `int8` whose largest value is `127`.
 
+import Core::{ uint128, uint16, uint256, uint32, uint512, uint64, uint8 };
 import Text::StringView;
 
 // What the sign and prefix left behind: where the digits start, which base they are in, and whether the value is
@@ -103,7 +104,7 @@ pub func ParseInt8(str: char8[..]) -> int8 ! ParseError {
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     let limit = negative ? 128u512 : 127u512;
     if magnitude > limit { fail ParseError::Overflow(str.length); }
-    if negative { return ~((magnitude as uint8) - 1) as int8; }
+    if negative { return (~((magnitude as uint8) -% 1)).Truncate<int8>(); }
     return magnitude as int8;
 }
 
@@ -134,7 +135,7 @@ pub func ParseInt16(str: char8[..]) -> int16 ! ParseError {
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     let limit = negative ? 32768u512 : 32767u512;
     if magnitude > limit { fail ParseError::Overflow(str.length); }
-    if negative { return ~((magnitude as uint16) - 1) as int16; }
+    if negative { return (~((magnitude as uint16) -% 1)).Truncate<int16>(); }
     return magnitude as int16;
 }
 
@@ -165,7 +166,7 @@ pub func ParseInt32(str: char8[..]) -> int32 ! ParseError {
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     let limit = negative ? 2147483648u512 : 2147483647u512;
     if magnitude > limit { fail ParseError::Overflow(str.length); }
-    if negative { return ~((magnitude as uint32) - 1) as int32; }
+    if negative { return (~((magnitude as uint32) -% 1)).Truncate<int32>(); }
     return magnitude as int32;
 }
 
@@ -198,7 +199,7 @@ pub func ParseInt64(str: char8[..]) -> int64 ! ParseError {
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     let limit = negative ? 9223372036854775808u512 : 9223372036854775807u512;
     if magnitude > limit { fail ParseError::Overflow(str.length); }
-    if negative { return ~((magnitude as uint64) - 1) as int64; }
+    if negative { return (~((magnitude as uint64) -% 1)).Truncate<int64>(); }
     return magnitude as int64;
 }
 
@@ -231,7 +232,7 @@ pub func ParseInt128(str: char8[..]) -> int128 ! ParseError {
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     let limit = negative ? 170141183460469231731687303715884105728u512 : 170141183460469231731687303715884105727u512;
     if magnitude > limit { fail ParseError::Overflow(str.length); }
-    if negative { return ~((magnitude as uint128) - 1) as int128; }
+    if negative { return (~((magnitude as uint128) -% 1)).Truncate<int128>(); }
     return magnitude as int128;
 }
 
@@ -264,7 +265,7 @@ pub func ParseInt256(str: char8[..]) -> int256 ! ParseError {
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     let limit = negative ? 57896044618658097711785492504343953926634992332820282019728792003956564819968u512 : 57896044618658097711785492504343953926634992332820282019728792003956564819967u512;
     if magnitude > limit { fail ParseError::Overflow(str.length); }
-    if negative { return ~((magnitude as uint256) - 1) as int256; }
+    if negative { return (~((magnitude as uint256) -% 1)).Truncate<int256>(); }
     return magnitude as int256;
 }
 
@@ -297,7 +298,7 @@ pub func ParseInt512(str: char8[..]) -> int512 ! ParseError {
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     let limit = negative ? 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048u512 : 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047u512;
     if magnitude > limit { fail ParseError::Overflow(str.length); }
-    if negative { return ~((magnitude as uint512) - 1) as int512; }
+    if negative { return (~((magnitude as uint512) -% 1)).Truncate<int512>(); }
     return magnitude as int512;
 }
 

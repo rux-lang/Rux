@@ -3,6 +3,7 @@
 // or from the process-wide functions on different threads, never interleave within a line. A message or value that
 // holds a line break or another control character has it escaped, so one record is always one line.
 
+import Core::int64;
 import Format::WriteFormat;
 import Log::{ Field, Level, Value };
 import Text::StringBuilder;
@@ -41,7 +42,7 @@ func PutUnsigned(builder: &var StringBuilder, value: uint64) -> bool {
 func PutInteger(builder: &var StringBuilder, value: int64) -> bool {
     if value >= 0i64 { return PutUnsigned(builder, value as uint64); }
     if !Put(builder, "-") { return false; }
-    return PutUnsigned(builder, (0u64 - value as uint64));
+    return PutUnsigned(builder, 0u64 -% value.Truncate<uint64>());
 }
 
 func PutFloat(builder: &var StringBuilder, value: float64) -> bool {

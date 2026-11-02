@@ -98,7 +98,7 @@ extend Sha256 {
             let recent = schedule[index - 2];
             let s0 = RotateRight32(previous, 7) ^ RotateRight32(previous, 18) ^ (previous >> 3);
             let s1 = RotateRight32(recent, 17) ^ RotateRight32(recent, 19) ^ (recent >> 10);
-            schedule[index] = schedule[index - 16] + s0 + schedule[index - 7] + s1;
+            schedule[index] = schedule[index - 16] +% s0 +% schedule[index - 7] +% s1;
             index = index + 1;
         }
 
@@ -115,29 +115,29 @@ extend Sha256 {
         while index < 64 {
             let sigma1 = RotateRight32(e, 6) ^ RotateRight32(e, 11) ^ RotateRight32(e, 25);
             let choose = (e & f) ^ ((~e) & g);
-            let temp1 = h + sigma1 + choose + Sha256RoundConstants[index] + schedule[index];
+            let temp1 = h +% sigma1 +% choose +% Sha256RoundConstants[index] +% schedule[index];
             let sigma0 = RotateRight32(a, 2) ^ RotateRight32(a, 13) ^ RotateRight32(a, 22);
             let majority = (a & b) ^ (a & c) ^ (b & c);
-            let temp2 = sigma0 + majority;
+            let temp2 = sigma0 +% majority;
             h = g;
             g = f;
             f = e;
-            e = d + temp1;
+            e = d +% temp1;
             d = c;
             c = b;
             b = a;
-            a = temp1 + temp2;
+            a = temp1 +% temp2;
             index = index + 1;
         }
 
-        self.state[0] = self.state[0] + a;
-        self.state[1] = self.state[1] + b;
-        self.state[2] = self.state[2] + c;
-        self.state[3] = self.state[3] + d;
-        self.state[4] = self.state[4] + e;
-        self.state[5] = self.state[5] + f;
-        self.state[6] = self.state[6] + g;
-        self.state[7] = self.state[7] + h;
+        self.state[0] = self.state[0] +% a;
+        self.state[1] = self.state[1] +% b;
+        self.state[2] = self.state[2] +% c;
+        self.state[3] = self.state[3] +% d;
+        self.state[4] = self.state[4] +% e;
+        self.state[5] = self.state[5] +% f;
+        self.state[6] = self.state[6] +% g;
+        self.state[7] = self.state[7] +% h;
     }
 }
 
@@ -148,7 +148,7 @@ extend Sha256 : Digest {
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/sha256#update
     pub func Update(self: &var Sha256, bytes: char8[..]) {
-        self.length = self.length + (bytes.length as uint64);
+        self.length = self.length +% (bytes.length as uint64);
         var index: uint = 0;
         // Finish whatever partial block is already held before taking whole blocks directly.
         if self.buffered > 0 {
@@ -183,7 +183,7 @@ extend Sha256 : Digest {
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/sha256#finish
     pub func Finish(self: &var Sha256, into: var char8[..]) {
-        let bitLength = self.length * 8;
+        let bitLength = self.length *% 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1;
         if self.buffered > 56 {

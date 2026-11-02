@@ -5,7 +5,7 @@
 // The strictness cases are the point of a strict decoder: each is a text some other decoder accepts, refused here
 // with the reason and the offset, and with the destination left holding its sentinel.
 
-import Core::Panic;
+import Core::{ Panic, uint };
 import Encoding::{ Base64Decode, Base64DecodedLength, Base64Encode, Base64EncodedLength, Base64Variant, DecodeError,
                    ViewBase64 };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
@@ -111,7 +111,7 @@ func RoundTrips(form: Base64Variant) -> bool {
     var source: byte[20];
     var index: uint = 0;
     while index < 20 {
-        source[index] = (index * 37 + 11) as byte;
+        source[index] = (index * 37 + 11).Truncate<byte>();
         index = index + 1;
     }
     var length: uint = 0;
