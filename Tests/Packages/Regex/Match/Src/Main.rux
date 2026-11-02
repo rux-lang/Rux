@@ -205,6 +205,9 @@ func Main() -> int {
            FindsNothing("(x+x+)+y", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"), "no catastrophic backtracking");
     let quick = Compiled("foo");
     Assert(quick.IsMatch("xxfooxx"), "IsMatch");
+    // Characters outside ASCII take the DFA's wide transition table, whose slot hash wraps by design.
+    Assert(Compiled("[fg]o+").IsMatch("café — naïve — über — señor — résumé — déjà vu — crème brûlée — foo"),
+           "IsMatch over text with characters outside ASCII");
 
     // A text of 64 bytes or more is searched by the DFAs: forwards for where the match ends, backwards for where it
     // starts, and the Pike matcher only over the match when groups are wanted. The answers are the same.

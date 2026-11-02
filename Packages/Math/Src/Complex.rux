@@ -180,7 +180,7 @@ extend Complex32 {
     /// @param real the real part
     /// @param imaginary the imaginary part
     /// @returns the number
-    /// @see https://rux-lang.dev/docs/api/math/complex#new
+    /// @see https://rux-lang.dev/docs/api/math/complex#complex32-constructor
     pub func Complex32(real: float32, imaginary: float32) -> Self {
         return Self { real, imaginary };
     }

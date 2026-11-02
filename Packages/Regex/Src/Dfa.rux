@@ -354,7 +354,7 @@ extend Dfa {
             return value;
         }
         let key = ((state as uint64) << 32) | character as uint64;
-        let slot = ((key * 0x9E3779B97F4A7C15u64) >> 52) as uint & (WideSlots - 1);
+        let slot = ((key *% 0x9E3779B97F4A7C15u64) >> 52) as uint & (WideSlots - 1);
         if self.wideKeys.AsSlice()[slot] == key + 1u64 { return self.wideValues.AsSlice()[slot]; }
         let value = self.Compute(state, character);
         if self.drops == drops {
