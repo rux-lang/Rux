@@ -285,7 +285,7 @@ TEST_CASE("explicit moves invalidate copyable places and reject invalid ownershi
         "cannot move 'handle' while it is immutably borrowed",
         "value 'source' is used after it was moved",
         "cannot move 'selfMove' into itself",
-        "cannot move field 'first' out of droppable value 'pair'",
+        "cannot move field 'first' out of 'pair', which is destroyed as a whole",
     };
     REQUIRE_EQ(diagnostics.size(), expected.size());
     for (std::size_t index = 0; index < expected.size(); ++index) {
@@ -824,8 +824,8 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
     )");
 
     const std::vector<std::string> expected = {
-        "cannot move field 'handle' out of droppable value 'owner'",
-        "cannot move indexed element [0] out of droppable value 'values'",
+        "cannot move field 'handle' out of 'owner', which is destroyed as a whole",
+        "cannot move indexed element [0] out of 'values', which is destroyed as a whole",
         "cannot move '*pointer' out of borrowed pointer storage",
         "cannot move 'handle' into itself",
         "cannot move 'owner.handle' into itself",

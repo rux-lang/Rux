@@ -973,7 +973,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         return false;
     }
     if (rawPointerStorage && currentFunctionDecl && !currentTypeParams.empty()) {
-        // Generic owning containers cannot encode ownership in `*var T`. Requiring `<-` makes the unsafe transfer
+        // Generic owning containers cannot encode ownership in `*var T`. Requiring `move` makes the unsafe transfer
         // visible, and restricting the exception to a generic body keeps concrete raw pointers borrowed by default.
         // An extend block contributes its aggregate's parameters to `currentTypeParams`; they are not repeated on
         // every method declaration.
@@ -991,9 +991,9 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     }
 
     EmitError(location,
-              std::format("cannot move {} out of droppable value '{}'", place.LastProjectionDescription(),
+              std::format("cannot move {} out of '{}', which is destroyed as a whole", place.LastProjectionDescription(),
                           place.ContainerDisplay()),
-              {"partial moves would leave the aggregate with only some fields initialized"},
+              {"partial moves would leave the aggregate with only some fields initialized when it is destroyed"},
               "move the complete aggregate or borrow or clone the component explicitly");
     return false;
 }
