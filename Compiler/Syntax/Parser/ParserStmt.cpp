@@ -299,7 +299,7 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
         s->init = std::move(move);
     }
     else if (!s->type) {
-        EmitExpected(CurrentLocation(), "'=' or '<-' before the binding initializer",
+        EmitExpected(CurrentLocation(), "'=' before the binding initializer",
                      "add a type annotation or initialize the binding");
     }
     ExpectBefore(TokenKind::Semicolon, "';' after the binding declaration");
@@ -375,6 +375,9 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
                 defaultArm.reset();
             }
             if (CheckWhenDefaultArm()) {
+                if (Check(TokenKind::ElseKeyword)) {
+                    EmitError(CurrentLocation(), "'else' is not a match arm", "use '_' for the default arm");
+                }
                 Advance();
                 defaultArm = arm.location;
             }
@@ -743,7 +746,7 @@ bool Parser::CheckWhenDefaultArm() const noexcept {
 
 void Parser::ParseWhenArmPatterns(std::vector<ExprPtr> &patterns) {
     // A `when` pattern is a compile-time value, so each alternative is read above `|`, which separates them as it does
-    // in a match. A comma separates them too, and may end the list before `=>`.
+    // in a match. The removed comma separator is reported and read as `|`.
     const bool savedStructInitAllowed = structInitAllowed;
     structInitAllowed = false;
     for (bool first = true;; first = false) {
@@ -755,8 +758,11 @@ void Parser::ParseWhenArmPatterns(std::vector<ExprPtr> &patterns) {
         if (Match(TokenKind::Pipe)) {
             continue;
         }
-        if (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
-            continue;
+        if (Match(TokenKind::Comma)) {
+            EmitError(Previous().location, "alternatives in a 'when' arm are separated by '|'", "write 'a | b =>'");
+            if (!Check(TokenKind::FatArrow)) {
+                continue;
+            }
         }
         break;
     }

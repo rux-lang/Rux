@@ -1,0 +1,16 @@
+// `var value: T;` runs `T()` where nothing can mark it with `try`, so a default constructor that throws is called
+// explicitly instead.
+struct Empty {}
+
+struct Lazy { value: int; }
+
+extend Lazy {
+    func Lazy() -> Self throws Empty {
+        throw Empty {};
+    }
+}
+
+func Main() -> int {
+    var lazy: Lazy;
+    return lazy.value;
+}

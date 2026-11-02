@@ -991,8 +991,8 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     }
 
     EmitError(location,
-              std::format("cannot move {} out of '{}', which is destroyed as a whole", place.LastProjectionDescription(),
-                          place.ContainerDisplay()),
+              std::format("cannot move {} out of '{}', which is destroyed as a whole",
+                          place.LastProjectionDescription(), place.ContainerDisplay()),
               {"partial moves would leave the aggregate with only some fields initialized when it is destroyed"},
               "move the complete aggregate or borrow or clone the component explicitly");
     return false;

@@ -423,7 +423,7 @@ bool IsInteger(const TypedConstant &value) {
 }
 
 CheckedConstant Checked(std::optional<TypedConstant> value) {
-    return CheckedConstant{std::move(value), CheckedFailure::Unsupported};
+    return CheckedConstant{value, CheckedFailure::Unsupported};
 }
 
 CheckedConstant Failed(const CheckedFailure failure) {
@@ -474,7 +474,7 @@ CheckedConstant EvaluateBinaryChecked(const TokenKind op, const TypedConstant &l
         if (!result || AdditionOverflows(op, left.Bits(), right.Bits(), result->Bits(), isSigned)) {
             return Failed(CheckedFailure::Overflow);
         }
-        return Checked(std::move(result));
+        return Checked(result);
     }
     case TokenKind::Star: {
         if (left.GetKind() != right.GetKind() || left.Width() != right.Width()) {

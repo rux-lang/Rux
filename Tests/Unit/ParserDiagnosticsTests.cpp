@@ -929,3 +929,13 @@ TEST_CASE("removed spellings report the form that replaced them") {
         CHECK(diagnostic->help->contains(testCase.help));
     }
 }
+
+TEST_CASE("a when arm separates its alternatives with '|' and defaults with '_'") {
+    const auto comma = ParseSource("func F() { when #target.os { .Windows, .Linux => {} _ => {} } }");
+    const auto *separator = FindDiagnostic(comma, "alternatives in a 'when' arm are separated by '|'");
+    REQUIRE(separator != nullptr);
+    REQUIRE(separator->help.has_value());
+    CHECK(separator->help->contains("a | b =>"));
+    const auto otherwise = ParseSource("func F() { when #target.os { .Windows => {} else => {} } }");
+    CHECK(FindDiagnostic(otherwise, "'else' is not a match arm") != nullptr);
+}

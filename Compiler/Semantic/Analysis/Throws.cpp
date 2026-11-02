@@ -242,17 +242,10 @@ std::optional<ResolvedThrowSite> AnalysisContext::CheckFail(const Expr *value, c
             const std::string returned = currentReturnType.IsOpaque()
                                            ? std::string("returns no value")
                                            : std::format("returns '{}'", currentReturnType.ToString());
-            if (throwSpelling) {
-                EmitError(location,
-                          std::format("'throw' needs a function that throws, but {} {}",
-                                      FunctionName(currentFunctionDecl), returned),
-                          {}, "declare 'throws E' on the function, or throw inside 'try { ... } catch { ... }'");
-            }
-            else {
-                EmitError(location,
-                          std::format("'fail' needs an enclosing fallible function, but this function {}", returned),
-                          {}, "declare the function's error channel, as in '-> T ! E' or '-> ! E'");
-            }
+            EmitError(location,
+                      std::format("'throw' needs a function that throws, but {} {}", FunctionName(currentFunctionDecl),
+                                  returned),
+                      {}, "declare 'throws E' on the function, or throw inside 'try { ... } catch { ... }'");
         }
     }
     else if (value && !valueType.IsUnknown()) {

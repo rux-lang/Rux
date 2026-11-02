@@ -414,15 +414,14 @@ ExprPtr Parser::ParseCast() {
     if (!left) {
         return nullptr;
     }
-    // A cast or test target is a postfix type, so it ends before `..`, `|`, and `!`; a sum or fallible target is
-    // grouped, `value is (A | B)`. No expression continues with `!`, so one there is always an ungrouped fallible
-    // target.
+    // A cast or test target is a postfix type, so it ends before `..`, `|`, and `!`; a sum target is grouped,
+    // `value is (A | B)`. No expression continues with `!`, so one there is the removed fallible spelling.
     const auto rejectUngroupedFallible = [this](const std::string_view keyword) {
         if (!Check(TokenKind::Bang)) {
             return;
         }
-        EmitError(CurrentLocation(), std::format("a fallible type after '{}' must be grouped", keyword),
-                  std::format("write 'value {} (T ! E)'", keyword));
+        EmitError(CurrentLocation(), "'T ! E' is not a type",
+                  std::format("'{}' takes a type; an outcome is stored as 'Result<T, E>'", keyword));
         Advance();
         ParseSumType();
     };

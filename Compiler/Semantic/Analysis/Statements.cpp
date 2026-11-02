@@ -373,7 +373,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                                   isNone ? "'none'" : "a native constructor with an unknown channel"),
                       {},
                       isNone ? "annotate the optional type, as in 'let value: int32? = none;'"
-                             : "annotate the fallible type, as in 'let value: int32 ! ParseError = .Success(1i32);'");
+                             : "annotate the type the value should have, as in 'let value: int32? = .Some(1i32);'");
             declarationType = TypeRef::MakeUnknown();
         }
         const FuncDecl *defaultConstructor = nullptr;
@@ -387,7 +387,15 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                     eligible.push_back(candidate);
                 }
             }
-            if (eligible.size() == 1) {
+            if (eligible.size() == 1 && ResolveMethodReturnType(declarationType, *eligible.front()).IsFallible()) {
+                // `var value: T;` runs `T()` where nothing marks it, and a throw site must be marked.
+                EmitError(letStatement->location,
+                          std::format("default construction of '{}' can throw", declarationType.ToString()),
+                          {std::format("'{}()' declares 'throws', and a declaration without a value cannot be marked",
+                                       declarationType.ToString())},
+                          std::format("write 'var {} = try {}();'", letStatement->name, declarationType.ToString()));
+            }
+            else if (eligible.size() == 1) {
                 defaultConstructor = eligible.front();
                 const auto substitutions = MethodTypeSubstitutions(declarationType);
                 QueueGenericInstantiation(*defaultConstructor, substitutions);

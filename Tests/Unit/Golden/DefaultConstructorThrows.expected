@@ -1,0 +1,2 @@
+14:5: error: default construction of 'Lazy' can throw
+15:12: error: variable 'lazy' is used before it is initialized

@@ -311,7 +311,7 @@ pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
             // Safety: `__errno_location` takes no arguments and returns the calling thread's own `errno` address.
             return unsafe { __errno_location() };
         }
-        .FreeBSD, .macOS => {
+        .FreeBSD | .macOS => {
             // Safety: `__error` takes no arguments and returns the calling thread's own `errno` address.
             return unsafe { __error() };
         }

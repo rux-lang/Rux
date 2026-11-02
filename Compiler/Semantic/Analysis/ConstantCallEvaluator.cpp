@@ -408,8 +408,8 @@ TypeRef ConstantCallEvaluator::ScalarModelType(const TypeRef &type) {
 EvaluatedValue ConstantCallEvaluator::MakeScalar(TypedConstant value, TypeRef type) {
     EvaluatedValue result;
     result.kind = EvaluatedValue::Kind::Scalar;
-    result.type = std::move(type);
-    result.scalar = std::make_shared<const TypedConstant>(std::move(value));
+    result.type = type;
+    result.scalar = std::make_shared<const TypedConstant>(value);
     return result;
 }
 

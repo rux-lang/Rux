@@ -575,7 +575,7 @@ import Core::{ #target };
 
 func Do() -> int {
     when #target.os {
-        .Windows, .Linux => { return 1; }
+        .Windows | .Linux => { return 1; }
         .macOS => { return 2; }
         _ => { return 3; }
     }
@@ -665,7 +665,7 @@ TEST_CASE("a declaration-level match groups patterns and takes a semicolon-less 
 import Core::{ #target, #Error };
 
 when #target.os {
-    .Windows, .Linux => import Core::{ OperatingSystem }
+    .Windows | .Linux => import Core::{ OperatingSystem }
     _ => #Error("unsupported")
 }
 )";
