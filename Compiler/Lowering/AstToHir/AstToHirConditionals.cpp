@@ -155,6 +155,10 @@ HirExprPtr AstToHirContext::LowerValueBlock(const BlockExpr &expression, const s
     // A block that yields `()` or cannot complete is the statements it holds. One yielding `null` has no recorded
     // type and takes the one its context wants.
     if (!tail || (!recorded && !target) || (recorded && recorded->IsUnit())) {
+        // One that yields `()` still has that type, so a throwing function returning it builds its success.
+        if (tail && recorded && recorded->IsUnit()) {
+            lowered->type = TypeRef::MakeUnit();
+        }
         lowered->block = LowerBlock(*expression.block);
         return lowered;
     }
